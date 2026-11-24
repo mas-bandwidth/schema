@@ -921,6 +921,97 @@ func TestRubyPacketVoid(t *testing.T) {
 	}
 }
 
+// packetVoidRubyAPIProbe holds the generated API shape of test/packet-void's
+// unions, which the shared wire cases cannot see: the tag constants and their
+// Max, the frozen NAMES tables, and what construction leaves in a union (tag
+// None, the payload arm built at its declared defaults). It prints one
+// "FAILED: <what>" line per broken rule and exits 1, else prints ok.
+const packetVoidRubyAPIProbe = `# frozen_string_literal: true
+
+require File.expand_path("packetvoid", ARGV.fetch(0))
+
+P = Packetvoid
+failures = []
+check = ->(ok, what) { failures << what unless ok }
+
+check.call([P::MixedType::None, P::MixedType::Ping, P::MixedType::Payload, P::MixedType::Max] == [0, 1, 2, 2],
+           "MixedType tag numbers")
+check.call([P::LateType::None, P::LateType::Ping, P::LateType::Payload, P::LateType::Pong, P::LateType::Max] ==
+             [0, 1, 2, 3, 3], "LateType tag numbers")
+{
+  "MixedType" => [P::MixedType::NAMES, { 0 => "None", 1 => "ping", 2 => "payload" }],
+  "LateType" => [P::LateType::NAMES, { 0 => "None", 1 => "ping", 2 => "payload", 3 => "pong" }],
+  "TagsType" => [P::TagsType::NAMES, { 0 => "None", 1 => "ping", 2 => "pong" }],
+  "SingleType" => [P::SingleType::NAMES, { 0 => "None", 1 => "ack" }],
+  "EmptyType" => [P::EmptyType::NAMES, { 0 => "None" }]
+}.each do |name, (got, want)|
+  check.call(got == want, "#{name}::NAMES #{got.inspect}, want #{want.inspect}")
+  check.call(got.frozen?, "#{name}::NAMES is not frozen")
+end
+check.call(P::TagsType::Max == 2 && P::TagsType::Pong == 2, "TagsType extent")
+check.call(P::SingleType::Max == 1 && P::SingleType::Ack == 1, "SingleType extent")
+check.call(P::EmptyType::Max.zero?, "EmptyType extent")
+
+defaults = lambda do |arm|
+  arm.instance_of?(P::DefaultArm) && arm.entries == [] && arm.marker == 5
+end
+[[P::Mixed, P::MixedType::None], [P::Late, P::LateType::None]].each do |klass, none|
+  fresh = klass.new
+  check.call(fresh.type == none, "#{klass}.new type #{fresh.type.inspect}, want None")
+  check.call(defaults.call(fresh.payload), "#{klass}.new payload #{fresh.payload.inspect}, want DefaultArm at its defaults")
+end
+choice = P::Frame.new.choice
+check.call(choice.instance_of?(P::Mixed) && choice.type == P::MixedType::None,
+           "Frame.new.choice #{choice.inspect}, want a Mixed of type None")
+check.call(defaults.call(choice.payload), "Frame.new.choice payload #{choice.payload.inspect}, want DefaultArm at its defaults")
+
+if failures.empty?
+  puts "ok"
+else
+  failures.each { |what| puts "FAILED: #{what}" }
+  exit 1
+end
+`
+
+// TestRubyPacketVoidAPI holds the generated API shape of test/packet-void's
+// unions under both pinned interpreters (packetVoidRubyAPIProbe), and plants
+// a wrong LateType::Max in a copy of the generated code, which must go red by
+// name.
+func TestRubyPacketVoidAPI(t *testing.T) {
+	t.Parallel()
+	files, _, _, _, _ := packetVoidRuby(t)
+	inputs := map[string][]byte{"api.rb": []byte(packetVoidRubyAPIProbe)}
+	for _, pin := range rubyPins {
+		t.Run(pin.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			out := strings.TrimSpace(string(rubyrun.RunArgs(t, pin.exe(t), dir, "api.rb", []string{dir}, inputs)))
+			if out != "ok" {
+				t.Fatalf("packet-void API shape under %s:\n%s", pin.name, out)
+			}
+		})
+	}
+	t.Run("planted-late-max", func(t *testing.T) {
+		t.Parallel()
+		const module = "packetvoid/Void.rb"
+		planted := maps.Clone(files)
+		src := string(planted[module])
+		const marker = "    Pong = 3\n    Max = 3\n"
+		if n := strings.Count(src, marker); n != 1 {
+			t.Fatalf("the LateType::Max marker matched %d times", n)
+		}
+		planted[module] = []byte(strings.Replace(src, marker, "    Pong = 3\n    Max = 4\n", 1))
+		dir := t.TempDir()
+		writeTree(t, dir, planted)
+		out, stderr, err := rubyrun.TryArgs(t, rubyrun.Interpreter(t), dir, "api.rb", []string{dir}, inputs, nil)
+		const want = "FAILED: LateType tag numbers"
+		if err == nil || !slices.Contains(strings.Split(out, "\n"), want) {
+			t.Fatalf("the planted LateType::Max did not answer %q (err %v):\n%s\n%s", want, err, out, stderr)
+		}
+	})
+}
+
 // TestRubyPacketVoidNegativeControl plants one fault in a copy of the
 // generated code and requires the driver to answer the case it breaks
 // FAILED, by name.

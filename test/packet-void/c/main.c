@@ -3,18 +3,27 @@
    line each, for tools/casegate. The pins are the Go oracle's bytes, never
    this writer's. "read" or "write" as the second argument runs one direction
    only: the make/checks/packet-void.mk negative controls sabotage one
-   direction and require the other to stay green. */
+   direction and require the other to stay green. A refuse-write case runs
+   the write in a forked child, so the debug assert's abort is the refusal
+   and the driver never dies with it; a -DNDEBUG build has no write check by
+   design and answers it ok without writing. */
+#define _POSIX_C_SOURCE 200809L
 #include "VoidWire.h"
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
-enum kind { K_MIXED, K_TAGS, K_SINGLE, K_EMPTY, K_FRAME, K_BATCH, K_UNKNOWN };
+enum kind { K_MIXED, K_LATE, K_TAGS, K_SINGLE, K_EMPTY, K_FRAME, K_BATCH, K_UNKNOWN };
 
 typedef struct value_t
 {
     enum kind kind;
     packetvoid_mixed_t mixed;
+    packetvoid_late_t late;
     packetvoid_tags_t tags;
     packetvoid_single_t single;
     packetvoid_empty_t empty;
@@ -30,6 +39,7 @@ static char g_why[256];
 static enum kind kind_of(const char *type)
 {
     if (strcmp(type, "Mixed") == 0) return K_MIXED;
+    if (strcmp(type, "Late") == 0) return K_LATE;
     if (strcmp(type, "Tags") == 0) return K_TAGS;
     if (strcmp(type, "Single") == 0) return K_SINGLE;
     if (strcmp(type, "Empty") == 0) return K_EMPTY;
@@ -55,6 +65,8 @@ static int build(const char *name, value_t *v)
     if (strcmp(name, "mixed-none") == 0) { v->kind = K_MIXED; set_mixed(&v->mixed, PACKETVOID_MIXED_TYPE_NONE); return 1; }
     if (strcmp(name, "mixed-ping") == 0) { v->kind = K_MIXED; set_mixed(&v->mixed, PACKETVOID_MIXED_TYPE_PING); return 1; }
     if (strcmp(name, "mixed-payload") == 0) { v->kind = K_MIXED; set_mixed(&v->mixed, PACKETVOID_MIXED_TYPE_PAYLOAD); return 1; }
+    if (strcmp(name, "late-payload") == 0) { v->kind = K_LATE; packetvoid_late_select_payload(&v->late); return 1; }
+    if (strcmp(name, "late-pong") == 0) { v->kind = K_LATE; packetvoid_late_select_pong(&v->late); return 1; }
     if (strcmp(name, "tags-none") == 0) { v->kind = K_TAGS; v->tags.type = PACKETVOID_TAGS_TYPE_NONE; return 1; }
     if (strcmp(name, "tags-ping") == 0) { v->kind = K_TAGS; v->tags.type = PACKETVOID_TAGS_TYPE_PING; return 1; }
     if (strcmp(name, "tags-pong") == 0) { v->kind = K_TAGS; v->tags.type = PACKETVOID_TAGS_TYPE_PONG; return 1; }
@@ -93,6 +105,10 @@ static void dirty(value_t *v, enum kind kind)
     v->mixed.as.payload.entries_count = 2;
     v->mixed.as.payload.entries[0].retries = 99;
     v->mixed.as.payload.entries[1].retries = 99;
+    v->late.type = PACKETVOID_LATE_TYPE_PAYLOAD;
+    v->late.as.payload.entries_count = 2;
+    v->late.as.payload.entries[0].retries = 99;
+    v->late.as.payload.entries[1].retries = 99;
     for (i = 0; i < 2; ++i)
     {
         v->batch.values[i].type = PACKETVOID_MIXED_TYPE_PAYLOAD;
@@ -106,6 +122,7 @@ static int write_value(serialize_write_stream_t *w, const value_t *v)
     switch (v->kind)
     {
     case K_MIXED: return packetvoid_write_mixed(w, &v->mixed);
+    case K_LATE: return packetvoid_write_late(w, &v->late);
     case K_TAGS: return packetvoid_write_tags(w, &v->tags);
     case K_SINGLE: return packetvoid_write_single(w, &v->single);
     case K_EMPTY: return packetvoid_write_empty(w, &v->empty);
@@ -122,6 +139,7 @@ static int read_value(serialize_read_stream_t *r, value_t *v, int body)
     switch (v->kind)
     {
     case K_MIXED: return body ? schema_packetvoid_read_mixed_body_(r, &v->mixed) : packetvoid_read_mixed(r, &v->mixed);
+    case K_LATE: return body ? schema_packetvoid_read_late_body_(r, &v->late) : packetvoid_read_late(r, &v->late);
     case K_TAGS: return body ? schema_packetvoid_read_tags_body_(r, &v->tags) : packetvoid_read_tags(r, &v->tags);
     case K_SINGLE: return body ? schema_packetvoid_read_single_body_(r, &v->single) : packetvoid_read_single(r, &v->single);
     case K_EMPTY: return body ? schema_packetvoid_read_empty_body_(r, &v->empty) : packetvoid_read_empty(r, &v->empty);
@@ -144,12 +162,21 @@ static int mixed_equal(const packetvoid_mixed_t *got, const packetvoid_mixed_t *
     return 1;
 }
 
+static int arm_equal(const packetvoid_default_arm_t *got, const packetvoid_default_arm_t *want)
+{
+    return got->entries_count == want->entries_count && got->marker == want->marker &&
+           got->entries[0].retries == want->entries[0].retries && got->entries[1].retries == want->entries[1].retries;
+}
+
 static int value_equal(const value_t *got, const value_t *want)
 {
     int i;
     switch (want->kind)
     {
     case K_MIXED: return mixed_equal(&got->mixed, &want->mixed);
+    case K_LATE:
+        return got->late.type == want->late.type &&
+               (want->late.type != PACKETVOID_LATE_TYPE_PAYLOAD || arm_equal(&got->late.as.payload, &want->late.as.payload));
     case K_TAGS: return got->tags.type == want->tags.type;
     case K_SINGLE: return got->single.type == want->single.type;
     case K_EMPTY: return got->empty.type == want->empty.type;
@@ -243,6 +270,87 @@ static int refuse_case(const char *dir, const char *name, const char *type)
     return 1;
 }
 
+/* select: read mixed-ping's pin into dirtied storage with the public read,
+   then select the payload arm on that value: the generated selector
+   initializes it with its declared defaults, and the value writes this
+   case's pin. */
+static int select_case(const char *dir, const char *name, const char *type, int64_t bits)
+{
+    uint64_t from_words[16], out_words[8];
+    value_t got;
+    serialize_write_stream_t w;
+    serialize_read_stream_t r;
+    int64_t from_bytes, bytes;
+    if (strcmp(name, "mixed-ping-select-payload") != 0) FAIL("unknown select case");
+    if (kind_of(type) != K_MIXED) FAIL("case type %s, the driver selects on a Mixed", type);
+    if (!load(dir, "mixed-ping", &from_bytes)) return 0;
+    memcpy(from_words, g_pin_words, sizeof(from_words));
+    if (!load(dir, name, &bytes)) return 0;
+    if (!g_read || !g_write) return 1; /* the case reads, then writes: one direction alone cannot answer it */
+    dirty(&got, K_MIXED);
+    serialize_read_stream_init(&r, (const uint8_t *) from_words, from_bytes);
+    if (!packetvoid_read_mixed(&r, &got.mixed)) FAIL("read mixed-ping refused");
+    if (got.mixed.type != PACKETVOID_MIXED_TYPE_PING) FAIL("read mixed-ping: not the ping arm");
+    packetvoid_mixed_select_payload(&got.mixed);
+    memset(out_words, 0, sizeof(out_words));
+    serialize_write_stream_init(&w, (uint8_t *) out_words, sizeof(out_words));
+    if (!packetvoid_write_mixed(&w, &got.mixed)) FAIL("write refused");
+    if (serialize_write_bits_processed(&w) != bits)
+        FAIL("write has %lld bits, want %lld", (long long) serialize_write_bits_processed(&w), (long long) bits);
+    serialize_write_flush(&w);
+    if (serialize_write_bytes_processed(&w) != bytes || memcmp(out_words, g_pin_words, (size_t) bytes) != 0)
+        FAIL("write bytes differ from the pin");
+    return 1;
+}
+
+/* The refuse-write cases: the type's default value with the one change the
+   case names. The tag is a uint8_t and the payload a typed member, so a text
+   tag and a payload of another type cannot be built: the compiler refuses
+   them. Tag -1 is the uint8_t tag's -1, 255. */
+static int build_refused(const char *name, value_t *v)
+{
+    memset(v, 0, sizeof(*v));
+    if (strcmp(name, "mixed-write-tag-negative") == 0) { v->kind = K_MIXED; v->mixed.type = (packetvoid_mixed_type_t) -1; return 1; }
+    if (strcmp(name, "mixed-write-tag-3") == 0) { v->kind = K_MIXED; v->mixed.type = 3; return 1; }
+    if (strcmp(name, "mixed-write-marker-8") == 0) { v->kind = K_MIXED; packetvoid_mixed_select_payload(&v->mixed)->marker = 8; return 1; }
+    if (strcmp(name, "tags-write-tag-3") == 0) { v->kind = K_TAGS; v->tags.type = 3; return 1; }
+    if (strcmp(name, "empty-write-tag-1") == 0) { v->kind = K_EMPTY; v->empty.type = 1; return 1; }
+    return 0;
+}
+
+static int refuse_write_case(const char *name, const char *type)
+{
+    value_t v;
+    if (strcmp(name, "mixed-write-tag-text") == 0 || strcmp(name, "mixed-write-payload-type") == 0) return 1; /* not representable */
+    if (!build_refused(name, &v)) FAIL("unknown refuse-write case");
+    if (v.kind != kind_of(type)) FAIL("case type %s, the driver builds another", type);
+    if (!g_write) return 1;
+#ifdef NDEBUG
+    return 1; /* no write check in a release build, by design: debug asserts only */
+#else
+    {
+        int status = 0;
+        pid_t child;
+        fflush(stdout); /* the child must not repeat buffered answers */
+        child = fork();
+        if (child < 0) FAIL("fork failed");
+        if (child == 0)
+        {
+            uint64_t out_words[8];
+            serialize_write_stream_t w;
+            memset(out_words, 0, sizeof(out_words));
+            serialize_write_stream_init(&w, (uint8_t *) out_words, sizeof(out_words));
+            _exit(write_value(&w, &v) ? 0 : 10);
+        }
+        if (waitpid(child, &status, 0) != child) FAIL("waitpid failed");
+        if (WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT) return 1; /* the debug assert */
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 10) return 1;     /* the writer returned 0 */
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) FAIL("write accepted");
+        FAIL("the write ended with status %d, not the assert", status);
+    }
+#endif
+}
+
 int main(int argc, char **argv)
 {
     char path[512], line[512];
@@ -256,7 +364,7 @@ int main(int argc, char **argv)
     }
     /* The generated surface beside the wire: tag extents, debug names and
        maximum sizes. A miss exits non-zero, which tools/casegate holds red. */
-    if (PACKETVOID_MIXED_TYPE_MAX != 2 || PACKETVOID_TAGS_TYPE_MAX != 2 || PACKETVOID_SINGLE_TYPE_MAX != 1 ||
+    if (PACKETVOID_MIXED_TYPE_MAX != 2 || PACKETVOID_LATE_TYPE_MAX != 3 || PACKETVOID_LATE_TYPE_PONG != 3 || PACKETVOID_TAGS_TYPE_MAX != 2 || PACKETVOID_SINGLE_TYPE_MAX != 1 ||
         PACKETVOID_EMPTY_TYPE_MAX != 0 ||
         strcmp(packetvoid_enum_name_mixed_type(PACKETVOID_MIXED_TYPE_PING), "Ping") != 0 ||
         strcmp(packetvoid_enum_name_tags_type(PACKETVOID_TAGS_TYPE_PONG), "Pong") != 0 ||
@@ -283,6 +391,8 @@ int main(int argc, char **argv)
         if (fields < 4) { snprintf(g_why, sizeof(g_why), "a case line needs <name> <type> <verdict> <bits>"); ok = 0; }
         else if (strcmp(verdict, "accept") == 0) ok = accept_case(argv[1], name, type, strtoll(bits, NULL, 10));
         else if (strcmp(verdict, "refuse") == 0) ok = refuse_case(argv[1], name, type);
+        else if (strcmp(verdict, "select") == 0) ok = select_case(argv[1], name, type, strtoll(bits, NULL, 10));
+        else if (strcmp(verdict, "refuse-write") == 0) ok = refuse_write_case(name, type);
         else { snprintf(g_why, sizeof(g_why), "verdict %s", verdict); ok = 0; }
         if (ok) printf("case %s ok\n", name);
         else printf("case %s FAILED: %s\n", name, g_why);

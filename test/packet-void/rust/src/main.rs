@@ -11,6 +11,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Value {
     Mixed(v::Mixed),
+    Late(v::Late),
     Tags(v::Tags),
     Single(v::Single),
     Empty(v::Empty),
@@ -29,6 +30,8 @@ fn build(name: &str) -> Option<Value> {
         "mixed-none" => Value::Mixed(v::Mixed::None),
         "mixed-ping" => Value::Mixed(v::Mixed::Ping),
         "mixed-payload" => Value::Mixed(payload()),
+        "late-payload" => Value::Late(v::Late::Payload(v::DefaultArm::new())),
+        "late-pong" => Value::Late(v::Late::Pong),
         "tags-none" => Value::Tags(v::Tags::None),
         "tags-ping" => Value::Tags(v::Tags::Ping),
         "tags-pong" => Value::Tags(v::Tags::Pong),
@@ -57,6 +60,10 @@ fn dirty_mixed() -> v::Mixed {
 fn dirty(kind: &str) -> Option<Value> {
     Some(match kind {
         "Mixed" => Value::Mixed(dirty_mixed()),
+        "Late" => Value::Late(match dirty_mixed() {
+            v::Mixed::Payload(arm) => v::Late::Payload(arm),
+            _ => v::Late::Pong,
+        }),
         "Tags" => Value::Tags(v::Tags::Pong),
         "Single" => Value::Single(v::Single::Ack),
         "Empty" => Value::Empty(v::Empty::None),
@@ -69,6 +76,7 @@ fn dirty(kind: &str) -> Option<Value> {
 fn type_of(value: &Value) -> &'static str {
     match value {
         Value::Mixed(_) => "Mixed",
+        Value::Late(_) => "Late",
         Value::Tags(_) => "Tags",
         Value::Single(_) => "Single",
         Value::Empty(_) => "Empty",
@@ -80,6 +88,7 @@ fn type_of(value: &Value) -> &'static str {
 fn write_value(stream: &mut WriteStream<'_>, value: &Value) -> v::Result {
     match value {
         Value::Mixed(x) => v::write_mixed(stream, x),
+        Value::Late(x) => v::write_late(stream, x),
         Value::Tags(x) => v::write_tags(stream, x),
         Value::Single(x) => v::write_single(stream, x),
         Value::Empty(x) => v::write_empty(stream, x),
@@ -91,6 +100,7 @@ fn write_value(stream: &mut WriteStream<'_>, value: &Value) -> v::Result {
 fn read_value(stream: &mut ReadStream<'_>, value: &mut Value) -> v::Result {
     match value {
         Value::Mixed(x) => v::read_mixed(stream, x),
+        Value::Late(x) => v::read_late(stream, x),
         Value::Tags(x) => v::read_tags(stream, x),
         Value::Single(x) => v::read_single(stream, x),
         Value::Empty(x) => v::read_empty(stream, x),
@@ -176,6 +186,82 @@ fn refuse_case(dir: &str, name: &str, kind: &str) -> Result<(), String> {
     }
 }
 
+// The cases whose change a Rust union cannot hold: the tag is a native enum
+// (Mixed, Tags, Empty), so a tag outside its arms, a negative tag, a text tag
+// and a payload of another type are refused by the compiler.
+const NOT_REPRESENTABLE: &[&str] = &[
+    "mixed-write-tag-negative",
+    "mixed-write-tag-text",
+    "mixed-write-tag-3",
+    "mixed-write-payload-type",
+    "tags-write-tag-3",
+    "empty-write-tag-1",
+];
+
+// The refusal is the writer's debug_assert!, a caught panic that names the
+// field. A release build has no write check by design: the case is answered
+// ok without writing it, decided by the build itself.
+fn refuse_write_case(name: &str, verdict: &str) -> Result<(), String> {
+    if NOT_REPRESENTABLE.contains(&name) {
+        if verdict != "refuse-write" {
+            return Err(format!("named not representable in Rust, and its verdict is {verdict}"));
+        }
+        return Ok(());
+    }
+    let value = match name {
+        "mixed-write-marker-8" => {
+            let mut arm = v::DefaultArm::new();
+            arm.marker = 8;
+            Value::Mixed(v::Mixed::Payload(arm))
+        }
+        _ => return Err("unknown refuse-write case".into()),
+    };
+    if !cfg!(debug_assertions) {
+        return Ok(());
+    }
+    match catch_unwind(AssertUnwindSafe(|| write_bytes(&value))) {
+        Err(panic) => {
+            let what = panic
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_default();
+            if what.starts_with("marker") {
+                Ok(())
+            } else {
+                Err(format!("expected the marker debug assert, panicked with {what:?}"))
+            }
+        }
+        Ok(Ok(_)) => Err("write accepted".into()),
+        Ok(Err(e)) => Err(format!("expected the debug assert, the writer returned: {e}")),
+    }
+}
+
+// The select case: read mixed-ping with the public one-packet read, then
+// select the payload arm on that value the Rust way: a native enum arm is a
+// fresh DefaultArm::new(), its declared defaults.
+fn select_case(dir: &str, name: &str, bits: &str) -> Result<(), String> {
+    if name != "mixed-ping-select-payload" {
+        return Err("unknown select case".into());
+    }
+    let bits: u64 = bits.parse().map_err(|_| format!("bits column {bits}"))?;
+    let mut got = Value::Mixed(v::Mixed::None);
+    read_pin(&load(dir, "mixed-ping")?, &mut got).0.map_err(|e| format!("read mixed-ping refused: {e:?}"))?;
+    let Value::Mixed(m) = &mut got else { return Err("read mixed-ping: another type".into()) };
+    if *m != v::Mixed::Ping {
+        return Err(format!("read mixed-ping: {m:?}"));
+    }
+    *m = v::Mixed::Payload(v::DefaultArm::new());
+    let (out, wrote) = write_bytes(&got)?;
+    if wrote != bits {
+        return Err(format!("write has {wrote} bits, want {bits}"));
+    }
+    if out != load(dir, name)? {
+        return Err("write bytes differ from the pin".into());
+    }
+    Ok(())
+}
+
 fn answer(dir: &str, line: &str) -> Option<(String, Result<(), String>)> {
     let fields: Vec<&str> = line.split_whitespace().collect();
     let name = *fields.first()?;
@@ -189,6 +275,8 @@ fn answer(dir: &str, line: &str) -> Option<(String, Result<(), String>)> {
     let run = || match verdict {
         "accept" => accept_case(dir, name, kind, bits),
         "refuse" => refuse_case(dir, name, kind),
+        "select" => select_case(dir, name, bits),
+        "refuse-write" => refuse_write_case(name, verdict),
         other => Err(format!("verdict {other}")),
     };
     let result = match catch_unwind(AssertUnwindSafe(run)) {

@@ -599,14 +599,26 @@ func TestPythonPacketUnionsNegativeControl(t *testing.T) {
 		files, pkg, inputs, _, _ := loadPacketVoidPython(t)
 		module := pkg + "/Void.py"
 		text := string(files[module])
+		// Late has the same payload arm at tag 2, so the anchor is sought
+		// inside the Mixed class alone: from its header to the next class.
+		start := strings.Index(text, "\nclass Mixed:\n")
+		if start < 0 {
+			t.Fatalf("no Mixed class in the generated module:\n%s", text)
+		}
+		end := strings.Index(text[start+1:], "\nclass ")
+		if end < 0 {
+			t.Fatalf("no class after Mixed in the generated module:\n%s", text)
+		}
+		end += start + 1
+		class := text[start:end]
 		const anchor = "        if self.type == 2:\n            self.payload._s_write(stream)\n"
-		if strings.Count(text, anchor) != 1 {
-			t.Fatalf("the Mixed writer anchor matched %d times:\n%s", strings.Count(text, anchor), text)
+		if strings.Count(class, anchor) != 1 {
+			t.Fatalf("the Mixed writer anchor matched %d times:\n%s", strings.Count(class, anchor), class)
 		}
 		const planted = "        if self.type == 1:\n" +
 			"            _s_ri.value = 1\n" +
 			"            _s_serialize_int(_s_ri, 0, 1)\n"
-		files[module] = []byte(strings.Replace(text, anchor, planted+anchor, 1))
+		files[module] = []byte(text[:start] + strings.Replace(class, anchor, planted+anchor, 1) + text[end:])
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out, _, err := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", inputs)

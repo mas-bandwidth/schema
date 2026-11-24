@@ -34,7 +34,16 @@
 //
 // and `<leg> all owed: <cause>` for a leg with no driver at all
 // (internal/inputfamilies.Check refuses a leg with neither a target nor that
-// line). A ledger line naming a case the case file lacks is red.
+// line). The ledger is an exact set on every line, whichever leg it names:
+// a malformed line, a line whose leg is not one of internal/inputfamilies.Legs
+// (a misspelt or removed leg would owe a case for no leg that runs), and a
+// line there twice refuse the run before the driver starts (exit 2); a line
+// for this leg naming a case the case file lacks is red. Every line carries
+// its cause. internal/inputfamilies.Check holds the same format across all
+// legs at once (Family.Owed).
+//
+// A case whose verdict (the third field) is refuse-write has no <case>.bin:
+// internal/casegate.Inputs reads every other case's pin.
 package main
 
 import (

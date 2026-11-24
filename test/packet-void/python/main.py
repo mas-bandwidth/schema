@@ -15,6 +15,9 @@ from packetvoid import (
     Batch,
     Empty,
     Frame,
+    InvalidValue,
+    Late,
+    LateType,
     Mixed,
     MixedType,
     Refused,
@@ -26,6 +29,7 @@ from packetvoid import (
 
 TYPES: "dict[str, Any]" = {
     "Mixed": Mixed,
+    "Late": Late,
     "Tags": Tags,
     "Single": Single,
     "Empty": Empty,
@@ -49,6 +53,10 @@ def build(name: str) -> Any:
         return mixed(MixedType.Ping)
     if name == "mixed-payload":
         return mixed(MixedType.Payload)
+    if name in ("late-payload", "late-pong"):
+        late = Late()
+        late.type = LateType.Payload if name == "late-payload" else LateType.Pong
+        return late
     if name in ("tags-none", "tags-ping", "tags-pong"):
         tags = Tags()
         tags.type = {"tags-none": TagsType.None_, "tags-ping": TagsType.Ping, "tags-pong": TagsType.Pong}[name]
@@ -76,10 +84,73 @@ def build(name: str) -> Any:
     return None
 
 
+def build_refused(name: str) -> Any:
+    """The type's default value with the one change each refuse-write case
+    names; None for a name this driver does not know, which is FAILED. The
+    values are Any: a text tag and an integer payload are exactly what the
+    writer must refuse, and Python can hold them."""
+    value: Any
+    if name.startswith("mixed-write-"):
+        value = Mixed()
+        if name == "mixed-write-tag-negative":
+            value.type = -1
+        elif name == "mixed-write-tag-text":
+            value.type = "ping"
+        elif name == "mixed-write-tag-3":
+            value.type = 3
+        elif name == "mixed-write-payload-type":
+            value.type = MixedType.Payload
+            value.payload = 1
+        elif name == "mixed-write-marker-8":
+            value.type = MixedType.Payload
+            value.payload.marker = 8
+        else:
+            return None
+        return value
+    if name == "tags-write-tag-3":
+        value = Tags()
+        value.type = 3
+        return value
+    if name == "empty-write-tag-1":
+        value = Empty()
+        value.type = 1
+        return value
+    return None
+
+
+def select_payload() -> "tuple[bytes, str]":
+    """Reads mixed-ping's pin, then selects the payload arm the Python API's
+    way, on the value read: set the tag alone. The union keeps its payload
+    object, so the write shows what the read of the void arm left there."""
+    with open("mixed-ping.bin", "rb") as stream:
+        source = stream.read()
+    try:
+        value = Mixed.read(source)
+    except Refused as exc:
+        return b"", "read mixed-ping refused: " + str(exc.reason)
+    if value.type != MixedType.Ping:
+        return b"", "read mixed-ping: tag " + repr(value.type)
+    value.type = MixedType.Payload
+    return value.write(), ""
+
+
 def answer(name: str, type_name: str, verdict: str) -> str:
     cls = TYPES.get(type_name)
     if cls is None:
         return "unknown type " + type_name
+    if verdict == "refuse-write":
+        bad = build_refused(name)
+        if bad is None:
+            return "unknown refuse-write case"
+        if type(bad) is not cls:
+            return "case type " + type_name + ", the driver builds another"
+        try:
+            wrote = bad.write()
+        except InvalidValue:
+            return ""
+        except Exception as exc:  # the writer's own refusal is InvalidValue, never another error
+            return "write raised " + type(exc).__name__ + ": " + str(exc) + ", want InvalidValue"
+        return "write accepted: " + bytes(wrote).hex()
     with open(name + ".bin", "rb") as stream:
         pin = stream.read()
     if verdict == "refuse":
@@ -88,6 +159,15 @@ def answer(name: str, type_name: str, verdict: str) -> str:
         except Refused:
             return ""
         return "read accepted"
+    if verdict == "select":
+        if name != "mixed-ping-select-payload":
+            return "unknown select case"
+        got, why = select_payload()
+        if why:
+            return why
+        if got != pin:
+            return "write " + got.hex() + ", pin " + pin.hex()
+        return ""
     if verdict != "accept":
         return "verdict " + verdict
     value = build(name)
@@ -95,13 +175,13 @@ def answer(name: str, type_name: str, verdict: str) -> str:
         return "unknown accept case"
     if type(value) is not cls:
         return "case type " + type_name + ", the driver builds another"
-    got = value.write()
+    got = bytes(value.write())
     if got != pin:
         return "write " + got.hex() + ", pin " + pin.hex()
     try:
         back = cls.read(pin)
     except Refused as exc:
-        return "read refused: " + exc.reason
+        return "read refused: " + str(exc.reason)
     if back != value:
         return "read value differs: " + repr(back)
     if back.write() != pin:

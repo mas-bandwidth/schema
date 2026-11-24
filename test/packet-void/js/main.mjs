@@ -28,7 +28,7 @@ function fail(why) {
   throw new CaseFailed(why);
 }
 
-const TYPES = new Set(["Mixed", "Tags", "Single", "Empty", "Frame", "Batch"]);
+const TYPES = new Set(["Mixed", "Late", "Tags", "Single", "Empty", "Frame", "Batch"]);
 
 // The payload arm is the type's construction form: entries empty, marker 5.
 function mixed(type) {
@@ -40,6 +40,15 @@ function mixed(type) {
   return m;
 }
 
+function late(type) {
+  const l = new v.Late();
+  l.type = type;
+  if (type === v.LateType.Payload) {
+    l.payload = new v.DefaultArm();
+  }
+  return l;
+}
+
 // The value of each accept case, by name; undefined for a name this driver
 // does not know, which is FAILED and never written with another value.
 function build(name) {
@@ -48,6 +57,8 @@ function build(name) {
     case "mixed-none": return { type: "Mixed", value: mixed(v.MixedType.None) };
     case "mixed-ping": return { type: "Mixed", value: mixed(v.MixedType.Ping) };
     case "mixed-payload": return { type: "Mixed", value: mixed(v.MixedType.Payload) };
+    case "late-payload": return { type: "Late", value: late(v.LateType.Payload) };
+    case "late-pong": return { type: "Late", value: late(v.LateType.Pong) };
     case "tags-none": return { type: "Tags", value: tagged("Tags", v.TagsType.None) };
     case "tags-ping": return { type: "Tags", value: tagged("Tags", v.TagsType.Ping) };
     case "tags-pong": return { type: "Tags", value: tagged("Tags", v.TagsType.Pong) };
@@ -89,6 +100,7 @@ function dirtyMixed() {
 function dirty(type) {
   switch (type) {
     case "Mixed": return dirtyMixed();
+    case "Late": return Object.assign(new v.Late(), { type: v.LateType.Pong, payload: dirtyMixed().payload });
     case "Tags": return Object.assign(new v.Tags(), { type: v.TagsType.Pong });
     case "Single": return Object.assign(new v.Single(), { type: v.SingleType.Ack });
     case "Empty": return new v.Empty();
@@ -113,6 +125,10 @@ function mixedEqual(got, want) {
 function equal(type, got, want) {
   switch (type) {
     case "Mixed": return mixedEqual(got, want);
+    case "Late":
+      if (got.type !== want.type) return false;
+      if (want.type !== v.LateType.Payload) return true;
+      return got.payload.entriesCount === want.payload.entriesCount && got.payload.marker === want.payload.marker;
     case "Tags": case "Single": case "Empty": return got.type === want.type;
     case "Frame": return got.lead === want.lead && got.tail === want.tail && mixedEqual(got.choice, want.choice);
     case "Batch":
@@ -193,6 +209,76 @@ function refuse(name, type) {
   if (flat["Read" + type + "Flat"](flatView(pin), pin.length * 8, dirty(type))) fail("flat read accepted");
 }
 
+// The select case: read mixed-ping's pin with the public one-packet read
+// (both tiers) into a freshly constructed Mixed, then select the payload arm
+// the JavaScript way: the union keeps a payload object, built with its
+// declared defaults, so only the tag is set and the payload is NOT reassigned.
+// Reading the void arm must have left that object alone.
+function select(name, type, bits, from) {
+  if (name !== "mixed-ping-select-payload" || from !== "from=mixed-ping,") fail("unknown select case");
+  if (type !== "Mixed") fail(`case type ${type}, the driver selects on Mixed`);
+  const pin = new Uint8Array(readFileSync(join(dir, name + ".bin")));
+  const source = new Uint8Array(readFileSync(join(dir, "mixed-ping.bin")));
+
+  const m = new v.Mixed();
+  if (!v.ReadMixed(new ReadStream(source), m)) fail("runtime read of mixed-ping refused");
+  if (m.type !== v.MixedType.Ping) fail("runtime: mixed-ping did not read as ping");
+  m.type = v.MixedType.Payload;
+  const wrote = runtimeWrite("Mixed", m);
+  if (wrote.bits !== bits) fail(`runtime write has ${wrote.bits} bits, want ${bits}`);
+  if (!same(wrote.bytes, pin)) fail(`runtime write bytes ${hex(wrote.bytes)} differ from the pin ${hex(pin)}`);
+
+  const f = new v.Mixed();
+  if (!flat.ReadMixedFlat(flatView(source), source.length * 8, f)) fail("flat read of mixed-ping refused");
+  if (f.type !== v.MixedType.Ping) fail("flat: mixed-ping did not read as ping");
+  f.type = v.MixedType.Payload;
+  const bytes = flatWrite("Mixed", f);
+  if (!same(bytes, pin)) fail(`flat write bytes ${hex(bytes)} differ from the pin ${hex(pin)}`);
+}
+
+// A refuse-write case: the type's default value with the one change the case
+// names. JavaScript refuses in every build (and with NODE_ENV=production):
+// the runtime writer returns false and the flat writer returns -1, each by its
+// own validation, never by throwing. An exception is FAILED, not a refusal.
+function badValue(name) {
+  const mixedPayload = () => mixed(v.MixedType.Payload);
+  switch (name) {
+    case "mixed-write-tag-negative": return { type: "Mixed", value: Object.assign(new v.Mixed(), { type: -1 }) };
+    case "mixed-write-tag-text": return { type: "Mixed", value: Object.assign(new v.Mixed(), { type: "ping" }) };
+    case "mixed-write-tag-3": return { type: "Mixed", value: Object.assign(new v.Mixed(), { type: 3 }) };
+    case "mixed-write-payload-type":
+      return { type: "Mixed", value: Object.assign(new v.Mixed(), { type: v.MixedType.Payload, payload: 1 }) };
+    case "mixed-write-marker-8": {
+      const m = mixedPayload();
+      m.payload.marker = 8;
+      return { type: "Mixed", value: m };
+    }
+    case "tags-write-tag-3": return { type: "Tags", value: Object.assign(new v.Tags(), { type: 3 }) };
+    case "empty-write-tag-1": return { type: "Empty", value: Object.assign(new v.Empty(), { type: 1 }) };
+  }
+  return undefined;
+}
+
+function refuseWrite(name, type) {
+  const built = badValue(name);
+  if (built === undefined) fail("unknown refuse-write case");
+  if (built.type !== type) fail(`case type ${type}, the driver builds ${built.type}`);
+  let wrote;
+  try {
+    wrote = v["Write" + type](new WriteStream(new Uint8Array(64)), built.value);
+  } catch (e) {
+    fail(`runtime write threw ${e.name}: ${e.message}, not its own refusal`);
+  }
+  if (wrote !== false) fail("runtime write was not refused");
+  let n;
+  try {
+    n = flat["Write" + type + "Flat"](new DataView(new Uint8Array(64).buffer), built.value);
+  } catch (e) {
+    fail(`flat write threw ${e.name}: ${e.message}, not its own refusal`);
+  }
+  if (n !== -1) fail(`flat write was not refused (returned ${n})`);
+}
+
 // The generated surface beside the wire: tag extents, debug names and maximum
 // sizes. A miss exits non-zero, which tools/casegate holds red.
 if (v.MixedTypeMax !== 2 || v.TagsTypeMax !== 2 || v.SingleTypeMax !== 1 || v.EmptyTypeMax !== 0 ||
@@ -217,6 +303,8 @@ for (const line of lines) {
     if (f.length < 4) fail("a case line needs <name> <type> <verdict> <bits>");
     if (f[2] === "accept") accept(name, f[1], Number(f[3]));
     else if (f[2] === "refuse") refuse(name, f[1]);
+    else if (f[2] === "select") select(name, f[1], Number(f[3]), f[4]);
+    else if (f[2] === "refuse-write") refuseWrite(name, f[1]);
     else fail(`verdict ${f[2]}`);
     console.log(`case ${name} ok`);
   } catch (e) {

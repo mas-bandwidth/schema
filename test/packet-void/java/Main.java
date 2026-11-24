@@ -14,6 +14,8 @@ import packetvoid.Void.DefaultArm;
 import packetvoid.Void.Empty;
 import packetvoid.Void.EmptyType;
 import packetvoid.Void.Frame;
+import packetvoid.Void.Late;
+import packetvoid.Void.LateType;
 import packetvoid.Void.Mixed;
 import packetvoid.Void.MixedType;
 import packetvoid.Void.Single;
@@ -26,6 +28,7 @@ public final class Main {
     static final class Value {
         final String type;
         final Mixed mixed = new Mixed();
+        final Late late = new Late();
         final Tags tags = new Tags();
         final Single single = new Single();
         final Empty empty = new Empty();
@@ -45,7 +48,7 @@ public final class Main {
         }
     }
 
-    static final List<String> TYPES = List.of("Mixed", "Tags", "Single", "Empty", "Frame", "Batch");
+    static final List<String> TYPES = List.of("Mixed", "Late", "Tags", "Single", "Empty", "Frame", "Batch");
 
     // The payload arm holds its declared defaults (entries empty, marker 5).
     static void selectPayload(Mixed m) {
@@ -69,6 +72,15 @@ public final class Main {
             case "mixed-payload":
                 v = new Value("Mixed");
                 selectPayload(v.mixed);
+                return v;
+            case "late-payload":
+                v = new Value("Late");
+                v.late.type = LateType.PAYLOAD;
+                packetvoid.Void.initDefaultArm(v.late.payload);
+                return v;
+            case "late-pong":
+                v = new Value("Late");
+                v.late.type = LateType.PONG;
                 return v;
             case "tags-none":
                 v = new Value("Tags");
@@ -134,6 +146,11 @@ public final class Main {
     static Value dirty(String type) {
         Value v = new Value(type);
         dirtyMixed(v.mixed);
+        v.late.type = LateType.PAYLOAD;
+        v.late.payload.entriesCount = 2;
+        v.late.payload.entries[0].retries = 99;
+        v.late.payload.entries[1].retries = 99;
+        v.late.payload.marker = 1;
         v.tags.type = TagsType.PONG;
         v.single.type = SingleType.ACK;
         v.frame.lead = 1;
@@ -149,6 +166,7 @@ public final class Main {
     static int writeBits(Value v, byte[] out) throws Failed {
         switch (v.type) {
             case "Mixed": return packetvoid.Void.writeMixedBits(v.mixed, out, 0);
+            case "Late": return packetvoid.Void.writeLateBits(v.late, out, 0);
             case "Tags": return packetvoid.Void.writeTagsBits(v.tags, out, 0);
             case "Single": return packetvoid.Void.writeSingleBits(v.single, out, 0);
             case "Empty": return packetvoid.Void.writeEmptyBits(v.empty, out, 0);
@@ -162,6 +180,7 @@ public final class Main {
     static int writeBytes(Value v, byte[] out) throws Failed {
         switch (v.type) {
             case "Mixed": return packetvoid.Void.writeMixed(v.mixed, out);
+            case "Late": return packetvoid.Void.writeLate(v.late, out);
             case "Tags": return packetvoid.Void.writeTags(v.tags, out);
             case "Single": return packetvoid.Void.writeSingle(v.single, out);
             case "Empty": return packetvoid.Void.writeEmpty(v.empty, out);
@@ -176,6 +195,7 @@ public final class Main {
         final int numBits = pin.length * 8;
         switch (v.type) {
             case "Mixed": return packetvoid.Void.readMixed(v.mixed, pin, numBits);
+            case "Late": return packetvoid.Void.readLate(v.late, pin, numBits);
             case "Tags": return packetvoid.Void.readTags(v.tags, pin, numBits);
             case "Single": return packetvoid.Void.readSingle(v.single, pin, numBits);
             case "Empty": return packetvoid.Void.readEmpty(v.empty, pin, numBits);
@@ -190,6 +210,7 @@ public final class Main {
         final int numBits = pin.length * 8;
         switch (v.type) {
             case "Mixed": return packetvoid.Void.readMixedBits(v.mixed, pin, 0, numBits);
+            case "Late": return packetvoid.Void.readLateBits(v.late, pin, 0, numBits);
             case "Tags": return packetvoid.Void.readTagsBits(v.tags, pin, 0, numBits);
             case "Single": return packetvoid.Void.readSingleBits(v.single, pin, 0, numBits);
             case "Empty": return packetvoid.Void.readEmptyBits(v.empty, pin, 0, numBits);
@@ -217,6 +238,15 @@ public final class Main {
     static boolean valueEqual(Value got, Value want) {
         switch (want.type) {
             case "Mixed": return mixedEqual(got.mixed, want.mixed);
+            case "Late":
+                if (got.late.type != want.late.type) {
+                    return false;
+                }
+                return want.late.type != LateType.PAYLOAD
+                        || (got.late.payload.entriesCount == want.late.payload.entriesCount
+                                && got.late.payload.marker == want.late.payload.marker
+                                && got.late.payload.entries[0].retries == want.late.payload.entries[0].retries
+                                && got.late.payload.entries[1].retries == want.late.payload.entries[1].retries);
             case "Tags": return got.tags.type == want.tags.type;
             case "Single": return got.single.type == want.single.type;
             case "Empty": return got.empty.type == want.empty.type;
@@ -310,6 +340,106 @@ public final class Main {
         }
     }
 
+    // True when the JVM runs with -ea: the generated writer's contract
+    // checks are Java asserts, so only then does a write refuse. Decided by
+    // the language's own assertion switch, never by a flag the test passes.
+    static boolean assertsOn() {
+        boolean on = false;
+        assert on = true;
+        return on;
+    }
+
+    // The change a refuse-write case names, on the type's default value;
+    // null for a case this driver does not know. A Java tag is a byte, so a
+    // negative tag and tag 3 are representable. A text tag and a payload of
+    // another type are not: the tag is a byte and the payload a final
+    // DefaultArm, and javac refuses them.
+    static final List<String> NOT_REPRESENTABLE = List.of("mixed-write-payload-type", "mixed-write-tag-text");
+
+    static Value buildRefuseWrite(String name) {
+        Value v;
+        switch (name) {
+            case "mixed-write-tag-negative":
+                v = new Value("Mixed");
+                v.mixed.type = (byte) -1;
+                return v;
+            case "mixed-write-tag-3":
+                v = new Value("Mixed");
+                v.mixed.type = 3;
+                return v;
+            case "mixed-write-marker-8":
+                v = new Value("Mixed");
+                selectPayload(v.mixed);
+                v.mixed.payload.marker = 8;
+                return v;
+            case "tags-write-tag-3":
+                v = new Value("Tags");
+                v.tags.type = 3;
+                return v;
+            case "empty-write-tag-1":
+                v = new Value("Empty");
+                v.empty.type = 1;
+                return v;
+            default:
+                return null;
+        }
+    }
+
+    // The writer's refusal is its debug assert: an AssertionError under -ea.
+    // Without -ea the generated writer has no write check by design, and the
+    // case is answered ok without writing the value.
+    static void refuseWriteCase(String name, String type, String verdict) throws Failed {
+        if (NOT_REPRESENTABLE.contains(name)) {
+            if (!verdict.equals("refuse-write")) {
+                throw new Failed("named not representable in Java, and its verdict is " + verdict);
+            }
+            return;
+        }
+        Value v = buildRefuseWrite(name);
+        if (v == null) {
+            throw new Failed("unknown refuse-write case");
+        }
+        if (!v.type.equals(type)) {
+            throw new Failed("case type " + type + ", the driver builds another");
+        }
+        if (!assertsOn()) {
+            return;
+        }
+        try {
+            writeBytes(v, new byte[64]);
+        } catch (AssertionError expected) {
+            return;
+        }
+        throw new Failed("write accepted");
+    }
+
+    // The select case: read mixed-ping with the public one-packet read, then
+    // select the payload arm on that value by setting its tag, as the Java
+    // API does: the union keeps its payload object, constructed with its
+    // declared defaults, and the void arm read left it untouched.
+    static void selectCase(Path dir, String name, String type, String bitsColumn) throws Failed {
+        if (!name.equals("mixed-ping-select-payload") || !type.equals("Mixed")) {
+            throw new Failed("unknown select case");
+        }
+        final int bits;
+        try {
+            bits = Integer.parseInt(bitsColumn);
+        } catch (NumberFormatException e) {
+            throw new Failed("bits column " + bitsColumn);
+        }
+        Value v = new Value("Mixed");
+        if (!read(v, load(dir, "mixed-ping"))) {
+            throw new Failed("read mixed-ping refused");
+        }
+        if (v.mixed.type != MixedType.PING) {
+            throw new Failed("read mixed-ping: tag " + v.mixed.type);
+        }
+        v.mixed.type = MixedType.PAYLOAD;
+        if (!Arrays.equals(written(v, bits), load(dir, name))) {
+            throw new Failed("write bytes differ from the pin");
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length != 1) {
             System.err.println("usage: Main <testdata/wire/packet-void>");
@@ -351,6 +481,12 @@ public final class Main {
                         break;
                     case "refuse":
                         refuseCase(dir, name, fields[1]);
+                        break;
+                    case "select":
+                        selectCase(dir, name, fields[1], fields[3]);
+                        break;
+                    case "refuse-write":
+                        refuseWriteCase(name, fields[1], fields[2]);
                         break;
                     default:
                         throw new Failed("verdict " + fields[2]);

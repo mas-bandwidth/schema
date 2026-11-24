@@ -45,20 +45,37 @@ build/packet-void/c/.stamp: bin/schema $(PACKET_VOID_SCHEMA)
 	./bin/schema generate --lang c --out build/packet-void/c $(PACKET_VOID_SCHEMA)
 	@touch $@
 
+# C and C++ are assert legs: each driver is built twice, asserts on (the
+# refuse-write cases abort a forked child) and -DNDEBUG -O2 (the release
+# build: no write check by design, every wire case the same bytes), and both
+# builds answer every case.
 build/packet-void/cpp-test: build/packet-void/cpp/.stamp test/packet-void/cpp/main.cpp $(SERIALIZE)/serialize.h
 	$(CXX) $(CXXFLAGS) -pedantic-errors -Ibuild/packet-void/cpp test/packet-void/cpp/main.cpp -o $@
 
+build/packet-void/cpp-test-ndebug: build/packet-void/cpp/.stamp test/packet-void/cpp/main.cpp $(SERIALIZE)/serialize.h
+	$(CXX) $(CXXFLAGS) -DNDEBUG -O2 -pedantic-errors -Ibuild/packet-void/cpp test/packet-void/cpp/main.cpp -o $@
+
+PACKET_VOID_C_FLAGS = -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) -O2 -ffp-contract=off
+
 build/packet-void/c-test: build/packet-void/c/.stamp test/packet-void/c/main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
-	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
-		-O2 -ffp-contract=off -Ibuild/packet-void/c -I$(SERIALIZE_C) \
+	$(CC) $(PACKET_VOID_C_FLAGS) -Ibuild/packet-void/c -I$(SERIALIZE_C) \
 		test/packet-void/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-.PHONY: packet-void-cpp packet-void-c
-packet-void-cpp: build/packet-void/cpp-test build/casegate
-	$(call packet_void_gate,cpp) ./build/packet-void/cpp-test $(PACKET_VOID_PINS)
+build/packet-void/c-test-ndebug: build/packet-void/c/.stamp test/packet-void/c/main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
+	$(CC) $(PACKET_VOID_C_FLAGS) -DNDEBUG -Ibuild/packet-void/c -I$(SERIALIZE_C) \
+		test/packet-void/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
-packet-void-c: build/packet-void/c-test build/casegate
+# packet_void_gate_mode: $(1) the leg, $(2) the run's name, then the command.
+packet_void_gate_mode = $(CASEGATE) -name $(2) -leg $(1) -cases $(PACKET_VOID_PINS)/cases.txt -owed $(PACKET_VOID_PINS)/owed.txt --
+
+.PHONY: packet-void-cpp packet-void-c
+packet-void-cpp: build/packet-void/cpp-test build/packet-void/cpp-test-ndebug build/casegate
+	$(call packet_void_gate,cpp) ./build/packet-void/cpp-test $(PACKET_VOID_PINS)
+	$(call packet_void_gate_mode,cpp,packet-void-cpp-ndebug) ./build/packet-void/cpp-test-ndebug $(PACKET_VOID_PINS)
+
+packet-void-c: build/packet-void/c-test build/packet-void/c-test-ndebug build/casegate
 	$(call packet_void_gate,c) ./build/packet-void/c-test $(PACKET_VOID_PINS)
+	$(call packet_void_gate_mode,c,packet-void-c-ndebug) ./build/packet-void/c-test-ndebug $(PACKET_VOID_PINS)
 
 test: packet-void-cpp
 test-c: packet-void-c
@@ -125,3 +142,4 @@ _verify-moo-conformance: packet-void-moo
 _verify-squirrel-conformance: packet-void-squirrel
 _verify-goose-conformance: packet-void-goose
 _verify-lobster-conformance: packet-void-lobster
+_verify-ruby-conformance: packet-void-ruby-api

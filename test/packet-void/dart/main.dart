@@ -20,6 +20,7 @@ class Value {
   Value(this.type);
   final String type;
   final mixed = v.Mixed();
+  final late = v.Late();
   final tags = v.Tags();
   final single = v.Single();
   final empty = v.Empty();
@@ -27,7 +28,7 @@ class Value {
   final batch = v.Batch();
 }
 
-const types = ['Mixed', 'Tags', 'Single', 'Empty', 'Frame', 'Batch'];
+const types = ['Mixed', 'Late', 'Tags', 'Single', 'Empty', 'Frame', 'Batch'];
 
 // The payload arm holds its declared defaults (entries empty, marker 5).
 void selectPayload(v.Mixed m) {
@@ -47,6 +48,13 @@ Value? build(String name) {
       final value = Value('Mixed');
       selectPayload(value.mixed);
       return value;
+    case 'late-payload':
+      final value = Value('Late');
+      value.late.type = v.LateType.payload;
+      v.initDefaultArm(value.late.payload);
+      return value;
+    case 'late-pong':
+      return Value('Late')..late.type = v.LateType.pong;
     case 'tags-none':
       return Value('Tags')..tags.type = v.TagsType.none;
     case 'tags-ping':
@@ -95,6 +103,11 @@ void dirtyMixed(v.Mixed m) {
 Value dirty(String type) {
   final value = Value(type);
   dirtyMixed(value.mixed);
+  value.late.type = v.LateType.payload;
+  value.late.payload.entriesCount = 2;
+  value.late.payload.entries[0].retries = 99;
+  value.late.payload.entries[1].retries = 99;
+  value.late.payload.marker = 1;
   value.tags.type = v.TagsType.pong;
   value.single.type = v.SingleType.ack;
   value.frame.lead = 1;
@@ -111,6 +124,8 @@ int write(Value value, ByteData out) {
   switch (value.type) {
     case 'Mixed':
       return v.writeMixed(value.mixed, out);
+    case 'Late':
+      return v.writeLate(value.late, out);
     case 'Tags':
       return v.writeTags(value.tags, out);
     case 'Single':
@@ -130,6 +145,8 @@ bool read(Value value, ByteData pin, int numBits) {
   switch (value.type) {
     case 'Mixed':
       return v.readMixed(value.mixed, pin, numBits);
+    case 'Late':
+      return v.readLate(value.late, pin, numBits);
     case 'Tags':
       return v.readTags(value.tags, pin, numBits);
     case 'Single':
@@ -149,6 +166,8 @@ int readBits(Value value, ByteData pin, int numBits) {
   switch (value.type) {
     case 'Mixed':
       return v.readMixedBits(value.mixed, pin, numBits, 0);
+    case 'Late':
+      return v.readLateBits(value.late, pin, numBits, 0);
     case 'Tags':
       return v.readTagsBits(value.tags, pin, numBits, 0);
     case 'Single':
@@ -179,6 +198,15 @@ bool valueEqual(Value got, Value want) {
   switch (want.type) {
     case 'Mixed':
       return mixedEqual(got.mixed, want.mixed);
+    case 'Late':
+      if (got.late.type != want.late.type) return false;
+      if (want.late.type != v.LateType.payload) return true;
+      return got.late.payload.entriesCount == want.late.payload.entriesCount &&
+          got.late.payload.marker == want.late.payload.marker &&
+          got.late.payload.entries[0].retries ==
+              want.late.payload.entries[0].retries &&
+          got.late.payload.entries[1].retries ==
+              want.late.payload.entries[1].retries;
     case 'Tags':
       return got.tags.type == want.tags.type;
     case 'Single':
@@ -256,6 +284,95 @@ void refuseCase(String dir, String name, String type) {
   }
 }
 
+// True under --enable-asserts: the generated writer's contract checks are
+// Dart asserts, so only then does a write refuse. Decided by the language's
+// own assertion switch, never by a flag the test passes.
+bool assertsOn() {
+  var on = false;
+  assert(on = true);
+  return on;
+}
+
+// A text tag and a payload of another type cannot be built: the tag is an int
+// and the payload a final DefaultArm, and the analyzer refuses them.
+const notRepresentable = ['mixed-write-payload-type', 'mixed-write-tag-text'];
+
+// The change a refuse-write case names, on the type's default value; null for
+// a case this driver does not know. A Dart tag is an int, so a negative tag
+// and tag 3 are representable.
+Value? buildRefuseWrite(String name) {
+  switch (name) {
+    case 'mixed-write-tag-negative':
+      return Value('Mixed')..mixed.type = v.MixedType(-1);
+    case 'mixed-write-tag-3':
+      return Value('Mixed')..mixed.type = v.MixedType(3);
+    case 'mixed-write-marker-8':
+      final value = Value('Mixed');
+      selectPayload(value.mixed);
+      value.mixed.payload.marker = 8;
+      return value;
+    case 'tags-write-tag-3':
+      return Value('Tags')..tags.type = v.TagsType(3);
+    case 'empty-write-tag-1':
+      return Value('Empty')..empty.type = v.EmptyType(1);
+  }
+  return null;
+}
+
+// The writer's refusal is its debug assert, an AssertionError under
+// --enable-asserts. In the compiled exe the generated writer has no write
+// check by design, and the case is answered ok without writing the value.
+void refuseWriteCase(String name, String type, String verdict) {
+  if (notRepresentable.contains(name)) {
+    if (verdict != 'refuse-write') {
+      throw Failed(
+        'named not representable in Dart, and its verdict is $verdict',
+      );
+    }
+    return;
+  }
+  final value = buildRefuseWrite(name);
+  if (value == null) throw Failed('unknown refuse-write case');
+  if (value.type != type) {
+    throw Failed('case type $type, the driver builds another');
+  }
+  if (!assertsOn()) return;
+  try {
+    write(value, ByteData.sublistView(Uint8List(64)));
+  } on AssertionError {
+    return;
+  }
+  throw Failed('write accepted');
+}
+
+// The select case: read mixed-ping with the public one-packet read, then
+// select the payload arm on that value by setting its tag, as the Dart API
+// does: the union keeps its payload object, constructed with its declared
+// defaults, and the void arm read left it untouched.
+void selectCase(String dir, String name, String type, String bitsColumn) {
+  if (name != 'mixed-ping-select-payload' || type != 'Mixed') {
+    throw Failed('unknown select case');
+  }
+  final bits = int.tryParse(bitsColumn);
+  if (bits == null) throw Failed('bits column $bitsColumn');
+  final from = load(dir, 'mixed-ping');
+  final value = Value('Mixed');
+  if (!read(value, ByteData.sublistView(from), from.length * 8)) {
+    throw Failed('read mixed-ping refused');
+  }
+  if (value.mixed.type != v.MixedType.ping) {
+    throw Failed('read mixed-ping: tag ${value.mixed.type}');
+  }
+  value.mixed.type = v.MixedType.payload;
+  final out = written(value);
+  if (out.length != (bits + 7) >> 3) {
+    throw Failed('write has ${out.length} bytes, want ${(bits + 7) >> 3}');
+  }
+  if (!sameBytes(out, load(dir, name))) {
+    throw Failed('write bytes differ from the pin');
+  }
+}
+
 void main(List<String> args) {
   if (args.length != 1) {
     stderr.writeln('usage: main.dart <testdata/wire/packet-void>');
@@ -298,6 +415,10 @@ void main(List<String> args) {
           acceptCase(dir, name, fields[1], fields[3]);
         case 'refuse':
           refuseCase(dir, name, fields[1]);
+        case 'select':
+          selectCase(dir, name, fields[1], fields[3]);
+        case 'refuse-write':
+          refuseWriteCase(name, fields[1], fields[2]);
         default:
           throw Failed('verdict ${fields[2]}');
       }

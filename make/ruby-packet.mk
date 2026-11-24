@@ -38,12 +38,17 @@ packet-finite-ruby: build/schema-ruby ruby-toolchain-check
 packet-finite-ruby-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof packet-finite-ruby-negative-control 'TestRubyPacketFiniteNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketFiniteNegativeControl$$' ./internal/codegen/ruby/
 
-.PHONY: packet-void-ruby packet-void-ruby-negative-control
+.PHONY: packet-void-ruby packet-void-ruby-negative-control packet-void-ruby-api
 packet-void-ruby: build/schema-ruby ruby-toolchain-check build/casegate
 	@rm -rf build/packet-void/ruby && mkdir -p build/packet-void/ruby
 	./build/schema-ruby generate --lang ruby --out build/packet-void/ruby/generated $(PACKET_VOID_SCHEMA)
 	$(call packet_void_gate,ruby) $(RUBY) --disable-gems -w test/packet-void/ruby/main.rb build/packet-void/ruby/generated $(PACKET_VOID_PINS)
 	$(call packet_void_gate,ruby) $(RUBY_FLOOR) --disable-gems -w test/packet-void/ruby/main.rb build/packet-void/ruby/generated $(PACKET_VOID_PINS)
+
+# The generated API shape the shared corpus cannot see: tag numbers, the
+# frozen NAMES tables, tag extents and construction defaults.
+packet-void-ruby-api: ruby-toolchain-check
+	sh test/slowgate/proof packet-void-ruby-api 'TestRubyPacketVoidAPI' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketVoidAPI$$' ./internal/codegen/ruby/
 
 packet-void-ruby-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof packet-void-ruby-negative-control 'TestRubyPacketVoidNegativeControl' -count=1 -timeout 600s -tags schema_leg_ruby -run '^TestRubyPacketVoidNegativeControl$$' ./internal/codegen/ruby/

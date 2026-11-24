@@ -12,6 +12,7 @@ PINS = ARGV.fetch(1)
 
 TYPES = {
   "Mixed" => Packetvoid::Mixed,
+  "Late" => Packetvoid::Late,
   "Tags" => Packetvoid::Tags,
   "Single" => Packetvoid::Single,
   "Empty" => Packetvoid::Empty,
@@ -32,6 +33,10 @@ def build_case(name)
   when "mixed-none" then mixed(Packetvoid::MixedType::None)
   when "mixed-ping" then mixed(Packetvoid::MixedType::Ping)
   when "mixed-payload" then mixed(Packetvoid::MixedType::Payload)
+  when "late-payload", "late-pong"
+    v = Packetvoid::Late.new
+    v.type = name == "late-payload" ? Packetvoid::LateType::Payload : Packetvoid::LateType::Pong
+    v
   when "tags-none", "tags-ping", "tags-pong"
     v = Packetvoid::Tags.new
     v.type = { "tags-none" => Packetvoid::TagsType::None, "tags-ping" => Packetvoid::TagsType::Ping,
@@ -56,9 +61,70 @@ def build_case(name)
   end
 end
 
+# The type's default value with the one change each refuse-write case names;
+# nil for a name this driver does not know, which is FAILED. Ruby holds every
+# change, the text tag and the Integer payload included.
+def build_refused(name)
+  case name
+  when "mixed-write-tag-negative" then mixed(-1)
+  when "mixed-write-tag-text" then mixed("ping")
+  when "mixed-write-tag-3" then mixed(3)
+  when "mixed-write-payload-type"
+    v = mixed(Packetvoid::MixedType::Payload)
+    v.payload = 1
+    v
+  when "mixed-write-marker-8"
+    v = mixed(Packetvoid::MixedType::Payload)
+    v.payload.marker = 8
+    v
+  when "tags-write-tag-3"
+    v = Packetvoid::Tags.new
+    v.type = 3
+    v
+  when "empty-write-tag-1"
+    v = Packetvoid::Empty.new
+    v.type = 1
+    v
+  end
+end
+
+# Reads mixed-ping's pin, then selects the payload arm the Ruby API's way on
+# the value read: set the tag alone. The union keeps its payload object, so
+# the write shows what the read of the void arm left there.
+def select_payload(pin, bits)
+  value = Packetvoid::Mixed.read(File.binread(File.join(PINS, "mixed-ping.bin")))
+  return "read mixed-ping: tag #{value.type.inspect}" if value.type != Packetvoid::MixedType::Ping
+
+  value.type = Packetvoid::MixedType::Payload
+  got = value.write
+  return "write #{got.unpack1("H*")}, pin #{pin.unpack1("H*")}" if got != pin
+
+  _, read_bits = Packetvoid::Mixed.read_bits(got)
+  return "written value reads #{read_bits} bits, want #{bits}" if read_bits != Integer(bits, 10)
+
+  nil
+rescue Packetvoid::Refused => e
+  "read mixed-ping refused: #{e.message}"
+end
+
 def answer(name, type_name, verdict, bits)
   klass = TYPES[type_name]
   return "unknown type #{type_name}" if klass.nil?
+
+  if verdict == "refuse-write"
+    bad = build_refused(name)
+    return "unknown refuse-write case" if bad.nil?
+    return "case type #{type_name}, the driver builds another" unless bad.instance_of?(klass)
+
+    begin
+      got = bad.write
+    rescue Packetvoid::InvalidValue
+      return nil
+    rescue StandardError => e
+      return "write raised #{e.class}: #{e.message}, want Packetvoid::InvalidValue"
+    end
+    return "write accepted: #{got.unpack1("H*")}"
+  end
 
   pin = File.binread(File.join(PINS, "#{name}.bin"))
   if verdict == "refuse"
@@ -68,6 +134,11 @@ def answer(name, type_name, verdict, bits)
       return nil
     end
     return "read accepted"
+  end
+  if verdict == "select"
+    return "unknown select case" unless name == "mixed-ping-select-payload"
+
+    return select_payload(pin, bits)
   end
   return "verdict #{verdict}" unless verdict == "accept"
 

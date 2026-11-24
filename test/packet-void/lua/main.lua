@@ -12,7 +12,7 @@ package.path = dir .. "/?.lua;" .. package.path
 local serialize = require("serialize")
 local V = require("Void")
 
-local TYPES = { Mixed = true, Tags = true, Single = true, Empty = true, Frame = true, Batch = true }
+local TYPES = { Mixed = true, Late = true, Tags = true, Single = true, Empty = true, Frame = true, Batch = true }
 
 local function readFile(path)
   local f = assert(io.open(path, "rb"))
@@ -43,6 +43,10 @@ end
 
 local function same(typeName, a, b)
   if typeName == "Mixed" then return sameMixed(a, b) end
+  if typeName == "Late" then
+    if a.Type ~= b.Type then return false end
+    return a.Type ~= V.LateType.Payload or sameArm(a.Payload, b.Payload)
+  end
   if typeName == "Frame" then
     return a.Lead == b.Lead and a.Tail == b.Tail and sameMixed(a.Choice, b.Choice)
   end
@@ -69,6 +73,11 @@ local function build(name)
   if name == "mixed-none" then return mixed(V.MixedType.None), "Mixed" end
   if name == "mixed-ping" then return mixed(V.MixedType.Ping), "Mixed" end
   if name == "mixed-payload" then return mixed(V.MixedType.Payload), "Mixed" end
+  if name == "late-payload" or name == "late-pong" then
+    local v = V.NewLate()
+    v.Type = name == "late-payload" and V.LateType.Payload or V.LateType.Pong
+    return v, "Late"
+  end
   if name == "tags-none" or name == "tags-ping" or name == "tags-pong" then
     local v = V.NewTags()
     v.Type = ({ ["tags-none"] = V.TagsType.None, ["tags-ping"] = V.TagsType.Ping, ["tags-pong"] = V.TagsType.Pong })[name]
@@ -113,7 +122,7 @@ end
 
 local function fresh(typeName)
   local v = V["New" .. typeName]()
-  if typeName == "Mixed" then dirtyArm(v.Payload) end
+  if typeName == "Mixed" or typeName == "Late" then dirtyArm(v.Payload) end
   if typeName == "Batch" then
     dirtyArm(v.Values[1].Payload)
     dirtyArm(v.Values[2].Payload)
@@ -129,8 +138,69 @@ local function write(typeName, value)
   return w:data(), bits
 end
 
+-- The refuse-write cases: the type's default value with the one change the
+-- case names. The writer's refusal is a false return; a raised error is not
+-- the writer's refusal and is FAILED.
+local function buildRefusal(name)
+  local v, typeName
+  if name == "mixed-write-tag-negative" or name == "mixed-write-tag-text" or name == "mixed-write-tag-3"
+    or name == "mixed-write-payload-type" or name == "mixed-write-marker-8" then
+    v, typeName = V.NewMixed(), "Mixed"
+    if name == "mixed-write-tag-negative" then v.Type = -1 end
+    if name == "mixed-write-tag-text" then v.Type = "ping" end
+    if name == "mixed-write-tag-3" then v.Type = 3 end
+    if name == "mixed-write-payload-type" then v.Type, v.Payload = V.MixedType.Payload, 1 end
+    if name == "mixed-write-marker-8" then v.Type, v.Payload.Marker = V.MixedType.Payload, 8 end
+  elseif name == "tags-write-tag-3" then
+    v, typeName = V.NewTags(), "Tags"
+    v.Type = 3
+  elseif name == "empty-write-tag-1" then
+    v, typeName = V.NewEmpty(), "Empty"
+    v.Type = 1
+  end
+  return v, typeName
+end
+
+local function refuseWrite(name, typeName)
+  local value, built = buildRefusal(name)
+  if value == nil then return "unknown refuse-write case" end
+  if built ~= typeName then return "case type " .. typeName .. ", the driver builds " .. built end
+  local w = serialize.WriteStream.new(256)
+  local ok, res = pcall(V["Write" .. typeName], w, value)
+  if not ok then
+    return "not the writer's refusal: " .. tostring(res)
+  end
+  if res ~= false then return "write accepted" end
+  return nil
+end
+
+-- selectPayload reads mixed-ping's pin, then selects the payload arm the Lua
+-- API's way: the union keeps its Payload object, so selecting is setting the
+-- tag, and the arm must still carry its declared defaults.
+local function selectPayload()
+  local v = V.NewMixed()
+  if not V.ReadMixed(serialize.ReadStream.new(readFile(pins .. "/mixed-ping.bin")), v) then
+    return nil, "read mixed-ping refused"
+  end
+  if v.Type ~= V.MixedType.Ping then return nil, "read mixed-ping: tag " .. tostring(v.Type) end
+  v.Type = V.MixedType.Payload
+  local got, gotBits = write("Mixed", v)
+  if got == nil then return nil, "write refused" end
+  return got, gotBits
+end
+
 local function answer(name, typeName, verdict, bits)
   if not TYPES[typeName] then return "unknown type " .. typeName end
+  if verdict == "refuse-write" then return refuseWrite(name, typeName) end
+  if verdict == "select" then
+    if name ~= "mixed-ping-select-payload" then return "unknown select case" end
+    local got, gotBits = selectPayload()
+    if got == nil then return gotBits end
+    local pin = readFile(pins .. "/" .. name .. ".bin")
+    if got ~= pin then return "write " .. hex(got) .. ", pin " .. hex(pin) end
+    if gotBits ~= tonumber(bits) then return "write has " .. gotBits .. " bits, want " .. bits end
+    return nil
+  end
   local pin = readFile(pins .. "/" .. name .. ".bin")
   if verdict == "refuse" then
     if V["Read" .. typeName](serialize.ReadStream.new(pin), fresh(typeName)) then

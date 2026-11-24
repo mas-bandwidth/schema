@@ -52,10 +52,21 @@ type Family struct {
 	// Named is a reader whose run has another name than Target (leg ->
 	// target). Check refuses an entry whose target is not defined.
 	Named map[string]string
-	// Owed is a shared-corpus family's owed ledger (tools/casegate): every
-	// leg must define Target or have a `<leg> all owed: <cause>` line there,
-	// and a leg with both is refused (the ledger is an exact set).
+	// Owed is a shared-corpus family's owed ledger (tools/casegate and
+	// internal/casegate.ReadOwed read the same format). One line per owed
+	// case, `<leg> <case> owed: <cause>`, or `<leg> all owed: <cause>` for a
+	// leg with no driver; # comments and blank lines aside, every line has
+	// that form and a cause. It is an exact set on every line: a line whose
+	// leg is not one of Legs, a per-case line whose case Cases does not name,
+	// and a line there twice are refused; every leg must define Target or
+	// have an `all owed` line, and a leg with both is refused. (Whether a
+	// per-case line's leg still fails that case is the leg's run's check:
+	// casegate refuses an owed line for a case the leg answers ok.)
 	Owed string
+	// Cases is the shared-corpus family's case file (the first field of
+	// every line that is not blank and not a # comment is a case name); with
+	// Owed, a per-case ledger line must name one of its cases.
+	Cases string
 	// PR: the rows run in the pull-request tier. A family whose per-leg run
 	// is a heavy workflow the owner moved off pull requests (2026-11-15) is
 	// selected on a push to main and nightly only, and says so.
@@ -83,7 +94,8 @@ var Families = []Family{
 		Inputs:  []string{"testdata/wire/packet-void/", "test/packet-void/*", "make/checks/packet-void.mk"},
 		Target:  "packet-void-{leg}",
 		Drivers: `^test/packet-void/([a-z]+)/`,
-		Owed:    "testdata/wire/packet-void/owed.txt"},
+		Owed:    "testdata/wire/packet-void/owed.txt",
+		Cases:   "testdata/wire/packet-void/cases.txt"},
 	{Name: "packet-write-bareint", PR: true,
 		Inputs:  []string{"test/packet-write-bareint/*"},
 		Target:  "packet-write-bareint-{leg}",
@@ -126,7 +138,7 @@ type Tree struct {
 	Targets map[string]bool
 	// GoFiles maps each main-module .go file to its contents.
 	GoFiles map[string]string
-	// Ledgers maps each family's Owed path to its contents.
+	// Ledgers maps each family's Owed and Cases paths to their contents.
 	Ledgers map[string]string
 }
 
@@ -366,24 +378,52 @@ func Check(t Tree) []string {
 	return bad
 }
 
-var allOwed = regexp.MustCompile(`(?m)^(\S+) all owed: \S`)
+var owedLine = regexp.MustCompile(`^(\S+) (\S+) owed: (\S.*)$`)
 
-// checkOwed refuses a shared-corpus leg with no target and no whole-leg owed
-// line, and a whole-leg owed line for a leg that has a target.
+// checkOwed holds the family's owed ledger to an exact set on every line
+// (Family.Owed): a malformed line, a leg that is not a leg, a per-case line
+// naming a case the case file lacks, a line there twice, a leg with no
+// target and no whole-leg line, and a whole-leg line for a leg with a target.
 func checkOwed(f Family, t Tree, has map[string]bool) []string {
 	text, ok := t.Ledgers[f.Owed]
 	if !ok {
 		return []string{fmt.Sprintf("%s: owed ledger %s is missing", f.Name, f.Owed)}
 	}
-	owed := map[string]bool{}
-	for _, m := range allOwed.FindAllStringSubmatch(text, -1) {
-		owed[m[1]] = true
-	}
 	var bad []string
-	for l := range owed {
-		if !isLeg(l) {
-			bad = append(bad, fmt.Sprintf("%s: %s names %s all owed, and %s is not a leg", f.Name, f.Owed, l, l))
+	cases := map[string]bool{}
+	if f.Cases != "" {
+		caseText, ok := t.Ledgers[f.Cases]
+		if !ok {
+			return []string{fmt.Sprintf("%s: case file %s is missing", f.Name, f.Cases)}
 		}
+		for line := range strings.SplitSeq(caseText, "\n") {
+			if fields := strings.Fields(line); len(fields) > 0 && !strings.HasPrefix(fields[0], "#") {
+				cases[fields[0]] = true
+			}
+		}
+	}
+	owed := map[string]bool{}
+	seen := map[string]bool{}
+	for line := range strings.SplitSeq(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		m := owedLine.FindStringSubmatch(line)
+		switch {
+		case m == nil:
+			bad = append(bad, fmt.Sprintf("%s: %s line %q is not `<leg> <case> owed: <cause>`", f.Name, f.Owed, line))
+			continue
+		case !isLeg(m[1]):
+			bad = append(bad, fmt.Sprintf("%s: %s line %q: %s is not a leg", f.Name, f.Owed, line, m[1]))
+		case seen[m[1]+" "+m[2]]:
+			bad = append(bad, fmt.Sprintf("%s: %s names %s %s twice", f.Name, f.Owed, m[1], m[2]))
+		case m[2] == "all":
+			owed[m[1]] = true
+		case f.Cases != "" && !cases[m[2]]:
+			bad = append(bad, fmt.Sprintf("%s: %s line %q: %s names no such case", f.Name, f.Owed, line, f.Cases))
+		}
+		seen[m[1]+" "+m[2]] = true
 	}
 	for _, l := range Legs {
 		switch {
@@ -446,11 +486,16 @@ func Load(root string) (Tree, error) {
 		if f.Owed == "" {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.Owed)))
-		if err == nil {
-			t.Ledgers[f.Owed] = string(b)
-		} else if !os.IsNotExist(err) {
-			return t, err
+		for _, p := range []string{f.Owed, f.Cases} {
+			if p == "" {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
+			if err == nil {
+				t.Ledgers[p] = string(b)
+			} else if !os.IsNotExist(err) {
+				return t, err
+			}
 		}
 	}
 	return t, nil

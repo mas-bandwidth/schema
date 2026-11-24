@@ -54,9 +54,24 @@ func TestReadOwed(t *testing.T) {
 	if err != nil || len(got) != 2 || got["b"] != "the port" || got["all"] != "none" {
 		t.Fatalf("ReadOwed = %v, %v", got, err)
 	}
-	for _, bad := range []string{"lua b the port\n", "lua b owed:\n", "lua b owed: x\nlua b owed: y\n"} {
+	// The ledger is an exact set on every line, whoever's leg it names: a
+	// line under a leg that is not a leg (golang for go) owes a case for no
+	// leg that runs, so it is refused even when lua reads the file, and so is
+	// a line twice under another leg.
+	for _, bad := range []string{"lua b the port\n", "lua b owed:\n", "lua b owed: x\nlua b owed: y\n",
+		"lua b owed: x\ngolang mixed-ping owed: plant\n", "rust a owed: x\nrust a owed: y\n"} {
 		if _, err := ReadOwed(bad, "lua"); err == nil {
 			t.Errorf("ReadOwed(%q) accepted", bad)
 		}
+	}
+	if _, err := ReadOwed("", "golang"); err == nil {
+		t.Errorf("ReadOwed for the leg golang accepted")
+	}
+}
+
+func TestPinnedCasesAreTheCasesWithAWire(t *testing.T) {
+	got := pinnedCases("# head\na T accept 2 x\nb T refuse - y\nc T refuse-write - z\nd T select 7 w\n")
+	if strings.Join(got, ",") != "a,b,d" {
+		t.Fatalf("pinnedCases = %v, want a,b,d", got)
 	}
 }

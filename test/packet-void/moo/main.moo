@@ -4,11 +4,16 @@
 -- line each, for tools/casegate. The pins are the Go oracle's bytes, never
 -- this writer's. The moo CLI has no io, so test/packet-text/moo/driver hands
 -- the pins directory in as inputs[<file name>] (make/moo-packet.mk).
+--
+-- moo refuses a write in every build: the generated writer answers false
+-- before the value rides. Every refuse-write case is representable here (a
+-- tag is a plain number field, a payload a plain table field), so each is
+-- built and must be refused by that false, never by a raise.
 local serialize = require("./serialize")
 local V: any = require("./Void")
 local inputs: { [string]: buffer } = require("./inputs") :: any
 
-local TYPES: { [string]: boolean } = { Mixed = true, Tags = true, Single = true, Empty = true, Frame = true, Batch = true }
+local TYPES: { [string]: boolean } = { Mixed = true, Late = true, Tags = true, Single = true, Empty = true, Frame = true, Batch = true }
 
 local function hex(b: buffer): string
 	local out = {}
@@ -40,9 +45,18 @@ local function sameMixed(a: any, b: any): boolean
 	return a.Type ~= V.MixedType.Payload or sameArm(a.Payload, b.Payload)
 end
 
+local function sameLate(a: any, b: any): boolean
+	if a.Type ~= b.Type then
+		return false
+	end
+	return a.Type ~= V.LateType.Payload or sameArm(a.Payload, b.Payload)
+end
+
 local function same(typeName: string, a: any, b: any): boolean
 	if typeName == "Mixed" then
 		return sameMixed(a, b)
+	elseif typeName == "Late" then
+		return sameLate(a, b)
 	elseif typeName == "Frame" then
 		return a.Lead == b.Lead and a.Tail == b.Tail and sameMixed(a.Choice, b.Choice)
 	elseif typeName == "Batch" then
@@ -75,6 +89,11 @@ local function build(name: string): (any, string)
 		return mixed(V.MixedType.Ping), "Mixed"
 	elseif name == "mixed-payload" then
 		return mixed(V.MixedType.Payload), "Mixed"
+	elseif name == "late-payload" or name == "late-pong" then
+		-- the payload arm is the type's declared defaults: entries empty, marker 5
+		local v = V.NewLate()
+		v.Type = if name == "late-payload" then V.LateType.Payload else V.LateType.Pong
+		return v, "Late"
 	elseif name == "tags-none" or name == "tags-ping" or name == "tags-pong" then
 		local v = V.NewTags()
 		local tags: { [string]: number } = { ["tags-none"] = V.TagsType.None, ["tags-ping"] = V.TagsType.Ping, ["tags-pong"] = V.TagsType.Pong }
@@ -118,7 +137,7 @@ end
 
 local function fresh(typeName: string): any
 	local v = V["New" .. typeName]()
-	if typeName == "Mixed" then
+	if typeName == "Mixed" or typeName == "Late" then
 		dirtyArm(v.Payload)
 	elseif typeName == "Batch" then
 		dirtyArm(v.Values[1].Payload)
@@ -137,9 +156,106 @@ local function write(typeName: string, value: any): (buffer?, number)
 	return w:data(), bits
 end
 
+-- refusedWrite builds each refuse-write case's value by name: the type's
+-- default value with the one change its value column names; nil for a name
+-- this driver does not know, which is FAILED and never written.
+local function refusedWrite(name: string): (any, string)
+	if name == "mixed-write-tag-negative" then
+		return mixed(-1), "Mixed"
+	elseif name == "mixed-write-tag-text" then
+		local v = V.NewMixed()
+		v.Type = "ping"
+		return v, "Mixed"
+	elseif name == "mixed-write-tag-3" then
+		return mixed(3), "Mixed"
+	elseif name == "mixed-write-payload-type" then
+		local v = mixed(V.MixedType.Payload)
+		v.Payload = 1
+		return v, "Mixed"
+	elseif name == "mixed-write-marker-8" then
+		local v = mixed(V.MixedType.Payload)
+		v.Payload.Marker = 8
+		return v, "Mixed"
+	elseif name == "tags-write-tag-3" then
+		local v = V.NewTags()
+		v.Type = 3
+		return v, "Tags"
+	elseif name == "empty-write-tag-1" then
+		local v = V.NewEmpty()
+		v.Type = 1
+		return v, "Empty"
+	end
+	return nil, ""
+end
+
+-- refuseWrite: the generated writer answers false, its refusal; a raise is
+-- not the writer's refusal and is FAILED by name.
+local function refuseWrite(name: string, typeName: string): string?
+	local value, built = refusedWrite(name)
+	if value == nil then
+		return "unknown refuse-write case"
+	end
+	if built ~= typeName then
+		return "case type " .. typeName .. ", the driver builds " .. built
+	end
+	local w = serialize.WriteStream.new(buffer.create(256))
+	local ok, answered = pcall(V["Write" .. typeName], w, value)
+	if not ok then
+		return "write raised, not the writer's refusal: " .. tostring(answered)
+	end
+	if answered ~= false then
+		w:flush()
+		return "write accepted: " .. hex(w:data())
+	end
+	return nil
+end
+
+-- selectPayload reads mixed-ping's pin with the public one-packet read, then
+-- selects the payload arm on that value the moo API's way: the union keeps its
+-- payload record, so selecting is setting the tag alone. The record must still
+-- carry its declared defaults after the void arm was read.
+local function selectPayload(name: string, bits: string): string?
+	if name ~= "mixed-ping-select-payload" then
+		return "unknown select case"
+	end
+	local from = inputs["mixed-ping.bin"]
+	if from == nil then
+		return "the pin mixed-ping.bin was not carried in"
+	end
+	local pin = inputs[name .. ".bin"]
+	if pin == nil then
+		return "the pin " .. name .. ".bin was not carried in"
+	end
+	local m = V.NewMixed()
+	if not V.ReadMixed(serialize.ReadStream.new(from), m) then
+		return "read mixed-ping refused"
+	end
+	if m.Type ~= V.MixedType.Ping then
+		return "read mixed-ping: tag " .. tostring(m.Type)
+	end
+	m.Type = V.MixedType.Payload
+	local got, gotBits = write("Mixed", m)
+	if got == nil then
+		return "write refused"
+	end
+	if hex(got) ~= hex(pin) then
+		return "write " .. hex(got) .. ", pin " .. hex(pin)
+	end
+	if gotBits ~= tonumber(bits) then
+		return "write has " .. tostring(gotBits) .. " bits, want " .. bits
+	end
+	return nil
+end
+
 local function answer(name: string, typeName: string, verdict: string, bits: string): string?
 	if not TYPES[typeName] then
 		return "unknown type " .. typeName
+	end
+	if verdict == "refuse-write" then
+		return refuseWrite(name, typeName)
+	end
+	if verdict == "select" then
+		return selectPayload(name, bits)
 	end
 	local pin = inputs[name .. ".bin"]
 	if pin == nil then

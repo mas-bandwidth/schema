@@ -9,7 +9,19 @@
 // into dirtied storage (so a payload not constructed fresh at its declared
 // defaults shows), compared field by field, written again, and read once more
 // with the composable body read, whose bit count must be the bits column. A
-// refuse case's pin must be refused by the public one-packet read.
+// refuse case's pin must be refused by the public one-packet read. A select
+// case reads its from= pin, selects the arm on the value it read, and writes
+// the pin.
+//
+// A refuse-write case: the Lobster writer refuses by trapping (a failed
+// assert of the schema's write contract, or the runtime's serialize_abort for
+// a value its bit width cannot carry), and a trap ends the program. So the Go
+// test runs this driver once per refuse-write case as `-- write <case>`,
+// which builds the type's default value with the one named change and calls
+// the writer, and hands each run's exit code and stdout back in as
+// <case>.trap. The full run then requires that the write was reached and
+// trapped with the writer's own refusal for that case. The pinned default
+// JIT keeps asserts on, and that is the build this test runs.
 import .Void
 import .serialize
 
@@ -17,6 +29,7 @@ import .serialize
 // dirtied storage, and field equality (unselected arms are not compared;
 // a selected payload is compared with its whole backing storage)
 def wr(w:serialize_write_stream, v:packetvoid.Mixed) -> bool: return packetvoid.WriteMixed(w, v)
+def wr(w:serialize_write_stream, v:packetvoid.Late) -> bool: return packetvoid.WriteLate(w, v)
 def wr(w:serialize_write_stream, v:packetvoid.Tags) -> bool: return packetvoid.WriteTags(w, v)
 def wr(w:serialize_write_stream, v:packetvoid.Single) -> bool: return packetvoid.WriteSingle(w, v)
 def wr(w:serialize_write_stream, v:packetvoid.Empty) -> bool: return packetvoid.WriteEmpty(w, v)
@@ -24,6 +37,7 @@ def wr(w:serialize_write_stream, v:packetvoid.Frame) -> bool: return packetvoid.
 def wr(w:serialize_write_stream, v:packetvoid.Batch) -> bool: return packetvoid.WriteBatch(w, v)
 
 def rd(r:serialize_read_stream, v:packetvoid.Mixed) -> bool: return packetvoid.ReadMixed(r, v)
+def rd(r:serialize_read_stream, v:packetvoid.Late) -> bool: return packetvoid.ReadLate(r, v)
 def rd(r:serialize_read_stream, v:packetvoid.Tags) -> bool: return packetvoid.ReadTags(r, v)
 def rd(r:serialize_read_stream, v:packetvoid.Single) -> bool: return packetvoid.ReadSingle(r, v)
 def rd(r:serialize_read_stream, v:packetvoid.Empty) -> bool: return packetvoid.ReadEmpty(r, v)
@@ -31,6 +45,7 @@ def rd(r:serialize_read_stream, v:packetvoid.Frame) -> bool: return packetvoid.R
 def rd(r:serialize_read_stream, v:packetvoid.Batch) -> bool: return packetvoid.ReadBatch(r, v)
 
 def body(r:serialize_read_stream, v:packetvoid.Mixed) -> bool: return packetvoid.read_body_Mixed(r, v)
+def body(r:serialize_read_stream, v:packetvoid.Late) -> bool: return packetvoid.read_body_Late(r, v)
 def body(r:serialize_read_stream, v:packetvoid.Tags) -> bool: return packetvoid.read_body_Tags(r, v)
 def body(r:serialize_read_stream, v:packetvoid.Single) -> bool: return packetvoid.read_body_Single(r, v)
 def body(r:serialize_read_stream, v:packetvoid.Empty) -> bool: return packetvoid.read_body_Empty(r, v)
@@ -47,6 +62,14 @@ def dirty_mixed() -> packetvoid.Mixed:
     return m
 
 def dirty(v:packetvoid.Mixed) -> packetvoid.Mixed: return dirty_mixed()
+def dirty(v:packetvoid.Late) -> packetvoid.Late:
+    let l = packetvoid.NewLate()
+    l.Type = packetvoid.LateTypePayload
+    l.Payload.EntriesCount = 2
+    l.Payload.Entries[0].Retries = 9
+    l.Payload.Entries[1].Retries = 9
+    l.Payload.Marker = 1
+    return l
 def dirty(v:packetvoid.Tags) -> packetvoid.Tags:
     let t = packetvoid.NewTags()
     t.Type = packetvoid.TagsTypePong
@@ -78,6 +101,10 @@ def same_arm(a:packetvoid.DefaultArm, b:packetvoid.DefaultArm) -> bool:
 def same(a:packetvoid.Mixed, b:packetvoid.Mixed) -> bool:
     if a.Type != b.Type: return false
     if a.Type == packetvoid.MixedTypePayload: return same_arm(a.Payload, b.Payload)
+    return true
+def same(a:packetvoid.Late, b:packetvoid.Late) -> bool:
+    if a.Type != b.Type: return false
+    if a.Type == packetvoid.LateTypePayload: return same_arm(a.Payload, b.Payload)
     return true
 def same(a:packetvoid.Tags, b:packetvoid.Tags) -> bool: return a.Type == b.Type
 def same(a:packetvoid.Single, b:packetvoid.Single) -> bool: return a.Type == b.Type
@@ -136,6 +163,16 @@ def accept_case(name:string, typ:string, pin:string, bits:int) -> string:
         // the payload arm is the type's declared defaults: entries empty, marker 5
         if name == "mixed-payload": return accept(pin, bits, mixed(packetvoid.MixedTypePayload))
         return "unknown accept case"
+    if typ == "Late":
+        let l = packetvoid.NewLate()
+        // the payload arm is the type's declared defaults: entries empty, marker 5
+        if name == "late-payload":
+            l.Type = packetvoid.LateTypePayload
+            return accept(pin, bits, l)
+        if name == "late-pong":
+            l.Type = packetvoid.LateTypePong
+            return accept(pin, bits, l)
+        return "unknown accept case"
     if typ == "Tags":
         let t = packetvoid.NewTags()
         if name == "tags-none": return accept(pin, bits, t)
@@ -184,6 +221,7 @@ def refuse_case(typ:string, pin:string) -> string:
     let r = serialize_read_stream_padded(pin)
     var accepted = false
     if typ == "Mixed": accepted = packetvoid.ReadMixed(r, dirty_mixed())
+    elif typ == "Late": accepted = packetvoid.ReadLate(r, dirty(packetvoid.NewLate()))
     elif typ == "Tags": accepted = packetvoid.ReadTags(r, packetvoid.NewTags())
     elif typ == "Single": accepted = packetvoid.ReadSingle(r, packetvoid.NewSingle())
     elif typ == "Empty": accepted = packetvoid.ReadEmpty(r, packetvoid.NewEmpty())
@@ -193,13 +231,117 @@ def refuse_case(typ:string, pin:string) -> string:
     if accepted: return "read accepted"
     return ""
 
+// select_case reads mixed-ping's pin with the public one-packet read, then
+// selects the payload arm on that value the Lobster API's way: the union keeps
+// its payload object, so selecting is setting the tag alone. The object must
+// still carry its declared defaults after the void arm was read.
+def select_case(name:string, pin:string, want_bits:int) -> string:
+    if name != "mixed-ping-select-payload": return "unknown select case"
+    let ping_pin = read_file("mixed-ping.bin")
+    if not ping_pin: return "the pin mixed-ping.bin is missing"
+    let m = packetvoid.NewMixed()
+    let r = serialize_read_stream_padded(ping_pin)
+    if not packetvoid.ReadMixed(r, m): return "read mixed-ping refused: " + r.refusal_name()
+    if m.Type != packetvoid.MixedTypePing: return "read mixed-ping: tag " + string(m.Type)
+    m.Type = packetvoid.MixedTypePayload
+    let got, bits, wok = written(m)
+    if not wok: return "write answered false"
+    if got != pin: return "write " + hex(got) + ", pin " + hex(pin)
+    if bits != want_bits: return "write has " + string(bits) + " bits, want " + string(want_bits)
+    return ""
+
+// not_representable names the refuse-write cases Lobster's types cannot
+// hold, refused by its compiler: a tag is a typed enum field, so the text
+// "ping" is "requires type `packetvoid.MixedType`, got `string`", and the
+// payload a packetvoid.DefaultArm field, so the integer 1 is "requires type
+// `packetvoid.DefaultArm`, got `int`". A tag of -1 or 3 is an enum cast,
+// packetvoid.MixedType(-1), and is tested.
+def not_representable(name:string) -> bool:
+    return name == "mixed-write-tag-text" or name == "mixed-write-payload-type"
+
+// write_trapped is the trap run's write: it says the write is reached, calls
+// the writer, and says what the writer answered if it did not trap
+def write_trapped(name:string, value):
+    let w = serialize_write_stream(ensure_size("", 64, 0))
+    print("writing " + name)
+    let ok = wr(w, value)
+    w.flush()
+    print("write answered " + (if ok: "true" else: "false") + ": " + hex(substring(w.buffer, 0, w.bytes_processed())))
+
+// trap_write builds each refuse-write case's value by name: the type's
+// default value with the one change its value column names; a name it does
+// not know writes nothing, and the full run answers it FAILED
+def trap_write(name:string):
+    if name == "mixed-write-tag-negative":
+        let m = packetvoid.NewMixed()
+        m.Type = packetvoid.MixedType(-1)
+        write_trapped(name, m)
+    elif name == "mixed-write-tag-3":
+        let m = packetvoid.NewMixed()
+        m.Type = packetvoid.MixedType(3)
+        write_trapped(name, m)
+    elif name == "mixed-write-marker-8":
+        let m = packetvoid.NewMixed()
+        m.Type = packetvoid.MixedTypePayload
+        m.Payload.Marker = 8
+        write_trapped(name, m)
+    elif name == "tags-write-tag-3":
+        let t = packetvoid.NewTags()
+        t.Type = packetvoid.TagsType(3)
+        write_trapped(name, t)
+    elif name == "empty-write-tag-1":
+        let e = packetvoid.NewEmpty()
+        e.Type = packetvoid.EmptyType(1)
+        write_trapped(name, e)
+    else:
+        print("unknown refuse-write case " + name)
+
+// refusal is the trap each refuse-write case's writer must end the program
+// with: its exit code and the text of the line it prints. A tag is the
+// schema's write contract, an assert in the generated writer; a marker wider
+// than bits(3) is the runtime's serialize_abort, which traps in every build.
+def refusal(name:string) -> int, string:
+    if name == "mixed-write-tag-negative" or name == "mixed-write-tag-3" or name == "tags-write-tag-3":
+        return 1, "): assertion failed: v·.Type >= 0 and v·.Type <= 2["
+    if name == "empty-write-tag-1": return 1, "): assertion failed: v·.Type >= 0 and v·.Type <= 0["
+    if name == "mixed-write-marker-8": return 70, "serialize: value must fit in bits"
+    return 0, ""
+
+// refuse_write_case judges the case's trap run (<case>.trap: "exit <code>",
+// then its stdout): the write was reached, and the writer trapped with its own
+// refusal for this case, the only line after it
+def refuse_write_case(name:string) -> string:
+    let code, want = refusal(name)
+    if want == "": return "unknown refuse-write case"
+    let trap = read_file(name + ".trap")
+    if not trap: return "no trap run: " + name + ".trap is missing"
+    let lines = []::string
+    var got = ""
+    for(tokenize(trap, "\n", "\r")) l:
+        if l != "":
+            push(lines, l)
+            got += (if got == "": "" else: " | ") + l
+    if length(lines) < 2 or lines[1] != "writing " + name: return "the trap run did not reach the write: " + got
+    for(lines) l:
+        if find_string(l, "write answered ") == 0: return "write accepted: " + got
+    if lines[0] != "exit " + string(code): return "the trap run ended " + lines[0] + ", want exit " + string(code) + ": " + got
+    if length(lines) != 3: return "not exactly one refusal line after the write: " + got
+    if code == 1 and find_string(lines[2], "VM error (Void.lobster:") != 0: return "not the generated writer assert: " + got
+    if find_string(lines[2], want) < 0: return "not the writer refusal (" + want + "): " + got
+    return ""
+
 def answer(name:string, typ:string, verdict:string, bits_text:string) -> string:
+    if not_representable(name):
+        if verdict != "refuse-write": return "named not representable in Lobster, and its verdict is " + verdict
+        return ""
+    if verdict == "refuse-write": return refuse_write_case(name)
     let pin = read_file(name + ".bin")
     if not pin: return "the pin " + name + ".bin is missing"
     if verdict == "refuse": return refuse_case(typ, pin)
-    if verdict != "accept": return "verdict " + verdict
+    if verdict != "accept" and verdict != "select": return "verdict " + verdict
     let bits, ok = string_to_int(bits_text)
     if not ok: return "bits column " + bits_text
+    if verdict == "select": return select_case(name, pin, bits)
     return accept_case(name, typ, pin, bits)
 
 def main():
@@ -219,4 +361,13 @@ def main():
                 let why = answer(f[0], f[1], f[2], f[3])
                 print("case " + f[0] + (if why == "": " ok" else: " FAILED: " + why))
 
-main()
+// `-- write <case>` is one refuse-write case's trap run; no argument is the
+// full run over cases.txt
+let args = command_line_arguments()
+if length(args) == 2 and args[0] == "write":
+    trap_write(args[1])
+elif length(args) == 0:
+    main()
+else:
+    print("usage: main.lobster [-- write <case>]")
+    set_exit_code(2)

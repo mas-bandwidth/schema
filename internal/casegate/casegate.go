@@ -8,8 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
 )
 
 // ReadCases is the case names of a case file: the first field of every line
@@ -32,11 +35,39 @@ func ReadCases(text string) ([]string, error) {
 	return out, nil
 }
 
+// unpinned is the verdict of a case with no <case>.bin: a write the leg's
+// writer must refuse has no wire.
+const unpinned = "refuse-write"
+
+// pinnedCases is the cases of a case file that have a <case>.bin: every case
+// whose verdict (the third field) is not refuse-write.
+func pinnedCases(text string) []string {
+	var out []string
+	for line := range strings.SplitSeq(text, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		if len(f) < 3 || f[2] != unpinned {
+			out = append(out, f[0])
+		}
+	}
+	return out
+}
+
 var owedLine = regexp.MustCompile(`^(\S+) (\S+) owed: (\S.*)$`)
 
-// ReadOwed is the ledger's lines for leg: case (or "all") -> cause.
+// ReadOwed is the ledger's lines for leg: case (or "all") -> cause. The
+// ledger is an exact set over every line, not only leg's: a line whose leg
+// is not one of inputfamilies.Legs (a misspelt or removed leg, whose case
+// would otherwise be owed by nobody and never red), a malformed line, and a
+// line there twice are refused, as is a leg that is not one of the legs.
 func ReadOwed(text, leg string) (map[string]string, error) {
+	if !slices.Contains(inputfamilies.Legs, leg) {
+		return nil, fmt.Errorf("%s is not a leg (internal/inputfamilies.Legs)", leg)
+	}
 	out := map[string]string{}
+	seen := map[string]bool{}
 	for line := range strings.SplitSeq(text, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -46,13 +77,16 @@ func ReadOwed(text, leg string) (map[string]string, error) {
 		if m == nil {
 			return nil, fmt.Errorf("owed line %q is not `<leg> <case> owed: <cause>`", line)
 		}
-		if m[1] != leg {
-			continue
+		if !slices.Contains(inputfamilies.Legs, m[1]) {
+			return nil, fmt.Errorf("owed line %q: %s is not a leg (internal/inputfamilies.Legs)", line, m[1])
 		}
-		if _, dup := out[m[2]]; dup {
-			return nil, fmt.Errorf("owed line for %s %s is there twice", leg, m[2])
+		if seen[m[1]+" "+m[2]] {
+			return nil, fmt.Errorf("owed line for %s %s is there twice", m[1], m[2])
 		}
-		out[m[2]] = m[3]
+		seen[m[1]+" "+m[2]] = true
+		if m[1] == leg {
+			out[m[2]] = m[3]
+		}
 	}
 	return out, nil
 }
@@ -123,9 +157,10 @@ func Verdict(name, leg string, exit int, stdout []byte, cases []string, owed map
 }
 
 // Inputs reads a shared-corpus directory for a driver that runs inside a Go
-// test (the Python and Ruby legs): cases.txt and every <case>.bin it names,
-// keyed by file name for the driver's working directory, the case names,
-// and leg's lines of owed.txt.
+// test (the Python, Ruby and Lobster legs): cases.txt and the <case>.bin of
+// every case it names but a refuse-write case (which has no wire), keyed by
+// file name for the driver's working directory, the case names, and leg's
+// lines of owed.txt.
 func Inputs(dir, leg string) (inputs map[string][]byte, cases []string, owed map[string]string, err error) {
 	text, err := os.ReadFile(filepath.Join(dir, "cases.txt"))
 	if err != nil {
@@ -142,7 +177,7 @@ func Inputs(dir, leg string) (inputs map[string][]byte, cases []string, owed map
 		return nil, nil, nil, err
 	}
 	inputs = map[string][]byte{"cases.txt": text}
-	for _, c := range cases {
+	for _, c := range pinnedCases(string(text)) {
 		b, err := os.ReadFile(filepath.Join(dir, c+".bin"))
 		if err != nil {
 			return nil, nil, nil, err

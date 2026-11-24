@@ -29,6 +29,9 @@ bit fields packed least-significant-bit first without alignment:
 | batch-empty | count 0 | `00` | 2 |
 | batch-ping | `1 + (1 << 2)` | `05` | 4 |
 | batch-ping-payload | `2 + (1 << 2) + (0x52 << 4)` | `26 05` | 11 |
+| late-pong | tag 3, after the payload arm | `03` | 2 |
+| late-payload | `2 + (0 << 2) + (5 << 4)` | `52` | 7 |
+| mixed-ping-select-payload | mixed-ping read, then payload selected: `2 + (0 << 2) + (5 << 4)` | `52` | 7 |
 
 The refuse pins cannot come from a writer; they are hand-made:
 
@@ -43,3 +46,7 @@ The refuse pins cannot come from a writer; they are hand-made:
 | mixed-count-3 | `0e` | payload entries count 3 is above `[..2]` |
 | mixed-short | `0a` | payload entries count 2, and the entries cut off |
 | batch-count-3 | `03` | values count 3 is above `[..2]` |
+
+The `refuse-write` cases have no pin: each is a value the leg's writer must
+refuse (cases.txt says how assert legs and values a leg's types cannot hold
+answer them).

@@ -4,6 +4,7 @@
 // this writer's. Exit non-zero only for a harness error (no cases.txt, or the
 // generated surface beside the wire is wrong).
 using System;
+using System.Diagnostics;
 using System.IO;
 using Serialize;
 using Packetvoid;
@@ -13,12 +14,13 @@ using Single = Packetvoid.Single;
 
 static class Program
 {
-    enum Kind { Mixed, Tags, Single, Empty, Frame, Batch, Unknown }
+    enum Kind { Mixed, Late, Tags, Single, Empty, Frame, Batch, Unknown }
 
     sealed class Value
     {
         public Kind Kind;
         public Mixed Mixed;
+        public Late Late;
         public Tags Tags;
         public Single Single;
         public Empty Empty;
@@ -33,11 +35,30 @@ static class Program
 
     static void Fail(string why) { throw new CaseFailed(why); }
 
+    // The generated writer's contracts are Debug.Assert (SPEC §5.1): in a Debug
+    // build a throwing TraceListener turns a failed assert into this exception,
+    // the refusal. A Release build removes the asserts, by design no write
+    // check; the mode is the build's own DEBUG symbol (#if DEBUG below), never a flag passed in.
+    sealed class AssertionTrapped : Exception { }
+
+    sealed class ThrowingListener : TraceListener
+    {
+        public override void Write(string message) { }
+        public override void WriteLine(string message) { }
+        public override void Fail(string message) { throw new AssertionTrapped(); }
+        public override void Fail(string message, string detailMessage) { throw new AssertionTrapped(); }
+    }
+
+    // Refuse-write cases whose change a C# type cannot hold at all (a text tag
+    // in a byte enum, a text in a DefaultArm slot): the compiler refuses them.
+    static readonly string[] NotRepresentable = { "mixed-write-payload-type", "mixed-write-tag-text" };
+
     static Kind KindOf(string type)
     {
         switch (type)
         {
             case "Mixed": return Kind.Mixed;
+            case "Late": return Kind.Late;
             case "Tags": return Kind.Tags;
             case "Single": return Kind.Single;
             case "Empty": return Kind.Empty;
@@ -59,6 +80,17 @@ static class Program
         return m;
     }
 
+    static Late MakeLate(LateType type)
+    {
+        Late l = new Late();
+        l.Type = type;
+        if (type == LateType.Payload)
+        {
+            l.Payload = NewDefaultArm();
+        }
+        return l;
+    }
+
     // The value of each accept case, by name; null for a name this driver
     // does not know, which is FAILED and never written with another value.
     static Value Build(string name)
@@ -69,6 +101,8 @@ static class Program
             case "mixed-none": v.Kind = Kind.Mixed; v.Mixed = MakeMixed(MixedType.None); return v;
             case "mixed-ping": v.Kind = Kind.Mixed; v.Mixed = MakeMixed(MixedType.Ping); return v;
             case "mixed-payload": v.Kind = Kind.Mixed; v.Mixed = MakeMixed(MixedType.Payload); return v;
+            case "late-payload": v.Kind = Kind.Late; v.Late = MakeLate(LateType.Payload); return v;
+            case "late-pong": v.Kind = Kind.Late; v.Late = MakeLate(LateType.Pong); return v;
             case "tags-none": v.Kind = Kind.Tags; v.Tags.Type = TagsType.None; return v;
             case "tags-ping": v.Kind = Kind.Tags; v.Tags.Type = TagsType.Ping; return v;
             case "tags-pong": v.Kind = Kind.Tags; v.Tags.Type = TagsType.Pong; return v;
@@ -112,6 +146,8 @@ static class Program
         Value v = new Value();
         v.Kind = kind;
         v.Mixed = DirtyMixed();
+        v.Late.Type = LateType.Pong;
+        v.Late.Payload = DirtyMixed().Payload;
         v.Tags.Type = TagsType.Pong;
         v.Single.Type = SingleType.Ack;
         v.Frame.Lead = 7; v.Frame.Choice = DirtyMixed(); v.Frame.Tail = 7;
@@ -124,6 +160,7 @@ static class Program
         switch (v.Kind)
         {
             case Kind.Mixed: return WriteMixed(s, ref v.Mixed);
+            case Kind.Late: return WriteLate(s, ref v.Late);
             case Kind.Tags: return WriteTags(s, ref v.Tags);
             case Kind.Single: return WriteSingle(s, ref v.Single);
             case Kind.Empty: return WriteEmpty(s, ref v.Empty);
@@ -139,6 +176,7 @@ static class Program
         switch (v.Kind)
         {
             case Kind.Mixed: return ReadMixed(s, ref v.Mixed);
+            case Kind.Late: return ReadLate(s, ref v.Late);
             case Kind.Tags: return ReadTags(s, ref v.Tags);
             case Kind.Single: return ReadSingle(s, ref v.Single);
             case Kind.Empty: return ReadEmpty(s, ref v.Empty);
@@ -167,6 +205,11 @@ static class Program
         switch (want.Kind)
         {
             case Kind.Mixed: return MixedEqual(got.Mixed, want.Mixed);
+            case Kind.Late:
+                if (got.Late.Type != want.Late.Type) return false;
+                if (want.Late.Type != LateType.Payload) return true;
+                return got.Late.Payload.EntriesCount == want.Late.Payload.EntriesCount &&
+                       got.Late.Payload.Marker == want.Late.Payload.Marker;
             case Kind.Tags: return got.Tags.Type == want.Tags.Type;
             case Kind.Single: return got.Single.Type == want.Single.Type;
             case Kind.Empty: return got.Empty.Type == want.Empty.Type;
@@ -229,6 +272,63 @@ static class Program
         if (Read(new ReadStream(pin), Dirty(kind))) Fail("read accepted");
     }
 
+    // The select case: read mixed-ping's pin into dirtied storage with the
+    // public one-packet read, then select the payload arm on THAT value the C#
+    // way, a fresh DefaultArm (the arm's own construction) in the payload slot
+    // and the tag set; the bytes are this case's pin.
+    static void Select(string dir, string name, string type, long bits, string from)
+    {
+        if (name != "mixed-ping-select-payload" || from != "from=mixed-ping,") Fail("unknown select case");
+        if (type != "Mixed") Fail("case type " + type + ", the driver selects on Mixed");
+        Value v = Dirty(Kind.Mixed);
+        if (!Read(new ReadStream(File.ReadAllBytes(Path.Combine(dir, "mixed-ping.bin"))), v)) Fail("read of mixed-ping refused");
+        if (v.Mixed.Type != MixedType.Ping) Fail("mixed-ping did not read as ping");
+        v.Mixed.Payload = NewDefaultArm();
+        v.Mixed.Type = MixedType.Payload;
+        byte[] pin = File.ReadAllBytes(Path.Combine(dir, name + ".bin"));
+        long wrote;
+        byte[] bytes = Encode(v, out wrote);
+        if (wrote != bits) Fail("write has " + wrote + " bits, want " + bits);
+        if (!bytes.AsSpan().SequenceEqual(pin)) Fail("write bytes " + Hex(bytes) + " differ from the pin " + Hex(pin));
+    }
+
+    // A refuse-write case: the type's default value with the one change the
+    // case names, written; a Debug build must refuse it with its assert.
+    static Value BuildBad(string name)
+    {
+        Value v = new Value();
+        switch (name)
+        {
+            case "mixed-write-tag-negative": v.Kind = Kind.Mixed; v.Mixed.Type = unchecked((MixedType)(-1)); return v;
+            case "mixed-write-tag-3": v.Kind = Kind.Mixed; v.Mixed.Type = (MixedType)3; return v;
+            case "mixed-write-marker-8":
+                v.Kind = Kind.Mixed; v.Mixed = MakeMixed(MixedType.Payload); v.Mixed.Payload.Marker = 8; return v;
+            case "tags-write-tag-3": v.Kind = Kind.Tags; v.Tags.Type = (TagsType)3; return v;
+            case "empty-write-tag-1": v.Kind = Kind.Empty; v.Empty.Type = (EmptyType)1; return v;
+        }
+        return null;
+    }
+
+    static void RefuseWrite(string name, string type)
+    {
+        if (Array.IndexOf(NotRepresentable, name) >= 0) return;
+        Value v = BuildBad(name);
+        if (v == null) Fail("unknown refuse-write case");
+        if (v.Kind != KindOf(type)) Fail("case type " + type + ", the driver builds another");
+#if DEBUG
+        try
+        {
+            Write(new WriteStream(new byte[64]), v);
+        }
+        catch (AssertionTrapped)
+        {
+            return;
+        }
+        Fail("write was not refused");
+#endif
+        // a Release build has no write check by design: answered without writing
+    }
+
     static int Main(string[] args)
     {
         if (args.Length != 1)
@@ -246,6 +346,8 @@ static class Program
             Console.WriteLine("FAILED: packet-void tag extents, debug names or maximum bits");
             return 1;
         }
+        Trace.Listeners.Clear();
+        Trace.Listeners.Add(new ThrowingListener());
         string[] lines;
         try
         {
@@ -266,6 +368,8 @@ static class Program
                 if (f.Length < 4) Fail("a case line needs <name> <type> <verdict> <bits>");
                 if (f[2] == "accept") Accept(args[0], name, f[1], long.Parse(f[3]));
                 else if (f[2] == "refuse") Refuse(args[0], name, f[1]);
+                else if (f[2] == "select") Select(args[0], name, f[1], long.Parse(f[3]), f.Length > 4 ? f[4] : "");
+                else if (f[2] == "refuse-write") RefuseWrite(name, f[1]);
                 else Fail("verdict " + f[2]);
                 Console.WriteLine("case " + name + " ok");
             }

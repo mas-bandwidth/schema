@@ -9,7 +9,11 @@
 // pin and the bits column), read from the pin with the public one-packet read
 // into dirtied storage (so a payload not constructed fresh at its declared
 // defaults shows), compared field by field, and written again. A refuse
-// case's pin must be refused by the public one-packet read.
+// case's pin must be refused by the public one-packet read. A select case
+// reads its from= pin, selects the arm on the value it read, and writes the
+// pin. A refuse-write case builds the type's default value with the one named
+// change, and the writer must refuse it with its own refusal kind,
+// SERIALIZE_ERROR_VALUE_OUT_OF_RANGE (Goose refuses writes in every build).
 import os;
 import .Void;
 import .serialize;
@@ -19,6 +23,7 @@ import .driverlib;
 // and field equality (an unselected arm is not compared; a selected payload
 // is compared with its whole backing storage)
 fn wr(w: WriteStream&, v: packetvoid::Mixed&) -> i32 { return packetvoid::WriteMixed(w, v); }
+fn wr(w: WriteStream&, v: packetvoid::Late&) -> i32 { return packetvoid::WriteLate(w, v); }
 fn wr(w: WriteStream&, v: packetvoid::Tags&) -> i32 { return packetvoid::WriteTags(w, v); }
 fn wr(w: WriteStream&, v: packetvoid::Single&) -> i32 { return packetvoid::WriteSingle(w, v); }
 fn wr(w: WriteStream&, v: packetvoid::Empty&) -> i32 { return packetvoid::WriteEmpty(w, v); }
@@ -26,6 +31,7 @@ fn wr(w: WriteStream&, v: packetvoid::Frame&) -> i32 { return packetvoid::WriteF
 fn wr(w: WriteStream&, v: packetvoid::Batch&) -> i32 { return packetvoid::WriteBatch(w, v); }
 
 fn rd(r: ReadStream&, v: packetvoid::Mixed&) -> bool { return packetvoid::ReadMixed(r, v); }
+fn rd(r: ReadStream&, v: packetvoid::Late&) -> bool { return packetvoid::ReadLate(r, v); }
 fn rd(r: ReadStream&, v: packetvoid::Tags&) -> bool { return packetvoid::ReadTags(r, v); }
 fn rd(r: ReadStream&, v: packetvoid::Single&) -> bool { return packetvoid::ReadSingle(r, v); }
 fn rd(r: ReadStream&, v: packetvoid::Empty&) -> bool { return packetvoid::ReadEmpty(r, v); }
@@ -38,6 +44,11 @@ fn eq(a: packetvoid::DefaultArm&, b: packetvoid::DefaultArm&) -> bool {
 fn eq(a: packetvoid::Mixed&, b: packetvoid::Mixed&) -> bool {
     if a.Type != b.Type { return false; }
     if a.Type == packetvoid::MixedTypePayload { return eq(a.Payload, b.Payload); }
+    return true;
+}
+fn eq(a: packetvoid::Late&, b: packetvoid::Late&) -> bool {
+    if a.Type != b.Type { return false; }
+    if a.Type == packetvoid::LateTypePayload { return eq(a.Payload, b.Payload); }
     return true;
 }
 fn eq(a: packetvoid::Tags&, b: packetvoid::Tags&) -> bool { return a.Type == b.Type; }
@@ -68,6 +79,15 @@ fn dirtyMixed() -> packetvoid::Mixed {
     m.Payload.Entries[1].Retries = 9;
     m.Payload.Marker = 1;
     return m;
+}
+fn dirtyLate() -> packetvoid::Late {
+    var l = packetvoid::NewLate();
+    l.Type = packetvoid::LateTypePayload;
+    l.Payload.EntriesCount = 2;
+    l.Payload.Entries[0].Retries = 9;
+    l.Payload.Entries[1].Retries = 9;
+    l.Payload.Marker = 1;
+    return l;
 }
 fn dirtyTags() -> packetvoid::Tags {
     var t = packetvoid::NewTags();
@@ -151,6 +171,13 @@ fn acceptCase(name: const u8[:], typ: const u8[:], pin: const u8[:], bits: i64) 
         if name == "mixed-payload" { var v = mixed(packetvoid::MixedTypePayload); return accept(pin, bits, v, dirtyMixed()); }
         return str("unknown accept case");
     }
+    if typ == "Late" {
+        var v = packetvoid::NewLate();
+        // the payload arm is the type's declared defaults: entries empty, marker 5
+        if name == "late-payload" { v.Type = packetvoid::LateTypePayload; return accept(pin, bits, v, dirtyLate()); }
+        if name == "late-pong" { v.Type = packetvoid::LateTypePong; return accept(pin, bits, v, dirtyLate()); }
+        return str("unknown accept case");
+    }
     if typ == "Tags" {
         var v = packetvoid::NewTags();
         if name == "tags-none" { return accept(pin, bits, v, dirtyTags()); }
@@ -203,6 +230,7 @@ fn refuseCase(typ: const u8[:], pin: const u8[:]) -> u8[>..] {
     var r = serialize_read_stream_init_padded(rbuf, pin);
     var accepted = false;
     if typ == "Mixed" { var v = dirtyMixed(); accepted = packetvoid::ReadMixed(r, v); }
+    else if typ == "Late" { var v = dirtyLate(); accepted = packetvoid::ReadLate(r, v); }
     else if typ == "Tags" { var v = packetvoid::NewTags(); accepted = packetvoid::ReadTags(r, v); }
     else if typ == "Single" { var v = packetvoid::NewSingle(); accepted = packetvoid::ReadSingle(r, v); }
     else if typ == "Empty" { var v = packetvoid::NewEmpty(); accepted = packetvoid::ReadEmpty(r, v); }
@@ -223,13 +251,85 @@ fn parseBits(text: const u8[:]) -> i64, bool {
     return n, true;
 }
 
+// refused: the writer must refuse value with its own refusal kind; nothing
+// else (an acceptance, another kind) is the refusal the case names
+fn refused<T>(value: T&) -> u8[>..] {
+    let refusal = writeWire(value);
+    if refusal == SERIALIZE_ERROR_NONE { return str("write accepted: ", hexs(wbuf[0..wlen])); }
+    if refusal != SERIALIZE_ERROR_VALUE_OUT_OF_RANGE {
+        return str("write refused with ", serialize_refusal_name(refusal), ", want ", serialize_refusal_name(SERIALIZE_ERROR_VALUE_OUT_OF_RANGE));
+    }
+    return str("");
+}
+
+// notRepresentable names the refuse-write cases Goose's types cannot hold:
+// a tag is a u8 (MixedType), so -1 ("constant -1 does not fit u8") and the
+// text "ping" ("expected a value of type u8") do not compile, and the payload
+// is a packetvoid::DefaultArm field, so the integer 1 does not compile either.
+fn notRepresentable(name: const u8[:]) -> bool {
+    return name == "mixed-write-tag-negative" || name == "mixed-write-tag-text" || name == "mixed-write-payload-type";
+}
+
+// refuseWriteCase builds each refuse-write case's value by name: the type's
+// default value with the one change its value column names; a name it does
+// not know is FAILED, never written
+fn refuseWriteCase(name: const u8[:], typ: const u8[:]) -> u8[>..] {
+    if typ == "Mixed" {
+        var v = packetvoid::NewMixed();
+        if name == "mixed-write-tag-3" { v.Type = 3; return refused(v); }
+        if name == "mixed-write-marker-8" {
+            v.Type = packetvoid::MixedTypePayload;
+            v.Payload.Marker = 8;
+            return refused(v);
+        }
+        return str("unknown refuse-write case");
+    }
+    if typ == "Tags" {
+        var v = packetvoid::NewTags();
+        if name == "tags-write-tag-3" { v.Type = 3; return refused(v); }
+        return str("unknown refuse-write case");
+    }
+    if typ == "Empty" {
+        var v = packetvoid::NewEmpty();
+        if name == "empty-write-tag-1" { v.Type = 1; return refused(v); }
+        return str("unknown refuse-write case");
+    }
+    return str("unknown refuse-write case");
+}
+
+// selectCase reads mixed-ping's pin with the public one-packet read, then
+// selects the payload arm on that value the Goose API's way: the union keeps
+// its payload storage, so selecting is setting the tag alone. The storage
+// must still carry its declared defaults after the void arm was read.
+fn selectCase(dir: const u8[:], name: const u8[:], pin: const u8[:], bits: i64) -> u8[>..] {
+    if name != "mixed-ping-select-payload" { return str("unknown select case"); }
+    var from: u8[>..] = [];
+    if !read_file(str(dir, "/mixed-ping.bin"), from) { return str("read the pin mixed-ping.bin"); }
+    var m = packetvoid::NewMixed();
+    var r = serialize_read_stream_init_padded(rbuf, from[0..from.len]);
+    if !packetvoid::ReadMixed(r, m) { return str("read mixed-ping refused: ", serialize_refusal_name(serialize_error(r))); }
+    if m.Type != packetvoid::MixedTypePing { return str("read mixed-ping: tag ", m.Type); }
+    m.Type = packetvoid::MixedTypePayload;
+    let refusal = writeWire(m);
+    if refusal != SERIALIZE_ERROR_NONE { return str("write refused: ", serialize_refusal_name(refusal)); }
+    if !same(wbuf[0..wlen], pin) { return str("write ", hexs(wbuf[0..wlen]), ", pin ", hexs(pin)); }
+    if wbits != bits { return str("write has ", wbits, " bits, want ", bits); }
+    return str("");
+}
+
 fn answer(dir: const u8[:], name: const u8[:], typ: const u8[:], verdict: const u8[:], bitsText: const u8[:]) -> u8[>..] {
+    if notRepresentable(name) {
+        if verdict != "refuse-write" { return str("named not representable in Goose, and its verdict is ", verdict); }
+        return str("");
+    }
+    if verdict == "refuse-write" { return refuseWriteCase(name, typ); }
     var pin: u8[>..] = [];
     if !read_file(str(dir, "/", name, ".bin"), pin) { return str("read the pin ", name, ".bin"); }
     if verdict == "refuse" { return refuseCase(typ, pin[0..pin.len]); }
-    if verdict != "accept" { return str("verdict ", verdict); }
+    if verdict != "accept" && verdict != "select" { return str("verdict ", verdict); }
     let bits, ok = parseBits(bitsText);
     if !ok { return str("bits column ", bitsText); }
+    if verdict == "select" { return selectCase(dir, name, pin[0..pin.len], bits); }
     return acceptCase(name, typ, pin[0..pin.len], bits);
 }
 
