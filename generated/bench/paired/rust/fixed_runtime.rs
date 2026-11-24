@@ -1398,13 +1398,16 @@ struct Compiler<'a> {
     // too_large is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
     // WHOLE under layout_record_too_large and never lands a short read.
     too_large: bool,
+    // absent_into_bare is the writer's ?T read into this reader's bare T: an
+    // unlawful entry by the name kind_mismatch (ruling R2, 2026-11-22), as
+    // jstable's plan.absentIntoBare.
+    absent_into_bare: bool,
     // UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9
     // #30): a writer field this reader does not name, or a pair whose kind
     // moved off every ladder. The entry is not a lawful widening of this
     // reader, so no plan is laid and a file under its hash refuses
     // layout_malformed; it is never counted and read past. 0 is lawful, 1 is
-    // layout_malformed, 3 is kind_mismatch, the writer's ?T into this
-    // reader's bare T (ruling R2, 2026-11-22).
+    // layout_malformed.
     unlawful: u8,
     // record is the WRITER's declared root size, the bound every entry's
     // source extent is held to.
@@ -1556,6 +1559,7 @@ pub fn table_fixed_compile(
         remap_used: 0,
         overflow: false,
         too_large: false,
+        absent_into_bare: false,
         unlawful: 0,
         // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
         // declared size, taken from the layout this plan is compiled against.
@@ -1571,12 +1575,11 @@ pub fn table_fixed_compile(
     // kind_mismatch for the writer's ?T into a bare T (R2). Decided before
     // overflow, so a full plan never turns an unlawful entry into
     // plan_too_large.
+    if c.absent_into_bare {
+        return report.refuse(TableFixedReason::KindMismatch);
+    }
     if c.unlawful != 0 {
-        return report.refuse(if c.unlawful == 3 {
-            TableFixedReason::KindMismatch
-        } else {
-            TableFixedReason::LayoutMalformed
-        });
+        return report.refuse(TableFixedReason::LayoutMalformed);
     }
     if c.overflow {
         return None;
@@ -1725,7 +1728,7 @@ fn compile_entry(
     if te.kind == 35 && me.kind != 35 {
         // The writer's ?T into this reader's bare T: an unlawful entry by the
         // name kind_mismatch (ruling R2).
-        c.unlawful = 3;
+        c.absent_into_bare = true;
         return;
     }
     if me.kind == 35 && te.kind != 35 {

@@ -35,18 +35,16 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
 	})
 }
 
-// csFixedCorpusFile is csFixedCorpus for a probe that reads one named file: a
-// corpus built before that file existed is the same failure as no corpus at
-// all — LOUD under SCHEMA_REQUIRE_CORPUS or CI's slow half, a named skip
-// otherwise — and never a probe that dies on a missing file.
+// csFixedCorpusFile is csFixedCorpus for a probe that reads one named file.
+// No corpus at all is csFixedCorpus's ledgered skip (or its failure under
+// SCHEMA_REQUIRE_CORPUS). A corpus that IS built but lacks this file is stale
+// or broken, and that is a failure in every mode, as in the java, elixir and
+// luau legs: a skip here would report green over a row that never ran.
 func csFixedCorpusFile(t *testing.T, file string) string {
 	t.Helper()
 	corpus := csFixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, file)); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle has no %s in %s: %v", file, corpus, err)
-		}
-		t.Skipf("the reference's byte oracle has no %s: make tables-fixedform-corpus", file)
+		t.Fatalf("the reference's byte oracle is built in %s but has no %s (a stale corpus: make tables-fixedform-corpus): %v", corpus, file, err)
 	}
 	return corpus
 }
