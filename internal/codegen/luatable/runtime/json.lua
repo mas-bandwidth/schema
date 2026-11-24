@@ -2960,6 +2960,9 @@ write_pointer = function(T, target, node, depth, g, w)
 end
 
 local function write_union(T, u, val, depth, g, w)
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local tag = val and val.tag or 0
   if tag == 0 then
     raw(w, "{}")
@@ -2986,6 +2989,9 @@ end
 -- §2.13's: the element past M, a zero byte or ill-formed UTF-8, and a sum past
 -- `| total = N` refuse the value (nil from ToJson), as the generated Go does.
 local function write_text_list(T, fd, _d, vf, val, depth, _g, w)
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local n = count_of(fd, val)
   local total = fd.total or 0
   local spent = 0
@@ -3031,6 +3037,9 @@ local function write_text_list(T, fd, _d, vf, val, depth, _g, w)
 end
 
 local function write_array(T, fd, val, depth, g, w)
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local td, tvf = text_list_elem(T, fd)
   if td ~= nil then return write_text_list(T, fd, td, tvf, val, depth, g, w) end
   local n = count_of(fd, val)
@@ -3059,6 +3068,9 @@ local function write_array(T, fd, val, depth, g, w)
 end
 
 local function write_keyed(T, fd, val, depth, g, w)
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local n = fd.bound or 0
   if n == 0 then
     raw(w, "{}")
@@ -3082,6 +3094,9 @@ local function write_keyed(T, fd, val, depth, g, w)
 end
 
 local function write_map(T, fd, val, depth, g, w)
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local keys = map_entries({}, fd, val)
   if #keys == 0 then
     raw(w, "{}")
