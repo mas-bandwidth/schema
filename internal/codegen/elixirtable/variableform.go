@@ -1324,20 +1324,26 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # strings, see map_values). Any other spelling ("07", "+7", "x") or a key
   # that names the same integer as another ("7" beside 7) is refused, so no
   # key is written twice and none raises.
-  defp check_map_keys(%{key_kind: 12}, values) do
-    keys =
-      Enum.map(values, fn {key, _v} ->
-        if not is_binary(key), do: throw(:invalid_value)
-        key
-      end)
+  # A native map already guarantees unique string keys. Walk the keys
+  # for type checking without building a key list or a second key set.
+  defp check_map_keys(%{key_kind: 12}, values)
+       when is_map(values) and not is_struct(values),
+       do: :maps.fold(&check_string_map_key/3, :ok, values)
 
-    if length(Enum.uniq(keys)) != length(keys), do: throw(:invalid_value)
+  defp check_map_keys(%{key_kind: 12}, values) do
+    Enum.reduce(values, %{}, fn {key, _value}, seen ->
+      if not is_binary(key) or Map.has_key?(seen, key), do: throw(:invalid_value)
+      Map.put(seen, key, true)
+    end)
   end
 
   defp check_map_keys(_f, values) do
     ints = Enum.map(values, fn {key, _v} -> map_int_key(key) end)
     if length(Enum.uniq(ints)) != length(ints), do: throw(:invalid_value)
   end
+
+  defp check_string_map_key(key, _value, :ok) when is_binary(key), do: :ok
+  defp check_string_map_key(_key, _value, :ok), do: throw(:invalid_value)
 
   defp map_int_key(key) when is_integer(key), do: key
 
