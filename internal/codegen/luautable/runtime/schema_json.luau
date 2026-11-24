@@ -2553,6 +2553,9 @@ write_pointer = function(T: any, target: string, node: any, depth: number, g: an
 end
 
 local function write_union(T: any, u: any, val: any, depth: number, g: any, w: any): boolean
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local tag = val and val.tag or 0
   if tag == 0 then raw(w, "{}"); return true end
   local arm = u and u.arms[tag]
@@ -2572,6 +2575,9 @@ local function write_union(T: any, u: any, val: any, depth: number, g: any, w: a
 end
 
 write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   -- §2.9, §5: a counted array past its bound is a value the strict reader
   -- clamps, so the writer refuses it instead of writing the first bound.
   if not fd.fixed and fd.keyed == nil and not fd.list and #val > (fd.bound or 0) then
@@ -2607,6 +2613,9 @@ write_array = function(T: any, fd: any, val: any, depth: number, g: any, w: any)
 end
 
 local function write_keyed(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local n = fd.bound or 0
   if n == 0 then raw(w, "{}"); return true end
   put(w, '{')
@@ -2627,6 +2636,9 @@ local function write_keyed(T: any, fd: any, val: any, depth: number, g: any, w: 
 end
 
 local function write_map(T: any, fd: any, val: any, depth: number, g: any, w: any): boolean
+  -- the write counts every container the read does, an empty one included
+  -- (docs/SPEC-TABLES.md §16.14 W2): a container past the cap is refused
+  if depth > MAX_DEPTH then return false end
   local keys = map_entries({}, fd, val)
   if #keys == 0 then raw(w, "{}"); return true end
   local kf = fd.key_field
