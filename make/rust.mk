@@ -1907,6 +1907,32 @@ tables-rust-message-storage-assert-negative-control:
 
 test-rust: tables-rust-message-storage-assert
 
+# THE MESSAGE WRITER NEVER WRITES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+# §2.15 WRITE), Rust's leg: a fixed table's Row holds an enum ordinal as plain
+# u8, so the message batch could be handed Old. Rust is an assert leg
+# (docs/SPEC.md §5.1): the refusal is a debug_assert!. The probe builds the
+# message batch in its debug profile and wants Old refused (element and
+# scalar, measure and save) and Calm and Fierce written and read back.
+# TestRustDeprecatedVariantMessageNegativeControl removes each generated assert
+# in turn and requires exactly that refusal red. SCHEMA_REQUIRE_CORPUS=1 turns
+# the rustc skip into a failure, and a SKIP in the log fails the target.
+.PHONY: tables-rust-deprecated-message-write
+tables-rust-deprecated-message-write:
+	@mkdir -p build/rust-deprecated-message
+	@PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -v -run '^TestRustDeprecatedVariantMessage(NeverWritten|NegativeControl)$$' \
+		> build/rust-deprecated-message/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/rust-deprecated-message/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/rust-deprecated-message/log; then \
+		echo "tables-rust-deprecated-message-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/rust-deprecated-message/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestRustDeprecatedVariantMessageNeverWritten ' build/rust-deprecated-message/log || \
+		{ echo "tables-rust-deprecated-message-write: TestRustDeprecatedVariantMessageNeverWritten did not run to a PASS"; tail -20 build/rust-deprecated-message/log; exit 1; }
+	@grep -q -- '--- PASS: TestRustDeprecatedVariantMessageNegativeControl ' build/rust-deprecated-message/log || \
+		{ echo "tables-rust-deprecated-message-write: TestRustDeprecatedVariantMessageNegativeControl did not run to a PASS"; tail -20 build/rust-deprecated-message/log; exit 1; }
+	@grep 'negative control: with the' build/rust-deprecated-message/log
+	@echo 'tables Rust: the message writer refuses a deprecated variant in a debug build and writes the live ones (§2.15)'
+test-rust: tables-rust-deprecated-message-write
+
 # THE RUST LEG's WRITE-REFUSAL NEGATIVE CONTROLS (docs/SPEC.md §5.1): one
 # check is removed from a copy of the generated crates, the conformance driver
 # is rebuilt against the copy in the dev profile (its own target directory, so

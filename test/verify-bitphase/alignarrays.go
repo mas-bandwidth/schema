@@ -295,6 +295,7 @@ func runFamily(repoRoot, schemaBin, schemaMooBin, workRoot, family, langs string
 		return fmt.Errorf("--family %q is not a case family (the families: %s)", family, AlignArraysFamily)
 	}
 	activeRoster = alignArraysRoster
+	familyRun = true
 	bitphaseSchema = AlignArraysSchema
 	var targets []string
 	switch langs {
@@ -303,7 +304,7 @@ func runFamily(repoRoot, schemaBin, schemaMooBin, workRoot, family, langs string
 	case "all":
 		targets = allLangs
 	default:
-		for _, l := range strings.Split(langs, ",") {
+		for l := range strings.SplitSeq(langs, ",") {
 			targets = append(targets, strings.TrimSpace(l))
 		}
 	}
