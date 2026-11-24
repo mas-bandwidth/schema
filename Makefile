@@ -5404,10 +5404,17 @@ build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-genera
 conformance-cpp-objects: build/tables-generated/.stamp
 	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
+build/conformance-cpp-objs/_main/conformance_driver.o build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+# Compile the driver alongside the generated objects, leaving just the link
+# after the parallel pass. Keep its object distinct from verify-fuzz's object
+# when both recursive builds run from the verify-cpp umbrella.
+build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
+	@$(MAKE) --no-print-directory build/conformance-cpp-objs/_main/conformance_driver.o $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_driver.o \
 		$(CONFORMANCE_OBJECTS) -o $@
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
