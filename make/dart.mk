@@ -714,7 +714,7 @@ tables-dart-generate-into: $(DART_COUNTED_MIN_VARIABLE)
 	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_dart,$(GEN),$(OUT))) & pids="$$pids $$!"; \
 	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart/cards tables/cards & pids="$$pids $$!"; \
 	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart-framing/countedmin $(DART_COUNTED_MIN_VARIABLE) & pids="$$pids $$!"; \
-	for pid in $$pids; do wait $$pid; done
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and

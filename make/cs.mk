@@ -171,7 +171,7 @@ endef
 define tables_generate_cs_parallel
 	@set -e; pids=""; \
 	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_cs,$(1),$(2))) & pids="$$pids $$!"; \
-	for pid in $$pids; do wait $$pid; done
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 endef
 
 # The same list into any root, from any compiler: test/conformance/cs/negative-control
