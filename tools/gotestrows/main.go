@@ -29,7 +29,6 @@
 //   - `subsplit` divides a single parent's children in the same way. Each
 //     child pattern gets a row; its complement keeps future named corpus
 //     seeds, and the package complement excludes the parent altogether.
-//
 //   - a `rides` line names a test that runs in a leg's verify-leg conformance
 //     row, on the native driver that row builds anyway, and in no row here:
 //     every row of its package skips it. -rides-out writes the legs whose

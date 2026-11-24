@@ -18,7 +18,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
-func readRepoFile(t *testing.T, rel string) string {
+func readRepoRel(t *testing.T, rel string) string {
 	t.Helper()
 	testinputs.Files(t, rel)
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(rel)))
@@ -100,8 +100,8 @@ func rustHalvesErrs(t *testing.T, mk, wf string) []string {
 // (rust, conformance) row's driver half together are _verify-rust-fuzz.
 func TestRustFuzzHalvesAreTheWholeGate(t *testing.T) {
 	t.Parallel()
-	mk := readRepoFile(t, "make/verify-compiled.mk")
-	wf := readRepoFile(t, ".github/workflows/ci-fast.yml")
+	mk := readRepoRel(t, "make/verify-compiled.mk")
+	wf := readRepoRel(t, ".github/workflows/ci-fast.yml")
 	if errs := rustHalvesErrs(t, mk, wf); len(errs) > 0 {
 		t.Errorf("the Rust fuzz halves are not the whole gate: %s", strings.Join(errs, "; "))
 	}
@@ -152,9 +152,9 @@ func gooseErrs(t *testing.T, mk, wf string) []string {
 // roster at the full mutant count runs nightly (leg-gates-nightly.yml).
 func TestGooseFuzzPartsAreTheWholeGate(t *testing.T) {
 	t.Parallel()
-	mk := readRepoFile(t, "make/verify-vm.mk")
-	wf := readRepoFile(t, ".github/workflows/ci-fast.yml")
-	nightly := readRepoFile(t, ".github/workflows/leg-gates-nightly.yml")
+	mk := readRepoRel(t, "make/verify-vm.mk")
+	wf := readRepoRel(t, ".github/workflows/ci-fast.yml")
+	nightly := readRepoRel(t, ".github/workflows/leg-gates-nightly.yml")
 	if errs := gooseErrs(t, mk, wf); len(errs) > 0 {
 		t.Errorf("the Goose fuzz parts are not the whole gate: %s", strings.Join(errs, "; "))
 	}
