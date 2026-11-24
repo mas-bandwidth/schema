@@ -1056,6 +1056,39 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+  # TESTGUARD (pilot): fails the run when a test did not really run or pass.
+  # The fast Go packages (test/testguard/fast-packages.txt, each under 15 s) run
+  # with -json; nova-testguard holds that run to test/testguard.tsv: every skip
+  # ledgered, every registered suite non-empty, the corpus x driver and
+  # family x leg tables covered, and every test in test/testguard/baseline
+  # (one empty file per test) still running. go test's own exit is reported and
+  # left to the guard, which names each failure; the guard's exit is the job's.
+  testguard:
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: install nova-testguard (pinned)
+        run: go install github.com/mas-bandwidth/nova-tools/v2/cmd/nova-testguard@cd0031a30f6d483d6d31666bb2162a8ce9b3b9af
+      - name: run the fast packages
+        run: |
+          mkdir -p build
+          if ! go test -json -count=1 $(cat test/testguard/fast-packages.txt) > build/testguard.json; then
+            echo "go test exited nonzero; the guard below names each failure"
+          fi
+      - name: nova-testguard check
+        run: "$(go env GOPATH)/bin/nova-testguard check --config test/testguard.tsv build/testguard.json"
+
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
@@ -2986,7 +3019,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, testguard, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
