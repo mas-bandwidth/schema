@@ -57,7 +57,7 @@ start=$(date +%s)
 # A failed harness is a scored run. Save its status for the row writer.
 status=0
 # shellcheck disable=SC2086 # WFR_ENV and WFR_FLAGS are word lists by design
-env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz ${WFR_FLAGS:-} $retain \
+env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz --leg "$leg" ${WFR_FLAGS:-} $retain \
 	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1 || status=$?
 secs=$(( $(date +%s) - start ))
 # shellcheck disable=SC2086

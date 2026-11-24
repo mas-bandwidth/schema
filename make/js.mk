@@ -1116,7 +1116,7 @@ build/tables-generated-js/cards/.stamp: bin/schema tables/cards/Card.schema tabl
 # vectors out of this Card-only manifest; the greps below hold the nonzero
 # seed/mutant claim, so a zero-coverage roster fails rather than passing.
 cards-js-wire-fuzz: build/conformance-harness cards-js-generate
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --leg cards-js \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-js-wire-fuzz.log 2>&1; \
@@ -1131,7 +1131,7 @@ cards-js-wire-fuzz: build/conformance-harness cards-js-generate
 # JavaScript Card codec's retaining Load and Save are held to the identical
 # byte-for-byte contract the C and C# drivers' retain fuzzers reproduce.
 cards-js-retain-fuzz: build/conformance-harness cards-js-generate
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --leg cards-js \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed 24845619678 --n 100 \
@@ -1156,7 +1156,7 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # the run unseen; it does not depend on SEED or N.
 TABLES_JS_WIRE_FUZZ_ABSENT := 0
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder \
+	@./build/conformance-harness wire-fuzz --leg js --mixed-builder \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
@@ -1166,7 +1166,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
 	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-all.log || { \
 		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
-	@./build/conformance-harness wire-fuzz --mixed-builder --retain \
+	@./build/conformance-harness wire-fuzz --leg js --mixed-builder --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all-retain.log; \
@@ -1185,7 +1185,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 # arm reads the absent pin through the variable, so the pin lives in one place.
 .PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
 tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder \
+	@./build/conformance-harness wire-fuzz --leg js --mixed-builder \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-plain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
@@ -1197,7 +1197,7 @@ tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.
 		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk'; exit 1; }
 
 tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --mixed-builder --retain \
+	@./build/conformance-harness wire-fuzz --leg js --mixed-builder --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-retain.log; \
