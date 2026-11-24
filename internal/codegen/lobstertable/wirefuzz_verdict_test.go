@@ -176,6 +176,41 @@ func lobsterFixtureManifest(t *testing.T, root, units string) string {
 	return p
 }
 
+// lobsterFixtureVectors writes the pinned wire-fuzz vector index's lines for
+// the units generated under units to an index of its own, in a directory that
+// holds no vector file (the harness holds an index to the *.bin beside it),
+// and returns its path. The vectors' files stay where the index names them,
+// relative to the repo root the harness runs in.
+func lobsterFixtureVectors(t *testing.T, root, units string) string {
+	t.Helper()
+	entries, err := os.ReadDir(units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() {
+			keep[e.Name()] = true
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "fuzz-vectors", "INDEX.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	for line := range strings.SplitSeq(string(b), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 4 && !strings.HasPrefix(f[0], "#") && keep[f[1]] {
+			out.WriteString(line + "\n")
+		}
+	}
+	p := filepath.Join(t.TempDir(), "INDEX.txt")
+	if err := os.WriteFile(p, []byte(out.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func lobsterManifestUnits(t *testing.T, root string) map[string][]string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
@@ -271,15 +306,17 @@ func plantGenerated(t *testing.T, path, anchor, repl string) {
 // units and no other: its roster is a fixture manifest of those units' lines
 // (lobsterFixtureManifest), and it names its leg, lobster-fixture, which
 // holds no absent-root ledger, so a root of those units the host does not
-// answer is red by name (docs/SPEC-CONFORMANCE.md W-ROSTER). The pinned
-// vectors are off: they name units the fixture does not hold.
+// answer is red by name (docs/SPEC-CONFORMANCE.md W-ROSTER). Its pinned
+// vectors are the index's lines for those units (lobsterFixtureVectors), so
+// retain_node_flags (tblw1) and region_align_extent_uint128 (widelist) still
+// ride every whole-roster run over the units they name.
 func runLobsterWireFuzz(t *testing.T, root, harness, host, units, mode string, extra []string) (string, error) {
 	t.Helper()
 	leaks := filepath.Join(root, "test", "conformance", "lobster", "wirefuzz-known-leaks.txt")
 	// the leg is named on every run; a replay reads no ledger
 	args := []string{"wire-fuzz", "--leg", "lobster-fixture"}
 	if !slices.Contains(extra, "--replay") {
-		args = append(args, "--manifest", lobsterFixtureManifest(t, root, units), "--vectors", "")
+		args = append(args, "--manifest", lobsterFixtureManifest(t, root, units), "--vectors", lobsterFixtureVectors(t, root, units))
 	}
 	var driver string
 	switch mode {
@@ -398,4 +435,40 @@ func TestLobsterWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: retain plant went red for an unexpected reason:\n%s", out)
 		}
 	})
+}
+
+// TestLobsterFixtureVectorsCarryTheUnitsVectors: the fixture run's pinned
+// vectors are the index's lines for the fixture's units and no others, so
+// retain_node_flags (tblw1) and region_align_extent_uint128 (widelist) ride
+// the verdict pipe's whole-roster runs. Before, the fixture turned the pinned
+// vectors off and both dropped out of this test. No toolchain: it reads the
+// index and writes to the test's own directory.
+func TestLobsterFixtureVectorsCarryTheUnitsVectors(t *testing.T) {
+	root := lobsterRepoRoot(t)
+	units := t.TempDir()
+	for _, u := range []string{"tblw1", "tblg1", "widelist"} {
+		if err := os.Mkdir(filepath.Join(units, u), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := os.ReadFile(lobsterFixtureVectors(t, root, units))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for line := range strings.SplitSeq(string(b), "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		if len(f) < 4 || (f[1] != "tblw1" && f[1] != "tblg1" && f[1] != "widelist") {
+			t.Fatalf("the fixture index carries a line for a unit it does not hold: %q", line)
+		}
+		got[f[0]] = true
+	}
+	for _, v := range []string{"retain_node_flags", "region_align_extent_uint128"} {
+		if !got[v] {
+			t.Errorf("the fixture index drops the pinned vector %s; it carries %v", v, got)
+		}
+	}
 }

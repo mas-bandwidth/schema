@@ -5,11 +5,11 @@
 # 26 seeds over 8 roots. Delete a
 # line in the change that adds its root to the builder driver, and the file with
 # its last line.
-featurewitnesses.ArrayRoot	owed: the Go builder driver has no mutable codec for this root (2 seeds)
-featurewitnesses.Root	owed: the Go builder driver has no mutable codec for this root (11 seeds)
+featurewitnesses.ArrayRoot	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (2 seeds)
+featurewitnesses.Root	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (11 seeds)
 packetunions.ShapeDoc	owed: wire-seed-roots-go (2 seeds)
-shapes.Bounds	owed: the Go builder driver has no mutable codec for this root (4 seeds)
-tblsurf.Chain	owed: the Go builder driver has no mutable codec for this root (2 seeds)
-tblsurf.Counted	owed: the Go builder driver has no mutable codec for this root (1 seeds)
-tblsurf.Holder	owed: the Go builder driver has no mutable codec for this root (2 seeds)
-widelist.Wide	owed: the Go builder driver has no mutable codec for this root (2 seeds)
+shapes.Bounds	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (4 seeds)
+tblsurf.Chain	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (2 seeds)
+tblsurf.Counted	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (1 seeds)
+tblsurf.Holder	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (2 seeds)
+widelist.Wide	owed: wire-seed-roots-go: the Go builder driver has no mutable codec for this root (2 seeds)

@@ -358,3 +358,40 @@ func TestWireFuzzUnitOnlyOnOneUnitLegs(t *testing.T) {
 		t.Fatalf("a one-unit leg run over its unit was refused: %v", err)
 	}
 }
+
+// TestEveryOwedLedgerLineNamesARoadmapCard: a ledger line held as
+// `owed: <card>[: why]` points at work, so the card is a task in
+// docs/roadmap.sexp.
+// Ten legs' ledgers once named wire-seed-roots-<leg> cards that existed
+// nowhere, and an owed root with no card is one nobody is asked to answer.
+func TestEveryOwedLedgerLineNamesARoadmapCard(t *testing.T) {
+	root := conformanceRoot(t)
+	roadmap, err := os.ReadFile(filepath.Join(root, "docs", "roadmap.sexp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgers, err := filepath.Glob(filepath.Join(root, wireAbsentDir, "*.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owed := 0
+	for _, path := range ledgers {
+		held, err := loadAbsentLedger(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for r, why := range held {
+			rest, ok := strings.CutPrefix(why, "owed: ")
+			if !ok {
+				continue
+			}
+			owed++
+			// the card is the first word, before any colon and the reason's prose
+			card := strings.Fields(strings.Replace(rest, ":", " ", 1))
+			if len(card) == 0 || !strings.Contains(string(roadmap), `(:id "`+card[0]+`" :type :task`) {
+				t.Errorf("%s: %s is held as %q, which names no task in docs/roadmap.sexp", filepath.Base(path), r, why)
+			}
+		}
+	}
+	t.Logf("%d owed roots over %d ledgers, each naming a roadmap task", owed, len(ledgers))
+}

@@ -21,7 +21,7 @@
 # and the roots owed. The builder arm counts the seeds outside it. A root that
 # drops out of the leg, or out of both arms, goes red instead of fuzzing less.
 # The registered absent count this replaced (185) was stale: the plain arm
-# left 227 absent on the corpus of 2026-11-24.
+# left 233 absent on the corpus of 2026-11-24.
 #
 # THE OUTSIDE COUNT IS AN EXACT PIN (the grep below matches `, N seeds outside
 # the arm,`): the corpus seeds of the roots the builder arm does not read, the
