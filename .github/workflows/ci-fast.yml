@@ -374,6 +374,7 @@ jobs:
           path_rules='\.go$|(^|/)testdata/|(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/(workflows|actions)/|^(make|tools|bench)/([^/]+/)*[^/.]+$|^(ir/|compiler/|tables/|generated/|go\.mod$|docs/|README\.md$|skills/|examples/|examples128/|bench/corpus/|testdata/|internal/codegen/|internal/check/|internal/parser/|internal/goldens/|internal/docgate/|internal/tablepack/|internal/ci/hostilecorpus/corpus/|test/tables/|test/conformance/|test/packet-[a-z-]+/|test/goldens/|test/guard/.*\.schema$|test/generated-tree/|test/elixir-tables/|eslint\.config\.mjs$|\.clang-format$)|\.schema$'
           no_leg=""
           make_shared=no
+          tool_pkgs=""
           while read -r f; do
             [ -n "$f" ] || continue
             leg_hit=no
@@ -457,6 +458,24 @@ jobs:
                   leg_hit=yes
                 fi ;;
             esac
+            # A TOOL'S OWN FILES (2026-11-24). A file under tools/ that is not
+            # Go, in a directory of a Go package or below one, is that
+            # package's: tools/roadmap's tests run tools/roadmap/test.lisp.
+            # The nearest enclosing directory holding a .go file is selected
+            # (THE PACKAGES); compgen is a builtin, no fork per file.
+            case "$f" in
+              tools/*/*.go) ;;
+              tools/*/*)
+                d=${f%/*}
+                while [ "$d" != tools ]; do
+                  if compgen -G "$d/*.go" >/dev/null; then
+                    case " $tool_pkgs " in *" ./$d "*) ;; *) tool_pkgs="$tool_pkgs ./$d" ;; esac
+                    leg_hit=yes
+                    break
+                  fi
+                  d=${d%/*}
+                done ;;
+            esac
             if [ "$leg_hit" = no ]; then
               no_leg="$no_leg$f"$'\n'
             fi
@@ -508,6 +527,10 @@ jobs:
               case "/$d/" in */testdata/*) continue ;; esac
               m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
               case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
+            done
+            # a tool's non-Go files select its package (A TOOL'S OWN FILES)
+            for p in $tool_pkgs; do
+              case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
             done
             # THE DEPENDENTS. A package whose non-test source changed can break
             # the tests of every package that builds on it, and the diff names
