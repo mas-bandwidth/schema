@@ -16,7 +16,7 @@
 
 #
 # THE SPLIT IS REGISTERED. The roots the plain arm leaves absent are the exact
-# set in test/conformance/wire-absent/squirrel-fixed.tsv (make/wire-absent.mk,
+# set in test/conformance/wire-absent/squirrel-plain.tsv (test/conformance/harness/wirefuzz_absent.go,
 # W-ROSTER), each with its reason: the variable roots the builder arm fuzzes,
 # and the roots owed. The builder arm counts the seeds outside it. A root that
 # drops out of the leg, or out of both arms, goes red instead of fuzzing less.
@@ -36,9 +36,9 @@ SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 315
 .PHONY: tables-squirrel-wire-fuzz
 tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" $(call WIRE_ABSENT,squirrel-fixed) --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin > build/wire-fuzz/squirrel-plain.log 2>&1; \
+	./build/conformance-harness wire-fuzz --leg squirrel --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel.bin > build/wire-fuzz/squirrel-plain.log 2>&1; \
 		status=$$?; cat build/wire-fuzz/squirrel-plain.log; test $$status -eq 0
-	./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin > build/wire-fuzz/squirrel-builder.log 2>&1; \
+	./build/conformance-harness wire-fuzz --leg squirrel --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed 1 --n 2000 --failed build/wire-fuzz/failed-squirrel-builder.bin > build/wire-fuzz/squirrel-builder.log 2>&1; \
 		status=$$?; cat build/wire-fuzz/squirrel-builder.log; test $$status -eq 0
 	@grep -qE ', $(SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS) seeds outside the arm,' build/wire-fuzz/squirrel-builder.log || { \
 		echo "tables-squirrel-wire-fuzz: the builder arm's outside seed count is not the $(SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS) registered: $$(grep -oE '[0-9]+ seeds outside the arm' build/wire-fuzz/squirrel-builder.log || echo none outside)"; exit 1; }
