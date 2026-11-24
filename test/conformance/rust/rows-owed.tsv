@@ -1,26 +1,27 @@
 # Conformance rows the rust leg owes: every row file under test/conformance/rust/rows/ runs
 # (tools/conformancerows), and these still fail. Exact set: a failing row not named
 # here is red, and a row named here that passes is red until its line goes.
-# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
-# written against an older generated API; "fails" is a row that runs and is red.
-C10	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-C3	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
-C4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-C7	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-C8	owed: does not build: error[E0609]: no field `oor` on type `tabledemo::TableFixedReport`
-E6	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-E9	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedReport`
-P4	owed: does not build: error[E0061]: this function takes 6 arguments but 5 arguments were supplied
-R14	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedReport`
-R24	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-R26	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport`
-R3	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport`
-UnionArraysValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
-UnsignedIntegersValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
-VD_signed_128	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-W12	owed: fails: thread 'hash_is_fnv1a64_over_the_block_count_included' panicked at test/conformance/rust/rows/W12.rs:84:9: assertion `left == right` failed: PaddedRow: the layout hash is not fnv1a64 over th...
-W13	owed: fails: thread 'cell_hash_is_the_cpp_reference' panicked at test/conformance/rust/rows/W13.rs:156:5: assertion `left == right` failed: Cell hash: rust 0x210ba0ea336b070f, C++ reference 0x70cc58293ab...
-W2	owed: does not build: error[E0609]: no field `oor` on type `tblp3::TableFixedReport`
-W4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-W7	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
+# Each line is <row> TAB owed: <cause> [TAB <note>]: the cause is exactly what the run
+# prints for the row (a mismatch is red), and the note is a person's, never compared.
+# Measured at this PR's head (5c89252 and the round-2 fixes) on vision, 2026-11-24, with CONFORMANCE_ROWS_MEASURED.
+C10	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/C10.rs:97:23
+C3	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport` at test/conformance/rust/rows/C3.rs:46:23
+C4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/C4.rs:194:50
+C7	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/C7.rs:115:18
+C8	owed: does not build: error[E0609]: no field `oor` on type `tabledemo::TableFixedReport` at test/conformance/rust/rows/C8.rs:65:22
+E6	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/E6.rs:268:63
+E9	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedReport` at test/conformance/rust/rows/E9.rs:27:15
+P4	owed: does not build: error[E0061]: this function takes 6 arguments but 5 arguments were supplied at test/conformance/rust/rows/P4.rs:94:5
+R14	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedReport` at test/conformance/rust/rows/R14.rs:146:23
+R24	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/R24.rs:281:16
+R26	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/R26.rs:144:23
+R3	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/R3.rs:155:24
+UnionArraysValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport` at test/conformance/rust/rows/UnionArraysValidData.rs:105:18
+UnsignedIntegersValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport` at test/conformance/rust/rows/UnsignedIntegersValidData.rs:87:16
+VD_signed_128	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/VD_signed_128.rs:302:18
+W12	owed: fails: thread 'hash_is_fnv1a64_over_the_block_count_included' panicked at test/conformance/rust/rows/W12.rs:84:9: assertion `left == right` failed: PaddedRow: the layout hash is not fnv1a64 over the 293 bytes as written, the 4-byte count included
+W13	owed: fails: thread 'cell_hash_is_the_cpp_reference' panicked at test/conformance/rust/rows/W13.rs:156:5: assertion `left == right` failed: Cell hash: rust 0x210ba0ea336b070f, C++ reference 0x70cc58293abe4686
+W2	owed: does not build: error[E0609]: no field `oor` on type `tblp3::TableFixedReport` at test/conformance/rust/rows/W2.rs:71:16
+W4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport` at test/conformance/rust/rows/W4.rs:209:16
+W7	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport` at test/conformance/rust/rows/W7.rs:93:35
 W8	owed: fails: thread 'test_row_w8' panicked at test/conformance/rust/rows/W8.rs:153:10: the reader opens the wrong wire

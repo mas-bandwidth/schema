@@ -20,8 +20,12 @@
 # The Go rows are TestRow functions run by go test (make/go.mk derives their
 # names from the same directory), so Go is not a leg of this file.
 #
-# conformance-rows-<leg> runs every row (ci-fast.yml's conformance-rows job,
-# one per leg, and a prerequisite of test-<leg>, the nightly certify row);
+# conformance-rows-<leg> runs every row: ci-full.yml's nightly
+# conformance-rows job runs it once per leg, and it is a prerequisite of
+# test-<leg>, the nightly certify row. No per-PR job runs it: each leg took
+# 80-203 s on a loaded bench, past the per-PR two minutes, and a leg comes
+# back per-PR only once it fits in 60 s on a CI runner
+# (internal/ci/conformance_rows_nightly_test.go holds this).
 # CONFORMANCE_ROWS_SHARD=i/n runs shard i of n (every n-th row by name), for a
 # person splitting a run by hand.
 
@@ -45,7 +49,7 @@ CONFORMANCE_ROWS_DEPS_cpp    := build/tables-generated/.stamp
 CONFORMANCE_ROWS_ENV_cpp      = CXX="$(CXX)" SERIALIZE="$(SERIALIZE)"
 CONFORMANCE_ROWS_DEPS_cs     := toolchain-cs sibling-cs build/tables-generated-cs/.stamp
 CONFORMANCE_ROWS_ENV_cs       = DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))"
-CONFORMANCE_ROWS_DEPS_dart   := toolchain-dart build/tables-generated-dart/.stamp build/dart-fixed/.stamp build/fixedform-corpus/.stamp
+CONFORMANCE_ROWS_DEPS_dart   := toolchain-dart build/tables-generated-dart/.stamp build/dart-fixed/.stamp build/hb-dart/.stamp build/fixedform-corpus/.stamp
 CONFORMANCE_ROWS_ENV_dart     = DART="$(DART)"
 CONFORMANCE_ROWS_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build/elixir-fixedform/.stamp
 CONFORMANCE_ROWS_ENV_elixir   = ELIXIR='$(ELIXIR)'
@@ -65,17 +69,6 @@ verify-$(1)-rows: conformance-rows-$(1)
 test-$(1): conformance-rows-$(1)
 endef
 $(foreach leg,$(CONFORMANCE_ROWS_LEGS),$(eval $(call conformance_rows_rule,$(leg))))
-
-# ci-fast.yml's conformance-rows-elixir job takes the generated corpus
-# compiled strictly by lang-clean's agreement shards (make/elixir.mk
-# build-conformance-elixir-from-shards verifies each shard's identity and
-# compiles the driver) instead of compiling it again, and runs the rows on it
-# with -o build/elixir-tables-ebin/.stamp.
-.PHONY: conformance-rows-elixir-ebin-from-shards
-conformance-rows-elixir-ebin-from-shards: build-conformance-elixir-from-shards
-	rm -rf build/elixir-tables-ebin
-	cp -R $(ELIXIR_HANDOFF_EBIN) build/elixir-tables-ebin
-	touch build/elixir-tables-ebin/.stamp
 
 # The standard appendix's small executable witnesses use separate fast CI
 # rows so their toolchain compiles do not extend the conformance jobs.

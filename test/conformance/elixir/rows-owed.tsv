@@ -1,10 +1,11 @@
 # Conformance rows the elixir leg owes: every row file under test/conformance/elixir/rows/ runs
 # (tools/conformancerows), and these still fail. Exact set: a failing row not named
 # here is red, and a row named here that passes is red until its line goes.
-# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
-# written against an older generated API; "fails" is a row that runs and is red.
+# Each line is <row> TAB owed: <cause> [TAB <note>]: the cause is exactly what the run
+# prints for the row (a mismatch is red), and the note is a person's, never compared.
+# Measured at this PR's head (5c89252 and the round-2 fixes) on vision, 2026-11-24, with CONFORMANCE_ROWS_MEASURED.
 BoolValuesValidData	owed: fails: FAILED: hostile 0x7F: weapon_config_fixed_load returned {:error, :wire_damaged, %{unknown: 0, widened: 0, layout_hash: 0, retain_lost: 0, retained: 0}}
 P3	owed: fails: FAIL: mutant 1 lead 13: escaping ** (CaseClauseError) no case clause matching: :not_a_cook
-R16	owed: fails: ** (RuntimeError) FAIL: bin/schema generate --lang elixir --out build/tmp-r16/unknown_census/new build/tmp-r16/unknown_census/lock/pair.schema exited 1: build/t...
-W12	owed: fails: FAIL W12 2 Elixir.Tabledemo.KeyedFixed.gunner_config: hash 0xD79E087C3613C2FD != fnv1a64(<<count=3::little-32>> ++ entries) — the 4-byte count is NOT in the h...
+R16	owed: fails: ** (RuntimeError) FAIL: bin/schema generate --lang elixir --out build/tmp-r16/unknown_census/new build/tmp-r16/unknown_census/lock/pair.schema exited 1: build/tmp-r16/unknown_census/lock/schema.lock: fixed table Census: the lock records lineage=0xaaf40418c140d177 over 2 lineage lines that roll up to 0x3ee503188605e158 — the roll-up is one hash over every layout this table has shipped, in order, ...
+W12	owed: fails: FAIL W12 2 Elixir.Tabledemo.KeyedFixed.gunner_config: hash 0xD79E087C3613C2FD != fnv1a64(<<count=3::little-32>> ++ entries) — the 4-byte count is NOT in the hash
 W5	owed: fails: FAIL count within bounds writes successfully

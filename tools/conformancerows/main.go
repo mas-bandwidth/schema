@@ -22,9 +22,8 @@
 // generated trees and toolchains come from make (make/conformance-rows.mk),
 // which passes them in the environment.
 //
-// -shard i/n runs the rows of shard i (every n-th row, sorted by name) so a
-// leg's rows fit the per-commit budget across parallel CI jobs; every row is
-// in exactly one shard.
+// -shard i/n runs the rows of shard i (every n-th row, sorted by name), for
+// a person splitting a run by hand; every row is in exactly one shard.
 package main
 
 import (
@@ -64,15 +63,16 @@ type recipe struct {
 	prepare func(c *ctx, rows []string) error
 	// row builds and runs one row; the error is the row's failure.
 	row func(c *ctx, row string) error
-	// canFail, on a scripted leg, reports whether a row's source has a way
-	// to fail; a row that passes without one is red (failpath.go).
+	// canFail, on every leg but Rust (whose test binary must run a test),
+	// reports whether a row's source has a way to fail; a row that passes
+	// without one is red (failpath.go).
 	canFail func(src string) bool
 }
 
 var recipes = map[string]recipe{
-	"c":      {ext: ".c", env: []string{"CC", "SERIALIZE_C"}, row: rowC},
-	"cpp":    {ext: ".cpp", env: []string{"CXX", "SERIALIZE"}, row: rowCpp},
-	"cs":     {ext: "", env: []string{"DOTNET", "SERIALIZE_CS"}, row: rowCs},
+	"c":      {ext: ".c", env: []string{"CC", "SERIALIZE_C"}, row: rowC, canFail: canFailNative},
+	"cpp":    {ext: ".cpp", env: []string{"CXX", "SERIALIZE"}, row: rowCpp, canFail: canFailNative},
+	"cs":     {ext: "", env: []string{"DOTNET", "SERIALIZE_CS"}, row: rowCs, canFail: canFailCs},
 	"dart":   {ext: ".dart", env: []string{"DART"}, row: rowDart, canFail: canFailDart},
 	"elixir": {ext: ".exs", env: []string{"ELIXIR"}, row: rowElixir, canFail: canFailElixir},
 	"java":   {ext: ".java", env: []string{"JAVA", "JAVAC"}, prepare: prepareJava, row: rowJava, canFail: canFailJava},
@@ -144,9 +144,9 @@ func run(root, leg, shard string, jobs int, measured string) error {
 		return fmt.Errorf("%s holds no row file: a leg with no rows has no rows target", c.rowsDir)
 	}
 	ledgerPath := filepath.Join("test", "conformance", leg, "rows-owed.tsv")
-	var ledger map[string]string
+	var ledger, notes map[string]string
 	if data, rerr := os.ReadFile(filepath.Join(abs, ledgerPath)); rerr == nil {
-		if ledger, err = parseLedger(bytes.NewReader(data), ledgerPath); err != nil {
+		if ledger, notes, err = parseLedger(bytes.NewReader(data), ledgerPath); err != nil {
 			return err
 		}
 	} else if !errors.Is(rerr, fs.ErrNotExist) {
@@ -239,23 +239,32 @@ func run(root, leg, shard string, jobs int, measured string) error {
 		var b strings.Builder
 		for _, row := range ran {
 			if failed[row] {
-				fmt.Fprintf(&b, "%s\towed: %s\n", row, causes[row])
+				fmt.Fprintf(&b, "%s\towed: %s", row, causes[row])
+				if n := notes[row]; n != "" {
+					fmt.Fprintf(&b, "\t%s", n)
+				}
+				b.WriteByte('\n')
 			}
 		}
 		if err := os.WriteFile(measured, []byte(b.String()), 0o644); err != nil {
 			return err
 		}
 	}
-	verr := verdict(all, ran, failed, ledger, ledgerPath)
+	var msg []string
 	if len(refused) > 0 {
 		sort.Strings(refused)
-		msg := fmt.Sprintf("%s: %d ledger lines name no failure:\n  %s", ledgerPath, len(refused), strings.Join(refused, "\n  "))
-		if verr != nil {
-			msg += "\n" + verr.Error()
-		}
-		return errors.New(msg)
+		msg = append(msg, fmt.Sprintf("%s: %d ledger lines name no failure:\n  %s", ledgerPath, len(refused), strings.Join(refused, "\n  ")))
 	}
-	return verr
+	if mis := causeMismatches(ran, failed, ledger, causes, ledgerPath); len(mis) > 0 {
+		msg = append(msg, fmt.Sprintf("%d owed rows failed with a cause their ledger line does not state (the row's failure changed: read its log, and set the line to what the run printed):\n  %s", len(mis), strings.Join(mis, "\n  ")))
+	}
+	if verr := verdict(all, ran, failed, ledger, ledgerPath); verr != nil {
+		msg = append(msg, verr.Error())
+	}
+	if len(msg) > 0 {
+		return errors.New(strings.Join(msg, "\n"))
+	}
+	return nil
 }
 
 func parseShard(s string) (int, int, error) {

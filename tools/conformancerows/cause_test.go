@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // Each case is a row's log in the shape its toolchain writes, and the cause
@@ -31,6 +32,11 @@ func TestCauseReadsWhatTheRowSaid(t *testing.T) {
 			want: "does not build: build/r19/probe.dart:12:9: Error: The getter 'kindMismatch' isn't defined for the type 'TableFixedReport'.",
 		},
 		{
+			name: "rust compile error, located by its --> line",
+			log:  "does not build:\nerror[E0609]: no field `oor` on type `TableFixedReport`\n  --> /r/test/conformance/rust/rows/C3.rs:41:17\n   |\n41 |     assert_eq!(rep.oor, 0);\n   |                    ^^^ unknown field\n",
+			want: "does not build: error[E0609]: no field `oor` on type `TableFixedReport` at test/conformance/rust/rows/C3.rs:41:17",
+		},
+		{
 			name: "java source-file compile error, not its summary",
 			log:  "test/conformance/java/rows/R29.java:44: error: package tblfx1 does not exist\n        byte[] body = new byte[tblfx1.FxRootFixed.bodyBytes];\n                                     ^\n1 error\nerror: compilation failed\n",
 			want: "does not build: test/conformance/java/rows/R29.java:44: error: package tblfx1 does not exist",
@@ -48,7 +54,7 @@ func TestCauseReadsWhatTheRowSaid(t *testing.T) {
 		{
 			name: "rust compile error over its gutter",
 			log:  "error[E0609]: no field `oor` on type `TableFixedReport`\n  --> test/conformance/rust/rows/C3.rs:10:5\n   |\n10 |     r.oor\n   |       ^^^\n",
-			want: "does not build: error[E0609]: no field `oor` on type `TableFixedReport`",
+			want: "does not build: error[E0609]: no field `oor` on type `TableFixedReport` at test/conformance/rust/rows/C3.rs:10:5",
 		},
 		{
 			name: "elixir case clause completed by its value",
@@ -143,6 +149,46 @@ func TestARowThatCannotFailIsCaught(t *testing.T) {
 			t.Errorf("%s reads as a row that can fail", name)
 		}
 	}
+	// C, C++ and C#: the planted rows that always pass are caught, and the
+	// usual ways a row fails are seen.
+	plantC := "#include <stdio.h>\n// return 1 in a comment\nint main(void) {\n    puts(\"PASS: planted\");\n    return 0;\n}\n"
+	plantCs := "using System;\n// Environment.Exit(1) in a comment\nclass P { static int Main() { Console.WriteLine(\"PASS: planted\"); return 0; } }\n"
+	if canFailNative(plantC) {
+		t.Error("a C row that always returns 0 reads as a row that can fail")
+	}
+	if canFailCs(plantCs) {
+		t.Error("a C# row that always returns 0 reads as a row that can fail")
+	}
+	if canFailCs("Console.WriteLine(\"PASS\");\nreturn 0;\n") {
+		t.Error("a C# top-level row that returns 0 reads as a row that can fail")
+	}
+	if canFailNative("static int helper(void) { return 7; }\nint main(void) { helper(); return 0; }\n") {
+		t.Error("a C helper's return reads as main's failure path")
+	}
+	for name, ok := range map[string]bool{
+		"c main returns failures":  canFailNative("int main(void) {\n  int failures = 0;\n  if (x) { failures++; }\n  return failures ? 1 : 0;\n}\n"),
+		"c exit(1)":                canFailNative("int main(void) { if (bad) exit(1); return 0; }"),
+		"c abort":                  canFailNative("static void check(int ok) { if (!ok) abort(); }\nint main(void) { check(1); return 0; }"),
+		"c assert":                 canFailNative("int main(void) { assert(n == 3); return 0; }"),
+		"c EXIT_FAILURE":           canFailNative("int main(int argc, char** argv) { return bad ? EXIT_FAILURE : EXIT_SUCCESS; }"),
+		"cpp throw":                canFailNative("int main() { if (bad) throw std::runtime_error(\"x\"); return 0; }"),
+		"cs Main returns 1":        canFailCs("static int Main(string[] args) { if (bad) { return 1; } return 0; }"),
+		"cs Environment.Exit(1)":   canFailCs("static void Main() { if (bad) Environment.Exit(1); }"),
+		"cs throw":                 canFailCs("static void Main() { if (bad) throw new Exception(\"x\"); }"),
+		"cs Debug.Assert":          canFailCs("static void Main() { Debug.Assert(n == 3); }"),
+		"cs top-level return fail": canFailCs("var f = Run();\nreturn f == 0 ? 0 : 1;\n"),
+	} {
+		if !ok {
+			t.Errorf("%s reads as a row that cannot fail", name)
+		}
+	}
+	// Every leg's recipe checks for a failure path, but Rust's, whose runner
+	// refuses a test binary that ran no test.
+	for leg, rc := range recipes {
+		if leg != "rust" && rc.canFail == nil {
+			t.Errorf("the %s recipe does not check that a passing row can fail", leg)
+		}
+	}
 	if !strings.Contains(canFailNote, "checks nothing") {
 		t.Fatal("the no-failure-path cause must say the row checks nothing")
 	}
@@ -173,7 +219,7 @@ func TestEveryCommittedLedgerLineNamesAFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ledger, err := parseLedger(strings.NewReader(string(data)), path)
+		ledger, _, err := parseLedger(strings.NewReader(string(data)), path)
 		if err != nil {
 			t.Error(err)
 			continue
@@ -184,5 +230,20 @@ func TestEveryCommittedLedgerLineNamesAFailure(t *testing.T) {
 				t.Errorf("%s: %v", path, err)
 			}
 		}
+	}
+}
+
+// A long cause is cut at maxCause on a character boundary: a cut inside a
+// multi-byte quote (gcc's ‘ ’) would write invalid UTF-8 into the ledger.
+func TestCauseIsCutOnACharacterBoundary(t *testing.T) {
+	// 16 bytes of prefix, then 9-byte units: byte 400 of the cause falls
+	// inside a closing quote
+	msg := "x.c:1:1: error: " + strings.Repeat("‘ab’ ", 200)
+	got := cause("/r", "", msg)
+	if !utf8.ValidString(got) {
+		t.Fatalf("the cut cause is not valid UTF-8: %q", got)
+	}
+	if !strings.HasSuffix(got, "...") || len(got) > len("does not build: ")+maxCause+3 {
+		t.Fatalf("the cause was not cut at %d bytes: %d bytes", maxCause, len(got))
 	}
 }

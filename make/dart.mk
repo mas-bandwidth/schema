@@ -838,6 +838,14 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
+# HB, the unit test/conformance/dart/rows/C12.dart imports
+# (build/hb-dart/HBFixed.dart): make/conformance-rows.mk builds it for the
+# Dart rows.
+build/hb-dart/.stamp: bin/schema test/tables/HB.schema make/dart.mk
+	@rm -rf build/hb-dart
+	./bin/schema generate --lang dart --out build/hb-dart test/tables/HB.schema
+	@touch $@
+
 .PHONY: tables-dart-fixed-form
 tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart

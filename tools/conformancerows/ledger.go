@@ -12,20 +12,28 @@ import (
 // each, the row files of that leg's rows directory the leg cannot answer
 // today, and why:
 //
-//	<row><TAB><why>
+//	<row><TAB>owed: <cause>[<TAB><note>]
 //
 // `#` starts a comment line. <row> is the row file's name without its
-// extension (for C#, the row's directory name). The ledger is matched as an
-// EXACT SET against the rows that fail: a failing row it does not name is
-// red, and a row it names that now passes is red until its line is removed,
-// so the ledger can only shrink by a change that makes a row answer. A line
-// naming a row file that does not exist is red too. A ledger with no line is
-// an error: delete the file when its last row comes off.
+// extension (for C#, the row's directory name). <cause> is the cause the run
+// prints for the row, character for character: the runner compares the two
+// and a mismatch is red, naming the row and both causes, so a ledger line can
+// never describe a failure the row no longer has. <note>, optional, is what a
+// person adds (whether the leg or the row is wrong, and the spec line); the
+// runner keeps it and never compares it.
+//
+// The ledger is matched as an EXACT SET against the rows that fail: a failing
+// row it does not name is red, and a row it names that now passes is red
+// until its line is removed, so the ledger can only shrink by a change that
+// makes a row answer. A line naming a row file that does not exist is red
+// too. A ledger with no line is an error: delete the file when its last row
+// comes off.
 
-// parseLedger reads one ledger. A malformed line, a line with no reason, a
-// duplicate, or a ledger naming no row is an error.
-func parseLedger(r io.Reader, path string) (map[string]string, error) {
-	held := map[string]string{}
+// parseLedger reads one ledger: each row's cause column, and the notes. A
+// malformed line, a line with no cause, an empty note, a duplicate, or a
+// ledger naming no row is an error.
+func parseLedger(r io.Reader, path string) (causes, notes map[string]string, err error) {
+	causes, notes = map[string]string{}, map[string]string{}
 	sc := bufio.NewScanner(r)
 	line := 0
 	for sc.Scan() {
@@ -34,23 +42,51 @@ func parseLedger(r io.Reader, path string) (map[string]string, error) {
 		if strings.TrimSpace(text) == "" || strings.HasPrefix(text, "#") {
 			continue
 		}
-		row, why, ok := strings.Cut(text, "\t")
-		row, why = strings.TrimSpace(row), strings.TrimSpace(why)
-		if !ok || why == "" || row == "" || strings.ContainsAny(row, " \t/") {
-			return nil, fmt.Errorf("%s:%d: want `<row><TAB><why>`, got %q", path, line, text)
+		fields := strings.Split(text, "\t")
+		row := strings.TrimSpace(fields[0])
+		why, note := "", ""
+		if len(fields) > 1 {
+			why = strings.TrimSpace(fields[1])
 		}
-		if _, dup := held[row]; dup {
-			return nil, fmt.Errorf("%s:%d: %s is listed twice", path, line, row)
+		if len(fields) > 2 {
+			note = strings.TrimSpace(fields[2])
 		}
-		held[row] = why
+		if len(fields) < 2 || len(fields) > 3 || why == "" || (len(fields) == 3 && note == "") || row == "" || strings.ContainsAny(row, " /") {
+			return nil, nil, fmt.Errorf("%s:%d: want `<row><TAB>owed: <cause>[<TAB><note>]`, got %q", path, line, text)
+		}
+		if _, dup := causes[row]; dup {
+			return nil, nil, fmt.Errorf("%s:%d: %s is listed twice", path, line, row)
+		}
+		causes[row] = why
+		if note != "" {
+			notes[row] = note
+		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if len(held) == 0 {
-		return nil, fmt.Errorf("%s holds no row: delete the file", path)
+	if len(causes) == 0 {
+		return nil, nil, fmt.Errorf("%s holds no row: delete the file", path)
 	}
-	return held, nil
+	return causes, notes, nil
+}
+
+// causeMismatches compares each owed row that ran and failed with the cause
+// its ledger line states: the line must be `owed: ` and the cause the run
+// printed, exactly. Each mismatch names the row and both causes.
+func causeMismatches(ran []string, failed map[string]bool, ledger, causes map[string]string, ledgerPath string) []string {
+	var out []string
+	for _, r := range ran {
+		held, owed := ledger[r]
+		if !owed || !failed[r] {
+			continue
+		}
+		if want := "owed: " + causes[r]; held != want {
+			out = append(out, fmt.Sprintf("%s: %s says %q, the run printed %q", r, ledgerPath, held, want))
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // verdict holds the rows that ran against the ledger. all is every row file

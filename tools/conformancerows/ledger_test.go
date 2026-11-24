@@ -9,24 +9,58 @@ import (
 )
 
 func TestParseLedger(t *testing.T) {
-	held, err := parseLedger(strings.NewReader("# why\n\nF4\towed: x\nR8\towed: y\n"), "l.tsv")
+	held, notes, err := parseLedger(strings.NewReader("# why\n\nF4\towed: x\nR8\towed: y\tthe row is out of date: SPEC-TABLES.md:8576\n"), "l.tsv")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(held) != 2 || held["R8"] != "owed: y" {
+	if len(held) != 2 || held["R8"] != "owed: y" || held["F4"] != "owed: x" {
 		t.Fatalf("got %v", held)
 	}
+	if len(notes) != 1 || notes["R8"] != "the row is out of date: SPEC-TABLES.md:8576" {
+		t.Fatalf("notes = %v", notes)
+	}
 	for _, bad := range []string{
-		"F4\n",            // no reason
-		"F4\t \n",         // empty reason
-		"F4\ta\nF4\tb\n",  // duplicate
-		"# nothing\n",     // empty ledger
-		"rows/F4\towed\n", // a path, not a row name
-		"F 4\towed\n",     // space in the name
+		"F4\n",                // no reason
+		"F4\t \n",             // empty reason
+		"F4\ta\nF4\tb\n",      // duplicate
+		"# nothing\n",         // empty ledger
+		"rows/F4\towed\n",     // a path, not a row name
+		"F 4\towed\n",         // space in the name
+		"F4\towed: x\t\n",     // an empty note
+		"F4\towed: x\tn\tm\n", // a fourth column
 	} {
-		if _, err := parseLedger(strings.NewReader(bad), "l.tsv"); err == nil {
+		if _, _, err := parseLedger(strings.NewReader(bad), "l.tsv"); err == nil {
 			t.Errorf("ledger %q parsed", bad)
 		}
+	}
+}
+
+// An owed row's ledger line states the cause the run printed, exactly. The
+// reversed witness: a line whose cause the row no longer prints is red, and
+// the message names the row and both causes.
+func TestOwedCauseMustMatchThePrintedCause(t *testing.T) {
+	ran := []string{"A", "B", "C"}
+	failed := map[string]bool{"A": true, "B": true}
+	causes := map[string]string{"A": "fails: FAIL x", "B": "does not build: B.c:3:1: error: y"}
+	ledger := map[string]string{"A": "owed: fails: FAIL x", "B": "owed: does not build: B.c:3:1: error: y"}
+	if mis := causeMismatches(ran, failed, ledger, causes, "l.tsv"); len(mis) != 0 {
+		t.Fatalf("the matching ledger is red: %v", mis)
+	}
+	// Reversed: B's failure moved on (a new first error), its line did not.
+	stale := map[string]string{"A": "owed: fails: FAIL x", "B": "owed: does not build: B.c:1:1: error: #error locale_t needs POSIX.1-2008"}
+	mis := causeMismatches(ran, failed, stale, causes, "l.tsv")
+	if len(mis) != 1 || !strings.Contains(mis[0], "B: l.tsv says") ||
+		!strings.Contains(mis[0], `"owed: does not build: B.c:1:1: error: #error locale_t needs POSIX.1-2008"`) ||
+		!strings.Contains(mis[0], `"owed: does not build: B.c:3:1: error: y"`) {
+		t.Fatalf("a stale cause was not named with both causes: %v", mis)
+	}
+	// A line without the `owed: ` prefix is a mismatch too.
+	if mis := causeMismatches(ran, failed, map[string]string{"A": "fails: FAIL x", "B": ledger["B"]}, causes, "l.tsv"); len(mis) != 1 || !strings.HasPrefix(mis[0], "A: ") {
+		t.Fatalf("an unprefixed line passed: %v", mis)
+	}
+	// Rows that passed or are not owed are the exact set's business, not this.
+	if mis := causeMismatches(ran, map[string]bool{"A": true}, map[string]string{"A": "owed: fails: FAIL x", "C": "owed: anything"}, causes, "l.tsv"); len(mis) != 0 {
+		t.Fatalf("a row that did not fail was compared: %v", mis)
 	}
 }
 

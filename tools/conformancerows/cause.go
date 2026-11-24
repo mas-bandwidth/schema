@@ -5,7 +5,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
+
+// maxCause is the longest cause a ledger line carries, in bytes.
+const maxCause = 400
 
 // WHAT FAILED. An owed line names the failure itself: the compiler's error
 // with its location, the exception's type and message, or the failed
@@ -52,6 +56,9 @@ var (
 	threadIDRe = regexp.MustCompile(`thread '([^']*)' \(\d+\) panicked`)
 	// a stack frame that locates a crash
 	frameRe = regexp.MustCompile(`^\s*(at |#\d+\s)`)
+	// rustc's error header, and the location line under it
+	rustErrRe = regexp.MustCompile(`^error\[E\d+\]`)
+	rustLocRe = regexp.MustCompile(`^\s*--> (\S+)`)
 )
 
 // isBanner reports whether a (trimmed) line is only a banner.
@@ -175,11 +182,27 @@ func cause(root, src, log string) string {
 			}
 		}
 	}
+	// rustc puts the location on the ` --> file:line:col` line under its
+	// error, so a Rust error is located by it.
+	if rustErrRe.MatchString(pick) {
+		for j := at + 1; j < len(lines) && j <= at+3; j++ {
+			if m := rustLocRe.FindStringSubmatch(lines[j]); m != nil {
+				pick += " at " + m[1]
+				break
+			}
+		}
+	}
 	// a run's own numbers (a Rust thread id) are not part of the cause
 	pick = threadIDRe.ReplaceAllString(pick, "thread '$1' panicked")
 	pick = strings.Join(strings.Fields(pick), " ")
-	if len(pick) > 200 {
-		pick = pick[:200] + "..."
+	// long enough for a message that follows a command line (elixir R16);
+	// cut on a character boundary, never inside one
+	if len(pick) > maxCause {
+		cut := maxCause
+		for cut > 0 && !utf8.RuneStart(pick[cut]) {
+			cut--
+		}
+		pick = pick[:cut] + "..."
 	}
 	return kind + ": " + pick
 }

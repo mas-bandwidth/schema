@@ -174,7 +174,13 @@ func rowC(c *ctx, row string) error {
 	if err != nil {
 		return err
 	}
-	flags := []string{"-std=c11", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off"}
+	// _POSIX_C_SOURCE: a generated table unit that formats floats uses
+	// locale_t, which glibc declares only under POSIX.1-2008, and the unit
+	// says so with an #error unless the translation unit defines it before
+	// its first #include (internal/codegen/ctable). The generated sources
+	// define it at their top; a row is a translation unit of its own that
+	// includes the header, so the recipe defines it for every row.
+	flags := []string{"-std=c11", "-D_POSIX_C_SOURCE=200809L", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off"}
 	extra := []string{"-I" + runtime, "-I" + filepath.Join(c.root, "test/conformance/c")}
 	return c.rowNative(row, ".c", cRoots, strings.Fields(cc), flags, extra, []string{"-lm"})
 }
@@ -623,7 +629,11 @@ var rustPassedRe = regexp.MustCompile(`test result: ok\. (\d+) passed`)
 func rowRust(c *ctx, row string) error {
 	c.resetLog(row)
 	exe := c.exe[row]
-	cmd := exec.Command(exe)
+	// One test thread: the tests of a row run in name order, so the first
+	// failure, and with it the cause the ledger states, is the same on every
+	// run (with threads, W13's two failing tests raced for first). The rows
+	// themselves still run in parallel.
+	cmd := exec.Command(exe, "--test-threads=1")
 	cmd.Dir = c.root
 	var out bytes.Buffer
 	cmd.Stdout = &out
