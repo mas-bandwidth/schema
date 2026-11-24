@@ -54,7 +54,7 @@ func TestWriteRefusalPacketGooseSurface(t *testing.T) {
 	runWriteRefusalPacketGoose(t)
 }
 
-// runWriteRefusalPacketGoose generates PacketWriteRefusal.schema for Goose,
+// runWriteRefusalPacketGoose generates RefusalPacket.schema for Goose,
 // runs the probe beside the generated files with the pinned compiler, and
 // holds its verdicts against rows.txt. Behind slowtest.Gate (gooserun.Command
 // gates too): it compiles and runs Goose. No row is exempt: every value the

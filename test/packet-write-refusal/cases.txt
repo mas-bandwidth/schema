@@ -8,10 +8,13 @@
 # scalar:   int32 | min = 0, max = 10     narrow: bits(7)      grade: enum of 3
 # window:   [2..8]uint32 (WindowCount)     text:   string(8)    shot: union of 2 arms
 # fixed_constant: int32 = 5, only 5       reserved_zero: int32 = 0, only 0
+# perks: flags Perk of 3 variants, so W = 3 (uint64 storage)
 #
 # scalar_high: 11   scalar_low: -1   bits_wide: 200   enum_high: ordinal 4
 # union_tag_high: tag 3   count_high: 9   count_low: 1   text_long: length 9
 # text_illformed: byte ff   text_zero: byte 00   const_wrong: 6   reserved_wrong: 1
+# flags_wide: mask 1 << 3   flags_wide_high: mask 1 << 40, a bit a 32-bit cast
+# drops, so the writer's own check is the only guard   flags_at_max: mask 7
 scalar_high | refused
 scalar_low | refused
 scalar_at_max | wrote
@@ -34,3 +37,6 @@ const_wrong | refused
 const_at | wrote
 reserved_wrong | refused
 reserved_at | wrote
+flags_wide | refused
+flags_wide_high | refused
+flags_at_max | wrote

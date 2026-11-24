@@ -7,6 +7,15 @@ enum Grade
     Gold
 }
 
+// three variants, so the wire width W is 3 bits: a mask bit at or above W
+// cannot ride (SPEC.md §5.1 row 9)
+flags Perk
+{
+    Shield
+    Boost
+    Cloak
+}
+
 type Laser
 {
     power uint32
@@ -33,6 +42,7 @@ type PacketWriteRefusal
     shot           Shot
     fixed_constant int32 = 5 | min = 5, max = 5
     reserved_zero  int32 = 0 | min = 0, max = 0
+    perks          Perk
     const(0xAB, 8)
     reserved(5)
 }

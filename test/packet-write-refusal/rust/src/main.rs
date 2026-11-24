@@ -6,7 +6,8 @@
 // so that row is named not-representable, by case; a case neither run nor so
 // named fails.
 use packetwriterefusal::{
-    Grade, Laser, Missile, PacketWriteRefusal, Shot, read_packet_write_refusal, write_packet_write_refusal,
+    Grade, Laser, Missile, PERK_BOOST, PERK_CLOAK, PERK_SHIELD, PacketWriteRefusal, Shot, read_packet_write_refusal,
+    write_packet_write_refusal,
 };
 use serialize::{ReadStream, WriteStream};
 use std::panic;
@@ -59,6 +60,9 @@ fn build(name: &str) -> Option<(PacketWriteRefusal, &'static str)> {
         "const_at" => { v.fixed_constant = 5; "fixed_constant" }
         "reserved_wrong" => { v.reserved_zero = 1; "reserved_zero" }
         "reserved_at" => { v.reserved_zero = 0; "reserved_zero" }
+        "flags_wide" => { v.perks = 1 << 3; "perks" }
+        "flags_wide_high" => { v.perks = 1 << 40; "perks" }
+        "flags_at_max" => { v.perks = PERK_SHIELD | PERK_BOOST | PERK_CLOAK; "perks" }
         _ => return None,
     };
     let _ = Laser::default();
@@ -78,7 +82,7 @@ fn write_read(value: &PacketWriteRefusal) -> Result<(), String> {
     read_packet_write_refusal(&mut reader, &mut decoded).map_err(|e| format!("read back: {e:?}"))?;
     if decoded.scalar != value.scalar || decoded.narrow != value.narrow || decoded.grade != value.grade
         || decoded.window_count != value.window_count || decoded.text_length != value.text_length
-        || decoded.shot != value.shot
+        || decoded.shot != value.shot || decoded.perks != value.perks
     {
         return Err("read back a different value".into());
     }

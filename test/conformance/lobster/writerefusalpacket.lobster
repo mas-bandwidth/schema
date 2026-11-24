@@ -8,7 +8,7 @@
 // write returned, and writerefusalpacket_test.go reads a refusal off the exit
 // status and the VM's own line, which names the generated file. The probe's
 // own failures name this file, never the generated one.
-import .PacketWriteRefusal
+import .RefusalPacket
 import .serialize
 import .schema_runtime
 
@@ -61,6 +61,8 @@ elif op == "fixed_constant":
     v.FixedConstant = int_arg()
 elif op == "reserved_zero":
     v.ReservedZero = int_arg()
+elif op == "perks":
+    v.Perks = int_arg()
 else:
     print("probe: unknown op " + op)
     assert false

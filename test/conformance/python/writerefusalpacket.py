@@ -33,6 +33,8 @@ def apply(v, op, arg):
         v.fixed_constant = int(arg)
     elif op == "reserved_zero":
         v.reserved_zero = int(arg)
+    elif op == "perks":
+        v.perks = int(arg)
     else:
         raise SystemExit("unknown op " + op)
 
@@ -47,8 +49,15 @@ with open(sys.argv[1], encoding="utf-8") as rows:
         apply(value, op, arg)
         try:
             data = value.write()
-        except InvalidValue:
-            print(name, "refused")
+        except InvalidValue as refusal:
+            # A flags row is refused by the generated range check, which names
+            # the field. The runtime's serialize_bits refuses the same mask
+            # with its own message, so an InvalidValue alone would stay green
+            # with the generated check deleted.
+            if op == "perks" and ".perks:" not in str(refusal):
+                print(name, "refused by the runtime, not the generated flags check:", refusal)
+            else:
+                print(name, "refused")
         else:
             if not isinstance(data, bytes) or len(data) > 256:
                 raise SystemExit(name + ": write returned " + repr(data))
