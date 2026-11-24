@@ -588,9 +588,9 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
 	g.pf("\tretain.reset();\n")
 	g.pf("\tfinal v = %s();\n", n)
-	// EVERY COUNT IS ZERO AT THE START OF A READ, the retaining read too (docs/SPEC-TABLES.md
-	// §6.5; FL-02), as the plain load and Go zero theirs: unknown, widened and the
-	// retain counters never add up across calls.
+	// EVERY READ ZEROES A SUPPLIED REPORT AS ITS FIRST ACT, the retain family
+	// included (docs/SPEC-TABLES.md §6.5): as the plain WireLoad and Go's
+	// LoadRetain do, no counter of an earlier read survives into this one.
 	g.pf("\treport.unknown = 0;\n\treport.widened = 0;\n\treport.retained = 0;\n\treport.retainLost = 0;\n")
 	g.pf("\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
 	g.emitIntegrityRead(st, "report", "v")
