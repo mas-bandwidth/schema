@@ -1279,6 +1279,8 @@ writeScalar = function(T, d, val, depth, g, out) {
       return true;
     }
     case "flags": {
+      // a flags value's array is a container too (docs/SPEC-TABLES.md §16.14 W2)
+      if (depth > MAX_DEPTH) return false;
       local bits = val;
       if (bits == 0) { out.append("[]"); return true; }
       local names = has(d, "flagNames") ? d.flagNames : [];
