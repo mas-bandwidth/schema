@@ -6434,13 +6434,35 @@ class _ByteSource {
     }
   }
 
-  Future<Uint8List> read(int n) async {
+  Future<void> _fill(int n) async {
     while (_q.length < n && !_done) {
       final c = Completer<void>();
       _waiters.add(c);
       await c.future;
     }
+  }
+
+  // EXACTLY n bytes. The stream ending first is a truncated frame, never a
+  // short one: a body cut at EOF must not reach the codec as if it were whole
+  // (test/conformance/harness/wireeof.go).
+  Future<Uint8List> read(int n) async {
+    await _fill(n);
+    if (_q.length < n) {
+      throw StateError('the stream ended inside a frame: $n bytes wanted, ${_q.length} left');
+    }
     return _q.take(n);
+  }
+
+  // The next mutant's index, or null when the harness closed the stream
+  // between frames. One to three index bytes at EOF are a truncated frame and
+  // throw: only a stream that ends on a frame boundary is a clean close.
+  Future<int?> readIndex() async {
+    await _fill(4);
+    if (_q.length == 0) {
+      return null;
+    }
+    final b = await read(4);
+    return ByteData.sublistView(b).getUint32(0, Endian.little);
   }
 }
 
@@ -6918,11 +6940,10 @@ Future<void> wireFuzz() async {
   stdout.add(available);
   await stdout.flush();
   while (true) {
-    final idxBytes = await src.read(4);
-    if (idxBytes.length < 4) {
-      break; // the harness closed the stream
+    final index = await src.readIndex();
+    if (index == null) {
+      break; // the harness closed the stream between frames
     }
-    final index = ByteData.sublistView(idxBytes).getUint32(0, Endian.little);
     final size = ByteData.sublistView(await src.read(4)).getUint32(0, Endian.little);
     final wire = await src.read(size);
     final message = messages[index];

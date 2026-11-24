@@ -1947,7 +1947,7 @@
     {
       "name": "dart-conformance-2-c",
       "when": "pull-request",
-      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-wire-fuzz-negative-control 42 s.",
+      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on vision (a shared 64-thread bench, three threads reserved, load average about 210), 2026-11-24: tables-dart-wire-fuzz-negative-control 163 s, dart-chunk-queue-negative-control 20 s. The 42 s this row used to give was the wire control failing to build: its generate lists missed units main.dart imports (countedmin, prior, shapes, surfaces and others), so the driver never compiled; test/conformance/dart/negative-control now links those from build/conformance-dart.",
       "targets": [
         "tables-dart-wire-fuzz-negative-control",
         "dart-chunk-queue-negative-control"
