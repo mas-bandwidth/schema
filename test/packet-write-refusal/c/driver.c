@@ -47,6 +47,9 @@ static void set_const_wrong( value_t * v ) { v->fixed_constant = 6; }
 static void set_const_at( value_t * v ) { v->fixed_constant = 5; }
 static void set_reserved_wrong( value_t * v ) { v->reserved_zero = 1; }
 static void set_reserved_at( value_t * v ) { v->reserved_zero = 0; }
+static void set_flags_wide( value_t * v ) { v->perks = 1ULL << 3; }
+static void set_flags_wide_high( value_t * v ) { v->perks = 1ULL << 40; }
+static void set_flags_at_max( value_t * v ) { v->perks = PACKETWRITEREFUSAL_PERK_SHIELD | PACKETWRITEREFUSAL_PERK_BOOST | PACKETWRITEREFUSAL_PERK_CLOAK; }
 
 static const struct
 {
@@ -64,6 +67,8 @@ static const struct
     { "text_zero", set_text_zero }, { "text_at_max", set_text_at_max },
     { "const_wrong", set_const_wrong }, { "const_at", set_const_at },
     { "reserved_wrong", set_reserved_wrong }, { "reserved_at", set_reserved_at },
+    { "flags_wide", set_flags_wide }, { "flags_wide_high", set_flags_wide_high },
+    { "flags_at_max", set_flags_at_max },
 };
 #define SETTER_COUNT ( (int) ( sizeof( setters ) / sizeof( setters[0] ) ) )
 
@@ -98,7 +103,8 @@ static int run_case( int setter )
     if ( decoded.scalar != value.scalar || decoded.narrow != value.narrow || decoded.grade != value.grade
          || decoded.window_count != value.window_count || decoded.text_length != value.text_length
          || memcmp( decoded.text, value.text, (size_t) value.text_length ) != 0 || decoded.shot.type != value.shot.type
-         || decoded.fixed_constant != value.fixed_constant || decoded.reserved_zero != value.reserved_zero ) { return 12; }
+         || decoded.fixed_constant != value.fixed_constant || decoded.reserved_zero != value.reserved_zero
+         || decoded.perks != value.perks ) { return 12; }
     /* the read ends at the byte boundary the final-padding check consumes */
     if ( serialize_read_bits_processed( &reader ) != (serialize_int64_t) ( ( serialize_write_bits_processed( &writer ) + 7 ) / 8 ) * 8 ) { return 13; }
     return 0;

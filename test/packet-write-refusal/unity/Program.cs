@@ -55,6 +55,9 @@ internal static class Program
         { "const_at", (ref PacketWriteRefusal v) => v.FixedConstant = 5 },
         { "reserved_wrong", (ref PacketWriteRefusal v) => v.ReservedZero = 1 },
         { "reserved_at", (ref PacketWriteRefusal v) => v.ReservedZero = 0 },
+        { "flags_wide", (ref PacketWriteRefusal v) => v.Perks = (Perk)(1ul << 3) },
+        { "flags_wide_high", (ref PacketWriteRefusal v) => v.Perks = (Perk)(1ul << 40) },
+        { "flags_at_max", (ref PacketWriteRefusal v) => v.Perks = Perk.Shield | Perk.Boost | Perk.Cloak },
     };
 
     private static int Main(string[] args)

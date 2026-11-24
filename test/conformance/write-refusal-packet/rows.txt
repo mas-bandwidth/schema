@@ -1,6 +1,6 @@
 # write-refusal-packet rows (docs/SPEC.md §5.1; test/conformance/README.md).
 # One row per line: <name> <verdict> <op> <arg>. The packet type is
-# PacketWriteRefusal (PacketWriteRefusal.schema): the probe makes a fresh,
+# PacketWriteRefusal (RefusalPacket.schema): the probe makes a fresh,
 # otherwise lawful value, applies ONE op, runs the generated packet Write into a
 # 256-byte buffer, and prints "<name> refused" or "<name> wrote" per row.
 # "refused" is the leg's own refusal mechanism (an error, a nil/false, a raise,
@@ -19,6 +19,10 @@
 #   text_fill <n>       the string holds n bytes of 'a' and length n
 #   fixed_constant <n>  the field `fixed_constant` (only 5 is lawful)
 #   reserved_zero <n>   the field `reserved_zero` (only 0 is lawful)
+#   perks <n>           the flags field `perks` (flags Perk, 3 variants, so W = 3;
+#                       uint64 storage): a mask bit at or above W is refused
+#                       (SPEC.md §5.1 row 9); bit 40 is one a 32-bit narrowing
+#                       would drop, so only the writer's own check can stop it
 scalar_high            refused scalar 11
 scalar_low             refused scalar -1
 scalar_at_max          wrote   scalar 10
@@ -42,3 +46,6 @@ const_wrong            refused fixed_constant 6
 const_at               wrote   fixed_constant 5
 reserved_wrong         refused reserved_zero 1
 reserved_at            wrote   reserved_zero 0
+flags_wide             refused perks 8
+flags_wide_high        refused perks 1099511627776
+flags_at_max           wrote   perks 7

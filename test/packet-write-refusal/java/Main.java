@@ -54,6 +54,9 @@ public final class Main {
             case "const_at" -> v.fixedConstant = 5;
             case "reserved_wrong" -> v.reservedZero = 1;
             case "reserved_at" -> v.reservedZero = 0;
+            case "flags_wide" -> v.perks = 1L << 3;
+            case "flags_wide_high" -> v.perks = 1L << 40;
+            case "flags_at_max" -> v.perks = 7;
             default -> {
                 return false;
             }
@@ -105,7 +108,8 @@ public final class Main {
             }
         }
         for (String known : new String[] {"scalar_high", "bits_wide", "enum_high", "union_tag_high", "count_high",
-                "text_long", "text_illformed", "text_zero", "const_wrong", "reserved_wrong"}) {
+                "text_long", "text_illformed", "text_zero", "const_wrong", "reserved_wrong", "flags_wide",
+                "flags_wide_high"}) {
             if (!listed.contains(known)) {
                 fail(known + ": missing from cases.txt");
             }

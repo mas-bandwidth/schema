@@ -5,7 +5,7 @@
 # the packet writer raises (SPEC 5.1 "how a refusal surfaces"); any other
 # exception is not caught, so a crash or a typo can never pass as a refusal.
 defmodule WriteRefusalPacketProbe do
-  alias Packetrefusal.{Laser, Missile, PacketWriteRefusal, PacketWriteRefusalFile}
+  alias Packetrefusal.{Laser, Missile, PacketWriteRefusal, RefusalPacket}
 
   def apply_op("scalar", n, v), do: %{v | scalar: String.to_integer(n)}
   def apply_op("narrow", n, v), do: %{v | narrow: String.to_integer(n)}
@@ -31,10 +31,11 @@ defmodule WriteRefusalPacketProbe do
   def apply_op("text_fill", n, v), do: %{v | text: String.duplicate("a", String.to_integer(n))}
   def apply_op("fixed_constant", n, v), do: %{v | fixed_constant: String.to_integer(n)}
   def apply_op("reserved_zero", n, v), do: %{v | reserved_zero: String.to_integer(n)}
+  def apply_op("perks", n, v), do: %{v | perks: String.to_integer(n)}
 
   def verdict(value) do
     try do
-      PacketWriteRefusalFile.write_packet_write_refusal!(value)
+      RefusalPacket.write_packet_write_refusal!(value)
       "wrote"
     rescue
       ArgumentError -> "refused"

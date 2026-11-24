@@ -22,6 +22,7 @@ def apply(value, op, arg)
   when "text_fill" then value.text = "a" * Integer(arg)
   when "fixed_constant" then value.fixed_constant = Integer(arg)
   when "reserved_zero" then value.reserved_zero = Integer(arg)
+  when "perks" then value.perks = Integer(arg)
   else raise ArgumentError, "unknown op #{op}"
   end
 end
@@ -37,7 +38,15 @@ File.readlines(ARGV.fetch(0), chomp: true).each do |line|
     bytes = value.write
     raise "#{name}: write returned #{bytes.class}, not a String" unless bytes.is_a?(String)
     puts "#{name} wrote"
-  rescue Packetrefusal::InvalidValue
-    puts "#{name} refused"
+  rescue Packetrefusal::InvalidValue => e
+    # A flags row is refused by the generated range check, which names the
+    # field. The runtime's serialize_bits refuses the same mask with its own
+    # message, so an InvalidValue alone would stay green with the generated
+    # check deleted.
+    if op == "perks" && !e.message.include?(".perks:")
+      puts "#{name} refused by the runtime, not the generated flags check: #{e.message}"
+    else
+      puts "#{name} refused"
+    end
   end
 end

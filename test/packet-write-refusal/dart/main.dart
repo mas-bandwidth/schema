@@ -51,6 +51,9 @@ final Map<String, Setter> setters = {
   'const_at': (v) => v.fixedConstant = 5,
   'reserved_wrong': (v) => v.reservedZero = 1,
   'reserved_at': (v) => v.reservedZero = 0,
+  'flags_wide': (v) => v.perks = 1 << 3,
+  'flags_wide_high': (v) => v.perks = 1 << 40,
+  'flags_at_max': (v) => v.perks = perkShield | perkBoost | perkCloak,
 };
 
 // Cases the leg cannot build. Dart's enum and union tag are extension types

@@ -8,7 +8,7 @@
 -- and prints a FAILED line, so a crash can never pass as a refusal. The moo
 -- CLI has no io: the test hands rows.txt in as inputs.rows.
 local serialize = require("./serialize")
-local P = require("./PacketWriteRefusal")
+local P = require("./RefusalPacket")
 local inputs = require("./inputs") :: any
 
 -- fromHex is the bytes a hex argument spells, as a moo string.
@@ -42,6 +42,8 @@ local function apply(v: any, op: string, arg: string)
 		v.FixedConstant = n
 	elseif op == "reserved_zero" then
 		v.ReservedZero = n
+	elseif op == "perks" then
+		v.Perks = n
 	else
 		error("write-refusal-packet moo: unknown op " .. op)
 	end
