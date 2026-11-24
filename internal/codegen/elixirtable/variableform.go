@@ -3737,7 +3737,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           else: {term, true}
 
       parent = Enum.find(desc.fields, &(&1.name == name))
-      parent != nil and Map.get(value, name, parent.default) == want
+      parent != nil and record_value(value, parent) == want
     end)
   end
 
@@ -3752,11 +3752,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # EVERY field it writes to its declaration, required or not, and every
   # union arm payload and array element with it, before a byte is built.
   defp validate_record(desc, value) do
-    value = Map.merge(defaults(desc), value)
-
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
-        v = Map.get(value, f.name, f.default)
+        v = record_value(value, f)
         if Map.get(f, :text_list, false), do: validate_text_list(f, v)
         write_value(f, v)
       end
@@ -3994,20 +3992,30 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # member's own defaults, as the reference's prefill does, so every body takes
   # one shape whether the wire named its fields or not.
   defp defaults(desc) do
-    Map.new(desc.fields, fn f ->
-      value =
-        case f do
-          %{optional: true} -> Map.get(f, :default)
-          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
-          %{t: :list, fixed_array: n} -> List.duplicate(json_element_default(f), n)
-          %{t: :list, min_count: m} when m > 0 -> List.duplicate(json_element_default(f), m)
-          %{t: :keyed} -> keyed_defaults(f)
-          _ -> Map.get(f, :default)
-        end
-
-      {f.name, value}
-    end)
+    Map.new(desc.fields, fn f -> {f.name, field_default(f)} end)
   end
+
+  # Record values are normally dense after a load. Do not build and merge a
+  # complete defaults map merely to validate those callers; construct a
+  # declared default only when a sparse caller actually omits that field.
+  defp record_value(value, %{name: name} = f) do
+    case value do
+      %{^name => present} -> present
+      _ -> field_default(f)
+    end
+  end
+
+  defp field_default(%{optional: true} = f), do: Map.get(f, :default)
+  defp field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
+
+  defp field_default(%{t: :list, fixed_array: n} = f),
+    do: List.duplicate(json_element_default(f), n)
+
+  defp field_default(%{t: :list, min_count: m} = f) when m > 0,
+    do: List.duplicate(json_element_default(f), m)
+
+  defp field_default(%{t: :keyed} = f), do: keyed_defaults(f)
+  defp field_default(f), do: Map.get(f, :default)
 
   defp keyed_defaults(f) do
     def_val =
