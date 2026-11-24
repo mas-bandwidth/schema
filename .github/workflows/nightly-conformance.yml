@@ -253,6 +253,12 @@ jobs:
 
       - name: the C++ original-nine readiness gate
         if: ${{ !cancelled() }}
+        env:
+          # the case-folding scratch every Linux fleet runner mounts (nova-fleet
+          # github-runners, casefold.yml): internal/tablepack runs its
+          # folding-volume tests there, and the gate sets
+          # SCHEMA_REQUIRE_CASEFOLD, so a runner without it fails them by name
+          SCHEMA_CASEFOLD_DIR: /srv/casefold/scratch
         run: |
           set -uo pipefail
           # the runner's own Dart, where it has one; make/dart.mk's dist path otherwise
