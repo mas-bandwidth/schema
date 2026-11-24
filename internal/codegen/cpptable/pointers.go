@@ -1775,8 +1775,12 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 	// THE PLAIN NAME IS THE STRICT READ; THE STRICT READ HAS A NAME OF ITS
 	// OWN (docs/SPEC-TABLES.md §6.5). The full decode runs under the STRICT
 	// name; the plain name is a thin wrapper that refuses whatever the strict
-	// read refuses. The retain family is outside the rule (§6.6) and keeps
-	// only its strict name.
+	// read refuses. The retain family keeps only its strict name, LoadRetain.
+	// It is NOT outside §6.5's report rule, which names the retain family:
+	// LoadRetain zeroes the supplied report in full as its first act, exactly
+	// as the plain Load does, so the damaged_before and non_finite_before
+	// below are this call's own state, never the caller's. Only SaveRetain
+	// accumulates, onto the report LoadRetain left (§6.6).
 	loadName := verb
 	if !g.retain {
 		loadName = "LoadWalk"
@@ -1796,6 +1800,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		n, n, loadName, g.retainLoadParam())
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
+	if g.retain {
+		g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
+	}
 	g.pf("    const int32_t non_finite_before = out->non_finite_floats;\n")
 	g.pf("    const bool damaged_before = out->damaged;\n")
 	g.pf("    out->damaged = false;\n")

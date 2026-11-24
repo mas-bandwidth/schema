@@ -62,7 +62,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-python-resource-bounds.yml` | fast | `bounds-python` | 25 s (run 44980674960) |
 | `schema-ruby-resource-bounds.yml` | fast | `bounds-ruby` | 19 s (run 44981451380) |
 | `schema-squirrel-resource-bounds.yml` | fast | `bounds-squirrel` | fast half 9 s; whole campaign 14 s nightly (run 44988950875) |
-| `ruby-leg.yml` | fast | `strict-ruby`, `hostile-ruby`, `bounds-ruby` | the strict gate's fast form, below; `verify-leg` (ruby) runs the leg's conformance, bench and fuzz rows. test-ruby itself now runs nightly without the silent fallback |
+| `ruby-leg.yml` | fast | `strict-ruby` (six rows: `strict-ruby`, `strict-ruby-2` to `strict-ruby-6`), `hostile-ruby`, `bounds-ruby` | the strict gate's fast form, below; `verify-leg` (ruby) runs the leg's conformance, bench and fuzz rows. test-ruby itself now runs nightly without the silent fallback |
 | `certify.yml` | covered | `go-test-touched`, `verify-leg`, `lang-lint`, `lang-clean`, `block-gate`, `generated-current`, `nightly-fast` | the release certificate: the whole suite at one SHA, Linux and macOS. Only the night sees macOS and the full matrix at once |
 | `schema-dart-generated-strict-analyze-gate.yml` | fast | `strict-dart-all` | `lang-lint` (dart) runs the packet trees (11 s); the whole-corpus `-all` half is 69 s (run 44998125720) |
 | `schema-go-generated-golangci-lint-gate.yml` | covered | `lang-lint` | the packet-corpus ratchet runs per Go diff; the table-corpus `-nightly` half (95 s job, run 44980872816) is too close to the cap and stays nightly |
@@ -92,16 +92,47 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 
 ## The strict Ruby gate's fast form
 
-`make schema-ruby-generated-strict-gate-fast` (row `strict-ruby`) runs over the
-same 57 generated units as the nightly gate:
+`make schema-ruby-generated-strict-gate-fast` (rows `strict-ruby` to `strict-ruby-6`)
+runs over the same 64 generated units as the nightly gate:
 
 - each unit loads under `ruby -w` on both pins with an empty stderr;
-- **one** RuboCop process lints every unit;
+- RuboCop (`--parallel`, its result cache on) lints every unit;
 - the RuboCop and `ruby -w` planted controls run with it.
+
+The run is cut into six parts, `RUBY_STRICT_SHARD=i/6`. The generated Ruby is
+about 14 MB, and RuboCop over all of it is about 125 s of CPU on one core even
+after the two fixes below (937 s before them), more than a push job's whole
+budget. Part i lints
+the i-th of six disjoint, size-balanced parts of the file set and loads every
+sixth unit under `ruby -w`. `internal/ci` holds the rows to all six parts and
+the split to a cover with no file lost or doubled
+(`TestRubyStrictShardRows`, `TestRubyStrictShardSplit`), and holds the whole set
+to its pins in every part (`TestRubyStrictFastGuard`: units, files, the cops
+`rubocop.yml` turns off, no Exclude, NewCops on).
+
+Two costs were removed from the generated text, not from the checks. RuboCop
+walks every element of an array once for each hash in it
+(`Style/HashAsLastArrayItem`), so the fixed-form data's arrays of thousands of
+field hashes took 41 s on one file; those arrays are now written as arrays of at
+most 32 elements joined by `+`. And RuboCop indexes a source String by
+character, which is linear in the offset once the file holds any non-ASCII
+character, so the one em dash in the generated header made
+`Layout/SpaceAroundOperators` take 19 s on a 1 MB file (0.3 s without it); the
+lint reads a copy whose comment-only lines are ASCII (`rubyLintCopy`), and a
+line of code is never touched.
+
+The lint copy is kept in the user cache under a hash of its bytes
+(`rubyStrictFastLintTree`), because RuboCop's result cache is keyed by absolute
+path: an unchanged part is answered from the cache (35-37 s the whole run, from
+74-93 s cold, with the host at load 160-210), and a changed byte is a new
+directory and a cold lint.
 
 Every unit carries the same runtime under its own module name, so a runtime file
 whose text equals one already queued, once the module name is swapped, is linted
 once.
 
-On amd-2 with four cores it takes 40 s. The whole nightly gate takes 296 s.
+Measured on hetzner1 pinned to four cores (`taskset -c 0-3`) at a host load of
+160 to 210, `go test` of the heaviest parts: part 3 cold 74 s, warm 35 s; part 6
+cold 93 s, warm 37 s; the run before this change was killed at its 100 s cap.
+The whole nightly gate takes 296 s.
 RBS validation and Steep strict mode stay nightly.

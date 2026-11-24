@@ -2251,6 +2251,9 @@ end
 
 -- the report's reset: every counter at rest, no reason, no field
 local function reset(report: any)
+	-- every read zeroes the report in full (§6.5): the retention counters too
+	report.retained = 0
+	report.retainLost = 0
 	report.malformed = false
 	report.refused = 0
 	report.unknown = 0

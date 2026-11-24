@@ -1075,18 +1075,22 @@ fn main() {
 
 func shiftCGuard(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	replaced := false
-	for name, data := range files {
-		s := string(data)
-		if strings.Contains(s, "skip_depth>128") || strings.Contains(s, "depth>128") {
-			s = strings.ReplaceAll(s, "skip_depth>128", "skip_depth>256")
-			s = strings.ReplaceAll(s, "depth>128", "depth>256")
-			files[name] = []byte(s)
-			replaced = true
+	// The three depth guards, each moved from 128 to 256: the message form's
+	// two skip walks (a body, and an entry: a union arm or a walked element)
+	// and the table wire's skip. The generated C is laid out by cfmt, so each
+	// guard is matched by its C tokens with enough of its function around it
+	// to name it, and each must occur exactly once (cPlantOnce).
+	for _, guard := range [][2]string{
+		{"int table_message_skip_body( TableMessageReader * r ) { uint8_t seen[kTableMessageSeenRefs / 8]; /* one bit a vocabulary reference */ if ( r->skip_depth > 128 ) return 0;",
+			"int table_message_skip_body( TableMessageReader * r ) { uint8_t seen[kTableMessageSeenRefs / 8]; if ( r->skip_depth > 256 ) return 0;"},
+		{"int saved, ok; if ( r->skip_depth > 128 ) return 0; switch ( e->kind )",
+			"int saved, ok; if ( r->skip_depth > 256 ) return 0; switch ( e->kind )"},
+		{"int64_t nodes, int depth ) { uint64_t n; if ( depth > 128 ) { return 0; }",
+			"int64_t nodes, int depth ) { uint64_t n; if ( depth > 256 ) { return 0; }"},
+	} {
+		if err := cPlantOnce(files, guard[0], guard[1]); err != nil {
+			t.Fatalf("expected generated C files to contain each depth guard once: %v", err)
 		}
-	}
-	if !replaced {
-		t.Fatalf("expected generated C files to contain skip_depth>128")
 	}
 }
 

@@ -410,11 +410,18 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
     end
   elseif s == "table" or s == "pointer" then
     if val == false then return nil end
+    -- A RECORD IS A TABLE (docs/SPEC.md §5.1, docs/SPEC-CONFORMANCE.md
+    -- DW-TABLE-SHAPE): a number, a string or a boolean where a record, a
+    -- pointer's node or an arm's record belongs is refused by name; the
+    -- writers index it, and the runtime would raise
+    if type(val) ~= "table" then return where end
     local desc = T.Tables[d.target]
-    if desc ~= nil and type(val) == "table" then return invalid_in(T, desc, val, seen, zero_ok) end
+    if desc ~= nil then return invalid_in(T, desc, val, seen, zero_ok) end
   elseif s == "union" then
     local u = T.Unions[d.target]
-    if u == nil or type(val) ~= "table" then return nil end
+    if u == nil then return nil end
+    -- a union value is a table holding its tag: anything else is refused
+    if type(val) ~= "table" then return where end
     local tag = val.tag or 0
     if math.type(tag) ~= "integer" or tag < 0 or tag > #u.arms then return where end
     local arm = u.arms[tag]
@@ -443,7 +450,10 @@ end
 -- is the text writer's: a zero byte in text is written as \u0000.
 function D.refuse_invalid(T, name, v, zero_ok)
   local desc = T.Tables[name]
-  if desc == nil or type(v) ~= "table" then return nil end
+  if desc == nil then return nil end
+  -- THE WHOLE VALUE IS A RECORD (DW-TABLE-SHAPE): nil, a number, a string or
+  -- a boolean handed to any writer as the root's value is refused by name
+  if type(v) ~= "table" then return "invalid_value: " .. name .. " is not a table" end
   local hit = invalid_in(T, desc, v, {}, zero_ok)
   if hit == nil then return nil end
   return "invalid_value: " .. hit
