@@ -884,6 +884,10 @@ R.FixedClassRefusal = "fixed_class_root: LoadRetain, MeasureRetain and SaveRetai
 -- the int32 storage cap; a nil store is the plain strict read. THE REPORT
 -- ACCUMULATES ACROSS THE PAIR: zero it once, read it after SaveRetain.
 function R.LoadRetain(root: string, bytes: buffer, report: any, store: any): any
+	-- the first act zeroes the caller's report in full, as the plain read
+	-- does, so the fixed-class refusal leaves nothing a previous read put
+	-- there (§6.5); SaveRetain then adds to it (§6.6)
+	L.resetReport(report)
 	local d = S.lookup(root)
 	if d.fixed then
 		report.reason = R.FixedClassRefusal

@@ -1,3 +1,5 @@
+import sys
+sys.dont_write_bytecode = True  # never write a __pycache__ into the tree
 import contextlib
 import importlib.machinery
 import importlib.util
@@ -502,8 +504,10 @@ class Contracts(unittest.TestCase):
         self.assertFalse(targets-set(blocks),sorted(targets-set(blocks)))
         self.assertEqual(m.WIRE_CONTROLS["cs"],
                          "tables-cs-pack-negative-control tables-cs-retain-negative-control")
-        outer={name for name in targets if any(m.re.search(r"\bgo test\b|test/slowgate/proof",line)
-                                                for line in blocks[name])}
+        def outer_calls(name):
+            return sum(1 for line in blocks[name]
+                       if not line.lstrip().startswith("#") and m.re.search(r"\bgo test\b|test/slowgate/proof",line))
+        outer={name for name in targets if outer_calls(name)}
         # Goose's gates run go test in their own recipes; the readiness run
         # executes them through goose_uncapped_makefile, which uncaps each.
         goose_outer={name for name in outer if name.startswith("tables-goose-")}
@@ -527,6 +531,11 @@ class Contracts(unittest.TestCase):
                 if m.re.search(r"\bgo test\b",line):
                     self.assertTrue(any(before in line for before in reviewed),
                                     f"{name}: outer go test not uncapped by run_external: {line.strip()}")
+        # The exact count of outer Go calls per C++ target: the readiness run
+        # uncaps exactly three call sites (run_external), so a further call
+        # added to a listed recipe would run capped and must turn this red.
+        self.assertEqual({name:outer_calls(name) for name in cpp_outer},
+                         {"tables-view":1,"tables-fixed-twin":1,"tables-lists":1})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"python")
