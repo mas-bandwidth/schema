@@ -675,3 +675,28 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   ./internal/codegen/gotable ./internal/codegen/pythontable \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
+
+### Every generated C++ table header compiles standalone
+
+A C++ table header carries the `schema_assert` hook whenever it calls
+`schema_assert` for any reason ([SPEC-TABLES §2](SPEC-TABLES.md), the hooks
+table; SPEC.md §5.1): a generated header is the first and only include of a
+translation unit and must compile there. A variable table with a ranged
+`fixed(48, 16)` field and no fixed form, list or storage check once emitted the
+write-contract call without the hook.
+
+```schema
+package rangedfixed
+table Root
+{
+    f fixed(48, 16) | min = -10, max = 10
+    n int64
+}
+```
+
+A new C++ implementation holds the same rule for its own generated table
+headers: every unit the shared corpus names, the manifest `unit` rows and the
+one-check units in `testdata/cpp-standalone`, generates headers that compile
+with `-std=c++17 -fsyntax-only` when included alone.
+`TestEveryGeneratedTableHeaderCompilesStandalone` sweeps that corpus and is red
+on the old generator for `ranged_fixed` and `ranged_bits`.

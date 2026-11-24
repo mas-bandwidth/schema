@@ -2416,7 +2416,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// and every fixed save's at-least-one-record check (§22.6), so a file
 		// that emits the fixed form carries the hook. A unit with nothing to
 		// check gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteCheck(u) || g.storageAsserts || len(g.fixedRoots(members)) > 0) {
+		// A unit that emits any schema_assert call carries the hook, whichever of the
+		// checks above produced it: the header must compile on its own, so the
+		// condition reads the emitted text and cannot drift from the emitters.
+		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteCheck(u) || g.storageAsserts || len(g.fixedRoots(members)) > 0 || strings.Contains(g.body.String(), "schema_assert(")) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {
