@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // pythonNightlyRows checks the actual workflow axes and the command that maps
@@ -88,6 +90,7 @@ func TestPythonNightlyFuzzMatrix(t *testing.T) {
 	if err := os.WriteFile(probe, []byte("python-nightly-target-list:;\n\t@printf '%s\\n' $(PYTHON_WIRE_FUZZ_ROWS)\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	testinputs.Make(t)
 	cmd := exec.Command("make", "-s", "-f", "Makefile", "-f", probe, "python-nightly-target-list")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
