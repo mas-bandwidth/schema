@@ -70,6 +70,41 @@ that count. The reader checks the final five bits as padding. An API that
 reports bits consumed reports **3** after success. The C++ reference
 driver asserts the value and count in [`make packet-end-cpp`](../test/packet-end/cpp/main.cpp).
 
+### Python packet defaults and hosted packet items
+
+[SPEC §4.2](SPEC.md#42-grammar) requires declared string, bytes and flags
+defaults to initialize packet storage. These fields still ride on the wire.
+[SPEC §4.8](SPEC.md#48-unions--union-first-class-one-of-fields) applies the
+construction rule when a packet union arm is selected. The shared
+[packet-defaults pins](../testdata/wire/packet-defaults) `sample-defaults`,
+`sample-empty`, and `choice-sample` hold the bytes and logical bit count.
+`make packet-defaults-python` runs these pins. The public Python compiler
+entry is covered by `TestPythonDriverCarriesPacketValueDefault`.
+
+[SPEC §4.3](SPEC.md#43-field-types-and-their-wire-encodings) also applies
+to `const`, `reserved`, and `align` in packet types in units that declare
+tables. These items occupy packet bits and contribute no table field. The
+[hosted packet probe](../internal/codegen/pythontable/hosted_items_test.go)
+checks this distinction in `TestPythonTableHostedPacketItemsGenerate` and
+`TestPythonTableHostedPacketItems`.
+
+### Declared defaults in table fields
+
+[SPEC §4.2](SPEC.md#42-grammar) places string, bytes and flags defaults
+on fields. A field in an embedded type keeps those defaults when the type
+is used in an array, keyed slot, map value, optional, pointer or union arm.
+SPEC-TABLES §§4 and 22.2 define variable-form elision and reconstruction.
+Section 3.4 defines fixed-record prefill, and §16.2 applies declared defaults
+to absent JSON keys.
+
+The [tables manifest](../testdata/conformance/tables/MANIFEST.txt) registers
+`vd_var_defaults` and `vd_fixed_defaults` for construction values, and
+`vd_var_values` and `vd_fixed_values` for values distinct from their defaults,
+including empty strings, empty bytes, and zero masks. The accepted JSON cases
+`vd-var-omitted` and `vd-fixed-omitted` exercise omitted fields.
+`TestValueDefaultsEveryShape` checks that the registered compiler targets
+generate both roots from [the shared declaration](../test/tables/ValueDefaults.schema).
+
 ## 2. The surfaces
 
 A surface is one question put to every case of the corpus that applies to it.
@@ -301,6 +336,7 @@ per-port check where no shared case exercises it.
 | FL-40 | assert legs check writes in debug builds (SPEC.md §5.1) | the `write-refusal` surfaces |
 | GAP-6 | The checker's refusals are `schema check`'s; a runtime port takes its input as checked (SPEC.md §4.2); gaps Sw2, Zig4 | every corpus unit checks clean (`make check`) |
 | GAP-14 | The `framing` surface reads its fixed root through the declaration's VARIABLE twin; every other read at a fixed root refuses form `1` (SPEC-TABLES §3.4; README); gaps Sw9, OC7, ObjC8, Zig6 | the `framing` battery at `tblr1 Cfg`; `report previous_form_*` |
+| framing-twin-every-fixed-root | the `framing` surface reads EVERY form-`1` vector at ANY declared fixed root through that root's VARIABLE twin, not `tblr1 Cfg` alone: an empty bounded list and a counted array at its `Min` read there, and are `previous_form` at the fixed root itself (SPEC-TABLES §3.4, "The framing battery is no exception"; §2.3; nightly run 45130315968) | `framing twin_listdemo_bounded_empty`, `framing sp_count_min_at`, `framing twin_count_min_at_form1`; Lua `TestLuaFramingReadsEveryFixedRootThroughItsTwin` |
 | GAP-15 | The LADDER is a normative table; never across signedness (FIXED-FORM-ALGORITHM §5); gaps OC9 | `report fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` |
 | GAP-16 | A fixed root's binary read has batch capacity one; older layouts come from the unit's `schema.lock` (README); gaps OC11, ObjC6, Zig16 | `report fixedevo_v3_batch2`; `fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` |
 | GAP-21 | A refused read returns no value when it was handed none, and resets every instance it was handed (SPEC-TABLES §6.5, R4); gaps Sw R4 | FL-03's per-leg rows (docs/fix-ledger-1122.md) |
@@ -509,6 +545,22 @@ requires its variable-form measure and save to complete.
 | Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
 
 Run these cases with `make table-write-bounds-go`.
+
+
+### Packet union arrays in table closures
+
+[The packet union fixture](../test/tables/packetunions/PacketUnions.schema) covers
+arrays of a union whose arms are packet types ([SPEC §4.8](SPEC.md) and
+[SPEC-TABLES §§2.6, 3, 3.3, 3.4 and 16](SPEC-TABLES.md)). The shared manifest
+registers these canonical cases across the variable, fixed, message and text forms.
+
+| Cases | Form and values |
+|---|---|
+| `packetunions_doc_full`, `packetunions_doc_empty` | Form 1 document with a full or empty counted array, together with a fixed array. |
+| `packetunions_msg_full`, `packetunions_msg_one` | Form 3 records with full or single-element counted arrays. Each also has a form 2 pin over `packetunions_conn`. |
+
+The full cases carry a live `None` between selected packet arms. The counted
+array's length includes that element.
 
 ### Declared deprecated enum writers
 
