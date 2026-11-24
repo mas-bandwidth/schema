@@ -2378,7 +2378,7 @@
     {
       "name": "elixir-versioning",
       "when": "pull-request",
-      "why": "the Elixir versioning gate's control: the wrong name for a hash outside the lineage reds TestFixedVersioningOldRefusesNew. One go test -overlay of the elixirtable package against the fixedform corpus. Split out of the old `elixir-versioning` group, whose three controls measured 101 s together on the runner (26 s + 75 s) and ran 117-147 s on the killed CI runs, so the hostile corpus and the fixed-form rebuild no longer ride this row.",
+      "why": "the Elixir versioning gate's control: the wrong name for a hash outside the lineage reds TestFixedVersioningOldRefusesNew. One go test -overlay of the elixirtable package against the fixedform corpus, run on two rows (field_append, union_append): every row is its own `elixir` process that compiles the whole runtime, and the 22 rows that go red under the sabotage took 167 s on a loaded bench (load 25 on 16 cores; 36-88 s on the runner), so the control keeps one scalar and one union row and tables-elixir-versioning still runs them all unsabotaged. Split out of the old `elixir-versioning` group, whose three controls measured 101 s together on the runner (26 s + 75 s) and ran 117-147 s on the killed CI runs, so the hostile corpus and the fixed-form rebuild no longer ride this row.",
       "targets": [
         "tables-elixir-versioning-negative-control"
       ],
