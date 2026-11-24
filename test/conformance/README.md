@@ -189,8 +189,11 @@ moving as they do.
 **Wire-form coverage is separate from storage coverage.** C++, C, C# and the
 independent compiler engine carry the id-table wire (form 1, the variable form) and bitpacked message
 form. C and C# also carry variable regions, builders, retained unknowns and
-canonical cooks. Their pipe drivers compare values, re-saved bytes, measured
-sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
+canonical cooks. Their pipe drivers compare the read verdict with the
+independent engine and, on a mutant both sides read, the re-saved bytes; read
+counters, retention counts and measured sizes are per-language diagnostics and
+are never compared (docs/SPEC-TABLES.md §4.2, docs/rulings.json
+conformance-is-read-then-write). `make tables-c-wire-fuzz` and
 `make tables-c-retain` run C natively and under ASan/UBSan; the corresponding
 C# managed, native, builder and retention targets are in make/cs.mk.
 
