@@ -1879,7 +1879,22 @@ All compile errors with positions:
   its own can reach it (the Dart table libraries spell an enum whose name
   starts lowercase through the import prefix `$enums`, which no schema
   identifier can spell) or names its locals so none can equal one (the Dart
-  `enumName<E>` parameter is `$value` for an enum named `value`).
+  `enumName<E>` parameter is `$value` for an enum named `value`). Where a
+  target has no spelling a schema identifier cannot take, a generator-owned
+  name carries the prefix `schema_`, which the checker refuses on every
+  declaration (the Go descriptor closures' parameter `schema_v`, the Java
+  `enumName<E>` parameter `schema_value`, the Go union record's payload
+  extent `schema_payload`). A name a generator derives from schema names is
+  a one-to-one function of them (two declarations never derive one name:
+  the Dart text form's helpers are `schema_textName_<E>` and
+  `schema_textFromName_<E>`, not `<e>Name` and `<e>FromName`, which met at
+  `daysFromName` for enums `days` and `daysFrom`), and it is spelled by the
+  emitter, never made by rewriting emitted text that holds schema names (a
+  rewrite of `depth` or `SaveBody` reaches a field or arm of that name). A
+  Dart union's tag type does not implement int, so an arm may share a name
+  with any int member (`sign`, `floor`, `isNaN`). A name a target reserves
+  outright is refused at check for every target, naming it: a declaration
+  spelled `main` in Dart, which reserves `main` for the entry point.
   The proof is the corpus rows `n_internal_*` of
   testdata/name-buildability: every such name the table emitters of all 18
   targets declare, each used as an enum, a table field and a union arm, and

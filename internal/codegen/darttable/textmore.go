@@ -958,7 +958,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		g.pf("%sout.raw(_jsonFloat(%s, %v));\n", ind, dartStoredFloat(f, expr), f.Type.Kind == ir.TFloat32)
 	case enumRef(f) != nil:
-		g.pf("%sout.raw(_jsonEnum(%s, %sName, '%s'));\n", ind, expr, dartName(enumRef(f).Name), where)
+		g.pf("%sout.raw(_jsonEnum(%s, %s, '%s'));\n", ind, expr, textEnumNameFn(enumRef(f).Name), where)
 	case jsonIntegerWide(f):
 		if f.Type.Kind == ir.TInt && f.Type.Signed {
 			g.pf("%sout.raw(_jsonString(%s.toString()));\n", ind, expr)
@@ -1118,7 +1118,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return jsonRangedFloat(f, fmt.Sprintf("_jsonFloatField(%s, r, %t%s)", val, f.Type.Kind == ir.TFloat32, fbArg))
 	case enumRef(f) != nil:
-		return fmt.Sprintf("%sFromName(%s, r%s)", dartName(enumRef(f).Name), val, fbArg)
+		return fmt.Sprintf("%s(%s, r%s)", textEnumFromNameFn(enumRef(f).Name), val, fbArg)
 	case f.Type.Kind == ir.TBits:
 		hi := "null"
 		if f.Type.Width < 64 {

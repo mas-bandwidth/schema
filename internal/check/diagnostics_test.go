@@ -653,6 +653,12 @@ func TestDiagnostics(t *testing.T) {
 			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_h { x uint8 }\n"}},
 		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
 			src: "package tx\ntype schema_thing { x uint8 }\n"},
+		// Dart reserves main for the entry point (SPEC §4.6): a declaration spelled
+		// main there, verbatim or through the const mapping, is refused for every target
+		{name: "an enum named main", want: "Dart reserves a library's main",
+			src: "package tx\nenum main { A }\ntype H { g main }\n"},
+		{name: "a const whose Dart spelling is main", want: "Dart reserves a library's main",
+			src: "package tx\nconst Main = 1\ntype H { x uint8 }\n"},
 
 		// ---- a unit base name that spells a C standard header (#521 G-20) ----
 		// The C++ and C emitters both name a unit's header `<Base>.h`, so

@@ -264,6 +264,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 		b.WriteString("return v;}\n")
 	}
 	if unitCarriesForm(u, "json") {
+		var arms strings.Builder
 		b.WriteString("    static void jsonFields(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
@@ -272,15 +273,22 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 			} else {
 				one := *arm.F
 				one.Name = mem[i]
-				b.WriteString("        {int nestedDepth=depth+1;\n")
-				var child strings.Builder
-				writeJsonFieldValue(&child, u, st, &one)
-				b.WriteString(strings.ReplaceAll(child.String(), "depth", "nestedDepth"))
-				b.WriteString("        }\n")
+				// THE ARM'S VALUE IS ONE LEVEL DOWN, and it is written by its own
+				// method whose depth parameter is that level, so the field walk
+				// is emitted as it is everywhere else. Its text is never
+				// rewritten: a rewrite of "depth" would reach a user's arm or
+				// field name (v.depth, v.rdepth) as well (SPEC §4.6,
+				// Generator-name safety). The method's name carries the schema_
+				// prefix, which schema check refuses on every declaration.
+				fmt.Fprintf(&b, "        schema_jsonArm%d(b,graph,v,depth+1);\n", i+1)
+				fmt.Fprintf(&arms, "    static void schema_jsonArm%d(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){\n", i+1)
+				writeJsonFieldValue(&arms, u, st, &one)
+				arms.WriteString("    }\n")
 			}
 			b.WriteString("        break;}\n")
 		}
 		b.WriteString("        default:break;}TableJson.indent(b,depth);b.append('}');}\n")
+		b.WriteString(arms.String())
 		b.WriteString("    static Value readJson(TableJson.In in,int depth){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}if(depth+1>TableJson.In.MAX_JSON_DEPTH){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}java.lang.String armName=in.scanName();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)

@@ -35,7 +35,7 @@ var sabotages = map[string][]edit{
 	"go-measure-cycle-reason":      {{old: "n.reason=TableRefuseDataCycle;return false", new: "n.reason=TableRefuseInvalidValue;return false /* SABOTAGED */"}},
 	"go-measure-count-reason":      {{old: "if count>math.MaxInt32{return TableRefuseCountOverExtentCap}", new: "if count>math.MaxInt32{return TableRefuseCountOverLength} /* SABOTAGED */"}},
 	"go-retain-unknown-node":       {{old: "report.Unknown+=unknown;if retain!=nil{report.RetainLost+=unknown}", new: "report.Unknown+=unknown;if retain!=nil{/* SABOTAGED */}"}},
-	"go-view-arm-offset":           {{old: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", new: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload))+1,/* SABOTAGED */"}},
+	"go-view-arm-offset":           {{old: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.schema_payload)),", new: "PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.schema_payload))+1,/* SABOTAGED */"}},
 	"go-view-packet-offset":        {{old: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)", new: "offset := fmt.Sprintf(\"uint32(unsafe.Offsetof(%s{}.%s))\", g.storageName(st.Name), name)\n if g.viewPacket != nil {offset += \"+1\"} // SABOTAGED"}},
 	"go-view-outside-identity":     {{old: "id = 0\n\t\tjson = \"\"", new: "id = 1 // SABOTAGED: grant an outside field wire identity\n\t\tjson = \"\""}},
 	"reference-wide-union-include": {{old: "for name := range ir.TableClosureVocabulary(u) {", new: "for name := range map[string]bool{} { // SABOTAGED: miss union-only wide storage"}},

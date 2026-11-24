@@ -387,7 +387,7 @@ n_internal_37	builds	-	generator-internal names key_bytes_used..kp (80), each an
 n_internal_38	builds	-	generator-internal names kpair..layouts (80), each an enum, a table field and a union arm
 n_internal_39	builds	-	generator-internal names lazy..limb (80), each an enum, a table field and a union arm
 n_internal_40	builds	-	generator-internal names limbs..longer (80), each an enum, a table field and a union arm
-n_internal_41	builds	-	generator-internal names lookup..mapKeyInDomain (80), each an enum, a table field and a union arm
+n_internal_41	builds	-	generator-internal names lookup..mapKeyInDomain (80), each an enum, a table field and a union arm; main is a field and an arm only, since an enum main is refused at check (n_dart_main)
 n_internal_42	builds	-	generator-internal names mapKeyNumber..measureInt128 (80), each an enum, a table field and a union arm
 n_internal_43	builds	-	generator-internal names measureInt64..more (80), each an enum, a table field and a union arm
 n_internal_44	builds	-	generator-internal names most..nArms (80), each an enum, a table field and a union arm
@@ -438,3 +438,4 @@ n_internal_88	builds	-	generator-internal names words_at..zero_range (22), each 
 n_internal_89	builds	-	generator-internal names aend..uat (23), each an enum, a table field and a union arm
 n_internal_90	builds	-	generator-internal names armid..keyid (2), each an enum, a table field and a union arm
 n_internal_91	builds	-	generator-internal names arm, inner, kind, types (4), each an enum, a table field and a union arm; the probe types are Part and Mode, so none shadows them
+n_dart_main	refuse-at-check	Dart	an enum named main: Dart reserves a library's main for the entry point, a function, and an enum's type is its schema name (SPEC §4.6)
