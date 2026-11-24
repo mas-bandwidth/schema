@@ -93,6 +93,24 @@ func TestJavaScriptCompressedFloatStoresAreGuarded(t *testing.T) {
 			t.Errorf("the generated module does not carry %q", want)
 		}
 	}
+	// A VARIABLE TABLE HAS NO FIXED FORM (docs/SPEC-TABLES.md §3.4: it encodes as
+	// form 1, always), so the fixed modules carry Fix alone and the node half
+	// holds only Fix to the fixed and message writers.
+	fixedModules := 0
+	for name, data := range files {
+		if !strings.HasSuffix(name, "Table.js") {
+			continue
+		}
+		fixedModules++
+		for _, absent := range []string{"function VarFixedSave(", "function VarFixedMeasure(", "class Var {"} {
+			if strings.Contains(string(data), absent) {
+				t.Errorf("%s carries %q: the variable table Var has a fixed-form surface", name, absent)
+			}
+		}
+	}
+	if fixedModules == 0 {
+		t.Errorf("no fixed module (*Table.js) was generated: the variable-table check saw nothing")
+	}
 	if strings.Contains(src, "Object.is(value.z, 0)") {
 		t.Errorf("the message form still elides the compressed z by its bits")
 	}
