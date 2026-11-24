@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum akind
+{ Zfirst, Zsecond, Zthird }
+
+enum al
+{ Zfirst, Zsecond, Zthird }
+
+enum alen
+{ Zfirst, Zsecond, Zthird }
+
+enum alignAdd
+{ Zfirst, Zsecond, Zthird }
+
+enum alignRead
+{ Zfirst, Zsecond, Zthird }
+
+enum alignUp
+{ Zfirst, Zsecond, Zthird }
+
+enum alignWord
+{ Zfirst, Zsecond, Zthird }
+
+enum alignWrite
+{ Zfirst, Zsecond, Zthird }
+
+enum alignment
+{ Zfirst, Zsecond, Zthird }
+
+enum aligns
+{ Zfirst, Zsecond, Zthird }
+
+enum allBirth
+{ Zfirst, Zsecond, Zthird }
+
+enum allDef
+{ Zfirst, Zsecond, Zthird }
+
+enum allDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum allJson
+{ Zfirst, Zsecond, Zthird }
+
+enum all_default_xs
+{ Zfirst, Zsecond, Zthird }
+
+enum all_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum alloc
+{ Zfirst, Zsecond, Zthird }
+
+enum alloc_len
+{ Zfirst, Zsecond, Zthird }
+
+enum allocated
+{ Zfirst, Zsecond, Zthird }
+
+enum allocation
+{ Zfirst, Zsecond, Zthird }
+
+enum allocator
+{ Zfirst, Zsecond, Zthird }
+
+enum allow
+{ Zfirst, Zsecond, Zthird }
+
+enum allow_empty
+{ Zfirst, Zsecond, Zthird }
+
+enum allow_label
+{ Zfirst, Zsecond, Zthird }
+
+enum allow_zero
+{ Zfirst, Zsecond, Zthird }
+
+enum allowed
+{ Zfirst, Zsecond, Zthird }
+
+enum allowed_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum alone
+{ Zfirst, Zsecond, Zthird }
+
+enum alpha
+{ Zfirst, Zsecond, Zthird }
+
+enum alphabet
+{ Zfirst, Zsecond, Zthird }
+
+enum always
+{ Zfirst, Zsecond, Zthird }
+
+enum am
+{ Zfirst, Zsecond, Zthird }
+
+enum amax
+{ Zfirst, Zsecond, Zthird }
+
+enum amh
+{ Zfirst, Zsecond, Zthird }
+
+enum amin
+{ Zfirst, Zsecond, Zthird }
+
+enum amp
+{ Zfirst, Zsecond, Zthird }
+
+enum an
+{ Zfirst, Zsecond, Zthird }
+
+enum aname
+{ Zfirst, Zsecond, Zthird }
+
+enum ann
+{ Zfirst, Zsecond, Zthird }
+
+enum annotation
+{ Zfirst, Zsecond, Zthird }
+
+enum announceRead
+{ Zfirst, Zsecond, Zthird }
+
+enum announce_once
+{ Zfirst, Zsecond, Zthird }
+
+enum announced
+{ Zfirst, Zsecond, Zthird }
+
+enum announcedSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum announcedWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum announcement
+{ Zfirst, Zsecond, Zthird }
+
+enum another
+{ Zfirst, Zsecond, Zthird }
+
+enum anp
+{ Zfirst, Zsecond, Zthird }
+
+enum answer
+{ Zfirst, Zsecond, Zthird }
+
+enum answers
+{ Zfirst, Zsecond, Zthird }
+
+enum aok
+{ Zfirst, Zsecond, Zthird }
+
+enum ap
+{ Zfirst, Zsecond, Zthird }
+
+enum apart
+{ Zfirst, Zsecond, Zthird }
+
+enum api
+{ Zfirst, Zsecond, Zthird }
+
+enum appendWriter
+{ Zfirst, Zsecond, Zthird }
+
+enum appended
+{ Zfirst, Zsecond, Zthird }
+
+enum apply
+{ Zfirst, Zsecond, Zthird }
+
+enum ar
+{ Zfirst, Zsecond, Zthird }
+
+enum are
+{ Zfirst, Zsecond, Zthird }
+
+enum aref
+{ Zfirst, Zsecond, Zthird }
+
+enum arena
+{ Zfirst, Zsecond, Zthird }
+
+enum arenaLen
+{ Zfirst, Zsecond, Zthird }
+
+enum arg
+{ Zfirst, Zsecond, Zthird }
+
+enum arg2
+{ Zfirst, Zsecond, Zthird }
+
+enum argW
+{ Zfirst, Zsecond, Zthird }
+
+enum argW2
+{ Zfirst, Zsecond, Zthird }
+
+enum args
+{ Zfirst, Zsecond, Zthird }
+
+enum arithmetic
+{ Zfirst, Zsecond, Zthird }
+
+enum armAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum armAt
+{ Zfirst, Zsecond, Zthird }
+
+enum armBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum armEdges
+{ Zfirst, Zsecond, Zthird }
+
+enum armEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum armFd
+{ Zfirst, Zsecond, Zthird }
+
+enum armFl
+{ Zfirst, Zsecond, Zthird }
+
+enum armID
+{ Zfirst, Zsecond, Zthird }
+
+enum armIdx
+{ Zfirst, Zsecond, Zthird }
+
+enum armKind
+{ Zfirst, Zsecond, Zthird }
+
+enum armMeasure
+{ Zfirst, Zsecond, Zthird }
+
+enum armName
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    akind Inner
+    al Inner
+    alen Inner
+    alignAdd Inner
+    alignRead Inner
+    alignUp Inner
+    alignWord Inner
+    alignWrite Inner
+    alignment Inner
+    aligns Inner
+}
+
+table NameTypes0
+{
+    one0  akind
+    many0 [..4]akind
+    one1  al
+    many1 [..4]al
+    one2  alen
+    many2 [..4]alen
+    one3  alignAdd
+    many3 [..4]alignAdd
+    one4  alignRead
+    many4 [..4]alignRead
+    one5  alignUp
+    many5 [..4]alignUp
+    one6  alignWord
+    many6 [..4]alignWord
+    one7  alignWrite
+    many7 [..4]alignWrite
+    one8  alignment
+    many8 [..4]alignment
+    one9  aligns
+    many9 [..4]aligns
+}
+
+table NameFields0
+{
+    akind uint32
+    al uint32
+    alen uint32
+    alignAdd uint32
+    alignRead uint32
+    alignUp uint32
+    alignWord uint32
+    alignWrite uint32
+    alignment uint32
+    aligns uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    allBirth Inner
+    allDef Inner
+    allDefault Inner
+    allJson Inner
+    all_default_xs Inner
+    all_keys Inner
+    alloc Inner
+    alloc_len Inner
+    allocated Inner
+    allocation Inner
+}
+
+table NameTypes1
+{
+    one0  allBirth
+    many0 [..4]allBirth
+    one1  allDef
+    many1 [..4]allDef
+    one2  allDefault
+    many2 [..4]allDefault
+    one3  allJson
+    many3 [..4]allJson
+    one4  all_default_xs
+    many4 [..4]all_default_xs
+    one5  all_keys
+    many5 [..4]all_keys
+    one6  alloc
+    many6 [..4]alloc
+    one7  alloc_len
+    many7 [..4]alloc_len
+    one8  allocated
+    many8 [..4]allocated
+    one9  allocation
+    many9 [..4]allocation
+}
+
+table NameFields1
+{
+    allBirth uint32
+    allDef uint32
+    allDefault uint32
+    allJson uint32
+    all_default_xs uint32
+    all_keys uint32
+    alloc uint32
+    alloc_len uint32
+    allocated uint32
+    allocation uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    allocator Inner
+    allow Inner
+    allow_empty Inner
+    allow_label Inner
+    allow_zero Inner
+    allowed Inner
+    allowed_keys Inner
+    alone Inner
+    alpha Inner
+    alphabet Inner
+}
+
+table NameTypes2
+{
+    one0  allocator
+    many0 [..4]allocator
+    one1  allow
+    many1 [..4]allow
+    one2  allow_empty
+    many2 [..4]allow_empty
+    one3  allow_label
+    many3 [..4]allow_label
+    one4  allow_zero
+    many4 [..4]allow_zero
+    one5  allowed
+    many5 [..4]allowed
+    one6  allowed_keys
+    many6 [..4]allowed_keys
+    one7  alone
+    many7 [..4]alone
+    one8  alpha
+    many8 [..4]alpha
+    one9  alphabet
+    many9 [..4]alphabet
+}
+
+table NameFields2
+{
+    allocator uint32
+    allow uint32
+    allow_empty uint32
+    allow_label uint32
+    allow_zero uint32
+    allowed uint32
+    allowed_keys uint32
+    alone uint32
+    alpha uint32
+    alphabet uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    always Inner
+    am Inner
+    amax Inner
+    amh Inner
+    amin Inner
+    amp Inner
+    an Inner
+    aname Inner
+    ann Inner
+    annotation Inner
+}
+
+table NameTypes3
+{
+    one0  always
+    many0 [..4]always
+    one1  am
+    many1 [..4]am
+    one2  amax
+    many2 [..4]amax
+    one3  amh
+    many3 [..4]amh
+    one4  amin
+    many4 [..4]amin
+    one5  amp
+    many5 [..4]amp
+    one6  an
+    many6 [..4]an
+    one7  aname
+    many7 [..4]aname
+    one8  ann
+    many8 [..4]ann
+    one9  annotation
+    many9 [..4]annotation
+}
+
+table NameFields3
+{
+    always uint32
+    am uint32
+    amax uint32
+    amh uint32
+    amin uint32
+    amp uint32
+    an uint32
+    aname uint32
+    ann uint32
+    annotation uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    announceRead Inner
+    announce_once Inner
+    announced Inner
+    announcedSigned Inner
+    announcedWidth Inner
+    announcement Inner
+    another Inner
+    anp Inner
+    answer Inner
+    answers Inner
+}
+
+table NameTypes4
+{
+    one0  announceRead
+    many0 [..4]announceRead
+    one1  announce_once
+    many1 [..4]announce_once
+    one2  announced
+    many2 [..4]announced
+    one3  announcedSigned
+    many3 [..4]announcedSigned
+    one4  announcedWidth
+    many4 [..4]announcedWidth
+    one5  announcement
+    many5 [..4]announcement
+    one6  another
+    many6 [..4]another
+    one7  anp
+    many7 [..4]anp
+    one8  answer
+    many8 [..4]answer
+    one9  answers
+    many9 [..4]answers
+}
+
+table NameFields4
+{
+    announceRead uint32
+    announce_once uint32
+    announced uint32
+    announcedSigned uint32
+    announcedWidth uint32
+    announcement uint32
+    another uint32
+    anp uint32
+    answer uint32
+    answers uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    aok Inner
+    ap Inner
+    apart Inner
+    api Inner
+    appendWriter Inner
+    appended Inner
+    apply Inner
+    ar Inner
+    are Inner
+    aref Inner
+}
+
+table NameTypes5
+{
+    one0  aok
+    many0 [..4]aok
+    one1  ap
+    many1 [..4]ap
+    one2  apart
+    many2 [..4]apart
+    one3  api
+    many3 [..4]api
+    one4  appendWriter
+    many4 [..4]appendWriter
+    one5  appended
+    many5 [..4]appended
+    one6  apply
+    many6 [..4]apply
+    one7  ar
+    many7 [..4]ar
+    one8  are
+    many8 [..4]are
+    one9  aref
+    many9 [..4]aref
+}
+
+table NameFields5
+{
+    aok uint32
+    ap uint32
+    apart uint32
+    api uint32
+    appendWriter uint32
+    appended uint32
+    apply uint32
+    ar uint32
+    are uint32
+    aref uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    arena Inner
+    arenaLen Inner
+    arg Inner
+    arg2 Inner
+    argW Inner
+    argW2 Inner
+    args Inner
+    arithmetic Inner
+    armAlign Inner
+    armAt Inner
+}
+
+table NameTypes6
+{
+    one0  arena
+    many0 [..4]arena
+    one1  arenaLen
+    many1 [..4]arenaLen
+    one2  arg
+    many2 [..4]arg
+    one3  arg2
+    many3 [..4]arg2
+    one4  argW
+    many4 [..4]argW
+    one5  argW2
+    many5 [..4]argW2
+    one6  args
+    many6 [..4]args
+    one7  arithmetic
+    many7 [..4]arithmetic
+    one8  armAlign
+    many8 [..4]armAlign
+    one9  armAt
+    many9 [..4]armAt
+}
+
+table NameFields6
+{
+    arena uint32
+    arenaLen uint32
+    arg uint32
+    arg2 uint32
+    argW uint32
+    argW2 uint32
+    args uint32
+    arithmetic uint32
+    armAlign uint32
+    armAt uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    armBytes Inner
+    armEdges Inner
+    armEnd Inner
+    armFd Inner
+    armFl Inner
+    armID Inner
+    armIdx Inner
+    armKind Inner
+    armMeasure Inner
+    armName Inner
+}
+
+table NameTypes7
+{
+    one0  armBytes
+    many0 [..4]armBytes
+    one1  armEdges
+    many1 [..4]armEdges
+    one2  armEnd
+    many2 [..4]armEnd
+    one3  armFd
+    many3 [..4]armFd
+    one4  armFl
+    many4 [..4]armFl
+    one5  armID
+    many5 [..4]armID
+    one6  armIdx
+    many6 [..4]armIdx
+    one7  armKind
+    many7 [..4]armKind
+    one8  armMeasure
+    many8 [..4]armMeasure
+    one9  armName
+    many9 [..4]armName
+}
+
+table NameFields7
+{
+    armBytes uint32
+    armEdges uint32
+    armEnd uint32
+    armFd uint32
+    armFl uint32
+    armID uint32
+    armIdx uint32
+    armKind uint32
+    armMeasure uint32
+    armName uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

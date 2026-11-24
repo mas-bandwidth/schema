@@ -1,0 +1,185 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum bMag
+{ Zfirst, Zsecond, Zthird }
+
+enum bNeg
+{ Zfirst, Zsecond, Zthird }
+
+enum bZero
+{ Zfirst, Zsecond, Zthird }
+
+enum b_end
+{ Zfirst, Zsecond, Zthird }
+
+enum b_length
+{ Zfirst, Zsecond, Zthird }
+
+enum b_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum ba
+{ Zfirst, Zsecond, Zthird }
+
+enum back
+{ Zfirst, Zsecond, Zthird }
+
+enum back32
+{ Zfirst, Zsecond, Zthird }
+
+enum bad
+{ Zfirst, Zsecond, Zthird }
+
+enum badSize
+{ Zfirst, Zsecond, Zthird }
+
+enum bad_arm_n
+{ Zfirst, Zsecond, Zthird }
+
+enum bad_arm_plain
+{ Zfirst, Zsecond, Zthird }
+
+enum bal
+{ Zfirst, Zsecond, Zthird }
+
+enum balance
+{ Zfirst, Zsecond, Zthird }
+
+enum band
+{ Zfirst, Zsecond, Zthird }
+
+enum bare
+{ Zfirst, Zsecond, Zthird }
+
+enum base64_len
+{ Zfirst, Zsecond, Zthird }
+
+enum baseHi
+{ Zfirst, Zsecond, Zthird }
+
+enum baseLo
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    bMag Inner
+    bNeg Inner
+    bZero Inner
+    b_end Inner
+    b_length Inner
+    b_signed Inner
+    ba Inner
+    back Inner
+    back32 Inner
+    bad Inner
+}
+
+table NameTypes0
+{
+    one0  bMag
+    many0 [..4]bMag
+    one1  bNeg
+    many1 [..4]bNeg
+    one2  bZero
+    many2 [..4]bZero
+    one3  b_end
+    many3 [..4]b_end
+    one4  b_length
+    many4 [..4]b_length
+    one5  b_signed
+    many5 [..4]b_signed
+    one6  ba
+    many6 [..4]ba
+    one7  back
+    many7 [..4]back
+    one8  back32
+    many8 [..4]back32
+    one9  bad
+    many9 [..4]bad
+}
+
+table NameFields0
+{
+    bMag uint32
+    bNeg uint32
+    bZero uint32
+    b_end uint32
+    b_length uint32
+    b_signed uint32
+    ba uint32
+    back uint32
+    back32 uint32
+    bad uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    badSize Inner
+    bad_arm_n Inner
+    bad_arm_plain Inner
+    bal Inner
+    balance Inner
+    band Inner
+    bare Inner
+    base64_len Inner
+    baseHi Inner
+    baseLo Inner
+}
+
+table NameTypes1
+{
+    one0  badSize
+    many0 [..4]badSize
+    one1  bad_arm_n
+    many1 [..4]bad_arm_n
+    one2  bad_arm_plain
+    many2 [..4]bad_arm_plain
+    one3  bal
+    many3 [..4]bal
+    one4  balance
+    many4 [..4]balance
+    one5  band
+    many5 [..4]band
+    one6  bare
+    many6 [..4]bare
+    one7  base64_len
+    many7 [..4]base64_len
+    one8  baseHi
+    many8 [..4]baseHi
+    one9  baseLo
+    many9 [..4]baseLo
+}
+
+table NameFields1
+{
+    badSize uint32
+    bad_arm_n uint32
+    bad_arm_plain uint32
+    bal uint32
+    balance uint32
+    band uint32
+    bare uint32
+    base64_len uint32
+    baseHi uint32
+    baseLo uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
