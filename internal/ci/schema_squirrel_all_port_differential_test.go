@@ -11,14 +11,14 @@
 // under <work>/out/<lang>/<surface>. A case a port answers `.absent` is a
 // feature that port does not carry, and it is NOT comparable: the differential
 // reports it as skipped rather than turning absence into a verdict. Two
-// present answers must be byte-identical after the harness's own two
+// present answers must be byte-identical after the harness's own
 // equivalences (normalizeDifferentialAnswer) — the same accept/refuse verdict,
 // the same decoded value, and the same value re-saved on the wire (the
 // `<case>.wire` files are compared raw).
 //
-// THE TWO EQUIVALENCES ARE THE HARNESS'S, AND NOTHING ELSE IS NORMALISED.
-// testdata/conformance/tables/FORMAT.md fixes both, and the harness's run.go
-// applies both when it scores a leg against the oracle:
+// THE EQUIVALENCES ARE THE HARNESS'S, AND NOTHING ELSE IS NORMALISED.
+// testdata/conformance/tables/FORMAT.md fixes each, and the harness's run.go
+// applies each when it scores a leg against the oracle:
 //
 //   - report, framing, json-hostile, retain: the verdict line is `read` or
 //     `refused`; the legacy seven-field counter line
@@ -33,6 +33,10 @@
 //     other" (FORMAT.md, write-refusal) — the leg's own types refused the
 //     value before its writer could. It is compared as `refused`; `wrote`
 //     against either stays a divergence.
+//   - message-prior: a `<case>.refused` file's contents "are the leg's own
+//     diagnostic and are never compared" (FORMAT.md, message-prior;
+//     docs/rulings.json refusal-verdict-only). Every one reads as `refused`;
+//     the re-saved batch in `<case>` is compared raw.
 //
 // The random-input arm is the harness's own wire-fuzz (make/squirrel-fuzz.mk):
 // the same seed and the same mutants through Squirrel and through every port,
@@ -75,7 +79,16 @@ type squirrelOutRoot struct {
 // marker on either side, or a file one side never wrote, is not a divergence:
 // absence is a feature the port does not carry, and the conformance matrix
 // already names it. A surface the Squirrel leg did not answer is not walked.
-func compareSquirrelAgainstPorts(work string) (int, []string, []string, error) {
+//
+// Two answers the harness credits without holding them to bytes are not
+// comparable either, and are not counted: a read-into `unrepresentable` (the
+// leg's fixed load always takes a capacity, so the row has no call to hold,
+// FL-17; the harness credits it on a fixed-nocap or retain-fixed row and
+// fails it on any other), and a retain-refusal answer of a leg and case that
+// owed names (testdata/conformance/tables/retain-refusal-owed.txt: the
+// harness scores it owed, uncredited and never red, and fails the line the
+// day the answer passes).
+func compareSquirrelAgainstPorts(work string, owed map[string]bool) (int, []string, []string, error) {
 	out := filepath.Join(work, "out")
 	entries, err := os.ReadDir(out)
 	if err != nil {
@@ -134,6 +147,13 @@ func compareSquirrelAgainstPorts(work string) (int, []string, []string, error) {
 				if !present {
 					continue
 				}
+				if surface.Name() == "read-into" &&
+					(string(mine) == "unrepresentable\n" || string(theirs) == "unrepresentable\n") {
+					continue
+				}
+				if surface.Name() == "retain-refusal" && owed[other.lang+" "+retainRefusalCase(name)] {
+					continue
+				}
 				comparisons++
 				compared[other.lang] = true
 				if !bytes.Equal(normalizeDifferentialAnswer(surface.Name(), name, mine),
@@ -154,14 +174,33 @@ func compareSquirrelAgainstPorts(work string) (int, []string, []string, error) {
 	return comparisons, ports, divergences, nil
 }
 
-// normalizeDifferentialAnswer applies the harness's two answer equivalences
+// normalizeDifferentialAnswer applies the harness's answer equivalences
 // (see the file comment) and nothing else. A `<case>.wire` write-back file is
 // returned untouched on every surface.
 func normalizeDifferentialAnswer(surface, name string, answer []byte) []byte {
 	if strings.HasSuffix(name, ".wire") {
 		return answer
 	}
+	if surface == "message-prior" && strings.HasSuffix(name, ".refused") {
+		// THE REFUSAL IS THE VERDICT; ITS CONTENTS ARE THE LEG'S OWN
+		// DIAGNOSTIC and are never compared (FORMAT.md, message-prior;
+		// docs/rulings.json refusal-verdict-only; SPEC-CONFORMANCE.md §4).
+		// The harness's scorePrior reads only that the file exists. Squirrel
+		// writes its reason name, C++ the word `refused`, Go its report:
+		// every one of them is the same verdict.
+		return []byte("refused\n")
+	}
 	switch {
+	case surface == "retain-refusal":
+		// THE UNBOUND STORE'S SAVE REFUSES (retainrefusal.go,
+		// retainRefusalUnboundLegs): python and ruby bind the store to the
+		// root it loaded, so the save after the refused read raises rather
+		// than writing; the two read verdicts are the same, and the harness
+		// rejects save-refused from any other leg. That leg writes no
+		// `<case>.wire`, so there is no second save to compare.
+		if string(answer) == "read\nrefused\nsave-refused\n" {
+			return []byte("read\nrefused\nsaved\n")
+		}
 	case surface == "report" || surface == "framing" || surface == "json-hostile" || surface == "retain":
 		if norm, ok := normalizeDifferentialReadAnswer(answer); ok {
 			return norm
@@ -172,6 +211,37 @@ func normalizeDifferentialAnswer(surface, name string, answer []byte) []byte {
 		}
 	}
 	return answer
+}
+
+// retainRefusalCase is the retain-refusal row a file answers: `<case>`, its
+// first save `<case>.before` or its second save `<case>.wire`.
+func retainRefusalCase(name string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(name, ".wire"), ".before")
+}
+
+// loadRetainRefusalOwed reads the harness's owed ledger
+// (test/conformance/harness/retainrefusal.go, loadRetainRefusalLedger) into
+// "<leg> <case>" keys. The harness validates every line against the roster
+// and the manifest before it scores; this reads the same shape and refuses a
+// line that is not it.
+func loadRetainRefusalOwed(path string) (map[string]bool, error) {
+	text, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	owed := map[string]bool{}
+	for i, line := range strings.Split(string(text), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) < 4 || f[2] != "owed:" {
+			return nil, fmt.Errorf("%s:%d: want `<leg> <case> owed: <cause>`, got %q", path, i+1, line)
+		}
+		owed[f[0]+" "+f[1]] = true
+	}
+	return owed, nil
 }
 
 // normalizeDifferentialReadAnswer is test/conformance/harness's
@@ -289,7 +359,7 @@ func TestSquirrelAllPortDifferentialDetectsADivergence(t *testing.T) {
 		work := t.TempDir()
 		writeAnswers(t, work, "squirrel", clean)
 		writeAnswers(t, work, "cpp", other)
-		n, ports, divergences, err := compareSquirrelAgainstPorts(work)
+		n, ports, divergences, err := compareSquirrelAgainstPorts(work, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -313,7 +383,7 @@ func TestSquirrelAllPortDifferentialDetectsADivergence(t *testing.T) {
 		}
 		writeAnswers(t, work, "squirrel", planted)
 		writeAnswers(t, work, "cpp", other)
-		_, _, divergences, err := compareSquirrelAgainstPorts(work)
+		_, _, divergences, err := compareSquirrelAgainstPorts(work, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +406,7 @@ func TestSquirrelAllPortDifferentialDetectsADivergence(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(work, "out", "cpp", "wire", "Depot.absent"), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		n, _, divergences, err := compareSquirrelAgainstPorts(work)
+		n, _, divergences, err := compareSquirrelAgainstPorts(work, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -350,7 +420,7 @@ func TestSquirrelAllPortDifferentialDetectsADivergence(t *testing.T) {
 }
 
 // TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences holds
-// the two equivalences to exactly their reach: a legacy counter line equals
+// the equivalences to exactly their reach: a legacy counter line equals
 // its plain verdict and `unrepresentable` equals `refused`, while a changed
 // verdict, a changed value, a refusal carrying value bytes, `wrote` against
 // `unrepresentable`, the same spellings on a surface the rule does not name,
@@ -376,6 +446,14 @@ func TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences(t *test
 		{"unrepresentable on json", "write-refusal-json", "W", "unrepresentable\n", "refused\n", false},
 		{"unrepresentable is not wrote", "write-refusal-fixed", "W", "wrote\n", "unrepresentable\n", true},
 		{"unrepresentable off its surfaces", "report", "W", "refused\n", "unrepresentable\n", true},
+		{"prior refusal diagnostic is not compared", "message-prior", "P.refused", "out_of_range", "refused", false},
+		{"prior re-saved batch is raw", "message-prior", "P", "AAAA", "AAAB", true},
+		{"refusal diagnostic off message-prior", "report", "P.refused", "out_of_range", "refused", true},
+		{"unbound save-refused is saved", "retain-refusal", "R", "read\nrefused\nsaved\n", "read\nrefused\nsave-refused\n", false},
+		{"retain-refusal read verdict differs", "retain-refusal", "R", "read\nrefused\nsaved\n", "read\nread\nsave-refused\n", true},
+		{"retain-refusal second save is raw", "retain-refusal", "R.wire", "AAAA", "AAAB", true},
+		{"save-refused off retain-refusal", "retain", "R", "read\nrefused\nsaved\n", "read\nrefused\nsave-refused\n", true},
+		{"read-into value differs", "read-into", "I", "read\n5000\n", "read\n4000\n", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -383,7 +461,7 @@ func TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences(t *test
 			work := t.TempDir()
 			writeAnswers(t, work, "squirrel", map[string]map[string]string{tc.surface: {tc.file: tc.squirrel}})
 			writeAnswers(t, work, "go", map[string]map[string]string{tc.surface: {tc.file: tc.other}})
-			n, _, divergences, err := compareSquirrelAgainstPorts(work)
+			n, _, divergences, err := compareSquirrelAgainstPorts(work, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -398,6 +476,47 @@ func TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences(t *test
 	}
 }
 
+// TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut holds the two
+// answers the harness credits without bytes to exactly their reach: a
+// read-into `unrepresentable` on either side and an owed retain-refusal
+// answer are not compared, while the same owed file under a leg the ledger
+// does not name, and `unrepresentable` on another surface, still diverge.
+func TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut(t *testing.T) {
+	t.Parallel()
+
+	owed := map[string]bool{"lobster retain_refusal_body": true}
+	cases := []struct {
+		name, lang, surface, file, squirrel, other string
+		compared, diverges                         bool
+	}{
+		{"read-into unrepresentable there", "go", "read-into", "ri_retain_fixed", "read\nzeroed\n", "unrepresentable\n", false, false},
+		{"read-into unrepresentable here", "go", "read-into", "ri_fixed_5000", "unrepresentable\n", "read\n5000\n", false, false},
+		{"owed second save", "lobster", "retain-refusal", "retain_refusal_body.wire", "AAAA", "AAAABBBB", false, false},
+		{"owed answer", "lobster", "retain-refusal", "retain_refusal_body", "read\nrefused\nsaved\n", "read\nread\nsaved\n", false, false},
+		{"owed only for its leg", "goose", "retain-refusal", "retain_refusal_body.wire", "AAAA", "AAAABBBB", true, true},
+		{"owed only for its case", "lobster", "retain-refusal", "retain_refusal_frame.wire", "AAAA", "AAAABBBB", true, true},
+		{"unrepresentable off read-into", "go", "report", "ri_fixed_5000", "unrepresentable\n", "read\n5000\n", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			work := t.TempDir()
+			writeAnswers(t, work, "squirrel", map[string]map[string]string{tc.surface: {tc.file: tc.squirrel}})
+			writeAnswers(t, work, tc.lang, map[string]map[string]string{tc.surface: {tc.file: tc.other}})
+			n, _, divergences, err := compareSquirrelAgainstPorts(work, owed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := n == 1; got != tc.compared {
+				t.Fatalf("%s/%s: compared %d answers, want compared = %v", tc.surface, tc.file, n, tc.compared)
+			}
+			if got := len(divergences) == 1; got != tc.diverges {
+				t.Fatalf("%s/%s: diverges = %v, want %v (%v)", tc.surface, tc.file, got, tc.diverges, divergences)
+			}
+		})
+	}
+}
+
 // TestSquirrelAllPortDifferentialRequiresComparisons refuses to pass on an
 // empty lens: a tree with no squirrel output, no other port, or no shared
 // answer proves nothing.
@@ -407,19 +526,19 @@ func TestSquirrelAllPortDifferentialRequiresComparisons(t *testing.T) {
 	work := t.TempDir()
 	writeAnswers(t, work, "squirrel", map[string]map[string]string{"wire": {"Scene": "AAAA"}})
 	writeAnswers(t, work, "cpp", map[string]map[string]string{"wire": {"Scene": "AAAA"}})
-	if _, _, divergences, err := compareSquirrelAgainstPorts(work); err != nil || len(divergences) != 0 {
+	if _, _, divergences, err := compareSquirrelAgainstPorts(work, nil); err != nil || len(divergences) != 0 {
 		t.Fatalf("one shared answer must be a green comparison, got %v %v", divergences, err)
 	}
 	only := t.TempDir()
 	writeAnswers(t, only, "squirrel", map[string]map[string]string{"wire": {"Scene": "AAAA"}})
-	n, ports, divergences, err := compareSquirrelAgainstPorts(only)
+	n, ports, divergences, err := compareSquirrelAgainstPorts(only, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 || len(ports) != 0 || len(divergences) != 0 {
 		t.Fatalf("a lone squirrel tree compared %d answers across %v: %v", n, ports, divergences)
 	}
-	if _, _, _, err := compareSquirrelAgainstPorts(t.TempDir()); err == nil {
+	if _, _, _, err := compareSquirrelAgainstPorts(t.TempDir(), nil); err == nil {
 		t.Fatal("a work tree with no harness output must be refused, not passed")
 	}
 }
@@ -450,7 +569,11 @@ func TestSchemaSquirrelAllPortDifferential(t *testing.T) {
 		}
 		t.Skip("the harness output is not built: make schema-squirrel-all-port-differential")
 	}
-	n, ports, divergences, err := compareSquirrelAgainstPorts(work)
+	owed, err := loadRetainRefusalOwed(filepath.Join(root, "testdata", "conformance", "tables", "retain-refusal-owed.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, ports, divergences, err := compareSquirrelAgainstPorts(work, owed)
 	if err != nil {
 		t.Fatalf("%v; run make schema-squirrel-all-port-differential", err)
 	}

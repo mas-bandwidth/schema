@@ -225,7 +225,20 @@ where the README says so.
   passes when the port refuses and fails when it accepts. The reason name,
   the detection order, counters and diagnostic text are NOT compared; a port
   should still use the specification's reason names, because they are how a
-  user finds the rule, but the suite does not enforce them.
+  user finds the rule, but the suite does not enforce them. The same holds
+  between ports: a cross-port differential (the Squirrel all-port
+  differential, `make schema-squirrel-all-port-differential`) compares two
+  refusals as the one verdict, never the bytes of either diagnostic. A
+  `message-prior` `<case>.refused` from one port equals any other port's
+  `<case>.refused`, whatever reason name, report or word each one holds; a
+  re-saved batch in `<case>` is still compared byte for byte
+  (`TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences`).
+  It holds two ports equal wherever the harness credits both against the one
+  golden: a `retain-refusal` `save-refused` (python, ruby) equals `saved`; a
+  `read-into` `unrepresentable` (a fixed load that always takes a capacity)
+  and a `retain-refusal` answer its leg owes in `retain-refusal-owed.txt`
+  are not compared at all
+  (`TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut`).
 - **Writes are judged by bytes, exactly.** A case that requires a write
   passes only when the bytes the port produces equal the committed golden,
   byte for byte: canonical order, padding, zeros in dead bytes, every
