@@ -4675,15 +4675,15 @@ static SCHEMA_UNUSED int64_t tabledemo_table_json_write_graph( const void * root
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
 static SCHEMA_UNUSED int tabledemo_table_json_write_list( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
-    const TableSequence * list = (const TableSequence *) storage;
-    TableSequenceCursor cursor = table_sequence_cursor( NULL, list, f->elem_size );
+    const tabledemo_table_sequence_t * list = (const tabledemo_table_sequence_t *) storage;
+    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( NULL, list, f->elem_size );
     int32_t i;
     if ( !cursor.ok ) { return 0; }
     if ( f->text_total > 0 && list->count > 0 && schema_tabledemo_table_json_text_bytes_( cursor.array, list->count, f ) > f->text_total ) { return 0; }
     tabledemo_table_json_put( out, '[' );
     for ( i = 0; i < list->count; i++ )
     {
-        const void * element = table_sequence_next( &cursor );
+        const void * element = tabledemo_table_sequence_next( &cursor );
         if ( element == NULL ) { return 0; }
         if ( i ) { tabledemo_table_json_put( out, ',' ); }
         tabledemo_table_json_line( out, depth + 1 );
@@ -4696,7 +4696,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_list( tabledemo_table_json_o
 static SCHEMA_UNUSED int tabledemo_table_json_read_list( tabledemo_table_json_in_t * in, void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
     tabledemo_table_json_graph_in_t * graph = (tabledemo_table_json_graph_in_t *) in->graph;
-    TableSequence * list = (TableSequence *) storage;
+    tabledemo_table_sequence_t * list = (tabledemo_table_sequence_t *) storage;
     int64_t spent = 0;
     int full = 0;
     if ( graph == NULL || tabledemo_table_json_peek( in ) != '[' )
@@ -4737,7 +4737,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list( tabledemo_table_json_in
             in->bad = 1;
             return 0;
         }
-        element = table_sequence_add( graph->worker, list, f->elem_size );
+        element = tabledemo_table_sequence_add( graph->worker, list, f->elem_size );
         if ( element == NULL )
         {
             in->bad = 1;
@@ -4753,7 +4753,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list( tabledemo_table_json_in
         else if ( f->text_total > 0 && !schema_tabledemo_table_json_text_total_keep_( in, element, f, &spent ) )
         {
             full = 1;
-            table_sequence_erase( graph->worker->arena, list, element, f->elem_size );
+            tabledemo_table_sequence_erase( graph->worker->arena, list, element, f->elem_size );
         }
         c = tabledemo_table_json_peek( in );
         if ( c == ',' )
@@ -4915,8 +4915,8 @@ static SCHEMA_UNUSED int tabledemo_table_json_map_key_order( const uint8_t * ea,
 }
 static SCHEMA_UNUSED int tabledemo_table_json_write_map( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
-    const TableSequence * map = (const TableSequence *) storage;
-    TableSequenceCursor cursor = table_sequence_cursor( NULL, map, f->elem_size );
+    const tabledemo_table_sequence_t * map = (const tabledemo_table_sequence_t *) storage;
+    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( NULL, map, f->elem_size );
     int32_t i;
     const uint8_t * prev = NULL;
     const tabledemo_table_field_info_t * key = &f->table->fields[0];
@@ -4925,7 +4925,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_map( tabledemo_table_json_ou
     tabledemo_table_json_put( out, '{' );
     for ( i = 0; i < map->count; i++ )
     {
-        const uint8_t * entry = (const uint8_t *) table_sequence_next( &cursor );
+        const uint8_t * entry = (const uint8_t *) tabledemo_table_sequence_next( &cursor );
         if ( entry == NULL ) { return 0; }
         if ( i && tabledemo_table_json_map_key_order( prev, entry, key ) >= 0 ) { return 0; }
         prev = entry;
@@ -5033,7 +5033,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_map_hash_add( tabledemo_table_json
     keys->count++;
     return 1;
 }
-static SCHEMA_UNUSED int tabledemo_table_json_read_map_entries( tabledemo_table_json_in_t * in, TableSequence * map, const tabledemo_table_field_info_t * f, int32_t depth, tabledemo_table_json_keys_t * held, char * wide );
+static SCHEMA_UNUSED int tabledemo_table_json_read_map_entries( tabledemo_table_json_in_t * in, tabledemo_table_sequence_t * map, const tabledemo_table_field_info_t * f, int32_t depth, tabledemo_table_json_keys_t * held, char * wide );
 static SCHEMA_UNUSED int tabledemo_table_json_read_map( tabledemo_table_json_in_t * in, void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
     /* a counted text key's buffer is its declared bound, which may be wider
@@ -5059,12 +5059,12 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_map( tabledemo_table_json_in_
         }
     }
     tabledemo_table_json_keys_init( &held );
-    ok = tabledemo_table_json_read_map_entries( in, (TableSequence *) storage, f, depth, &held, wide );
+    ok = tabledemo_table_json_read_map_entries( in, (tabledemo_table_sequence_t *) storage, f, depth, &held, wide );
     tabledemo_table_json_keys_free( &held );
     tabledemo_table_release( graph->labels.allocator, wide );
     return ok;
 }
-static SCHEMA_UNUSED int tabledemo_table_json_read_map_entries( tabledemo_table_json_in_t * in, TableSequence * map, const tabledemo_table_field_info_t * f, int32_t depth, tabledemo_table_json_keys_t * held, char * wide )
+static SCHEMA_UNUSED int tabledemo_table_json_read_map_entries( tabledemo_table_json_in_t * in, tabledemo_table_sequence_t * map, const tabledemo_table_field_info_t * f, int32_t depth, tabledemo_table_json_keys_t * held, char * wide )
 {
     tabledemo_table_json_graph_in_t * graph = (tabledemo_table_json_graph_in_t *) in->graph;
     const tabledemo_table_field_info_t * key = &f->table->fields[0];

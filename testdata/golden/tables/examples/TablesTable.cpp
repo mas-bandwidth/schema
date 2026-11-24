@@ -5273,6 +5273,22 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
 
 // ---- json graph walk: end ----
 
+// ---- the out-of-line array's slot (docs/SPEC-TABLES.md §8.1) ----
+
+inline int32_t TableJsonExtentCount( const void * slot )
+{
+    int32_t count = 0;
+    memcpy( &count, (const uint8_t *) slot + 8, sizeof( count ) );
+    return count < 0 ? 0 : count;
+}
+
+inline const uint8_t * TableJsonExtentElements( const void * slot )
+{
+    int64_t delta = 0;
+    memcpy( &delta, slot, sizeof( delta ) );
+    return delta != 0 ? (const uint8_t *) slot + delta : NULL;
+}
+
 // ---- this unit declares no map ----
 //
 // No field carries a generated entry, so the classifier below is a constant
@@ -5292,24 +5308,179 @@ inline bool TableJsonReadMap( TableJsonIn & in, void *, const TableFieldInfo *, 
     return false;
 }
 
-// ---- this unit declares no unbounded array ----
-//
-// No descriptor of this unit is an out-of-line array that is not a map, so the
-// two slot adapters are unreachable and say so.
+// ---- json list walk: begin ----
 
-inline bool TableJsonIsList( const TableFieldInfo * ) { return false; }
-
-inline bool TableJsonWriteList( TableJsonOut &, const void *, const TableFieldInfo *, int32_t )
+// an unbounded array is the out-of-line array that is not a map (§8.1)
+inline bool TableJsonIsList( const TableFieldInfo * f )
 {
-    return false;
+    return f->unbounded_container && !TableJsonIsMap( f );
 }
 
-inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *, int32_t )
+// ToJson WRITES THE ELEMENTS IN INDEX ORDER, which is the only order there is,
+// so unpack then pack is byte-stable without a rule of its own (§2.9, §17.2).
+// A region holds the array in place, so this steps it at the descriptor's pitch.
+inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
-    in.report->damaged = true;
-    in.bad = true;
-    return false;
+    const int32_t count = TableJsonExtentCount( slot );
+    if ( count == 0 )
+    {
+        out.raw( "[]", 2 );
+        return true;
+    }
+    const uint8_t * elements = TableJsonExtentElements( slot );
+    out.put( '[' );
+    for ( int32_t i = 0; i < count; i++ )
+    {
+        if ( i > 0 ) { out.put( ',' ); }
+        out.line( depth + 1 );
+        const uint8_t * element = elements + (int64_t) i * f->elem_size;
+        if ( f->text_list != 0 )
+        {
+            if ( !schema_table_json_write_text_element_( out, element, f ) ) { return false; }
+        }
+        else if ( f->kind == 17 )
+        {
+            // a []*T's elements take the pointer row (§16.7): the pointee's
+            // object in place, null, or `&node` for a shared one
+            if ( !TableJsonWritePointer( out, element, f, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonWriteScalar( out, element, f, depth + 1 ) ) { return false; }
+    }
+    out.line( depth );
+    out.put( ']' );
+    return true;
 }
+
+// FromJson READS EVERY ELEMENT THE TEXT CARRIES, appending each through the
+// descriptor's place resolver: `[]` is an empty list, and null is
+// kind_mismatch, the array row's own rule (§16.2). LAST WINS holds for a
+// repeated key: the list goes back to EMPTY before this occurrence's elements
+// land, the builder's storage being reclaimed at reset (§2.9).
+inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    if ( TableJsonPeek( in ) != '[' )
+    {
+        in.bad = true;
+        return false;
+    }
+    if ( depth + 1 > kTableJsonMaxDepth )
+    {
+        in.bad = true;
+        return false;
+    }
+    in.pos++;
+    TableJsonSetRaw( (uint8_t *) slot, 8, 0 );
+    TableJsonSetRaw( (uint8_t *) slot + 8, 4, 0 );
+    int64_t spent = 0;
+    bool total_oor_flag = false;
+    for ( ;; )
+    {
+        char c = TableJsonPeek( in );
+        if ( c == ']' )
+        {
+            in.pos++;
+            break;
+        }
+        if ( c == 0 )
+        {
+            in.bad = true;
+            return false;
+        }
+        if ( total_oor_flag )
+        {
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            c = TableJsonPeek( in );
+            if ( c == ',' )
+            {
+                in.pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
+            in.bad = true;
+            return false;
+        }
+        void * element = f->place( *graph->worker, slot, NULL, 0, 0, false );
+        if ( element == NULL )
+        {
+            // NOT ADDED: the arena could not carve another segment, or the
+            // count met the int32 cap. The text cannot be placed whole, and
+            // the read stops where §16.1's rule stops it.
+            in.report->damaged = true;
+            in.bad = true;
+            return false;
+        }
+        if ( f->text_list != 0 )
+        {
+            int32_t elem_bytes = 0;
+            if ( !schema_table_json_read_text_element_( in, (uint8_t *) element, f, depth, elem_bytes ) ) { return false; }
+            if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = out_of_range;
+                f->place( *graph->worker, slot, NULL, 0, -1, false );
+                total_oor_flag = true;
+            }
+            else
+            {
+                spent += (int64_t) elem_bytes;
+            }
+        }
+        else if ( f->kind == 17 )
+        {
+            // an element of a []*T (§2.9): null is a null slot, an object is the
+            // pointee in place or an `&node` reference (§16.7)
+            char got = TableJsonValueShape( in );
+            if ( got == 'z' )
+            {
+                if ( !TableJsonLiteral( in, "null" ) ) { return false; }
+                TableJsonSetRaw( (uint8_t *) element, f->elem_size, 0 );
+            }
+            else if ( got != 'o' )
+            {
+                in.report->refused = true;
+                in.report->refuse_reason = kind_mismatch;
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else if ( !TableJsonReadPointer( in, element, f, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonElementShapeFits( f, TableJsonValueShape( in ) ) )
+        {
+            // the wrong shape for the element kind: the slot keeps its
+            // defaults and the event counts, the array row's rule (§16.2)
+            in.report->refused = true;
+            in.report->refuse_reason = kind_mismatch;
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+        }
+        else if ( !TableJsonReadScalar( in, element, f, depth + 1 ) ) { return false; }
+        c = TableJsonPeek( in );
+        if ( c == ',' )
+        {
+            in.pos++;
+            continue;
+        } // a trailing comma is accepted
+        if ( c == ']' )
+        {
+            in.pos++;
+            break;
+        }
+        in.bad = true;
+        return false;
+    }
+    return true;
+}
+
+// ---- json list walk: end ----
 
 } // namespace tabledemo
 
@@ -7208,6 +7379,43 @@ int64_t MoodFieldToJson( const MoodField & value, char * buffer, int64_t capacit
     return TableJsonWrite( &value, MoodFieldTableType(), buffer, capacity );
 }
 
+bool VarMoodsFromJson( VarMoodsBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+{
+    VarMoods * root = builder.GetRoot();
+    if ( root == NULL )
+    {
+        if ( report != NULL ) { *report = TableReport(); }
+        return false;
+    } // locked: the report stays empty
+    TableReport read;
+    bool ok = TableJsonReadGraph( builder.main, root, VarMoodsTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        VarMoodsTableType()->reset( root );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t VarMoodsToJsonMeasure( const VarMoods * root, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, VarMoodsTableType(), NULL, 0, allocator );
+}
+
+int64_t VarMoodsToJson( const VarMoods * root, char * buffer, int64_t capacity, TableAllocator allocator )
+{
+    return TableJsonWriteGraph( root, VarMoodsTableType(), buffer, capacity, allocator );
+}
+
 bool MinArmFixFromJson( MinArmFix & value, const char * text, int64_t bytes, TableReport * report )
 {
     TableReport read;
@@ -7716,6 +7924,51 @@ bool MoodFieldEditTextForm( const char * document, int64_t document_bytes, const
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
     if ( !MoodFieldFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool VarMoodsLoadTextForm( const char * text, int64_t bytes, VarMoodsBuilder & builder, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, VarMoodsTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !VarMoodsFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool VarMoodsLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, VarMoodsBuilder & builder, const char ** refusal )
+{
+    if ( !VarMoodsLoadTextForm( text, bytes, builder, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t VarMoodsSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool VarMoodsEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, VarMoodsBuilder & builder, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), VarMoodsTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !VarMoodsFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
         *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;

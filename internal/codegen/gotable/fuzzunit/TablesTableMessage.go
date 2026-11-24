@@ -3688,7 +3688,7 @@ func tableMessageBodyMinArmFix(r *TableMessageReader, value *MinArmFix, starts [
 					}
 				}
 				{
-					payload66 := &value.Pick
+					payload69 := &value.Pick
 					{
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
@@ -3699,46 +3699,46 @@ func tableMessageBodyMinArmFix(r *TableMessageReader, value *MinArmFix, starts [
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						} else {
-							payload67, ok := r.Vocabulary.Entry(ref)
-							if !ok || payload67.ID >= 0xfffffffffffffffd || payload67.Shape.Kind == 0 {
+							payload70, ok := r.Vocabulary.Entry(ref)
+							if !ok || payload70.ID >= 0xfffffffffffffffd || payload70.Shape.Kind == 0 {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
-							switch payload67.ID {
+							switch payload70.ID {
 							case 0xdcc67d18feea8c19:
 								{
 									widened := false
-									if payload67.Shape.Kind != 14 || payload67.Element.Kind != 8 {
-										if payload67.Shape.Kind == 14 && tableKindWidens(payload67.Element.Kind, 8) {
+									if payload70.Shape.Kind != 14 || payload70.Element.Kind != 8 {
+										if payload70.Shape.Kind == 14 && tableKindWidens(payload70.Element.Kind, 8) {
 											widened = true
 										} else {
-											(*payload66).Type = MinPickTypeNone
+											(*payload69).Type = MinPickTypeNone
 											r.Report.Refuse(TableRefuseKindMismatch, "")
 											return false
 										}
 									}
-									(*payload66).Type = MinPickTypeFew
+									(*payload69).Type = MinPickTypeFew
 									{
-										value := (*payload66).Few()
+										value := (*payload69).Few()
 										clear(value.Value[:])
 										value.ValueCount = 2
 									}
 									{
-										base := &(*payload66).Few().Value
-										n, ok := tableMessageCount(&r.Bits, payload67.Shape)
+										base := &(*payload69).Few().Value
+										n, ok := tableMessageCount(&r.Bits, payload70.Shape)
 										if !ok {
 											r.Report.Refuse(TableRefuseWireDamaged, "")
 											return false
 										}
-										if tableMessageOverMax(n, payload67.Shape) {
+										if tableMessageOverMax(n, payload70.Shape) {
 											r.Report.Refuse(TableRefuseCountOverBound, "MinPick.few")
 											return false
 										}
-										if payload67.Element.Kind == 6 && !r.Bits.Align() {
+										if payload70.Element.Kind == 6 && !r.Bits.Align() {
 											r.Report.Refuse(TableRefuseWireDamaged, "")
 											return false
 										}
-										element := TableMessageEntry{Shape: payload67.Element}
+										element := TableMessageEntry{Shape: payload70.Element}
 										_ = element
 										if n < 2 {
 											r.Report.Refuse(TableRefuseCountOverBound, "MinPick.few")
@@ -3767,18 +3767,18 @@ func tableMessageBodyMinArmFix(r *TableMessageReader, value *MinArmFix, starts [
 													r.Report.Refuse(TableRefuseWireDamaged, "")
 													return false
 												}
-												payload68 := TableReader{Buffer: raw[:], Report: &r.Report}
-												if !payload68.Has(tableKindBytes(element.Shape.Kind)) {
+												payload71 := TableReader{Buffer: raw[:], Report: &r.Report}
+												if !payload71.Has(tableKindBytes(element.Shape.Kind)) {
 													r.Report.Refuse(TableRefuseWireDamaged, "")
 													return false
 												}
 												{
-													v := payload68.Unsigned(element.Shape.Kind)
+													v := payload71.Unsigned(element.Shape.Kind)
 													(*p) = uint32(v & 0xffffffff)
 												}
 											}
 										}
-										(*payload66).Few().ValueCount = int32(n)
+										(*payload69).Few().ValueCount = int32(n)
 									}
 									if widened {
 										r.Report.Widened++
@@ -3787,23 +3787,23 @@ func tableMessageBodyMinArmFix(r *TableMessageReader, value *MinArmFix, starts [
 							case 0x0a24ad61c2562a55:
 								{
 									widened := false
-									if payload67.Shape.Kind != 4 || payload67.Element.Kind != 0 {
-										if payload67.Element.Kind == 0 && tableKindWidens(payload67.Shape.Kind, 4) {
+									if payload70.Shape.Kind != 4 || payload70.Element.Kind != 0 {
+										if payload70.Element.Kind == 0 && tableKindWidens(payload70.Shape.Kind, 4) {
 											widened = true
 										} else {
-											(*payload66).Type = MinPickTypeNone
+											(*payload69).Type = MinPickTypeNone
 											r.Report.Refuse(TableRefuseKindMismatch, "")
 											return false
 										}
 									}
-									(*payload66).Type = MinPickTypeOther
+									(*payload69).Type = MinPickTypeOther
 									{
-										value := (*payload66).Other()
+										value := (*payload69).Other()
 										value.Value = 0
 									}
 									{
 										var raw [16]byte
-										ok, over := tableMessageReadScalar(&r.Bits, payload67.Shape, &raw)
+										ok, over := tableMessageReadScalar(&r.Bits, payload70.Shape, &raw)
 										if !ok {
 											r.Report.Refuse(TableRefuseWireDamaged, "")
 											return false
@@ -3818,14 +3818,14 @@ func tableMessageBodyMinArmFix(r *TableMessageReader, value *MinArmFix, starts [
 											r.Report.Refuse(TableRefuseWireDamaged, "")
 											return false
 										}
-										payload69 := TableReader{Buffer: raw[:], Report: &r.Report}
-										if !payload69.Has(tableKindBytes(payload67.Shape.Kind)) {
+										payload72 := TableReader{Buffer: raw[:], Report: &r.Report}
+										if !payload72.Has(tableKindBytes(payload70.Shape.Kind)) {
 											r.Report.Refuse(TableRefuseWireDamaged, "")
 											return false
 										}
 										{
-											v := payload69.Signed(payload67.Shape.Kind)
-											(*payload66).Other().Value = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
+											v := payload72.Signed(payload70.Shape.Kind)
+											(*payload69).Other().Value = int32(v) // #nosec G115 -- the kind check above (declared kind or tableKindWidens) bounds v to int32
 										}
 									}
 									if widened {
@@ -3833,9 +3833,9 @@ func tableMessageBodyMinArmFix(r *TableMessageReader, value *MinArmFix, starts [
 									}
 								}
 							default:
-								(*payload66).Type = MinPickTypeNone
+								(*payload69).Type = MinPickTypeNone
 								r.Report.Unknown++
-								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload67, 0, false) {
+								if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, payload70, 0, false) {
 									r.Report.Refuse(TableRefuseWireDamaged, "")
 									return false
 								}
@@ -4066,13 +4066,13 @@ func tableMessageBodyMinPlainFix(r *TableMessageReader, value *MinPlainFix, star
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
-							payload73 := TableReader{Buffer: raw[:], Report: &r.Report}
-							if !payload73.Has(tableKindBytes(element.Shape.Kind)) {
+							payload76 := TableReader{Buffer: raw[:], Report: &r.Report}
+							if !payload76.Has(tableKindBytes(element.Shape.Kind)) {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
 							{
-								v := payload73.Unsigned(element.Shape.Kind)
+								v := payload76.Unsigned(element.Shape.Kind)
 								(*p) = uint32(v & 0xffffffff)
 							}
 							if (*p) != 0 {
@@ -4228,13 +4228,13 @@ func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, sta
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					payload74 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload74.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload77 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload77.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
-						v := payload74.Signed(entry.Shape.Kind)
+						v := payload77.Signed(entry.Shape.Kind)
 						if v < 0 || v > 7 {
 							r.Report.Refuse(TableRefuseOutOfRange, "Attachment.slot")
 							r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4281,13 +4281,13 @@ func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, sta
 						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
-					payload75 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload75.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload78 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload78.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
-						b := payload75.Get32()
+						b := payload78.Get32()
 						if b&0x7f800000 == 0x7f800000 {
 							r.Report.Refuse(TableRefuseNonFiniteFloat, "Attachment.power")
 							r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4393,13 +4393,13 @@ func tableMessageBodyBuff(r *TableMessageReader, value *BuffRow, starts []uint64
 						r.Report.Refuse(TableRefuseOutOfRange, "")
 						return false
 					}
-					payload76 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload76.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload79 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload79.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
-						b := payload76.Get32()
+						b := payload79.Get32()
 						if b&0x7f800000 == 0x7f800000 {
 							r.Report.Refuse(TableRefuseNonFiniteFloat, "Buff.multiplier")
 							r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -4508,13 +4508,13 @@ func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []ui
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					payload77 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload77.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload80 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload80.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
-						v := payload77.Signed(entry.Shape.Kind)
+						v := payload80.Signed(entry.Shape.Kind)
 						if v < 0 || v > 100 {
 							r.Report.Refuse(TableRefuseOutOfRange, "Debuff.amount")
 							r.Report.Refuse(TableRefuseWireDamaged, "")

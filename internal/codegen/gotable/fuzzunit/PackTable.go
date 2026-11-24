@@ -133,7 +133,7 @@ func GunnerSettingsSaveBody(w *TableWriter, value *GunnerSettings) bool {
 func GunnerSettingsSaveBodyFields(w *TableWriter, value *GunnerSettings) bool {
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
-			if ref := w.Ids.refAtHit(110, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(111, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Reaction-value.Reaction != 0 {
@@ -144,7 +144,7 @@ func GunnerSettingsSaveBodyFields(w *TableWriter, value *GunnerSettings) bool {
 	}
 	{
 		if value.Tracking != false {
-			if ref := w.Ids.refAtHit(98, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(99, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Tracking {
@@ -159,7 +159,7 @@ func GunnerSettingsSaveBodyFields(w *TableWriter, value *GunnerSettings) bool {
 			return false
 		}
 		if value.CallsignLength > 0 {
-			if ref := w.Ids.refAtHit(60, 0x5bc44627b9848818); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(61, 0x5bc44627b9848818); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.CallsignLength < 0 || value.CallsignLength > 24 {
@@ -399,7 +399,7 @@ func GunnerSettingsSaveBodyRetain(w *TableRetainWriter, value *GunnerSettings) b
 func GunnerSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerSettings) bool {
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
-			if ref := w.Ids.refAtHit(110, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(111, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Reaction-value.Reaction != 0 {
@@ -410,7 +410,7 @@ func GunnerSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerSetti
 	}
 	{
 		if value.Tracking != false {
-			if ref := w.Ids.refAtHit(98, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(99, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Tracking {
@@ -425,7 +425,7 @@ func GunnerSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerSetti
 			return false
 		}
 		if value.CallsignLength > 0 {
-			if ref := w.Ids.refAtHit(60, 0x5bc44627b9848818); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(61, 0x5bc44627b9848818); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.CallsignLength < 0 || value.CallsignLength > 24 {
@@ -635,7 +635,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 			return false
 		}
 		if value.DisplayNameLength > 0 {
-			if ref := w.Ids.refAtHit(32, 0x2d21d7cd66bd5a5d); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(33, 0x2d21d7cd66bd5a5d); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
@@ -682,7 +682,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 	}
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
-			if ref := w.Ids.refAtHit(74, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(75, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Health-value.Health != 0 {
@@ -693,7 +693,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
-			if ref := w.Ids.refAtHit(24, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(25, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Mass-value.Mass != 0 {
@@ -707,7 +707,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 			return false
 		}
 		if value.HardpointsCount > 0 {
-			if ref := w.Ids.refAtHit(85, 0x95d0cce09ca82b73); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(86, 0x95d0cce09ca82b73); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.HardpointsCount < 0 || value.HardpointsCount > 4 {
@@ -752,7 +752,7 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 	if value.GunnerPresent {
 		{
 			mark := w.Ids.Count
-			ref := w.Ids.refAtHit(45, 0x40dbb648c0cd44aa)
+			ref := w.Ids.refAtHit(46, 0x40dbb648c0cd44aa)
 			start := w.Ids.Count
 			n := GunnerSettingsMeasureBody(&value.Gunner, w.Ids)
 			if n < 0 || w.Ids.Overflow {
@@ -942,6 +942,10 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		case 0x40dbb648c0cd44aa: // gunner
 			if kind != 13 {
@@ -959,6 +963,10 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 				return false
 			}
 			if !GunnerSettingsLoadBody(&sub, &value.Gunner) {
+				return false
+			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -1056,7 +1064,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 			return false
 		}
 		if value.DisplayNameLength > 0 {
-			if ref := w.Ids.refAtHit(32, 0x2d21d7cd66bd5a5d); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(33, 0x2d21d7cd66bd5a5d); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
@@ -1103,7 +1111,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 	}
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
-			if ref := w.Ids.refAtHit(74, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(75, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Health-value.Health != 0 {
@@ -1114,7 +1122,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
-			if ref := w.Ids.refAtHit(24, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(25, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Mass-value.Mass != 0 {
@@ -1128,7 +1136,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 			return false
 		}
 		if value.HardpointsCount > 0 {
-			if ref := w.Ids.refAtHit(85, 0x95d0cce09ca82b73); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(86, 0x95d0cce09ca82b73); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.HardpointsCount < 0 || value.HardpointsCount > 4 {
@@ -1173,7 +1181,7 @@ func ShipEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *ShipEntry) bool 
 	if value.GunnerPresent {
 		{
 			mark := w.Ids.Count
-			ref := w.Ids.refAtHit(45, 0x40dbb648c0cd44aa)
+			ref := w.Ids.refAtHit(46, 0x40dbb648c0cd44aa)
 			start := w.Ids.Count
 			payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 			{
@@ -1404,6 +1412,10 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		case 0x40dbb648c0cd44aa: // gunner
 			if kind != 13 {
@@ -1422,6 +1434,10 @@ func ShipEntryLoadBodyRetain(r *TableRetainReader, value *ShipEntry) bool {
 				return false
 			}
 			if !GunnerSettingsLoadBodyRetain(&sub, &value.Gunner) {
+				return false
+			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -1480,7 +1496,7 @@ func GlobalSettingsSaveBody(w *TableWriter, value *GlobalSettings) bool {
 func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 	{
 		if value.TickRate != 60 {
-			if ref := w.Ids.refAtHit(96, 0xa65f859b617deaf3); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(97, 0xa65f859b617deaf3); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.TickRate < 1 || value.TickRate > 240 {
@@ -1491,7 +1507,7 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 	}
 	{
 		if value.Difficulty != DifficultyNormal {
-			if ref := w.Ids.refAtHit(48, 0x467f35a74c6e4a70); !w.headerPair(ref, 30) {
+			if ref := w.Ids.refAtHit(49, 0x467f35a74c6e4a70); !w.headerPair(ref, 30) {
 				w.headerRest(ref, 30)
 			}
 			switch value.Difficulty {
@@ -1500,11 +1516,11 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 					w.putLebWide(0)
 				}
 			case DifficultyEasy:
-				w.IDAt(51, 0x483d9e6c1ccd1f9b)
+				w.IDAt(52, 0x483d9e6c1ccd1f9b)
 			case DifficultyNormal:
-				w.IDAt(90, 0x9ff3121d30f88d52)
+				w.IDAt(91, 0x9ff3121d30f88d52)
 			case DifficultyHard:
-				w.IDAt(59, 0x58c7b5d87587287c)
+				w.IDAt(60, 0x58c7b5d87587287c)
 			default:
 				return false
 			}
@@ -1515,7 +1531,7 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 			return false
 		}
 		if value.BuildNoteLength > 0 {
-			if ref := w.Ids.refAtHit(13, 0x14ec921cc2549d60); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(14, 0x14ec921cc2549d60); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.BuildNoteLength < 0 || value.BuildNoteLength > 48 {
@@ -1569,7 +1585,7 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 			}
 		}
 		if !allDefault {
-			if ref := w.Ids.refAtHit(7, 0x09ae5613b0051271); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(8, 0x09ae5613b0051271); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			{
@@ -1789,6 +1805,10 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		default:
 			r.Report.Unknown++
@@ -1877,7 +1897,7 @@ func GlobalSettingsSaveBodyRetain(w *TableRetainWriter, value *GlobalSettings) b
 func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSettings) bool {
 	{
 		if value.TickRate != 60 {
-			if ref := w.Ids.refAtHit(96, 0xa65f859b617deaf3); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(97, 0xa65f859b617deaf3); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.TickRate < 1 || value.TickRate > 240 {
@@ -1888,7 +1908,7 @@ func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSetti
 	}
 	{
 		if value.Difficulty != DifficultyNormal {
-			if ref := w.Ids.refAtHit(48, 0x467f35a74c6e4a70); !w.headerPair(ref, 30) {
+			if ref := w.Ids.refAtHit(49, 0x467f35a74c6e4a70); !w.headerPair(ref, 30) {
 				w.headerRest(ref, 30)
 			}
 			switch value.Difficulty {
@@ -1897,11 +1917,11 @@ func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSetti
 					w.putLebWide(0)
 				}
 			case DifficultyEasy:
-				w.IDAt(51, 0x483d9e6c1ccd1f9b)
+				w.IDAt(52, 0x483d9e6c1ccd1f9b)
 			case DifficultyNormal:
-				w.IDAt(90, 0x9ff3121d30f88d52)
+				w.IDAt(91, 0x9ff3121d30f88d52)
 			case DifficultyHard:
-				w.IDAt(59, 0x58c7b5d87587287c)
+				w.IDAt(60, 0x58c7b5d87587287c)
 			default:
 				return false
 			}
@@ -1912,7 +1932,7 @@ func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSetti
 			return false
 		}
 		if value.BuildNoteLength > 0 {
-			if ref := w.Ids.refAtHit(13, 0x14ec921cc2549d60); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(14, 0x14ec921cc2549d60); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.BuildNoteLength < 0 || value.BuildNoteLength > 48 {
@@ -1966,7 +1986,7 @@ func GlobalSettingsSaveBodyFieldsRetain(w *TableRetainWriter, value *GlobalSetti
 			}
 		}
 		if !allDefault {
-			if ref := w.Ids.refAtHit(7, 0x09ae5613b0051271); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(8, 0x09ae5613b0051271); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			{
@@ -2190,6 +2210,10 @@ func GlobalSettingsLoadBodyRetain(r *TableRetainReader, value *GlobalSettings) b
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		default:
 			r.Report.Unknown++
@@ -2247,7 +2271,7 @@ func PackConfigSaveBody(w *TableWriter, value *PackConfig) bool {
 func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 	{
 		if value.Version != 1 {
-			if ref := w.Ids.refAtHit(116, 0xbb62c62c9808ea37); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(117, 0xbb62c62c9808ea37); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.Version))
@@ -2255,7 +2279,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(75, 0x7fb43557b54149ce)
+		ref := w.Ids.refAtHit(76, 0x7fb43557b54149ce)
 		start := w.Ids.Count
 		n := GlobalSettingsMeasureBody(&value.Settings, w.Ids)
 		if n < 0 || w.Ids.Overflow {
@@ -2282,7 +2306,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(29, 0x294a5c4913e1ad44)
+		ref := w.Ids.refAtHit(30, 0x294a5c4913e1ad44)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -2491,7 +2515,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(88, 0x9cda940a344e1571)
+		ref := w.Ids.refAtHit(89, 0x9cda940a344e1571)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -2711,7 +2735,7 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 			return false
 		}
 		if value.ReservesCount > 0 {
-			if ref := w.Ids.refAtHit(71, 0x77707fccd201c228); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(72, 0x77707fccd201c228); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.ReservesCount < 0 || value.ReservesCount > 3 {
@@ -2878,6 +2902,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 			if !GlobalSettingsLoadBody(&sub, &value.Settings) {
 				return false
 			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
@@ -2958,6 +2986,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					if !ShipEntryLoadBody(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -2965,6 +2998,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -3061,6 +3098,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		case 0x77707fccd201c228: // reserves
 			if kind != 14 {
@@ -3106,6 +3147,11 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 					if !ShipEntryLoadBody(&elem, &value.Reserves[i]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3114,6 +3160,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 				value.ReservesCount = int32(count)
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -3204,7 +3254,7 @@ func PackConfigSaveBodyRetain(w *TableRetainWriter, value *PackConfig) bool {
 func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) bool {
 	{
 		if value.Version != 1 {
-			if ref := w.Ids.refAtHit(116, 0xbb62c62c9808ea37); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(117, 0xbb62c62c9808ea37); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.Version))
@@ -3212,7 +3262,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(75, 0x7fb43557b54149ce)
+		ref := w.Ids.refAtHit(76, 0x7fb43557b54149ce)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -3279,7 +3329,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(29, 0x294a5c4913e1ad44)
+		ref := w.Ids.refAtHit(30, 0x294a5c4913e1ad44)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -3528,7 +3578,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(88, 0x9cda940a344e1571)
+		ref := w.Ids.refAtHit(89, 0x9cda940a344e1571)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -3748,7 +3798,7 @@ func PackConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *PackConfig) boo
 			return false
 		}
 		if value.ReservesCount > 0 {
-			if ref := w.Ids.refAtHit(71, 0x77707fccd201c228); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(72, 0x77707fccd201c228); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.ReservesCount < 0 || value.ReservesCount > 3 {
@@ -3926,6 +3976,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 			if !GlobalSettingsLoadBodyRetain(&sub, &value.Settings) {
 				return false
 			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
@@ -4010,6 +4064,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					if !ShipEntryLoadBodyRetain(&elem, &value.Ships[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -4017,6 +4076,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -4117,6 +4180,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		case 0x77707fccd201c228: // reserves
 			if kind != 14 {
@@ -4164,6 +4231,11 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 					if !ShipEntryLoadBodyRetain(&elem, &value.Reserves[i]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -4172,6 +4244,10 @@ func PackConfigLoadBodyRetain(r *TableRetainReader, value *PackConfig) bool {
 				value.ReservesCount = int32(count)
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}

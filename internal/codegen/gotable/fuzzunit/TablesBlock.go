@@ -629,6 +629,10 @@ func MoodFieldBlockBytes(b *MoodFieldBlock) int64 {
 // through the graph.
 func (b *MoodFieldBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
 
+// table VarMoods has NO block form: it is declared a plain `table`, which is the VARIABLE class whatever its fields are, and only a `fixed table` has a block form; nor could it be declared `fixed`: VarMoods.row is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table MinArmFix has NO block form: MinArmFix.pick is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
