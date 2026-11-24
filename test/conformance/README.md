@@ -194,8 +194,10 @@ sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
 `make tables-c-retain` run C natively and under ASan/UBSan; the corresponding
 C# managed, native, builder and retention targets are in make/cs.mk.
 
-Unsupported roots are printed as `N seeds absent (roots the leg has no codec
-for)`. Absence is explicit and never counted as a passing fixture.
+A root the leg has no codec for is held by name in the leg's ledger,
+`test/conformance/wire-absent/<leg>-<arm>.tsv`, or the run stops red naming
+it (`--leg`, W-ROSTER); a held one is printed as `N ledgered seeds absent
+(<ledger>)`. Absence is explicit and never counted as a passing fixture.
 PORTING.md M20 records the coverage and gates.
 
 **Absent is not failure, and the distinction is the whole reason the matrix

@@ -48,6 +48,40 @@ const wireAbsentDir = "test/conformance/wire-absent"
 // the ledger's file name is unambiguous.
 var legName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
+// ONE-UNIT LEGS. --unit without --replay scopes a whole-roster run to one
+// unit's roots, so the leg is never asked about any other unit and none of
+// them can be absent: a leg that took --unit would leave the rest of the
+// roster unchecked. Only the legs named here may, each one unit's driver,
+// and each of them must name its unit. Every unit a one-unit leg drops
+// stays checked by its whole-roster run, named beside it.
+var oneUnitLegs = map[string]string{
+	// make/goose-wirefuzz.sh runs it per unit goose_fuzz_units generates
+	// (make/goose-fuzz.mk); a unit that fails to generate has no leg, and the
+	// whole-roster `--leg goose` run (make/verify-vm.mk _verify-goose-fuzz-plain
+	// and -retain, the per-PR verify-leg goose fuzz row) answers its roots 0
+	// through test/conformance/goose/wirefuzzdispatch, absent with no ledger:
+	// red by name.
+	"goose-unit": "goose",
+}
+
+// checkOneUnitLeg refuses --unit on a leg that is not a one-unit leg, and a
+// one-unit leg without --unit.
+func checkOneUnitLeg(leg, unit string) error {
+	whole, one := oneUnitLegs[leg]
+	switch {
+	case unit != "" && !one:
+		names := make([]string, 0, len(oneUnitLegs))
+		for n := range oneUnitLegs {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		return fmt.Errorf("wire-fuzz: --unit %s scopes the run to one unit and leaves the rest of the roster unasked; only a one-unit leg (%s) takes it, and --leg %s is not one (docs/SPEC-CONFORMANCE.md W-ROSTER)", unit, strings.Join(names, ", "), leg)
+	case unit == "" && one:
+		return fmt.Errorf("wire-fuzz: --leg %s is a one-unit leg (its whole-roster run is --leg %s) and needs --unit", leg, whole)
+	}
+	return nil
+}
+
 // wireArm is the arm a run's profile names in its ledger's file name.
 func wireArm(opts wireFuzzOptions) string {
 	switch {

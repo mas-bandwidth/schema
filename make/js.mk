@@ -1151,7 +1151,8 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # and form-2 (message-form) root of the roster and fails by name on one it names
 # but cannot open: backenddemo LoginRequest, MatchResult and StorePurchase,
 # vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, and tblg1 Guarded
-# all answer. The count is pinned at 0 (no `seeds absent` in the summary line),
+# all answer. The count is pinned at 0 (no `seeds absent` in the summary line
+# in any words, the harness's `N ledgered seeds absent` among them),
 # so a root that drops to absent fails the target by name rather than shrinking
 # the run unseen; it does not depend on SEED or N.
 TABLES_JS_WIRE_FUZZ_ABSENT := 0
@@ -1164,7 +1165,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
-	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-all.log || { \
+	@! grep -qE 'seeds absent' build/tables-js-wire-fuzz-all.log || { \
 		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
 	@./build/conformance-harness wire-fuzz --leg js --mixed-builder --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
@@ -1174,7 +1175,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all-retain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all-retain.log
-	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-all-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
+	@! grep -qE 'seeds absent' build/tables-js-wire-fuzz-all-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
 
 # THE TWO ARMS ONE AT A TIME, for ci-full.yml's js-fuzz rows. Together the
 # arms measured 88 s on a workstation at the default SEED and N (the
@@ -1193,7 +1194,7 @@ tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-plain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-plain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-plain.log
-	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-plain.log || { \
+	@! grep -qE 'seeds absent' build/tables-js-wire-fuzz-plain.log || { \
 		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk'; exit 1; }
 
 tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
@@ -1205,7 +1206,7 @@ tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-retain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-retain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-retain.log
-	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
+	@! grep -qE 'seeds absent' build/tables-js-wire-fuzz-retain.log || { echo 'JavaScript retaining wire-fuzz roster incomplete'; exit 1; }
 
 # I15's generated-reader control removes only the final all-ID-entries-used
 # check (§3). Use the shared unused-entry framing vector against a variable

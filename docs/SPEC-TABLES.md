@@ -9786,9 +9786,15 @@ set: a root absent and not listed is red even when another listed root comes
 off in the same change, and a listed root the leg now answers is red until its
 line is removed. The harness finds the ledger, never the caller: a whole-roster
 run names its leg (`--leg`), the arm is the run's own profile (`plain`, `builder`
-or `retain`), and a run with no leg is refused. A run of a one-unit driver
-names the unit (`--unit` without `--replay`) and is asked about that unit's
-roots alone. A plain-arm line whose reason begins `split:` holds a root the
+or `retain`), and a run with no leg is refused. A one-unit leg (`goose-unit`, a driver per unit)
+names its unit (`--unit` without `--replay`) and is asked about that unit's
+roots alone; no other leg takes `--unit`, so no whole-roster run leaves part of
+the roster unasked, and a unit a one-unit sweep drops (one that fails to
+generate) is still asked by the leg's whole-roster run, where its roots are
+absent and red. The summary line holds an absence as `, N ledgered seeds
+absent (<ledger>)`; a gate that reads the summary (the release gate,
+tools/wirefuzzrelease) reads that clause or is red, and never reads an absence
+in other words as none. A plain-arm line whose reason begins `split:` holds a root the
 leg's builder arm fuzzes instead, and the builder arm's run refuses a split
 root it does not answer, so no root is split to no arm. A port adds a new root
 to its wire-fuzz driver in the change that adds the root to the corpus.

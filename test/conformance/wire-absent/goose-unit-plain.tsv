@@ -4,7 +4,7 @@
 # wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Each is a variable
 # root of a unit with fixed roots too: the fixed arm reads the value-only
 # roots and the same unit's builder arm fuzzes these, which the builder run
-# checks. Measured on intel at 9c4d611a0f: 47 seeds over 8 roots.
+# checks. Measured on intel at ef4717a4a1 (the base) plus this guard: 47 seeds over 8 roots.
 cooktorture.TortureCook	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (3 seeds)
 messagedemo.ToolEnvelope	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (6 seeds)
 shapes.Bounds	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (4 seeds)

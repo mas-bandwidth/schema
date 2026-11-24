@@ -153,9 +153,37 @@ func fakeWireLeg(args []string) int {
 	return 0
 }
 
-// runFakeWireFuzz runs wireFuzz end to end over the committed corpus, with
-// the test binary as a leg that leaves `absent` unanswered and the ledgers in
-// ledgerDir.
+// wireFuzzFixtureManifest is a small roster for the end-to-end tests: a few
+// committed seeds of three units (a fixed and a variable root of shapes, a
+// variable root of listdemo, a retained variable root of graphdemo), so a run
+// compiles three units and not the whole corpus. The working directory is the
+// repository root, where the manifest's paths resolve.
+const wireFuzzFixtureManifest = `unit shapes test/tables/shapes
+instance shapes_bounds_ends shapes Bounds testdata/wire/tables/shapes/bounds_ends.bin
+instance shapes_fixed_ends shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin
+unit listdemo tables/lists
+instance list_shared listdemo Album testdata/wire/tables/list_shared.bin
+unit graphdemo tables/pointers
+instance graph_tree graphdemo Scene testdata/wire/tables/graph_tree.bin
+`
+
+func wireFuzzFixture(t *testing.T) *Manifest {
+	t.Helper()
+	t.Chdir(conformanceRoot(t))
+	path := filepath.Join(t.TempDir(), "MANIFEST.txt")
+	if err := os.WriteFile(path, []byte(wireFuzzFixtureManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := ReadManifest(path, defaultJSONDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// runFakeWireFuzz runs wireFuzz end to end over m, with the test binary as a
+// leg that leaves `absent` unanswered and the ledgers in ledgerDir. The
+// pinned vectors are off: they name units the fixture does not hold.
 func runFakeWireFuzz(t *testing.T, m *Manifest, opts wireFuzzOptions, absent ...string) error {
 	t.Helper()
 	exe, err := os.Executable()
@@ -165,7 +193,7 @@ func runFakeWireFuzz(t *testing.T, m *Manifest, opts wireFuzzOptions, absent ...
 	failed := filepath.Join(t.TempDir(), "failed.bin")
 	t.Setenv("SCHEMA_HARNESS_FAKE_WIRE_LEG", "1")
 	opts.driver = strings.Join(append([]string{exe}, absent...), " ")
-	opts.vectors = defaultVectors
+	opts.vectors = ""
 	opts.seed, opts.n, opts.failed = 1, 1, failed
 	return wireFuzz(m, opts)
 }
@@ -183,7 +211,7 @@ func writeLedger(t *testing.T, dir, name, body string) {
 // with no --leg is refused. Disabling the check in wireFuzz turns the first
 // and third cases green past the roster, and this test red.
 func TestWireFuzzAbsentRootEndToEnd(t *testing.T) {
-	m, _, _ := corpus(t)
+	m := wireFuzzFixture(t)
 	dir := t.TempDir()
 	const root = "shapes.Bounds"
 
@@ -222,7 +250,7 @@ func TestWireFuzzAbsentRootEndToEnd(t *testing.T) {
 // A SPLIT LINE IS ANSWERED BY THE BUILDER ARM: the builder run of the same
 // leg reads the plain ledger and refuses a split root it does not answer.
 func TestWireFuzzSplitRootAnsweredByBuilderArm(t *testing.T) {
-	m, _, _ := corpus(t)
+	m := wireFuzzFixture(t)
 	dir := t.TempDir()
 	const root = "listdemo.Album" // a variable root: in the builder roster
 	writeLedger(t, dir, "fake-plain.tsv", root+"\tsplit: fuzzed by the fake builder arm\n")
@@ -245,8 +273,8 @@ func TestWireFuzzSplitRootAnsweredByBuilderArm(t *testing.T) {
 // A ONE-UNIT RUN (--unit without --replay) asks about its unit alone and
 // holds only that unit's ledger lines.
 func TestWireFuzzUnitScopedRoster(t *testing.T) {
-	m, _, _ := corpus(t)
-	seeds, roots, _, _, err := buildWireFuzzRoster(m, wireFuzzOptions{vectors: defaultVectors, unit: "listdemo"})
+	m := wireFuzzFixture(t)
+	seeds, roots, _, _, err := buildWireFuzzRoster(m, wireFuzzOptions{unit: "listdemo"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,5 +292,37 @@ func TestWireFuzzUnitScopedRoster(t *testing.T) {
 	}
 	if err := checkAbsentRoots(map[string]int{"listdemo.Album": 2}, ledger, "L", ""); err == nil {
 		t.Fatal("an unscoped run passed a ledger line the roster answers")
+	}
+}
+
+// --UNIT IS FOR ONE-UNIT LEGS ALONE (#4880 round 2): a whole-roster leg that
+// takes --unit leaves every other unit unasked, so its absent roots there are
+// never counted. The harness refuses --unit on any leg oneUnitLegs does not
+// name, and a one-unit leg without --unit. Letting --unit through on any leg
+// turns the first case green past the roster, and this test red.
+func TestWireFuzzUnitOnlyOnOneUnitLegs(t *testing.T) {
+	m := wireFuzzFixture(t)
+	dir := t.TempDir()
+
+	// shapes.Bounds is unanswered and in no ledger: a whole-roster run scoped
+	// to listdemo would never see it
+	err := runFakeWireFuzz(t, m, wireFuzzOptions{leg: "fake", ledgerDir: dir, unit: "listdemo"}, "shapes.Bounds")
+	if err == nil || !strings.Contains(err.Error(), "only a one-unit leg (goose-unit) takes it, and --leg fake is not one") {
+		t.Fatalf("--unit on a whole-roster leg was not refused: %v", err)
+	}
+
+	err = runFakeWireFuzz(t, m, wireFuzzOptions{leg: "goose-unit", ledgerDir: dir}, "shapes.Bounds")
+	if err == nil || !strings.Contains(err.Error(), "--leg goose-unit is a one-unit leg (its whole-roster run is --leg goose) and needs --unit") {
+		t.Fatalf("a one-unit leg without --unit was not refused: %v", err)
+	}
+
+	// the one-unit leg with its unit: past the leg checks and the roster
+	// check (its unit answers every root), stopped by the fake leg's pipe
+	err = runFakeWireFuzz(t, m, wireFuzzOptions{leg: "goose-unit", ledgerDir: dir, unit: "listdemo"}, "shapes.Bounds")
+	if err == nil {
+		t.Fatal("the fake leg closed its pipe, yet the run passed")
+	}
+	if strings.Contains(err.Error(), "one-unit leg") || strings.Contains(err.Error(), "seeds absent") {
+		t.Fatalf("a one-unit leg run over its unit was refused: %v", err)
 	}
 }
