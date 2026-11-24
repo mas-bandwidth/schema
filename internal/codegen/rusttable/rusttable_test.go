@@ -263,7 +263,7 @@ func TestCookLayoutIsAssertedAtCompileTime(t *testing.T) {
 	}
 	for _, want := range []string{
 		"pub struct ConfigCook",
-		"pub unsafe fn open(bytes: *const u8, length: u64) -> Option<ConfigCook>",
+		"pub unsafe fn open(bytes: *const u8, schema_length: u64) -> Option<ConfigCook>",
 	} {
 		if !strings.Contains(cook, want) {
 			t.Errorf("the cooked form is missing %q", want)
@@ -368,8 +368,8 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 	for _, want := range []string{
 		"HOLDER_FIXED_HASH", "holder_fixed_save", "holder_fixed_load",
 		"effect_fixed_write_body", "effect_fixed_scatter",
-		"let arm = unsafe { value.arms.boost };",
-		"value.arms.ward = arm;",
+		"let schema_arm = unsafe { schema_value.arms.boost };",
+		"schema_value.arms.ward = schema_arm;",
 		"report.held += 1;",
 	} {
 		if !strings.Contains(ubody, want) {
@@ -552,7 +552,7 @@ func rustPrivateFn(body, name string) string {
 // A disconnected private body must not satisfy the implementation checks.
 func rustFixedLoadRecords(body, name string) string {
 	entry := rustFn(body, name)
-	if !strings.Contains(entry, name+"_records(values, data, plan, remap, report)") {
+	if !strings.Contains(entry, name+"_records(schema_values, data, schema_plan, schema_remap, schema_report)") {
 		return ""
 	}
 	return rustPrivateFn(body, name+"_records")
@@ -587,7 +587,7 @@ func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 	out := generate(t, valueOnly)
 	body := string(out["probe_fixed.rs"])
 	entry := rustFn(body, "config_fixed_load")
-	if !strings.Contains(entry, "config_fixed_load_records(values, data, plan, remap, report)") {
+	if !strings.Contains(entry, "config_fixed_load_records(schema_values, data, schema_plan, schema_remap, schema_report)") {
 		t.Fatal("config_fixed_load does not delegate to its record loader")
 	}
 	load := rustPrivateFn(body, "config_fixed_load_records")
@@ -600,7 +600,7 @@ func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 	if !strings.Contains(load, "CONFIG_FIXED_DEFAULTS") {
 		t.Error("the load has no default image to copy into holes")
 	}
-	i := strings.Index(load, "for k in 0..n")
+	i := strings.Index(load, "for schema_k in 0..schema_n")
 	if i < 0 {
 		t.Fatal("the load has no record loop")
 	}
@@ -647,14 +647,14 @@ func TestFixedFormWriteIsLiveCountAndLength(t *testing.T) {
 		t.Fatal("probe_fixed_write_body was not emitted")
 	}
 	for _, want := range []string{
-		"for i in 0..value.marks_count.clamp(0, 4) as usize",
-		"let n = value.blob_length.clamp(0, 6) as usize;",
-		"copy_from_slice(&value.blob[..n]);",
-		"let n = value.label_length.clamp(0, 8) as usize;",
-		"copy_from_slice(&value.label[..n]);",
-		"value.marks_count >= 0 && value.marks_count <= 4,",
-		"value.blob_length >= 0 && value.blob_length <= 6,",
-		"value.label_length >= 0 && value.label_length <= 8,",
+		"for schema_i in 0..schema_value.marks_count.clamp(0, 4) as usize",
+		"let schema_n = schema_value.blob_length.clamp(0, 6) as usize;",
+		"copy_from_slice(&schema_value.blob[..schema_n]);",
+		"let schema_n = schema_value.label_length.clamp(0, 8) as usize;",
+		"copy_from_slice(&schema_value.label[..schema_n]);",
+		"schema_value.marks_count >= 0 && schema_value.marks_count <= 4,",
+		"schema_value.blob_length >= 0 && schema_value.blob_length <= 6,",
+		"schema_value.label_length >= 0 && schema_value.label_length <= 8,",
 	} {
 		if !strings.Contains(write, want) {
 			t.Errorf("the writer is missing live count/length %q", want)
@@ -726,7 +726,7 @@ fixed table Fx1
 		`copy_from_slice(b"fx")`,
 		"label_length = 2",
 		"core::mem::zeroed()",
-		"let mut value: Self",
+		"let mut schema_value: Self",
 	} {
 		if !strings.Contains(def, want) {
 			t.Errorf("constructed storage is missing %q:\n%s", want, def)
@@ -745,14 +745,14 @@ fixed table Fx1
 		t.Error("dest-row writes the named default; the hole is Default, not scatter")
 	}
 	entry := rustFn(fixed, "fx1_fixed_load")
-	if !strings.Contains(entry, "fx1_fixed_load_records(values, data, plan, remap, report)") {
+	if !strings.Contains(entry, "fx1_fixed_load_records(schema_values, data, schema_plan, schema_remap, schema_report)") {
 		t.Fatal("fx1_fixed_load does not delegate to its record loader")
 	}
 	load := rustPrivateFn(fixed, "fx1_fixed_load_records")
 	if load == "" {
 		t.Fatal("fx1_fixed_load_records was not emitted")
 	}
-	i := strings.Index(load, "for k in 0..n")
+	i := strings.Index(load, "for schema_k in 0..schema_n")
 	if i < 0 {
 		t.Fatal("the load has no record loop")
 	}

@@ -319,10 +319,10 @@ func t02R25PlanTooLarge(t *testing.T) {
 	if load == "" {
 		t.Fatalf("lineage_fixed_load is not emitted")
 	}
-	if !strings.Contains(load, "if entries.len() > plan.len() {") {
+	if !strings.Contains(load, "if schema_entries.len() > schema_plan.len() {") {
 		t.Errorf("the load does not hold the selected plan to the caller's plan slice:\n%s", load)
 	}
-	if !strings.Contains(load, "return report.refuse(TableFixedReason::PlanTooLarge);") {
+	if !strings.Contains(load, "return schema_report.refuse(TableFixedReason::PlanTooLarge);") {
 		t.Errorf("a plan past the caller's capacity is not refused by name:\n%s", load)
 	}
 	if !strings.Contains(string(fixedRuntimeBody), `Self::PlanTooLarge => "plan_too_large",`) {
@@ -345,14 +345,14 @@ func t02R26Lanes(t *testing.T) {
 	if got := t02ByteArray(t, text, "LINEAGE_FIXED_LAYOUT_0"); !bytes.Equal(got, []byte{0x00}) {
 		t.Errorf("the forged entry's layout is %v, want the one byte handed in", got)
 	}
-	if !strings.Contains(text, "out.reason[i] = TableFixedReason::LayoutMalformed;") {
+	if !strings.Contains(text, "out.reason[schema_i] = TableFixedReason::LayoutMalformed;") {
 		t.Errorf("a lineage entry whose layout would not parse is not recorded layout_malformed")
 	}
-	if !strings.Contains(text, "None => out.reason[i] = if census.refused { census.reason } else { TableFixedReason::PlanTooLarge },") {
+	if !strings.Contains(text, "None => out.reason[schema_i] = if schema_census.refused { schema_census.reason } else { TableFixedReason::PlanTooLarge },") {
 		t.Errorf("a lineage entry whose plan would not fit is not recorded plan_too_large")
 	}
-	if !strings.Contains(text, "if plans.reason[found] != TableFixedReason::None {") ||
-		!strings.Contains(text, "return report.refuse(plans.reason[found]);") {
+	if !strings.Contains(text, "if schema_plans.reason[schema_found] != TableFixedReason::None {") ||
+		!strings.Contains(text, "return schema_report.refuse(schema_plans.reason[schema_found]);") {
 		t.Errorf("the load does not refuse by the selected entry's own lane")
 	}
 	load := t02Fn(text, "lineage_fixed_load")

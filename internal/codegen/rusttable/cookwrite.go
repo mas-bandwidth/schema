@@ -260,7 +260,7 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	}
 	for _, st := range extentTargets {
 		fmt.Fprintf(b, "        0x%016x => match node.downcast_ref::<%s>() {\n", ir.TableWireId(st.WireName()), st.Name)
-		fmt.Fprintf(b, "            Some(v) => {\n                let mut c = TableCarve { extent_at: 0, at: 0 };\n                %s(v, &mut c, None, 0);\n                c.at\n            }\n", fn(st.Name, "cook_carve"))
+		fmt.Fprintf(b, "            Some(schema_v) => {\n                let mut c = TableCarve { extent_at: 0, at: 0 };\n                %s(schema_v, &mut c, None, 0);\n                c.at\n            }\n", fn(st.Name, "cook_carve"))
 		b.WriteString("            None => 0,\n        },\n")
 	}
 	if len(extentTargets) > 0 {
@@ -271,17 +271,17 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	if len(targets) == 0 {
 		b.WriteString("fn cook_record_write(_type_id: u64, _node: &Rc<dyn Any>, w: &mut TableRegionWriter, _at: i64) {\n    w.fail();\n}\n\n")
 	} else {
-		b.WriteString("fn cook_record_write(type_id: u64, node: &Rc<dyn Any>, w: &mut TableRegionWriter, at: i64) {\n    match type_id {\n")
+		b.WriteString("fn cook_record_write(type_id: u64, node: &Rc<dyn Any>, w: &mut TableRegionWriter, schema_at: i64) {\n    match type_id {\n")
 		for _, st := range targets {
 			fmt.Fprintf(b, "        0x%016x => match node.downcast_ref::<%s>() {\n", ir.TableWireId(st.WireName()), st.Name)
 			if cookHasExtent(st) {
-				fmt.Fprintf(b, "            Some(v) => {\n                %s(v, w, at);\n", fn(st.Name, "cook_body"))
+				fmt.Fprintf(b, "            Some(schema_v) => {\n                %s(schema_v, w, schema_at);\n", fn(st.Name, "cook_body"))
 				b.WriteString("                // THE EXTENT WRITTEN IS THE EXTENT MEASURED (§2.8, §2.9)\n")
-				fmt.Fprintf(b, "                let mut m = TableCarve { extent_at: 0, at: 0 };\n                %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
-				fmt.Fprintf(b, "                let mut c = TableCarve { extent_at: at + %d, at: 0 };\n                %s(v, &mut c, Some(&mut *w), at);\n", cookRecordBytes(g.unit, st), fn(st.Name, "cook_carve"))
+				fmt.Fprintf(b, "                let mut m = TableCarve { extent_at: 0, at: 0 };\n                %s(schema_v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
+				fmt.Fprintf(b, "                let mut c = TableCarve { extent_at: schema_at + %d, at: 0 };\n                %s(schema_v, &mut c, Some(&mut *w), schema_at);\n", cookRecordBytes(g.unit, st), fn(st.Name, "cook_carve"))
 				b.WriteString("                if c.at != m.at {\n                    w.fail();\n                }\n            }\n")
 			} else {
-				fmt.Fprintf(b, "            Some(v) => %s(v, w, at),\n", fn(st.Name, "cook_body"))
+				fmt.Fprintf(b, "            Some(schema_v) => %s(schema_v, w, schema_at),\n", fn(st.Name, "cook_body"))
 			}
 			b.WriteString("            None => w.fail(),\n        },\n")
 		}
@@ -321,10 +321,10 @@ func (g *gen) emitCookBodyWriter(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("/// (docs/SPEC-TABLES.md §7.2, §7.6): every piece through the cook's byte\n")
 	b.WriteString("/// order, every byte the fields do not cover left zero.\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(unused_variables, clippy::identity_op)]\n")
-	fmt.Fprintf(b, "pub fn %s(v: &%s, w: &mut TableRegionWriter, at: i64) {\n", fn(st.Name, "cook_body"), st.Name)
+	fmt.Fprintf(b, "pub fn %s(schema_v: &%s, w: &mut TableRegionWriter, schema_at: i64) {\n", fn(st.Name, "cook_body"), st.Name)
 	for i := range ml.Fields {
 		fl := &ml.Fields[i]
-		g.emitCookField(b, fl.Field, "v."+ir.RustSnake(fl.Field.Name), "at", fl.Offset, "    ")
+		g.emitCookField(b, fl.Field, "schema_v."+ir.RustSnake(fl.Field.Name), "schema_at", fl.Offset, "    ")
 	}
 	b.WriteString("}\n\n")
 }
@@ -334,18 +334,18 @@ func (g *gen) emitCookUnionWriter(b *strings.Builder, un *ir.Union) {
 	fmt.Fprintf(b, "/// %s — the union's tag at offset 0 and the SET arm at offset %d\n", fn(un.Name, "cook_union"), armOffset)
 	b.WriteString("/// (docs/SPEC-TABLES.md §2.6, §7.2); every other byte of its extent stays zero.\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n#[allow(unused_variables, clippy::identity_op)]\n")
-	fmt.Fprintf(b, "pub fn %s(v: &%s, w: &mut TableRegionWriter, at: i64) {\n", fn(un.Name, "cook_union"), un.Name)
-	b.WriteString("    match v {\n")
+	fmt.Fprintf(b, "pub fn %s(schema_v: &%s, w: &mut TableRegionWriter, schema_at: i64) {\n", fn(un.Name, "cook_union"), un.Name)
+	b.WriteString("    match schema_v {\n")
 	fmt.Fprintf(b, "        %s::None => {}\n", un.Name)
 	for i, arm := range un.Variants {
 		name := rustVariant(arm.Name)
 		if arm.Void() {
-			fmt.Fprintf(b, "        %s::%s => w.put(at, %d, %d),\n", un.Name, name, i+1, tag)
+			fmt.Fprintf(b, "        %s::%s => w.put(schema_at, %d, %d),\n", un.Name, name, i+1, tag)
 			continue
 		}
 		fmt.Fprintf(b, "        %s::%s(x) => {\n", un.Name, name)
-		fmt.Fprintf(b, "            w.put(at, %d, %d);\n", i+1, tag)
-		g.emitCookField(b, arm.F, "(*x)", "at", armOffset, "            ")
+		fmt.Fprintf(b, "            w.put(schema_at, %d, %d);\n", i+1, tag)
+		g.emitCookField(b, arm.F, "(*x)", "schema_at", armOffset, "            ")
 		b.WriteString("        }\n")
 	}
 	b.WriteString("    }\n}\n\n")
@@ -427,17 +427,17 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 				count = cookRef(x) + ".len()"
 			}
 		}
-		fmt.Fprintf(b, "%sfor i in 0..%s {\n", ind, count)
-		fmt.Fprintf(b, "%s    let ea = %s + i as i64 * %d;\n", ind, cookAt(base, value.Offset), step)
+		fmt.Fprintf(b, "%sfor schema_i in 0..%s {\n", ind, count)
+		fmt.Fprintf(b, "%s    let ea = %s + schema_i as i64 * %d;\n", ind, cookAt(base, value.Offset), step)
 		// Counted arrays visit only live slots. A positional or keyed array
 		// still materializes any unprovided element's declared defaults.
 		if ref, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer && f.Type.Kind == ir.TNamed {
-			fmt.Fprintf(b, "%s    match %s.get(i) {\n", ind, x)
+			fmt.Fprintf(b, "%s    match %s.get(schema_i) {\n", ind, x)
 			fmt.Fprintf(b, "%s        Some(e) => %s(e, w, ea),\n", ind, fn(ref.Name, "cook_body"))
 			fmt.Fprintf(b, "%s        None => %s(&%s::default(), w, ea),\n", ind, fn(ref.Name, "cook_body"), ref.Name)
 			fmt.Fprintf(b, "%s    }\n", ind)
 		} else {
-			fmt.Fprintf(b, "%s    if let Some(e) = %s.get(i) {\n", ind, x)
+			fmt.Fprintf(b, "%s    if let Some(e) = %s.get(schema_i) {\n", ind, x)
 			g.emitCookElement(b, elem, "(*e)", "ea", ind+"        ")
 			fmt.Fprintf(b, "%s    }\n", ind)
 		}
@@ -523,28 +523,28 @@ func (g *gen) emitCookRootWriter(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("/// writes from the same wire. Err names the refusal (§7.6) and nothing is\n")
 	b.WriteString("/// produced: a bad byte order, a count or a length over its declared bound.\n")
 	b.WriteString("#[cfg(feature = \"cook\")]\n")
-	fmt.Fprintf(b, "pub fn %s(v: &%s, order: u64) -> Result<Vec<u8>, String> {\n", name, st.Name)
-	b.WriteString("    if order != 1 && order != 2 {\n        return Err(String::from(\"invalid_value\"));\n    }\n")
+	fmt.Fprintf(b, "pub fn %s(schema_v: &%s, schema_order: u64) -> Result<Vec<u8>, String> {\n", name, st.Name)
+	b.WriteString("    if schema_order != 1 && schema_order != 2 {\n        return Err(String::from(\"invalid_value\"));\n    }\n")
 	b.WriteString("    let mut g = TableNodeGraph::new();\n")
-	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	fmt.Fprintf(b, "    %s(schema_v, &mut g);\n", fn(st.Name, "number"))
 	b.WriteString("    if g.invalid_required { return Err(String::from(\"invalid_value: required range\")); }\n")
 	rb := cookRecordBytes(g.unit, st)
 	if cookHasExtent(st) {
-		fmt.Fprintf(b, "    let mut m = TableCarve { extent_at: 0, at: 0 };\n    %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
-		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d + m.at, %d, cook_record_layout, cook_record_extent, order)?;\n", rb, cookNodeAlign(g.unit, st))
-		fmt.Fprintf(b, "    %s(v, &mut w, 0);\n", fn(st.Name, "cook_body"))
+		fmt.Fprintf(b, "    let mut m = TableCarve { extent_at: 0, at: 0 };\n    %s(schema_v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))
+		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d + m.at, %d, cook_record_layout, cook_record_extent, schema_order)?;\n", rb, cookNodeAlign(g.unit, st))
+		fmt.Fprintf(b, "    %s(schema_v, &mut w, 0);\n", fn(st.Name, "cook_body"))
 		b.WriteString("    // THE ROOT'S EXTENT, and the extent written is the extent measured (§2.8, §2.9)\n")
-		fmt.Fprintf(b, "    let mut c = TableCarve { extent_at: %d, at: 0 };\n    %s(v, &mut c, Some(&mut w), 0);\n", rb, fn(st.Name, "cook_carve"))
+		fmt.Fprintf(b, "    let mut c = TableCarve { extent_at: %d, at: 0 };\n    %s(schema_v, &mut c, Some(&mut w), 0);\n", rb, fn(st.Name, "cook_carve"))
 		b.WriteString("    if c.at != m.at {\n        w.fail();\n    }\n")
 	} else {
-		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d, %d, cook_record_layout, cook_record_extent, order)?;\n", rb, ml.Align)
-		fmt.Fprintf(b, "    %s(v, &mut w, 0);\n", fn(st.Name, "cook_body"))
+		fmt.Fprintf(b, "    let mut w = table_region_layout(&g, %d, %d, cook_record_layout, cook_record_extent, schema_order)?;\n", rb, ml.Align)
+		fmt.Fprintf(b, "    %s(schema_v, &mut w, 0);\n", fn(st.Name, "cook_body"))
 	}
-	b.WriteString("    for k in 0..g.records.len() {\n")
-	b.WriteString("        let at = w.offsets[k + 1];\n")
-	b.WriteString("        match &g.records[k] {\n")
-	b.WriteString("            TableNodeRecord::Blob(_, blob) => w.put_blob(at, blob),\n")
-	b.WriteString("            TableNodeRecord::Table(type_id, node) => cook_record_write(*type_id, node, &mut w, at),\n")
+	b.WriteString("    for schema_k in 0..g.records.len() {\n")
+	b.WriteString("        let schema_at = w.offsets[schema_k + 1];\n")
+	b.WriteString("        match &g.records[schema_k] {\n")
+	b.WriteString("            TableNodeRecord::Blob(_, blob) => w.put_blob(schema_at, blob),\n")
+	b.WriteString("            TableNodeRecord::Table(type_id, node) => cook_record_write(*type_id, node, &mut w, schema_at),\n")
 	b.WriteString("        }\n    }\n")
 	fmt.Fprintf(b, "    w.finish(&g, 0x%016x, super::BUILD_VERSION)\n", ir.TableWireId(st.WireName()))
 	b.WriteString("}\n\n")
@@ -570,8 +570,8 @@ pub struct TableRegionWriter<'a> {
 }
 
 #[cfg(feature = "cook")]
-fn table_region_up(v: i64, a: i64) -> i64 {
-    (v + a - 1) / a * a
+fn table_region_up(schema_v: i64, a: i64) -> i64 {
+    (schema_v + a - 1) / a * a
 }
 
 /// THE LAYOUT (internal/tablecook/region.go's Layout): the root at the base
@@ -584,14 +584,14 @@ fn table_region_up(v: i64, a: i64) -> i64 {
 #[cfg(feature = "cook")]
 pub fn table_region_layout(
     g: &TableNodeGraph,
-    root_size: i64,
-    root_align: i64,
+    schema_root_size: i64,
+    schema_root_align: i64,
     layout: fn(u64) -> Option<(i64, i64)>,
     extent: fn(u64, &Rc<dyn Any>) -> i64,
-    order: u64,
+    schema_order: u64,
 ) -> Result<TableRegionWriter<'_>, String> {
-    let mut align = root_align.max(8);
-    let mut offset = root_size;
+    let mut align = schema_root_align.max(8);
+    let mut offset = schema_root_size;
     let mut offsets = Vec::with_capacity(g.records.len() + 1);
     offsets.push(0);
     for rec in g.records.iter() {
@@ -618,7 +618,7 @@ pub fn table_region_layout(
         }
     }
     let bytes = table_region_up(offset, align);
-    Ok(TableRegionWriter { data: vec![0u8; bytes as usize], order, align, graph: g, offsets, ok: true })
+    Ok(TableRegionWriter { data: vec![0u8; bytes as usize], order: schema_order, align, graph: g, offsets, ok: true })
 }
 
 #[cfg(feature = "cook")]
@@ -628,91 +628,91 @@ impl TableRegionWriter<'_> {
     }
 
     /// One scalar of width bytes at a region offset, in the cook's byte order.
-    pub fn put(&mut self, at: i64, value: u64, width: u32) {
-        let at = at as usize;
-        for i in 0..width as usize {
-            let shift = if self.order == 2 { width as usize - 1 - i } else { i };
-            self.data[at + i] = (value >> (shift * 8)) as u8;
+    pub fn put(&mut self, schema_at: i64, schema_value: u64, schema_width: u32) {
+        let schema_at = schema_at as usize;
+        for schema_i in 0..schema_width as usize {
+            let schema_shift = if self.order == 2 { schema_width as usize - 1 - schema_i } else { schema_i };
+            self.data[schema_at + schema_i] = (schema_value >> (schema_shift * 8)) as u8;
         }
     }
 
     /// A float32 as its bit pattern; a NaN or an infinity refuses (§3.3).
-    pub fn put_f32(&mut self, at: i64, value: f32) {
-        if !value.is_finite() {
+    pub fn put_f32(&mut self, schema_at: i64, schema_value: f32) {
+        if !schema_value.is_finite() {
             self.ok = false;
             return;
         }
-        self.put(at, value.to_bits() as u64, 4);
+        self.put(schema_at, schema_value.to_bits() as u64, 4);
     }
 
     /// A float64 as its bit pattern; a NaN or an infinity refuses (§3.3).
-    pub fn put_f64(&mut self, at: i64, value: f64) {
-        if !value.is_finite() {
+    pub fn put_f64(&mut self, schema_at: i64, schema_value: f64) {
+        if !schema_value.is_finite() {
             self.ok = false;
             return;
         }
-        self.put(at, value.to_bits(), 8);
+        self.put(schema_at, schema_value.to_bits(), 8);
     }
 
     /// A 128-bit integer: a big-endian region holds its high half first, as
     /// it holds a u64 with its high byte first (§7.2).
-    pub fn put_wide(&mut self, at: i64, value: u128) {
-        let bytes = if self.order == 2 { value.to_be_bytes() } else { value.to_le_bytes() };
-        self.data[at as usize..at as usize + 16].copy_from_slice(&bytes);
+    pub fn put_wide(&mut self, schema_at: i64, schema_value: u128) {
+        let bytes = if self.order == 2 { schema_value.to_be_bytes() } else { schema_value.to_le_bytes() };
+        self.data[schema_at as usize..schema_at as usize + 16].copy_from_slice(&bytes);
     }
 
     /// string(N) or bytes(N): the used bytes, a zero tail, and the int32 used
     /// length at its own piece; a value over its declared bound refuses.
-    pub fn put_text(&mut self, at: i64, bytes: &[u8], bound: usize, length_at: i64) {
+    pub fn put_text(&mut self, schema_at: i64, bytes: &[u8], bound: usize, length_at: i64) {
         if bytes.len() > bound {
             self.ok = false;
             return;
         }
-        self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
+        self.data[schema_at as usize..schema_at as usize + bytes.len()].copy_from_slice(bytes);
         self.put(length_at, bytes.len() as u64, 4);
     }
 
     /// A reference slot to a table node: the SELF-RELATIVE delta from the
     /// slot's own address to the node's start, and zero for null (§6.3).
-    pub fn ref_node<T>(&mut self, at: i64, node: &Option<Rc<T>>) {
+    pub fn ref_node<T>(&mut self, schema_at: i64, node: &Option<Rc<T>>) {
         match node {
-            None => self.put(at, 0, 8),
+            None => self.put(schema_at, 0, 8),
             Some(n) => {
                 let index = self.graph.node_index(n) as usize;
-                self.ref_index(at, index);
+                self.ref_index(schema_at, index);
             }
         }
     }
 
     /// A reference slot to a blob node, by the blob's identity (§2.5).
-    pub fn ref_blob(&mut self, at: i64, key: Option<usize>) {
+    pub fn ref_blob(&mut self, schema_at: i64, key: Option<usize>) {
         match key {
-            None => self.put(at, 0, 8),
-            Some(k) => {
-                let index = self.graph.blob_index(k) as usize;
-                self.ref_index(at, index);
+            None => self.put(schema_at, 0, 8),
+            Some(schema_k) => {
+                let index = self.graph.blob_index(schema_k) as usize;
+                self.ref_index(schema_at, index);
             }
         }
     }
 
-    fn ref_index(&mut self, at: i64, index: usize) {
+    fn ref_index(&mut self, schema_at: i64, index: usize) {
         if index < 2 || index > self.offsets.len() {
             self.ok = false; // a node the numbering does not carry
             return;
         }
-        let delta = self.offsets[index - 1] - at;
-        if delta == 0 {
+        let schema_delta = self.offsets[index - 1] - schema_at;
+        if schema_delta == 0 {
             self.ok = false;
             return;
         }
-        self.put(at, delta as u64, 8);
+        self.put(schema_at, schema_delta as u64, 8);
     }
 
     /// A blob node: its u32 length in the cook's order, then its bytes; the
     /// pad word and a *string blob's terminator are the buffer's zeros.
-    pub fn put_blob(&mut self, at: i64, blob: &[u8]) {
-        self.put(at, blob.len() as u64, 4);
-        let from = at as usize + 8;
+    pub fn put_blob(&mut self, schema_at: i64, blob: &[u8]) {
+        self.put(schema_at, blob.len() as u64, 4);
+        let from = schema_at as usize + 8;
         self.data[from..from + blob.len()].copy_from_slice(blob);
     }
 
@@ -723,30 +723,30 @@ impl TableRegionWriter<'_> {
         if !self.ok {
             return Err(String::from("invalid_value"));
         }
-        let data_offset = table_region_up(64, self.align) as usize;
+        let schema_data_offset = table_region_up(64, self.align) as usize;
         let nodes = g.records.len() + 1;
-        let total = data_offset + self.data.len() + nodes * 16;
-        let mut out = TableRegionWriter { data: vec![0u8; total], order: self.order, align: self.align, graph: g, offsets: Vec::new(), ok: true };
+        let schema_total = schema_data_offset + self.data.len() + nodes * 16;
+        let mut out = TableRegionWriter { data: vec![0u8; schema_total], order: self.order, align: self.align, graph: g, offsets: Vec::new(), ok: true };
         out.put(0, 0x4b4f4f434d484353, 8);
         out.put(8, build, 8);
         out.put(16, self.order, 8);
         out.put(24, self.data.len() as u64, 8);
         out.put(32, (nodes * 16) as u64, 8);
         out.put(40, self.align as u64, 8);
-        out.data[data_offset..data_offset + self.data.len()].copy_from_slice(&self.data);
-        let mut at = (data_offset + self.data.len()) as i64;
-        for k in 0..nodes {
-            let id = if k == 0 {
+        out.data[schema_data_offset..schema_data_offset + self.data.len()].copy_from_slice(&self.data);
+        let mut schema_at = (schema_data_offset + self.data.len()) as i64;
+        for schema_k in 0..nodes {
+            let id = if schema_k == 0 {
                 root_type
             } else {
-                match &g.records[k - 1] {
+                match &g.records[schema_k - 1] {
                     TableNodeRecord::Blob(type_id, _) => *type_id,
                     TableNodeRecord::Table(type_id, _) => *type_id,
                 }
             };
-            out.put(at, self.offsets[k] as u64, 8);
-            out.put(at + 8, id, 8);
-            at += 16;
+            out.put(schema_at, self.offsets[schema_k] as u64, 8);
+            out.put(schema_at + 8, id, 8);
+            schema_at += 16;
         }
         Ok(out.data)
     }

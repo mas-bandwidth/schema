@@ -180,7 +180,7 @@ func t08P1(t *testing.T) {
 	if at := strings.Index(text, "pub fn lineage_fixed_load("); at >= 0 {
 		load = text[at:]
 	}
-	if n := strings.Count(load, "table_fixed_run(entries, guards, table, &record[8..], &mut image, report);"); n != 1 {
+	if n := strings.Count(load, "table_fixed_run(schema_entries, schema_guards, table, &record[8..], &mut schema_image, schema_report);"); n != 1 {
 		t.Errorf("P1: the read loop's run call appears %d times, want exactly one shared by both plans", n)
 	}
 	t08Has(t, text, "SAME LOOP either way", "P1 one reader path, identity and compiled alike")

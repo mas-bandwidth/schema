@@ -113,15 +113,15 @@ pub const TABLE_BLOCK_BYTE_ORDER: u64 = if cfg!(target_endian = "little") { 1 } 
 /// assuming the order the rest of the block is in.
 ///
 /// # Safety
-/// ` + "`p`" + ` must point at eight readable bytes.
+/// ` + "`schema_p`" + ` must point at eight readable bytes.
 #[inline]
-pub unsafe fn table_block_read64(p: *const u8) -> u64 {
-    unsafe { core::ptr::read_unaligned(p as *const u64) }
+pub unsafe fn table_block_read64(schema_p: *const u8) -> u64 {
+    unsafe { core::ptr::read_unaligned(schema_p as *const u64) }
 }
 
 #[inline]
-pub fn table_block_byteswap64(v: u64) -> u64 {
-    v.swap_bytes()
+pub fn table_block_byteswap64(schema_v: u64) -> u64 {
+    schema_v.swap_bytes()
 }
 
 // ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
@@ -304,61 +304,61 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("/// # Safety\n")
 	b.pf("/// `buf` must point at `capacity` writable bytes that stay put and are not\n")
 	b.pf("/// written through any other pointer for the duration of the call.\n")
-	b.pf("pub unsafe fn %s(buf: *mut u8, capacity: i64, counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
-	b.pf("    if buf.is_null() {\n        return None;\n    }\n")
-	b.pf("    let _ = counts;\n")
+	b.pf("pub unsafe fn %s(schema_buf: *mut u8, schema_capacity: i64, schema_counts: &%sCounts) -> Option<i64> {\n", fn(n, "block_begin"), n)
+	b.pf("    if schema_buf.is_null() {\n        return None;\n    }\n")
+	b.pf("    let _ = schema_counts;\n")
 	for _, a := range bl.Arrays {
 		f := a.Field.Name
-		b.pf("    if counts.%s < 0 || counts.%s as i64 > %d {\n        return None;\n    }\n", f, f, a.Max)
+		b.pf("    if schema_counts.%s < 0 || schema_counts.%s as i64 > %d {\n        return None;\n    }\n", f, f, a.Max)
 	}
-	b.pf("    let mut off: i64 = %d;\n", bl.Projection.Size)
+	b.pf("    let mut schema_off: i64 = %d;\n", bl.Projection.Size)
 	for _, a := range bl.Arrays {
 		align := int64(ir.BlockAlign)
 		if a.ElemAlign() > align {
 			align = a.ElemAlign()
 		}
-		b.pf("    off = (off + %d - 1) / %d * %d;\n", align, align, align)
-		b.pf("    off += counts.%s as i64 * %d;\n", a.Field.Name, a.Stride)
+		b.pf("    schema_off = (schema_off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("    schema_off += schema_counts.%s as i64 * %d;\n", a.Field.Name, a.Stride)
 	}
-	b.pf("    let used = (off + 63) / 64 * 64;\n")
-	b.pf("    if used > capacity {\n        return None;\n    }\n")
+	b.pf("    let schema_used = (schema_off + 63) / 64 * 64;\n")
+	b.pf("    if schema_used > schema_capacity {\n        return None;\n    }\n")
 	// THE MEASURE PASS ABOVE WALKED `off` TO THE END OF THE EXTENT; THE WRITE
 	// PASS LAYS THE TRIPLES FROM THE PROJECTION'S END AGAIN, exactly as
 	// gotable/blockbuild.go:50-55 walks one `offset` from Projection.Size and
 	// assigns each triple in the same step (§19.1). Without this the second
 	// array's offset_of is the first array's END, and a reader that trusts the
 	// triples walks past every array body.
-	b.pf("    off = %d;\n", bl.Projection.Size)
+	b.pf("    schema_off = %d;\n", bl.Projection.Size)
 	b.pf("    unsafe {\n")
-	b.pf("        core::ptr::write_unaligned(buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
-	b.pf("        core::ptr::write_unaligned(buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
-	b.pf("        core::ptr::write_unaligned(buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
+	b.pf("        core::ptr::write_unaligned(schema_buf.cast::<u64>(), TABLE_BLOCK_MAGIC);\n")
+	b.pf("        core::ptr::write_unaligned(schema_buf.add(8).cast::<u64>(), BUILD_VERSION);\n")
+	b.pf("        core::ptr::write_unaligned(schema_buf.add(16).cast::<u64>(), TABLE_BLOCK_BYTE_ORDER);\n")
 	for _, a := range bl.Arrays {
 		align := int64(ir.BlockAlign)
 		if a.ElemAlign() > align {
 			align = a.ElemAlign()
 		}
 		f := a.Field.Name
-		b.pf("        off = (off + %d - 1) / %d * %d;\n", align, align, align)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u64>(), off as u64);\n", a.TripleOffset)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), counts.%s as u32);\n", a.TripleOffset+8, f)
-		b.pf("        core::ptr::write_unaligned(buf.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
-		b.pf("        off += counts.%s as i64 * %d;\n", f, a.Stride)
+		b.pf("        schema_off = (schema_off + %d - 1) / %d * %d;\n", align, align, align)
+		b.pf("        core::ptr::write_unaligned(schema_buf.add(%d).cast::<u64>(), schema_off as u64);\n", a.TripleOffset)
+		b.pf("        core::ptr::write_unaligned(schema_buf.add(%d).cast::<u32>(), schema_counts.%s as u32);\n", a.TripleOffset+8, f)
+		b.pf("        core::ptr::write_unaligned(schema_buf.add(%d).cast::<u32>(), %d);\n", a.TripleOffset+12, a.Stride)
+		b.pf("        schema_off += schema_counts.%s as i64 * %d;\n", f, a.Stride)
 	}
 	b.pf("    }\n")
-	b.pf("    let _ = off;\n")
-	b.pf("    Some(used)\n}\n")
+	b.pf("    let _ = schema_off;\n")
+	b.pf("    Some(schema_used)\n}\n")
 	b.pf("/// %s validates the filled projection and returns the used extent, or None on refusal (§19.1, SF-31).\n", fn(n, "block_bytes"))
 	b.pf("///\n/// # Safety\n/// `buf` must point at `capacity` readable bytes beginning with a `%sBlockProjection`.\n", n)
-	b.pf("#[allow(unused_comparisons)]\npub unsafe fn %s(buf: *const u8, capacity: i64) -> Option<i64> {\n", fn(n, "block_bytes"))
-	b.pf("    if buf.is_null() || capacity < %d {\n        return None;\n    }\n", bl.Projection.Size)
-	b.pf("    let p = unsafe { &*(buf as *const %sBlockProjection) };\n", n)
-	b.pf("    let _ = p;\n")
+	b.pf("#[allow(unused_comparisons)]\npub unsafe fn %s(schema_buf: *const u8, schema_capacity: i64) -> Option<i64> {\n", fn(n, "block_bytes"))
+	b.pf("    if schema_buf.is_null() || schema_capacity < %d {\n        return None;\n    }\n", bl.Projection.Size)
+	b.pf("    let schema_p = unsafe { &*(schema_buf as *const %sBlockProjection) };\n", n)
+	b.pf("    let _ = schema_p;\n")
 	for _, f := range bl.Table.Fields {
 		if bl.ArrayByName(f.Name) != nil {
 			continue
 		}
-		m := "p." + f.Name
+		m := "schema_p." + f.Name
 		guard, closeGuard := "", ""
 		if f.Type.Optional {
 			guard, closeGuard = "if "+m+"_present != 0 { ", " }"
@@ -393,18 +393,18 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 		}
 	}
 	if len(bl.Arrays) > 0 {
-		b.pf("    let mut used: i64 = %d;\n", bl.Projection.Size)
+		b.pf("    let mut schema_used: i64 = %d;\n", bl.Projection.Size)
 	} else {
-		b.pf("    let used: i64 = %d;\n", bl.Projection.Size)
+		b.pf("    let schema_used: i64 = %d;\n", bl.Projection.Size)
 	}
 	for _, a := range bl.Arrays {
-		b.pf("    if p.%s.count as i64 > %d { return None; }\n", a.Field.Name, a.Max)
-		b.pf("    let end = p.%s.offset_of as i64 + p.%s.count as i64 * p.%s.stride as i64;\n", a.Field.Name, a.Field.Name, a.Field.Name)
-		b.pf("    if end > used { used = end; }\n")
+		b.pf("    if schema_p.%s.count as i64 > %d { return None; }\n", a.Field.Name, a.Max)
+		b.pf("    let end = schema_p.%s.offset_of as i64 + schema_p.%s.count as i64 * schema_p.%s.stride as i64;\n", a.Field.Name, a.Field.Name, a.Field.Name)
+		b.pf("    if end > schema_used { schema_used = end; }\n")
 	}
-	b.pf("    let total = (used + 63) / 64 * 64;\n")
-	b.pf("    if total > capacity { return None; }\n")
-	b.pf("    Some(total)\n}\n")
+	b.pf("    let schema_total = (schema_used + 63) / 64 * 64;\n")
+	b.pf("    if schema_total > schema_capacity { return None; }\n")
+	b.pf("    Some(schema_total)\n}\n")
 }
 
 // emitBlockTypeInfo is the block's own descriptor: the PROJECTION as data
@@ -672,13 +672,13 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("        unsafe {\n")
 	b.pf("            if base.is_null() || bytes < %d {\n                return None;\n            }\n", bl.Projection.Size)
 	b.pf("            if !(base as usize).is_multiple_of(%d) {\n                return None; // the base's alignment\n            }\n", ir.BlockAlign)
-	b.pf("            let magic = table_block_read64(base);\n")
-	b.pf("            if magic != TABLE_BLOCK_MAGIC {\n")
+	b.pf("            let schema_magic = table_block_read64(base);\n")
+	b.pf("            if schema_magic != TABLE_BLOCK_MAGIC {\n")
 	b.pf("                // a byte-swapped magic is a FOREIGN BYTE ORDER, and anything\n")
 	b.pf("                // else is not a block at all. Both refuse; the distinction is\n")
 	b.pf("                // here so a reader of this code knows the check covers the\n")
 	b.pf("                // order too.\n")
-	b.pf("                let _ = table_block_byteswap64(magic);\n")
+	b.pf("                let _ = table_block_byteswap64(schema_magic);\n")
 	b.pf("                return None;\n            }\n")
 	b.pf("            if table_block_read64(base.add(8)) != BUILD_VERSION {\n                return None;\n            }\n")
 	b.pf("            if table_block_read64(base.add(16)) != TABLE_BLOCK_BYTE_ORDER {\n")
@@ -687,43 +687,43 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	if len(bl.Arrays) == 0 {
 		b.pf("            // this table declares no out-of-line array, so the prologue and\n")
 		b.pf("            // the projection's own extent are the whole check\n")
-		b.pf("            let used: i64 = %d;\n", bl.Projection.Size)
+		b.pf("            let schema_used: i64 = %d;\n", bl.Projection.Size)
 	} else {
-		b.pf("            let projection = &*(base as *const %sBlockProjection);\n", name)
-		b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
+		b.pf("            let schema_projection = &*(base as *const %sBlockProjection);\n", name)
+		b.pf("            let mut schema_used: i64 = %d;\n", bl.Projection.Size)
 	}
 	for _, a := range bl.Arrays {
 		b.pf("            {\n")
-		b.pf("                let offset_of = projection.%s.offset_of;\n", a.Field.Name)
-		b.pf("                let count = projection.%s.count as u64;\n", a.Field.Name)
-		b.pf("                let stride = projection.%s.stride as u64;\n", a.Field.Name)
-		b.pf("                if stride != core::mem::size_of::<%sRow>() as u64 {\n                    return None;\n                }\n", a.ElemName)
+		b.pf("                let schema_offset_of = schema_projection.%s.offset_of;\n", a.Field.Name)
+		b.pf("                let schema_count = schema_projection.%s.count as u64;\n", a.Field.Name)
+		b.pf("                let schema_stride = schema_projection.%s.stride as u64;\n", a.Field.Name)
+		b.pf("                if schema_stride != core::mem::size_of::<%sRow>() as u64 {\n                    return None;\n                }\n", a.ElemName)
 		// the constant is spelled inline rather than bound to a local: the
 		// block fuzzer's negative control DELETES this check from the
 		// emitter, and a local used by nothing else would leave the deleted
 		// build unable to compile — a control that cannot build is a control
 		// that proves nothing
-		b.pf("                if count > Self::%s_MAX as u64 {\n", ir.RustConstName(a.Field.Name))
+		b.pf("                if schema_count > Self::%s_MAX as u64 {\n", ir.RustConstName(a.Field.Name))
 		b.pf("                    return None; // past the DECLARED MAXIMUM: a consumer that\n")
 		b.pf("                                 // sized anything by the maximum would overflow\n")
 		b.pf("                                 // on a count the maximum does not bound\n                }\n")
-		b.pf("                if offset_of < %d || !offset_of.is_multiple_of(%d) {\n                    return None;\n                }\n",
+		b.pf("                if schema_offset_of < %d || !schema_offset_of.is_multiple_of(%d) {\n                    return None;\n                }\n",
 			bl.Projection.Size, ir.BlockAlign)
-		b.pf("                if offset_of > bytes as u64 {\n                    return None;\n                }\n")
-		b.pf("                let rows = count * stride; // both bounded above: this cannot carry\n")
-		b.pf("                if rows > bytes as u64 - offset_of {\n                    return None;\n                }\n")
-		b.pf("                let end = (offset_of + rows) as i64;\n")
-		b.pf("                if end > used {\n                    used = end;\n                }\n")
+		b.pf("                if schema_offset_of > bytes as u64 {\n                    return None;\n                }\n")
+		b.pf("                let schema_rows = schema_count * schema_stride; // both bounded above: this cannot carry\n")
+		b.pf("                if schema_rows > bytes as u64 - schema_offset_of {\n                    return None;\n                }\n")
+		b.pf("                let end = (schema_offset_of + schema_rows) as i64;\n")
+		b.pf("                if end > schema_used {\n                    schema_used = end;\n                }\n")
 		b.pf("            }\n")
 	}
 	b.pf("            // the used extent, rounded to 64 WITHOUT the rounding itself\n")
 	b.pf("            // carrying past the top of the type: used is already inside bytes,\n")
 	b.pf("            // and the padding is paid out of the slack that is left rather\n")
 	b.pf("            // than added and compared after.\n")
-	b.pf("            let padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	b.pf("            if padding > bytes - used {\n                return None;\n            }\n")
-	b.pf("            let used = used + padding;\n")
-	b.pf("            Some(%sBlock {\n                base,\n                bytes: used,\n            })\n", name)
+	b.pf("            let schema_padding = (%d - (schema_used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
+	b.pf("            if schema_padding > bytes - schema_used {\n                return None;\n            }\n")
+	b.pf("            let schema_used = schema_used + schema_padding;\n")
+	b.pf("            Some(%sBlock {\n                base,\n                bytes: schema_used,\n            })\n", name)
 	b.pf("        }\n    }\n")
 	// The conformance refusal surface names the first failed open clause using
 	// gotable/refusal.go's spellings (SPEC-TABLES §19.2). The ordinary open is
@@ -736,30 +736,30 @@ func (b *blockGen) emitBlockOpen(bl *ir.BlockLayout) {
 	b.pf("            if base.is_null() { return \"unaligned_base\"; }\n")
 	b.pf("            if bytes < %d { return \"truncated\"; }\n", bl.Projection.Size)
 	b.pf("            if !(base as usize).is_multiple_of(%d) { return \"unaligned_base\"; }\n", ir.BlockAlign)
-	b.pf("            let magic = table_block_read64(base);\n")
-	b.pf("            if magic != TABLE_BLOCK_MAGIC { return if table_block_byteswap64(magic) == TABLE_BLOCK_MAGIC { \"foreign_order\" } else { \"not_a_cook\" }; }\n")
+	b.pf("            let schema_magic = table_block_read64(base);\n")
+	b.pf("            if schema_magic != TABLE_BLOCK_MAGIC { return if table_block_byteswap64(schema_magic) == TABLE_BLOCK_MAGIC { \"foreign_order\" } else { \"not_a_cook\" }; }\n")
 	b.pf("            if table_block_read64(base.add(8)) != BUILD_VERSION { return \"wrong_build_version\"; }\n")
 	b.pf("            if table_block_read64(base.add(16)) != TABLE_BLOCK_BYTE_ORDER { return \"not_a_cook\"; }\n")
 	if len(bl.Arrays) > 0 {
-		b.pf("            let projection = &*(base as *const %sBlockProjection);\n", name)
-		b.pf("            let mut used: i64 = %d;\n", bl.Projection.Size)
+		b.pf("            let schema_projection = &*(base as *const %sBlockProjection);\n", name)
+		b.pf("            let mut schema_used: i64 = %d;\n", bl.Projection.Size)
 	} else {
-		b.pf("            let used: i64 = %d;\n", bl.Projection.Size)
+		b.pf("            let schema_used: i64 = %d;\n", bl.Projection.Size)
 	}
 	for _, a := range bl.Arrays {
 		b.pf("            {\n")
-		b.pf("                let offset_of = projection.%s.offset_of;\n", a.Field.Name)
-		b.pf("                let count = projection.%s.count as u64;\n", a.Field.Name)
-		b.pf("                let stride = projection.%s.stride as u64;\n", a.Field.Name)
-		b.pf("                if stride != core::mem::size_of::<%sRow>() as u64 || count > Self::%s_MAX as u64 { return \"bad_layout\"; }\n", a.ElemName, ir.RustConstName(a.Field.Name))
-		b.pf("                if offset_of < %d || !offset_of.is_multiple_of(%d) || offset_of > bytes as u64 { return \"bad_layout\"; }\n", bl.Projection.Size, ir.BlockAlign)
-		b.pf("                let rows = count * stride;\n")
-		b.pf("                if rows > bytes as u64 - offset_of { return \"bad_layout\"; }\n")
-		b.pf("                used = used.max((offset_of + rows) as i64);\n")
+		b.pf("                let schema_offset_of = schema_projection.%s.offset_of;\n", a.Field.Name)
+		b.pf("                let schema_count = schema_projection.%s.count as u64;\n", a.Field.Name)
+		b.pf("                let schema_stride = schema_projection.%s.stride as u64;\n", a.Field.Name)
+		b.pf("                if schema_stride != core::mem::size_of::<%sRow>() as u64 || schema_count > Self::%s_MAX as u64 { return \"bad_layout\"; }\n", a.ElemName, ir.RustConstName(a.Field.Name))
+		b.pf("                if schema_offset_of < %d || !schema_offset_of.is_multiple_of(%d) || schema_offset_of > bytes as u64 { return \"bad_layout\"; }\n", bl.Projection.Size, ir.BlockAlign)
+		b.pf("                let schema_rows = schema_count * schema_stride;\n")
+		b.pf("                if schema_rows > bytes as u64 - schema_offset_of { return \"bad_layout\"; }\n")
+		b.pf("                schema_used = schema_used.max((schema_offset_of + schema_rows) as i64);\n")
 		b.pf("            }\n")
 	}
-	b.pf("            let padding = (%d - (used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
-	b.pf("            if padding > bytes - used { return \"truncated\"; }\n")
+	b.pf("            let schema_padding = (%d - (schema_used %% %d)) %% %d;\n", ir.BlockAlign, ir.BlockAlign, ir.BlockAlign)
+	b.pf("            if schema_padding > bytes - schema_used { return \"truncated\"; }\n")
 	b.pf("            \"bad_layout\"\n")
 	b.pf("        }\n    }\n")
 }
@@ -772,11 +772,11 @@ func (b *blockGen) emitBlockRows(bl *ir.BlockLayout, a ir.BlockArray) {
 	b.pf("    // rides in the triple, because it is what a consumer indexes with and\n")
 	b.pf("    // it must come from the data (§19.2).\n")
 	b.pf("    pub fn %s(&self) -> &[%sRow] {\n", a.Field.Name, a.ElemName)
-	b.pf("        let triple = self.projection().%s;\n", a.Field.Name)
+	b.pf("        let schema_triple = self.projection().%s;\n", a.Field.Name)
 	b.pf("        unsafe {\n")
 	b.pf("            core::slice::from_raw_parts(\n")
-	b.pf("                self.base.add(triple.offset_of as usize) as *const %sRow,\n", a.ElemName)
-	b.pf("                triple.count as usize,\n")
+	b.pf("                self.base.add(schema_triple.offset_of as usize) as *const %sRow,\n", a.ElemName)
+	b.pf("                schema_triple.count as usize,\n")
 	b.pf("            )\n")
 	b.pf("        }\n    }\n")
 }

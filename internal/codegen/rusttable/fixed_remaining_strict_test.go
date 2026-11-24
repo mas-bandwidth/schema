@@ -62,15 +62,15 @@ func rangeWidenLineageFiles(t *testing.T) (oldFiles, newFiles map[string][]byte,
 // nil when the strict read holds, and an error naming the first missing piece
 // when it does not.
 func strictReadKeepsTheRule(fixedSrc string) error {
-	if !strings.Contains(fixedSrc, "report.held != 0") {
+	if !strings.Contains(fixedSrc, "schema_report.held != 0") {
 		return fmt.Errorf("the artefact has no held!=0 guard")
 	}
-	if !strings.Contains(fixedSrc, "return report.refuse(TableFixedReason::OutOfRange);") {
+	if !strings.Contains(fixedSrc, "return schema_report.refuse(TableFixedReason::OutOfRange);") {
 		return fmt.Errorf("the artefact does not refuse the whole batch out_of_range by name")
 	}
 	// the reader's own bounds count INTO held through the clamp pass, so the
 	// refusal above can fire on a ranged scalar out of its declared range
-	if !strings.Contains(fixedSrc, "fixed_clamp_body") || !strings.Contains(fixedSrc, "*oor +=") {
+	if !strings.Contains(fixedSrc, "fixed_clamp_body") || !strings.Contains(fixedSrc, "*schema_oor +=") {
 		return fmt.Errorf("the artefact has no clamp pass that counts a ranged scalar into held")
 	}
 	// under a lineage read the WRITER's range is the bound (§4.5): its pass
@@ -290,7 +290,7 @@ func TestRustFixedRemainingRowsStrict(t *testing.T) {
 func TestRustFixedRemainingRowsStrictNegativeControl(t *testing.T) {
 	oldFiles, newFiles, fixedName := rangeWidenLineageFiles(t)
 	src := string(newFiles[fixedName])
-	const reject = "return report.refuse(TableFixedReason::OutOfRange);"
+	const reject = "return schema_report.refuse(TableFixedReason::OutOfRange);"
 	if !strings.Contains(src, reject) {
 		t.Fatalf("negative control: the strict refusal line is not in the artefact")
 	}

@@ -164,8 +164,8 @@ func t04R3(t *testing.T) {
 	if load == "" {
 		t.Fatal("R3: lineage_fixed_load is not emitted")
 	}
-	t04Has(t, load, "if found < LINEAGE_FIXED_FLOOR {", "R3 the floor check")
-	t04Has(t, load, "return report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);", "R3 below the floor is layout_unsupported")
+	t04Has(t, load, "if schema_found < LINEAGE_FIXED_FLOOR {", "R3 the floor check")
+	t04Has(t, load, "return schema_report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);", "R3 below the floor is layout_unsupported")
 	if !strings.Contains(string(fixedRuntimeBody), "self.layout_hash = hash;") {
 		t.Error("R3: refuse_layout does not report the file's hash")
 	}
@@ -175,7 +175,7 @@ func t04R3(t *testing.T) {
 	none := t04Retire(t, 0)
 	t04Has(t, none, "LINEAGE_FIXED_FLOOR: usize = 0;", "R3 the floor is 0 when none is retired")
 	noneLoad := t04Fn(none, "lineage_fixed_load")
-	if strings.Contains(noneLoad, "found < LINEAGE_FIXED_FLOOR") {
+	if strings.Contains(noneLoad, "schema_found < LINEAGE_FIXED_FLOOR") {
 		t.Error("R3: a floor of 0 still emits a comparison no value can satisfy")
 	}
 }
@@ -196,13 +196,13 @@ func t04R32(t *testing.T) {
 	if load == "" {
 		t.Fatal("R32: lineage_fixed_load is not emitted")
 	}
-	if n := strings.Count(load, "found < LINEAGE_FIXED_FLOOR"); n != 1 {
+	if n := strings.Count(load, "schema_found < LINEAGE_FIXED_FLOOR"); n != 1 {
 		t.Errorf("R32: the floor is tested %d times, want once", n)
 	}
-	at := strings.Index(load, "found < LINEAGE_FIXED_FLOOR")
-	known := strings.Index(load, "let known = &LINEAGE_FIXED_LINEAGE[found];")
-	bytes := strings.Index(load, "if block != known.layout {")
-	records := strings.Index(load, "for k in 0..n {")
+	at := strings.Index(load, "schema_found < LINEAGE_FIXED_FLOOR")
+	known := strings.Index(load, "let schema_known = &LINEAGE_FIXED_LINEAGE[schema_found];")
+	bytes := strings.Index(load, "if block != schema_known.layout {")
+	records := strings.Index(load, "for schema_k in 0..schema_n {")
 	if at < 0 || known < 0 || bytes < 0 || records < 0 {
 		t.Fatalf("R32: the load's shape moved (%d, %d, %d, %d)", at, known, bytes, records)
 	}
@@ -215,7 +215,7 @@ func t04R32(t *testing.T) {
 	if end := strings.Index(body, "\n    }"); end >= 0 {
 		body = body[:end]
 	}
-	if strings.Contains(body, "report.unknown") || strings.Contains(body, "image[") || strings.Contains(body, "values[") {
+	if strings.Contains(body, "schema_report.unknown") || strings.Contains(body, "schema_image[") || strings.Contains(body, "values[") {
 		t.Errorf("R32: the floor refusal is not a pure named refusal:\n%s", body)
 	}
 	runtime := string(fixedRuntimeBody)
@@ -237,8 +237,8 @@ func t04R10(t *testing.T) {
 	if load == "" {
 		t.Fatal("R10: lineage_fixed_load is not emitted")
 	}
-	t04Has(t, load, "if block != known.layout {", "R10 the layout is a byte comparison")
-	t04Has(t, load, "return report.refuse(TableFixedReason::LayoutMalformed);", "R10 a lie about a known version is layout_malformed")
+	t04Has(t, load, "if block != schema_known.layout {", "R10 the layout is a byte comparison")
+	t04Has(t, load, "return schema_report.refuse(TableFixedReason::LayoutMalformed);", "R10 a lie about a known version is layout_malformed")
 	if strings.Contains(load, "TableFixedBlock::parse") {
 		t.Error("R10: the load walks a stranger's layout; the walk is the build's LazyLock")
 	}
@@ -268,21 +268,21 @@ func t04R15(t *testing.T) {
 	if load == "" {
 		t.Fatal("R15: lineage_fixed_load is not emitted")
 	}
-	miss := strings.Index(load, "return report.refuse_layout(TableFixedReason::LayoutNewer, hash);")
-	records := strings.Index(load, "for k in 0..n {")
+	miss := strings.Index(load, "return schema_report.refuse_layout(TableFixedReason::LayoutNewer, hash);")
+	records := strings.Index(load, "for schema_k in 0..schema_n {")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)
 	}
 	if miss > records {
 		t.Error("R15: an unknown hash is not refused before the first record")
 	}
-	if strings.Contains(load, "let identity = found ==") && strings.Index(load, "let identity") < miss {
+	if strings.Contains(load, "let schema_identity = schema_found ==") && strings.Index(load, "let schema_identity") < miss {
 		t.Error("R15: a plan is selected before the hash is known")
 	}
 	if strings.Contains(load, "report.unknown += 1") {
 		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
 	}
-	t04Has(t, load, "report.unknown += census.0;", "R15 unknown is the compile census")
+	t04Has(t, load, "schema_report.unknown += schema_census.0;", "R15 unknown is the compile census")
 	runtime := string(fixedRuntimeBody)
 	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R15 the count clamp is the writer's bound")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R15 the text clamp is the writer's span")
@@ -386,20 +386,20 @@ func t04R20(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	// AN ADDED FIELD: the holes are covered from the DEFAULTS image, and the
 	// image is zeroed first so a shorter array or string keeps template zeros.
-	t04Has(t, text, "image[o..o + z].copy_from_slice(&", "R20 an added field lands the declared default")
+	t04Has(t, text, "schema_image[schema_o..schema_o + schema_z].copy_from_slice(&", "R20 an added field lands the declared default")
 	t04Has(t, text, "_FIXED_DEFAULTS: [u8;", "R20 the prefill image is emitted")
 	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
 	// time the writer's field is seen, and an array's element 0 is the only one
 	// that censuses.
 	t04Has(t, runtime, "if !named && census {", "R20 an unknown field is counted")
 	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
-	t04Has(t, text, "report.unknown += census.0;", "R20 the census lands once, after the loop")
+	t04Has(t, text, "schema_report.unknown += schema_census.0;", "R20 the census lands once, after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t04Has(t, runtime, "report.widened += 1;", "R20 a widen counts")
 	// A SHORTER ARRAY OR STRING: the image is the template's zeros, and the plan
 	// writes only the writer's live extent.
-	t04Has(t, text, "let mut image = [0u8;", "R20 the reader's slack is the template's zeros")
-	t04Has(t, text, "table_fixed_holes(entries, &mut cover, &mut hole_buf);", "R20 the holes are what the plan does not write")
+	t04Has(t, text, "let mut schema_image = [0u8;", "R20 the reader's slack is the template's zeros")
+	t04Has(t, text, "table_fixed_holes(schema_entries, &mut schema_cover, &mut schema_hole_buf);", "R20 the holes are what the plan does not write")
 	// AN OLDER ENUM: the remap is by NAME and its list is the writer's count, so
 	// a prefix maps position for position.
 	t04Has(t, runtime, "Some(count) if raw != 0 && raw <= u64::from(*count) => {", "R20 the ordinal is resolved through the plan's remap")
@@ -518,8 +518,8 @@ func t04W2(t *testing.T) {
 	if write == "" {
 		t.Fatal("W2: lineage_fixed_write_body is not emitted")
 	}
-	t04Has(t, write, "u8::from(value.link_present);", "W2 the present flag is stored")
-	guard := strings.Index(write, "if value.link_present {")
+	t04Has(t, write, "u8::from(schema_value.link_present);", "W2 the present flag is stored")
+	guard := strings.Index(write, "if schema_value.link_present {")
 	if guard < 0 {
 		t.Fatalf("W2: an absent optional does not guard its store:\n%s", write)
 	}
@@ -532,8 +532,8 @@ func t04W2(t *testing.T) {
 	if !strings.Contains(rest, "copy_from_slice") && !strings.Contains(rest, "b[") {
 		t.Errorf("W2: the guard does not wrap the payload's store:\n%s", write)
 	}
-	if strings.Count(write, "if value.link_present {") != 1 {
-		t.Errorf("W2: the absent-optional guard appears %d times, want once", strings.Count(write, "if value.link_present {"))
+	if strings.Count(write, "if schema_value.link_present {") != 1 {
+		t.Errorf("W2: the absent-optional guard appears %d times, want once", strings.Count(write, "if schema_value.link_present {"))
 	}
 }
 

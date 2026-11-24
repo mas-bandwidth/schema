@@ -286,11 +286,11 @@ impl Default for BenchMixedRow {
     fn default() -> Self {
         // a cooked record's zero form is a value of the type: zero is valid
         // for every scalar, and false is a valid bool
-        let mut value: Self = unsafe { core::mem::zeroed() };
+        let mut schema_value: Self = unsafe { core::mem::zeroed() };
         // a counted [Min..N] array is born at Min, here or in a nested
         // record (docs/SPEC.md §4.2)
-        value.entities_count = 1;
-        value
+        schema_value.entities_count = 1;
+        schema_value
     }
 }
 

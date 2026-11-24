@@ -1882,8 +1882,10 @@ All compile errors with positions:
   `enumName<E>` parameter is `$value` for an enum named `value`).
   The Rust packet layer spells an enum as a tuple struct, which no let,
   parameter, loop or match binding may shadow, so every binding the Rust
-  packet emitter declares, and the cooked union setter's parameter, carries
-  the `schema_` prefix no declaration may take (`schema_value`,
+  packet emitter declares, every binding of the table files that glob-import
+  the crate (the fixed, message, block and cook modules and the message and
+  cook runtimes), and the cooked union setter's parameter, carries the
+  `schema_` prefix no declaration may take (`schema_value`,
   `schema_stream`, `schema_c0`, ...). A helper derived from two names is
   injective: a Rust table enum's JSON names are its associated
   `json_name` and `from_json_name`, never free functions spelled from its
