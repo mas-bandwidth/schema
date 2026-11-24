@@ -23,9 +23,30 @@ const v2 = await imp("v2/V2Table.js");
 // of the source text as `new Int32Array([`, a spelling the emitter left for
 // `new globalThis.Int32Array([`, so the parse came back null; the exported
 // copy is the public API and cannot drift from what the module runs.
-const v1CellDst = v1.CellFixedDstCopy();
-const v1CfgDst = v1.CfgFixedDstCopy();
-const v2CfgDst = v2.CfgFixedDstCopy();
+//
+// A READ THAT FINDS NOTHING FAILS HERE, BY NAME. The old parse returned null and
+// the row died later on `null[5]`, a TypeError that named no cause. Every dst
+// table must be an Int32Array of exactly five lanes per entry of the same
+// table's layout (a u32 count, then the entries), with at least one entry;
+// anything else exits 1 naming the table and what was found.
+function requireDst(mod, name, where) {
+  const copy = mod[`${name}FixedDstCopy`];
+  const rows = typeof copy === "function" ? copy() : null;
+  const layoutCopy = mod[`${name}FixedLayoutCopy`];
+  const layout = typeof layoutCopy === "function" ? layoutCopy() : null;
+  const entries = layout instanceof Uint8Array && layout.length >= 4
+    ? new DataView(layout.buffer, layout.byteOffset, layout.byteLength).getUint32(0, true)
+    : -1;
+  if (!(rows instanceof Int32Array) || entries <= 0 || rows.length !== 5 * entries) {
+    const found = rows instanceof Int32Array ? `an Int32Array of ${rows.length} lanes` : String(rows);
+    console.log(`FAIL: ${where} ${name}FixedDst: expected an Int32Array of 5 lanes per layout entry (${entries} entries), found ${found}`);
+    process.exit(1);
+  }
+  return rows;
+}
+const v1CellDst = requireDst(v1, "Cell", "v1/V1Table.js");
+const v1CfgDst = requireDst(v1, "Cfg", "v1/V1Table.js");
+const v2CfgDst = requireDst(v2, "Cfg", "v2/V2Table.js");
 
 // THE ENTRY WIDTH IS THE RUNTIME'S OWN (TableFixedLanes): an entry grew two lanes,
 // the guard chain's count and offset (§4.1), after this row hard-coded nine, so
