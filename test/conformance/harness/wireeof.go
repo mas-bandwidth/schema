@@ -21,6 +21,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -57,7 +58,7 @@ var wireEOFCases = []wireEOFCase{
 	{name: "2 index bytes at EOF", tail: func(i uint32) []byte { return wireEOFIndex(i)[:2] }},
 	{name: "3 index bytes at EOF", tail: func(i uint32) []byte { return wireEOFIndex(i)[:3] }},
 	{name: "2 length bytes at EOF", tail: func(i uint32) []byte { return wireEOFHead(i)[:6] }},
-	{name: "no body bytes at EOF", tail: func(i uint32) []byte { return wireEOFHead(i) }},
+	{name: "no body bytes at EOF", tail: wireEOFHead},
 	{name: "half a body at EOF", tail: func(i uint32) []byte {
 		return append(wireEOFHead(i), make([]byte, wireEOFBodyLength/2)...)
 	}},
@@ -93,8 +94,8 @@ func wireEOFCommand(command string) wireEOFDriver {
 		err := cmd.Run()
 		run := wireEOFRun{stdout: out.Bytes(), stderr: errb.Bytes()}
 		if err != nil {
-			ee, ok := err.(*exec.ExitError)
-			if !ok {
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) {
 				return run, fmt.Errorf("running %q: %w", command, err)
 			}
 			run.exitCode = ee.ExitCode()
@@ -188,18 +189,22 @@ func wireEOFCheck(w io.Writer, roots []*wireRoot, driver wireEOFDriver) (bool, e
 	wg.Wait()
 
 	ok := true
+	var report strings.Builder
 	for i, c := range wireEOFCases {
 		if errs[i] != nil {
 			return false, fmt.Errorf("%s: %w", c.name, errs[i])
 		}
 		if verdicts[i] != "" {
 			ok = false
-			fmt.Fprintf(w, "FAIL  %s: %s\n", c.name, verdicts[i])
+			fmt.Fprintf(&report, "FAIL  %s: %s\n", c.name, verdicts[i])
 		} else {
-			fmt.Fprintf(w, "ok    %s\n", c.name)
+			fmt.Fprintf(&report, "ok    %s\n", c.name)
 		}
 	}
-	fmt.Fprintf(w, "wire-eof: %d cases on roster entry %d (%s %s)\n", len(wireEOFCases), index, roots[index].unit, roots[index].root)
+	fmt.Fprintf(&report, "wire-eof: %d cases on roster entry %d (%s %s)\n", len(wireEOFCases), index, roots[index].unit, roots[index].root)
+	if _, err := io.WriteString(w, report.String()); err != nil {
+		return false, err
+	}
 	return ok, nil
 }
 
@@ -216,6 +221,8 @@ func wireEOF(w io.Writer, m *Manifest, opts wireFuzzOptions) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	fmt.Fprintf(w, "wire-eof: --driver %s\n", opts.driver)
+	if _, err := fmt.Fprintf(w, "wire-eof: --driver %s\n", opts.driver); err != nil {
+		return false, err
+	}
 	return wireEOFCheck(w, roots, wireEOFCommand(opts.driver))
 }

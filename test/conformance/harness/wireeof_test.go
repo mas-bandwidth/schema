@@ -89,7 +89,12 @@ func (f fakeEOFDriver) run(stdin []byte) (wireEOFRun, error) {
 				return fail("the stream ended inside a mutant")
 			}
 		}
-		out.Write(make([]byte, 47)) // a reply header with nothing saved
+		// the reply: a 47-byte header whose saved length is the body's, then
+		// the body as the saved bytes, so a cut body handed on shows as a reply
+		reply := make([]byte, 47)
+		binary.LittleEndian.PutUint64(reply[39:], uint64(len(wire)))
+		out.Write(reply)
+		out.Write(wire)
 	}
 }
 
