@@ -628,8 +628,26 @@ jobs:
           # PR 4908 changed MANIFEST.txt and selected only the legs whose code
           # it touched: no cpp verify row, and verify-leg (elixir, conformance)
           # skipped. TestFastPlanSharedCorpusSelectsEveryLeg.
+          #
+          # THE SHARED VERIFY CODE is a shared edit too: the make templates
+          # that define every leg's verify-<leg>-<gate> (make/verify-*.mk),
+          # and the non-test source of the programs every leg's rows run, the
+          # conformance harness and the test/verify-* cross-port tools, with
+          # the main-module packages they import that no leg owns. Their test
+          # files are not: a _test.go there changes no leg's answer.
+          # TestFastPlanSharedVerifyCodeSelectsEveryLeg derives the package
+          # list from `go list -deps` of those programs, so a new import no
+          # leg owns goes red there until it is named here.
           shared_broad=no
-          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|testdata/conformance/tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
+          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|testdata/conformance/tables/|make/verify-[^/]*\.mk$|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
+            shared_broad=yes
+          fi
+          # awk reads the whole list and decides by its exit status, so a
+          # large diff cannot stop it early (the here-string rule above)
+          if awk '
+            /^(test\/conformance\/harness\/|test\/verify-[^\/]+\/|internal\/(ast|atomicfile|baseline|check|docgate|format|goname|lockfile|parser|pathid|rfc3339|scanner|tablecook|tablenames|tablepack|tabletext|tablewire|version)\/|internal\/codegen\/(cqualify|genheader)\/)/ && !/_test\.go$/ { hit = 1 }
+            END { exit !hit }
+          ' <<<"$files"; then
             shared_broad=yes
           fi
           if [ "$shared_broad" = yes ]; then
