@@ -913,14 +913,14 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
 # comparing a file with itself). The sabotage replaces the ONE name that carries
-# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
-# the reader — with `layout_damaged`, and the OLD-REFUSES-NEW column must go
+# §5's whole direction — a hash no lineage entry holds is `layout_unknown` (§5.3
+# step 5) — with `layout_damaged`, and the OLD-REFUSES-NEW column must go
 # red naming it. `go test -overlay` is the same trick the other controls use on
 # `go build`: the emitter is replaced for one run and the tree is never touched.
 .PHONY: tables-dart-versioning-negative-control
 tables-dart-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/dart-versioning-nc && mkdir -p build/dart-versioning-nc
-	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutDamaged; // SABOTAGED|' \
+	@sed 's|report.refused = TableFixedRefusal.layoutUnknown;|report.refused = TableFixedRefusal.layoutDamaged; // SABOTAGED|' \
 		internal/codegen/darttable/fixedmodule.go > build/dart-versioning-nc/fixedmodule.go.txt
 	@grep -q SABOTAGED build/dart-versioning-nc/fixedmodule.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
@@ -932,7 +932,7 @@ tables-dart-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/dart-versioning-nc/log; exit 1; \
 	fi
-	@grep -q 'owes layout_newer' build/dart-versioning-nc/log || \
+	@grep -q 'owes layout_unknown' build/dart-versioning-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/dart-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'

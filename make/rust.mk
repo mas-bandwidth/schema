@@ -404,7 +404,7 @@ tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus
 # and the floor, hash and lineage-merge files — generates ONE CARGO WORKSPACE of
 # probe crates under build/rust-versioning-probes, and holds each row's two read
 # columns: NEW-READS-OLD lands every old value with §5.4's counters, and
-# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# OLD-REFUSES-NEW answers `layout_unknown` before any record, on the file's hash
 # alone (§5.3). The Go leg's `tables-go-versioning` is the same target on the
 # same rows; this is its twin.
 #
