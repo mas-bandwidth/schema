@@ -3,7 +3,9 @@ package ctable
 // FULL-WIDTH ENUM AND UNION ORDINALS ON THE C LEG (docs/roadmap.sexp node
 // `fixed-tables`, leaf c/R31; docs/FIXED-FORM-ALGORITHM.md §4.1, §5.2, §5.8
 // rows 5, 7 and 14). The same fixture as the Go leg's t16: a writer with 300
-// enum variants and 300 union arms, a reader with a subset, an 8-byte
+// enum variants and 300 union arms, an APPEND-ONLY reader that retains every one
+// and appends another (a reader with a subset is an unlawful entry, §5.1 "arm
+// removed" / "variant removed", and lays no plan: internal/fixedunlawful), an 8-byte
 // ordinal pinning the 64-bit temporary, both guard lanes stamped above
 // MaxUint32, and a remap past the uint16 length word refused by name.
 //
@@ -60,7 +62,7 @@ func t16CWriterSchema() string {
 }
 
 func t16CReaderSchema() string {
-	return t16CFixture([]string{"v0", "v1", "v299"}, []string{"a0", "a299"}, []string{"a0", "a299"})
+	return t16CFixture(t16CNames("v", 301), t16CNames("a", 301), t16CNames("a", 301))
 }
 
 func TestFixedRoadmapCT16OrdinalLanes(t *testing.T) {
@@ -169,11 +171,11 @@ int main(void)
             const uint16_t * table = (const uint16_t *) (const void *) ((const uint8_t *) plan + plan[i].aux);
             ++ordinals;
             if (table[0] != 300) { fprintf(stderr, "remap length word %%u, want writer 300\n", (unsigned) table[0]); return 1; }
-            if (table[300] != 3) { fprintf(stderr, "remap[300] %%u, want reader ordinal 3\n", (unsigned) table[300]); return 1; }
+            if (table[300] != 300) { fprintf(stderr, "remap[300] %%u, want reader ordinal 300\n", (unsigned) table[300]); return 1; }
         }
     }
     CHECK(ordinals == 1);
-    /* THE COMPILED RUN: variant/arm 300 remap to the reader's last entries. */
+    /* THE COMPILED RUN: writer variant/arm 300 lands the reader's v299/a299. */
     memset(body, 0, sizeof(body));
     body[0] = 0x2C; body[1] = 0x01;          /* many ordinal 300 */
     body[2] = 0x2C; body[3] = 0x01;          /* pick tag 300 */
