@@ -218,7 +218,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_blobdemo.c build/tables-generated-c/blobs/AssetsTable.c \
 	test/conformance/c/unit_vocab9demo.c build/tables-generated-c/vocab9/Vocab9Table.c \
 	test/conformance/c/unit_vocabdemo.c build/tables-generated-c/vocab/VocabTable.c \
-	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 	test/conformance/c/unit_tblr2.c build/tables-generated-c/r2/R2Table.c \
 	test/conformance/c/unit_tblr1.c build/tables-generated-c/r1/R1Table.c \
 	test/conformance/c/unit_tblk2.c build/tables-generated-c/k2/K2Table.c \
