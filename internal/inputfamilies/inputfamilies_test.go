@@ -237,21 +237,54 @@ func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
 	}
 }
 
-// A docs/PORTING.md-only diff selects ./tools/matrix, whose proof reads the
-// register's language columns (TestTheCommittedProofCarriesEveryPortingColumn):
-// a document is read where its whole path is a string literal, never where a
-// comment cites it.
-func TestADocumentSelectsTheGoPackageThatReadsIt(t *testing.T) {
+// A DOCUMENT selects the packages that read it, however the read spells the
+// path: the whole path as one literal, filepath.Join's directory and name
+// ("docs", "CI-TIERS.md"), or a glob over its directory (tools/roadmap's
+// doneevidence over docs/roadmap-evidence). Each row is a diff of that one
+// document and a package that must run (the reader's misses on #4934).
+func TestADocumentSelectsTheGoPackagesThatReadIt(t *testing.T) {
 	t.Parallel()
-	s := Select(repoTree(t), []string{"docs/PORTING.md"}, false, true)
-	if !slices.Contains(s.Packages, "./tools/matrix") {
-		t.Errorf("a docs/PORTING.md-only diff selects %v, not ./tools/matrix", s.Packages)
+	tr := repoTree(t)
+	// through Select once (the fast lane's own call), then the rows against
+	// one scan of the tree
+	if got := Select(tr, []string{"docs/PORTING.md"}, false, true).Packages; !slices.Contains(got, "./tools/matrix") {
+		t.Errorf("Select: a docs/PORTING.md-only diff selects %v, not ./tools/matrix", got)
 	}
-	tr := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{
-		"tools/r/r.go":    `const doc = "docs/X.md"`,
-		"internal/c/c.go": "// the rule in docs/X.md says so",
+	literals := literalsByPackage(tr)
+	for _, c := range []struct{ doc, pkg string }{
+		{"docs/PORTING.md", "./tools/matrix"},
+		{"docs/CI-TIERS.md", "./internal/ci"},
+		{"docs/BASE-REDS.md", "./internal/ci"},
+		{"docs/VERSIONING.md", "./internal/ci"},
+		{"docs/CLI.md", "./cmd/schema"},
+		{"docs/PORT-LOBSTER.md", "./internal/codegen/lobster"},
+		{"docs/PORT-PYTHON.md", "./internal/ci"},
+		{"docs/PORT-RUBY.md", "./internal/ci"},
+		{"docs/roadmap-evidence/fixed-c.sexp", "./tools/roadmap"},
+		{"docs/SPEC-TABLES.md", "./internal/ci"},
+		{"docs/SPEC-TABLES.md", "./test/conformance/harness"},
+	} {
+		if got := docReaders(literals, c.doc); !slices.Contains(got, c.pkg) {
+			t.Errorf("a %s-only diff selects %v, not %s", c.doc, got, c.pkg)
+		}
+	}
+	// a hand tree: each read spelling selects its package; a comment that
+	// cites the document, even in Join's own spelling, selects nothing
+	hand := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{
+		"tools/whole/w.go":   "package whole\nconst doc = \"docs/X.md\"\n",
+		"tools/join/j.go":    "package join\nvar dir = \"docs\"\n",
+		"tools/join/j2.go":   "package join\nvar name = \"X.md\"\n",
+		"tools/glob/g.go":    "package glob\nvar a, b, c = \"docs\", \"sub\", \"*.sexp\"\n",
+		"internal/cite/c.go": "package cite\n// the rule in docs/X.md; see filepath.Join(root, \"docs\", \"X.md\")\n// and \"docs\", \"sub\", \"*.sexp\"\nvar s = \"docs\"\n",
+		"internal/star/s.go": "package star\nvar a, b, c = \"docs\", \"sub\", \"*\"\n",
 	}}
-	if got := Select(tr, []string{"docs/X.md"}, false, true).Packages; !slices.Equal(got, []string{"./tools/r"}) {
-		t.Errorf("packages = %v, want only the literal reader ./tools/r", got)
+	for doc, want := range map[string][]string{
+		"docs/X.md":       {"./tools/join", "./tools/whole"},
+		"docs/sub/y.sexp": {"./tools/glob"},
+		"docs/sub/y.md":   nil,
+	} {
+		if got := Select(hand, []string{doc}, false, true).Packages; !slices.Equal(got, want) {
+			t.Errorf("hand tree: a %s-only diff selects %v, want %v", doc, got, want)
+		}
 	}
 }

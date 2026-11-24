@@ -19,6 +19,8 @@ package inputfamilies
 
 import (
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"io/fs"
 	"os"
 	"path"
@@ -26,6 +28,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -207,13 +210,6 @@ var genericDirs = map[string]bool{"testdata": true, "wire": true, "tables": true
 // the directory's own quoted name (filepath.Join("testdata", "wire", "x")),
 // and the file's name.
 func mentions(p string) []string {
-	// A DOCUMENT a Go tool reads (docs/PORTING.md, read by tools/matrix
-	// proof) is named in hundreds of comments and its directory in more, so
-	// its readers are the files that spell its whole path as a string
-	// literal: the spelling os.ReadFile takes, never a citation.
-	if strings.HasPrefix(p, "docs/") {
-		return []string{`"` + p + `"`}
-	}
 	dir, base := path.Split(p)
 	dir = strings.TrimSuffix(dir, "/")
 	var out []string
@@ -247,6 +243,9 @@ func GoReaders(t Tree, p string) []string {
 }
 
 func goReaders(t Tree, p string, readersByMention map[string][]string) []string {
+	if isDoc(p) {
+		return docReaders(literalsByPackage(t), p)
+	}
 	set := map[string]bool{}
 	for _, mention := range mentions(p) {
 		readers, found := readersByMention[mention]
@@ -298,11 +297,20 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 	// Changed files often share a directory mention. Scan the Go tree
 	// once per literal, including literals with no readers.
 	readersByMention := map[string][]string{}
+	var literals map[string]map[string]bool
 	for _, p := range changed {
 		if !isInput(p) {
 			continue
 		}
-		rs := goReaders(t, p, readersByMention)
+		var rs []string
+		if isDoc(p) {
+			if literals == nil {
+				literals = literalsByPackage(t)
+			}
+			rs = docReaders(literals, p)
+		} else {
+			rs = goReaders(t, p, readersByMention)
+		}
 		for _, r := range rs {
 			pkgs[r] = true
 		}
@@ -421,4 +429,89 @@ func mainModule(root, rel string) bool {
 		}
 	}
 	return true
+}
+
+// isDoc reports whether a changed path is a document under docs/ (a non-Go
+// file: isInput has already refused .go).
+func isDoc(p string) bool { return strings.HasPrefix(p, "docs/") }
+
+// literalsByPackage is, per main-module package (./dir), every string literal
+// its Go files spell, read with go/scanner so a comment never counts. A
+// document is named in hundreds of comments ("docs/SPEC-TABLES.md §3.3")
+// and the word docs in more: only a literal is a spelling a read takes.
+func literalsByPackage(t Tree) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for f, body := range t.GoFiles {
+		pkg := "./" + path.Dir(f)
+		set := out[pkg]
+		if set == nil {
+			set = map[string]bool{}
+			out[pkg] = set
+		}
+		src := []byte(body)
+		fset := token.NewFileSet()
+		var s scanner.Scanner
+		s.Init(fset.AddFile(f, -1, len(src)), src, nil, 0)
+		for {
+			_, tok, lit := s.Scan()
+			if tok == token.EOF {
+				break
+			}
+			if tok != token.STRING {
+				continue
+			}
+			if v, err := strconv.Unquote(lit); err == nil {
+				set[v] = true
+			}
+		}
+	}
+	return out
+}
+
+// docReaders is every package that reads document p, sorted. A package reads
+// it when its literals spell the whole path ("docs/PORTING.md"), or spell
+// its directory and its name the way filepath.Join takes them (the testdata
+// rule's quoted directory plus file name: "docs", "CI-TIERS.md"), or spell
+// its directory and a glob its name matches ("docs", "roadmap-evidence",
+// "*.sexp", as tools/roadmap's doneevidence reads every overlay).
+func docReaders(literals map[string]map[string]bool, p string) []string {
+	dir, base := path.Split(p)
+	dir = strings.TrimSuffix(dir, "/")
+	segs := strings.Split(dir, "/")
+	var out []string
+	for pkg, lits := range literals {
+		if lits[p] || readsDoc(lits, dir, segs, base) {
+			out = append(out, pkg)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func readsDoc(lits map[string]bool, dir string, segs []string, base string) bool {
+	if !lits[dir] {
+		for _, seg := range segs {
+			if !lits[seg] {
+				return false
+			}
+		}
+	}
+	if lits[base] {
+		return true
+	}
+	for lit := range lits {
+		if isFileGlob(lit) {
+			if ok, err := path.Match(lit, base); err == nil && ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isFileGlob reports whether a literal is a glob over file names: a wildcard
+// and an extension ("*.sexp", "PORT-*.md"), with no space. A bare "*" or
+// "**" (a markdown bullet, a multiplication) would match every name.
+func isFileGlob(lit string) bool {
+	return strings.ContainsAny(lit, "*?[") && strings.Contains(lit, ".") && !strings.ContainsAny(lit, " /")
 }
