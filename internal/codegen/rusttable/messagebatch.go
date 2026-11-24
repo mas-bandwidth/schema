@@ -580,6 +580,15 @@ func (m *msgGen) writeValue(f *ir.Field, entry ir.TableVocabularyEntry, expr, de
 		m.pf("%s    _ => return false,\n%s}\n", ind, ind)
 	case msgEnum(f) != nil:
 		e := msgEnum(f)
+		if dep := fixedEnumNotDeprecated(f, expr); dep != "" {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15
+			// WRITE): the Row holds the ordinal as plain u8 storage, so the
+			// message writer refuses it here, element and scalar alike; Rust
+			// write checks are debug asserts (docs/SPEC.md §5.1), as the fixed
+			// writer's fixedScalarWriteCheck and the variable writer's enumRef
+			// are.
+			m.pf("%sdebug_assert!(%s, \"invalid_value: %s holds a deprecated variant\");\n", ind, dep, f.Name)
+		}
 		m.pf("%smatch %s {\n%s    0 => schema_w.put(0, TABLE_MESSAGE_REF_BITS),\n", ind, expr, ind)
 		for i := range e.Variants {
 			if s := m.nameSlot(ir.TableWireId(e.VariantWireName(i))); s != 0 {

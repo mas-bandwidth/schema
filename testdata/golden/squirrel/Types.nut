@@ -279,12 +279,16 @@ _M.ReadQuantizedRotation <- function(stream, value) {
 
 // WriteQuantizedRotation writes value in declared order; false on a refused value.
 _M.WriteQuantizedRotation <- function(stream, value) {
+  if (typeof value.X != "integer" || value.X < -1024 || value.X > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.X;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  if (typeof value.Y != "integer" || value.Y < -1024 || value.Y > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.Y;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  if (typeof value.Z != "integer" || value.Z < -1024 || value.Z > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.Z;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
+  if (typeof value.W != "integer" || value.W < -1024 || value.W > 1024) return false; // SPEC §5.1 row 1
   _h.value = value.W;
   if (!stream.serializeInt(_h, -1024, 1024)) return false;
   return true;
@@ -604,8 +608,10 @@ _M.WriteShipCreate <- function(stream, value) {
   if (typeof value.Team != "integer" || value.Team < 0 || value.Team > 2) return false;
   _h.value = value.Team;
   if (!stream.serializeBits(_h, 2)) return false;
+  if (typeof value.Health != "integer" || value.Health < 0 || value.Health > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.Health;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
+  if (typeof value.Thrust != "integer" || value.Thrust < 0 || value.Thrust > 100) return false; // SPEC §5.1 row 1
   _h.value = value.Thrust;
   if (!stream.serializeInt(_h, 0, 100)) return false;
   if (typeof value.Pending != "integer" || value.Pending < 0 || value.Pending > 0) return false;

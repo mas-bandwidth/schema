@@ -584,6 +584,13 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
 		}
+		if dep := fixedEnumNotDeprecated(f, expr); dep != "" {
+			// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15
+			// WRITE): the Row holds the ordinal as plain storage, so the fixed
+			// writer refuses it here; Rust write checks are debug asserts
+			// (docs/SPEC.md §5.1), as the variable writer's enumRef is.
+			g.pf("%sdebug_assert!(%s, \"invalid_value: %s holds a deprecated variant\");\n", ind, dep, f.Name)
+		}
 		if w, held := fixedFlagsWidth(f); held {
 			// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD
 			// HOLDS A MASK TO ITS WIDTH): its own reader refuses a bit at or
@@ -1135,6 +1142,23 @@ func fixedEnumExtent(f *ir.Field, width int64) (int64, bool) {
 		return 0, false
 	}
 	return en.Max, true
+}
+
+// fixedEnumNotDeprecated is the condition a fixed-form ENUM leaf's ordinal
+// holds when it names no deprecated variant (variant i is ordinal i+1), or ""
+// when the field is no enum or its enum declares none.
+func fixedEnumNotDeprecated(f *ir.Field, expr string) string {
+	en, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return ""
+	}
+	var conds []string
+	for i := range en.Variants {
+		if variantDeprecated(en, i) {
+			conds = append(conds, fmt.Sprintf("%s != %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " && ")
 }
 
 // fixedSlotType is ONE slot's Rust type in the Row — the cooked spelling,

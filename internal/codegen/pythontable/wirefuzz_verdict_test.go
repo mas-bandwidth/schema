@@ -18,6 +18,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -98,6 +99,7 @@ func TestPythonWireFuzzCIPartition(t *testing.T) {
 	}
 	run := func(target string) []string {
 		t.Helper()
+		testinputs.Make(t)
 		cmd := testproc.Command(t, "make", "-s", target)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
@@ -169,6 +171,7 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 	}
 	run := func(target string) []string {
 		t.Helper()
+		testinputs.Make(t)
 		cmd := testproc.Command(t, "make", "-s", "-f", file, target)
 		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
