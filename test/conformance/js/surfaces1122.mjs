@@ -114,14 +114,46 @@ export async function surfaceReadInto(lines, outDir, load) {
   for (const f of lines) {
     if (f[0] !== "read-into") { continue; }
     const [, name, unitName, root, form, lawful, damaged, countText, announcement] = f;
-    if (form === "retain") {
+    if (form === "retain-fixed") {
+      // `retain-fixed`: <Root>LoadRetain on a FIXED-class root, which SPEC-TABLES
+      // 6.6 refuses by name. This leg's entry takes the report, so it refuses
+      // through it: the call into a PRE-FILLED report must leave what the same
+      // call leaves in a FRESH one.
+      const variable = await load(unitOf(unitName, "variable", name).variable);
+      const loadRetain = need(variable, root + "LoadRetain", name);
+      const call = (report) => {
+        const store = new variable.TableVariableRetain(new Uint8Array(1 << 20), new Array(1 << 17));
+        return loadRetain(new Uint8Array(readFileSync(lawful)), store, report);
+      };
+      const state = (r) => JSON.stringify(Object.keys(r).sort().map((k) => [k, r[k]]));
+      const fresh = new variable.TableVariableReport();
+      call(fresh);
+      const report = new variable.TableVariableReport();
+      for (const k of Object.keys(report)) {
+        const v = report[k];
+        report[k] = typeof v === "number" ? 7 : typeof v === "boolean" ? true : typeof v === "string" ? "stale" : v;
+      }
+      let line;
+      try {
+        const v = call(report);
+        line = v !== null && v !== undefined && !report.refused && !report.damaged ? "read\n" : "refused\n";
+      } catch (e) {
+        process.stderr.write(name + ": the call threw: " + (e && e.stack ? e.stack : String(e)) + "\n");
+        line = "threw\n";
+      }
+      const zeroed = state(report) === state(fresh) ? "zeroed\n" : "kept " + state(report) + " want " + state(fresh) + "\n";
+      writeFileSync(join(outDir, name), line + zeroed);
+      continue;
+    }
+    if (form === "retain" || form === "region") {
       // `retain` (README, "The `retain` form"): the retaining load into ONE
       // PRE-FILLED report must leave what the same load leaves in a FRESH
       // report (SPEC-TABLES 6.5: every read zeroes a supplied report, the
       // retain family included). The report is compared whole: every own
       // property, whatever the class holds.
       const variable = await load(unitOf(unitName, "variable", name).variable);
-      const loadRetain = need(variable, root + "LoadRetain", name);
+      // region: the plain <Root>Load, the leg's only read of a variable root with no region form
+      const loadRetain = form === "region" ? (bytes, _store, report) => need(variable, root + "Load", name)(bytes, report) : need(variable, root + "LoadRetain", name);
       const retaining = (path, report) => {
         const store = new variable.TableVariableRetain(new Uint8Array(1 << 20), new Array(1 << 17));
         return loadRetain(new Uint8Array(readFileSync(path)), store, report);

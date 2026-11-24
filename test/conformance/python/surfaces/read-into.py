@@ -26,12 +26,29 @@ def run(manifest, outdir):
             else:
                 write_bytes(outdir, case, b"read\n%d\n" % len(values))
             continue
-        if form == "retain":
+        if form == "retain-fixed":
+            # `retain-fixed`: <Root>.load_retain on a FIXED-class root. The
+            # generated entry raises Refused("unsupported_kind") UNCONDITIONALLY,
+            # before it touches a report or the input (internal/codegen/
+            # pythontable/pythontable.go, the fixed-class load_retain stub at
+            # "load_retain is unavailable for a fixed-class root"; no report
+            # parameter is read), the dynamic form of a compile-time refusal.
+            try:
+                cls.load_retain(b"", None, package.LoadReport())
+            except package.Refused as err:
+                if err.args[:1] != ("unsupported_kind",) and getattr(err, "reason", "unsupported_kind") != "unsupported_kind":
+                    raise
+                write_bytes(outdir, case, b"unrepresentable\n")
+                continue
+            raise RuntimeError(case + ": the fixed-root load_retain did not refuse")
+        if form in ("retain", "region"):
             # `retain` (README, "The `retain` form"): the retaining load into ONE
             # PRE-FILLED report must leave what the same load leaves in a FRESH
             # report (SPEC-TABLES 6.5: every read zeroes a supplied report, the
             # retain family included). Every field this report has is settable.
             def retaining(data, rep):
+                if form == "region":
+                    return cls.load(data, rep)
                 store = package.TableRetain(bytearray(1 << 20), bytearray(24 * (1 << 17)))
                 return cls.load_retain(data, store, rep)
 
