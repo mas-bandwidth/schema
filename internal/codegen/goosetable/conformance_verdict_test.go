@@ -117,9 +117,28 @@ func verdictGlue(ns string, mods []string) string {
 	b.WriteString("        out.push(10);\n")
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
-	b.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
+	b.WriteString(probeSurfaceGlue)
 	return b.String()
 }
+
+// probeSurfaceGlue is the glue for the main.goose surfaces a probe does not
+// answer (test/conformance/goose/driver: conformance_wref, THE ANNOUNCEMENT,
+// THE 2026-11-22 SURFACES, read-into), with the driver's own signatures:
+// main.goose calls every one, so a probe that left one out does not compile.
+// Each answers the driver's "this unit has none" (-1, or "!absent"), and
+// conformance_ri_verdict is the driver's own verdict line.
+const probeSurfaceGlue = `fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], fresh: bool, path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return "!absent"; }
+fn conformance_announce_write(out: u8[>..]&) -> i64 { return -1; }
+fn conformance_announce_read(strict: bool, ann: const u8[:], out: u8[>..]&) -> i64 { return -1; }
+fn conformance_announce_send(root: const u8[:], data: const u8[:], fresh: bool, out: u8[>..]&) -> i64 { return -1; }
+fn conformance_cook_var(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64) -> i64 { return -1; }
+fn conformance_ri_verdict(out: u8[>..]&, ok: bool) {
+    if ok { out.append("read"); } else { out.append("refused"); }
+    out.push(10);
+}
+fn conformance_fresh_json(root: const u8[:], out: u8[>..]&) -> i64 { return -1; }
+fn conformance_read_into(root: const u8[:], form: const u8[:], lawful: const u8[:], damaged: const u8[:], count: i64, ann: const u8[:], out: u8[>..]&) -> i64 { return -1; }
+`
 
 // verdictManifest derives the manifest lines one surface's rows of a unit, with
 // paths made absolute. A framing line is framing, name, unit, root, and wire:

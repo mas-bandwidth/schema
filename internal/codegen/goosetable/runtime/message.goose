@@ -566,6 +566,15 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     var nodes: i64 = 0;
     var at: i64 = 0;
     while at < words.len {
+        // THE ENTRY BOUND REFUSES AT THE ENTRY THAT PASSES IT (§3.3, "before
+        // an entry is touched"; internal/tablewire decodeVocabulary): once
+        // max_entries entries are placed, another entry starting is
+        // vocabulary_too_large, neither decoded nor compared, so damage past
+        // the bound never changes the verdict
+        if count >= v.max_entries {
+            report.reason = MsgRefuseVocabularyTooLarge;
+            return false;
+        }
         let began = at;
         var e = MsgEntry { .. };
         if !msg_entry(words, at, e, v, false) {
@@ -608,10 +617,6 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         spans.push(began);
         spans.push(at);
         count += 1;
-    }
-    if count > v.max_entries {
-        report.reason = MsgRefuseVocabularyTooLarge;
-        return false;
     }
     // kept: the slots first, then the element shapes they name
     v.entries.clear();
