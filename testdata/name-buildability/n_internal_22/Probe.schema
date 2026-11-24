@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum eElem
+{ Zfirst, Zsecond, Zthird }
+
+enum eEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum e_body
+{ Zfirst, Zsecond, Zthird }
+
+enum e_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum e_framed
+{ Zfirst, Zsecond, Zthird }
+
+enum e_framed_in
+{ Zfirst, Zsecond, Zthird }
+
+enum e_id
+{ Zfirst, Zsecond, Zthird }
+
+enum e_num
+{ Zfirst, Zsecond, Zthird }
+
+enum e_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum e_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum ea
+{ Zfirst, Zsecond, Zthird }
+
+enum each
+{ Zfirst, Zsecond, Zthird }
+
+enum eat
+{ Zfirst, Zsecond, Zthird }
+
+enum eb
+{ Zfirst, Zsecond, Zthird }
+
+enum ebad
+{ Zfirst, Zsecond, Zthird }
+
+enum ec
+{ Zfirst, Zsecond, Zthird }
+
+enum ed
+{ Zfirst, Zsecond, Zthird }
+
+enum edge
+{ Zfirst, Zsecond, Zthird }
+
+enum edgeCount
+{ Zfirst, Zsecond, Zthird }
+
+enum edgeStart
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_i1
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_i2
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_i3
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_i4
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_of
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_pool
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_pool_n
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_rewind
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_union
+{ Zfirst, Zsecond, Zthird }
+
+enum edge_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edges
+{ Zfirst, Zsecond, Zthird }
+
+enum edges1
+{ Zfirst, Zsecond, Zthird }
+
+enum edges1_i
+{ Zfirst, Zsecond, Zthird }
+
+enum edges1_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edges2
+{ Zfirst, Zsecond, Zthird }
+
+enum edges2_i
+{ Zfirst, Zsecond, Zthird }
+
+enum edges2_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edges3
+{ Zfirst, Zsecond, Zthird }
+
+enum edges3_i
+{ Zfirst, Zsecond, Zthird }
+
+enum edges3_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edges4
+{ Zfirst, Zsecond, Zthird }
+
+enum edges4_i
+{ Zfirst, Zsecond, Zthird }
+
+enum edges4_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edges5
+{ Zfirst, Zsecond, Zthird }
+
+enum edges5_i
+{ Zfirst, Zsecond, Zthird }
+
+enum edges5_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edgesOf
+{ Zfirst, Zsecond, Zthird }
+
+enum edges_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum edges_value
+{ Zfirst, Zsecond, Zthird }
+
+enum edit
+{ Zfirst, Zsecond, Zthird }
+
+enum edit_conflict
+{ Zfirst, Zsecond, Zthird }
+
+enum edited
+{ Zfirst, Zsecond, Zthird }
+
+enum edited_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum edits
+{ Zfirst, Zsecond, Zthird }
+
+enum ef
+{ Zfirst, Zsecond, Zthird }
+
+enum efd
+{ Zfirst, Zsecond, Zthird }
+
+enum eight
+{ Zfirst, Zsecond, Zthird }
+
+enum either
+{ Zfirst, Zsecond, Zthird }
+
+enum ek
+{ Zfirst, Zsecond, Zthird }
+
+enum el
+{ Zfirst, Zsecond, Zthird }
+
+enum elVal
+{ Zfirst, Zsecond, Zthird }
+
+enum elem
+{ Zfirst, Zsecond, Zthird }
+
+enum elem0
+{ Zfirst, Zsecond, Zthird }
+
+enum elemAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum elemAt
+{ Zfirst, Zsecond, Zthird }
+
+enum elemBound
+{ Zfirst, Zsecond, Zthird }
+
+enum elemBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum elemCache
+{ Zfirst, Zsecond, Zthird }
+
+enum elemDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum elemDepth
+{ Zfirst, Zsecond, Zthird }
+
+enum elemKind
+{ Zfirst, Zsecond, Zthird }
+
+enum elemLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum elemLen
+{ Zfirst, Zsecond, Zthird }
+
+enum elemName
+{ Zfirst, Zsecond, Zthird }
+
+enum elemOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum elemShapeOf
+{ Zfirst, Zsecond, Zthird }
+
+enum elemSize
+{ Zfirst, Zsecond, Zthird }
+
+enum elemStart
+{ Zfirst, Zsecond, Zthird }
+
+enum elemZero
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    eElem Inner
+    eEnd Inner
+    e_body Inner
+    e_cls Inner
+    e_framed Inner
+    e_framed_in Inner
+    e_id Inner
+    e_num Inner
+    e_reader Inner
+    e_ref Inner
+}
+
+table NameTypes0
+{
+    one0  eElem
+    many0 [..4]eElem
+    one1  eEnd
+    many1 [..4]eEnd
+    one2  e_body
+    many2 [..4]e_body
+    one3  e_cls
+    many3 [..4]e_cls
+    one4  e_framed
+    many4 [..4]e_framed
+    one5  e_framed_in
+    many5 [..4]e_framed_in
+    one6  e_id
+    many6 [..4]e_id
+    one7  e_num
+    many7 [..4]e_num
+    one8  e_reader
+    many8 [..4]e_reader
+    one9  e_ref
+    many9 [..4]e_ref
+}
+
+table NameFields0
+{
+    eElem uint32
+    eEnd uint32
+    e_body uint32
+    e_cls uint32
+    e_framed uint32
+    e_framed_in uint32
+    e_id uint32
+    e_num uint32
+    e_reader uint32
+    e_ref uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    ea Inner
+    each Inner
+    eat Inner
+    eb Inner
+    ebad Inner
+    ec Inner
+    ed Inner
+    edge Inner
+    edgeCount Inner
+    edgeStart Inner
+}
+
+table NameTypes1
+{
+    one0  ea
+    many0 [..4]ea
+    one1  each
+    many1 [..4]each
+    one2  eat
+    many2 [..4]eat
+    one3  eb
+    many3 [..4]eb
+    one4  ebad
+    many4 [..4]ebad
+    one5  ec
+    many5 [..4]ec
+    one6  ed
+    many6 [..4]ed
+    one7  edge
+    many7 [..4]edge
+    one8  edgeCount
+    many8 [..4]edgeCount
+    one9  edgeStart
+    many9 [..4]edgeStart
+}
+
+table NameFields1
+{
+    ea uint32
+    each uint32
+    eat uint32
+    eb uint32
+    ebad uint32
+    ec uint32
+    ed uint32
+    edge uint32
+    edgeCount uint32
+    edgeStart uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    edge_entry Inner
+    edge_i1 Inner
+    edge_i2 Inner
+    edge_i3 Inner
+    edge_i4 Inner
+    edge_of Inner
+    edge_pool Inner
+    edge_pool_n Inner
+    edge_rewind Inner
+    edge_union Inner
+}
+
+table NameTypes2
+{
+    one0  edge_entry
+    many0 [..4]edge_entry
+    one1  edge_i1
+    many1 [..4]edge_i1
+    one2  edge_i2
+    many2 [..4]edge_i2
+    one3  edge_i3
+    many3 [..4]edge_i3
+    one4  edge_i4
+    many4 [..4]edge_i4
+    one5  edge_of
+    many5 [..4]edge_of
+    one6  edge_pool
+    many6 [..4]edge_pool
+    one7  edge_pool_n
+    many7 [..4]edge_pool_n
+    one8  edge_rewind
+    many8 [..4]edge_rewind
+    one9  edge_union
+    many9 [..4]edge_union
+}
+
+table NameFields2
+{
+    edge_entry uint32
+    edge_i1 uint32
+    edge_i2 uint32
+    edge_i3 uint32
+    edge_i4 uint32
+    edge_of uint32
+    edge_pool uint32
+    edge_pool_n uint32
+    edge_rewind uint32
+    edge_union uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    edge_value Inner
+    edges Inner
+    edges1 Inner
+    edges1_i Inner
+    edges1_value Inner
+    edges2 Inner
+    edges2_i Inner
+    edges2_value Inner
+    edges3 Inner
+    edges3_i Inner
+}
+
+table NameTypes3
+{
+    one0  edge_value
+    many0 [..4]edge_value
+    one1  edges
+    many1 [..4]edges
+    one2  edges1
+    many2 [..4]edges1
+    one3  edges1_i
+    many3 [..4]edges1_i
+    one4  edges1_value
+    many4 [..4]edges1_value
+    one5  edges2
+    many5 [..4]edges2
+    one6  edges2_i
+    many6 [..4]edges2_i
+    one7  edges2_value
+    many7 [..4]edges2_value
+    one8  edges3
+    many8 [..4]edges3
+    one9  edges3_i
+    many9 [..4]edges3_i
+}
+
+table NameFields3
+{
+    edge_value uint32
+    edges uint32
+    edges1 uint32
+    edges1_i uint32
+    edges1_value uint32
+    edges2 uint32
+    edges2_i uint32
+    edges2_value uint32
+    edges3 uint32
+    edges3_i uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    edges3_value Inner
+    edges4 Inner
+    edges4_i Inner
+    edges4_value Inner
+    edges5 Inner
+    edges5_i Inner
+    edges5_value Inner
+    edgesOf Inner
+    edges_arm Inner
+    edges_value Inner
+}
+
+table NameTypes4
+{
+    one0  edges3_value
+    many0 [..4]edges3_value
+    one1  edges4
+    many1 [..4]edges4
+    one2  edges4_i
+    many2 [..4]edges4_i
+    one3  edges4_value
+    many3 [..4]edges4_value
+    one4  edges5
+    many4 [..4]edges5
+    one5  edges5_i
+    many5 [..4]edges5_i
+    one6  edges5_value
+    many6 [..4]edges5_value
+    one7  edgesOf
+    many7 [..4]edgesOf
+    one8  edges_arm
+    many8 [..4]edges_arm
+    one9  edges_value
+    many9 [..4]edges_value
+}
+
+table NameFields4
+{
+    edges3_value uint32
+    edges4 uint32
+    edges4_i uint32
+    edges4_value uint32
+    edges5 uint32
+    edges5_i uint32
+    edges5_value uint32
+    edgesOf uint32
+    edges_arm uint32
+    edges_value uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    edit Inner
+    edit_conflict Inner
+    edited Inner
+    edited_bytes Inner
+    edits Inner
+    ef Inner
+    efd Inner
+    eight Inner
+    either Inner
+    ek Inner
+}
+
+table NameTypes5
+{
+    one0  edit
+    many0 [..4]edit
+    one1  edit_conflict
+    many1 [..4]edit_conflict
+    one2  edited
+    many2 [..4]edited
+    one3  edited_bytes
+    many3 [..4]edited_bytes
+    one4  edits
+    many4 [..4]edits
+    one5  ef
+    many5 [..4]ef
+    one6  efd
+    many6 [..4]efd
+    one7  eight
+    many7 [..4]eight
+    one8  either
+    many8 [..4]either
+    one9  ek
+    many9 [..4]ek
+}
+
+table NameFields5
+{
+    edit uint32
+    edit_conflict uint32
+    edited uint32
+    edited_bytes uint32
+    edits uint32
+    ef uint32
+    efd uint32
+    eight uint32
+    either uint32
+    ek uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    el Inner
+    elVal Inner
+    elem Inner
+    elem0 Inner
+    elemAlign Inner
+    elemAt Inner
+    elemBound Inner
+    elemBytes Inner
+    elemCache Inner
+    elemDefault Inner
+}
+
+table NameTypes6
+{
+    one0  el
+    many0 [..4]el
+    one1  elVal
+    many1 [..4]elVal
+    one2  elem
+    many2 [..4]elem
+    one3  elem0
+    many3 [..4]elem0
+    one4  elemAlign
+    many4 [..4]elemAlign
+    one5  elemAt
+    many5 [..4]elemAt
+    one6  elemBound
+    many6 [..4]elemBound
+    one7  elemBytes
+    many7 [..4]elemBytes
+    one8  elemCache
+    many8 [..4]elemCache
+    one9  elemDefault
+    many9 [..4]elemDefault
+}
+
+table NameFields6
+{
+    el uint32
+    elVal uint32
+    elem uint32
+    elem0 uint32
+    elemAlign uint32
+    elemAt uint32
+    elemBound uint32
+    elemBytes uint32
+    elemCache uint32
+    elemDefault uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    elemDepth Inner
+    elemKind Inner
+    elemLayout Inner
+    elemLen Inner
+    elemName Inner
+    elemOffset Inner
+    elemShapeOf Inner
+    elemSize Inner
+    elemStart Inner
+    elemZero Inner
+}
+
+table NameTypes7
+{
+    one0  elemDepth
+    many0 [..4]elemDepth
+    one1  elemKind
+    many1 [..4]elemKind
+    one2  elemLayout
+    many2 [..4]elemLayout
+    one3  elemLen
+    many3 [..4]elemLen
+    one4  elemName
+    many4 [..4]elemName
+    one5  elemOffset
+    many5 [..4]elemOffset
+    one6  elemShapeOf
+    many6 [..4]elemShapeOf
+    one7  elemSize
+    many7 [..4]elemSize
+    one8  elemStart
+    many8 [..4]elemStart
+    one9  elemZero
+    many9 [..4]elemZero
+}
+
+table NameFields7
+{
+    elemDepth uint32
+    elemKind uint32
+    elemLayout uint32
+    elemLen uint32
+    elemName uint32
+    elemOffset uint32
+    elemShapeOf uint32
+    elemSize uint32
+    elemStart uint32
+    elemZero uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

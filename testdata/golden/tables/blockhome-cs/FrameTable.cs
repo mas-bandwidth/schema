@@ -58,6 +58,7 @@ namespace Blockhome
 
         public static bool PartRowCollectTyped(PartRow v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null PartRow is written");
             TableFieldInfo[] fields = PartRowTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -173,6 +174,7 @@ namespace Blockhome
 
         public static bool PartFrameCollectTyped(PartFrame v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null PartFrame is written");
             TableFieldInfo[] fields = PartFrameTableType().Fields;
             if (v.Version != 0 && !ids.Add(0xbb62c62c9808ea37ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -408,6 +410,7 @@ namespace Blockhome
         // which is also what zero-fills every byte of declared slack.
         public static void PartRowFixedWriteBody(Span<byte> b, PartRow value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null PartRow is written");
             if (value == null) return;
             ArmorConfigFixedWriteBody(b, value.Armor);
             GunnerSettingsFixedWriteBody(b.Slice(31), value.Gunner);
@@ -419,6 +422,7 @@ namespace Blockhome
         // which is also what zero-fills every byte of declared slack.
         public static void PartFrameFixedWriteBody(Span<byte> b, PartFrame value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null PartFrame is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt64LittleEndian(b, unchecked((long)value.Version));
             int count_parts = value.PartsCount;

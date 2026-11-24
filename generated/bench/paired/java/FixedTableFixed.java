@@ -42,6 +42,7 @@ public final class FixedTableFixed {
      * byte-width stores at constant offsets and nothing else.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert v != null : "a null record is written";
         assert checkWrite(v);
         BenchMixedFixed.writeBody(b, at + 0, v.value);
     }
@@ -261,6 +262,9 @@ public final class FixedTableFixed {
         // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§22.6): the write
         // contract refuses an empty batch in a debug build.
         assert count > 0;
+        for (int k = 0; k < count; k++) {
+            assert values[k] != null : "a null record is written";
+        }
         final int need = measure(count);
         if (need < 0 || buffer.length < need) {
             return -1;

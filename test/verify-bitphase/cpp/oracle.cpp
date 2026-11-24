@@ -15,12 +15,48 @@
 #error "CFDECODE_STEPS is the harness's: build oracle.cpp through verify-bitphase"
 #endif
 
+// the float32 ends the float32 literal case writes; the harness defines them
+// (main.go, from f32lit.go)
+#if !defined( F32LIT_MIN ) || !defined( F32LIT_MAX )
+#error "F32LIT_MIN and F32LIT_MAX are the harness's: build oracle.cpp through verify-bitphase"
+#endif
+
 using namespace bitphase;
 
 static void die( const char * msg )
 {
     std::fprintf( stderr, "FAILED: %s\n", msg );
     std::exit( 1 );
+}
+
+// f32lit_line prints one probe of the float32 literal case (f32lit.go): the
+// float64 bits of a float32, widened exactly.
+static void f32lit_line( const char * probe, float x )
+{
+    double d = x;
+    uint64_t u;
+    std::memcpy( &u, &d, 8 );
+    std::printf( "F32LIT cpp %s %016llx\n", probe, static_cast<unsigned long long>( u ) );
+}
+
+// f32lit_write writes a fresh F32Lit with e = x, reads it back, and prints
+// what e reads, or "refused" when the write refuses x.
+static void f32lit_write( const char * probe, float x )
+{
+    F32Lit v{};
+    v.e = x;
+    uint8_t buf[64] = {};
+    serialize::WriteStream ws( buf, sizeof( buf ) );
+    if ( !WriteF32Lit( ws, v ) )
+    {
+        std::printf( "F32LIT cpp %s refused\n", probe );
+        return;
+    }
+    ws.Flush();
+    F32Lit back{};
+    serialize::ReadStream rs( buf, ws.GetBytesProcessed() );
+    if ( !ReadF32Lit( rs, back ) ) die( "f32lit read back" );
+    f32lit_line( probe, back.e );
 }
 
 static void write_file( const std::string & path, const std::vector<uint8_t> & bytes )
@@ -403,6 +439,14 @@ static void verify_corpus( const std::string & dir )
         std::memcpy( &u, &d, 8 );
         std::printf( "CFDECODE cpp %d %016llx\n", i, static_cast<unsigned long long>( u ) );
     }
+    // the float32 literal case (f32lit.go): the constant, the fresh defaults,
+    // and e written at each float32 end and read back
+    F32Lit fl{};
+    f32lit_line( "const", F32Const );
+    f32lit_line( "default-d", fl.d );
+    f32lit_line( "default-e", fl.e );
+    f32lit_write( "write-min", F32LIT_MIN );
+    f32lit_write( "write-max", F32LIT_MAX );
     std::printf( "BITPHASE_OK cpp %d\n", count );
 }
 

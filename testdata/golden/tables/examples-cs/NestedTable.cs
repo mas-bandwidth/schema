@@ -37,6 +37,7 @@ namespace Tabledemo
 
         public static bool ArchiveConfigCollectTyped(ArchiveConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ArchiveConfig is written");
             TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (v.Count != 1 && !ids.Add(0xb1e5e28e4479a274ul)) return false;
@@ -197,6 +198,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void ArchiveConfigFixedWriteBody(Span<byte> b, ArchiveConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ArchiveConfig is written");
             if (value == null) return;
             RootConfigFixedWriteBody(b, value.Root);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1248), (int)value.Count);

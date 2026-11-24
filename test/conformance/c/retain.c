@@ -26,6 +26,8 @@ int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64
  done:free(retain.bytes);free(retain.ids);free(region);if(!ok){free(*output);*output=NULL;free(*text);*text=NULL;}return ok;
 }
 
+CONFORMANCE_RETAIN_REFUSAL(conformance_retain_refusal_rt1,tblrt1,node)
+
 /* READ-INTO, THE `retain` FORM (test/conformance/README.md): ONE report, which
    the driver PRE-FILLS with every field set, through the lawful retaining
    load, the damaged one and the lawful one again. After each lawful load the

@@ -1509,7 +1509,9 @@ function S.LoadRetain(T, name, bytes, retain, report, into)
   local desc = T.Tables[name]
   if desc ~= nil and not desc.variable then fixed_refusal(name) end
   if report ~= nil then
-    for k in pairs(report) do report[k] = nil end
+    for k in pairs(report) do
+      report[k] = nil
+    end
   end
   if desc == nil then return nil end
   if retain ~= nil then

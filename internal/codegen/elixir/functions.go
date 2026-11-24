@@ -1419,6 +1419,14 @@ func (g *gen) writeClause(f *ir.Field, name string, k int64) {
 	}
 	g.flushW("    ") // the clause's tail is a barrier: the next entry is < 8 bits
 	g.syncSB("    ") // an align inside an element can have made it static again
+	// The next element ORs its first field into the scratch it is handed, so
+	// a scratch the element left zero only in the emitter's books (an align,
+	// or a flush that ended on a byte, leaves the spent bits in the variable)
+	// is written zero before it rides the call: stale bits there are nonzero
+	// align padding on the wire, or a corrupted next length (SPEC §4.3).
+	// verify-bitphase-align-negative-control removes this one call and
+	// requires the align-arrays family to fail on Elixir.
+	g.ensureScratch("    ", false) // clean bits for the next element
 	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
 	g.pf("  end\n\n")
 }

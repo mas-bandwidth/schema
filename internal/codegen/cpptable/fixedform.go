@@ -1598,6 +1598,15 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// above the extent, so the comparison is always false and the
 			// emitter drops it rather than hand a warning-as-error build a
 			// tautology. No semantics move — the elided check never out_of_range.
+			if g.fixedWriteCheck {
+				// A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md
+				// §2.15 WRITE): the write check refuses one, so FixedSave and
+				// SaveMessages assert it away; the read side lands it on the
+				// default instead, which is not this pass's
+				if cond := enumNotDeprecated(r, f.Type.Name, expr); cond != "" {
+					g.pf("%sbad |= (int) !( %s ); // a deprecated variant is never written (SPEC-TABLES §2.15)\n", ind, cond)
+				}
+			}
 			if ordinalFillsStorage(r.Max, r.StorageBits) {
 				return
 			}

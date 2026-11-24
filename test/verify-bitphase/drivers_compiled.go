@@ -52,6 +52,28 @@ static uint8_t * read_all( const char * path, size_t * out_len ) {
         } \
     }
 
+@MAIN_ONLY@
+/* the float32 literal case (f32lit.go): the float64 bits of a float32 */
+static void f32lit_line( const char * probe, float x ) {
+    double d = (double)x; uint64_t u; memcpy( &u, &d, 8 );
+    printf( "F32LIT c %s %016llx\n", probe, (unsigned long long)u );
+}
+static void f32lit_write( const char * probe, float x ) {
+    bitphase_f32_lit_t v = bitphase_new_f32_lit();
+    v.e = x;
+    uint8_t buf[64]; memset( buf, 0, sizeof( buf ) );
+    serialize_write_stream_t ws;
+    serialize_write_stream_init( &ws, buf, (int)sizeof( buf ) );
+    if ( !bitphase_write_f32_lit( &ws, &v ) ) { printf( "F32LIT c %s refused\n", probe ); return; }
+    serialize_write_flush( &ws );
+    bitphase_f32_lit_t back; memset( &back, 0, sizeof( back ) );
+    serialize_read_stream_t rs;
+    serialize_read_stream_init( &rs, buf, (int)serialize_write_bytes_processed( &ws ) );
+    if ( !bitphase_read_f32_lit( &rs, &back ) ) { fprintf( stderr, "FAILED: f32lit read %s\n", probe ); exit( 1 ); }
+    f32lit_line( probe, back.e );
+}
+@END_MAIN_ONLY@
+
 int main( int argc, char ** argv ) {
     if ( argc != 2 ) return 2;
     char mpath[1024];
@@ -88,6 +110,7 @@ int main( int argc, char ** argv ) {
         count++;
     }
     fclose( mf );
+@MAIN_ONLY@
     bitphase_cf_decode_t cf; memset( &cf, 0, sizeof( cf ) );
     for ( int i = 0; i <= @CFDECODE_STEPS@; i++ ) {
         uint8_t cbuf[32]; memset( cbuf, 0, sizeof( cbuf ) );
@@ -98,6 +121,18 @@ int main( int argc, char ** argv ) {
         double d = (double)cf.c; uint64_t u; memcpy( &u, &d, 8 );
         printf( "CFDECODE c %d %016llx\n", i, (unsigned long long)u );
     }
+    {
+        bitphase_f32_lit_t fl = bitphase_new_f32_lit();
+        /* the constant through a double: a #define of the decimal 0.1 is the
+           double 0.1, and the constant names float32(0.1) */
+        double kc = BITPHASE_F32_CONST; uint64_t ku; memcpy( &ku, &kc, 8 );
+        printf( "F32LIT c const %016llx\n", (unsigned long long)ku );
+        f32lit_line( "default-d", fl.d );
+        f32lit_line( "default-e", fl.e );
+        f32lit_write( "write-min", @F32LIT_MIN@f );
+        f32lit_write( "write-max", @F32LIT_MAX@f );
+    }
+@END_MAIN_ONLY@
     printf( "BITPHASE_OK c %d\n", count );
     return 0;
 }
@@ -173,6 +208,7 @@ static class Program
             }
             count++;
         }
+@MAIN_ONLY@
         B.CfDecode cf = default;
         System.Text.StringBuilder cfOut = new System.Text.StringBuilder();
         for (int i = 0; i <= @CFDECODE_STEPS@; i++)
@@ -183,9 +219,43 @@ static class Program
                 .Append(BitConverter.DoubleToInt64Bits((double)cf.C).ToString("x16")).Append('\n');
         }
         Console.Write(cfOut.ToString());
+        // the float32 literal case (f32lit.go)
+        B.F32Lit fl = default;
+        B.Schema.InitF32Lit(ref fl);
+        F32LitLine("const", B.Schema.F32Const);
+        F32LitLine("default-d", fl.D);
+        F32LitLine("default-e", fl.E);
+        F32LitWrite("write-min", @F32LIT_MIN@f);
+        F32LitWrite("write-max", @F32LIT_MAX@f);
+@END_MAIN_ONLY@
         Console.WriteLine("BITPHASE_OK %[1]s " + count);
         return 0;
     }
+
+@MAIN_ONLY@
+    static void F32LitLine(string probe, double x)
+    {
+        Console.WriteLine("F32LIT %[1]s " + probe + " " + BitConverter.DoubleToInt64Bits(x).ToString("x16"));
+    }
+
+    static void F32LitWrite(string probe, float x)
+    {
+        B.F32Lit v = default;
+        B.Schema.InitF32Lit(ref v);
+        v.E = x;
+        WriteStream ws = new WriteStream(new byte[64]);
+        if (!B.Schema.WriteF32Lit(ws, ref v) || !ws.Ok)
+        {
+            Console.WriteLine("F32LIT %[1]s " + probe + " refused");
+            return;
+        }
+        ws.Flush();
+        B.F32Lit back = default;
+        ReadStream rs = new ReadStream(ws.Data.ToArray());
+        if (!B.Schema.ReadF32Lit(rs, ref back) || !rs.Ok) throw new Exception("FAILED: f32lit read " + probe);
+        F32LitLine(probe, back.E);
+    }
+@END_MAIN_ONLY@
 }
 `, langTag))
 }
@@ -303,7 +373,9 @@ func verifyGo(repoRoot, schemaBin, corpusDir, workDir string) error {
 import (
 	"bytes"
 	"fmt"
+@MAIN_ONLY@
 	"math"
+@END_MAIN_ONLY@
 	"os"
 	"path/filepath"
 	"strings"
@@ -386,6 +458,7 @@ func main() {
 		}
 		count++
 	}
+@MAIN_ONLY@
 	var cf bp.CfDecode
 	var cfOut strings.Builder
 	for i := 0; i <= @CFDECODE_STEPS@; i++ {
@@ -395,8 +468,38 @@ func main() {
 		fmt.Fprintf(&cfOut, "CFDECODE go %d %016x\n", i, math.Float64bits(float64(cf.C)))
 	}
 	fmt.Print(cfOut.String())
+	// the float32 literal case (f32lit.go)
+	fl := bp.NewF32Lit()
+	f32litLine("const", float64(bp.F32Const))
+	f32litLine("default-d", float64(fl.D))
+	f32litLine("default-e", float64(fl.E))
+	f32litWrite("write-min", @F32LIT_MIN@)
+	f32litWrite("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 	fmt.Printf("BITPHASE_OK go %d\n", count)
 }
+
+@MAIN_ONLY@
+func f32litLine(probe string, x float64) {
+	fmt.Printf("F32LIT go %s %016x\n", probe, math.Float64bits(x))
+}
+
+func f32litWrite(probe string, x float32) {
+	v := bp.NewF32Lit()
+	v.E = x
+	ws := serialize.NewWriteStream(make([]byte, 64))
+	if err := bp.WriteF32Lit(ws, &v); err != nil {
+		fmt.Printf("F32LIT go %s refused\n", probe)
+		return
+	}
+	ws.Flush()
+	var back bp.F32Lit
+	if err := bp.ReadF32Lit(serialize.NewReadStream(ws.Data()), &back); err != nil {
+		panic(fmt.Sprintf("FAILED: f32lit read %s: %v", probe, err))
+	}
+	f32litLine(probe, float64(back.E))
+}
+@END_MAIN_ONLY@
 `
 	if err := os.WriteFile(filepath.Join(appDir, "main.go"), []byte(withCfDecodeSteps(goSrc)), 0o644); err != nil {
 		return err
@@ -495,6 +598,7 @@ fn main() {
         }
         count += 1;
     }
+@MAIN_ONLY@
     let mut cf = bp::CfDecode::default();
     let mut cf_out = String::new();
     for i in 0..=@CFDECODE_STEPS@usize {
@@ -508,8 +612,45 @@ fn main() {
         cf_out.push_str(&format!("CFDECODE rust {} {:016x}\n", i, (cf.c as f64).to_bits()));
     }
     print!("{}", cf_out);
+    // the float32 literal case (f32lit.go)
+    let fl = bp::F32Lit::new();
+    f32lit_line("const", bp::F32_CONST);
+    f32lit_line("default-d", fl.d);
+    f32lit_line("default-e", fl.e);
+    f32lit_write("write-min", @F32LIT_MIN@_f32);
+    f32lit_write("write-max", @F32LIT_MAX@_f32);
+@END_MAIN_ONLY@
     println!("BITPHASE_OK rust {}", count);
 }
+
+@MAIN_ONLY@
+fn f32lit_line(probe: &str, x: f32) {
+    println!("F32LIT rust {} {:016x}", probe, (x as f64).to_bits());
+}
+
+fn f32lit_write(probe: &str, x: f32) {
+    let mut v = bp::F32Lit::new();
+    v.e = x;
+    let mut wbuf = [0u8; 64];
+    let n = {
+        let mut ws = WriteStream::new(&mut wbuf);
+        if bp::write_f32_lit(&mut ws, &v).is_err() {
+            println!("F32LIT rust {} refused", probe);
+            return;
+        }
+        ws.flush();
+        ws.data().len()
+    };
+    let mut padded = [0u8; 80];
+    padded[..n].copy_from_slice(&wbuf[..n]);
+    let mut back = bp::F32Lit::default();
+    let mut rs = ReadStream::new(&padded, n);
+    if bp::read_f32_lit(&mut rs, &mut back).is_err() {
+        panic!("FAILED: f32lit read {}", probe);
+    }
+    f32lit_line(probe, back.e);
+}
+@END_MAIN_ONLY@
 `
 	if err := os.WriteFile(filepath.Join(appDir, "src", "main.rs"), []byte(withCfDecodeSteps(rsSrc)), 0o644); err != nil {
 		return err
@@ -590,6 +731,7 @@ public final class Main {
             }
             count++;
         }
+@MAIN_ONLY@
         BitPhase.CfDecode cf = new BitPhase.CfDecode();
         StringBuilder cfOut = new StringBuilder();
         for (int i = 0; i <= @CFDECODE_STEPS@; i++) {
@@ -599,8 +741,41 @@ public final class Main {
                 .append(String.format("%016x", Double.doubleToRawLongBits((double) cf.c))).append('\n');
         }
         System.out.print(cfOut);
+        // the float32 literal case (f32lit.go)
+        BitPhase.F32Lit fl = new BitPhase.F32Lit();
+        f32litLine("const", BitPhase.F32_CONST);
+        f32litLine("default-d", fl.d);
+        f32litLine("default-e", fl.e);
+        f32litWrite("write-min", @F32LIT_MIN@f);
+        f32litWrite("write-max", @F32LIT_MAX@f);
+@END_MAIN_ONLY@
         System.out.println("BITPHASE_OK java " + count);
     }
+
+@MAIN_ONLY@
+    static void f32litLine(String probe, double x) {
+        System.out.println("F32LIT java " + probe + " " + String.format("%016x", Double.doubleToRawLongBits(x)));
+    }
+
+    static void f32litWrite(String probe, float x) {
+        BitPhase.F32Lit v = new BitPhase.F32Lit();
+        v.e = x;
+        byte[] wbuf = new byte[64];
+        int wn;
+        try {
+            wn = BitPhase.writeF32Lit(v, wbuf);
+        } catch (AssertionError e) {
+            wn = -1;
+        }
+        if (wn < 0) {
+            System.out.println("F32LIT java " + probe + " refused");
+            return;
+        }
+        BitPhase.F32Lit back = new BitPhase.F32Lit();
+        if (!BitPhase.readF32Lit(back, wbuf, wn * 8)) throw new RuntimeException("FAILED: f32lit read " + probe);
+        f32litLine(probe, back.e);
+    }
+@END_MAIN_ONLY@
 }
 `
 	mainJava := filepath.Join(workDir, "Main.java")
@@ -709,6 +884,7 @@ void main(List<String> args) {
     }
     count++;
   }
+@MAIN_ONLY@
   final cf = bp.CfDecode();
   final cbits = ByteData(8);
   final cfOut = StringBuffer();
@@ -725,8 +901,47 @@ void main(List<String> args) {
     cfOut.writeln('CFDECODE dart $i $hi$lo');
   }
   stdout.write(cfOut.toString());
+  // the float32 literal case (f32lit.go)
+  final fl = bp.F32Lit();
+  f32litLine('const', bp.f32Const);
+  f32litLine('default-d', fl.d);
+  f32litLine('default-e', fl.e);
+  f32litWrite('write-min', @F32LIT_MIN@);
+  f32litWrite('write-max', @F32LIT_MAX@);
+@END_MAIN_ONLY@
   print('BITPHASE_OK dart $count');
 }
+
+@MAIN_ONLY@
+void f32litLine(String probe, double x) {
+  final b = ByteData(8);
+  b.setFloat64(0, x);
+  final hi = b.getUint32(0).toRadixString(16).padLeft(8, '0');
+  final lo = b.getUint32(4).toRadixString(16).padLeft(8, '0');
+  print('F32LIT dart $probe $hi$lo');
+}
+
+void f32litWrite(String probe, double x) {
+  final v = bp.F32Lit();
+  v.e = x;
+  final wbuf = Uint8List(64);
+  int wn;
+  try {
+    wn = bp.writeF32Lit(v, ByteData.sublistView(wbuf));
+  } on AssertionError {
+    wn = -1;
+  }
+  if (wn < 0) {
+    print('F32LIT dart $probe refused');
+    return;
+  }
+  final back = bp.F32Lit();
+  if (!bp.readF32Lit(back, ByteData.sublistView(wbuf), wn * 8)) {
+    throw StateError('FAILED: f32lit read $probe');
+  }
+  f32litLine(probe, back.e);
+}
+@END_MAIN_ONLY@
 `
 	mainDart := filepath.Join(workDir, "main.dart")
 	if err := os.WriteFile(mainDart, []byte(withCfDecodeSteps(dartSrc)), 0o644); err != nil {
@@ -793,6 +1008,7 @@ defmodule BitPhaseRunner do
         acc + 1
       end)
 
+@MAIN_ONLY@
     cf_out =
       for i <- 0..@CFDECODE_STEPS@ do
         case BP.read_cf_decode(<<i::little-16>>, 16) do
@@ -802,8 +1018,35 @@ defmodule BitPhaseRunner do
       end
 
     IO.write(cf_out)
+    # the float32 literal case (f32lit.go)
+    fl = %Bitphase.F32Lit{}
+    f32lit_line("const", BP.f32_const())
+    f32lit_line("default-d", fl.d)
+    f32lit_line("default-e", fl.e)
+    f32lit_write("write-min", @F32LIT_MIN@)
+    f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
     IO.puts("BITPHASE_OK elixir #{count}")
   end
+
+@MAIN_ONLY@
+  def f32lit_line(probe, x) do
+    IO.puts("F32LIT elixir #{probe} #{Base.encode16(<<x::float-64>>, case: :lower)}")
+  end
+
+  def f32lit_write(probe, x) do
+    case BP.write_f32_lit(%Bitphase.F32Lit{e: x}) do
+      {:ok, bin} ->
+        case BP.read_f32_lit(bin, byte_size(bin) * 8) do
+          {:ok, back} -> f32lit_line(probe, back.e)
+          :error -> raise "FAILED: f32lit read #{probe}"
+        end
+
+      {:error, _} ->
+        IO.puts("F32LIT elixir #{probe} refused")
+    end
+  end
+@END_MAIN_ONLY@
 end
 
 [dir] = System.argv()

@@ -107,6 +107,7 @@ for (const line of lines) {
   count++;
 }
 
+@MAIN_ONLY@
 // 3. The compressed-float decode case (cfdecode.go), on both tiers
 {
   const cbits = new DataView(new ArrayBuffer(8));
@@ -128,6 +129,48 @@ for (const line of lines) {
   }
   console.log(cfOut.join("\n"));
 }
+
+// 4. The float32 literal case (f32lit.go), on both tiers: the constant and the
+// constructor are the module's, the writes and reads each tier's own
+{
+  const fbits = new DataView(new ArrayBuffer(8));
+  const line = (tier, probe, x) => {
+    fbits.setFloat64(0, x);
+    console.log("F32LIT " + tier + " " + probe + " " +
+      fbits.getUint32(0).toString(16).padStart(8, "0") + fbits.getUint32(4).toString(16).padStart(8, "0"));
+  };
+  const writeStream = (probe, x) => {
+    const v = new BP.F32Lit();
+    v.e = x;
+    const ws = new WriteStream(new Uint8Array(64));
+    if (!BP.WriteF32Lit(ws, v)) { console.log("F32LIT stream " + probe + " refused"); return; }
+    ws.flush();
+    const back = new BP.F32Lit();
+    if (!BP.ReadF32Lit(new ReadStream(ws.data()), back)) throw new Error("FAILED: f32lit stream read " + probe);
+    line("stream", probe, back.e);
+  };
+  const writeFlat = (probe, x) => {
+    const v = new BP.F32Lit();
+    v.e = x;
+    const wpad = new Uint8Array(64 + BPF.FlatReadSlack);
+    const wn = BPF.WriteF32LitFlat(new DataView(wpad.buffer), v);
+    if (wn < 0) { console.log("F32LIT flat " + probe + " refused"); return; }
+    const back = new BP.F32Lit();
+    if (!BPF.ReadF32LitFlat(new DataView(wpad.buffer), wn * 8, back)) throw new Error("FAILED: f32lit flat read " + probe);
+    line("flat", probe, back.e);
+  };
+  for (const tier of ["stream", "flat"]) {
+    const fl = new BP.F32Lit();
+    line(tier, "const", BP.F32Const);
+    line(tier, "default-d", fl.d);
+    line(tier, "default-e", fl.e);
+  }
+  writeStream("write-min", @F32LIT_MIN@);
+  writeStream("write-max", @F32LIT_MAX@);
+  writeFlat("write-min", @F32LIT_MIN@);
+  writeFlat("write-max", @F32LIT_MAX@);
+}
+@END_MAIN_ONLY@
 console.log("BITPHASE_OK js " + count);
 `
 	probe := filepath.Join(workDir, "main.mjs")
@@ -176,11 +219,31 @@ for line in (d / "manifest.tsv").read_text().splitlines():
         if accepted:
             raise AssertionError(f"FAILED: accepted {fname}")
     count += 1
+@MAIN_ONLY@
 cf_out = []
 for i in range(@CFDECODE_STEPS@ + 1):
     cf = bp.CfDecode.read(bytes([i & 0xFF, i >> 8]))
     cf_out.append(f"CFDECODE python {i} {struct.pack('>d', cf.c).hex()}")
 print("\n".join(cf_out))
+# the float32 literal case (f32lit.go)
+def f32lit_line(probe, x):
+    print(f"F32LIT python {probe} {struct.pack('>d', x).hex()}")
+def f32lit_write(probe, x):
+    v = bp.F32Lit()
+    v.e = x
+    try:
+        data = v.write()
+    except bp.InvalidValue:
+        print(f"F32LIT python {probe} refused")
+        return
+    f32lit_line(probe, bp.F32Lit.read(data).e)
+fl = bp.F32Lit()
+f32lit_line("const", bp.F32Const)
+f32lit_line("default-d", fl.d)
+f32lit_line("default-e", fl.e)
+f32lit_write("write-min", @F32LIT_MIN@)
+f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 print(f"BITPHASE_OK python {count}")
 `
 	probe := filepath.Join(workDir, "main.py")
@@ -224,11 +287,34 @@ File.readlines(File.join(dir, "manifest.tsv"), chomp: true).each do |line|
   end
   count += 1
 end
+@MAIN_ONLY@
 cf_out = (0..@CFDECODE_STEPS@).map do |i|
   cf = Bitphase::CfDecode.read([i & 0xff, i >> 8].pack("C*"))
   "CFDECODE ruby #{i} #{[cf.c].pack('G').unpack1('H*')}"
 end
 puts cf_out.join("\n")
+# the float32 literal case (f32lit.go)
+def f32lit_line(probe, x)
+  puts "F32LIT ruby #{probe} #{[x].pack('G').unpack1('H*')}"
+end
+def f32lit_write(probe, x)
+  v = Bitphase::F32Lit.new
+  v.e = x
+  begin
+    data = v.write
+  rescue Bitphase::InvalidValue
+    puts "F32LIT ruby #{probe} refused"
+    return
+  end
+  f32lit_line(probe, Bitphase::F32Lit.read(data).e)
+end
+fl = Bitphase::F32Lit.new
+f32lit_line("const", Bitphase::F32Const)
+f32lit_line("default-d", fl.d)
+f32lit_line("default-e", fl.e)
+f32lit_write("write-min", @F32LIT_MIN@)
+f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 puts "BITPHASE_OK ruby #{count}"
 `
 	probe := filepath.Join(workDir, "main.rb")
@@ -287,6 +373,7 @@ for line in io.lines(dir .. "/manifest.tsv") do
     count = count + 1
   end
 end
+@MAIN_ONLY@
 local cf = BP.NewCfDecode()
 local cf_out = {}
 for i = 0, @CFDECODE_STEPS@ do
@@ -296,6 +383,28 @@ for i = 0, @CFDECODE_STEPS@ do
   cf_out[#cf_out + 1] = "CFDECODE lua " .. i .. " " .. hex
 end
 print(table.concat(cf_out, "\n"))
+-- the float32 literal case (f32lit.go)
+local function f32lit_line(probe, x)
+  local hex = string.pack(">d", x):gsub(".", function(c) return string.format("%02x", c:byte()) end)
+  print("F32LIT lua " .. probe .. " " .. hex)
+end
+local function f32lit_write(probe, x)
+  local v = BP.NewF32Lit()
+  v.E = x
+  local ws = serialize.WriteStream.new(64)
+  if not BP.WriteF32Lit(ws, v) then print("F32LIT lua " .. probe .. " refused") return end
+  ws:flush()
+  local back = BP.NewF32Lit()
+  assert(BP.ReadF32Lit(serialize.ReadStream.new(ws:data()), back), "FAILED: f32lit read " .. probe)
+  f32lit_line(probe, back.E)
+end
+local fl = BP.NewF32Lit()
+f32lit_line("const", BP.F32Const)
+f32lit_line("default-d", fl.D)
+f32lit_line("default-e", fl.E)
+f32lit_write("write-min", @F32LIT_MIN@)
+f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 print("BITPHASE_OK lua " .. tostring(count))
 `
 	probe := filepath.Join(workDir, "main.lua")
@@ -400,6 +509,7 @@ for _, c in ipairs(V.cases) do
 	end
 	count += 1
 end
+@MAIN_ONLY@
 local cf = BP.NewCfDecode()
 local cfOut = {}
 for i = 0, @CFDECODE_STEPS@ do
@@ -414,6 +524,31 @@ for i = 0, @CFDECODE_STEPS@ do
 	table.insert(cfOut, "CFDECODE luau " .. tostring(i) .. " " .. h)
 end
 print(table.concat(cfOut, "\n"))
+-- the float32 literal case (f32lit.go)
+local function f32litLine(probe: string, x: number)
+	local d = buffer.create(8)
+	buffer.writef64(d, 0, x)
+	local h = ""
+	for k = 7, 0, -1 do h = h .. string.format("%02x", buffer.readu8(d, k)) end
+	print("F32LIT luau " .. probe .. " " .. h)
+end
+local function f32litWrite(probe: string, x: number)
+	local v = BP.NewF32Lit()
+	v.E = x
+	local ws = serialize.WriteStream.new(buffer.create(64))
+	if not BP.WriteF32Lit(ws, v) then print("F32LIT luau " .. probe .. " refused") return end
+	ws:flush()
+	local back = BP.NewF32Lit()
+	if not BP.ReadF32Lit(serialize.ReadStream.new(ws:data()), back) then error("FAILED: f32lit read " .. probe) end
+	f32litLine(probe, back.E)
+end
+local fl = BP.NewF32Lit()
+f32litLine("const", BP.F32Const)
+f32litLine("default-d", fl.D)
+f32litLine("default-e", fl.E)
+f32litWrite("write-min", @F32LIT_MIN@)
+f32litWrite("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 print("BITPHASE_OK luau " .. tostring(count))
 `
 	if err := os.WriteFile(filepath.Join(genDir, "probe.luau"), []byte(withCfDecodeSteps(src)), 0o644); err != nil {
@@ -492,6 +627,7 @@ for i = 1, #V.cases do
 	end
 	count = count + 1
 end
+@MAIN_ONLY@
 local cf = BP.NewCfDecode()
 local cfOut = {}
 for i = 0, @CFDECODE_STEPS@ do
@@ -506,6 +642,30 @@ for i = 0, @CFDECODE_STEPS@ do
 	table.insert(cfOut, "CFDECODE moo " .. tostring(i) .. " " .. h)
 end
 print(table.concat(cfOut, "\n"))
+-- the float32 literal case (f32lit.go): a moo float32 is its binary32
+-- pattern, so every answer is 8 hex digits and the ends are written as patterns
+local function f32litLine(probe: string, bits: number)
+	local h = ""
+	for k = 3, 0, -1 do h = h .. string.format("%02x", bit32.band(bit32.rshift(bits, 8 * k), 255)) end
+	print("F32LIT moo " .. probe .. " " .. h)
+end
+local function f32litWrite(probe: string, bits: number)
+	local v = BP.NewF32Lit()
+	v.E = bits
+	local ws = serialize.WriteStream.new(buffer.create(64))
+	if not BP.WriteF32Lit(ws, v) then print("F32LIT moo " .. probe .. " refused") return end
+	ws:flush()
+	local back = BP.NewF32Lit()
+	if not BP.ReadF32Lit(serialize.ReadStream.new(ws:data()), back) then error("FAILED: f32lit read " .. probe) end
+	f32litLine(probe, back.E)
+end
+local fl = BP.NewF32Lit()
+f32litLine("const", BP.F32Const.bits)
+f32litLine("default-d", fl.D)
+f32litLine("default-e", fl.E)
+f32litWrite("write-min", @F32LIT_MIN_BITS@)
+f32litWrite("write-max", @F32LIT_MAX_BITS@)
+@END_MAIN_ONLY@
 print("BITPHASE_OK moo " .. tostring(count))
 `
 	if err := os.WriteFile(filepath.Join(genDir, "probe.moo"), []byte(withCfDecodeSteps(src)), 0o644); err != nil {
@@ -574,6 +734,7 @@ foreach (c in cases) {
   }
   count++;
 }
+@MAIN_ONLY@
 local cf = BP.CfDecode();
 for (local i = 0; i <= @CFDECODE_STEPS@; i++) {
   local cb = blob(0);
@@ -587,6 +748,36 @@ for (local i = 0; i <= @CFDECODE_STEPS@; i++) {
   for (local k = 7; k >= 0; k--) h += format("%02x", d[k] & 0xff);
   print("CFDECODE squirrel " + i + " " + h + "\n");
 }
+// the float32 literal case (f32lit.go)
+local function f32lit_line(probe, x) {
+  local d = blob(0);
+  d.writen(x, 'd');
+  local h = "";
+  for (local k = 7; k >= 0; k--) h += format("%02x", d[k] & 0xff);
+  print("F32LIT squirrel " + probe + " " + h + "\n");
+}
+local function f32lit_write(probe, x) {
+  local v = BP.F32Lit();
+  v.E = x;
+  local wbuf = blob(64);
+  local ws = serialize.WriteStream(wbuf);
+  if (!BP.WriteF32Lit(ws, v)) { print("F32LIT squirrel " + probe + " refused\n"); return; }
+  ws.flush();
+  local n = ws.bytesProcessed();
+  local rb = blob(0);
+  for (local k = 0; k < n; k++) rb.writen(wbuf[k] & 0xff, 'b');
+  rb.seek(0);
+  local back = BP.F32Lit();
+  check(BP.ReadF32Lit(serialize.ReadStream(rb), back), "f32lit read " + probe);
+  f32lit_line(probe, back.E);
+}
+local fl = BP.F32Lit();
+f32lit_line("const", BP.F32Const);
+f32lit_line("default-d", fl.D);
+f32lit_line("default-e", fl.E);
+f32lit_write("write-min", @F32LIT_MIN@);
+f32lit_write("write-max", @F32LIT_MAX@);
+@END_MAIN_ONLY@
 print("BITPHASE_OK squirrel " + count + "\n");
 `)
 	probe := filepath.Join(workDir, "probe.nut")
@@ -624,6 +815,38 @@ fn load_bin(fname: const u8[:], out: u8[>..]&) {
     out.clear();
     check(read_file(str(%q, "/", fname), out), fname);
 }
+@MAIN_ONLY@
+// the float32 literal case (f32lit.go)
+fn f32lit_line(probe: const u8[:], x: f32) {
+    let digits = "0123456789abcdef";
+    let bits = serialize_f64_bits(x as f64);
+    var line: u8[>..] = [];
+    var k: i64 = 60;
+    while k >= 0 {
+        line.push(digits[((bits >> (k as u64)) & 15) as i64]);
+        k -= 4;
+    }
+    print(str("F32LIT goose ", probe, " ", line, "\n"));
+}
+fn f32lit_write(probe: const u8[:], x: f32) {
+    var v = bitphase::NewF32Lit();
+    v.E = x;
+    var wbuf: u8[512] = [0; 512];
+    var ws = serialize_write_stream_init(wbuf);
+    if bitphase::WriteF32Lit(ws, v) != SERIALIZE_ERROR_NONE {
+        print(str("F32LIT goose ", probe, " refused\n"));
+    } else {
+        serialize_flush(ws);
+        var cb: u8[>..] = [];
+        for k in serialize_bytes_processed(ws) { cb.push(wbuf[k]); }
+        var pbuf: u8[512] = [0; 512];
+        var rs = serialize_read_stream_init_padded(pbuf, cb);
+        var back = bitphase::NewF32Lit();
+        check(bitphase::ReadF32Lit(rs, back), "f32lit read");
+        f32lit_line(probe, back.E);
+    }
+}
+@END_MAIN_ONLY@
 fn main() {
     var raw: u8[>..] = [];
     var pbuf: u8[512] = [0; 512];
@@ -661,7 +884,8 @@ fn main() {
 `, c.File, c.Type, c.Type, c.File)
 		}
 	}
-	b.WriteString(`    {
+	b.WriteString(`@MAIN_ONLY@
+    {
         var cf = bitphase::NewCfDecode();
         var cb: u8[>..] = [];
         var line: u8[>..] = [];
@@ -684,6 +908,15 @@ fn main() {
             i += 1;
         }
     }
+    {
+        let fl = bitphase::NewF32Lit();
+        f32lit_line("const", bitphase::F32Const);
+        f32lit_line("default-d", fl.D);
+        f32lit_line("default-e", fl.E);
+        f32lit_write("write-min", (@F32LIT_MIN@));
+        f32lit_write("write-max", @F32LIT_MAX@);
+    }
+@END_MAIN_ONLY@
 `)
 	fmt.Fprintf(&b, "    print(str(\"BITPHASE_OK goose \", %d, \"\\n\"));\n}\n", len(cases))
 	srcFile := filepath.Join(genDir, "probe.goose")
@@ -749,7 +982,8 @@ let r_Phase63 = bitphase.NewPhase63()
 `, c.File, c.Type, c.Type, c.File)
 		}
 	}
-	b.WriteString(`let cf = bitphase.NewCfDecode()
+	b.WriteString(`@MAIN_ONLY@
+let cf = bitphase.NewCfDecode()
 let cf_digits = "0123456789abcdef"
 for(@CFDECODE_STEPS@ + 1) i:
     let cb = schema_rt.zeros(2)
@@ -763,6 +997,33 @@ for(@CFDECODE_STEPS@ + 1) i:
         let by = read_uint8_le(d, 7 - k)
         h += substring(cf_digits, by / 16, 1) + substring(cf_digits, by % 16, 1)
     print("CFDECODE lobster " + string(i) + " " + h)
+// the float32 literal case (f32lit.go)
+def f32lit_line(probe:string, x:float):
+    let d = schema_rt.zeros(8)
+    write_float64_le(d, 0, x)
+    var h = ""
+    for(8) k:
+        let by = read_uint8_le(d, 7 - k)
+        h += substring(cf_digits, by / 16, 1) + substring(cf_digits, by % 16, 1)
+    print("F32LIT lobster " + probe + " " + h)
+def f32lit_write(probe:string, x:float):
+    let v = bitphase.NewF32Lit()
+    v.E = x
+    let ws = serialize_write_stream(schema_rt.zeros(64))
+    if bitphase.WriteF32Lit(ws, v):
+        ws.flush()
+        let back = bitphase.NewF32Lit()
+        check(bitphase.ReadF32Lit(serialize_read_stream_padded(substring(ws.buffer, 0, ws.bytes_processed())), back), "f32lit read " + probe)
+        f32lit_line(probe, back.E)
+    else:
+        print("F32LIT lobster " + probe + " refused")
+let fl = bitphase.NewF32Lit()
+f32lit_line("const", bitphase.F32Const)
+f32lit_line("default-d", fl.D)
+f32lit_line("default-e", fl.E)
+f32lit_write("write-min", @F32LIT_MIN@)
+f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 `)
 	fmt.Fprintf(&b, "print(\"BITPHASE_OK lobster %d\")\n", len(cases))
 	probe := filepath.Join(genDir, "probe.lobster")

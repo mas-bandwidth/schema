@@ -42,11 +42,13 @@ const (
 )
 
 // cfDecodeStepsToken is the placeholder a driver source carries for the last
-// index it reads; withCfDecodeSteps fills it in.
+// index it reads; withCfDecodeSteps fills it in, with the float32 literal
+// case's tokens (f32lit.go), since every driver source passes through it.
 const cfDecodeStepsToken = "@CFDECODE_STEPS@"
 
 func withCfDecodeSteps(src string) string {
-	return strings.ReplaceAll(src, cfDecodeStepsToken, strconv.Itoa(cfDecodeSteps))
+	src = mainOnlySteps(src, !familyRun)
+	return withF32LitTokens(strings.ReplaceAll(src, cfDecodeStepsToken, strconv.Itoa(cfDecodeSteps)))
 }
 
 // cfDecodeSpec is SPEC.md §4.6's decode of index i, each step one float32
@@ -74,7 +76,7 @@ func cfDecodeTiers(lang string) []string {
 // driver said rather than 11,001 lines per tier.
 func stripCfDecode(out string) string {
 	var keep []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if !strings.HasPrefix(line, "CFDECODE") {
 			keep = append(keep, line)
 		}

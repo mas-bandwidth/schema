@@ -29,10 +29,10 @@
 #           nothing else; `wire` and `report` green.
 #   write   descriptor.lua's write-contract walk (D.refuse_invalid, docs/SPEC.md
 #           §5.1) answers nil: a value off its declaration is written instead
-#           of refused, so the three binary writers' surfaces go red
-#           (`lua / write-refusal`, `lua / write-refusal-fixed` and
-#           `lua / write-refusal-message`) and nothing else; `wire`, `report`
-#           and `write-refusal-json` green.
+#           of refused, so every writer behind that walk goes red
+#           (`lua / write-refusal`, `-fixed`, `-message`, `-json`, and the
+#           cook and block writers' `-cook` and `-block`, on exactly their
+#           rows the walk guards) and nothing else; `wire` and `report` green.
 #
 # usage: test/conformance/lua/negative-control <report|walk|framing|cycle|write>
 set -eu
@@ -100,7 +100,7 @@ report) want="framing report retain retain-save " ; green="wire json-read cook-w
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle)  want="framing " ; green="wire report" ;;
-write)  want="write-refusal write-refusal-fixed write-refusal-json write-refusal-message " ; green="wire report" ;;
+write)  want="write-refusal write-refusal-block write-refusal-cook write-refusal-fixed write-refusal-json write-refusal-message " ; green="wire report" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

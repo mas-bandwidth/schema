@@ -38,6 +38,8 @@ defmodule WriteRefusalPacketProbe do
   def apply_op("huge", n, v), do: %{v | huge: String.to_integer(n)}
   # fixed(16, 16) storage is the raw scaled integer
   def apply_op("fx", n, v), do: %{v | fx: String.to_integer(n)}
+  # ufixed(32, 32) storage is the raw scaled integer
+  def apply_op("ufx", n, v), do: %{v | ufx: String.to_integer(n)}
 
   def verdict(value) do
     try do
