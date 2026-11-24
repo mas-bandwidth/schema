@@ -58,7 +58,7 @@ refusal      <forgery> <reason>
 write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 json-write-refusal <case> <unit> <root> <wire file> <damage>
-write-refusal-cook, write-refusal-block: the write-refusal columns
+write-refusal-cook, write-refusal-block, write-refusal-shape: the write-refusal columns
 announce     <case> <unit> <root> <mode> <input> <verdict>
 read-into    <case> <unit> <root> <form> <lawful> <damaged> <count>
 json-write-into <case> <instance>
@@ -135,7 +135,20 @@ json-write-into <case> <instance>
   at path `<value>` points at. `float` also takes a decimal number. A
   `<wire>` of `-` is the root's fresh value. `write-refusal-cook` writes
   through the cook writer and `write-refusal-block` through the block
-  builder.
+  builder. **`write-refusal-shape`** (docs/SPEC-CONFORMANCE.md
+  DW-TABLE-SHAPE) writes through the root's own form's writer, as
+  `write-refusal` does, and adds one kind: `shape`, whose `<value>` is a
+  token naming a value of the WRONG KIND for the place `<path>` names —
+  `int`, `float`, `numtext` (the text "1.5"), `text`, `bool`, `null`, `map`
+  (an empty map or object), `seq` (a one-element list) or `improper` (an
+  improper list) — and whose verdict is always `refused`. A `<path>` of `.`
+  is the whole value; one ending `f[i]` makes the array `f` its first `i`
+  elements as loaded, then the value; one ending in an arm's name selects
+  that arm with the value as its payload. The writer must refuse by its
+  answer: a raised error, an exception or a crash is red against either
+  verdict. A leg whose types cannot hold the token (a static leg, or a
+  dynamic one where the token is that place's own spelling) answers
+  `unrepresentable`. Every group carries a lawful twin of an ordinary kind.
 - **`announce`** asks a unit's announcement writer and reader
   (docs/SPEC-TABLES.md §3.3). `<mode>` `write` (root, input `-`; `wrote`,
   owing `announce/<case>.bin`, or `refused`); `strict` and `lenient` (root

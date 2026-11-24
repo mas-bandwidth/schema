@@ -268,7 +268,7 @@ if (mode == "list") {
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
                      "cook-write", "message", "message-prior", "retain", "retain-save",
                      "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-                     "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into", "unit shapes"]) print(name + "\n");
+                     "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "unit shapes"]) print(name + "\n");
   return;
 }
 
@@ -907,7 +907,7 @@ if (mode == "retain" || mode == "retain-save") {
 
 // THE WRITE CONTRACT (docs/SPEC.md §5.1): the four write-refusal surfaces.
 if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-refusal-message" || mode == "write-refusal-json" ||
-    mode == "write-refusal-cook" || mode == "write-refusal-block") {
+    mode == "write-refusal-cook" || mode == "write-refusal-block" || mode == "write-refusal-shape") {
   local wrefHex = function(text) {
     if ((text.len() % 2) != 0) throw "hex " + text + " is not whole bytes";
     local out = "";
@@ -1141,6 +1141,76 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       }
     }
   };
+  // THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+  // DW-TABLE-SHAPE): the token is a value of the WRONG KIND, put where the
+  // path names, and the root's own writer must refuse it by its own answer
+  // (null, or a short write), never by raising. Squirrel spells `int` 1,
+  // `float` 1.5, `numtext` "1.5", `text` "x", `bool` true, `null` null, `map`
+  // a bare table {}, which is no instance of a record's or a union's class,
+  // and `seq` the array [1]. `improper` names no Squirrel value
+  // (`unrepresentable`). A path ending `f[i]` makes the array f its first i
+  // elements as loaded, then the value; one ending in an arm's name selects
+  // that arm and makes the value its payload.
+  local shapeToken = function(token) {
+    if (token == "int") return 1;
+    if (token == "float") return 1.5;
+    if (token == "numtext") return "1.5";
+    if (token == "text") return "x";
+    if (token == "bool") return true;
+    if (token == "map") return {};
+    if (token == "seq") return [1];
+    return null;
+  };
+  local shapeSet = function(T, root, v, path, token) {
+    if (token == "improper") return "unrepresentable\n";
+    local value = shapeToken(token);
+    local segments = [];
+    local start = 0;
+    for (local i = 0; i <= path.len(); i++) {
+      if (i == path.len() || path[i] == 46) {
+        segments.append(path.slice(start, i));
+        start = i + 1;
+      }
+    }
+    local tname = root, owner = v;
+    for (local si = 0; si < segments.len(); si++) {
+      local seg = segments[si];
+      local br = seg.find("[");
+      local fname = br == null ? seg : seg.slice(0, br);
+      local idx = br == null ? null : seg.slice(br + 1, seg.len() - 1).tointeger();
+      local fd = null;
+      foreach (cand in T.Descriptors[tname].fields) { if (cand.name == fname) { fd = cand; break; } }
+      if (fd == null) throw "driver: " + path + ": no field " + fname + " in " + tname;
+      if (si == segments.len() - 1) {
+        if (idx == null) { owner[fd.member] = value; return null; }
+        local old = owner[fd.member];
+        local arr = [];
+        for (local k = 0; k < idx; k++) arr.append(old[k]);
+        arr.append(value);
+        owner[fd.member] = arr;
+        return null;
+      }
+      local child = owner[fd.member];
+      if (idx != null) child = child[idx];
+      local unionName = null;
+      if (fd.shape == "union" && idx == null) unionName = fd.table;
+      if (fd.shape == "arr" && idx != null && fd.elem != null && fd.elem.shape == "union") unionName = fd.elem.table;
+      if (unionName != null && si == segments.len() - 2) {
+        if (child == null) throw "driver: " + path + ": " + seg + " holds no union";
+        local ud = T[unionName + "Descriptor"];
+        local armName = segments[si + 1];
+        local arm = null;
+        foreach (a in ud.arms) { if (a.name == armName) { arm = a; break; } }
+        if (arm == null) throw "driver: " + path + ": no arm " + armName + " in " + unionName;
+        child.Type = arm.tag;
+        child[arm.member] = value;
+        return null;
+      }
+      tname = (idx != null && fd.elem != null) ? fd.elem.table : fd.table;
+      owner = child;
+    }
+    return null;
+  };
   local conns = {};
   foreach (ln in lines) {
     local cf = splitFields(ln);
@@ -1167,7 +1237,15 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       v = got[0];
       if (v == null) throw cname + ": strictLoad refused " + wirepath;
     }
-    local setRes = wrefSet(T, root, v, path, what, text);
+    local setRes = null;
+    if (what != "shape") {
+      setRes = wrefSet(T, root, v, path, what, text);
+    } else if (path == ".") {
+      if (text == "improper") setRes = "unrepresentable\n";
+      else v = shapeToken(text);
+    } else {
+      setRes = shapeSet(T, root, v, path, text);
+    }
     if (setRes != null) { writeText(outdir + "/" + cname, setRes); continue; }
     local answer = "refused\n";
     try {
@@ -1226,7 +1304,7 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
           }
           if (ok) answer = "wrote\n";
         }
-      } else if (mode == "write-refusal" || mode == "write-refusal-fixed") {
+      } else if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-refusal-shape") {
         local isFixed = T.Descriptors[root].fixed;
         if (mode == "write-refusal-fixed" && !isFixed) throw cname + ": not fixed";
         if (isFixed) {
@@ -1267,6 +1345,10 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       // are named `driver:` and are never answered as one
       if (typeof e == "string" && e.find("driver: ") == 0) throw e;
       answer = "refused\n";
+      // A SHAPE ROW IS REFUSED BY THE WRITER'S ANSWER, never by a raise: the
+      // runtime's own error (an index that does not exist, an arithmetic on a
+      // table) is the crash the row exists to catch
+      if (mode == "write-refusal-shape") answer = "raised: " + e + "\n";
     }
     writeText(outdir + "/" + cname, answer);
   }
