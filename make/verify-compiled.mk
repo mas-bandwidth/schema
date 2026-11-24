@@ -75,14 +75,14 @@ _verify-$(1)-fuzz-extra: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-plain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz \
-		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
+		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) $$(call WIRE_ABSENT,$(1)-plain) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-plain.bin
 
 _verify-$(1)-fuzz-retain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --retain \
-		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
+		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) $$(call WIRE_ABSENT,$(1)-retain) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-retain.bin
 

@@ -9774,6 +9774,19 @@ runs, and an index line whose file is missing is a vector that cannot run. The
 wire fuzzer reads both and refuses the whole run, naming each file, when they
 disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
 
+**Every seed is asked, or the run refuses.** A leg answers the roster root by
+root, and a root it answers `0` for leaves its seeds ABSENT: nothing about
+them was compared, so an absent seed is a failure and never a pass. The wire
+fuzzer exits nonzero and names every absent root with its seed count
+(`checkAbsentRoots`), in every tier that runs it, per pull request as in the
+nightly. The one exception is a root the leg names in the checked-in ledger
+`test/conformance/wire-absent/<leg>-<arm>.tsv`, one line per root,
+`<unit>.<Root>[@message]<TAB><why>`, and the ledger is matched as an exact
+set: a root absent and not listed is red even when another listed root comes
+off in the same change, and a listed root the leg now answers is red until its
+line is removed. A port adds a new root to its wire-fuzz driver in the change
+that adds the root to the corpus.
+
 **The gate is `harness wire-fuzz`**, one command over one corpus for every
 language. Every pinned wire in the conformance manifest — every `instance` and
 every `report` line — is a SEED, framed once so that a mutation can aim at a
