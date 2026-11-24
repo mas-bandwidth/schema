@@ -611,6 +611,13 @@ type ciEvent struct {
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
 	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
 	PRCS           string   // needs.pr-select.outputs.cs (ci-full.yml)
+
+	// issue_comment (cla.yml): the comment and the thread it is on
+	CommentBody string // github.event.comment.body
+	CommentUser string // github.event.comment.user.login
+	CommentBot  bool   // github.event.comment.user.type == 'Bot'
+	IssueIsPR   bool   // github.event.issue.pull_request is set
+	IssueUser   string // github.event.issue.user.login
 }
 
 type selfHostedJob struct {
@@ -821,6 +828,10 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 		}
 		lhs = strings.TrimSpace(lhs)
 		want := strings.Trim(strings.TrimSpace(rhs), `"'`)
+		if lhs == "github.event.comment.body" {
+			// contains() on a string is case-insensitive in Actions
+			return strings.Contains(strings.ToLower(ev.CommentBody), strings.ToLower(want)), nil
+		}
 		if lhs == "needs.plan.outputs.rows" {
 			rows, err := resolveCIToken(lhs, ev)
 			if err != nil {
@@ -954,6 +965,24 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	switch tok {
 	case "true", "false":
 		return tok, nil
+	case "null":
+		return "", nil
+	case "github.event.comment.body":
+		return ev.CommentBody, nil
+	case "github.event.comment.user.login":
+		return ev.CommentUser, nil
+	case "github.event.comment.user.type":
+		if ev.CommentBot {
+			return "Bot", nil
+		}
+		return "User", nil
+	case "github.event.issue.pull_request":
+		if ev.IssueIsPR {
+			return "<pull_request>", nil
+		}
+		return "", nil
+	case "github.event.issue.user.login":
+		return ev.IssueUser, nil
 	case "github.event_name":
 		return ev.Name, nil
 	case "github.repository":

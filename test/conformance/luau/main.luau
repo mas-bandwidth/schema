@@ -32,9 +32,9 @@ local surface = args[1]
 local GENERATED = "build/conformance-luau"
 
 local SURFACES = {
-	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason",
+	"cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
 	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into",
 }
@@ -503,6 +503,56 @@ local function surfaceRetain(lines: { { string } }, saves: boolean)
 							unknown, kindMismatch, widened, clamped, duplicate)
 							.. buffer.tostring(json))
 					end
+				end
+			end
+		end
+	end
+end
+
+-- ---- RETAIN-REFUSAL (test/conformance/README.md) ---------------------------
+--
+-- ONE store through LoadRetain of the first wire, SaveRetain, LoadRetain of
+-- the refused wire, and SaveRetain of the first value again. This runtime's
+-- LoadRetain hands the caller the store it filled rather than filling one the
+-- caller owns, so the store the refused read hands back is the one the second
+-- save goes through. The verdicts and what the second save did go in <case>,
+-- the first save in <case>.before, the second in <case>.wire.
+local function surfaceRetainRefusal(lines: { { string } })
+	local capacityBytes = 1048576
+	local fullIds = 131072
+	for _, f in lines do
+		if f[1] == "retain-refusal" then
+			-- retain-refusal <case> <unit> <root> <first wire> <refused wire>
+			local u = unit(f[3])
+			if u == nil or rootOf(u, f[4]) == nil then
+				say(f[2], nil)
+			else
+				local r = report()
+				local root, store = u.retain.LoadRetain(f[4], file(f[5]), r, capacityBytes, fullIds)
+				if root == nil or r.malformed or r.refused ~= 0 then
+					sayText(f[2], "refused\n")
+				else
+					local before, why = u.retain.SaveRetain(f[4], root, store, report())
+					if before == nil then
+						error(f[2] .. ": the first save through the store refused (" .. tostring(why and why.name) .. ")")
+					end
+					say(f[2] .. ".before", before)
+					local refused = report()
+					local other, handed = u.retain.LoadRetain(f[4], file(f[6]), refused, capacityBytes, fullIds)
+					local answer = "read\n"
+					if other == nil or refused.malformed or refused.refused ~= 0 then
+						answer ..= "refused\n"
+					else
+						answer ..= "read\n"
+					end
+					local after = u.retain.SaveRetain(f[4], root, handed, report())
+					if after == nil then
+						answer ..= "save-refused\n"
+					else
+						say(f[2] .. ".wire", after)
+						answer ..= "saved\n"
+					end
+					sayText(f[2], answer)
 				end
 			end
 		end
@@ -1138,9 +1188,10 @@ end
 -- <pointer>`: the patch is already applied, the extent is the length the
 -- caller claims (-1 the file's own) and the pointer the buffer the caller
 -- holds (`null` none, else the lead). forgery and cook-forgery answer
--- `open`/`refuse`; block-reason and cook-reason the first failing clause's
--- name, or `ok`. The reason is the reader's own: this driver places bytes and
--- prints what it is told.
+-- `open`/`refuse`, the verdict of the reader's own first failing clause: this
+-- driver places bytes and prints what it is told. The reason surfaces
+-- (cook-reason, block-reason) are retired: the harness does not run them
+-- (test/conformance/harness/run.go retiredSurfaces).
 local function forgeryReason(f: { string }): (boolean, string?)
 	local source: buffer? = nil
 	local lead = 0
@@ -1163,14 +1214,12 @@ local function forgeryReason(f: { string }): (boolean, string?)
 	return true, cookReason(C, f[4], build :: integer, source, extent, lead)
 end
 
-local function surfaceForgery(lines: { { string } }, kindName: string, reasons: boolean)
+local function surfaceForgery(lines: { { string } }, kindName: string)
 	for _, f in kind(lines, "forgery") do
 		if f[3] == kindName then
 			local carried, why = forgeryReason(f)
 			if not carried then
 				say(f[2], nil)
-			elseif reasons then
-				sayText(f[2], (why or "ok") .. "\n")
 			else
 				sayText(f[2], verdict(why))
 			end
@@ -1926,6 +1975,8 @@ elseif surface == "retain" then
 	surfaceRetain(lines, false)
 elseif surface == "retain-save" then
 	surfaceRetain(lines, true)
+elseif surface == "retain-refusal" then
+	surfaceRetainRefusal(lines)
 elseif surface == "cook-write" then
 	surfaceCookWrite(lines)
 elseif surface == "message" then
@@ -1943,13 +1994,9 @@ elseif surface == "block-foreign" then
 elseif surface == "block-dump" then
 	surfaceBlockDump(lines)
 elseif surface == "forgery" then
-	surfaceForgery(lines, "block", false)
+	surfaceForgery(lines, "block")
 elseif surface == "cook-forgery" then
-	surfaceForgery(lines, "cook", false)
-elseif surface == "cook-reason" then
-	surfaceForgery(lines, "cook", true)
-elseif surface == "block-reason" then
-	surfaceForgery(lines, "block", true)
+	surfaceForgery(lines, "cook")
 elseif string.sub(surface, 1, 13) == "write-refusal" then
 	surfaceWriteRefusal(lines, surface)
 elseif surface == "announce" then

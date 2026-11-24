@@ -278,6 +278,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `framing` | `framing` | the same verdict and value in `<case>`, and the wire in `<case>.wire` | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
 | `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
+| `retain-refusal` | `retain-refusal` | ONE roomy store through LoadRetain of the first wire, SaveRetain into `<case>.before`, LoadRetain of the refused wire into the same store, then SaveRetain of the first value into `<case>.wire`; `<case>` is `read\nrefused\nsaved\n`, or `...save-refused\n` with no `.wire` from python and ruby alone, whose store is bound to the root it loaded (save-refused from any other leg is red) | `retain-refusal/<case>.before.bin`, then `<case>.after.bin` (the first value alone); a ledgered row in `retain-refusal-owed.txt` is owed, and red once it passes; a ledger line naming a leg off the roster is refused |
 | `json-read` | `instance` | the single text read of `json/<name>.json`, then Save of the accepted value | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
 | `json-hostile` | `json-hostile` | the single text read of `<tree>/<root>.json`, then `read\n` and the complete value in `<case>` plus the wire in `<case>.wire`, or `refused\n` alone | the standard verdict for every port, then `<tree>.value.json` and `save-wire/<case>.bin` on acceptance |
@@ -383,12 +384,14 @@ an answer the runtime did not give.
   as a float; null as a bool; a bare map as a union; an improper list as an
   array; a number as the whole value) and writes it through the root's own
   form's writer. Every refuse-every-build leg (Go, JS, Elixir, Lua, Luau,
-  Squirrel, moo, Goose) answers every row, and the harness refuses a missing
-  answer from one of them; a leg whose types cannot hold the value answers
-  `unrepresentable`. The writer refuses by its answer, never by raising: a
+  Squirrel, moo, Goose, Python, Ruby) answers every row, and the harness
+  refuses a missing answer from one of them; a leg whose types cannot hold
+  the value answers `unrepresentable`. The writer refuses by its answer, never by raising: a
   raised error is answered `raised` and is red (DW-TABLE-SHAPE). The assert
   legs, whose writers hold these values with debug asserts only, answer the
-  lawful twins and `unrepresentable` for the shape rows.
+  lawful twins, `unrepresentable` for a shape row their types cannot hold,
+  and their debug build's own refusal for one they can (a null in a C#, Unity
+  or Java class place).
 - **`announce <case> <unit> <root> <mode> <input>`** (the verdict withheld).
   `write` (root and input `-`): the unit's announcement writer
   (`AnnounceMeasure` then `Announce`); the answer is the announcement's bytes,
@@ -477,18 +480,22 @@ an answer the runtime did not give.
 §5.1): a generated packet type carries one field per row, and the surface runs
 the packet `Write` over each refused value and its lawful twin at the same
 boundary. The Go leg is `TestWriteRefusalPacket` in `test/conformance/harness`: it
-generates the unit, compiles it against serialize.go and runs the battery behind
-`slowtest.Gate`, then runs a negative control that changes the emitter's
-upper-bound comparison and requires the boundary row to go red. The assert legs
-(C, C++, C#, C# (unity), Rust, Java, Dart) answer the same rows from the shared
-schema and cases in `test/packet-write-refusal/`, in their debug build, where
+generates the shared schema in `test/packet-write-refusal/`, compiles it against
+serialize.go and runs every case of its `cases.txt` behind `slowtest.Gate` (a
+panic fails the case; a case without a setter, or a setter the file does not
+name, fails), then runs two negative controls: one changes the emitter's
+upper-bound comparison and requires the boundary row to go red, the other drops
+the generated 128-bit and fixed-point refusals and requires `int128_high`,
+`fixed_high` and `ufixed_high` red. The assert legs
+(C, C++, C#, C# (unity), Rust, Java, Dart) answer the same rows from the same
+schema and cases, in their debug build, where
 the assert firing is the refusal: `packet-write-refusal-<lang>`, each with a
 `-negative-control` that removes one emitted check and requires a named case to
 go red. Rust names the union tag as not representable.
 
 The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
 Squirrel, MOO, Goose, Lobster) share one schema and one row list,
-`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`test/conformance/write-refusal-packet/` (`RefusalPacket.schema`,
 `rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
 `writerefusalpacket_test.go` and its own probe: the test generates the unit,
 runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal

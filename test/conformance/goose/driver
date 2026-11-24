@@ -1271,6 +1271,7 @@ main_units() {
 	report) awk '$1 == "report" { print $3 }' "$1" ;;
 	framing) awk '$1 == "framing" { print $3 }' "$1" ;;
 	retain | retain-save) awk '$1 == "retain" { print $3 }' "$1" ;;
+	retain-refusal) awk '$1 == "retain-refusal" { print $3 }' "$1" ;;
 	json-hostile) awk '$1 == "json-hostile" { print $3 }' "$1" ;;
 	write-refusal | write-refusal-fixed | write-refusal-json | write-refusal-cook | write-refusal-block | announce | read-into | json-write-into) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
 	write-refusal-message) awk '$1 == "connection" { u[$2] = $3 } $1 == "write-refusal-message" && ($3 in u) { print u[$3] }' "$1" ;;
@@ -1378,6 +1379,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 				(s == "report" && $1 == "report" && $3 == k) ||
 				(s == "framing" && $1 == "framing" && $3 == k) ||
 				((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
+				(s == "retain-refusal" && $1 == "retain-refusal" && $3 == k) ||
 				(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
 				((s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json" || s == "write-refusal-cook" || s == "write-refusal-block" || s == "announce" || s == "read-into" || s == "json-write-into") && $1 == s && $3 == k) ||
 				(s == "write-refusal-message" && $1 == "write-refusal-message" && unit_of[$3] == k) { print $2 " absent" }' "$1" >"$dir/$2.$key.out"

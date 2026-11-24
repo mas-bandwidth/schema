@@ -164,6 +164,9 @@ function M.WriteFixedProbe(stream: any, value: FixedProbe): boolean
 	if type(value.Samples) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.Samples ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 2 do
 		if type(value.Samples[i]) ~= "number" or value.Samples[i] < -8 or value.Samples[i] > 8 then -- whole units, moo's own Q48.16
 			return false
@@ -309,6 +312,9 @@ function M.WriteUnsignedProbe(stream: any, value: UnsignedProbe): boolean
 		return false
 	end
 	if type(value.Samples) ~= "table" then -- the array's table storage
+		return false
+	end
+	if #value.Samples ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
 		return false
 	end
 	for i = 1, 2 do

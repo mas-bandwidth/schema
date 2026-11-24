@@ -1458,7 +1458,23 @@ public final class Driver {
                     jsonValue = variable.fromFixed(fixedValue);
                     value = jsonValue;
                 }
-                if (!mutateWriteRefusal(value, path, kind, text)) {
+                if (kind.equals("shape")) {
+                    // A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE): Java's types
+                    // hold one such value, null in a reference place; it is
+                    // put there and written, so the answer is the writer's
+                    // own. Every other one the compiler refuses first.
+                    if (!text.equals("null")) {
+                        spill(out, name, "unrepresentable\n");
+                        continue;
+                    }
+                    if (path.equals(".")) {
+                        value = null;
+                        fixedValue = null;
+                    } else if (!writeRefusalShapeNull(value, path)) {
+                        spill(out, name, "unrepresentable\n");
+                        continue;
+                    }
+                } else if (!mutateWriteRefusal(value, path, kind, text)) {
                     spill(out, name, "unrepresentable\n");
                     continue;
                 }
@@ -1466,6 +1482,9 @@ public final class Driver {
                 try {
                     switch (surface) {
                         case "write-refusal":
+                        case "write-refusal-shape":
+                            // the shape rows' lawful twins are written as
+                            // write-refusal writes them
                             // THE ROOT'S OWN FORM'S WRITER: a declared fixed
                             // root is written by the fixed form, a variable
                             // root by its variable save.
@@ -1579,6 +1598,54 @@ public final class Driver {
             }
         }
         return false;
+    }
+
+    // writeRefusalShapeNull puts null where a `write-refusal-shape` row's path
+    // names, when that place's type is a reference: a non-final field of a
+    // class type, an element of an array or List of a class type (a boxed
+    // Integer included). false: the place is a primitive, or a final field,
+    // which Java cannot set to null, and the row is `unrepresentable`.
+    private static boolean writeRefusalShapeNull(Object value, String path) throws ReflectiveOperationException {
+        String[] segments = path.split("\\.");
+        Object current = value;
+        for (int i = 0; i < segments.length - 1; i++) {
+            WriteRefusalSegment segment = WriteRefusalSegment.parse(segments[i]);
+            Object next = writeRefusalField(current.getClass(), segment.name).get(current);
+            current = segment.indexed ? writeRefusalElement(next, segment.index) : next;
+        }
+        WriteRefusalSegment last = WriteRefusalSegment.parse(segments[segments.length - 1]);
+        java.lang.reflect.Field field = writeRefusalField(current.getClass(), last.name);
+        if (!last.indexed) {
+            if (field.getType().isPrimitive() || java.lang.reflect.Modifier.isFinal(field.getModifiers())) {
+                return false;
+            }
+            field.set(current, null);
+            return true;
+        }
+        Object container = field.get(current);
+        if (container != null && container.getClass().isArray()) {
+            if (container.getClass().getComponentType().isPrimitive()) {
+                return false;
+            }
+            // `f[i]` is the array's first i elements as loaded, then the value
+            java.lang.reflect.Array.set(container, last.index, null);
+            java.lang.reflect.Field count = writeRefusalFieldOrNull(current.getClass(), last.name + "_count");
+            if (count != null && count.getType() == int.class) {
+                count.setInt(current, last.index + 1);
+            }
+            return true;
+        }
+        if (container instanceof java.util.List<?> rawList) {
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> list = (java.util.List<Object>) rawList;
+            if (list.size() < last.index) {
+                throw new IllegalArgumentException(path + ": the list holds " + list.size() + " element(s) as loaded");
+            }
+            list.subList(last.index, list.size()).clear();
+            list.add(null);
+            return true;
+        }
+        throw new IllegalArgumentException(path + " names no element place");
     }
 
     private static boolean mutateWriteRefusal(Object value, String path, String kind, String text)
@@ -2768,6 +2835,71 @@ public final class Driver {
         return 0;
     }
 
+
+    // THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): ONE retention
+    // store through loadRetain of the first wire, saveRetain, loadRetain of the
+    // refused wire into the same store, and saveRetain of the first value
+    // again. The verdicts and what the second save did go in <case>, the first
+    // save in <case>.before, the second in <case>.wire.
+    private static int answerRetainRefusal(String out, String name, boolean read, byte[] before, boolean secondRefused, byte[] after) throws IOException {
+        if (!read) {
+            spill(out, name, "refused\n");
+            return 0;
+        }
+        if (before == null) { return failInt(name + ": the first save through the store refused"); }
+        spill(out, name + ".before", before);
+        String answer = "read\n" + (secondRefused ? "refused\n" : "read\n");
+        if (after == null) {
+            answer += "save-refused\n";
+        } else {
+            spill(out, name + ".wire", after);
+            answer += "saved\n";
+        }
+        spill(out, name, answer);
+        return 0;
+    }
+
+    private static int surfaceRetainRefusal(String out) throws IOException {
+        for (String[] f : lines) {
+            if (!f[0].equals("retain-refusal")) {
+                continue;
+            }
+            byte[] first = Files.readAllBytes(Paths.get(f[4]));
+            byte[] second = Files.readAllBytes(Paths.get(f[5]));
+            if (f[2].equals("tblrt1") && f[3].equals("Node")) {
+                tblrt1.TableRetain store = new tblrt1.TableRetain(RETAIN_BYTES, RETAIN_IDS);
+                tblrt1.TableVariable.Report report = new tblrt1.TableVariable.Report();
+                tblrt1.NodeVariable.Value root = tblrt1.NodeRetain.loadRetain(first, store, report);
+                boolean read = root != null && !report.damaged && !report.refused;
+                byte[] before = null, after = null;
+                boolean secondRefused = false;
+                if (read) {
+                    before = tblrt1.NodeRetain.saveRetain(root, store, new tblrt1.TableVariable.Report());
+                    tblrt1.TableVariable.Report refused = new tblrt1.TableVariable.Report();
+                    secondRefused = tblrt1.NodeRetain.loadRetain(second, store, refused) == null || refused.damaged || refused.refused;
+                    after = tblrt1.NodeRetain.measureRetain(root, store) < 0 ? null : tblrt1.NodeRetain.saveRetain(root, store, new tblrt1.TableVariable.Report());
+                }
+                if (answerRetainRefusal(out, f[1], read, before, secondRefused, after) != 0) { return 1; }
+            } else if (f[2].equals("tblvarevo1") && f[3].equals("EvoDoc")) {
+                tblvarevo1.TableRetain store = new tblvarevo1.TableRetain(RETAIN_BYTES, RETAIN_IDS);
+                tblvarevo1.TableVariable.Report report = new tblvarevo1.TableVariable.Report();
+                tblvarevo1.EvoDocVariable.Value root = tblvarevo1.EvoDocRetain.loadRetain(first, store, report);
+                boolean read = root != null && !report.damaged && !report.refused;
+                byte[] before = null, after = null;
+                boolean secondRefused = false;
+                if (read) {
+                    before = tblvarevo1.EvoDocRetain.saveRetain(root, store, new tblvarevo1.TableVariable.Report());
+                    tblvarevo1.TableVariable.Report refused = new tblvarevo1.TableVariable.Report();
+                    secondRefused = tblvarevo1.EvoDocRetain.loadRetain(second, store, refused) == null || refused.damaged || refused.refused;
+                    after = tblvarevo1.EvoDocRetain.measureRetain(root, store) < 0 ? null : tblvarevo1.EvoDocRetain.saveRetain(root, store, new tblvarevo1.TableVariable.Report());
+                }
+                if (answerRetainRefusal(out, f[1], read, before, secondRefused, after) != 0) { return 1; }
+            } else {
+                return failInt(f[1] + ": no retaining codec for " + f[2] + " " + f[3]);
+            }
+        }
+        return 0;
+    }
     // ---- THE 2026-11-22 SURFACES (test/conformance/README.md, "The 2026-11-22
     // surfaces ask what no surface asked before"). Every answer below is what
     // the generated runtime did; the driver only reports it.
@@ -3394,11 +3526,11 @@ public final class Driver {
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
             System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\nmessage-prior\n"
-                    + "retain\nretain-save\n"
+                    + "retain\nretain-save\nretain-refusal\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
                     + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
-                    + "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n"
+                    + "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n"
                     + "unit shapes\n");
             return 0;
         }
@@ -3420,6 +3552,7 @@ public final class Driver {
             case "message-prior": return surfaceMessagePrior(out);
             case "retain": return surfaceRetain(out, false);
             case "retain-save": return surfaceRetain(out, true);
+            case "retain-refusal": return surfaceRetainRefusal(out);
             case "block": return surfaceBlock(out);
             case "block-foreign": return surfaceBlockForeign(out);
             case "block-dump": return surfaceBlockDump(out);
@@ -3429,6 +3562,7 @@ public final class Driver {
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
             case "write-refusal": return surfaceWriteRefusal(out, surface);
+            case "write-refusal-shape": return surfaceWriteRefusal(out, surface);
             case "write-refusal-fixed": return surfaceWriteRefusal(out, surface);
             case "write-refusal-message": return surfaceWriteRefusal(out, surface);
             case "write-refusal-json": return surfaceWriteRefusal(out, surface);

@@ -85,13 +85,28 @@ const FixedProbeMaxBytes = 24
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteFixedProbe(stream *serialize.WriteStream, value *FixedProbe) error {
+	if value.Angle < -11796480 || value.Angle > 11796480 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue := int64(value.Angle)
 	stream.SerializeFixed64(&fixedValue, 16, 16, -180, 180)
+	if value.Position < -1966080000 || value.Position > 1966080000 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeFixed64(&value.Position, 48, 16, -MaxWorldUnits, MaxWorldUnits)
+	if value.Reach.Cmp(serialize.Int128From64(-65536000000)) < 0 || value.Reach.Cmp(serialize.Int128From64(65536000000)) > 0 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeFixed128(&value.Reach, 112, 16, -1000000, 1000000)
+	if value.Ticks < 0 || value.Ticks > 1000000 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue2 := int64(value.Ticks)
 	stream.SerializeFixed64(&fixedValue2, 32, 0, 0, 1000000)
 	for i := 0; i < 2; i++ {
+		if value.Samples[i] < -524288 || value.Samples[i] > 524288 {
+			return serialize.ErrValueOutOfRange
+		}
 		fixedValue3 := int64(value.Samples[i])
 		stream.SerializeFixed64(&fixedValue3, 16, 16, -8, 8)
 	}
@@ -162,15 +177,30 @@ const UnsignedProbeMaxBytes = 32
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteUnsignedProbe(stream *serialize.WriteStream, value *UnsignedProbe) error {
+	if value.Angle > 23592960 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue := int64(value.Angle)
 	stream.SerializeFixed64(&fixedValue, 16, 16, 0, 360)
+	if value.Span > 18446744073709486080 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue2 := int64(value.Span)
 	stream.SerializeFixed64(&fixedValue2, 48, 16, 0, 281474976710655)
+	if value.Reach.Cmp(serialize.Uint128From64(131072000000)) > 0 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue3 := value.Reach.Int128()
 	stream.SerializeFixed128(&fixedValue3, 112, 16, 0, 2000000)
+	if value.Ticks > 1000000 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue4 := int64(value.Ticks)
 	stream.SerializeFixed64(&fixedValue4, 32, 0, 0, 1000000)
 	for i := 0; i < 2; i++ {
+		if value.Samples[i] > 1048576 {
+			return serialize.ErrValueOutOfRange
+		}
 		fixedValue5 := int64(value.Samples[i])
 		stream.SerializeFixed64(&fixedValue5, 16, 16, 0, 16)
 	}
@@ -254,8 +284,17 @@ const WideProbeMaxBytes = 56
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteWideProbe(stream *serialize.WriteStream, value *WideProbe) error {
 	stream.SerializeUint128(&value.EntityID)
+	if value.Energy.Cmp(serialize.Int128From64(-5000000000)) < 0 || value.Energy.Cmp(serialize.Int128From64(5000000000)) > 0 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeInt128(&value.Energy, serialize.Int128From64(-5000000000), serialize.Int128From64(5000000000))
+	if value.Flux.Cmp(serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}) < 0 || value.Flux.Cmp(serialize.Int128{Lo: 0x0, Hi: 0x1000000000}) > 0 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeInt128(&value.Flux, serialize.Int128{Lo: 0x0, Hi: 0xfffffff000000000}, serialize.Int128{Lo: 0x0, Hi: 0x1000000000})
+	if value.Bias.Cmp(serialize.Int128From64(-1000)) < 0 || value.Bias.Cmp(serialize.Int128From64(1000)) > 0 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeInt128(&value.Bias, serialize.Int128From64(-1000), serialize.Int128From64(1000))
 	stream.SerializeUint128(&value.Seed)
 	return stream.Err()
@@ -489,8 +528,17 @@ const FixedVecMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteFixedVec(stream *serialize.WriteStream, value *FixedVec) error {
+	if value.X < -6553600000 || value.X > 6553600000 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeFixed64(&value.X, 48, 16, -100000, 100000)
+	if value.Y < -6553600000 || value.Y > 6553600000 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeFixed64(&value.Y, 48, 16, -100000, 100000)
+	if value.Z < -6553600000 || value.Z > 6553600000 {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeFixed64(&value.Z, 48, 16, -100000, 100000)
 	return stream.Err()
 }
@@ -546,12 +594,24 @@ const FixedQuatMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteFixedQuat(stream *serialize.WriteStream, value *FixedQuat) error {
+	if value.X < -1073741824 || value.X > 1073741824 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue := int64(value.X)
 	stream.SerializeFixed64(&fixedValue, 2, 30, -1, 1)
+	if value.Y < -1073741824 || value.Y > 1073741824 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue2 := int64(value.Y)
 	stream.SerializeFixed64(&fixedValue2, 2, 30, -1, 1)
+	if value.Z < -1073741824 || value.Z > 1073741824 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue3 := int64(value.Z)
 	stream.SerializeFixed64(&fixedValue3, 2, 30, -1, 1)
+	if value.W < -1073741824 || value.W > 1073741824 {
+		return serialize.ErrValueOutOfRange
+	}
 	fixedValue4 := int64(value.W)
 	stream.SerializeFixed64(&fixedValue4, 2, 30, -1, 1)
 	return stream.Err()

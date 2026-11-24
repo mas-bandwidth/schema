@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum most
+{ Zfirst, Zsecond, Zthird }
+
+enum moved
+{ Zfirst, Zsecond, Zthird }
+
+enum moved_to
+{ Zfirst, Zsecond, Zthird }
+
+enum moy
+{ Zfirst, Zsecond, Zthird }
+
+enum mp
+{ Zfirst, Zsecond, Zthird }
+
+enum mr
+{ Zfirst, Zsecond, Zthird }
+
+enum msg
+{ Zfirst, Zsecond, Zthird }
+
+enum msgScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_align
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_align_read
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_base_inside_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_bits_required
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_bool
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_count
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_dequantize
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_f32_at
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_file_skip
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_fixed_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_get
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_has
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_int_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_keyed_count
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_kind_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_known_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_name_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_put
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_put_bool
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_put_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_quantization
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_read_body
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_read_value
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_refuse
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_refuse_read
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_signed_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_skip_value
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_text_is
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_text_len
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_wide_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_write_body
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_write_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum msg_write_value
+{ Zfirst, Zsecond, Zthird }
+
+enum mul
+{ Zfirst, Zsecond, Zthird }
+
+enum mul64x64
+{ Zfirst, Zsecond, Zthird }
+
+enum mulSmallAdd
+{ Zfirst, Zsecond, Zthird }
+
+enum must
+{ Zfirst, Zsecond, Zthird }
+
+enum mv
+{ Zfirst, Zsecond, Zthird }
+
+enum mw
+{ Zfirst, Zsecond, Zthird }
+
+enum mx
+{ Zfirst, Zsecond, Zthird }
+
+enum mxb
+{ Zfirst, Zsecond, Zthird }
+
+enum myArm
+{ Zfirst, Zsecond, Zthird }
+
+enum myArms
+{ Zfirst, Zsecond, Zthird }
+
+enum myAt
+{ Zfirst, Zsecond, Zthird }
+
+enum myChild
+{ Zfirst, Zsecond, Zthird }
+
+enum myChildren
+{ Zfirst, Zsecond, Zthird }
+
+enum myDst
+{ Zfirst, Zsecond, Zthird }
+
+enum myElem
+{ Zfirst, Zsecond, Zthird }
+
+enum myElemAt
+{ Zfirst, Zsecond, Zthird }
+
+enum myElemKind
+{ Zfirst, Zsecond, Zthird }
+
+enum myId
+{ Zfirst, Zsecond, Zthird }
+
+enum myKeyChildren
+{ Zfirst, Zsecond, Zthird }
+
+enum myKeys
+{ Zfirst, Zsecond, Zthird }
+
+enum myKids
+{ Zfirst, Zsecond, Zthird }
+
+enum myKind
+{ Zfirst, Zsecond, Zthird }
+
+enum myLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum myLayoutView
+{ Zfirst, Zsecond, Zthird }
+
+enum myN
+{ Zfirst, Zsecond, Zthird }
+
+enum mySize
+{ Zfirst, Zsecond, Zthird }
+
+enum myTag
+{ Zfirst, Zsecond, Zthird }
+
+enum myVariants
+{ Zfirst, Zsecond, Zthird }
+
+enum my_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum my_layout_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum my_off
+{ Zfirst, Zsecond, Zthird }
+
+enum mykw
+{ Zfirst, Zsecond, Zthird }
+
+enum n
+{ Zfirst, Zsecond, Zthird }
+
+enum n1
+{ Zfirst, Zsecond, Zthird }
+
+enum nArms
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    most Inner
+    moved Inner
+    moved_to Inner
+    moy Inner
+    mp Inner
+    mr Inner
+    msg Inner
+    msgScratch Inner
+    msg_align Inner
+    msg_align_read Inner
+}
+
+table NameTypes0
+{
+    one0  most
+    many0 [..4]most
+    one1  moved
+    many1 [..4]moved
+    one2  moved_to
+    many2 [..4]moved_to
+    one3  moy
+    many3 [..4]moy
+    one4  mp
+    many4 [..4]mp
+    one5  mr
+    many5 [..4]mr
+    one6  msg
+    many6 [..4]msg
+    one7  msgScratch
+    many7 [..4]msgScratch
+    one8  msg_align
+    many8 [..4]msg_align
+    one9  msg_align_read
+    many9 [..4]msg_align_read
+}
+
+table NameFields0
+{
+    most uint32
+    moved uint32
+    moved_to uint32
+    moy uint32
+    mp uint32
+    mr uint32
+    msg uint32
+    msgScratch uint32
+    msg_align uint32
+    msg_align_read uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    msg_base_inside_kind Inner
+    msg_bits_required Inner
+    msg_bool Inner
+    msg_count Inner
+    msg_dequantize Inner
+    msg_entry Inner
+    msg_f32 Inner
+    msg_f32_at Inner
+    msg_f64 Inner
+    msg_file_skip Inner
+}
+
+table NameTypes1
+{
+    one0  msg_base_inside_kind
+    many0 [..4]msg_base_inside_kind
+    one1  msg_bits_required
+    many1 [..4]msg_bits_required
+    one2  msg_bool
+    many2 [..4]msg_bool
+    one3  msg_count
+    many3 [..4]msg_count
+    one4  msg_dequantize
+    many4 [..4]msg_dequantize
+    one5  msg_entry
+    many5 [..4]msg_entry
+    one6  msg_f32
+    many6 [..4]msg_f32
+    one7  msg_f32_at
+    many7 [..4]msg_f32_at
+    one8  msg_f64
+    many8 [..4]msg_f64
+    one9  msg_file_skip
+    many9 [..4]msg_file_skip
+}
+
+table NameFields1
+{
+    msg_base_inside_kind uint32
+    msg_bits_required uint32
+    msg_bool uint32
+    msg_count uint32
+    msg_dequantize uint32
+    msg_entry uint32
+    msg_f32 uint32
+    msg_f32_at uint32
+    msg_f64 uint32
+    msg_file_skip uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    msg_fixed_kind Inner
+    msg_get Inner
+    msg_has Inner
+    msg_int_kind Inner
+    msg_keyed_count Inner
+    msg_kind_bits Inner
+    msg_known_kind Inner
+    msg_name_slot Inner
+    msg_put Inner
+    msg_put_bool Inner
+}
+
+table NameTypes2
+{
+    one0  msg_fixed_kind
+    many0 [..4]msg_fixed_kind
+    one1  msg_get
+    many1 [..4]msg_get
+    one2  msg_has
+    many2 [..4]msg_has
+    one3  msg_int_kind
+    many3 [..4]msg_int_kind
+    one4  msg_keyed_count
+    many4 [..4]msg_keyed_count
+    one5  msg_kind_bits
+    many5 [..4]msg_kind_bits
+    one6  msg_known_kind
+    many6 [..4]msg_known_kind
+    one7  msg_name_slot
+    many7 [..4]msg_name_slot
+    one8  msg_put
+    many8 [..4]msg_put
+    one9  msg_put_bool
+    many9 [..4]msg_put_bool
+}
+
+table NameFields2
+{
+    msg_fixed_kind uint32
+    msg_get uint32
+    msg_has uint32
+    msg_int_kind uint32
+    msg_keyed_count uint32
+    msg_kind_bits uint32
+    msg_known_kind uint32
+    msg_name_slot uint32
+    msg_put uint32
+    msg_put_bool uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    msg_put_bytes Inner
+    msg_quantization Inner
+    msg_read_body Inner
+    msg_read_value Inner
+    msg_refuse Inner
+    msg_refuse_read Inner
+    msg_shape Inner
+    msg_signed_kind Inner
+    msg_skip_value Inner
+    msg_text_is Inner
+}
+
+table NameTypes3
+{
+    one0  msg_put_bytes
+    many0 [..4]msg_put_bytes
+    one1  msg_quantization
+    many1 [..4]msg_quantization
+    one2  msg_read_body
+    many2 [..4]msg_read_body
+    one3  msg_read_value
+    many3 [..4]msg_read_value
+    one4  msg_refuse
+    many4 [..4]msg_refuse
+    one5  msg_refuse_read
+    many5 [..4]msg_refuse_read
+    one6  msg_shape
+    many6 [..4]msg_shape
+    one7  msg_signed_kind
+    many7 [..4]msg_signed_kind
+    one8  msg_skip_value
+    many8 [..4]msg_skip_value
+    one9  msg_text_is
+    many9 [..4]msg_text_is
+}
+
+table NameFields3
+{
+    msg_put_bytes uint32
+    msg_quantization uint32
+    msg_read_body uint32
+    msg_read_value uint32
+    msg_refuse uint32
+    msg_refuse_read uint32
+    msg_shape uint32
+    msg_signed_kind uint32
+    msg_skip_value uint32
+    msg_text_is uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    msg_text_len Inner
+    msg_wide_kind Inner
+    msg_write_body Inner
+    msg_write_scalar Inner
+    msg_write_value Inner
+    mul Inner
+    mul64x64 Inner
+    mulSmallAdd Inner
+    must Inner
+    mv Inner
+}
+
+table NameTypes4
+{
+    one0  msg_text_len
+    many0 [..4]msg_text_len
+    one1  msg_wide_kind
+    many1 [..4]msg_wide_kind
+    one2  msg_write_body
+    many2 [..4]msg_write_body
+    one3  msg_write_scalar
+    many3 [..4]msg_write_scalar
+    one4  msg_write_value
+    many4 [..4]msg_write_value
+    one5  mul
+    many5 [..4]mul
+    one6  mul64x64
+    many6 [..4]mul64x64
+    one7  mulSmallAdd
+    many7 [..4]mulSmallAdd
+    one8  must
+    many8 [..4]must
+    one9  mv
+    many9 [..4]mv
+}
+
+table NameFields4
+{
+    msg_text_len uint32
+    msg_wide_kind uint32
+    msg_write_body uint32
+    msg_write_scalar uint32
+    msg_write_value uint32
+    mul uint32
+    mul64x64 uint32
+    mulSmallAdd uint32
+    must uint32
+    mv uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    mw Inner
+    mx Inner
+    mxb Inner
+    myArm Inner
+    myArms Inner
+    myAt Inner
+    myChild Inner
+    myChildren Inner
+    myDst Inner
+    myElem Inner
+}
+
+table NameTypes5
+{
+    one0  mw
+    many0 [..4]mw
+    one1  mx
+    many1 [..4]mx
+    one2  mxb
+    many2 [..4]mxb
+    one3  myArm
+    many3 [..4]myArm
+    one4  myArms
+    many4 [..4]myArms
+    one5  myAt
+    many5 [..4]myAt
+    one6  myChild
+    many6 [..4]myChild
+    one7  myChildren
+    many7 [..4]myChildren
+    one8  myDst
+    many8 [..4]myDst
+    one9  myElem
+    many9 [..4]myElem
+}
+
+table NameFields5
+{
+    mw uint32
+    mx uint32
+    mxb uint32
+    myArm uint32
+    myArms uint32
+    myAt uint32
+    myChild uint32
+    myChildren uint32
+    myDst uint32
+    myElem uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    myElemAt Inner
+    myElemKind Inner
+    myId Inner
+    myKeyChildren Inner
+    myKeys Inner
+    myKids Inner
+    myKind Inner
+    myLayout Inner
+    myLayoutView Inner
+    myN Inner
+}
+
+table NameTypes6
+{
+    one0  myElemAt
+    many0 [..4]myElemAt
+    one1  myElemKind
+    many1 [..4]myElemKind
+    one2  myId
+    many2 [..4]myId
+    one3  myKeyChildren
+    many3 [..4]myKeyChildren
+    one4  myKeys
+    many4 [..4]myKeys
+    one5  myKids
+    many5 [..4]myKids
+    one6  myKind
+    many6 [..4]myKind
+    one7  myLayout
+    many7 [..4]myLayout
+    one8  myLayoutView
+    many8 [..4]myLayoutView
+    one9  myN
+    many9 [..4]myN
+}
+
+table NameFields6
+{
+    myElemAt uint32
+    myElemKind uint32
+    myId uint32
+    myKeyChildren uint32
+    myKeys uint32
+    myKids uint32
+    myKind uint32
+    myLayout uint32
+    myLayoutView uint32
+    myN uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    mySize Inner
+    myTag Inner
+    myVariants Inner
+    my_bytes Inner
+    my_layout_bytes Inner
+    my_off Inner
+    mykw Inner
+    n Inner
+    n1 Inner
+    nArms Inner
+}
+
+table NameTypes7
+{
+    one0  mySize
+    many0 [..4]mySize
+    one1  myTag
+    many1 [..4]myTag
+    one2  myVariants
+    many2 [..4]myVariants
+    one3  my_bytes
+    many3 [..4]my_bytes
+    one4  my_layout_bytes
+    many4 [..4]my_layout_bytes
+    one5  my_off
+    many5 [..4]my_off
+    one6  mykw
+    many6 [..4]mykw
+    one7  n
+    many7 [..4]n
+    one8  n1
+    many8 [..4]n1
+    one9  nArms
+    many9 [..4]nArms
+}
+
+table NameFields7
+{
+    mySize uint32
+    myTag uint32
+    myVariants uint32
+    my_bytes uint32
+    my_layout_bytes uint32
+    my_off uint32
+    mykw uint32
+    n uint32
+    n1 uint32
+    nArms uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

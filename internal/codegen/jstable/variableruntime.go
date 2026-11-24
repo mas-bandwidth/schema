@@ -371,10 +371,17 @@ function TableVariableWriteInt(w, width, v) {
 }
 
 // an enum value's reference: the variant name's id, 0 for None, and -1 for a
-// value no variant names, which the save refuses (§5)
+// value no variant names, which the save refuses (§5). A DEPRECATED variant is
+// never written (§2.15 WRITE): it answers -1 as well, so the variable save
+// refuses it in every build, as the text writer does (TableVariableJsonScalar)
 function TableVariableEnumRef(e, ids, val) {
   if (val === null || val === "None") { return 0; }
-  for (const [name, id] of e.vs) { if (name === val) { return ids.ref(id); } }
+  for (const [name, id] of e.vs) {
+    if (name === val) {
+      if (e.dp !== undefined && e.dp.includes(name)) { return -1; }
+      return ids.ref(id);
+    }
+  }
   return -1;
 }
 

@@ -33,10 +33,10 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 
 -- every surface test/conformance/README.md names, in its table's order
 local SURFACE_ORDER = {
-  "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read",
+  "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
-  "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason", "write-refusal", "write-refusal-fixed",
+  "block-foreign", "block-dump", "forgery", "cook-forgery",
+  "write-refusal", "write-refusal-fixed",
   "write-refusal-message", "write-refusal-json", "write-refusal-cook",
   "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into",
 }
@@ -591,6 +591,52 @@ local function surfaceRetain(all, outdir, saves)
   end
 end
 
+-- THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): ONE retention store
+-- through LoadRetain of the first wire, SaveRetain, LoadRetain of the refused
+-- wire into the same store, and SaveRetain of the first value again. The
+-- verdicts and what the second save did go in <case>, the first save in
+-- <case>.before, the second in <case>.wire.
+local function surfaceRetainRefusal(all, outdir)
+  for _, f in ipairs(all) do
+    if f[1] == "retain-refusal" then
+      local name, key, root = f[2], f[3], f[4]
+      local u = unit(key)
+      if not u then
+        noCodec(outdir, name)
+      else
+        local store = retainStore(ROOMY, math.floor(ROOMY / 8))
+        local report = newReport()
+        local value = u.retain.LoadRetain(u.T, root, mustRead(f[5]), store, report)
+        if value == nil or report.damaged or report.refused ~= 0 then
+          writeBytes(outdir .. "/" .. name, "refused\n")
+        else
+          local before = u.retain.SaveRetain(u.T, root, value, store, newReport())
+          if before == nil then error(name .. ": the first save through the store refused") end
+          writeBytes(outdir .. "/" .. name .. ".before", before)
+          local refused = newReport()
+          local other = u.retain.LoadRetain(u.T, root, mustRead(f[6]), store, refused)
+          local answer = "read\n"
+          if other == nil or refused.damaged or refused.refused ~= 0 then
+            answer = answer .. "refused\n"
+          else
+            answer = answer .. "read\n"
+          end
+          local after = nil
+          if u.retain.MeasureRetain(u.T, root, value, store) ~= nil then
+            after = u.retain.SaveRetain(u.T, root, value, store, newReport())
+          end
+          if after == nil then
+            answer = answer .. "save-refused\n"
+          else
+            writeBytes(outdir .. "/" .. name .. ".wire", after)
+            answer = answer .. "saved\n"
+          end
+          writeBytes(outdir .. "/" .. name, answer)
+        end
+      end
+    end
+  end
+end
 ---------------------------------------------------------------------------
 -- the accelerators: placing a buffer the way a forgery line asks for
 ---------------------------------------------------------------------------
@@ -887,25 +933,21 @@ local function surfaceCookForeign(all, outdir)
   end
 end
 
--- the two forgery batteries (FORMAT.md, `forgery`): the verdict, or the
--- reason the generated reader names beside its nil — the TableRefuseReason
--- value name of the FIRST failing clause, or `ok` (§6.5, §7, §19.2). This
--- driver places bytes and prints what it is told, and judges nothing.
-local function surfaceForgery(all, outdir, forgeryKind, reasons)
+-- the two forgery batteries (FORMAT.md, `forgery`): the verdict (§6.5, §7,
+-- §19.2). This driver places bytes and prints what it is told, and judges
+-- nothing. The reason surfaces (cook-reason, block-reason) are retired: the
+-- harness does not run them (test/conformance/harness/run.go retiredSurfaces).
+local function surfaceForgery(all, outdir, forgeryKind)
   for _, f in ipairs(kind(all, "forgery")) do
     if f[3] == forgeryKind then
       local bytes, lead = forged(f)
-      local h, why
+      local h
       if forgeryKind == "cook" then
-        h, why = cookOpen(all, f[4], bytes, lead)
+        h = cookOpen(all, f[4], bytes, lead)
       else
-        h, why = blockOpen(all, f[4], bytes, lead)
+        h = blockOpen(all, f[4], bytes, lead)
       end
-      if reasons then
-        writeBytes(outdir .. "/" .. f[2], (h ~= nil and "ok" or tostring(why)) .. "\n")
-      else
-        writeBytes(outdir .. "/" .. f[2], verdict(h))
-      end
+      writeBytes(outdir .. "/" .. f[2], verdict(h))
     end
   end
 end
@@ -1751,16 +1793,15 @@ elseif surface == "message" then surfaceMessage(all, outdir)
 elseif surface == "message-prior" then surfaceMessagePrior(all, outdir)
 elseif surface == "retain" then surfaceRetain(all, outdir, false)
 elseif surface == "retain-save" then surfaceRetain(all, outdir, true)
+elseif surface == "retain-refusal" then surfaceRetainRefusal(all, outdir)
 elseif surface == "cook" then surfaceCook(all, outdir)
 elseif surface == "cook-write" then surfaceCookWrite(all, outdir)
 elseif surface == "cook-foreign" then surfaceCookForeign(all, outdir)
 elseif surface == "block" then surfaceBlock(all, outdir, identity)
 elseif surface == "block-foreign" then surfaceBlock(all, outdir, foreign)
 elseif surface == "block-dump" then surfaceBlockDump(all, outdir)
-elseif surface == "forgery" then surfaceForgery(all, outdir, "block", false)
-elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
-elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
-elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
+elseif surface == "forgery" then surfaceForgery(all, outdir, "block")
+elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook")
 elseif surface:find("^write%-refusal") then surfaceWriteRefusal(all, outdir, surface)
 elseif surface == "announce" then surfaceAnnounce(all, outdir)
 elseif surface == "read-into" then surfaceReadInto(all, outdir)

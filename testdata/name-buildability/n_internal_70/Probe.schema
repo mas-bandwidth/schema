@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum sub
+{ Zfirst, Zsecond, Zthird }
+
+enum sub16
+{ Zfirst, Zsecond, Zthird }
+
+enum sub4
+{ Zfirst, Zsecond, Zthird }
+
+enum sub64
+{ Zfirst, Zsecond, Zthird }
+
+enum subAt
+{ Zfirst, Zsecond, Zthird }
+
+enum subBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum subBody
+{ Zfirst, Zsecond, Zthird }
+
+enum subDesc
+{ Zfirst, Zsecond, Zthird }
+
+enum subEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum subFields
+{ Zfirst, Zsecond, Zthird }
+
+enum subKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum subMark
+{ Zfirst, Zsecond, Zthird }
+
+enum subName
+{ Zfirst, Zsecond, Zthird }
+
+enum subSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum subStart
+{ Zfirst, Zsecond, Zthird }
+
+enum subUnk
+{ Zfirst, Zsecond, Zthird }
+
+enum sub_out
+{ Zfirst, Zsecond, Zthird }
+
+enum subpart
+{ Zfirst, Zsecond, Zthird }
+
+enum subst
+{ Zfirst, Zsecond, Zthird }
+
+enum substituted
+{ Zfirst, Zsecond, Zthird }
+
+enum substitutedBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum subtree
+{ Zfirst, Zsecond, Zthird }
+
+enum subtree_at
+{ Zfirst, Zsecond, Zthird }
+
+enum suffix
+{ Zfirst, Zsecond, Zthird }
+
+enum sum16
+{ Zfirst, Zsecond, Zthird }
+
+enum superseded
+{ Zfirst, Zsecond, Zthird }
+
+enum supported
+{ Zfirst, Zsecond, Zthird }
+
+enum surface
+{ Zfirst, Zsecond, Zthird }
+
+enum surplus_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum surrogate
+{ Zfirst, Zsecond, Zthird }
+
+enum sv
+{ Zfirst, Zsecond, Zthird }
+
+enum svCmp
+{ Zfirst, Zsecond, Zthird }
+
+enum svDecimal
+{ Zfirst, Zsecond, Zthird }
+
+enum svFromInt
+{ Zfirst, Zsecond, Zthird }
+
+enum svFromPair
+{ Zfirst, Zsecond, Zthird }
+
+enum svToInt
+{ Zfirst, Zsecond, Zthird }
+
+enum svToPair
+{ Zfirst, Zsecond, Zthird }
+
+enum swap
+{ Zfirst, Zsecond, Zthird }
+
+enum swapped
+{ Zfirst, Zsecond, Zthird }
+
+enum sx
+{ Zfirst, Zsecond, Zthird }
+
+enum symbols
+{ Zfirst, Zsecond, Zthird }
+
+enum symbols_out
+{ Zfirst, Zsecond, Zthird }
+
+enum sz
+{ Zfirst, Zsecond, Zthird }
+
+enum t
+{ Zfirst, Zsecond, Zthird }
+
+enum ta
+{ Zfirst, Zsecond, Zthird }
+
+enum tab
+{ Zfirst, Zsecond, Zthird }
+
+enum tableAnnouncementLength
+{ Zfirst, Zsecond, Zthird }
+
+enum tableAnnouncementTooLarge
+{ Zfirst, Zsecond, Zthird }
+
+enum tableBlockByteOrder
+{ Zfirst, Zsecond, Zthird }
+
+enum tableBlockMagic
+{ Zfirst, Zsecond, Zthird }
+
+enum tableBuildVersion
+{ Zfirst, Zsecond, Zthird }
+
+enum tableBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum tableCookByteOrder
+{ Zfirst, Zsecond, Zthird }
+
+enum tableCookMagic
+{ Zfirst, Zsecond, Zthird }
+
+enum tableCookMaxAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum tableDesc
+{ Zfirst, Zsecond, Zthird }
+
+enum tableEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum tableFixedDstDeprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum tableFixedForm
+{ Zfirst, Zsecond, Zthird }
+
+enum tableFixedPlanMaxEntries
+{ Zfirst, Zsecond, Zthird }
+
+enum tableMessageBatchMax
+{ Zfirst, Zsecond, Zthird }
+
+enum tableMessageRefBits
+{ Zfirst, Zsecond, Zthird }
+
+enum tableName
+{ Zfirst, Zsecond, Zthird }
+
+enum tableSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum tableStart
+{ Zfirst, Zsecond, Zthird }
+
+enum table_cook_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum table_cook_write_record
+{ Zfirst, Zsecond, Zthird }
+
+enum table_finite_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum table_finite_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_chain_arg
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_dead
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_dead_nonzero
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_dead_span
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_dead_width
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_entry_end
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_guard_holds
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_holes
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_i32
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_in_absent
+{ Zfirst, Zsecond, Zthird }
+
+enum table_fixed_in_dead
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    sub Inner
+    sub16 Inner
+    sub4 Inner
+    sub64 Inner
+    subAt Inner
+    subBefore Inner
+    subBody Inner
+    subDesc Inner
+    subEnd Inner
+    subFields Inner
+}
+
+table NameTypes0
+{
+    one0  sub
+    many0 [..4]sub
+    one1  sub16
+    many1 [..4]sub16
+    one2  sub4
+    many2 [..4]sub4
+    one3  sub64
+    many3 [..4]sub64
+    one4  subAt
+    many4 [..4]subAt
+    one5  subBefore
+    many5 [..4]subBefore
+    one6  subBody
+    many6 [..4]subBody
+    one7  subDesc
+    many7 [..4]subDesc
+    one8  subEnd
+    many8 [..4]subEnd
+    one9  subFields
+    many9 [..4]subFields
+}
+
+table NameFields0
+{
+    sub uint32
+    sub16 uint32
+    sub4 uint32
+    sub64 uint32
+    subAt uint32
+    subBefore uint32
+    subBody uint32
+    subDesc uint32
+    subEnd uint32
+    subFields uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    subKeyed Inner
+    subMark Inner
+    subName Inner
+    subSlot Inner
+    subStart Inner
+    subUnk Inner
+    sub_out Inner
+    subpart Inner
+    subst Inner
+    substituted Inner
+}
+
+table NameTypes1
+{
+    one0  subKeyed
+    many0 [..4]subKeyed
+    one1  subMark
+    many1 [..4]subMark
+    one2  subName
+    many2 [..4]subName
+    one3  subSlot
+    many3 [..4]subSlot
+    one4  subStart
+    many4 [..4]subStart
+    one5  subUnk
+    many5 [..4]subUnk
+    one6  sub_out
+    many6 [..4]sub_out
+    one7  subpart
+    many7 [..4]subpart
+    one8  subst
+    many8 [..4]subst
+    one9  substituted
+    many9 [..4]substituted
+}
+
+table NameFields1
+{
+    subKeyed uint32
+    subMark uint32
+    subName uint32
+    subSlot uint32
+    subStart uint32
+    subUnk uint32
+    sub_out uint32
+    subpart uint32
+    subst uint32
+    substituted uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    substitutedBefore Inner
+    subtree Inner
+    subtree_at Inner
+    suffix Inner
+    sum16 Inner
+    superseded Inner
+    supported Inner
+    surface Inner
+    surplus_bits Inner
+    surrogate Inner
+}
+
+table NameTypes2
+{
+    one0  substitutedBefore
+    many0 [..4]substitutedBefore
+    one1  subtree
+    many1 [..4]subtree
+    one2  subtree_at
+    many2 [..4]subtree_at
+    one3  suffix
+    many3 [..4]suffix
+    one4  sum16
+    many4 [..4]sum16
+    one5  superseded
+    many5 [..4]superseded
+    one6  supported
+    many6 [..4]supported
+    one7  surface
+    many7 [..4]surface
+    one8  surplus_bits
+    many8 [..4]surplus_bits
+    one9  surrogate
+    many9 [..4]surrogate
+}
+
+table NameFields2
+{
+    substitutedBefore uint32
+    subtree uint32
+    subtree_at uint32
+    suffix uint32
+    sum16 uint32
+    superseded uint32
+    supported uint32
+    surface uint32
+    surplus_bits uint32
+    surrogate uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    sv Inner
+    svCmp Inner
+    svDecimal Inner
+    svFromInt Inner
+    svFromPair Inner
+    svToInt Inner
+    svToPair Inner
+    swap Inner
+    swapped Inner
+    sx Inner
+}
+
+table NameTypes3
+{
+    one0  sv
+    many0 [..4]sv
+    one1  svCmp
+    many1 [..4]svCmp
+    one2  svDecimal
+    many2 [..4]svDecimal
+    one3  svFromInt
+    many3 [..4]svFromInt
+    one4  svFromPair
+    many4 [..4]svFromPair
+    one5  svToInt
+    many5 [..4]svToInt
+    one6  svToPair
+    many6 [..4]svToPair
+    one7  swap
+    many7 [..4]swap
+    one8  swapped
+    many8 [..4]swapped
+    one9  sx
+    many9 [..4]sx
+}
+
+table NameFields3
+{
+    sv uint32
+    svCmp uint32
+    svDecimal uint32
+    svFromInt uint32
+    svFromPair uint32
+    svToInt uint32
+    svToPair uint32
+    swap uint32
+    swapped uint32
+    sx uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    symbols Inner
+    symbols_out Inner
+    sz Inner
+    t Inner
+    ta Inner
+    tab Inner
+    tableAnnouncementLength Inner
+    tableAnnouncementTooLarge Inner
+    tableBlockByteOrder Inner
+    tableBlockMagic Inner
+}
+
+table NameTypes4
+{
+    one0  symbols
+    many0 [..4]symbols
+    one1  symbols_out
+    many1 [..4]symbols_out
+    one2  sz
+    many2 [..4]sz
+    one3  t
+    many3 [..4]t
+    one4  ta
+    many4 [..4]ta
+    one5  tab
+    many5 [..4]tab
+    one6  tableAnnouncementLength
+    many6 [..4]tableAnnouncementLength
+    one7  tableAnnouncementTooLarge
+    many7 [..4]tableAnnouncementTooLarge
+    one8  tableBlockByteOrder
+    many8 [..4]tableBlockByteOrder
+    one9  tableBlockMagic
+    many9 [..4]tableBlockMagic
+}
+
+table NameFields4
+{
+    symbols uint32
+    symbols_out uint32
+    sz uint32
+    t uint32
+    ta uint32
+    tab uint32
+    tableAnnouncementLength uint32
+    tableAnnouncementTooLarge uint32
+    tableBlockByteOrder uint32
+    tableBlockMagic uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    tableBuildVersion Inner
+    tableBytes Inner
+    tableCookByteOrder Inner
+    tableCookMagic Inner
+    tableCookMaxAlign Inner
+    tableDesc Inner
+    tableEnd Inner
+    tableFixedDstDeprecated Inner
+    tableFixedForm Inner
+    tableFixedPlanMaxEntries Inner
+}
+
+table NameTypes5
+{
+    one0  tableBuildVersion
+    many0 [..4]tableBuildVersion
+    one1  tableBytes
+    many1 [..4]tableBytes
+    one2  tableCookByteOrder
+    many2 [..4]tableCookByteOrder
+    one3  tableCookMagic
+    many3 [..4]tableCookMagic
+    one4  tableCookMaxAlign
+    many4 [..4]tableCookMaxAlign
+    one5  tableDesc
+    many5 [..4]tableDesc
+    one6  tableEnd
+    many6 [..4]tableEnd
+    one7  tableFixedDstDeprecated
+    many7 [..4]tableFixedDstDeprecated
+    one8  tableFixedForm
+    many8 [..4]tableFixedForm
+    one9  tableFixedPlanMaxEntries
+    many9 [..4]tableFixedPlanMaxEntries
+}
+
+table NameFields5
+{
+    tableBuildVersion uint32
+    tableBytes uint32
+    tableCookByteOrder uint32
+    tableCookMagic uint32
+    tableCookMaxAlign uint32
+    tableDesc uint32
+    tableEnd uint32
+    tableFixedDstDeprecated uint32
+    tableFixedForm uint32
+    tableFixedPlanMaxEntries uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    tableMessageBatchMax Inner
+    tableMessageRefBits Inner
+    tableName Inner
+    tableSeen Inner
+    tableStart Inner
+    table_cook_raw Inner
+    table_cook_write_record Inner
+    table_finite_f32 Inner
+    table_finite_f64 Inner
+    table_fixed_chain_arg Inner
+}
+
+table NameTypes6
+{
+    one0  tableMessageBatchMax
+    many0 [..4]tableMessageBatchMax
+    one1  tableMessageRefBits
+    many1 [..4]tableMessageRefBits
+    one2  tableName
+    many2 [..4]tableName
+    one3  tableSeen
+    many3 [..4]tableSeen
+    one4  tableStart
+    many4 [..4]tableStart
+    one5  table_cook_raw
+    many5 [..4]table_cook_raw
+    one6  table_cook_write_record
+    many6 [..4]table_cook_write_record
+    one7  table_finite_f32
+    many7 [..4]table_finite_f32
+    one8  table_finite_f64
+    many8 [..4]table_finite_f64
+    one9  table_fixed_chain_arg
+    many9 [..4]table_fixed_chain_arg
+}
+
+table NameFields6
+{
+    tableMessageBatchMax uint32
+    tableMessageRefBits uint32
+    tableName uint32
+    tableSeen uint32
+    tableStart uint32
+    table_cook_raw uint32
+    table_cook_write_record uint32
+    table_finite_f32 uint32
+    table_finite_f64 uint32
+    table_fixed_chain_arg uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    table_fixed_dead Inner
+    table_fixed_dead_nonzero Inner
+    table_fixed_dead_span Inner
+    table_fixed_dead_width Inner
+    table_fixed_entry_end Inner
+    table_fixed_guard_holds Inner
+    table_fixed_holes Inner
+    table_fixed_i32 Inner
+    table_fixed_in_absent Inner
+    table_fixed_in_dead Inner
+}
+
+table NameTypes7
+{
+    one0  table_fixed_dead
+    many0 [..4]table_fixed_dead
+    one1  table_fixed_dead_nonzero
+    many1 [..4]table_fixed_dead_nonzero
+    one2  table_fixed_dead_span
+    many2 [..4]table_fixed_dead_span
+    one3  table_fixed_dead_width
+    many3 [..4]table_fixed_dead_width
+    one4  table_fixed_entry_end
+    many4 [..4]table_fixed_entry_end
+    one5  table_fixed_guard_holds
+    many5 [..4]table_fixed_guard_holds
+    one6  table_fixed_holes
+    many6 [..4]table_fixed_holes
+    one7  table_fixed_i32
+    many7 [..4]table_fixed_i32
+    one8  table_fixed_in_absent
+    many8 [..4]table_fixed_in_absent
+    one9  table_fixed_in_dead
+    many9 [..4]table_fixed_in_dead
+}
+
+table NameFields7
+{
+    table_fixed_dead uint32
+    table_fixed_dead_nonzero uint32
+    table_fixed_dead_span uint32
+    table_fixed_dead_width uint32
+    table_fixed_entry_end uint32
+    table_fixed_guard_holds uint32
+    table_fixed_holes uint32
+    table_fixed_i32 uint32
+    table_fixed_in_absent uint32
+    table_fixed_in_dead uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}
