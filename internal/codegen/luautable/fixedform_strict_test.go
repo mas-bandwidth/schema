@@ -13,12 +13,13 @@ import (
 // TestLuauFixedPlainReadIsStrict holds the fixed form to docs/SPEC-TABLES.md
 // §6.5, THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED: F.read
 // (and F.load, which raises) hands back nothing for a read whose report the
-// strict read refuses, naming it, while F.loadWalk keeps every recovered
-// record with the counter moved. The kind_mismatch is a lineage entry handed
+// strict read refuses, naming it. The refused entry is a lineage entry handed
 // in at run time whose `b` changed kind off every ladder (int32 to float32):
-// §5.2's EMIT counts it once and lands nothing for it. A widening alone and an
-// unknown alone never refuse; the versioning rows read through the plain name
-// with those counters moved (fixedversioning_test.go, the census rows).
+// that entry is UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT, §5.4, §5.9
+// #30), so no plan is laid and EVERY read of it refuses `layout_malformed` —
+// the tolerant F.loadWalk as well, which keeps no record and moves no counter,
+// because there is no compile census to count and read past. A widening alone
+// never refuses (fixedversioning_test.go).
 func TestLuauFixedPlainReadIsStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
@@ -44,19 +45,16 @@ local fixed = { hash = T.PtFixedHash, recordBytes = T.PtFixedRecordBytes, layout
 local p = T.NewPt()
 p.A, p.B = 7, 9
 local file = F.save(T.PtDescriptor, { hash = known.hash, recordBytes = T.PtFixedRecordBytes, layout = forged }, { p })
-local tolerant: any = {}
+local tolerant: any = { unknown = 9, kindMismatch = 9, widened = 9 }
 local kept = F.loadWalk(T.PtDescriptor, fixed, file, tolerant)
-check(kept ~= nil and #kept == 1, "the tolerant read keeps the record: " .. tostring(tolerant.reason))
-if kept ~= nil then
-	check(kept[1].A == 7, "the matched field landed")
-	check(kept[1].B == 5, "a kind that moved lands nothing: b is its default, not " .. tostring(kept[1].B))
-end
-check(tolerant.kindMismatch == 1 and tolerant.reason == nil, "the tolerant read counts the kind_mismatch once and refuses nothing")
+check(kept == nil, "the tolerant read kept a record of an unlawful entry")
+check(tolerant.reason == "layout_malformed", "the tolerant read names layout_malformed: " .. tostring(tolerant.reason))
+check(tolerant.unknown == 0 and tolerant.kindMismatch == 0 and tolerant.widened == 0, "the tolerant refusal moved a counter")
 local strict: any = {}
 check(F.read(T.PtDescriptor, fixed, file, strict) == nil, "the plain read handed back a record its report refuses")
-check(strict.reason == "kind_mismatch" and strict.kindMismatch == 1, "the plain read names kind_mismatch: " .. tostring(strict.reason))
+check(strict.reason == "layout_malformed" and strict.kindMismatch == 0, "the plain read names layout_malformed: " .. tostring(strict.reason))
 local ok, err = pcall(F.load, T.PtDescriptor, fixed, file)
-check(not ok and type(err) == "table" and (err :: any).name == "kind_mismatch", "F.load raises the strict refusal by name")
+check(not ok and type(err) == "table" and (err :: any).name == "layout_malformed", "F.load raises the strict refusal by name")
 local own = F.save(T.PtDescriptor, fixed, { p })
 local clean: any = {}
 local back = F.read(T.PtDescriptor, fixed, own, clean)
