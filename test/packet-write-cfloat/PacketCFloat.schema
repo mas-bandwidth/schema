@@ -17,3 +17,14 @@ type RatioEndpoint
 {
     ratio float32 | min = 0.0, max = 1.0, resolution = 0.01
 }
+
+// Two ratios in a row, both written with the case's value (#4909 follow-up).
+// A writer whose width drifts from the declared seven bits pads a one-field
+// type to the same byte, so the drift is invisible to a leg whose writer
+// returns bytes; here the second field starts where the first one ends, so
+// any drift moves it and changes the bytes in every leg.
+type RatioPair
+{
+    first float32 | min = 0.0, max = 1.0, resolution = 0.01
+    second float32 | min = 0.0, max = 1.0, resolution = 0.01
+}

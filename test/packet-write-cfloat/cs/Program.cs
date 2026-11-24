@@ -83,8 +83,17 @@ static class Program
         }
     }
 
+    // The case writes both fields of a RatioPair (its quantization is
+    // RatioEndpoint's, so ratio is set too).
+    static bool pair;
+
     static bool WriteOne(WriteStream stream, float value, bool ratio)
     {
+        if (pair)
+        {
+            RatioPair p = new RatioPair { First = value, Second = value };
+            return Schema.WriteRatioPair(stream, ref p);
+        }
         if (ratio)
         {
             RatioEndpoint r = new RatioEndpoint { Ratio = value };
@@ -123,6 +132,16 @@ static class Program
         }
         wire = stream.Data.ToArray();
         ReadStream reader = new ReadStream(wire);
+        if (pair)
+        {
+            RatioPair p = new RatioPair();
+            if (!Schema.ReadRatioPair(reader, ref p) || BitConverter.SingleToUInt32Bits(p.First) != BitConverter.SingleToUInt32Bits(p.Second))
+            {
+                return false;
+            }
+            readBack = p.First;
+            return true;
+        }
         if (ratio)
         {
             RatioEndpoint r = new RatioEndpoint();
@@ -201,6 +220,7 @@ static class Program
             float value = Parse(fields[1]);
             string verdict = fields[2];
             bool ratio = false;
+            pair = false;
             string? wireHex = null;
             long wantBits = -1;
             bool malformed = fields.Length % 2 != 1;
@@ -209,7 +229,7 @@ static class Program
                 switch (fields[i])
                 {
                     case "reads-back": break;
-                    case "type": ratio = fields[i + 1] == "RatioEndpoint"; malformed |= !ratio; break;
+                    case "type": pair = fields[i + 1] == "RatioPair"; ratio = pair || fields[i + 1] == "RatioEndpoint"; malformed |= !ratio; break;
                     case "wire": wireHex = fields[i + 1].ToLowerInvariant(); break;
                     case "bits": malformed |= !long.TryParse(fields[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out wantBits); break;
                     default: malformed = true; break;

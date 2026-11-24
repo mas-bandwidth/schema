@@ -35,7 +35,7 @@ typedef struct
     float value;
     int refused;
     float reads_back;
-    int ratio;
+    int ratio; /* 0 CFloat, 1 RatioEndpoint, 2 RatioPair */
     int wire_bytes;
     uint8_t wire[16];
     int bits;
@@ -134,11 +134,18 @@ static int parse_case( char * line, cfloat_case_t * out )
         }
         else if ( strcmp( word, "type" ) == 0 )
         {
-            if ( strcmp( operand, "RatioEndpoint" ) != 0 )
+            if ( strcmp( operand, "RatioEndpoint" ) == 0 )
+            {
+                out->ratio = 1;
+            }
+            else if ( strcmp( operand, "RatioPair" ) == 0 )
+            {
+                out->ratio = 2; /* both fields of a RatioPair */
+            }
+            else
             {
                 return -1;
             }
-            out->ratio = 1;
         }
         else if ( strcmp( word, "wire" ) == 0 )
         {
@@ -180,6 +187,8 @@ static int run_child( const cfloat_case_t * test )
     cfloat_c_float_t out;
     cfloat_ratio_endpoint_t ratio_in;
     cfloat_ratio_endpoint_t ratio_out;
+    cfloat_ratio_pair_t pair_in;
+    cfloat_ratio_pair_t pair_out;
     uint8_t buffer[64];
     serialize_write_stream_t writer;
     serialize_read_stream_t reader;
@@ -195,10 +204,15 @@ static int run_child( const cfloat_case_t * test )
 
     memset( &in, 0, sizeof( in ) );
     memset( &ratio_in, 0, sizeof( ratio_in ) );
+    memset( &pair_in, 0, sizeof( pair_in ) );
     in.x = test->value;
     ratio_in.ratio = test->value;
+    pair_in.first = test->value;
+    pair_in.second = test->value;
     serialize_write_stream_init( &writer, buffer, (int) sizeof( buffer ) );
-    if ( test->ratio ? !cfloat_write_ratio_endpoint( &writer, &ratio_in ) : !cfloat_write_c_float( &writer, &in ) )
+    if ( test->ratio == 2      ? !cfloat_write_ratio_pair( &writer, &pair_in )
+            : test->ratio == 1 ? !cfloat_write_ratio_endpoint( &writer, &ratio_in )
+                               : !cfloat_write_c_float( &writer, &in ) )
     {
         return kReadFailedExit;
     }
@@ -220,12 +234,20 @@ static int run_child( const cfloat_case_t * test )
 
     memset( &out, 0, sizeof( out ) );
     memset( &ratio_out, 0, sizeof( ratio_out ) );
+    memset( &pair_out, 0, sizeof( pair_out ) );
     serialize_read_stream_init( &reader, buffer, bytes );
-    if ( test->ratio ? !cfloat_read_ratio_endpoint( &reader, &ratio_out ) : !cfloat_read_c_float( &reader, &out ) )
+    if ( test->ratio == 2      ? !cfloat_read_ratio_pair( &reader, &pair_out )
+            : test->ratio == 1 ? !cfloat_read_ratio_endpoint( &reader, &ratio_out )
+                               : !cfloat_read_c_float( &reader, &out ) )
     {
         return kReadFailedExit;
     }
-    got = test->ratio ? ratio_out.ratio : out.x;
+    if ( test->ratio == 2 && float_bits( pair_out.first ) != float_bits( pair_out.second ) )
+    {
+        return kMismatchExit;
+    }
+    got = test->ratio == 2 ? pair_out.first : test->ratio == 1 ? ratio_out.ratio
+                                                               : out.x;
     if ( float_bits( got ) != float_bits( test->reads_back ) )
     {
         return kMismatchExit;

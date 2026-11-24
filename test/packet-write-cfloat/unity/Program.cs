@@ -74,6 +74,10 @@ internal static class Program
         return (float)(quotient * delta);
     }
 
+    // The case writes both fields of a RatioPair (its quantization is
+    // RatioEndpoint's, so ratio is set too).
+    private static bool pair;
+
     // Writes one case; returns null when the writer refused (its assert fired
     // or it returned false). bits is what the write emitted before the flush
     // pads the last byte.
@@ -84,7 +88,12 @@ internal static class Program
         try
         {
             bool wrote;
-            if (ratio)
+            if (pair)
+            {
+                RatioPair p = new RatioPair { First = value, Second = value };
+                wrote = Schema.WriteRatioPair(stream, ref p);
+            }
+            else if (ratio)
             {
                 RatioEndpoint r = new RatioEndpoint { Ratio = value };
                 wrote = Schema.WriteRatioEndpoint(stream, ref r);
@@ -108,6 +117,13 @@ internal static class Program
     private static bool Read(byte[] wire, bool ratio, out float got)
     {
         ReadStream reader = new ReadStream(wire);
+        if (pair)
+        {
+            RatioPair p = new RatioPair();
+            bool pairRead = Schema.ReadRatioPair(reader, ref p);
+            got = p.First;
+            return pairRead && BitConverter.SingleToUInt32Bits(p.First) == BitConverter.SingleToUInt32Bits(p.Second);
+        }
         if (ratio)
         {
             RatioEndpoint r = new RatioEndpoint();
@@ -144,13 +160,14 @@ internal static class Program
             float value = Parse(fields[1]);
             // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
             bool ratio = false;
+            pair = false;
             string wireHex = null;
             long wantBits = -1;
             bool malformed = false;
             for (int i = 3; i + 1 < fields.Length; i += 2)
             {
                 if (fields[i] == "reads-back") { }
-                else if (fields[i] == "type" && fields[i + 1] == "RatioEndpoint") ratio = true;
+                else if (fields[i] == "type" && (fields[i + 1] == "RatioEndpoint" || fields[i + 1] == "RatioPair")) { ratio = true; pair = fields[i + 1] == "RatioPair"; }
                 else if (fields[i] == "wire") wireHex = fields[i + 1].ToLowerInvariant();
                 else if (fields[i] == "bits") malformed |= !long.TryParse(fields[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out wantBits);
                 else malformed = true;

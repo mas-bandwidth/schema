@@ -533,7 +533,13 @@ before the flush (`bits 7`: an eight-bit writer pads to the same byte), and
 reads back the original value. Legs whose writer returns bytes rather than a
 stream (Dart, Elixir, the JavaScript flat tier) hold the declared width,
 the generated `<T>MaxBits`, to the seven bits and read the bytes back
-through exactly seven bits. Each case gets one `case <name> ok` answer
+through exactly seven bits. Those legs cannot see a writer that advances
+eight bits while the declared width stays seven, because the padding hides
+the extra bit on a one-field type. The `pair-at-max` row closes that gap:
+[`RatioPair`](../test/packet-write-cfloat/PacketCFloat.schema) writes the
+step index 100 into two ratios in a row, pinned as `6432` in 14 bits. Any
+drift in the first field's width moves the second field and changes the
+bytes in every leg. Each case gets one `case <name> ok` answer
 per leg, which `tools/casegate` checks against the case file. A leg that
 cannot answer a case owes it with an exact line in
 [`owed.txt`](../test/packet-write-cfloat/owed.txt).

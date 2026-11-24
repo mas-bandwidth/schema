@@ -69,15 +69,17 @@ for (local i = 0; i <= input.len(); i++) {
   local name = fields[0];
   local value = parseFloat(fields[1]);
   local expected = fields[2];
-  // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
+  // [reads-back <v>] [type RatioEndpoint|RatioPair] [wire <hex>] [bits <n>], in pairs
   local readBack = value;
   local ratio = false;
+  local pair = false;
   local wantWire = null;
   local wantBits = null;
   local malformed = fields.len() % 2 != 1;
   for (local k = 3; k + 1 < fields.len(); k += 2) {
     if (fields[k] == "reads-back") readBack = parseFloat(fields[k + 1]);
     else if (fields[k] == "type" && fields[k + 1] == "RatioEndpoint") ratio = true;
+    else if (fields[k] == "type" && fields[k + 1] == "RatioPair") pair = true;
     else if (fields[k] == "wire") wantWire = fields[k + 1].tolower();
     else if (fields[k] == "bits") {
       try { wantBits = fields[k + 1].tointeger(); } catch (e) { malformed = true; }
@@ -90,13 +92,19 @@ for (local i = 0; i <= input.len(); i++) {
     continue;
   }
 
-  local record = ratio ? CFloat.RatioEndpoint() : CFloat.CFloat();
-  if (ratio) record.Ratio = value; else record.X = value;
+  // a RatioPair writes the value into both fields
+  local record = pair ? CFloat.RatioPair() : ratio ? CFloat.RatioEndpoint() : CFloat.CFloat();
+  if (pair) {
+    record.First = value;
+    record.Second = value;
+  } else if (ratio) record.Ratio = value; else record.X = value;
   local stream = serialize.WriteStream(blob(16));
   local wrote = false;
   local raised = null;
   try {
-    wrote = ratio ? CFloat.WriteRatioEndpoint(stream, record) : CFloat.WriteCFloat(stream, record);
+    if (pair) wrote = CFloat.WriteRatioPair(stream, record);
+    else if (ratio) wrote = CFloat.WriteRatioEndpoint(stream, record);
+    else wrote = CFloat.WriteCFloat(stream, record);
   } catch (e) {
     raised = e;
   }
@@ -131,15 +139,20 @@ for (local i = 0; i <= input.len(); i++) {
     }
   }
   local read = serialize.ReadStream(wire);
-  local got = ratio ? CFloat.RatioEndpoint() : CFloat.CFloat();
+  local got = pair ? CFloat.RatioPair() : ratio ? CFloat.RatioEndpoint() : CFloat.CFloat();
   local readOK = false;
   try {
-    readOK = ratio ? CFloat.ReadRatioEndpoint(read, got) : CFloat.ReadCFloat(read, got);
+    if (pair) readOK = CFloat.ReadRatioPair(read, got);
+    else if (ratio) readOK = CFloat.ReadRatioEndpoint(read, got);
+    else readOK = CFloat.ReadCFloat(read, got);
   } catch (e) {
     check(false, name, "readback raised: " + e);
     continue;
   }
-  check(readOK && read.bitsProcessed() == bits && (ratio ? got.Ratio : got.X) == readBack,
+  // a RatioPair reads back only when its two fields agree
+  local gotValue = pair ? got.First : ratio ? got.Ratio : got.X;
+  if (pair && got.Second != got.First) readOK = false;
+  check(readOK && read.bitsProcessed() == bits && gotValue == readBack,
     name, "lawful value did not read back as its quantized value");
 }
 

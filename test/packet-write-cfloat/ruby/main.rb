@@ -65,15 +65,17 @@ File.readlines(ARGV.fetch(1)).each do |raw|
   end
   x = case_value(fields[1])
   verdict = fields[2]
-  # [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
+  # [reads-back <v>] [type RatioEndpoint|RatioPair] [wire <hex>] [bits <n>], in pairs
   want = x
   ratio = false
+  pair = false
   wire_hex = nil
   want_bits = nil
   malformed = false
   fields[3..].each_slice(2) do |key, operand|
     if key == "reads-back" then want = case_value(operand)
     elsif key == "type" && operand == "RatioEndpoint" then ratio = true
+    elsif key == "type" && operand == "RatioPair" then pair = true
     elsif key == "wire" then wire_hex = operand.downcase
     elsif key == "bits" && operand.match?(/\A\d+\z/) then want_bits = Integer(operand, 10)
     else malformed = true
@@ -83,8 +85,15 @@ File.readlines(ARGV.fetch(1)).each do |raw|
     fail_case(name, "malformed modifier in #{raw.strip.inspect}")
     next
   end
-  input = ratio ? Cfloat::RatioEndpoint.new : Cfloat::CFloat.new
-  if ratio then input.ratio = x else input.x = x end
+  # a RatioPair writes the value into both fields
+  if pair
+    input = Cfloat::RatioPair.new
+    input.first = x
+    input.second = x
+  else
+    input = ratio ? Cfloat::RatioEndpoint.new : Cfloat::CFloat.new
+    if ratio then input.ratio = x else input.x = x end
+  end
   begin
     wire = input.write
   rescue Cfloat::InvalidValue
@@ -110,12 +119,20 @@ File.readlines(ARGV.fetch(1)).each do |raw|
     next
   end
   begin
-    got = ratio ? Cfloat::RatioEndpoint.read(wire).ratio : Cfloat::CFloat.read(wire).x
+    # every field the record read back; a RatioPair has two
+    got = if pair
+      back = Cfloat::RatioPair.read(wire)
+      [back.first, back.second]
+    elsif ratio
+      [Cfloat::RatioEndpoint.read(wire).ratio]
+    else
+      [Cfloat::CFloat.read(wire).x]
+    end
   rescue Cfloat::Refused => e
     fail_case(name, "the reader refused the writer's bytes: #{e.message}")
     next
   end
-  fail_case(name, "read back #{got.inspect}, want #{want.inspect}") if bits32(got) != bits32(want)
+  fail_case(name, "read back #{got.inspect}, want #{want.inspect}") if got.any? { |g| bits32(g) != bits32(want) }
 end
 
 answer

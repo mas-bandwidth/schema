@@ -1,7 +1,7 @@
 --!strict
 local serialize = require("./serialize")
 local c = require("./PacketCFloat")
-local cases: { { name: string, value: number, written: boolean, expected: number, ratio: boolean, wire: string, bits: number } } = require("./cases") :: any
+local cases: { { name: string, value: number, written: boolean, expected: number, ratio: boolean, pair: boolean, wire: string, bits: number } } = require("./cases") :: any
 
 local function hex(b: buffer): string
     local parts = {}
@@ -23,7 +23,12 @@ for _, case in cases do
     ran += 1
     local stream = serialize.WriteStream.new(buffer.create(8))
     local called, ok
-    if case.ratio then
+    if case.pair then
+        local value = c.NewRatioPair()
+        value.First = case.value
+        value.Second = case.value
+        called, ok = pcall(c.WriteRatioPair, stream, value)
+    elseif case.ratio then
         local value = c.NewRatioEndpoint()
         value.Ratio = case.value
         called, ok = pcall(c.WriteRatioEndpoint, stream, value)
@@ -48,7 +53,15 @@ for _, case in cases do
         local read = serialize.ReadStream.new(wire)
         local got: number
         local success: boolean
-        if case.ratio then
+        if case.pair then
+            -- a RatioPair reads back only when its two fields agree
+            local output = c.NewRatioPair()
+            success = c.ReadRatioPair(read, output)
+            got = output.First
+            if output.Second ~= output.First then
+                fail(case.name, "read back " .. tostring(output.First) .. " and " .. tostring(output.Second))
+            end
+        elseif case.ratio then
             local output = c.NewRatioEndpoint()
             success = c.ReadRatioEndpoint(read, output)
             got = output.Ratio

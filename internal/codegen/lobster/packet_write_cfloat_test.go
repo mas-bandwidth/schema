@@ -28,7 +28,7 @@ type packetWriteCFloatCase struct {
 	value   uint32
 	refused bool
 	read    uint32
-	typ     string // CFloat, or RatioEndpoint
+	typ     string // CFloat, RatioEndpoint or RatioPair
 	wire    string // the written bytes in hex; "" when the case pins none
 	bits    int64  // the bits the write emits before the flush; -1 when unpinned
 }
@@ -84,7 +84,7 @@ func readPacketWriteCFloatCases(t *testing.T) []packetWriteCFloatCase {
 			case "reads-back":
 				c.read = parsePacketWriteCFloatValue(t, fields[i+1])
 			case "type":
-				if fields[i+1] != "RatioEndpoint" {
+				if fields[i+1] != "RatioEndpoint" && fields[i+1] != "RatioPair" {
 					t.Fatalf("packet-write-cfloat case %q names an unknown type", line)
 				}
 				c.typ = fields[i+1]

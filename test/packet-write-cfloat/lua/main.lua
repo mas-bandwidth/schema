@@ -27,10 +27,13 @@ local function hex(bytes)
   return (bytes:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
 
--- Each kind of case: the generated writer, reader, constructor and field.
+-- Each kind of case: the generated writer, reader, constructor and fields.
+-- A RatioPair writes the value into both fields and reads back only when
+-- the two agree.
 local kinds = {
-  CFloat = { write = CFloat.WriteCFloat, read = CFloat.ReadCFloat, new = CFloat.NewCFloat, field = "X" },
-  RatioEndpoint = { write = CFloat.WriteRatioEndpoint, read = CFloat.ReadRatioEndpoint, new = CFloat.NewRatioEndpoint, field = "Ratio" },
+  CFloat = { write = CFloat.WriteCFloat, read = CFloat.ReadCFloat, new = CFloat.NewCFloat, fields = { "X" } },
+  RatioEndpoint = { write = CFloat.WriteRatioEndpoint, read = CFloat.ReadRatioEndpoint, new = CFloat.NewRatioEndpoint, fields = { "Ratio" } },
+  RatioPair = { write = CFloat.WriteRatioPair, read = CFloat.ReadRatioPair, new = CFloat.NewRatioPair, fields = { "First", "Second" } },
 }
 
 local file = assert(io.open(fixtures .. "/cases.txt", "r"))
@@ -59,7 +62,7 @@ for line in file:lines() do
     end
     local stream = serialize.WriteStream.new(32)
     local input = kind.new()
-    input[kind.field] = value
+    for _, field in ipairs(kind.fields) do input[field] = value end
     local ok, result = pcall(kind.write, stream, input)
     if malformed then
       fail(name, "malformed case modifiers")
@@ -94,8 +97,11 @@ for line in file:lines() do
           fail(name, "reader refused: " .. tostring(readStream:error()))
         else
           if expected == 0 then expected = 0 end
-          if decoded[kind.field] ~= expected then
-            fail(name, string.format("read back %.9g, want quantized value %.9g", decoded[kind.field], expected))
+          for _, field in ipairs(kind.fields) do
+            if decoded[field] ~= expected then
+              fail(name, string.format("read back %.9g in %s, want quantized value %.9g", decoded[field], field, expected))
+              break
+            end
           end
         end
       end

@@ -1,6 +1,7 @@
 defmodule PacketWriteCFloatTest do
   alias Cfloat.CFloat, as: C
   alias Cfloat.RatioEndpoint, as: R
+  alias Cfloat.RatioPair, as: P
   alias Cfloat.PacketCFloat, as: W
 
   def fail(what) do
@@ -33,13 +34,14 @@ defmodule PacketWriteCFloatTest do
   end
 
   # The modifiers after the verdict, in pairs: reads-back <v>, type
-  # RatioEndpoint, wire <hex>, bits <n>.
+  # RatioEndpoint or RatioPair, wire <hex>, bits <n>.
   def modifiers(text, rest) do
     rest
     |> Enum.chunk_every(2)
     |> Enum.reduce({:ok, %{want: value(text), type: :c_float, wire: nil, bits: nil}}, fn
       ["reads-back", v], {:ok, m} -> {:ok, %{m | want: value(v)}}
       ["type", "RatioEndpoint"], {:ok, m} -> {:ok, %{m | type: :ratio}}
+      ["type", "RatioPair"], {:ok, m} -> {:ok, %{m | type: :pair}}
       ["wire", hex], {:ok, m} -> {:ok, %{m | wire: String.downcase(hex)}}
       ["bits", n], {:ok, m} -> bits_modifier(Integer.parse(n), m)
       other, _ -> {:error, other}
@@ -51,15 +53,18 @@ defmodule PacketWriteCFloatTest do
 
   def write(:c_float, value), do: W.write_c_float(%C{x: value})
   def write(:ratio, value), do: W.write_ratio_endpoint(%R{ratio: value})
+  def write(:pair, value), do: W.write_ratio_pair(%P{first: value, second: value})
 
   def write!(:c_float, value), do: W.write_c_float!(%C{x: value})
   def write!(:ratio, value), do: W.write_ratio_endpoint!(%R{ratio: value})
+  def write!(:pair, value), do: W.write_ratio_pair!(%P{first: value, second: value})
 
   # The writer returns a binary, not bits: a case that pins its bits holds
   # the declared width (the generated <t>_max_bits/0) to them, and the
   # bytes must read back through exactly that many bits.
   def max_bits(:c_float), do: W.c_float_max_bits()
   def max_bits(:ratio), do: W.ratio_endpoint_max_bits()
+  def max_bits(:pair), do: W.ratio_pair_max_bits()
 
   def read_back(:c_float, wire, bits) do
     case W.read_c_float(wire, bits || bit_size(wire)) do
@@ -71,6 +76,15 @@ defmodule PacketWriteCFloatTest do
   def read_back(:ratio, wire, bits) do
     case W.read_ratio_endpoint(wire, bits || bit_size(wire)) do
       {:ok, value} -> {:ok, value.ratio}
+      other -> other
+    end
+  end
+
+  # a RatioPair reads back only when its two fields agree
+  def read_back(:pair, wire, bits) do
+    case W.read_ratio_pair(wire, bits || bit_size(wire)) do
+      {:ok, %{first: v, second: v}} -> {:ok, v}
+      {:ok, value} -> {:error, {:fields_differ, value.first, value.second}}
       other -> other
     end
   end

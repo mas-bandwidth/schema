@@ -80,6 +80,8 @@ void main(List<String> args) {
     // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
     var readsBack = x;
     var ratio = false;
+    // a RatioPair writes the value to both fields
+    var pair = false;
     String? wireHex;
     int? wantBits;
     if (fields.length % 2 != 1) {
@@ -90,10 +92,12 @@ void main(List<String> args) {
         case 'reads-back':
           readsBack = parseValue(fields[i + 1]);
         case 'type':
-          if (fields[i + 1] != 'RatioEndpoint') {
+          if (fields[i + 1] != 'RatioEndpoint' &&
+              fields[i + 1] != 'RatioPair') {
             throw StateError('cases: $name: unknown type ${fields[i + 1]}');
           }
           ratio = true;
+          pair = fields[i + 1] == 'RatioPair';
         case 'wire':
           wireHex = fields[i + 1].toLowerCase();
         case 'bits':
@@ -110,14 +114,23 @@ void main(List<String> args) {
     value.x = x;
     final ratioValue = RatioEndpoint();
     ratioValue.ratio = x;
-    final view = ByteData(ratio ? ratioEndpointMaxBytes : cFloatMaxBytes);
+    final pairValue = RatioPair();
+    pairValue.first = x;
+    pairValue.second = x;
+    final view = ByteData(
+      pair
+          ? ratioPairMaxBytes
+          : (ratio ? ratioEndpointMaxBytes : cFloatMaxBytes),
+    );
 
     var fired = false;
     var written = 0;
     try {
-      written = ratio
-          ? writeRatioEndpoint(ratioValue, view)
-          : writeCFloat(value, view);
+      written = pair
+          ? writeRatioPair(pairValue, view)
+          : (ratio
+                ? writeRatioEndpoint(ratioValue, view)
+                : writeCFloat(value, view));
     } on AssertionError {
       fired = true;
     }
@@ -148,7 +161,9 @@ void main(List<String> args) {
     // must read back through exactly that many bits.
     var readBits = written * 8;
     if (wantBits != null) {
-      final maxBits = ratio ? ratioEndpointMaxBits : cFloatMaxBits;
+      final maxBits = pair
+          ? ratioPairMaxBits
+          : (ratio ? ratioEndpointMaxBits : cFloatMaxBits);
       check(
         maxBits == wantBits,
         'packet-write-cfloat $name: the declared width is $maxBits bits, want $wantBits',
@@ -161,12 +176,19 @@ void main(List<String> args) {
     }
     final back = CFloat();
     final ratioBack = RatioEndpoint();
-    final read = ratio
-        ? readRatioEndpoint(ratioBack, view, readBits)
-        : readCFloat(back, view, readBits);
+    final pairBack = RatioPair();
+    final read = pair
+        ? readRatioPair(pairBack, view, readBits)
+        : (ratio
+              ? readRatioEndpoint(ratioBack, view, readBits)
+              : readCFloat(back, view, readBits));
     check(read, 'packet-write-cfloat $name: the writer bytes read back');
     if (read) {
-      final got = ratio ? ratioBack.ratio : back.x;
+      check(
+        !pair || pairBack.first == pairBack.second,
+        'packet-write-cfloat $name: the second field read back ${pairBack.second}, the first ${pairBack.first}',
+      );
+      final got = pair ? pairBack.first : (ratio ? ratioBack.ratio : back.x);
       check(got == readsBack, 'packet-write-cfloat $name: read back $got');
     }
   }

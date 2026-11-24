@@ -56,14 +56,18 @@ func value(text string) (float32, error) {
 	return float32(v), err
 }
 
-// write writes one case's value as a CFloat, or as a RatioEndpoint, and
-// says how many bits the write emitted before the flush.
-func write(ratio bool, x float32) ([]byte, int64, error) {
+// write writes one case's value as a CFloat, a RatioEndpoint, or both
+// fields of a RatioPair, and says how many bits the write emitted before the
+// flush.
+func write(typ string, x float32) ([]byte, int64, error) {
 	w := serialize.NewWriteStream(make([]byte, 64))
 	var err error
-	if ratio {
+	switch typ {
+	case "RatioEndpoint":
 		err = cfloat.WriteRatioEndpoint(w, &cfloat.RatioEndpoint{Ratio: x})
-	} else {
+	case "RatioPair":
+		err = cfloat.WriteRatioPair(w, &cfloat.RatioPair{First: x, Second: x})
+	default:
 		err = cfloat.WriteCFloat(w, &cfloat.CFloat{X: x})
 	}
 	if err != nil {
@@ -74,12 +78,23 @@ func write(ratio bool, x float32) ([]byte, int64, error) {
 	return append([]byte(nil), w.Data()...), bits, nil
 }
 
-func read(ratio bool, wire []byte) (float32, error) {
+// read reads the value back; a RatioPair's two fields must agree.
+func read(typ string, wire []byte) (float32, error) {
 	r := serialize.NewReadStream(wire)
-	if ratio {
+	switch typ {
+	case "RatioEndpoint":
 		var out cfloat.RatioEndpoint
 		err := cfloat.ReadRatioEndpoint(r, &out)
 		return out.Ratio, err
+	case "RatioPair":
+		var out cfloat.RatioPair
+		if err := cfloat.ReadRatioPair(r, &out); err != nil {
+			return 0, err
+		}
+		if math.Float32bits(out.First) != math.Float32bits(out.Second) {
+			return 0, fmt.Errorf("the second field read back %v, the first %v", out.Second, out.First)
+		}
+		return out.First, nil
 	}
 	var out cfloat.CFloat
 	err := cfloat.ReadCFloat(r, &out)
@@ -117,8 +132,8 @@ func main() {
 			fail(name, "value %q: %v", fields[1], err)
 			continue
 		}
-		// [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
-		want, ratio, wantWire, malformed := x, false, "", false
+		// [reads-back <v>] [type RatioEndpoint|RatioPair] [wire <hex>] [bits <n>], in pairs
+		want, typ, wantWire, malformed := x, "CFloat", "", false
 		wantBits := int64(-1)
 		for i := 3; i+1 < len(fields); i += 2 {
 			switch {
@@ -126,8 +141,8 @@ func main() {
 				if want, err = value(fields[i+1]); err != nil {
 					malformed = true
 				}
-			case fields[i] == "type" && fields[i+1] == "RatioEndpoint":
-				ratio = true
+			case fields[i] == "type" && (fields[i+1] == "RatioEndpoint" || fields[i+1] == "RatioPair"):
+				typ = fields[i+1]
 			case fields[i] == "wire":
 				wantWire = strings.ToLower(fields[i+1])
 			case fields[i] == "bits":
@@ -142,7 +157,7 @@ func main() {
 			fail(name, "malformed modifier in %q", scanner.Text())
 			continue
 		}
-		wire, bits, err := write(ratio, x)
+		wire, bits, err := write(typ, x)
 		if fields[2] == "refused" {
 			if err == nil {
 				fail(name, "the writer accepted a value the range refuses (%x)", wire)
@@ -161,7 +176,7 @@ func main() {
 			fail(name, "wrote %x, want %s", wire, wantWire)
 			continue
 		}
-		got, err := read(ratio, wire)
+		got, err := read(typ, wire)
 		if err != nil {
 			fail(name, "the reader refused the writer's bytes: %v", err)
 			continue
