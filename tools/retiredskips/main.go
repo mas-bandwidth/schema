@@ -177,18 +177,25 @@ func runThrough(argv []string) ([]string, int, error) {
 	}
 	var mu sync.Mutex
 	var printed []string
+	var echoErr error
 	var wg sync.WaitGroup
+	// A line that cannot be copied through is an error of the run, but the
+	// scan goes on draining the pipe so the gate is never left blocked.
 	scan := func(r io.Reader, w io.Writer) {
 		defer wg.Done()
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 1<<20), 1<<26)
 		for sc.Scan() {
-			fmt.Fprintln(w, sc.Text())
-			if line, ok := skipLine(sc.Text()); ok {
-				mu.Lock()
-				printed = append(printed, line)
-				mu.Unlock()
+			_, werr := fmt.Fprintln(w, sc.Text())
+			line, ok := skipLine(sc.Text())
+			mu.Lock()
+			if werr != nil && echoErr == nil {
+				echoErr = werr
 			}
+			if ok {
+				printed = append(printed, line)
+			}
+			mu.Unlock()
 		}
 	}
 	wg.Add(2)
@@ -196,6 +203,9 @@ func runThrough(argv []string) ([]string, int, error) {
 	go scan(stderr, os.Stderr)
 	wg.Wait()
 	err = cmd.Wait()
+	if echoErr != nil {
+		return nil, 0, fmt.Errorf("copying the gate's output through: %w", echoErr)
+	}
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
 		if code := exit.ExitCode(); code > 0 {

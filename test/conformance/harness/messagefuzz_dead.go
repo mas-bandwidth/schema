@@ -34,8 +34,11 @@ func readDeadRootLedger(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("message-fuzz: the dead-root ledger: %w", err)
 	}
-	defer f.Close()
-	return parseDeadRootLedger(f, path)
+	held, err := parseDeadRootLedger(f, path)
+	if cerr := f.Close(); cerr != nil && err == nil {
+		return nil, fmt.Errorf("message-fuzz: the dead-root ledger: %w", cerr)
+	}
+	return held, err
 }
 
 // parseDeadRootLedger is readDeadRootLedger over an open ledger. A malformed

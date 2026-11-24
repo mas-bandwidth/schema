@@ -34,7 +34,7 @@ var (
 	// level of a program with no Main).
 	csFail   = regexp.MustCompile(`Environment\.Exit\(\s*[^0)\s]|Environment\.ExitCode\s*=\s*[^0\s;]|\bthrow\b|\b(Debug|Trace)\.Assert\(|Environment\.FailFast\(`)
 	csMainRe = regexp.MustCompile(`\bMain\s*\([^)]*\)\s*\{`)
-	// a return of a value other than 0 (or EXIT_SUCCESS)
+	// A return of a value other than 0 (or EXIT_SUCCESS).
 	returnRe = regexp.MustCompile(`\breturn\s+([^;]+);`)
 )
 

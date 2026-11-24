@@ -99,7 +99,6 @@ type ctx struct {
 	leg     string
 	rowsDir string
 	work    string
-	mu      sync.Mutex
 	pre     map[string]error  // failures recorded by prepare
 	exe     map[string]string // Rust: row -> built test executable
 	javaCP  map[string]string // Java: row -> the classpath of the units it names
@@ -393,14 +392,6 @@ func listRows(dir, ext string) ([]string, error) {
 	}
 	sort.Strings(rows)
 	return rows, nil
-}
-
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 func indent(s string) string {

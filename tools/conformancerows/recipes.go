@@ -30,13 +30,16 @@ func (c *ctx) runLogged(row string, extraEnv []string, argv ...string) error {
 	logPath := filepath.Join(c.work, row+".log")
 	f, ferr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if ferr == nil {
-		fmt.Fprintf(f, "$ %s\n%s\n", strings.Join(argv, " "), out.Bytes())
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = cerr
+		_, werr := fmt.Fprintf(f, "$ %s\n%s\n", strings.Join(argv, " "), out.Bytes())
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil && err == nil {
+			err = fmt.Errorf("writing the row's log %s: %w", logPath, werr)
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %v\n%s", strings.Join(argv, " "), err, tail(out.String(), 30))
+		return fmt.Errorf("%s: %w\n%s", strings.Join(argv, " "), err, tail(out.String(), 30))
 	}
 	return nil
 }
@@ -285,7 +288,7 @@ func (c *ctx) unitObject(src string, compiler, flags, extra []string) (string, e
 		cmd := exec.Command(argv[0], append(argv[1:], "-c", src, "-o", u.obj)...)
 		cmd.Dir = c.root
 		if out, err := cmd.CombinedOutput(); err != nil {
-			u.err = fmt.Errorf("%s: %v\n%s", rel, err, tail(string(out), 30))
+			u.err = fmt.Errorf("%s: %w\n%s", rel, err, tail(string(out), 30))
 		}
 	})
 	return u.obj, u.err
@@ -390,7 +393,7 @@ func prepareJava(c *ctx, rows []string) error {
 			if b, cerr := cmd.CombinedOutput(); cerr != nil {
 				mu.Lock()
 				for _, row := range need[u] {
-					c.pre[row] = fmt.Errorf("does not build: the generated unit %s/%s it names: %v\n%s", tree, u, cerr, tail(string(b), 30))
+					c.pre[row] = fmt.Errorf("does not build: the generated unit %s/%s it names: %w\n%s", tree, u, cerr, tail(string(b), 30))
 				}
 				mu.Unlock()
 			}
@@ -640,7 +643,7 @@ func (c *ctx) rustPathUnits(rows []string, genDir string, crates map[string]bool
 			cmd := exec.Command(schema, "generate", "--lang", "rust", "--out", out, schemaPath)
 			cmd.Dir = c.root
 			if b, gerr := cmd.CombinedOutput(); gerr != nil {
-				return fmt.Errorf("generating %s for the rows' #[path] includes: %v\n%s", out, gerr, tail(string(b), 20))
+				return fmt.Errorf("generating %s for the rows' #[path] includes: %w\n%s", out, gerr, tail(string(b), 20))
 			}
 		}
 	}
@@ -666,7 +669,7 @@ func rowRust(c *ctx, row string) error {
 		err = werr
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %v\n%s", exe, err, tail(out.String(), 30))
+		return fmt.Errorf("%s: %w\n%s", exe, err, tail(out.String(), 30))
 	}
 	m := rustPassedRe.FindStringSubmatch(out.String())
 	if m == nil || m[1] == "0" {

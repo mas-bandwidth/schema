@@ -21,11 +21,11 @@ const maxCause = 400
 // (checkCause).
 
 var (
-	// a compiler's diagnostic, with its location where the compiler gives one
+	// A compiler's diagnostic, with its location where the compiler gives one.
 	compileRe = regexp.MustCompile(`error\[E\d+\]|: error CS\d+:|\.java:\d+: error:|:\d+:\d+: Error:|:\d+:\d+: (fatal )?error:|\*\* \((CompileError|SyntaxError|TokenMissingError)\)|undefined reference to|cannot find symbol|SyntaxError:`)
-	// a crash: an uncaught exception, a panic, a raise, a failed assert
+	// A crash: an uncaught exception, a panic, a raise, a failed assert.
 	crashRe = regexp.MustCompile(`panicked at|^Exception in thread|^Unhandled exception|^\*\* \(\w|^\s*(\w+\.)*\w*(Error|Exception)\b[:( ]|^Assertion failed|^Process terminated|^Caused by:`)
-	// a failed check the row printed
+	// A failed check the row printed.
 	failRe = regexp.MustCompile(`(?i)\bfail(ed|ure|s)?\b|\bRED\b|assertion .*failed`)
 
 	// A line that is only a banner around the failure: it names no check,
@@ -51,12 +51,12 @@ var (
 		regexp.MustCompile(`^Process terminated\.?$`),
 		regexp.MustCompile(`:$`),
 	}
-	// a line a compiler prints to point into the source, not a message
+	// A line a compiler prints to point into the source, not a message.
 	gutterRe   = regexp.MustCompile(`^\s*(\d+\s*)?\|( |$)|^\s*\^[\^~-]*\s*$|^\s*-->|^\s*= (note|help):|^\s*\.\.\.$|^\$ `)
 	threadIDRe = regexp.MustCompile(`thread '([^']*)' \(\d+\) panicked`)
-	// a stack frame that locates a crash
+	// A stack frame that locates a crash.
 	frameRe = regexp.MustCompile(`^\s*(at |#\d+\s)`)
-	// rustc's error header, and the location line under it
+	// The rustc error header, and the location line under it.
 	rustErrRe = regexp.MustCompile(`^error\[E\d+\]`)
 	rustLocRe = regexp.MustCompile(`^\s*--> (\S+)`)
 )
