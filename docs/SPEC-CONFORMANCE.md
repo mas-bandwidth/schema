@@ -798,3 +798,30 @@ with `-std=c++17 -fsyntax-only` when included alone.
 on the old generator for all four one-check units (`ranged_fixed`, `ranged_int`, `ranged_bits`, `ranged_float`).
 
 | wire-alone-rows-are-the-walks | `testdata/conformance/tables/WIRE-ALONE.txt` lists, by class, the framing rows whose condition §6.5 lists as DECIDABLE FROM THE WIRE ALONE. With a port's wire-alone walk removed, every listed row reads except the port's stated exceptions (rows its typed read also refuses, each with a reason), and no other row moves. moo states 6 exceptions (the inert-bytes rows, `frame_repeat_last_wins`, `node_table_twice`); Lua states 6 (the three `node_type_*` rows, the two ill-formed string-blob rows, `node_unknown_to_fixed_reader`). A listed row must be a refused framing row of MANIFEST.txt, and an exception must name a listed row and give a reason (SPEC-TABLES.md §6.5, DETECTION ORDER IS FREE) | `TestMooReadStrictWireCheckNegativeControl`, `TestLuaWireCheckNegativeControl`, `internal/wirealone` |
+
+
+### Block forgery fuzzer seed projections
+
+The block forgery fuzzer ([SPEC-TABLES §19.5](SPEC-TABLES.md)) mutates seed
+blocks that the generated C++ builder writes, and every leg's fuzzer starts
+from those seeds (`build/block-fuzz/<unit>_v<N>.bin`). A seed is a valid
+block, so its builder writes every projection field inside its declared
+bound before it calls `BlockBytes`. `BlockBytes` refuses a used length past
+its maximum in every build (SF-31), so a seed whose `bytes(N)` length was
+left at the storage fill is refused, and the seed step fails by naming the
+unit and the count vector.
+
+| Unit | Count vector | `rows` | `blob_length` |
+|---|---|---|---|
+| `padded` | 0 | 0 | 0 |
+| `padded` | 1 | 1 | 4 |
+| `padded` | 2 | 7 | 8 |
+| `padded` | 3 | 64 (the maximum) | 12 (the bound) |
+
+Each row must build, and its `BlockBytes` must return the used extent.
+`make build/block-fuzz/.stamp` writes the seeds. It fails on
+`padded could not build a valid block for count vector 0` if the
+`blob_length` write is removed from `padded_seed_block`
+(test/tables/block_fuzz_main.cpp). Every fuzzer that reads the seeds
+(`tables-block-fuzz`, `tables-rust-fuzz`, `tables-rust-fuzz-miri` and the
+two block-fuzz negative controls) depends on that step.
