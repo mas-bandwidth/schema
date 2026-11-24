@@ -51,6 +51,10 @@ function apply(value, op, arg) {
     case "text_fill": value.text.fill(0x61, 0, n); value.textLength = n; break;
     case "fixed_constant": value.fixedConstant = n; break;
     case "reserved_zero": value.reservedZero = n; break;
+    // int128 and a ufixed(32, 32) raw value ride as BigInt; a fixed(16, 16) raw value as a Number
+    case "wide": value.wide = BigInt(arg); break;
+    case "fx": value.fx = n; break;
+    case "ufx": value.ufx = BigInt(arg); break;
     default: throw new Error("unknown op " + JSON.stringify(op));
   }
 }

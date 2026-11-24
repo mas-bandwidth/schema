@@ -33,6 +33,27 @@ local nibble = function(c) {
   throw "rows: bad hex digit " + c;
 };
 
+// int128 is a [lo, hi] array of two's-complement 64-bit lanes and a ufixed(32, 32)
+// raw value a uint64 bit pattern in an integer; the decimals rows.txt names past
+// int64 are spelled here (the top bit set by OR, not by a literal past int64),
+// and any other must parse as an integer.
+local WIDE128 = {
+  ["100000000000000000001"] = [0x6BC75E2D63100001, 5],
+  ["100000000000000000000"] = [0x6BC75E2D63100000, 5],
+};
+local RAW64 = {
+  ["17179869184000000001"] = 0x6E6B280000000001 | (1 << 63),
+  ["17179869184000000000"] = 0x6E6B280000000000 | (1 << 63),
+};
+local wide = function(arg) {
+  if (arg in WIDE128) return WIDE128[arg];
+  local n = arg.tointeger();
+  return [n, n < 0 ? -1 : 0];
+};
+local raw = function(arg) {
+  return (arg in RAW64) ? RAW64[arg] : arg.tointeger();
+};
+
 // apply makes the row's one change to a fresh, lawful value.
 local apply = function(v, op, arg) {
   switch (op) {
@@ -55,6 +76,9 @@ local apply = function(v, op, arg) {
     }
     case "fixed_constant": v.FixedConstant = arg.tointeger(); break;
     case "reserved_zero": v.ReservedZero = arg.tointeger(); break;
+    case "wide": v.Wide = wide(arg); break;
+    case "fx": v.Fx = arg.tointeger(); break;
+    case "ufx": v.Ufx = raw(arg); break;
     default: throw "rows: unknown op " + op;
   }
 };

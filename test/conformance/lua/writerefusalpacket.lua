@@ -13,6 +13,21 @@ local function unhex(s)
   return (s:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end))
 end
 
+-- int128 is a { lo, hi } pair of two's-complement 64-bit lanes, and a ufixed(32, 32)
+-- raw value a uint64 bit pattern in a Lua integer: the decimals rows.txt names
+-- past int64 are spelled here, and any other must fit an integer.
+local wide128 = {
+  ["100000000000000000001"] = { lo = 0x6BC75E2D63100001, hi = 5 },
+  ["100000000000000000000"] = { lo = 0x6BC75E2D63100000, hi = 5 },
+}
+local raw64 = {
+  ["17179869184000000001"] = 0xEE6B280000000001,
+  ["17179869184000000000"] = 0xEE6B280000000000,
+}
+local function integer(s)
+  return raw64[s] or assert(math.tointeger(tonumber(s)), s)
+end
+
 local ops = {
   scalar = function(v, n) v.Scalar = n end,
   narrow = function(v, n) v.Narrow = n end,
@@ -24,6 +39,16 @@ local ops = {
   text_fill = function(v, n) v.Text = string.rep("a", n) end,
   fixed_constant = function(v, n) v.FixedConstant = n end,
   reserved_zero = function(v, n) v.ReservedZero = n end,
+  wide = function(v, s)
+    local pair = wide128[s]
+    if pair == nil then
+      local n = integer(s)
+      pair = { lo = n, hi = n < 0 and -1 or 0 }
+    end
+    v.Wide = pair
+  end,
+  fx = function(v, n) v.Fx = n end,
+  ufx = function(v, s) v.Ufx = integer(s) end,
 }
 
 for line in inputs.rows:gmatch("[^\n]+") do
@@ -33,7 +58,7 @@ for line in inputs.rows:gmatch("[^\n]+") do
     local name, op, arg = f[1], f[3], f[4]
     local set = assert(ops[op], "unknown op " .. op)
     local v = G.NewPacketWriteRefusal()
-    if op ~= "text_bytes" then arg = assert(math.tointeger(tonumber(arg)), arg) end
+    if op ~= "text_bytes" and op ~= "wide" and op ~= "ufx" then arg = integer(arg) end
     set(v, arg)
     local stream = serialize.WriteStream.new(256)
     local ran, ok = pcall(G.WritePacketWriteRefusal, stream, v)

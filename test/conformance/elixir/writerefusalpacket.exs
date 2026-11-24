@@ -32,6 +32,11 @@ defmodule WriteRefusalPacketProbe do
   def apply_op("fixed_constant", n, v), do: %{v | fixed_constant: String.to_integer(n)}
   def apply_op("reserved_zero", n, v), do: %{v | reserved_zero: String.to_integer(n)}
 
+  # int128 and the fixed raw values are plain integers on the BEAM.
+  def apply_op("wide", n, v), do: %{v | wide: String.to_integer(n)}
+  def apply_op("fx", n, v), do: %{v | fx: String.to_integer(n)}
+  def apply_op("ufx", n, v), do: %{v | ufx: String.to_integer(n)}
+
   def verdict(value) do
     try do
       PacketWriteRefusalFile.write_packet_write_refusal!(value)

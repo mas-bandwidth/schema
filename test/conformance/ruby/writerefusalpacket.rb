@@ -22,6 +22,9 @@ def apply(value, op, arg)
   when "text_fill" then value.text = "a" * Integer(arg)
   when "fixed_constant" then value.fixed_constant = Integer(arg)
   when "reserved_zero" then value.reserved_zero = Integer(arg)
+  when "wide" then value.wide = Integer(arg)
+  when "fx" then value.fx = Integer(arg)
+  when "ufx" then value.ufx = Integer(arg)
   else raise ArgumentError, "unknown op #{op}"
   end
 end

@@ -61,6 +61,28 @@ elif op == "fixed_constant":
     v.FixedConstant = int_arg()
 elif op == "reserved_zero":
     v.ReservedZero = int_arg()
+elif op == "wide":
+    // int128 is a schema_rt.Int128 of two 64-bit lanes: the decimals past int64
+    // are spelled here, and any other is an int sign-extended into hi
+    if arg == "100000000000000000001":
+        v.Wide = schema_rt.Int128 { lo: 0x6bc75e2d63100001, hi: 0x5 }
+    elif arg == "100000000000000000000":
+        v.Wide = schema_rt.Int128 { lo: 0x6bc75e2d63100000, hi: 0x5 }
+    else:
+        let n = int_arg()
+        var hi = 0
+        if n < 0: hi = -1
+        v.Wide = schema_rt.Int128 { lo: n, hi: hi }
+elif op == "fx":
+    v.Fx = int_arg()
+elif op == "ufx":
+    // a ufixed(32, 32) raw value is a uint64 bit pattern in an int
+    if arg == "17179869184000000001":
+        v.Ufx = 0xee6b280000000001
+    elif arg == "17179869184000000000":
+        v.Ufx = 0xee6b280000000000
+    else:
+        v.Ufx = int_arg()
 else:
     print("probe: unknown op " + op)
     assert false

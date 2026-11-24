@@ -33,6 +33,12 @@ def apply(v, op, arg):
         v.fixed_constant = int(arg)
     elif op == "reserved_zero":
         v.reserved_zero = int(arg)
+    elif op == "wide":
+        v.wide = int(arg)
+    elif op == "fx":
+        v.fx = int(arg)
+    elif op == "ufx":
+        v.ufx = int(arg)
     else:
         raise SystemExit("unknown op " + op)
 

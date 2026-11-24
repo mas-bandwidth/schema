@@ -19,6 +19,12 @@
 #   text_fill <n>       the string holds n bytes of 'a' and length n
 #   fixed_constant <n>  the field `fixed_constant` (only 5 is lawful)
 #   reserved_zero <n>   the field `reserved_zero` (only 0 is lawful)
+#   wide <n>            the int128 field `wide` (min -10, max 10^20, past 64 bits), decimal
+#   fx <n>              the fixed(16, 16) field `fx` (min -10, max 10) as its RAW scaled
+#                       integer (units << 16: 655360 is 10)
+#   ufx <n>             the ufixed(32, 32) field `ufx` (min 1, max 4e9) as its RAW scaled
+#                       integer (units << 32); the top raw bound 17179869184000000000 is
+#                       past int64, so a leg holding it compares in the unsigned domain
 scalar_high            refused scalar 11
 scalar_low             refused scalar -1
 scalar_at_max          wrote   scalar 10
@@ -42,3 +48,15 @@ const_wrong            refused fixed_constant 6
 const_at               wrote   fixed_constant 5
 reserved_wrong         refused reserved_zero 1
 reserved_at            wrote   reserved_zero 0
+int128_high            refused wide 100000000000000000001
+int128_low             refused wide -11
+int128_at_max          wrote   wide 100000000000000000000
+int128_at_min          wrote   wide -10
+fixed_high             refused fx 655361
+fixed_low              refused fx -655361
+fixed_at_max           wrote   fx 655360
+fixed_at_min           wrote   fx -655360
+ufixed_high            refused ufx 17179869184000000001
+ufixed_low             refused ufx 4294967295
+ufixed_at_max          wrote   ufx 17179869184000000000
+ufixed_at_min          wrote   ufx 4294967296

@@ -20,6 +20,30 @@ local function fromHex(h: string): string
 	return table.concat(parts)
 end
 
+-- int128 is a serialize.Int128 of four 32-bit words, least significant first,
+-- and a ufixed(32, 32) raw value a serialize.Uint64 (low word, high word); the
+-- probe spells each decimal rows.txt names, and an unlisted one is an error.
+local WIDE128: { [string]: any } = {
+	["100000000000000000001"] = serialize.Int128.new(0x63100001, 0x6bc75e2d, 0x00000005, 0x00000000),
+	["100000000000000000000"] = serialize.Int128.new(0x63100000, 0x6bc75e2d, 0x00000005, 0x00000000),
+	["-11"] = serialize.Int128.new(0xfffffff5, 0xffffffff, 0xffffffff, 0xffffffff),
+	["-10"] = serialize.Int128.new(0xfffffff6, 0xffffffff, 0xffffffff, 0xffffffff),
+}
+local RAW64: { [string]: any } = {
+	["17179869184000000001"] = serialize.Uint64.new(0x00000001, 0xee6b2800),
+	["17179869184000000000"] = serialize.Uint64.new(0x00000000, 0xee6b2800),
+	["4294967295"] = serialize.Uint64.new(0xffffffff, 0x00000000),
+	["4294967296"] = serialize.Uint64.new(0x00000000, 0x00000001),
+}
+
+local function spelled(t: { [string]: any }, arg: string): any
+	local v = t[arg]
+	if v == nil then
+		error("write-refusal-packet moo: no spelling for " .. arg)
+	end
+	return v
+end
+
 -- apply is one op on a fresh value. A string(8) holds its length as the moo
 -- string's own length, so a length op is a string of that many lawful bytes.
 local function apply(v: any, op: string, arg: string)
@@ -42,6 +66,14 @@ local function apply(v: any, op: string, arg: string)
 		v.FixedConstant = n
 	elseif op == "reserved_zero" then
 		v.ReservedZero = n
+	elseif op == "wide" then
+		v.Wide = spelled(WIDE128, arg)
+	elseif op == "fx" then
+		-- moo holds a fixed field in whole units (its own Q48.16), not the raw
+		-- integer: the raw value over 2^16 is exact in a double
+		v.Fx = (n :: number) / 65536
+	elseif op == "ufx" then
+		v.Ufx = spelled(RAW64, arg)
 	else
 		error("write-refusal-packet moo: unknown op " .. op)
 	end
