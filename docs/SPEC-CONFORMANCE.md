@@ -698,4 +698,4 @@ once more and compares again. The answer owed is
 
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
-| SPEC-TABLES §6.5: the retain family zeroes a supplied report in full, every counter and the refusal | `ri_retain` | C (kept a prior refusal), C++ (kept the caller's report), Java (no reset), C# (zeroed three fields), Elixir (kept `missing_required`), Lua and Luau (`retained` and `retain_lost` piled up) |
+| SPEC-TABLES §6.5: the retain family zeroes a supplied report in full, every counter and the refusal | `ri_retain` | red before its fix on C (kept and re-ORed a prior refusal, every counter), C++ (kept the caller's report and `damaged`), Java (no reset), C# (cleared three fields, kept `Damaged` and every counter; `Zero()` now also clears both build versions), Elixir (kept every counter but `missing_required`), Lua (kept every key but the two retain counters), Luau (never reset; retain counters piled up), Squirrel (reset only the two retain counters), Dart (kept the counters; fixed by #4950). Green with no fix: Go, JavaScript, Rust, Python, Ruby, C# (unity), Lobster, Goose, moo |
