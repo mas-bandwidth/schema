@@ -6897,6 +6897,18 @@ int run(List<String> args) {
     return 2;
   }
   final out = args[2];
+  if (surface.startsWith('write-refusal')) {
+    // Dart is an ASSERT LEG (docs/SPEC.md §5.1; the ruling `write-refusal`):
+    // its write checks are asserts, and a release build (AOT, or a VM run
+    // without --enable-asserts) carries none. Such a run answers no
+    // write-refusal row, so the harness never credits it with a refusal.
+    var assertsOn = false;
+    assert(assertsOn = true);
+    if (!assertsOn) {
+      stderr.writeln('driver: $surface: asserts are off; an assert leg answers the write contract under --enable-asserts only');
+      return 1;
+    }
+  }
   switch (surface) {
     case 'wire':
       return surfaceWire(out);

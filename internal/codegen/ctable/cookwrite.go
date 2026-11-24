@@ -285,8 +285,12 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
 			// an ordinal past the variant set or a deprecated variant is
-			// refused (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15, §7.6)
-			g.pf("%sif(%s) { return 0; }\n", ind, cookEnumRefused(ref, src))
+			// refused (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15, §7.6). C
+			// is an assert leg: the refusal is schema_assert, live in a debug
+			// build, and a release build carries no write-side check (the
+			// ruling `write-refusal`, docs/rulings.json), as the C JSON
+			// writer's deprecated check is
+			g.pf("%sschema_assert(!(%s));\n", ind, cookEnumRefused(ref, src))
 			g.pf("%stable_cook_put(%s,(uint64_t)%s,%d,order);\n", ind, at, src, ir.StorageBitsFor(ref.Max)/8)
 		case *ir.Flags:
 			g.pf("%stable_cook_put(%s,(uint64_t)%s,8,order);\n", ind, at, src)
@@ -402,9 +406,10 @@ func (g *tableGen) emitCookVariableRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s(const TableCtx * ctx,const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{ return %s(ctx,value,output,capacity,order,%s); }\n", g.api(st.Name, "cook"), st.Name, g.api(st.Name, "cook_with_allocator"), alloc)
 }
 
-// cookEnumRefused is the C condition under which a cook refuses an enum
-// value: an ordinal past the variant set, or one marked `| deprecated`
-// (docs/SPEC.md §5.1 row 5; docs/SPEC-TABLES.md §2.15, §7.6).
+// cookEnumRefused is the C condition under which a debug cook's
+// schema_assert refuses an enum value: an ordinal past the variant set, or
+// one marked `| deprecated` (docs/SPEC.md §5.1 row 5; docs/SPEC-TABLES.md
+// §2.15, §7.6).
 func cookEnumRefused(e *ir.Enum, src string) string {
 	cond := fmt.Sprintf("(uint64_t)(%s) > %d", src, len(e.Variants))
 	for i := range e.Variants {

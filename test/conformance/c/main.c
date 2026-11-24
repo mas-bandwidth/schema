@@ -1144,6 +1144,17 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }
+#ifdef NDEBUG
+    /* C is an ASSERT LEG (docs/SPEC.md §5.1; the ruling `write-refusal`): its
+       write checks are schema_assert, and a release build carries none. A
+       driver built with NDEBUG answers no write-refusal row, so the harness
+       never credits a release build with a refusal. */
+    if ( strncmp( surface, "write-refusal", 13 ) == 0 )
+    {
+        fprintf( stderr, "driver: %s: this C driver was built with NDEBUG; an assert leg answers the write contract from its debug build only\n", surface );
+        return 1;
+    }
+#endif
     if ( strcmp( surface, "write-refusal" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
     if ( strcmp( surface, "write-refusal-fixed" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_FIXED ); }
     if ( strcmp( surface, "write-refusal-message" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_MESSAGE ); }

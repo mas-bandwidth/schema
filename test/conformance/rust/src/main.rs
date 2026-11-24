@@ -3622,6 +3622,13 @@ fn main() {
         exit(2);
     }
     let out = args[3].as_str();
+    // Rust is an ASSERT LEG (docs/SPEC.md §5.1; the ruling `write-refusal`): its
+    // write checks are debug_assert!, and a release build carries none. A
+    // driver built without debug assertions answers no write-refusal row, so
+    // the harness never credits a release build with a refusal.
+    if surface.starts_with("write-refusal") && !cfg!(debug_assertions) {
+        fail(&format!("{surface}: this Rust driver was built without debug assertions; an assert leg answers the write contract from its debug build only"));
+    }
     match surface {
         "wire" => surface_wire(&manifest, out),
         "report" => surface_report(&manifest, out),

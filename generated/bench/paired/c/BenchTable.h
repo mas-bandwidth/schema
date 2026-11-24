@@ -17120,7 +17120,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_entity_body_pack_( struct bench_tabl
     bench_table_cook_put( at + 28, (uint64_t) value->vel_y, 4, order );
     bench_table_cook_put( at + 32, (uint64_t) value->vel_z, 4, order );
     bench_table_cook_put( at + 36, (uint64_t) value->health, 4, order );
-    if ( (uint64_t) ( value->weapon ) > 15 ) { return 0; }
+    schema_assert( !( (uint64_t) ( value->weapon ) > 15 ) );
     bench_table_cook_put( at + 40, (uint64_t) value->weapon, 1, order );
     bench_table_cook_put( at + 48, (uint64_t) value->damage, 8, order );
     bench_table_cook_put( at + 56, value->moving ? 1 : 0, 1, order );
