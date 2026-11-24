@@ -14,6 +14,7 @@ section is cited rather than restated.
 
 ```
 MANIFEST.txt          the registry: every case, by kind
+WIRE-ALONE.txt        the framing rows a wire-alone walk owns, by class (hand-written)
 reports.txt           read/refused for every evolution case   (generated)
 report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
@@ -332,6 +333,22 @@ order and nothing else: a text surface skips a `no-text` instance, and the
 wire surface answers a `wire-refused` instance's refused load as
 `<case>.absent` holding the read's reason. Any other refused load of an
 instance stays a failure.
+
+## WIRE-ALONE.txt
+
+```
+# comment
+<class> <framing row>
+```
+
+The framing rows whose condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE
+FROM THE WIRE ALONE, one per line, tagged with the clause they break:
+`id-table`, `inert-bytes`, `element-kind`, `depth`, `node-table`, `graph`,
+`blob-shared` or `text`. A port's wire-walk control derives from it the rows
+its walk alone refuses and states only its own exceptions, each with a
+reason. `internal/wirealone` reads it, refuses an unknown class or a repeated
+row, and holds every row to a `framing` row of MANIFEST.txt pinned `refused`.
+Hand-written; a new wire-alone framing row is added here with its class.
 
 ## reports.txt
 

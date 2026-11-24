@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/wirealone"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,38 +41,33 @@ func withoutWireCheck(t *testing.T, files map[string][]byte) {
 	editLoad(t, files, luaWireCheckCall, luaWireCheckOff, 1)
 }
 
+// luaWireCheckExceptions are the rows of WIRE-ALONE.txt
+// (testdata/conformance/tables, internal/wirealone) that Lua's walk refuses
+// as well as its wire check, so they stay refused with the check off. Each
+// carries the reason; every other row of the file is the check's alone.
+var luaWireCheckExceptions = map[string]string{
+	"node_type_node_table_id":      "the walk refuses a node record typed by a reserved id itself (load.lua, A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS), so the check is never the only refusal",
+	"node_type_build_version_id":   "the walk refuses a node record typed by a reserved id itself (load.lua, A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS), so the check is never the only refusal",
+	"node_type_vocabulary_id":      "the walk refuses a node record typed by a reserved id itself (load.lua, A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS), so the check is never the only refusal",
+	"graph_string_blob_ill_formed": "the walk decodes a string blob record wherever it is reached from and refuses ill-formed text itself (load.lua, utf8_ok)",
+	"graph_string_blob_zero_byte":  "the walk decodes a string blob record wherever it is reached from and refuses a zero byte itself (load.lua, utf8_ok)",
+	"node_unknown_to_fixed_reader": "Lua reads this form-1 vector at the fixed root Cfg through its variable twin, where the node table is the root body's own and the walk parses it, refusing the malformed record itself (load.lua, THE NODE RECORDS)",
+}
+
 // luaWireCheckOnly are the framing rows the walk reads and only the wire
-// check refuses. Each breaks a condition docs/SPEC-TABLES.md §6.5 lists as
-// DECIDABLE FROM THE WIRE ALONE, which the strict load holds in wire_check
-// before the walk decodes a byte, so the walk never needs to hold it again.
-// The strict-load test holds that each is refused by the check itself
-// (report.wireAlone); the negative control holds that the walk alone reads
-// each and that nothing else moves.
-var luaWireCheckOnly = []string{
-	// the id table: a repeated, unknown, unreferenced or out-of-first-use id
-	"frame_repeat_last_wins", "frame_unknown_id_length",
-	"frame_unknown_id_reference", "frame_unreferenced_entry",
-	"skipped_ids_out_of_order",
-	// bytes left inside an array, keyed array or map L after its elements
-	"array_L0_inert", "array_L1_inert", "keyed_L1_inert", "map_L1_inert",
-	// an element kind no reader can skip, under any count
-	"array_elem_kind_16_count_1", "array_elem_kind_31_count_1",
-	"array_elem_kind_32_count_2", "array_elem_reserved_count_0",
-	"array_elem_unassigned_count_0", "array_elem_zero_count_0",
-	// a nesting depth past the binary bound of 128, inside unknown bytes too
-	"depth_arrays_129", "depth_keyed_129", "depth_tables_129",
-	"depth_tables_5000", "depth_union_tables_65",
-	"union_chain_unknown_deep", "union_chain_unknown_past_bound",
-	// the node table framing
-	"node_table_twice", "node_record_bytes_after_terminator",
-	// the pointer graph: a cycle or an unreachable record
-	"varevo_cycle_known_via_unknown", "varevo_cycle_root_via_unknown",
-	"varevo_cycle_two_unknowns", "varevo_cycle_unknown_self",
-	"graph_unknown_type_self", "graph_unknown_type_pair",
-	"graph_listnode_unknown_self", "graph_unknown_to_root",
-	"graph_unknown_type_unreached", "graph_string_blob_unreached",
-	// one blob record named from two slots
-	"graph_blob_two_unknown_fields", "graph_blob_two_unknown_elements",
+// check refuses: every row of WIRE-ALONE.txt but Lua's exceptions. Each breaks
+// a condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE FROM THE WIRE ALONE,
+// which the strict load holds in wire_check before the walk decodes a byte,
+// so the walk never needs to hold it again. The strict-load test holds that
+// each is refused by the check itself (report.wireAlone); the negative
+// control holds that the walk alone reads each and that nothing else moves.
+func luaWireCheckOnly(t *testing.T) []string {
+	t.Helper()
+	rows, err := wirealone.Owned(filepath.Join("..", "..", ".."), luaWireCheckExceptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
 }
 
 type luaFramingRow struct {
@@ -262,7 +258,7 @@ func TestLuaStrictLoadAnswersTheFramingVectors(t *testing.T) {
 			t.Errorf("%s (%s %s): the strict load answers %q, the law %q", row.name, row.unit, row.root, got[row.name].verdict, row.verdict)
 		}
 	}
-	for _, name := range luaWireCheckOnly {
+	for _, name := range luaWireCheckOnly(t) {
 		if a := got[name]; a.verdict != "refused" || !a.byCheck {
 			t.Errorf("%s: the strict load answers %q (refused by the wire check: %v), want refused by the wire check", name, a.verdict, a.byCheck)
 		}
@@ -283,7 +279,7 @@ func TestLuaWireCheckNegativeControl(t *testing.T) {
 		}
 	}
 	sort.Strings(moved)
-	want := slices.Clone(luaWireCheckOnly)
+	want := luaWireCheckOnly(t)
 	sort.Strings(want)
 	if !slices.Equal(moved, want) {
 		t.Fatalf("NEGATIVE CONTROL FAILED: with the wire check off the rows that moved are\n  %v\nwant exactly\n  %v", moved, want)
