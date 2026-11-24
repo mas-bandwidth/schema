@@ -904,10 +904,19 @@ fn wref_loaded_run(surf: const u8[:], root_name: const u8[:], wire: const u8[:],
     return "wrote\n";
 }
 
-fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:]) {
+fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], shape_surf: const u8[:]) {
+    // THE SHAPE ROWS (`write-refusal-shape`, DW-TABLE-SHAPE): a value of the
+    // wrong kind is one Goose's types cannot hold, so kind `shape` answers
+    // `unrepresentable`; the lawful twins are written as write-refusal writes
+    // them
+    let surf = if shape_surf == "write-refusal-shape" { "write-refusal" } else { shape_surf };
     for line in lines {
         let f = words(line);
-        if f.len < 8 || f[0] != surf { continue; }
+        if f.len < 8 || f[0] != shape_surf { continue; }
+        if f[2] == unit && f[6] == "shape" {
+            answer(f[1], "unrepresentable\n");
+            continue;
+        }
         var ann: u8[>..] = [];
         if surf == "write-refusal-message" {
             var conn: i64 = -1;
@@ -1070,6 +1079,85 @@ fn read_into_variable(root: const u8[:], lawful: const u8[:], damaged: const u8[
     return 0;
 }
 
+// ri_report_diff appends `zeroed` when every field of `r` equals the field
+// of `want`, the report the same read leaves in a fresh report, and
+// otherwise one line naming each field that differs.
+fn ri_report_diff(r: schema_rt::LoadReport&, want: schema_rt::LoadReport&, out: u8[>..]&) {
+    var d: u8[>..] = [];
+    if r.unknown != want.unknown { d.append(" unknown"); }
+    if r.mismatch != want.mismatch { d.append(" mismatch"); }
+    if r.widened != want.widened { d.append(" widened"); }
+    if r.oor != want.oor { d.append(" oor"); }
+    if r.repeated != want.repeated { d.append(" repeated"); }
+    if r.body_damaged != want.body_damaged { d.append(" body_damaged"); }
+    if r.refused != want.refused { d.append(" refused"); }
+    if r.blob_shared != want.blob_shared { d.append(" blob_shared"); }
+    if r.count_refused != want.count_refused { d.append(" count_refused"); }
+    if r.missing_required != want.missing_required { d.append(" missing_required"); }
+    if r.non_finite != want.non_finite { d.append(" non_finite"); }
+    if r.retained != want.retained { d.append(" retained"); }
+    if r.retain_lost != want.retain_lost { d.append(" retain_lost"); }
+    if r.stopped != want.stopped { d.append(" stopped"); }
+    if r.damaged != want.damaged { d.append(" damaged"); }
+    if r.reason != want.reason { d.append(" reason"); }
+    if d.len == 0 { out.append("zeroed"); } else { out.append("kept"); out.append(d); }
+    out.push(10);
+}
+
+// read_into_retain: THE RETAIN FORM's read-into row (test/conformance/README.md,
+// `read-into`): the RETAINING load (schema_rt::load_table_retain, §6.6) into
+// ONE report the driver PRE-FILLED (every LoadReport field is public, so each
+// is set directly): <lawful>, compared with the report the same load leaves
+// in a FRESH report, then <damaged>, then <lawful> again and compared again
+// (§6.5: every read zeroes a supplied report in full, the retain family
+// included). Step 0 is the fresh load; every load has its own fresh stores
+// and a roomy retention buffer.
+fn read_into_retain(root: const u8[:], lawful: const u8[:], damaged: const u8[:], out: u8[>..]&) -> i64 {
+    let u = conformance_unit();
+    if schema_rt::value_table(u, root) < 0 { return -1; }
+    // the root name in a local of its own: Goose refuses this call on a name
+    // the caller handed in ("root may refer into root", §5.2)
+    var name: u8[>..] = [];
+    name.append(root);
+    var fresh = schema_rt::LoadReport { .. };
+    var report = schema_rt::LoadReport { .. };
+    report.unknown = 7;
+    report.mismatch = 7;
+    report.widened = 7;
+    report.oor = 7;
+    report.repeated = 7;
+    report.body_damaged = true;
+    report.refused = true;
+    report.blob_shared = 7;
+    report.count_refused = true;
+    report.missing_required = true;
+    report.non_finite = true;
+    report.retained = 7;
+    report.retain_lost = 7;
+    report.stopped = true;
+    report.damaged = true;
+    report.reason = schema_rt::LoadRefuseMalformed;
+    for step in 4 {
+        var input: u8[>..] = [];
+        if step == 2 { input.append(damaged); } else { input.append(lawful); }
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var rbytes: u8[>..<] = [];
+        var rrecs: schema_rt::RetainRec[>..<] = [];
+        var rids: u64[>..<] = [];
+        var store = schema_rt::RetainStore { capacity: -1, id_capacity: -1, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
+        if step == 0 {
+            let r = schema_rt::load_table_retain(u, name, input, vals, nodes, fresh, store);
+            if r < 0 || fresh.refused || schema_rt::load_error(fresh, r) != schema_rt::LoadRefuseOk { return -2; }
+        } else {
+            let r = schema_rt::load_table_retain(u, name, input, vals, nodes, report, store);
+            conformance_ri_verdict(out, r >= 0 && !report.refused && schema_rt::load_error(report, r) == schema_rt::LoadRefuseOk);
+            if step != 2 { ri_report_diff(report, fresh, out); }
+        }
+    }
+    return 0;
+}
+
 // surface_read_into: ONE report and ONE set of caller values through a
 // lawful read, a refused read and the lawful read again (docs/SPEC-TABLES.md
 // §6.5; test/conformance/README.md, `read-into`). The glue's
@@ -1097,6 +1185,8 @@ fn surface_read_into(lines: const u8[:][:], unit: const u8[:]) {
         var r: i64 = -1;
         if f[4] == "variable" {
             r = read_into_variable(f[3], lawful, damaged, out);
+        } else if f[4] == "retain" {
+            r = read_into_retain(f[3], lawful, damaged, out);
         } else {
             r = conformance_read_into(f[3], f[4], lawful, damaged, count, ann, out);
         }
@@ -1152,7 +1242,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
         return;
     }
     if argv.len != 4 {
@@ -1180,7 +1270,7 @@ fn main() {
     if argv[1] == "announce" { surface_announce(lines, unit); return; }
     if argv[1] == "read-into" { surface_read_into(lines, unit); return; }
     if argv[1] == "json-write-into" { surface_json_write_into(lines, unit); return; }
-    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" || argv[1] == "write-refusal-cook" || argv[1] == "write-refusal-block" {
+    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" || argv[1] == "write-refusal-cook" || argv[1] == "write-refusal-block" || argv[1] == "write-refusal-shape" {
         surface_wref_all(lines, unit, argv[1]);
         return;
     }

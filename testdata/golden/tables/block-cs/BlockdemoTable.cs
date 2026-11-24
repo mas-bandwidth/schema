@@ -193,7 +193,7 @@ namespace Blockdemo
         {
             Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
             NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
-            KindChanged = 0; LayoutHash = 0;
+            KindChanged = 0; BuildVersionRemote = 0; BuildVersionOwn = 0; LayoutHash = 0;
         }
     }
 

@@ -1008,7 +1008,7 @@ static int surface_read_into( const char * out )
         ConformanceText answer = { NULL, 0, 0 };
         char * end = NULL;
         long long count;
-        int ran;
+        int ran, retaining;
         if ( strcmp( f->field[0], "read-into" ) != 0 ) { continue; }
         if ( f->count < 9 ) { fprintf( stderr, "driver: short read-into line\n" ); return 1; }
         if ( strcmp( f->field[4], "fixed-nocap" ) == 0 )
@@ -1019,8 +1019,11 @@ static int surface_read_into( const char * out )
             if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
             continue;
         }
-        u = find_unit1122( f->field[2] );
-        if ( u == NULL || u->read_into == NULL ) { fprintf( stderr, "driver: read-into %s: no read-into for unit %s\n", f->field[1], f->field[2] ); return 1; }
+        /* THE RETAINING LOAD's row names tblrt1, the `retain` surface's unit
+           (retain.c), which carries no announcement and so no 1122 entry */
+        retaining = strcmp( f->field[2], "tblrt1" ) == 0;
+        u = retaining ? NULL : find_unit1122( f->field[2] );
+        if ( !retaining && ( u == NULL || u->read_into == NULL ) ) { fprintf( stderr, "driver: read-into %s: no read-into for unit %s\n", f->field[1], f->field[2] ); return 1; }
         lawful = slurp( f->field[5], &lawful_bytes );
         damaged = slurp( f->field[6], &damaged_bytes );
         if ( strcmp( f->field[8], "-" ) != 0 ) { announcement = slurp( f->field[8], &announcement_bytes ); }
@@ -1031,8 +1034,17 @@ static int surface_read_into( const char * out )
         }
         count = strtoll( f->field[7], &end, 10 );
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f->field[1], f->field[7] ); return 1; }
-        ran = u->read_into( f->field[3], f->field[4], lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, (int64_t) count,
-                            announcement, (int64_t) announcement_bytes, &answer );
+        if ( retaining )
+        {
+            ran = strcmp( f->field[3], "Node" ) == 0 && strcmp( f->field[4], "retain" ) == 0 && count == 1
+                      ? conformance_read_into_retain( lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, &answer )
+                      : 1;
+        }
+        else
+        {
+            ran = u->read_into( f->field[3], f->field[4], lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, (int64_t) count,
+                                announcement, (int64_t) announcement_bytes, &answer );
+        }
         free( lawful );
         free( damaged );
         free( announcement );

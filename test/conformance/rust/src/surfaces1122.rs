@@ -606,6 +606,38 @@ pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
                 let text = read_into_message!(backenddemo, StorePurchaseRow, StorePurchase, store_purchase_load_messages, store_purchase_to_json_checked, case, lawful, damaged, count(), ann);
                 spill(out, case, text.as_bytes());
             }
+            // RETAIN (README, "The `retain` form"): the retaining load into ONE
+            // PRE-FILLED report must leave exactly what the same load leaves in a
+            // FRESH report (SPEC-TABLES 6.5: every read zeroes a supplied report,
+            // the retain family included).
+            ("retain", "tblrt1", "Node") => {
+                let lawful = slurp(lawful);
+                let damaged = slurp(damaged);
+                let load = |wire: &[u8], report: &mut tblrt1::TableReport| -> Result<bool, String> {
+                    let mut store = tblrt1::TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
+                    catch(|| tblrt1::node_load_retain(wire, &mut store, report).is_some())
+                };
+                let mut fresh = tblrt1::TableReport::default();
+                if load(&lawful, &mut fresh) != Ok(true) || fresh.refused || fresh.damaged {
+                    fail(&format!("{case}: the lawful retaining load refused into a fresh report"));
+                }
+                let zeroed = |r: &tblrt1::TableReport| -> String {
+                    if *r == fresh { "zeroed\n".to_string() } else { format!("kept {r:?} want {fresh:?}\n") }
+                };
+                let mut report = tblrt1::TableReport {
+                    unknown: 7, widened: 7, oor_field: "stale", damaged: true, refused: true, cycle_on_save: true,
+                    retained: 7, retain_lost: 7, reason: tblrt1::TableReason::NewerForm,
+                    build_version_remote: 7, build_version_own: 7, non_finite_float: "stale", non_finite_float_id: Some(7),
+                    text_error: "stale", missing_required: 7, missing_required_fields: "stale".to_string(),
+                };
+                let mut text = String::new();
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                text.push_str(read_line(load(&damaged, &mut report), report.refused || report.damaged));
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                spill(out, case, text.as_bytes());
+            }
             // FL-17: this leg's fixed load takes the caller's slice of records,
             // and the slice IS the capacity, so no call omits it
             ("fixed-nocap", _, _) => spill(out, case, b"unrepresentable\n"),

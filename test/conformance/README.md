@@ -295,6 +295,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `write-refusal-json` | `write-refusal-json` | the same through the text writer | the verdict in the manifest |
 | `write-refusal-cook` | `write-refusal-cook` | the same through the cook writer (`CookMeasure` then `Cook`, little-endian) | the verdict in the manifest |
 | `write-refusal-block` | `write-refusal-block` | the same through the block builder, which builds the root's block from the value | the verdict in the manifest |
+| `write-refusal-shape` | `write-refusal-shape` | the same through the root's own form's writer, with a value of the WRONG KIND (kind `shape`) where the path names; a raise is answered `raised` | `refused`, with a lawful twin per group (DW-TABLE-SHAPE) |
 | `announce` | `announce` | the unit's announcement writer, a strict or lenient announcement read, or a `SaveMessages` with no announcement in hand (below) | the engine's bytes, or the verdict in the manifest |
 | `read-into` | `read-into` | one report and one set of caller values through a lawful read, a refused read and the lawful read again (below) | `read-into/<case>.txt`, from the engine |
 | `json-write-into` | `json-write-into` | the text writer in a comma-decimal process locale, into a caller buffer longer than the text (below) | `json/<instance>.json` |
@@ -377,6 +378,17 @@ an answer the runtime did not give.
   through the leg's block builder (the counts and used lengths it is handed
   are the value's); `wrote` when the block is built. A count or a used length
   past its maximum is refused by name in every build (SF-31).
+- **`write-refusal-shape`** puts a value of the wrong kind where the row's
+  path names (an integer as a record, a union or an array element; a string
+  as a float; null as a bool; a bare map as a union; an improper list as an
+  array; a number as the whole value) and writes it through the root's own
+  form's writer. Every refuse-every-build leg (Go, JS, Elixir, Lua, Luau,
+  Squirrel, moo, Goose) answers every row, and the harness refuses a missing
+  answer from one of them; a leg whose types cannot hold the value answers
+  `unrepresentable`. The writer refuses by its answer, never by raising: a
+  raised error is answered `raised` and is red (DW-TABLE-SHAPE). The assert
+  legs, whose writers hold these values with debug asserts only, answer the
+  lawful twins and `unrepresentable` for the shape rows.
 - **`announce <case> <unit> <root> <mode> <input>`** (the verdict withheld).
   `write` (root and input `-`): the unit's announcement writer
   (`AnnounceMeasure` then `Announce`); the answer is the announcement's bytes,
@@ -419,7 +431,20 @@ an answer the runtime did not give.
   returned (FL-17: the omitted capacity is the file's own 5000 records, never
   a default the port invented). A leg whose fixed load cannot omit the
   capacity answers `unrepresentable\n`, which the harness credits on that
-  form alone.
+  form alone. The `retain` form (count 1) is the RETAINING load
+  (`<Root>LoadRetain`, SPEC-TABLES §6.6) of a variable root, with a roomy
+  retention buffer, and it checks the report rather than the value. Make ONE
+  report and PRE-FILL it: every counter nonzero (`unknown`, `widened`,
+  `retained`, `retain_lost` and every other counter the report has), the
+  refusal set, and the reason and its detail set where the language has them;
+  a field the language does not let a caller set is filled by a refused read
+  first. Read `<lawful>` into it and write the read's line, then `zeroed` when
+  every field of that report equals the field the same read leaves in a FRESH
+  report, or any other line (naming the field) when one differs. Then read
+  `<damaged>` into the same report (one line), read `<lawful>` once more (one
+  line) and compare again (one line). The owed answer is
+  `read\nzeroed\nrefused\nread\nzeroed\n`: §6.5 zeroes a supplied report in
+  full on every read path, the retain family included.
 - **`json-write-into <case> <unit> <root> <wire>`**. The harness hands the
   driver `SCHEMA_COMMA_LOCALE` (`de_DE.UTF-8`, compiled into a `LOCPATH` the
   harness also sets where the host has none). The driver makes it the
