@@ -356,6 +356,7 @@ jobs:
           # every leg on the merge regardless.
           legs=""
           add_leg() { leg_hit=yes; case " $legs " in *" $1 "*) ;; *) legs="$legs $1" ;; esac; }
+          add_reader() { leg_hit=yes; case " $reader_pkgs " in *" $1 "*) ;; *) reader_pkgs="$reader_pkgs $1" ;; esac; }
           # THE PATH MAP (2026-11-24). Every changed file must be named by at
           # least one rule of this plan, or the omission log says so by name.
           # #5005 changed make/rust.mk; the input-family rows of the Rust leg
@@ -374,7 +375,7 @@ jobs:
           path_rules='\.go$|(^|/)testdata/|(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/(workflows|actions)/|^(make|tools|bench)/([^/]+/)*[^/.]+$|^(ir/|compiler/|tables/|generated/|go\.mod$|docs/|README\.md$|skills/|examples/|examples128/|bench/corpus/|testdata/|internal/codegen/|internal/check/|internal/parser/|internal/goldens/|internal/docgate/|internal/tablepack/|internal/ci/hostilecorpus/corpus/|test/tables/|test/conformance/|test/packet-[a-z-]+/|test/goldens/|test/guard/.*\.schema$|test/generated-tree/|test/elixir-tables/|eslint\.config\.mjs$|\.clang-format$)|\.schema$'
           no_leg=""
           make_shared=no
-          tool_pkgs=""
+          reader_pkgs=""
           while read -r f; do
             [ -n "$f" ] || continue
             leg_hit=no
@@ -458,6 +459,24 @@ jobs:
                   leg_hit=yes
                 fi ;;
             esac
+            # THE READERS OF THE REST (2026-11-24): files no rule above named,
+            # each mapped to the leg that builds it or the packages whose tests
+            # read it (internal/ci TestEveryTreePathMapsToAJob found them).
+            case "$f" in
+              test/*.cpp|test/*.h|test/cpp-hostile/*|test/bench/*|test/guard/*.cpp|test/verify-bitphase/cpp/*) add_leg cpp ;;
+            esac
+            case "$f" in
+              test/bench/*.c) add_leg c ;;
+              tools/lua-luacheck-*) add_leg lua ;;
+              tools/luaufuzzhost/*) add_leg luau ;;
+              tools/moofuzzhost/*) add_leg moo ;;
+            esac
+            case "$f" in
+              AGENTS.md|*/AGENTS.md) add_reader ./tools/agentsmap; add_reader ./internal/languages ;;
+              test/proof/*) add_reader ./tools/matrix ;;
+              test/slowgate/*) add_reader ./internal/ci ;;
+              test/table-base64/*) add_reader ./internal/lockfile; add_reader ./internal/codegen/cstable ;;
+            esac
             # A TOOL'S OWN FILES (2026-11-24). A file under tools/ that is not
             # Go, in a directory of a Go package or below one, is that
             # package's: tools/roadmap's tests run tools/roadmap/test.lisp.
@@ -469,8 +488,7 @@ jobs:
                 d=${f%/*}
                 while [ "$d" != tools ]; do
                   if compgen -G "$d/*.go" >/dev/null; then
-                    case " $tool_pkgs " in *" ./$d "*) ;; *) tool_pkgs="$tool_pkgs ./$d" ;; esac
-                    leg_hit=yes
+                    add_reader "./$d"
                     break
                   fi
                   d=${d%/*}
@@ -528,8 +546,9 @@ jobs:
               m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
               case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
             done
-            # a tool's non-Go files select its package (A TOOL'S OWN FILES)
-            for p in $tool_pkgs; do
+            # the packages that read a changed non-Go file (THE READERS OF THE
+            # REST, A TOOL'S OWN FILES)
+            for p in $reader_pkgs; do
               case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
             done
             # THE DEPENDENTS. A package whose non-test source changed can break
