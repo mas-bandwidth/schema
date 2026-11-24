@@ -59,6 +59,14 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			}
 			continue
 		}
+		if surface == "write-refusal-shape" && kind == "shape" {
+			// A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE) is one Go's types
+			// cannot hold: the compiler refuses it before any writer runs
+			if err := spill(out, name, []byte("unrepresentable\n")); err != nil {
+				return err
+			}
+			continue
+		}
 		// THE ROOT'S OWN FILE-FORM READ: a declared fixed root's current-form
 		// instance is form 3, read by c.load. variableLoad is the form-1 read
 		// the framing surface keeps to itself (fixed.go).
@@ -95,7 +103,9 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			if n := c.measure(value); n < 0 || c.save(value, make([]byte, n)) != n {
 				answer = "refused"
 			}
-		case "write-refusal-fixed":
+		case "write-refusal-fixed", "write-refusal-shape":
+			// the shape rows' lawful twins: the root's own form's writer, as
+			// write-refusal writes it
 			if n := c.measure(value); n < 0 || c.save(value, make([]byte, n)) != n {
 				answer = "refused"
 			}

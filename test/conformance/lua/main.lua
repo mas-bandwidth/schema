@@ -38,7 +38,7 @@ local SURFACE_ORDER = {
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
   "block-reason", "write-refusal", "write-refusal-fixed",
   "write-refusal-message", "write-refusal-json", "write-refusal-cook",
-  "write-refusal-block", "announce", "read-into", "json-write-into",
+  "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into",
 }
 local SURFACES = {}
 for _, s in ipairs(SURFACE_ORDER) do SURFACES[s] = true end
@@ -1314,7 +1314,148 @@ local function wrefBlock(u, root, v, _path, _what)
   return wrefWrite(u.blockbuild.Build, u.T, root, v)
 end
 
+-- THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+-- DW-TABLE-SHAPE): the row's token is a value of the WRONG KIND, put where
+-- the path names, and the root's own writer must refuse it by its own answer
+-- (nil or false), never by raising. Lua's spelling of each token:
+-- `int` 1, `float` 1.5, `numtext` "1.5", `text` "x", `bool` true, `map` {},
+-- `seq` { 1 }. Three have no wrong-kind spelling here, and answer
+-- `unrepresentable`: `null` in a field or an element is nil, which IS the
+-- field at its default (a table holds no nil); `improper` names no Lua value;
+-- and `map` or `seq` where a record, a union or an array belongs is a Lua
+-- table, which IS that value's own spelling (an empty table is the record at
+-- its defaults, the union at None, the empty array). `null` as the whole
+-- value is nil handed to the writer, which must refuse it.
+local SHAPE_TABLE_SHAPES = { table = true, union = true, array = true, map = true, pointer = true }
+
+local function shapeToken(token)
+  if token == "int" then return 1 end
+  if token == "float" then return 1.5 end
+  if token == "numtext" then return "1.5" end
+  if token == "text" then return "x" end
+  if token == "bool" then return true end
+  if token == "map" then return {} end
+  if token == "seq" then return { 1 } end
+  return nil
+end
+
+-- the descriptor of the arm `name` of the union `target`, and its 1-based tag
+local function shapeArm(u, target, name)
+  local un = u.T.Unions[target]
+  if un == nil then fail("no union " .. tostring(target)) end
+  for tag, arm in ipairs(un.arms) do
+    if arm.name == name then return arm, tag end
+  end
+  return nil
+end
+
+-- shapeSet puts the token's value at `path` in `v` and answers nil, or
+-- UNREPRESENTABLE when the token has no wrong-kind spelling there. A path
+-- ending `f[i]` makes the array f its first i elements as loaded, then the
+-- value; a path ending in an arm's name selects that arm and makes the value
+-- its payload.
+local function shapeSet(u, root, v, path, token)
+  if token == "null" or token == "improper" then return UNREPRESENTABLE end
+  local value = shapeToken(token)
+  local prefix, last = path:match("^(.*)%.([^.]+)$")
+  if prefix ~= nil and not last:find("%[") then
+    local owner, fd, index = wrefWalk(u, root, v, prefix)
+    local target = nil
+    if fd.shape == "union" and index == nil then target = fd.target end
+    if fd.shape == "array" and index ~= nil and fd.elem ~= nil and fd.elem.shape == "union" then target = fd.elem.target end
+    if target ~= nil then
+      local arm, tag = shapeArm(u, target, last)
+      if arm == nil then fail(path .. ": no arm " .. last .. " in union " .. tostring(target)) end
+      local x = owner[fd.name]
+      if index ~= nil then x = x[index] end
+      if type(x) ~= "table" then fail(path .. ": " .. prefix .. " holds no union") end
+      local af = arm.field or {}
+      if type(value) == "table" and SHAPE_TABLE_SHAPES[af.shape] then return UNREPRESENTABLE end
+      for k in pairs(x) do x[k] = nil end
+      x.tag = tag
+      x[arm.slot] = value
+      return nil
+    end
+  end
+  local owner, fd, index = wrefWalk(u, root, v, path)
+  local d = fd
+  if index ~= nil and fd.shape == "array" then d = fd.elem end
+  if type(value) == "table" and d ~= nil and SHAPE_TABLE_SHAPES[d.shape] then return UNREPRESENTABLE end
+  if index == nil then
+    owner[fd.name] = value
+    return nil
+  end
+  local old = owner[fd.name]
+  local arr = {}
+  for i = 1, index - 1 do
+    if type(old) ~= "table" or old[i] == nil then fail(path .. ": element " .. (i - 1) .. " is not loaded") end
+    arr[i] = old[i]
+  end
+  arr[index] = value
+  owner[fd.name] = arr
+  return nil
+end
+
+-- a shape row's writer answer: nil or false is the refusal; a RAISED error
+-- is not one, and is answered as what it is, so the row goes red
+local function shapeWrite(fn, ...)
+  local ok, out = pcall(fn, ...)
+  if not ok then
+    io.stderr:write("driver: the writer raised: " .. tostring(out) .. "\n")
+    return "raised\n"
+  end
+  if out == nil or out == false then return "refused\n" end
+  return "wrote\n"
+end
+
+local function surfaceWriteRefusalShape(all, outdir)
+  for _, f in ipairs(kind(all, "write-refusal-shape")) do
+    local name, key, root, wire, path, what, text = f[2], f[3], f[4], f[5], f[6], f[7], f[8]
+    local u = unit(key)
+    if not u then
+      noCodec(outdir, name)
+    else
+      local v, why = strictRead(u, root, mustRead(wire))
+      if v == nil then fail(name .. ": load refused " .. wire .. " (" .. tostring(why) .. ")") end
+      local answer
+      if what ~= "shape" then
+        answer = wrefSet(u, root, v, path, what, text)
+      elseif path == "." then
+        if text == "null" and isFixed(u, root) then
+          -- a batch is a Lua sequence, which holds no nil: { nil } is the
+          -- empty batch, not a batch of one nil
+          answer = UNREPRESENTABLE
+        elseif text == "null" then
+          v = nil
+        elseif text == "improper" then
+          answer = UNREPRESENTABLE
+        else
+          v = shapeToken(text)
+          -- a Lua table IS a record: the whole value as a table is the root's
+          -- own spelling
+          if type(v) == "table" then answer = UNREPRESENTABLE end
+        end
+      else
+        answer = shapeSet(u, root, v, path, text)
+      end
+      if answer == nil then
+        if isFixed(u, root) then
+          answer = shapeWrite(function()
+            local out = u.T.FixedSave(root, { v })
+            if out ~= nil and out ~= false and #out ~= u.T.FixedMeasure(root, 1) then error("wrote " .. #out .. " bytes against the measure") end
+            return out
+          end)
+        else
+          answer = shapeWrite(u.save.Save, u.T, root, v)
+        end
+      end
+      writeBytes(outdir .. "/" .. name, answer)
+    end
+  end
+end
+
 local function surfaceWriteRefusal(all, outdir, surface)
+  if surface == "write-refusal-shape" then return surfaceWriteRefusalShape(all, outdir) end
   for _, f in ipairs(kind(all, surface)) do
     -- <surface> <case> <unit> <root> <wire> <path> <kind> <value>
     local name, key, root, wire, path, what, text = f[2], f[3], f[4], f[5], f[6], f[7], f[8]
@@ -1460,6 +1601,68 @@ local function surfaceReadInto(all, outdir)
       else
         writeBytes(outdir .. "/" .. name, "read\n" .. #out .. "\n")
       end
+    elseif form == "retain-fixed" then
+      -- LoadRetain of a FIXED-class root: the runtime raises a named error
+      -- unconditionally, before it touches the report or the input
+      -- (internal/codegen/luatable/runtime/retain.lua fixed_refusal), the
+      -- dynamic leg's compile-time refusal, so the answer is unrepresentable.
+      local report = newReport()
+      local ok, err = pcall(u.retain.LoadRetain, u.T, root, mustRead(lawful), retainStore(ROOMY, math.floor(ROOMY / 8)), report)
+      if ok or not tostring(err):find("retention requires a variable root", 1, true) then
+        fail(name .. ": LoadRetain of a fixed root did not raise the named refusal")
+      end
+      writeBytes(outdir .. "/" .. name, "unrepresentable\n")
+    elseif form == "retain" or form == "region" then
+      -- THE `retain` FORM (test/conformance/README.md): ONE report, PRE-FILLED
+      -- (every counter, the refusal set, the reason and every flag the Lua
+      -- report can carry), then the retaining load of <lawful>, <damaged>,
+      -- <lawful> again. After each lawful load every field of the report must
+      -- equal the field the same load leaves in a FRESH report (§6.5).
+      local lawfulBytes, damagedBytes = mustRead(lawful), mustRead(damaged)
+      -- `region`: the PLAIN Load of the variable root (Lua has no region
+      -- read, so the plain value Load is the read), not LoadRetain.
+      local function load(bytes, report)
+        local store = retainStore(ROOMY, math.floor(ROOMY / 8))
+        local ok, got
+        if form == "region" then
+          ok, got = pcall(u.load.Load, u.T, root, bytes, report)
+        else
+          ok, got = pcall(u.retain.LoadRetain, u.T, root, bytes, store, report)
+        end
+        if not ok then return "threw\n" end
+        local reason = report.reason
+        if got == nil or (reason ~= nil and reason ~= "") or (report.refused or 0) ~= 0 or report.damaged then
+          return "refused\n"
+        end
+        return "read\n"
+      end
+      local fresh = newReport()
+      if load(lawfulBytes, fresh) ~= "read\n" then fail(name .. ": the lawful retaining load did not read into a fresh report") end
+      local function zeroed(report)
+        local diff = {}
+        for k, v in pairs(report) do
+          if fresh[k] ~= v then diff[#diff + 1] = k .. "=" .. tostring(v) .. " want " .. tostring(fresh[k]) end
+        end
+        for k, v in pairs(fresh) do
+          if report[k] == nil then diff[#diff + 1] = k .. "=nil want " .. tostring(v) end
+        end
+        table.sort(diff)
+        if #diff == 0 then return "zeroed\n" end
+        return "kept " .. table.concat(diff, ", ") .. "\n"
+      end
+      local report = {
+        damaged = true, refused = 7, unknown = 7, kindChanged = 7, outOfRange = 7,
+        widened = 7, repeatedKey = 7, retained = 7, retainLost = 7, sharedBlob = 7,
+        missingRequired = 7, wireDamaged = true, reason = "stale", wireAlone = true,
+        nonFiniteFloat = "stale", outOfRangeField = "stale", countRefusal = true,
+      }
+      local parts = {}
+      parts[#parts + 1] = load(lawfulBytes, report)
+      parts[#parts + 1] = zeroed(report)
+      parts[#parts + 1] = load(damagedBytes, report)
+      parts[#parts + 1] = load(lawfulBytes, report)
+      parts[#parts + 1] = zeroed(report)
+      writeBytes(outdir .. "/" .. name, table.concat(parts))
     else
       local n = math.tointeger(tonumber(count))
       if n == nil or n < 1 then fail(name .. ": " .. tostring(count) .. " is not a count") end

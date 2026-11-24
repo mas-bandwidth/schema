@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -31,6 +32,7 @@ func javaConformanceBuild(t *testing.T, root string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/java", "test/conformance/harness")
 	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-harness", "build-conformance-java")
 	cmd.Dir = root
 	cmd.Env = os.Environ()

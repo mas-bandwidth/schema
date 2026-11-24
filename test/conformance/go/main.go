@@ -750,7 +750,7 @@ func main() {
 		run = func(lines []line, out string) error { return surfaceForgery("block", lines, out) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
-	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block":
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape":
 		surface := surface
 		run = func(lines []line, out string) error { return surfaceWriteRefusal(surface, lines, out) }
 	case "announce":

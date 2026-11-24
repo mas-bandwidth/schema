@@ -40,7 +40,7 @@ func caseRows(surface, class string) []string {
 		return []string{"variable-tables/" + fixed}
 	}
 	switch surface {
-	case "wire", "read-into", "write-refusal":
+	case "wire", "read-into", "write-refusal", "write-refusal-shape":
 		return byClass("fixed-class", "variable-class")
 	case "json-read", "json-write", "json-write-into", "json-hostile", "write-refusal-json":
 		return byClass("text-form", "text-form-variable")

@@ -486,6 +486,18 @@ type Manifest struct {
 // the pointer at the path in Value points at (a cycle when that node encloses
 // Path). Wire `-` starts from the root's fresh value instead of a load, for a
 // root with no file form.
+//
+// THE SHAPE KIND (docs/SPEC.md §5.1; docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE)
+// travels on its own surface, `write-refusal-shape`: Value names a value of
+// the WRONG KIND, from the closed set writeShapeTokens, and the leg puts that
+// value where Path names (a field; an array element `f[i]`, which makes
+// the array its first i elements as loaded and then the value; an arm
+// `u.arm`, which selects the arm; or `.`, the whole value handed to the
+// root's own writer). Every such row is `refused`:
+// the writer answers its own refusal, never a raised error and never a write.
+// A leg whose types cannot hold the value, or in which the value IS the
+// field's own lawful spelling (a Lua table is a record), answers
+// `unrepresentable`.
 type WriteRefusal struct {
 	// Form is the writer the row drives, and the line kind and surface it
 	// travels under: "" the variable-form Save (`write-refusal`), "fixed" the
@@ -504,11 +516,19 @@ type WriteRefusal struct {
 }
 
 // writeRefusalKinds is the closed set a row's Kind is drawn from.
-var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "real": true, "bytes": true, "units": true, "elems": true, "mask": true, "dupkey": true, "point": true}
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "real": true, "bytes": true, "units": true, "elems": true, "mask": true, "dupkey": true, "point": true, "shape": true}
+
+// writeShapeTokens is the closed set a `shape` row's Value is drawn from:
+// `int` the integer 1, `float` the float 1.5, `numtext` the text "1.5",
+// `text` the text "x", `bool` true, `null` the language's null (nil, null,
+// None), `map` an empty associative value of no declared type (a Lua or
+// Squirrel table, a JavaScript object, an Elixir map), `seq` a one-element
+// sequence holding 1, and `improper` an improper list (Elixir's [1 | 2]).
+var writeShapeTokens = map[string]bool{"int": true, "float": true, "numtext": true, "text": true, "bool": true, "null": true, "map": true, "seq": true, "improper": true}
 
 // writeRefusalForms maps each write-refusal line kind, which is also its
 // surface, to the writer it drives.
-var writeRefusalForms = map[string]string{"write-refusal": "", "write-refusal-fixed": "fixed", "write-refusal-message": "message", "write-refusal-json": "json", "write-refusal-cook": "cook", "write-refusal-block": "block"}
+var writeRefusalForms = map[string]string{"write-refusal": "", "write-refusal-fixed": "fixed", "write-refusal-message": "message", "write-refusal-json": "json", "write-refusal-cook": "cook", "write-refusal-block": "block", "write-refusal-shape": "shape"}
 
 // Surface is the surface, and the manifest line kind, a row travels under.
 func (wr WriteRefusal) Surface() string {
@@ -981,7 +1001,7 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: json-write-into takes case, instance", where)
 			}
 			m.JSONWriteIntos = append(m.JSONWriteIntos, JSONWriteInto{Name: f[1], Instance: f[2]})
-		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block":
+		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block", "write-refusal-shape":
 			// write-refusal[-form] <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 			// (a message row's <unit> is a connection key)
 			// The DERIVED manifest carries the line without its verdict.
@@ -990,6 +1010,21 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 			}
 			if !writeRefusalKinds[f[6]] {
 				return nil, fmt.Errorf("%s: %q is not a write-refusal kind", where, f[6])
+			}
+			// A SHAPE ROW RIDES ITS OWN SURFACE AND NO OTHER, names a token of
+			// the closed set and is refused: a typo would be a row every leg
+			// answered for a value nobody meant.
+			if f[6] == "shape" && f[0] != "write-refusal-shape" {
+				return nil, fmt.Errorf("%s: kind shape rides only the write-refusal-shape surface", where)
+			}
+			if f[6] == "shape" && !writeShapeTokens[f[7]] {
+				return nil, fmt.Errorf("%s: %q is not a shape token", where, f[7])
+			}
+			if f[6] == "shape" && len(f) == 9 && f[8] != "refused" {
+				return nil, fmt.Errorf("%s: a shape row is refused: a value of the wrong kind is never written", where)
+			}
+			if f[5] == "." && f[6] != "shape" {
+				return nil, fmt.Errorf("%s: path . (the whole value) takes kind shape alone", where)
 			}
 			wr := WriteRefusal{Form: writeRefusalForms[f[0]], Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Path: f[5], Kind: f[6], Value: f[7]}
 			if len(f) == 9 {

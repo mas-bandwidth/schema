@@ -599,8 +599,20 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		// Prefill of a field appended UNDER AN ARM reads the arm's fresh image
 		// (bill §12.6). The union constructor only sets the tag to None, so
 		// each arm is Reset to its declared defaults, then the tag is None.
-		for _, v := range un.Variants {
+		last := -1
+		for i, v := range un.Variants {
 			g.emitTableResetArm(expr, v)
+			if v.F != nil {
+				last = i
+			}
+		}
+		// A counted [A..B] arm is born at count A (SPEC §4.6), and the arms
+		// share their storage: an arm reset after it may have zeroed the
+		// count, so each such arm's birth count is stated again last.
+		for i, v := range un.Variants {
+			if i != last && v.F != nil && v.F.Array == ir.ArrayCounted && armCompanioned(v) && v.F.BornCount() > 0 {
+				g.pf("    %s = %d; // the arm's birth count, after the overlapping arms' resets (§4.6)\n", armCount(expr, v), v.F.BornCount())
+			}
 		}
 		g.pf("    %s.type = %sType::None;\n", expr, un.Name)
 		return
@@ -631,7 +643,7 @@ func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
 			} else {
 				g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 			}
-			g.pf("    %s = 0;\n", armCount(base, v))
+			g.pf("    %s = %d;\n", armCount(base, v), f.BornCount()) // born at the declared minimum (SPEC §4.6)
 			return
 		}
 		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
