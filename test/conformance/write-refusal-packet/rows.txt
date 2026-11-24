@@ -1,6 +1,6 @@
 # write-refusal-packet rows (docs/SPEC.md §5.1; test/conformance/README.md).
 # One row per line: <name> <verdict> <op> <arg>. The packet type is
-# PacketWriteRefusal (PacketWriteRefusal.schema): the probe makes a fresh,
+# PacketWriteRefusal (RefusalPacket.schema): the probe makes a fresh,
 # otherwise lawful value, applies ONE op, runs the generated packet Write into a
 # 256-byte buffer, and prints "<name> refused" or "<name> wrote" per row.
 # "refused" is the leg's own refusal mechanism (an error, a nil/false, a raise,
@@ -19,12 +19,21 @@
 #   text_fill <n>       the string holds n bytes of 'a' and length n
 #   fixed_constant <n>  the field `fixed_constant` (only 5 is lawful)
 #   reserved_zero <n>   the field `reserved_zero` (only 0 is lawful)
-#   wide <n>            the int128 field `wide` (min -10, max 10^20, past 64 bits), decimal
-#   fx <n>              the fixed(16, 16) field `fx` (min -10, max 10) as its RAW scaled
-#                       integer (units << 16: 655360 is 10)
+#   trio_len <n>        the fixed array `trio` ([3]int16, min -5, max 5) holds n
+#                       fresh elements: a [N]T handed any other count than N is
+#                       refused, never cut or padded to N (SPEC.md §5.1, SF-20)
+#   trio_elem <n>       `trio` holds 3 elements, the first one n
+#   ints_elem <n>       the counted array `ints` ([..3]int16, min -5, max 5) holds
+#                       one element, n
+#   pick_small <n>      the union `pick` is its `small` arm, whose payload is the
+#                       ranged int16 `v` (min -5, max 5), set to n
+#   huge <n>            the int128 field `huge` (min -10, max 10^20), n in decimal
+#   fx <n>              the fixed(16, 16) field `fx` (min -10, max 10) as its RAW
+#                       scaled integer, n = value * 65536 (655360 is 10.0); a leg
+#                       that holds the field in whole units holds n / 65536
 #   ufx <n>             the ufixed(32, 32) field `ufx` (min 1, max 4e9) as its RAW scaled
-#                       integer (units << 32); the top raw bound 17179869184000000000 is
-#                       past int64, so a leg holding it compares in the unsigned domain
+#                       integer, n = value * 2^32; the top raw bound 17179869184000000000
+#                       is past int64, so a leg holding it compares in the unsigned domain
 scalar_high            refused scalar 11
 scalar_low             refused scalar -1
 scalar_at_max          wrote   scalar 10
@@ -48,14 +57,23 @@ const_wrong            refused fixed_constant 6
 const_at               wrote   fixed_constant 5
 reserved_wrong         refused reserved_zero 1
 reserved_at            wrote   reserved_zero 0
-int128_high            refused wide 100000000000000000001
-int128_low             refused wide -11
-int128_at_max          wrote   wide 100000000000000000000
-int128_at_min          wrote   wide -10
-fixed_high             refused fx 655361
-fixed_low              refused fx -655361
-fixed_at_max           wrote   fx 655360
-fixed_at_min           wrote   fx -655360
+fixed_long             refused trio_len 4
+fixed_short            refused trio_len 2
+fixed_exact            wrote   trio_len 3
+fixed_elem_high        refused trio_elem 6
+fixed_elem_at_max      wrote   trio_elem 5
+list_elem_low          refused ints_elem -6
+list_elem_at_min       wrote   ints_elem -5
+arm_payload_high       refused pick_small 6
+arm_payload_at_max     wrote   pick_small 5
+int128_high            refused huge 100000000000000000001
+int128_low             refused huge -11
+int128_at_max          wrote   huge 100000000000000000000
+int128_at_min          wrote   huge -10
+fixed_raw_high         refused fx 655361
+fixed_raw_low          refused fx -655361
+fixed_raw_at_max       wrote   fx 655360
+fixed_raw_at_min       wrote   fx -655360
 ufixed_high            refused ufx 17179869184000000001
 ufixed_low             refused ufx 4294967295
 ufixed_at_max          wrote   ufx 17179869184000000000

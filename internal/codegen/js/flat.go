@@ -915,6 +915,10 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 	name := path + "." + MemberName(f.Name)
 	switch f.Array {
 	case ir.ArrayFixed:
+		// a [N]T holds exactly N values: a storage of any other length is
+		// refused, never cut or padded to N (SPEC 5.1, SF-20)
+		g.guard(fmt.Sprintf("%s == null || %s.length !== %d", name, name, f.ArrayBound),
+			" // a [N]T holds exactly N values (SPEC 5.1, SF-20)", ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
 		g.wDynamic(ind)

@@ -382,9 +382,10 @@ func generate1122(u *units, m *Manifest) error {
 			return fmt.Errorf("read-into %s: root %q names no table", r.Name, r.Root)
 		}
 		var answer []byte
-		if r.Form == "fixed-nocap" {
+		switch r.Form {
+		case "fixed-nocap":
 			answer = fmt.Appendf(nil, "read\n%d\n", r.Count)
-		} else if r.Form == "retain-fixed" {
+		case "retain-fixed":
 			// the root must be fixed-class, and its input one the plain read
 			// takes, so the refusal is the class's and not the bytes'
 			if ir.VariableTables(unit)[r.Root] {
@@ -399,7 +400,7 @@ func generate1122(u *units, m *Manifest) error {
 				return fmt.Errorf("read-into %s: the engine refuses the row's lawful input: %w", r.Name, err)
 			}
 			answer = []byte(readIntoRetainFixedAnswer)
-		} else {
+		default:
 			if r.Form == "variable" || r.Form == "retain" || r.Form == "region" {
 				// the engine reads the variable form; the row's two verdicts
 				// are checked here, the other forms by the reference leg (a

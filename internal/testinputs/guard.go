@@ -59,7 +59,7 @@ func hasReason(rest string) bool {
 		return false
 	}
 	words := 0
-	for _, w := range strings.Fields(rest) {
+	for w := range strings.FieldsSeq(rest) {
 		if strings.IndexFunc(w, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0 {
 			words++
 		}

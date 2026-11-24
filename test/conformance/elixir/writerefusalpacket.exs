@@ -5,7 +5,7 @@
 # the packet writer raises (SPEC 5.1 "how a refusal surfaces"); any other
 # exception is not caught, so a crash or a typo can never pass as a refusal.
 defmodule WriteRefusalPacketProbe do
-  alias Packetrefusal.{Laser, Missile, PacketWriteRefusal, PacketWriteRefusalFile}
+  alias Packetrefusal.{Laser, Missile, PacketWriteRefusal, RefusalPacket, Small}
 
   def apply_op("scalar", n, v), do: %{v | scalar: String.to_integer(n)}
   def apply_op("narrow", n, v), do: %{v | narrow: String.to_integer(n)}
@@ -31,15 +31,19 @@ defmodule WriteRefusalPacketProbe do
   def apply_op("text_fill", n, v), do: %{v | text: String.duplicate("a", String.to_integer(n))}
   def apply_op("fixed_constant", n, v), do: %{v | fixed_constant: String.to_integer(n)}
   def apply_op("reserved_zero", n, v), do: %{v | reserved_zero: String.to_integer(n)}
-
-  # int128 and the fixed raw values are plain integers on the BEAM.
-  def apply_op("wide", n, v), do: %{v | wide: String.to_integer(n)}
+  def apply_op("trio_len", n, v), do: %{v | trio: List.duplicate(0, String.to_integer(n))}
+  def apply_op("trio_elem", n, v), do: %{v | trio: List.replace_at(v.trio, 0, String.to_integer(n))}
+  def apply_op("ints_elem", n, v), do: %{v | ints: [String.to_integer(n)]}
+  def apply_op("pick_small", n, v), do: %{v | pick: {:small, %Small{v: String.to_integer(n)}}}
+  def apply_op("huge", n, v), do: %{v | huge: String.to_integer(n)}
+  # fixed(16, 16) storage is the raw scaled integer
   def apply_op("fx", n, v), do: %{v | fx: String.to_integer(n)}
+  # ufixed(32, 32) storage is the raw scaled integer
   def apply_op("ufx", n, v), do: %{v | ufx: String.to_integer(n)}
 
   def verdict(value) do
     try do
-      PacketWriteRefusalFile.write_packet_write_refusal!(value)
+      RefusalPacket.write_packet_write_refusal!(value)
       "wrote"
     rescue
       ArgumentError -> "refused"

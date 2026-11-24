@@ -8,7 +8,7 @@
 -- and prints a FAILED line, so a crash can never pass as a refusal. The moo
 -- CLI has no io: the test hands rows.txt in as inputs.rows.
 local serialize = require("./serialize")
-local P = require("./PacketWriteRefusal")
+local P = require("./RefusalPacket")
 local inputs = require("./inputs") :: any
 
 -- fromHex is the bytes a hex argument spells, as a moo string.
@@ -18,30 +18,6 @@ local function fromHex(h: string): string
 		table.insert(parts, string.char(tonumber(string.sub(h, i, i + 1), 16) :: number))
 	end
 	return table.concat(parts)
-end
-
--- int128 is a serialize.Int128 of four 32-bit words, least significant first,
--- and a ufixed(32, 32) raw value a serialize.Uint64 (low word, high word); the
--- probe spells each decimal rows.txt names, and an unlisted one is an error.
-local WIDE128: { [string]: any } = {
-	["100000000000000000001"] = serialize.Int128.new(0x63100001, 0x6bc75e2d, 0x00000005, 0x00000000),
-	["100000000000000000000"] = serialize.Int128.new(0x63100000, 0x6bc75e2d, 0x00000005, 0x00000000),
-	["-11"] = serialize.Int128.new(0xfffffff5, 0xffffffff, 0xffffffff, 0xffffffff),
-	["-10"] = serialize.Int128.new(0xfffffff6, 0xffffffff, 0xffffffff, 0xffffffff),
-}
-local RAW64: { [string]: any } = {
-	["17179869184000000001"] = serialize.Uint64.new(0x00000001, 0xee6b2800),
-	["17179869184000000000"] = serialize.Uint64.new(0x00000000, 0xee6b2800),
-	["4294967295"] = serialize.Uint64.new(0xffffffff, 0x00000000),
-	["4294967296"] = serialize.Uint64.new(0x00000000, 0x00000001),
-}
-
-local function spelled(t: { [string]: any }, arg: string): any
-	local v = t[arg]
-	if v == nil then
-		error("write-refusal-packet moo: no spelling for " .. arg)
-	end
-	return v
 end
 
 -- apply is one op on a fresh value. A string(8) holds its length as the moo
@@ -66,14 +42,24 @@ local function apply(v: any, op: string, arg: string)
 		v.FixedConstant = n
 	elseif op == "reserved_zero" then
 		v.ReservedZero = n
-	elseif op == "wide" then
-		v.Wide = spelled(WIDE128, arg)
+	elseif op == "trio_len" then
+		v.Trio = table.create(n :: number, 0)
+	elseif op == "trio_elem" then
+		v.Trio[1] = n
+	elseif op == "ints_elem" then
+		v.Ints[1] = n
+		v.IntsCount = 1
+	elseif op == "pick_small" then
+		v.Pick.Type = P.PickType.Small
+		v.Pick.Small.V = n
+	elseif op == "huge" then
+		v.Huge = serialize.Int128.parse(arg)
 	elseif op == "fx" then
-		-- moo holds a fixed field in whole units (its own Q48.16), not the raw
-		-- integer: the raw value over 2^16 is exact in a double
+		-- moo holds a fixed field in whole units (its own Q48.16), not the raw integer
 		v.Fx = (n :: number) / 65536
 	elseif op == "ufx" then
-		v.Ufx = spelled(RAW64, arg)
+		-- moo holds a ufixed(32, 32) field as its raw value, a serialize.Uint64
+		v.Ufx = serialize.Uint64.parse(arg)
 	else
 		error("write-refusal-packet moo: unknown op " .. op)
 	end
