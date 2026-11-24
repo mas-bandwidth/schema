@@ -84,22 +84,27 @@ puts 'ok'
 }
 
 // docs/SPEC-TABLES.md §16.14 W2, one container per unit so each refusal is
-// that container's own: an empty array, map or None union at depth 128 writes
-// and reads back; at depth 129, which the read refuses, the write refuses too.
+// that container's own: an empty array, map, None union or empty flags value
+// at depth 128 writes and reads back; at depth 129, which the read refuses,
+// the write refuses too.
 func TestRubyJsonWriteDepthCountsEveryContainer(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, field, text string }{
 		{"array", "items []int32", `"items": []`},
 		{"map", "m map[string(8)]int32", `"m": {}`},
 		{"union", "pick Pick", `"pick": {}`},
+		{"flags", "marks Mark", `"marks": []`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			union := ""
+			decl := ""
 			if tc.name == "union" {
-				union = "union Pick {\n    n int32\n    s string(8)\n}\n"
+				decl = "union Pick {\n    n int32\n    s string(8)\n}\n"
 			}
-			schema := "package jsonwdepth\n" + union + "table Node {\n    link *Node\n    " + tc.field + "\n}"
+			if tc.name == "flags" {
+				decl = "flags Mark {\n    Hot\n    Cold\n}\n"
+			}
+			schema := "package jsonwdepth\n" + decl + "table Node {\n    link *Node\n    " + tc.field + "\n}"
 			files, err := Generate(loadUnit(t, schema))
 			if err != nil {
 				t.Fatal(err)

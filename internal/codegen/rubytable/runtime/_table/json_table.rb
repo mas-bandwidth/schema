@@ -890,6 +890,9 @@ module SchemaRuntimeUnit
         return "{\n#{'  ' * (depth + 1)}#{json_quote(arm.name)}: #{part}\n#{'  ' * depth}}"
       end
       if field.json_flags
+        # a flags value is an array of names, a container the read counts, an
+        # empty [] included (SPEC-TABLES §16.14 W2)
+        raise InvalidValue.new(field.name, 'a container nested past the depth cap') if depth > MAX_DEPTH
         if !item.instance_of?(Integer) || item.negative? || (item >> field.json_variants.length).positive?
           raise InvalidValue.new(field.name, 'flags name no variant')
         end
