@@ -90,6 +90,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `slowgate/` | SCHEMA_SLOW proof wrapper | `make slow-gate-scan` | `make slow-gate-scan` |
 | `table-base64/` | table base64 gates | `make test` | `make test` |
 | `tables/` | C++ table tests | `make test` | `./build/schema_test_tables` |
+| `testguard/` | tools/testguard configs, baselines and coverage tables for the ci-policy rows | `go test ./tools/testguard` | `go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD...` |
 | `unity/` | Unity C# packet wire tests | `make test-unity` | `make unity-wire` |
 | `unity-hostile/` | Unity C# hostile-corpus runner | `make schema-unity-runs-hostile-corpus` | `make schema-unity-runs-hostile-corpus` |
 | `verify-bitphase/` | 18-language packet 0..63 bit-phase sweep | `make verify-bitphase-js` | `./build/verify-bitphase-bin --lang all` |
