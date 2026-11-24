@@ -1484,6 +1484,9 @@ export function WriteBenchMixed(stream, value) {
   if (!WriteMixedEvent(stream, value.gameEvent)) {
     return false;
   }
+  if (value.loadout == null || value.loadout.length !== 4) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 4; i++) {
     if (!globalThis.Number.isInteger(value.loadout[i]) || value.loadout[i] < 0 || value.loadout[i] > 255) { // a bare integer must fit its width
       return false;

@@ -57,6 +57,7 @@ func buildTreelock(t *testing.T) string {
 		// 280 ms in 45,000 runs. Every deadline in this package is there to
 		// measure what treelock DOES, so the one-off is paid here, outside all
 		// of them, by running the full path once: lock, child, exit.
+		// testinputs:none — warms the built binary with `exit 0`; reads no file
 		warm := exec.Command(bin, "-lock", filepath.Join(dir, "warm.lock"), "sh", "-c", "exit 0")
 		if out, err := warm.CombinedOutput(); err != nil {
 			// A warmup that fails is a treelock that cannot run its simplest
@@ -160,6 +161,7 @@ func TestFifoEarlyChildExitIsBounded(t *testing.T) {
 	}
 	defer stderrFile.Close()
 
+	// testinputs:none — runs an inline script; reads no repository file
 	cmd := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
 		"sh", "-c", "echo ready > \"$1\"; exit 1", "--", readyPath)
 	cmd.Stderr = stderrFile
@@ -215,6 +217,7 @@ func TestTreelockExclusivity(t *testing.T) {
 	defer stderrFile.Close()
 
 	// Start holder that signals readiness and blocks on FIFO until explicitly released
+	// testinputs:none — runs an inline script; reads no repository file
 	holder := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
 		"sh", "-c", "echo ready > \"$1\"; read -r line < \"$2\"", "--", readyPath, fifoPath)
 	holder.Stderr = stderrFile
@@ -298,6 +301,7 @@ func TestTreelockOwnerDeathRelease(t *testing.T) {
 	defer stderrFile.Close()
 
 	// Start holder in its own process group
+	// testinputs:none — runs an inline script; reads no repository file
 	holder := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
 		"sh", "-c", "echo ready > \"$1\"; read -r line < \"$2\"", "--", readyPath, fifoPath)
 	holder.Stderr = stderrFile
@@ -354,6 +358,7 @@ func TestTreelockWrapperOnlyDeathInheritedLock(t *testing.T) {
 	defer stderrFile.Close()
 
 	// Start treelock with a child that records its PID and blocks on FIFO until released
+	// testinputs:none — runs an inline script; reads no repository file
 	holder := exec.Command(bin, "-lock", lockPath, "-owner-file", ownerPath, "-name", "test-lock",
 		"sh", "-c", "echo $$ > \"$1\"; read -r line < \"$2\"", "--", childPidFile, fifoPath)
 	holder.Stderr = stderrFile

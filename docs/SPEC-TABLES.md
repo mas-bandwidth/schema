@@ -8882,7 +8882,16 @@ rather than a preference** (`test/bench/fixedform_measure.cpp`):
 
 **THE PREFILL IS WHAT ANSWERS "ABSENT FIELD".** A field this record does not
 carry has NO PLAN ENTRY at all, so it keeps the default the prefill put there
-and the loop never learns it existed. **THE ABSENCE OF AN ENTRY IS ALSO WHAT
+and the loop never learns it existed. **The prefill is of the destination,
+whatever it held before the call**: a row, element, arm or optional payload
+the caller's value already held is reset like a fresh one, so after a lineage
+load every field the writer did not supply holds its declared default, at
+every depth, and never a value the caller's storage held before the read
+(docs/SPEC-CONFORMANCE.md, [Fields an older fixed writer does not
+supply](SPEC-CONFORMANCE.md#fields-an-older-fixed-writer-does-not-supply)).
+A slot the plan lands only in part, such as a reader `[N]T` an older writer
+sent shorter, lands whole: the writer's elements, then the default past them.
+**THE ABSENCE OF AN ENTRY IS ALSO WHAT
 ANSWERS "UNKNOWN FIELD"**: a field of the writer's this reader cannot name is
 simply never a source, and the bytes it occupies are stepped over because the
 next entry's `src` is past them. **Skipping costs nothing, because skipping is
@@ -9947,6 +9956,15 @@ one-byte over-read into a finding attributed to the mutant that caused it.
 `make test` runs both at a short `N`; `make tables-cpp-release` runs both at a
 long one, and that target is picked up by the certification workflow the way
 every `tables-<lang>-release` target is.
+
+**AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT.** A leg
+answers the roster with a `1` for a root only when it can read that root the
+way the arm reads it: under `--builder`, through the generated builder. A root
+the leg holds no builder read for is answered `0`, which the harness counts and
+names as absent, and is never handed to some other read that cannot say whether
+the builder completed: a C# builder arm that did exactly that threw on the
+first mutant of `shapes.Bounds` (a truncation to nothing) where the engine
+refuses the load by name.
 
 **Two negative controls stand behind it**, because a fuzzer that has never gone
 red proves nothing about the reader it points at, and each removes ONE check

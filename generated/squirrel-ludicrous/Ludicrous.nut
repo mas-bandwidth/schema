@@ -13,6 +13,17 @@ local _require = vargv[1];
 
 local _h = { value = 0 };
 
+local _within128 = function(v, lo, hi, unsigned) {
+  if (typeof v != "array" || v.len() != 2 || typeof v[0] != "integer" || typeof v[1] != "integer") return false;
+  local top = unsigned ? 0x8000000000000000 : 0;
+  local vh = v[1] ^ top, vl = v[0] ^ 0x8000000000000000;
+  local lh = lo[1] ^ top, ll = lo[0] ^ 0x8000000000000000;
+  local hh = hi[1] ^ top, hl = hi[0] ^ 0x8000000000000000;
+  if (vh < lh || (vh == lh && vl < ll)) return false;
+  if (vh > hh || (vh == hh && vl > hl)) return false;
+  return true;
+};
+
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1), the
 // 64 bits of a uint64 in Squirrel's 64-bit integer.
 _M.ProtocolId <- 0xd2ded2cc8a482aa1;
@@ -84,15 +95,21 @@ _M.ReadFixedProbe <- function(stream, value) {
 
 // WriteFixedProbe writes value in declared order; false on a refused value.
 _M.WriteFixedProbe <- function(stream, value) {
+  if (typeof value.Angle != "integer" || value.Angle < -11796480 || value.Angle > 11796480) return false; // SPEC §5.1 row 1
   _h.value = value.Angle;
   if (!stream.serializeFixed64(_h, 16, 16, -180, 180)) return false;
+  if (typeof value.Position != "integer" || value.Position < -1966080000 || value.Position > 1966080000) return false; // SPEC §5.1 row 1
   _h.value = value.Position;
   if (!stream.serializeFixed64(_h, 48, 16, -30000, 30000)) return false;
+  if (!_within128(value.Reach, [0xfffffff0bdc00000, 0xffffffffffffffff], [65536000000, 0], false)) return false; // SPEC §5.1 row 1
   _h.value = value.Reach;
   if (!stream.serializeFixed128(_h, 112, 16, -1000000, 1000000)) return false;
+  if (typeof value.Ticks != "integer" || value.Ticks < 0 || value.Ticks > 1000000) return false; // SPEC §5.1 row 1
   _h.value = value.Ticks;
   if (!stream.serializeFixed64(_h, 32, 0, 0, 1000000)) return false;
+  if (typeof value.Samples != "array" || value.Samples.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
+    if (typeof value.Samples[_i] != "integer" || value.Samples[_i] < -524288 || value.Samples[_i] > 524288) return false; // SPEC §5.1 row 1
     _h.value = value.Samples[_i];
     if (!stream.serializeFixed64(_h, 16, 16, -8, 8)) return false;
   }
@@ -152,18 +169,25 @@ _M.ReadUnsignedProbe <- function(stream, value) {
 
 // WriteUnsignedProbe writes value in declared order; false on a refused value.
 _M.WriteUnsignedProbe <- function(stream, value) {
+  if (typeof value.Angle != "integer" || value.Angle < 0 || value.Angle > 23592960) return false; // SPEC §5.1 row 1
   _h.value = value.Angle;
   if (!stream.serializeFixed64(_h, 16, 16, 0, 360)) return false;
+  if (typeof value.Span != "integer" || (value.Span ^ 0x8000000000000000) < 0x8000000000000000 || (value.Span ^ 0x8000000000000000) > 9223372036854710272) return false; // SPEC §5.1 row 1
   _h.value = value.Span;
   if (!stream.serializeFixed64(_h, 48, 16, 0, 281474976710655)) return false;
+  if (!_within128(value.Reach, [0, 0], [131072000000, 0], false)) return false; // SPEC §5.1 row 1
   _h.value = value.Reach;
   if (!stream.serializeFixed128(_h, 112, 16, 0, 2000000)) return false;
+  if (typeof value.Ticks != "integer" || value.Ticks < 0 || value.Ticks > 1000000) return false; // SPEC §5.1 row 1
   _h.value = value.Ticks;
   if (!stream.serializeFixed64(_h, 32, 0, 0, 1000000)) return false;
+  if (typeof value.Samples != "array" || value.Samples.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
+    if (typeof value.Samples[_i] != "integer" || value.Samples[_i] < 0 || value.Samples[_i] > 1048576) return false; // SPEC §5.1 row 1
     _h.value = value.Samples[_i];
     if (!stream.serializeFixed64(_h, 16, 16, 0, 16)) return false;
   }
+  if (typeof value.Locked != "integer" || value.Locked < 196608 || value.Locked > 196608) return false; // SPEC §5.1 row 1
   _h.value = value.Locked;
   if (!stream.serializeFixed64(_h, 16, 16, 3, 3)) return false;
   if (typeof value.Tail != "integer" || value.Tail < 0 || value.Tail > 255) return false;
@@ -218,10 +242,13 @@ _M.ReadWideProbe <- function(stream, value) {
 _M.WriteWideProbe <- function(stream, value) {
   _h.value = value.EntityId;
   if (!stream.serializeUint128(_h)) return false;
+  if (!_within128(value.Energy, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0], false)) return false; // SPEC §5.1 row 1
   _h.value = value.Energy;
   if (!stream.serializeInt128(_h, [0xfffffffed5fa0e00, 0xffffffffffffffff], [5000000000, 0])) return false;
+  if (!_within128(value.Flux, [0, 0xfffffff000000000], [0, 68719476736], false)) return false; // SPEC §5.1 row 1
   _h.value = value.Flux;
   if (!stream.serializeInt128(_h, [0, 0xfffffff000000000], [0, 68719476736])) return false;
+  if (!_within128(value.Bias, [0xfffffffffffffc18, 0xffffffffffffffff], [1000, 0], false)) return false; // SPEC §5.1 row 1
   _h.value = value.Bias;
   if (!stream.serializeInt128(_h, [0xfffffffffffffc18, 0xffffffffffffffff], [1000, 0])) return false;
   _h.value = value.Seed;
@@ -345,10 +372,12 @@ _M.ReadDegenerateProbe <- function(stream, value) {
 
 // WriteDegenerateProbe writes value in declared order; false on a refused value.
 _M.WriteDegenerateProbe <- function(stream, value) {
+  if (typeof value.LockedFixed != "integer" || value.LockedFixed < -196608 || value.LockedFixed > -196608) return false; // SPEC §5.1 row 1
   _h.value = value.LockedFixed;
   if (!stream.serializeFixed64(_h, 16, 16, -3, -3)) return false;
   _h.value = value.LockedInt;
   if (!stream.serializeInt(_h, 7, 7)) return false;
+  if (!_within128(value.LockedWide, [0xfffff4c58c31d00e, 0xffffffffffffffff], [0xfffff4c58c31d00e, 0xffffffffffffffff], false)) return false; // SPEC §5.1 row 1
   _h.value = value.LockedWide;
   if (!stream.serializeInt128(_h, [0xfffff4c58c31d00e, 0xffffffffffffffff], [0xfffff4c58c31d00e, 0xffffffffffffffff])) return false;
   if (typeof value.Tail != "integer" || value.Tail < 0 || value.Tail > 255) return false;
@@ -393,10 +422,13 @@ _M.ReadFixedVec <- function(stream, value) {
 
 // WriteFixedVec writes value in declared order; false on a refused value.
 _M.WriteFixedVec <- function(stream, value) {
+  if (typeof value.X != "integer" || value.X < -6553600000 || value.X > 6553600000) return false; // SPEC §5.1 row 1
   _h.value = value.X;
   if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  if (typeof value.Y != "integer" || value.Y < -6553600000 || value.Y > 6553600000) return false; // SPEC §5.1 row 1
   _h.value = value.Y;
   if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
+  if (typeof value.Z != "integer" || value.Z < -6553600000 || value.Z > 6553600000) return false; // SPEC §5.1 row 1
   _h.value = value.Z;
   if (!stream.serializeFixed64(_h, 48, 16, -100000, 100000)) return false;
   return true;
@@ -442,12 +474,16 @@ _M.ReadFixedQuat <- function(stream, value) {
 
 // WriteFixedQuat writes value in declared order; false on a refused value.
 _M.WriteFixedQuat <- function(stream, value) {
+  if (typeof value.X != "integer" || value.X < -1073741824 || value.X > 1073741824) return false; // SPEC §5.1 row 1
   _h.value = value.X;
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  if (typeof value.Y != "integer" || value.Y < -1073741824 || value.Y > 1073741824) return false; // SPEC §5.1 row 1
   _h.value = value.Y;
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  if (typeof value.Z != "integer" || value.Z < -1073741824 || value.Z > 1073741824) return false; // SPEC §5.1 row 1
   _h.value = value.Z;
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
+  if (typeof value.W != "integer" || value.W < -1073741824 || value.W > 1073741824) return false; // SPEC §5.1 row 1
   _h.value = value.W;
   if (!stream.serializeFixed64(_h, 2, 30, -1, 1)) return false;
   return true;
