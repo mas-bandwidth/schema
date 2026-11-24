@@ -239,6 +239,9 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- a unit with tables: the table backend's spans and pinned buffers are
+         unsafe code, which docs/CS-TABLES.md asks every consumer to allow -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
@@ -297,7 +300,12 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 		}
 		return stepEnv(run, dir, []string{"CARGO_TARGET_DIR=" + filepath.Join(dir, "target")}, env.Tool("CARGO", "cargo"), "build", "--quiet", "--offline")
 	case "go":
-		mod := "module probecase\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\n"
+		// a unit with tables imports the shared table runtime
+		// (github.com/mas-bandwidth/schema/v2/tables/goruntime), so this
+		// checkout's module rides beside serialize.go, as the gotable tests'
+		// own probe modules do
+		mod := "module probecase\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\n\n" +
+			"replace github.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\nreplace github.com/mas-bandwidth/schema/v2 => " + env.Root + "\n"
 		if err := put(dir, "go.mod", mod); err != nil {
 			return err
 		}
