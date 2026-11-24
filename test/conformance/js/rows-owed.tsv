@@ -9,7 +9,6 @@ E6	owed: fails: placeholder that checks nothing: the row prints "PASS: E6 skelet
 F4	owed: fails: FAIL F4 boundary: exactly 20+L bytes is NOT truncated — zero records, no refusal (n=-1, refused=0)
 P4	owed: fails: FAIL P4 wrong plan yields non-zero Flags at CameraId bytes
 R16	owed: fails: FAIL: count negative: clamped >= 1 (u32 > bound 4)
-R23	owed: fails: RED: TableFixedKnownLayout has 5 own members
 R25	owed: fails: TypeError: Cannot read properties of undefined (reading 'fill')
 W13	owed: fails: FAIL FixedTableFixedHashLo: got 614323680, expected 2124077328
 W14	owed: fails: FAIL the generated tree carries the fixed tables (0 table modules)

@@ -1921,7 +1921,7 @@ the language's byte array carries its own length, `layout_bytes` is a second spe
 leg drops it, keeping the same ORDER (the C# leg, `fixedruntime.go:141`); Java, JavaScript and Dart kept the
 member explicit and are equally conforming. **What no leg may move is the hash's place or the record size's
 source** — the record size is the LOCK's, never the file's (§5.3 step 8) — and a leg whose language has no
-sixty-four-bit integer carries the hash as two lanes there and says which form the report uses (§5.9 #15).
+sixty-four-bit integer carries the hash as two lanes there and says which form the report uses (§5.9 #15). **A cache is not a member**: whatever a leg derives from an entry for speed (a byte view over `layout`, say) rides beside the table, never on the struct. **JavaScript, 2026-11-24:** `TableFixedKnownLayout` carried a fifth own member, `layoutView`, until this date; the view now lives in each module's `<Name>FixedKnownViews`, indexed by the same pick (held by `test/conformance/js/rows/R23.mjs`; SPEC-CONFORMANCE.md §7).
 
 **35. THE `0x5A` POISON ON A DESTINATION WITH NO BYTE VIEW.** §5.7 poisons "the destination through a byte
 pointer" and #17 rules on the COMPARISON in a language with no byte view. The POISON has the same three
