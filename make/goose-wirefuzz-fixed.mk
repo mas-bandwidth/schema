@@ -25,7 +25,7 @@ tables-goose-wire-fuzz-fixed-negative-control: build/schema-goose-fuzz build/con
 	@rm -rf $(GOOSE_FUZZ_DIR)/control-fixed && mkdir -p $(GOOSE_FUZZ_DIR)/control-fixed
 	@./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out $(GOOSE_FUZZ_DIR)/control-fixed/unit test/tables/P1.schema
 	@sh make/goose-wirefuzz-build.sh "$(GOOSE)" $(GOOSE_FUZZ_DIR)/control-fixed/unit $(GOOSE_FUZZ_DIR)/control-fixed/clean
-	@./build/conformance-harness wire-fuzz --driver "$(GOOSE_FUZZ_DIR)/control-fixed/clean/wirefuzz tblp1 fixed" \
+	@./build/conformance-harness wire-fuzz --leg goose-unit --unit tblp1 --driver "$(GOOSE_FUZZ_DIR)/control-fixed/clean/wirefuzz tblp1 fixed" \
 		--seed $(GOOSE_FUZZ_SEED) --n $(GOOSE_FUZZ_N) --failed $(GOOSE_FUZZ_DIR)/control-fixed/clean-failed.bin \
 		>$(GOOSE_FUZZ_DIR)/control-fixed/clean.log 2>&1 || { \
 		cat $(GOOSE_FUZZ_DIR)/control-fixed/clean.log; \
@@ -35,7 +35,7 @@ tables-goose-wire-fuzz-fixed-negative-control: build/schema-goose-fuzz build/con
 		echo "NEGATIVE CONTROL FAILED: the fixed sabotage patched nothing"; exit 1; }
 	@mv $(GOOSE_FUZZ_DIR)/control-fixed/P1Table.goose $(GOOSE_FUZZ_DIR)/control-fixed/unit/P1Table.goose
 	@sh make/goose-wirefuzz-build.sh "$(GOOSE)" $(GOOSE_FUZZ_DIR)/control-fixed/unit $(GOOSE_FUZZ_DIR)/control-fixed/leg
-	@if ./build/conformance-harness wire-fuzz --driver "$(GOOSE_FUZZ_DIR)/control-fixed/leg/wirefuzz tblp1 fixed" \
+	@if ./build/conformance-harness wire-fuzz --leg goose-unit --unit tblp1 --driver "$(GOOSE_FUZZ_DIR)/control-fixed/leg/wirefuzz tblp1 fixed" \
 		--seed $(GOOSE_FUZZ_SEED) --n $(GOOSE_FUZZ_N) --failed $(GOOSE_FUZZ_DIR)/control-fixed/failed.bin \
 		>$(GOOSE_FUZZ_DIR)/control-fixed/log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/control-fixed/log; \
