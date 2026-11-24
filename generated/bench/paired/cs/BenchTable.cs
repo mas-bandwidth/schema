@@ -5427,6 +5427,7 @@ namespace Bench
                     System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
                     // an enum slot holds None or a live variant (docs/SPEC.md §5.1 row 5;
                     // SPEC-TABLES §2.15, §7.6): an ordinal past the set or a deprecated variant
+                    // fires in NativePlace's probe pass, before the header or the clear
                     System.Diagnostics.Debug.Assert(!(f.Kind == 30 && i < live && (f.GetRaw(value, i) > (ulong)f.EnumMax || f.GetRaw(value, i) != 0 && f.EnumDeprecated != null && f.EnumDeprecated(f.GetRaw(value, i)))));
                     long element = at + (long)i * f.NativeElementSize, before = extent;
                     if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
