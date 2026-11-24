@@ -1473,6 +1473,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:plan",
 		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-dart-conformance",
+		"ci-fast.yml:verify-dart-fuzz",
 		"ci-fast.yml:verify-elixir-conformance",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",

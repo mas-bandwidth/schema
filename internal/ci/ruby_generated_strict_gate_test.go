@@ -6,7 +6,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -314,12 +316,29 @@ func TestRubyGeneratedStrictGateFast(t *testing.T) {
 	})
 	t.Run("rubocop", func(t *testing.T) {
 		t.Parallel()
-		out, err := rubyrun.RuboCopAll(t, allDir, rcPaths...)
-		if err != nil {
-			t.Fatalf("RuboCop over all %d generated Ruby units failed (%v):\n%s", len(all), err, out)
+		// EVERY QUEUED FILE IS LINTED, ONCE, IN SOME SHARD: each shard must
+		// name as many files inspected as it was given, and the shards
+		// together exactly rcPaths.
+		inspected := regexp.MustCompile(`(?m)^(\d+) files? inspected, no offenses detected$`)
+		shards := rubyrun.RuboCopShards(t, allDir, min(runtime.NumCPU(), 8), rcPaths...)
+		total := 0
+		for k, sh := range shards {
+			if sh.Err != nil {
+				t.Errorf("RuboCop shard %d/%d (%d of %d files, over all %d generated Ruby units) failed (%v):\n%s", k+1, len(shards), len(sh.Paths), len(rcPaths), len(all), sh.Err, sh.Output)
+				continue
+			}
+			m := inspected.FindStringSubmatch(sh.Output)
+			if m == nil {
+				t.Errorf("RuboCop shard %d/%d did not report its verdict:\n%s", k+1, len(shards), sh.Output)
+				continue
+			}
+			if got, _ := strconv.Atoi(m[1]); got != len(sh.Paths) {
+				t.Errorf("RuboCop shard %d/%d inspected %d files, was given %d:\n%s", k+1, len(shards), got, len(sh.Paths), sh.Output)
+			}
+			total += len(sh.Paths)
 		}
-		if !strings.Contains(out, "no offenses detected") {
-			t.Fatalf("RuboCop over all %d units did not report its verdict:\n%s", len(all), out)
+		if total != len(rcPaths) && !t.Failed() {
+			t.Fatalf("RuboCop shards covered %d files, the gate queued %d", total, len(rcPaths))
 		}
 	})
 }

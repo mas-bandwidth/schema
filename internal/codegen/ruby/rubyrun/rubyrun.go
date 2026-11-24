@@ -17,11 +17,14 @@ package rubyrun
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -260,15 +263,74 @@ func HexLines(t testing.TB, stdout []byte) [][]byte {
 	return out
 }
 
-// RuboCopAll runs the pinned RuboCop, with the generator's rubocop.yml, once
-// over every path in dir: the strict gate's pull-request form lints all its
-// units in one process instead of one process per unit.
-func RuboCopAll(t testing.TB, dir string, paths ...string) (string, error) {
+// RuboCopShard is one RuboCop process of [RuboCopShards]: the paths it was
+// given and what it said.
+type RuboCopShard struct {
+	Paths  []string
+	Output string
+	Err    error
+}
+
+// RuboCopShards runs the pinned RuboCop, with the generator's rubocop.yml,
+// over every path in dir exactly once, split across up to n concurrent
+// processes. The strict gate's pull-request form lints all its units in a few
+// processes instead of one per unit, and in parallel instead of one process
+// over all of them: the generated _fixed_data.rb of the announce units
+// (tblann4096, tblann4097) costs RuboCop ~25 s each on one core, and one
+// process over all 342 files ran past the job's two minutes. Every path goes
+// to exactly one shard, the largest files first onto the lightest shard, so
+// the slowest shard is as short as the largest file allows. The caller checks
+// every shard's verdict.
+func RuboCopShards(t testing.TB, dir string, n int, paths ...string) []RuboCopShard {
 	t.Helper()
 	root, rerr := RepoRoot()
 	if rerr != nil {
 		t.Fatal(rerr)
 	}
-	args := append([]string{"--config", filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml")}, paths...)
-	return runTool(t, dir, RuboCop(t), args...)
+	bin := RuboCop(t)
+	if len(paths) == 0 {
+		t.Fatal("RuboCopShards: no paths to lint")
+	}
+	n = max(1, min(n, len(paths)))
+	type sized struct {
+		path string
+		size int64
+	}
+	files := make([]sized, len(paths))
+	for i, p := range paths {
+		st, err := os.Stat(filepath.Join(dir, p))
+		if err != nil {
+			t.Fatalf("RuboCopShards: %v", err)
+		}
+		files[i] = sized{p, st.Size()}
+	}
+	slices.SortStableFunc(files, func(a, b sized) int { return cmp.Compare(b.size, a.size) })
+	shards := make([]RuboCopShard, n)
+	load := make([]int64, n)
+	for _, f := range files {
+		lightest := 0
+		for k := range load {
+			if load[k] < load[lightest] {
+				lightest = k
+			}
+		}
+		shards[lightest].Paths = append(shards[lightest].Paths, f.path)
+		load[lightest] += f.size
+	}
+	cfg := filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml")
+	cmds := make([]*testproc.Cmd, n)
+	for k := range shards {
+		cmds[k] = testproc.Command(t, bin, append([]string{"--cache", "false", "--config", cfg}, shards[k].Paths...)...)
+		cmds[k].Dir = dir
+		cmds[k].Env = cleanEnv()
+	}
+	var wg sync.WaitGroup
+	for k := range shards {
+		wg.Go(func() {
+			out, err := cmds[k].CombinedOutput()
+			shards[k].Output, shards[k].Err = string(out), err
+		})
+	}
+	wg.Wait()
+	return shards
 }

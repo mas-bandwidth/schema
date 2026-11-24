@@ -1472,6 +1472,9 @@ jobs:
             gate: conformance
           - leg: dart
             gate: conformance
+          # verify-dart-fuzz below: the same row on the same-run AOT driver
+          - leg: dart
+            gate: fuzz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1752,6 +1755,71 @@ jobs:
           vars=(DART=dart "VERIFY_JFLAG=-j4 -o build/conformance-dart")
           "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg dart -check-extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg dart -canary wrong "${vars[@]}"
+      - name: the skip ledger
+        if: always()
+        run: |
+          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
+            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+
+  # THE DART FUZZ ROW RUNS ON THE SAME-RUN AOT DRIVER. In the verify-leg
+  # matrix this row compiled build/conformance-dart itself: `dart compile exe`
+  # was 64-96 s of its two minutes, and the row was cancelled on all three
+  # main runs before 2026-11-24 (45285009619, 45291151854, 45314325769).
+  # verify-dart-conformance already builds that exact driver, and the generated
+  # trees it reads, from this tree, and hands them off digest-checked against
+  # this run, tree, host and SDK (make/conformance-handoff.py). This row
+  # restores the handoff and runs the same make target over it, so its budget
+  # is the fuzz itself: the same seeds, counts and surfaces as before.
+  verify-dart-fuzz:
+    needs: [plan, verify-dart-conformance]
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.verify_legs, '"dart"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (dart, fuzz)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: prepare artifact and test event directories
+        run: |
+          artifact=$(mktemp -d "$RUNNER_TEMP/dart-conformance.XXXXXX")
+          echo "DART_CONFORMANCE_ARTIFACTS=$artifact" >> "$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+      - name: Check out the pinned packet oracle
+        run: |
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dart-conformance-aot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ env.DART_CONFORMANCE_ARTIFACTS }}
+          digest-mismatch: error
+      - name: make verify-dart-fuzz
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          # -o on the outer make is lost in recipes invoking $(MAKE).
+          make verify-dart-fuzz DART=dart "VERIFY_JFLAG=-j$(nproc) -o build/conformance-dart"
       - name: the skip ledger
         if: always()
         run: |
@@ -2986,7 +3054,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -3017,6 +3085,7 @@ jobs:
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
+              verify-dart-fuzz) ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
