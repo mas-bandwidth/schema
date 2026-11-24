@@ -462,6 +462,15 @@ struct TableFieldInfo
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * ( *arms )();
+    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and
+    // hand it back at its defaults. A MAP places BY KEY, a string key comes
+    // in as the bytes and the length, an integer key as the value, and NULL
+    // is NOT INSERTED: a key past the bound, or an arena that could not carve
+    // another segment. A LIST ignores the key and APPENDS, NULL at the arena
+    // or the int32 cap. NULL on every field that is neither. FRESH says the
+    // caller already knows no entry holds this key (the text read keeps a
+    // set of the keys it placed), so a map skips its linear find.
+    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -664,7 +673,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 171;
+    static const int32_t kCapacity = 172;
     static const int32_t kBuckets = 512;
     // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
     // table past kTableProbeBound entries, so the 4097th id overflows.
@@ -2549,14 +2558,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xdf,
-    0xa9,
-    0x3c,
-    0x11,
-    0x9e,
-    0xa7,
-    0xf8,
-    0x74,
+    0x52,
+    0x57,
+    0x94,
+    0x9c,
+    0x84,
+    0xbb,
+    0xe1,
+    0x2e,
     0x02,
     0x0e,
     0x89,
@@ -4388,12 +4397,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0x74f8a79e113ca9dfull )
+    if ( vocabulary.strict && version != 0x2ee1bb849c945752ull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0x74f8a79e113ca9dfull;
+        to->build_version_own = 0x2ee1bb849c945752ull;
         return false;
     }
 
@@ -8001,6 +8010,38 @@ struct TableWorker
         return blob;
     }
 
+    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for: a MAP's or a LIST's builder
+    // head and its segments (docs/SPEC-TABLES.md §2.8, §2.9). It is not a node: it carries
+    // no type id, takes no index and has no Reset, so it goes through the same
+    // slab and span the blob path uses rather than through Alloc.
+    uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
+    {
+        at = 0;
+        if ( arena == NULL || arena->locked ) { return NULL; }
+        if ( bytes <= 0 || align > (int64_t) kTableAlign ) { return NULL; }
+        const int64_t rounded = TableAlignUp64( bytes );
+        if ( rounded > (int64_t) kTableSlabBytes )
+        {
+            at = TableArenaGrabSpan( *arena, rounded );
+            if ( at == kTableAllocFailed )
+            {
+                at = 0;
+                return NULL;
+            }
+            return TableArenaAt( *arena, at );
+        }
+        if ( end == 0 || next + (uint32_t) rounded > end )
+        {
+            uint32_t offset = TableArenaGrabSlab( *arena );
+            if ( offset == kTableAllocFailed ) { return NULL; }
+            next = offset;
+            end = offset + kTableSlabBytes;
+            if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
+        }
+        at = next;
+        next += (uint32_t) rounded;
+        return TableArenaAt( *arena, at ); // the segment came back zeroed
+    }
     // a *bytes node: the bytes to write through, and the reference to store
     TableBytesSlot AllocBytes( int64_t length )
     {
@@ -8510,6 +8551,10 @@ struct TableNodeDirEntry
     uint64_t type_id;
 };
 
+// the node's extent cursor, defined with the extent runtime (docs/SPEC-TABLES.md
+// §2.8, §2.9); the node map names it only through a pointer.
+struct TableExtentCarve;
+
 // TableNodeMap is what a pointer slot resolves through while a body decodes.
 struct TableNodeMap
 {
@@ -8524,6 +8569,21 @@ struct TableNodeMap
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;
+    // WHERE A MAP'S ENTRIES AND A LIST'S ELEMENTS LAND while this node's body
+    // decodes (docs/SPEC-TABLES.md §2.8, §2.9): the node's own extent on the
+    // region path and the builder's arena on the tool's. It is MUTABLE
+    // because the cursor belongs to ONE node's decode and the dispatch that
+    // owns that node holds the map by const reference, exactly as it did
+    // before either construct existed. The decoder's signature does not
+    // move for a construct it may not carry.
+    mutable TableExtentCarve * carve = NULL;
+    // and the TOOL's path's allocation front, set once: there the arrays
+    // are the builder's arena's rather than a node's extent.
+    TableWorker * worker = NULL;
+    // THE TOOL PATH'S REFUSAL (docs/SPEC-TABLES.md §2.9): a count above the
+    // int32 cap met while a body decoded. LoadBuilder answers NULL for it
+    // and moves no counter; mutable for the reason the cursor is.
+    mutable bool refused = false;
     // During construction, keep validated TABLE indices for the cycle check.
     // Blob references resolve normally. No root is returned in this state.
     bool cycle_indices = false;
@@ -9556,7 +9616,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 171;
+static const int32_t kTableRetainKnownIds = 172;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9567,6 +9627,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0x031ec0c4b7d28bf1ull,
     0x04dc16aea8ff5276ull,
     0x0577780d86c4b0c3ull,
+    0x05d94ead8f7094deull,
     0x065ee827cf99fbb4ull,
     0x08a60c07b54d8dc7ull,
     0x09ae5613b0051271ull,
@@ -10851,6 +10912,898 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
 
 #endif // TABLEDEMO_SCHEMA_TABLE_RETAIN
 
+#ifndef TABLEDEMO_SCHEMA_TABLE_EXTENT
+#define TABLEDEMO_SCHEMA_TABLE_EXTENT
+
+namespace tabledemo {
+
+// ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
+
+// TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
+// array first, then, element by element in the container's own order, the
+// arrays of any list or map an element holds by value. The cursor is the node
+// map's, because the generated decoder is threaded with that and not with a
+// region.
+struct TableExtentCarve
+{
+    uint8_t * at = NULL;         // the region path: the node's extent, unspent
+    int64_t left = 0;
+    TableWorker * worker = NULL; // the TOOL's path: the arrays come from the arena
+};
+
+// AN UNREACHED SLOT MUST HOLD NO LIST OR MAP WITH ELEMENTS IN IT (§2.8, §2.9,
+// §7.6). An empty one takes no bytes, so a record whose extent measures ZERO is
+// a record whose every by-value list and map is empty. A measure that REFUSED
+// answers non-zero here too, and refusing on it is the same answer one level up.
+inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) )
+    {
+        len = -1;
+        return NULL;
+    }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 )
+    {
+        slot.value = 0;
+        return true;
+    }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 )
+    {
+        dst.value = 0;
+        return true;
+    }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength )
+    {
+        reason = blob_over_size_cap;
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
+// ---- LoadMeasure's framing walk (§6.5) ----
+//
+// The measure reads no field value: it walks each record's field headers,
+// skipping every payload by its framing, to reach each N at every depth. A
+// false is a REFUSAL, and it carries its reason (§6.5).
+typedef bool ( *TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+
+// the framing walk over an ARRAY OF TABLES held by value: its elements' own
+// lists and maps are part of this node's extent too
+inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
+// length-prefixed element (docs/SPEC-TABLES.md §3.2)
+inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key = 0;
+        if ( !r.getleb( key ) ) { return true; }
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace tabledemo
+
+#endif // TABLEDEMO_SCHEMA_TABLE_EXTENT
+
+#ifndef TABLEDEMO_SCHEMA_TABLE_LIST
+#define TABLEDEMO_SCHEMA_TABLE_LIST
+
+namespace tabledemo {
+
+// ---- an UNBOUNDED ARRAY: a counted array whose count the data decides (§2.9) ----
+//
+// On the wire, in a region and in a cook a list is the kind 14 body a [..N]T
+// writes, its elements by-value records inside the holder's node extent. What
+// this adds is the slot, a builder that appends into segments that never
+// move, and a const surface that indexes and iterates in place. There is no
+// sort, no key and no lookup: the order is INSERTION order, and it is
+// identity the way position is identity in a fixed array.
+
+// elements carved from ONE call to the allocator pair. A new segment is
+// appended when the current one fills, and nothing ever moves (§6.4)
+static const int32_t kTableListSegmentElements = 32;
+
+// THE ELEMENT STORAGE: T itself, and a TableRef slot for a []*T, whose
+// elements are references exactly as a pointer field's slot is (§2.1)
+template <typename T>
+struct TableListStorage
+{
+    typedef T Element;
+};
+template <typename T>
+struct TableListStorage<T *>
+{
+    typedef TableRef Element;
+};
+
+// WHAT THE CONST FORM ANSWERS: the element by reference, and on a []*T the
+// RESOLVED pointer, one add on the self-relative delta, NULL for a null slot,
+// exactly as <T>At answers it (§6.2, §6.3)
+template <typename T>
+struct TableListConst
+{
+    typedef const T & Result;
+    static Result At( const T * element ) { return *element; }
+};
+template <typename T>
+struct TableListConst<T *>
+{
+    typedef const T * Result;
+    static Result At( const TableRef * element )
+    {
+        return element->value != 0 ? (const T *) ( (const uint8_t *) element + element->value ) : NULL;
+    }
+};
+
+// ---- the storage: SIXTEEN BYTES in the holder's record (§2.9, §7.2) ----
+//
+// An int64 self-relative reference to the element array and an int32 count,
+// then padding to eight. The reference is a TableRef like a pointer's: in the
+// arena it names the builder's HEAD, in a region it is the delta from the slot
+// to the first element, and 0 is the empty list in both. It is the map's slot
+// exactly, because it is the same two facts.
+template <typename T>
+struct TableList
+{
+    typedef typename TableListStorage<T>::Element Element;
+
+    TableRef elements;
+    int32_t count = 0;   // the LIVE count, in both forms
+    int32_t padding = 0; // named, so the record has no unwritten byte in it
+
+    // ---- the CONST form: a locked region, a loaded one, an opened cook ----
+    //
+    // One surface over one encoding (§6.3). A region reference resolves from
+    // the slot's own address, so every one of these is a member and needs no
+    // base and no context.
+    const Element * Elements() const
+    {
+        return elements.value != 0 ? (const Element *) ( (const uint8_t *) &elements + elements.value ) : NULL;
+    }
+    int32_t size() const { return count; }
+
+    // INDEXING IS BOUNDS-CHECKED IN EVERY BUILD (§2.4, §2.9): the extent is a
+    // number that CAME FROM A FILE, so an index past it is not a mistake a
+    // release build gets to make cheaply. There is no undefined-behavior path
+    // here in any configuration. The assert carries the message where a
+    // debugger can read it and NDEBUG removes that. The fatal is what stands
+    // after it. Both go through the hooks: define schema_assert and
+    // schema_fatal and this refusal lands in your own handler.
+    void RefuseIndex( int32_t index ) const
+    {
+        if ( (uint32_t) index >= (uint32_t) count )
+        {
+            schema_assert( false && "an unbounded array is indexed inside its count, which came from a file" );
+            schema_fatal();
+        }
+    }
+    typename TableListConst<T>::Result operator[]( int32_t index ) const
+    {
+        RefuseIndex( index );
+        return TableListConst<T>::At( Elements() + index );
+    }
+
+    // ---- iteration: INDEX order, the element and no key ----
+    //
+    // It carries no iterator_traits, for the reason TableKeyed's does not
+    // (§13.9).
+    struct ConstIterator
+    {
+        const Element * at;
+        typename TableListConst<T>::Result operator*() const { return TableListConst<T>::At( at ); }
+        ConstIterator & operator++()
+        {
+            at++;
+            return *this;
+        }
+        bool operator==( const ConstIterator & other ) const { return at == other.at; }
+        bool operator!=( const ConstIterator & other ) const { return at != other.at; }
+    };
+
+    ConstIterator begin() const { return ConstIterator{ Elements() }; }
+    ConstIterator end() const { return ConstIterator{ Elements() + count }; }
+};
+
+// ---- the BUILDER's side: a head, and segments that never move (§2.9, §6.4) ----
+//
+// The head is a small node in the arena holding the segment chain, the live
+// count and the dead count, allocated when the first element is added. Each
+// segment is a fixed number of elements carved from one call to the allocator
+// pair. An element's address is stable for the arena's life, so a T * handed
+// back by Add stays valid while other elements arrive.
+struct TableListHead
+{
+    TableRef first; // the arena offset of the first segment
+    TableRef last;  // and of the one an Add appends into
+    int32_t live;
+    int32_t dead;
+};
+
+template <typename Element>
+struct TableListSegment
+{
+    TableRef next;
+    int32_t used;                                          // elements carved from this segment
+    int32_t padding;
+    uint32_t dead[( kTableListSegmentElements + 31 ) / 32]; // Erase marks one bit, never the element
+    Element elements[kTableListSegmentElements];
+};
+
+inline bool TableListSegmentDead( const uint32_t * dead, int32_t index )
+{
+    return ( dead[index / 32] & ( 1u << ( index % 32 ) ) ) != 0;
+}
+
+// the head, allocated when the first element is added
+template <typename T>
+inline TableListHead * TableListReach( TableWorker & worker, TableList<T> & list )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return NULL; }
+    if ( list.elements.value != 0 ) { return (TableListHead *) TableArenaAt( *worker.arena, (uint32_t) list.elements.value ); }
+    uint32_t at = 0;
+    TableListHead * head = (TableListHead *) worker.AllocRaw( (int64_t) sizeof( TableListHead ), (int64_t) alignof( TableListHead ), at );
+    if ( head == NULL ) { return NULL; }
+    head->first.value = 0;
+    head->last.value = 0;
+    head->live = 0;
+    head->dead = 0;
+    list.elements.value = (int64_t) at;
+    return head;
+}
+
+// one element's storage, appended: the current segment when it has room, a
+// new one carved from one call to the pair when it does not. NULL means NOT
+// ADDED: an arena that cannot carve another segment, or a count at the int32
+// cap (§2.2, §2.9).
+template <typename T>
+inline typename TableList<T>::Element * TableListAppend( TableWorker & worker, TableListHead * head, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.count >= INT32_MAX ) { return NULL; } // the int32 storage cap
+    TableListSegment<Element> * segment = NULL;
+    if ( head->last.value != 0 )
+    {
+        segment = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        if ( segment->used >= kTableListSegmentElements ) { segment = NULL; }
+    }
+    if ( segment == NULL )
+    {
+        uint32_t at = 0;
+        segment = (TableListSegment<Element> *) worker.AllocRaw( (int64_t) sizeof( TableListSegment<Element> ), (int64_t) alignof( TableListSegment<Element> ), at );
+        if ( segment == NULL ) { return NULL; } // the arena could not carve another segment
+        segment->next.value = 0;
+        segment->used = 0;
+        segment->padding = 0;
+        for ( int32_t i = 0; i < (int32_t) ( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
+        if ( head->last.value != 0 )
+        {
+            TableListSegment<Element> * previous = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+            previous->next.value = (int64_t) at;
+        }
+        else
+        {
+            head->first.value = (int64_t) at;
+        }
+        head->last.value = (int64_t) at;
+    }
+    Element * element = segment->elements + segment->used;
+    segment->used++;
+    head->live++;
+    list.count++;
+    return element;
+}
+
+// ADD, whole: the head, the append, and the element at its declared defaults
+// (§2.9). The text form's placement is this same call, because a list has no
+// key to place under (§16).
+template <typename T>
+inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    TableListHead * head = TableListReach( worker, list );
+    if ( head == NULL ) { return NULL; }
+    Element * element = TableListAppend( worker, head, list );
+    if ( element == NULL ) { return NULL; }
+    new ( element ) Element(); // value-init: the declared defaults, and null for a slot
+    return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
+}
+
+// ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
+// handle, because a list has no key and the address is the one thing the
+// builder promises never moves (§6.4). It marks the element DEAD, one bit in
+// the segment's slot and not in the element storage, and decrements the live
+// count. False when the pointer is not this list's. Its storage is reclaimed
+// at RESET and never reused mid-build, the map's rule for the map's reason.
+template <typename T>
+inline bool TableListErase( TableArena & arena, TableList<T> & list, const typename TableList<T>::Element * element )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || element == NULL ) { return false; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    TableRef segment_ref = head->first;
+    while ( segment_ref.value != 0 )
+    {
+        TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        if ( element >= segment->elements && element < segment->elements + segment->used )
+        {
+            const int32_t i = (int32_t) ( element - segment->elements );
+            if ( TableListSegmentDead( segment->dead, i ) ) { return false; } // already erased
+            segment->dead[i / 32] |= 1u << ( i % 32 );
+            head->live--;
+            head->dead++;
+            list.count--;
+            return true;
+        }
+        segment_ref = segment->next;
+    }
+    return false;
+}
+
+// ---- iterate on the BUILDER: INDEX order, live elements only (§2.9) ----
+template <typename T>
+struct TableListEach
+{
+    typedef typename TableList<T>::Element Element;
+    const TableArena * arena;
+    TableRef first;
+
+    struct Iterator
+    {
+        const TableArena * arena;
+        TableListSegment<Element> * segment;
+        int32_t index;
+
+        void Skip()
+        {
+            for ( ;; )
+            {
+                if ( segment == NULL ) { return; }
+                if ( index >= segment->used )
+                {
+                    segment = segment->next.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    index = 0;
+                    continue;
+                }
+                if ( TableListSegmentDead( segment->dead, index ) )
+                {
+                    index++;
+                    continue;
+                }
+                return;
+            }
+        }
+        Element * operator*() const { return segment->elements + index; }
+        Iterator & operator++()
+        {
+            index++;
+            Skip();
+            return *this;
+        }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
+        bool operator!=( const Iterator & other ) const { return !( *this == other ); }
+    };
+
+    Iterator begin() const
+    {
+        Iterator it = { arena, first.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL, 0 };
+        it.Skip();
+        return it;
+    }
+    Iterator end() const
+    {
+        Iterator it = { arena, NULL, 0 };
+        return it;
+    }
+};
+
+template <typename T>
+inline TableListEach<T> TableListEachOf( const TableArena & arena, const TableList<T> & list )
+{
+    TableListEach<T> each = { &arena, TableRef() };
+    if ( list.elements.value != 0 )
+    {
+        const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+        each.first = head->first;
+    }
+    return each;
+}
+
+// ---- the INDEX-ORDER CURSOR the four writing walks read (§2.9) ----
+//
+// Measure, Save, Lock and Cook each visit a list's live elements in the order
+// they were added, and they allocate nothing to do it: a region's cursor is
+// the array in place, and the builder's walks the segment chain. Indexing the
+// builder's form is SEQUENTIAL by construction, every walk steps i, i + 1,
+// i + 2, so the cursor remembers where the last access landed and moves one
+// live slot per step. An access behind the memo restarts from the first
+// segment, which no walk here does.
+template <typename Element>
+struct TableListCursor
+{
+    const Element * elements = NULL; // the region's form: the array in place
+    const TableArena * arena = NULL; // the builder's form: the segments
+    TableRef first;
+    int32_t count = 0;
+    bool ok = false;
+    // the memo: the segment and slot the last access landed on, and the live
+    // index that slot holds
+    mutable const TableListSegment<Element> * segment = NULL;
+    mutable int32_t within = -1;
+    mutable int32_t logical = -1;
+
+    const Element * At( int32_t index ) const
+    {
+        if ( elements != NULL ) { return elements + index; }
+        if ( segment == NULL || index < logical )
+        {
+            segment = first.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL;
+            within = -1;
+            logical = -1;
+        }
+        while ( logical < index )
+        {
+            for ( ;; )
+            {
+                within++;
+                while ( segment != NULL && within >= segment->used )
+                {
+                    segment = segment->next.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    within = 0;
+                }
+                if ( segment == NULL ) { return NULL; } // the slot and the head disagree
+                if ( !TableListSegmentDead( segment->dead, within ) ) { break; }
+            }
+            logical++;
+        }
+        return segment->elements + within;
+    }
+    const Element & operator[]( int32_t index ) const { return *At( index ); }
+};
+
+// the REGION form: the array is the cursor
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableRegionCtx &, const TableList<T> & list )
+{
+    TableListCursor<typename TableList<T>::Element> cursor;
+    cursor.elements = list.Elements();
+    cursor.count = list.count;
+    cursor.ok = true;
+    return cursor;
+}
+
+// the BUILDER's form: the live elements out of the segment chain, in the
+// order they were added. A dead element costs nothing on any wire (§2.9).
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableArena & arena, const TableList<T> & list )
+{
+    TableListCursor<typename TableList<T>::Element> cursor;
+    cursor.arena = &arena;
+    cursor.count = list.count;
+    if ( list.elements.value == 0 || list.count <= 0 )
+    {
+        cursor.ok = list.count == 0;
+        cursor.count = 0;
+        return cursor;
+    }
+    const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->live != list.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
+    cursor.first = head->first;
+    cursor.ok = true;
+    return cursor;
+}
+
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableArenaCtx & ctx, const TableList<T> & list )
+{
+    return TableListElements( *ctx.arena, list );
+}
+
+// ---- the LOAD side: where a decoded element lands (§2.9) ----
+//
+// The same two shapes the map's fill takes, because the decoder above them
+// cannot tell which it has: a REGION carves the element array out of the
+// holder node's own extent, PRE-ORDER, and the TOOL's path appends into the
+// builder's arena.
+template <typename T>
+struct TableListFill
+{
+    typedef typename TableList<T>::Element Element;
+    TableList<T> * list = NULL;
+    Element * array = NULL;      // the region path: the carved array
+    int32_t capacity = 0;
+    TableWorker * worker = NULL; // the TOOL's path
+    bool ok = false;
+    bool refused = false;        // a count above the int32 cap on the tool's path: LoadBuilder answers NULL
+};
+
+template <typename T>
+inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableList<T> & list, uint64_t n )
+{
+    typedef typename TableList<T>::Element Element;
+    TableListFill<T> fill;
+    fill.list = &list;
+    list.elements.value = 0;
+    list.count = 0;
+    if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        // A COUNT ABOVE THE int32 STORAGE CAP (§2.2, §2.9): into a region it was
+        // refused by LoadMeasure before this ran, and into a builder it is the
+        // refusal LoadBuilder answers NULL for, moving no counter
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
+    if ( nodes.carve->worker != NULL )
+    {
+        fill.worker = nodes.carve->worker; // the tool's path: the arena carves
+        fill.ok = true;
+        return fill;
+    }
+    const int64_t align = (int64_t) alignof( Element );
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + (uintptr_t) ( align - 1 ) ) & ~( (uintptr_t) ( align - 1 ) ) );
+    const int64_t bytes = (int64_t) n * (int64_t) sizeof( Element );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return fill; } // the measure and the load disagree: refused
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    fill.array = (Element *) base;
+    fill.capacity = (int32_t) n;
+    list.elements.value = (int64_t) ( base - (const uint8_t *) &list.elements );
+    fill.ok = true;
+    return fill;
+}
+
+// the next slot, at the element's declared defaults. NULL when the arena
+// could not carve, which the decoder reports as framing damage
+template <typename T>
+inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( fill.array != NULL )
+    {
+        if ( fill.list->count >= fill.capacity ) { return NULL; }
+        Element * element = fill.array + fill.list->count;
+        new ( element ) Element();
+        fill.list->count++;
+        return element;
+    }
+    return TableListPlace( *fill.worker, *fill.list );
+}
+
+// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9): an element whose own
+// framing gave out was not decoded. That is damage, and the load that met it is
+// discarded whole (§4); until it is, the region's form uncounts the slot and the
+// builder's marks it dead, which is what the storage rule allows mid-build.
+template <typename T>
+inline void TableListFillDrop( TableListFill<T> & fill )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( fill.array != NULL )
+    {
+        if ( fill.list->count > 0 ) { fill.list->count--; }
+        return;
+    }
+    if ( fill.list->elements.value == 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( *fill.worker->arena, (uint32_t) fill.list->elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( *fill.worker->arena, (uint32_t) head->last.value );
+    if ( segment->used <= 0 ) { return; }
+    const int32_t i = segment->used - 1;
+    if ( TableListSegmentDead( segment->dead, i ) ) { return; }
+    segment->dead[i / 32] |= 1u << ( i % 32 );
+    head->live--;
+    head->dead++;
+    fill.list->count--;
+}
+
+// an EMPTY list's reference is null in both encodings, so a load that placed
+// nothing leaves the slot exactly as a Reset does
+template <typename T>
+inline void TableListFillEnd( TableListFill<T> & fill )
+{
+    if ( fill.array != NULL && fill.list->count == 0 ) { fill.list->elements.value = 0; }
+}
+
+// ---- LoadMeasure's term, from the FRAMING alone (§2.9, §6.5) ----
+//
+// N x sizeof( T ) rounded to alignof( T ), AT EVERY DEPTH. N is framing and
+// not a value, so this reads no field: it walks the list's own header and,
+// where a table element holds a list or a map of its own, the elements'
+// headers under it. Every -1 carries its REASON (§6.5): the int32 cap first,
+// because a count past it cannot fit any body, and then the body's own L.
+inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t & at,
+    int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
+    TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }              // no array header: nothing rides
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        reason = count_over_extent_cap;
+        return false;
+    }
+    const int64_t rest = length - r.offset;
+    if ( n > (uint64_t) ( rest / elem_floor ) )
+    {
+        reason = count_over_length;
+        return false;
+    } // an N the list's L cannot carry
+    at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
+    at += (int64_t) n * elem_size;
+    if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace tabledemo
+
+#endif // TABLEDEMO_SCHEMA_TABLE_LIST
+
 #ifndef TABLEDEMO_SCHEMA_BUILD_VERSION
 #define TABLEDEMO_SCHEMA_BUILD_VERSION
 
@@ -10868,7 +11821,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x74f8a79e113ca9dfull;
+static const uint64_t BuildVersion = 0x2ee1bb849c945752ull;
 
 } // namespace tabledemo
 
@@ -11275,32 +12228,32 @@ inline int64_t PatrolMeasureBody( const Ctx & ctx, const TableNumbering & number
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.active != false ) { bytes += TableLebBytes( ids.ref_at( 64, 0x6580790b036f0c6full ) ) + 1 + 1; } // active
+    if ( value.active != false ) { bytes += TableLebBytes( ids.ref_at( 65, 0x6580790b036f0c6full ) ) + 1 + 1; } // active
     if ( value.active )
     {
         if ( !TableFloatFinite( value.speed ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-        if ( table_float_to_bits( value.speed ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 26, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
+        if ( table_float_to_bits( value.speed ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
     }
     if ( value.active )
     {
-        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref_at( 27, 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
+        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref_at( 28, 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
     }
     if ( value.active && value.has_target )
     {
         schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 112, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
+        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 113, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
     }
     if ( value.active && !value.has_target )
     {
         if ( !TableFloatFinite( value.wander ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-        if ( table_float_to_bits( value.wander ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 113, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
+        if ( table_float_to_bits( value.wander ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 114, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
     }
     if ( !value.active )
     {
         schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
         if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
-        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 44, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
+        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     return bytes;
 }
@@ -11312,14 +12265,14 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     (void) numbering;
     if ( value.active != false )
     {
-        w.header( ids.ref_at( 64, 0x6580790b036f0c6full ), 1 ); // active
+        w.header( ids.ref_at( 65, 0x6580790b036f0c6full ), 1 ); // active
         w.put8( value.active ? 1 : 0 );
     }
     if ( value.active )
     {
         if ( table_float_to_bits( value.speed ) != table_float_to_bits( 1.0f ) )
         {
-            w.header( ids.ref_at( 26, 0x2281498aa0200e40ull ), 10 ); // speed
+            w.header( ids.ref_at( 27, 0x2281498aa0200e40ull ), 10 ); // speed
             if ( !TableFloatFinite( value.speed ) ) { return false; } // a NaN or an infinity is refused (§3.3)
             w.put32( table_float_to_bits( value.speed ) );
         }
@@ -11328,7 +12281,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     {
         if ( value.has_target != false )
         {
-            w.header( ids.ref_at( 27, 0x247f0e7f55aacfbdull ), 1 ); // has_target
+            w.header( ids.ref_at( 28, 0x247f0e7f55aacfbdull ), 1 ); // has_target
             w.put8( value.has_target ? 1 : 0 );
         }
     }
@@ -11336,7 +12289,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     {
         if ( value.target_id != 0 )
         {
-            w.header( ids.ref_at( 112, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            w.header( ids.ref_at( 113, 0xb7bc9ac015a25050ull ), 4 ); // target_id
             schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
             schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
             w.put32( uint32_t( value.target_id ) );
@@ -11346,7 +12299,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     {
         if ( table_float_to_bits( value.wander ) != table_float_to_bits( 0.5f ) )
         {
-            w.header( ids.ref_at( 113, 0xb8c758d8bd1845d4ull ), 10 ); // wander
+            w.header( ids.ref_at( 114, 0xb8c758d8bd1845d4ull ), 10 ); // wander
             if ( !TableFloatFinite( value.wander ) ) { return false; } // a NaN or an infinity is refused (§3.3)
             w.put32( table_float_to_bits( value.wander ) );
         }
@@ -11357,7 +12310,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return false; }
         if ( value.note_length > 0 )
         {
-            w.header( ids.ref_at( 44, 0x3bf8fbbad1587cddull ), 12 ); // note
+            w.header( ids.ref_at( 45, 0x3bf8fbbad1587cddull ), 12 ); // note
             w.putleb( (uint64_t) value.note_length );
             w.raw( value.note, value.note_length );
         }
@@ -11376,6 +12329,7 @@ inline bool PatrolSaveBody( const Ctx & ctx, const TableNumbering & numbering, T
 inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol & value )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     PatrolReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -11656,6 +12610,53 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
             }
         }
     }
+}
+
+// PatrolWireExtent: the extent Patrol's lists and maps command, from the FRAMING alone.
+// It reads no field value, so a caller can refuse a number it did not
+// expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
+inline bool PatrolWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    (void) body;
+    (void) length;
+    (void) at;
+    (void) ids;
+    (void) reason; // no list or map below this record
+    return true;
+}
+
+// PatrolExtentAt: the node extent Patrol's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as PatrolExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
+inline bool PatrolExtentAt( const Ctx & ctx, const Patrol & value, int64_t & at )
+{
+    (void) ctx;
+    (void) value;
+    (void) at; // no list or map below this record
+    return true;
+}
+
+template <typename Ctx, bool schema_cook_extent = false>
+inline int64_t PatrolExtent( const Ctx & ctx, const Patrol & value )
+{
+    (void) ctx;
+    (void) value; // no list or map below this record
+    return 0;
+}
+
+// PatrolExtentPack: carve Patrol's arrays out of the node's extent and copy the
+// entries in ASCENDING key order and the elements in INDEX order, PRE-ORDER,
+// advancing the same running offset PatrolExtentAt advances (§2.8, §2.9).
+template <typename Ctx>
+inline bool PatrolExtentPack( const Ctx & ctx, const Patrol & src, Patrol & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    (void) ctx;
+    (void) src;
+    (void) dst;
+    (void) extent;
+    (void) at;
+    (void) capacity; // no list or map below this record
+    return true;
 }
 
 // PatrolNumberEdges: push the pointer targets named by ONE Patrol, in walk order.
@@ -11952,6 +12953,10 @@ inline bool PatrolBuilder::Lock()
 // BUFFER's record commands its header and its bytes (docs/SPEC-TABLES.md §2.5),
 // which is the one answer the record's LENGTH decides, and a blob past the
 // size cap answers kTableNodeRefused with its reason (§3.1, §6.5).
+// A MAP'S ENTRIES RIDE IN THEIR HOLDER'S EXTENT (docs/SPEC-TABLES.md §2.8),
+// so a record's storage is its type's PLUS N x sizeof( Entry ) at every
+// depth, summed from the FRAMING: N is framing and not a value, and this
+// reads no field. kTableNodeRefused is a wire whose N its L cannot carry.
 inline int64_t PatrolNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
@@ -11988,6 +12993,7 @@ inline bool PatrolNodeDeclared( uint64_t type_id )
         case 0x1d1a9911da171a29ull: // ShipEntry
         case 0x1cf8555d11fb113aull: // TeamConfig
         case 0x469dba0c16b2ad15ull: // TurretConfig
+        case 0x05d94ead8f7094deull: // VarMoods
         case 0x0577780d86c4b0c3ull: // WeaponConfig
         case 0xab6a6961d3366451ull: // WideBlob
         case kTableBytesTypeId:
@@ -12008,6 +13014,14 @@ inline void PatrolNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
     (void) at;
 }
 
+// PatrolNodeRecordBytes: one record's OWN storage, before the extent its maps
+// take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
+inline int64_t PatrolNodeRecordBytes( uint64_t type_id )
+{
+    (void) type_id;
+    return 0;
+}
+
 // PatrolNodeAlloc: the TOOL's path — one record's node in the builder's arena.
 // Zero is the arena's null, and it is also what a type id this build cannot
 // name answers.
@@ -12023,10 +13037,23 @@ inline uint32_t PatrolNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t
 // already owns.
 inline void PatrolNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
+    carve.worker = nodes.worker;
+    if ( carve.worker == NULL )
+    {
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = PatrolNodeStorage( type_id, r.size, reason );
+        const int64_t record = storage > 0 ? PatrolNodeRecordBytes( type_id ) : 0;
+        carve.at = at + record;
+        carve.left = storage > record ? storage - record : 0;
+    }
+    nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    (void) r;
-    (void) at; // this root's numbering is always empty: nothing is ever decoded
-    (void) type_id;
+    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
 // PatrolCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
@@ -12182,7 +13209,13 @@ inline int64_t PatrolLoadMeasure( const uint8_t * wire_file, int64_t wire_file_b
     const int64_t wire_bytes = body_bytes;
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
     TableRefuseReason reason = count_over_length;
-    int64_t data = TableAlignUp64( (int64_t) sizeof( Patrol ) );
+    int64_t root_extent = 0;
+    if ( !PatrolWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        if ( reason_out != NULL ) { *reason_out = reason; }
+        return -1;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Patrol ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
     const uint8_t * body = NULL;
@@ -12253,6 +13286,131 @@ inline const Patrol * PatrolLoadWalk( uint8_t * region, int64_t region_bytes, co
     if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return NULL; }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !PatrolWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Patrol ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = PatrolNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        PatrolBuilder builder;
+        Patrol * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->damaged = true;
+            return NULL;
+        }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x1c182e1c2529027bull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        nodes.declared = PatrolNodeDeclared;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = PatrolNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->damaged = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    PatrolNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            PatrolLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->damaged = out->damaged || damaged_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->damaged )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->damaged = damaged_before;
+            return NULL;
+        }
+        out->damaged = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Patrol ) )
     {
         out->damaged = true;
@@ -12262,30 +13420,6 @@ inline const Patrol * PatrolLoadWalk( uint8_t * region, int64_t region_bytes, co
     {
         out->damaged = true;
         return NULL;
-    }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t data = TableAlignUp64( (int64_t) sizeof( Patrol ) );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = PatrolNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->damaged = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
@@ -12320,7 +13454,7 @@ inline const Patrol * PatrolLoadWalk( uint8_t * region, int64_t region_bytes, co
     // resolves whichever way it points. It reads no body.
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
-        int64_t used = TableAlignUp64( (int64_t) sizeof( Patrol ) );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Patrol ) ) + root_extent );
         int64_t k = 0;
         int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
@@ -12376,6 +13510,10 @@ inline const Patrol * PatrolLoadWalk( uint8_t * region, int64_t region_bytes, co
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Patrol ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
     PatrolLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
@@ -12526,6 +13664,7 @@ inline bool PatrolLoadBuilderWalk( PatrolBuilder & builder, const uint8_t * wire
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.declared = PatrolNodeDeclared; // a declared type that is not the slot's target refuses (§3.1)
+    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
     const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
@@ -12563,16 +13702,32 @@ inline bool PatrolLoadBuilderWalk( PatrolBuilder & builder, const uint8_t * wire
             {
                 TableReader sub( body, length, out, &ids_table );
                 PatrolNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                if ( nodes.refused ) { break; }
             }
             k++;
         }
     }
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
-    bool ok = PatrolLoadBody( r, nodes, *root );
+    TableExtentCarve root_carve;
+    root_carve.worker = &builder.main;
+    nodes.carve = &root_carve;
+    bool ok = !nodes.refused && PatrolLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the strict one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
+    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
+    ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->damaged && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->damaged && nodes.good )
     {
@@ -12688,32 +13843,32 @@ inline int64_t PatrolMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.active != false ) { bytes += TableLebBytes( ids.ref_at( 64, 0x6580790b036f0c6full ) ) + 1 + 1; } // active
+    if ( value.active != false ) { bytes += TableLebBytes( ids.ref_at( 65, 0x6580790b036f0c6full ) ) + 1 + 1; } // active
     if ( value.active )
     {
         if ( !TableFloatFinite( value.speed ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-        if ( table_float_to_bits( value.speed ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 26, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
+        if ( table_float_to_bits( value.speed ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2281498aa0200e40ull ) ) + 1 + 4; } // speed
     }
     if ( value.active )
     {
-        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref_at( 27, 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
+        if ( value.has_target != false ) { bytes += TableLebBytes( ids.ref_at( 28, 0x247f0e7f55aacfbdull ) ) + 1 + 1; } // has_target
     }
     if ( value.active && value.has_target )
     {
         schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 112, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
+        if ( value.target_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 113, 0xb7bc9ac015a25050ull ) ) + 1 + 4; } // target_id
     }
     if ( value.active && !value.has_target )
     {
         if ( !TableFloatFinite( value.wander ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
-        if ( table_float_to_bits( value.wander ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 113, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
+        if ( table_float_to_bits( value.wander ) != table_float_to_bits( 0.5f ) ) { bytes += TableLebBytes( ids.ref_at( 114, 0xb8c758d8bd1845d4ull ) ) + 1 + 4; } // wander
     }
     if ( !value.active )
     {
         schema_assert( value.note_length >= 0 && value.note_length <= 8 ); // storage invariant, debug only (§5.1)
         if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
-        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 44, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
+        if ( value.note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x3bf8fbbad1587cddull ) ) + 1 + TableLebBytes( (uint64_t) ( value.note_length ) ) + ( value.note_length ); } // note
     }
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -12726,14 +13881,14 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     (void) numbering;
     if ( value.active != false )
     {
-        w.header( ids.ref_at( 64, 0x6580790b036f0c6full ), 1 ); // active
+        w.header( ids.ref_at( 65, 0x6580790b036f0c6full ), 1 ); // active
         w.put8( value.active ? 1 : 0 );
     }
     if ( value.active )
     {
         if ( table_float_to_bits( value.speed ) != table_float_to_bits( 1.0f ) )
         {
-            w.header( ids.ref_at( 26, 0x2281498aa0200e40ull ), 10 ); // speed
+            w.header( ids.ref_at( 27, 0x2281498aa0200e40ull ), 10 ); // speed
             if ( !TableFloatFinite( value.speed ) ) { return false; } // a NaN or an infinity is refused (§3.3)
             w.put32( table_float_to_bits( value.speed ) );
         }
@@ -12742,7 +13897,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     {
         if ( value.has_target != false )
         {
-            w.header( ids.ref_at( 27, 0x247f0e7f55aacfbdull ), 1 ); // has_target
+            w.header( ids.ref_at( 28, 0x247f0e7f55aacfbdull ), 1 ); // has_target
             w.put8( value.has_target ? 1 : 0 );
         }
     }
@@ -12750,7 +13905,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     {
         if ( value.target_id != 0 )
         {
-            w.header( ids.ref_at( 112, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            w.header( ids.ref_at( 113, 0xb7bc9ac015a25050ull ), 4 ); // target_id
             schema_assert( value.target_id >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
             schema_assert( value.target_id <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
             w.put32( uint32_t( value.target_id ) );
@@ -12760,7 +13915,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     {
         if ( table_float_to_bits( value.wander ) != table_float_to_bits( 0.5f ) )
         {
-            w.header( ids.ref_at( 113, 0xb8c758d8bd1845d4ull ), 10 ); // wander
+            w.header( ids.ref_at( 114, 0xb8c758d8bd1845d4ull ), 10 ); // wander
             if ( !TableFloatFinite( value.wander ) ) { return false; } // a NaN or an infinity is refused (§3.3)
             w.put32( table_float_to_bits( value.wander ) );
         }
@@ -12771,7 +13926,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         if ( !TableUtf8Valid( (const uint8_t *) value.note, (uint64_t) value.note_length ) ) { return false; }
         if ( value.note_length > 0 )
         {
-            w.header( ids.ref_at( 44, 0x3bf8fbbad1587cddull ), 12 ); // note
+            w.header( ids.ref_at( 45, 0x3bf8fbbad1587cddull ), 12 ); // note
             w.putleb( (uint64_t) value.note_length );
             w.raw( value.note, value.note_length );
         }
@@ -12791,6 +13946,7 @@ inline bool PatrolSaveBodyRetain( const Ctx & ctx, const TableNumbering & number
 inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Patrol & value, TableRetain * retain, const TableRetainPath & path )
 {
     (void) nodes;
+    if ( nodes.refused ) { return false; }
     PatrolReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -13085,12 +14241,25 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
 // and nothing afterwards renumbers.
 inline void PatrolNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
 {
+    // the node's own EXTENT, where its lists' and maps' arrays are carved
+    // from, PRE-ORDER as the bodies decode (docs/SPEC-TABLES.md §2.8, §2.9).
+    // The tool's path carries a worker instead: there the arrays are the
+    // arena's.
+    TableExtentCarve carve;
+    carve.worker = nodes.worker;
+    if ( carve.worker == NULL )
+    {
+        TableRefuseReason reason = count_over_length; // pass one already refused what this could refuse
+        const int64_t storage = PatrolNodeStorage( type_id, r.size, reason );
+        const int64_t record = storage > 0 ? PatrolNodeRecordBytes( type_id ) : 0;
+        carve.at = at + record;
+        carve.left = storage > record ? storage - record : 0;
+    }
+    nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    (void) r;
-    (void) at; // this root's numbering is always empty: nothing is ever decoded
-    (void) type_id;
     (void) retain;
     (void) node;
+    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
 // PatrolLoadRetain: decode the strict wire into the caller's exact-sized region and
@@ -13148,6 +14317,137 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     if ( !TableStrictWalk( wire_file + 1, body_bytes, ids_table, out ) ) { return NULL; }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !PatrolWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Patrol ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = PatrolNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        PatrolBuilder builder;
+        Patrol * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->damaged = true;
+            return NULL;
+        }
+        if ( !TableGraphCheck( wire, wire_bytes, &ids_table, directory, records + 1, out ) )
+        {
+            table_release( allocator, directory );
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x1c182e1c2529027bull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        nodes.declared = PatrolNodeDeclared;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = PatrolNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->damaged = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    PatrolNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            PatrolLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->damaged = out->damaged || damaged_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->damaged )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->damaged = damaged_before;
+            return NULL;
+        }
+        out->damaged = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Patrol ) )
     {
         out->damaged = true;
@@ -13157,30 +14457,6 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     {
         out->damaged = true;
         return NULL;
-    }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t data = TableAlignUp64( (int64_t) sizeof( Patrol ) );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = PatrolNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->damaged = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
@@ -13221,7 +14497,7 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     // resolves whichever way it points. It reads no body.
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
-        int64_t used = TableAlignUp64( (int64_t) sizeof( Patrol ) );
+        int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Patrol ) ) + root_extent );
         int64_t k = 0;
         int32_t unknown_records = 0; // counted once the scan is known whole
         while ( TableNodeScanNext( scan, type_id, body, length ) )
@@ -13284,6 +14560,10 @@ inline const Patrol * PatrolLoadRetain( uint8_t * region, int64_t region_bytes, 
     // against a numbering already known good or already known bad
     TableReader r( wire, wire_bytes, out, &ids_table );
     r.nested = false; // the ROOT body, the one that carries the node table
+    TableExtentCarve root_carve;
+    root_carve.at = region + TableAlignUp64( (int64_t) sizeof( Patrol ) );
+    root_carve.left = root_extent;
+    nodes.carve = &root_carve; // the ROOT's extent is its own, like every node's
     PatrolLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
@@ -13490,6 +14770,34 @@ inline bool PatrolCookBody( const Ctx & ctx, const TableCookRegion & region, uin
     return true;
 }
 
+template <typename Ctx>
+inline bool PatrolCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Patrol & value, TableByteOrder order );
+
+// PatrolCookExtent: Patrol's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx>
+inline bool PatrolCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Patrol & value, TableByteOrder order )
+{
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
+    return true; // no list or map below this record
+}
+
+// PatrolCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx>
+inline bool PatrolCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Patrol & value, TableByteOrder order )
+{
+    if ( !PatrolCookBody( ctx, region, at, value, order ) ) { return false; }
+    int64_t extent_at = 0;
+    return PatrolCookExtent( ctx, region, at + 40, extent_at, at, value, order );
+}
+
 // PatrolCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
 // numbering — the root at zero, then every node in index order at
 // align_up( offset, alignof ) for its OWN type, no slack between them, the
@@ -13497,10 +14805,16 @@ inline bool PatrolCookBody( const Ctx & ctx, const TableCookRegion & region, uin
 // eight. The offsets go into the region's table when it has one, and are only
 // summed when it does not (a measure). A type id the numbering carries that
 // this root cannot name is the two walks disagreeing, and it is refused.
-inline bool PatrolCookLayout( const TableNumbering & numbering, TableCookRegion & region )
+// A NODE'S SIZE DEPENDS ON ITS VALUE where a list or a map rides in its extent
+// (docs/SPEC-TABLES.md §2.8), so the layout takes the resolution context
+// the numbering walked and reads the same arrays that walk read.
+template <typename Ctx>
+inline bool PatrolCookLayout( const Ctx & ctx, const Patrol & root, const TableNumbering & numbering, TableCookRegion & region )
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
+    (void) root;
+    (void) ctx;
     int64_t offset = 36; // the root, at zero
     int64_t align = 8;
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
@@ -13526,7 +14840,7 @@ inline int64_t PatrolCookMeasureFrom( const Ctx & ctx, const Patrol & root, Tabl
     TableNumberingInit( numbering, allocator );
     TableCookRegion region;
     int64_t bytes = -1;
-    if ( PatrolNumberFrom( ctx, numbering, root ) && PatrolCookLayout( numbering, region ) )
+    if ( PatrolNumberFrom( ctx, numbering, root ) && PatrolCookLayout( ctx, root, numbering, region ) )
     {
         const int64_t data_offset = ( kTableCookHeaderBytes + region.align - 1 ) & ~( region.align - 1 );
         bytes = data_offset + region.bytes + region.count * (int64_t) sizeof( TableNodeDirEntry );
@@ -13558,7 +14872,7 @@ inline bool PatrolCookFrom( const Ctx & ctx, const Patrol & root, void * out, ui
     if ( ok )
     {
         region.offsets = (int64_t *) table_allocate( allocator, ( numbering.count + 1 ) * (int64_t) sizeof( int64_t ) );
-        ok = region.offsets != NULL && PatrolCookLayout( numbering, region );
+        ok = region.offsets != NULL && PatrolCookLayout( ctx, root, numbering, region );
     }
     if ( ok )
     {
@@ -13573,7 +14887,7 @@ inline bool PatrolCookFrom( const Ctx & ctx, const Patrol & root, void * out, ui
             region.base = raw + data_offset;
             // the DATA part: the root at the region's base, then every numbered
             // node at the offset the layout gave it, each through its own writer
-            ok = PatrolCookBody( ctx, region, region.base, root, order );
+            ok = PatrolCookNode( ctx, region, region.base, root, order );
             // the ATTRIBUTION part: the node directory (§6.3), one entry per node
             // in index order, for `schema cook-check`
             uint8_t * entry = raw + data_offset + region.bytes;
@@ -13672,6 +14986,7 @@ static_assert( offsetof( Patrol, target_id ) == 12, "Patrol's field target_id mo
 static_assert( offsetof( Patrol, wander ) == 16, "Patrol's field wander moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( Patrol, note ) == 20, "Patrol's field note moved: the build version was taken over offset 20 (docs/SPEC-TABLES.md §20.3)" );
 
+
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * PatrolTableType();
@@ -13684,12 +14999,12 @@ inline const TableTypeInfo * PatrolTableType();
 extern const TableTypeInfo PatrolTableInfo;
 
 inline const TableFieldInfo PatrolTableFields[] = {
-    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo PatrolTableInfo = { "Patrol", (uint32_t) sizeof( Patrol ), 6, PatrolTableFields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PatrolTableType() { return &PatrolTableInfo; }

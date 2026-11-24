@@ -119,6 +119,7 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
         { "ShipEntry", "Pack.schema", 1, &schema_tabledemo_ship_entry_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "TeamConfig", "Keyed.schema", 1, &schema_tabledemo_team_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "TurretConfig", "Keyed.schema", 1, &schema_tabledemo_turret_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "VarMoods", "Tables.schema", 1, &schema_tabledemo_var_moods_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "WeaponConfig", "Tables.schema", 1, &schema_tabledemo_weapon_config_info_, "One weapon's tuning. A designer edits this table and nothing else.", 1, WeaponConfig_view_tags },
         { "WideBlob", "Wide.schema", 1, &schema_tabledemo_wide_blob_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
@@ -130,7 +131,7 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
     };
     static const tabledemo_unit_view_info_t info = { "tabledemo", 0x5c9bc5717146f630ull,
         4, types,
-        25, tables,
+        26, tables,
         7, enums,
         1, flags_decls,
         2, unions,

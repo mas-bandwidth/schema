@@ -308,19 +308,19 @@ typedef struct tabledemo_table_type_info_t
    preserves every earlier open-addressing chain and first-use wire reference. */
 typedef struct tabledemo_table_write_ids_t
 {
-    uint64_t ids[172];
-    uint32_t slots[512], positions[172];
+    uint64_t ids[173];
+    uint32_t slots[512], positions[173];
     /* THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3). Every id a generated
        field header, union arm header or blob header names is a COMPILE-TIME
        CONSTANT of the unit, so it has an ORDINAL: its index in the unit's id
-       vocabulary, the ascending set 172 counts. slot holds the ENTRY
+       vocabulary, the ascending set 173 counts. slot holds the ENTRY
        that ordinal's id took, -1 for one not interned yet, and ordinal_of is
        its inverse over the entries — the ordinal an entry was taken under, -1
        for an entry a RUNTIME id took, which has no ordinal. The pair is what
        lets a rewind undo the cache in O(popped) rather than walking the whole
        vocabulary. */
-    int32_t slot[172];
-    int16_t ordinal_of[172];
+    int32_t slot[173];
+    int16_t ordinal_of[173];
     int count;
 } tabledemo_table_write_ids_t;
 
@@ -346,7 +346,7 @@ static SCHEMA_UNUSED tabledemo_table_writer_t tabledemo_table_writer_make( uint8
        that makes an entry, and read only below count. The ordinal slots are
        the one column with a non-zero empty value. */
     memset( vocabulary->slots, 0, sizeof( vocabulary->slots ) );
-    for ( i = 0; i < 172; i++ ) { vocabulary->slot[i] = -1; }
+    for ( i = 0; i < 173; i++ ) { vocabulary->slot[i] = -1; }
     vocabulary->count = 0;
     return w;
 }
@@ -412,7 +412,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if ( v->count >= 172 )
+    if ( v->count >= 173 )
     {
         w->overflow = 1;
         return 0;
@@ -4126,6 +4126,321 @@ static SCHEMA_UNUSED char * tabledemo_table_string_emplace( tabledemo_table_work
 }
 #endif
 
+#ifndef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
+#define SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
+typedef struct tabledemo_table_sequence_t
+{
+    tabledemo_table_ref_t items;
+    int32_t count, padding;
+} tabledemo_table_sequence_t;
+typedef struct tabledemo_table_sequence_head_t
+{
+    uint32_t first, last;
+    int32_t live, reserved;
+} tabledemo_table_sequence_head_t;
+typedef struct tabledemo_table_sequence_segment_t
+{
+    uint32_t next, dead;
+    int32_t used, reserved;
+} tabledemo_table_sequence_segment_t;
+typedef struct tabledemo_table_sequence_cursor_t
+{
+    const tabledemo_table_arena_t * arena;
+    const uint8_t * array;
+    const void * const * ordered;
+    const tabledemo_table_sequence_segment_t * segment;
+    int64_t width;
+    int32_t index, left;
+    int ok;
+} tabledemo_table_sequence_cursor_t;
+static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_table_sequence_cursor( const tabledemo_table_ctx_t * ctx, const tabledemo_table_sequence_t * value, int64_t width )
+{
+    tabledemo_table_sequence_cursor_t c;
+    memset( &c, 0, sizeof( c ) );
+    c.width = width;
+    c.left = value->count;
+    c.ok = value->count >= 0 && ( value->count == 0 || value->items.value != 0 );
+    if ( !c.ok || value->count == 0 ) { return c; }
+    if ( ctx != NULL && ctx->arena != NULL )
+    {
+        const tabledemo_table_sequence_head_t * head = (const tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( ctx->arena, (uint32_t) value->items.value );
+        c.arena = ctx->arena;
+        c.ok = head != NULL && head->live == value->count;
+        if ( c.ok ) { c.segment = (const tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( c.arena, head->first ); }
+    }
+    else
+    {
+        c.array = (const uint8_t *) (const void *) &value->items + value->items.value;
+    }
+    return c;
+}
+static SCHEMA_UNUSED const void * tabledemo_table_sequence_next( tabledemo_table_sequence_cursor_t * c )
+{
+    if ( !c->ok || c->left <= 0 ) { return NULL; }
+    if ( c->ordered != NULL )
+    {
+        c->left--;
+        return c->ordered[c->index++];
+    }
+    if ( c->array != NULL )
+    {
+        const void * p = c->array + (int64_t) c->index++ * c->width;
+        c->left--;
+        return p;
+    }
+    while ( c->segment != NULL )
+    {
+        while ( c->index < c->segment->used )
+        {
+            int32_t i = c->index++;
+            if ( ( c->segment->dead & ( UINT32_C( 1 ) << i ) ) == 0 )
+            {
+                c->left--;
+                return (const uint8_t *) ( c->segment + 1 ) + (int64_t) i * c->width;
+            }
+        }
+        c->segment = c->segment->next ? (const tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( c->arena, c->segment->next ) : NULL;
+        c->index = 0;
+    }
+    c->ok = 0;
+    return NULL;
+}
+typedef struct tabledemo_table_sequence_order_t
+{
+    const tabledemo_table_sequence_t * value;
+    const void ** entries;
+    struct tabledemo_table_sequence_order_t * next;
+} tabledemo_table_sequence_order_t;
+typedef int ( *tabledemo_table_sequence_compare_t )( const void *, const void * );
+static SCHEMA_UNUSED void tabledemo_table_sequence_sift( const void ** entries, int64_t at, int64_t count, tabledemo_table_sequence_compare_t compare )
+{
+    for ( ;; )
+    {
+        int64_t child = at * 2 + 1;
+        const void * swap;
+        if ( child >= count ) { return; }
+        if ( child + 1 < count && compare( entries[child], entries[child + 1] ) < 0 ) { child++; }
+        if ( compare( entries[at], entries[child] ) >= 0 ) { return; }
+        swap = entries[at];
+        entries[at] = entries[child];
+        entries[child] = swap;
+        at = child;
+    }
+}
+// The arena's sort is cached only for the duration of one save or lock.
+// Builders retain insertion order and stable addresses; no index is stored.
+static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_table_sequence_order( const tabledemo_table_ctx_t * ctx, const tabledemo_table_sequence_t * value, int64_t width,
+    tabledemo_table_sequence_compare_t compare, tabledemo_table_allocator_t allocator, tabledemo_table_sequence_order_t ** orders )
+{
+    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( ctx, value, width );
+    tabledemo_table_sequence_order_t * order;
+    int64_t i;
+    if ( !cursor.ok || value->count == 0 ) { return cursor; }
+    if ( ctx == NULL || ctx->arena == NULL )
+    {
+        for ( i = 1; i < value->count; i++ )
+        {
+            if ( compare( cursor.array + ( i - 1 ) * width, cursor.array + i * width ) >= 0 )
+            {
+                cursor.ok = 0;
+                return cursor;
+            }
+        }
+        return cursor;
+    }
+    for ( order = *orders; order != NULL; order = order->next )
+    {
+        if ( order->value == value )
+        {
+            cursor.ordered = order->entries;
+            return cursor;
+        }
+    }
+    order = (tabledemo_table_sequence_order_t *) tabledemo_table_allocate( allocator, sizeof( *order ) );
+    if ( order == NULL )
+    {
+        cursor.ok = 0;
+        return cursor;
+    }
+    order->entries = (const void **) tabledemo_table_allocate( allocator, (int64_t) value->count * sizeof( void * ) );
+    if ( order->entries == NULL )
+    {
+        tabledemo_table_release( allocator, order );
+        cursor.ok = 0;
+        return cursor;
+    }
+    for ( i = 0; i < value->count; i++ )
+    {
+        order->entries[i] = tabledemo_table_sequence_next( &cursor );
+        if ( order->entries[i] == NULL )
+        {
+            tabledemo_table_release( allocator, order->entries );
+            tabledemo_table_release( allocator, order );
+            return cursor;
+        }
+    }
+    for ( i = (int64_t) value->count / 2; i > 0; i-- ) { tabledemo_table_sequence_sift( order->entries, i - 1, value->count, compare ); }
+    for ( i = (int64_t) value->count - 1; i > 0; i-- )
+    {
+        const void * swap = order->entries[0];
+        order->entries[0] = order->entries[i];
+        order->entries[i] = swap;
+        tabledemo_table_sequence_sift( order->entries, 0, i, compare );
+    }
+    for ( i = 1; i < value->count; i++ )
+    {
+        if ( compare( order->entries[i - 1], order->entries[i] ) >= 0 )
+        {
+            tabledemo_table_release( allocator, order->entries );
+            tabledemo_table_release( allocator, order );
+            cursor.ok = 0;
+            return cursor;
+        }
+    }
+    order->value = value;
+    order->next = *orders;
+    *orders = order;
+    cursor = tabledemo_table_sequence_cursor( ctx, value, width );
+    cursor.ordered = order->entries;
+    return cursor;
+}
+static SCHEMA_UNUSED void tabledemo_table_sequence_orders_release( tabledemo_table_allocator_t allocator, tabledemo_table_sequence_order_t * order )
+{
+    while ( order != NULL )
+    {
+        tabledemo_table_sequence_order_t * next = order->next;
+        tabledemo_table_release( allocator, order->entries );
+        tabledemo_table_release( allocator, order );
+        order = next;
+    }
+}
+static SCHEMA_UNUSED void * tabledemo_table_sequence_add( tabledemo_table_worker_t * worker, tabledemo_table_sequence_t * list, int64_t width )
+{
+    tabledemo_table_sequence_head_t * head;
+    tabledemo_table_sequence_segment_t * segment;
+    uint32_t at;
+    if ( worker == NULL || worker->arena == NULL || worker->arena->locked || list->count < 0 || list->count == INT32_MAX || width <= 0 || width > ( INT64_MAX - 16 ) / 32 ) { return NULL; }
+    if ( list->items.value == 0 )
+    {
+        at = tabledemo_table_worker_alloc( worker, sizeof( tabledemo_table_sequence_head_t ) );
+        if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
+        list->items.value = at;
+    }
+    head = (tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( worker->arena, (uint32_t) list->items.value );
+    if ( head == NULL || head->live != list->count ) { return NULL; }
+    segment = head->last ? (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( worker->arena, head->last ) : NULL;
+    if ( segment == NULL || segment->used == 32 )
+    {
+        at = tabledemo_table_worker_alloc( worker, 16 + 32 * width );
+        if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
+        if ( segment != NULL ) { segment->next = at; }
+        else
+        {
+            head->first = at;
+        }
+        head->last = at;
+        segment = (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( worker->arena, at );
+    }
+    {
+        void * p = (uint8_t *) ( segment + 1 ) + (int64_t) segment->used++ * width;
+        head->live++;
+        list->count++;
+        return p;
+    }
+}
+static SCHEMA_UNUSED int tabledemo_table_sequence_erase( tabledemo_table_arena_t * arena, tabledemo_table_sequence_t * list, const void * element, int64_t width )
+{
+    tabledemo_table_sequence_head_t * head;
+    uint32_t at;
+    if ( arena == NULL || arena->locked || list->items.value == 0 || element == NULL ) { return 0; }
+    head = (tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( arena, (uint32_t) list->items.value );
+    for ( at = head->first; at; )
+    {
+        tabledemo_table_sequence_segment_t * s = (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( arena, at );
+        int32_t i;
+        for ( i = 0; i < s->used; i++ )
+        {
+            if ( element == (const uint8_t *) ( s + 1 ) + (int64_t) i * width && !( s->dead & ( UINT32_C( 1 ) << i ) ) )
+            {
+                s->dead |= UINT32_C( 1 ) << i;
+                list->count--;
+                head->live--;
+                return 1;
+            }
+        }
+        at = s->next;
+    }
+    return 0;
+}
+static SCHEMA_UNUSED int tabledemo_table_extent_reserve( int64_t * at, int64_t count, int64_t width, int64_t alignment )
+{
+    if ( count < 0 || width <= 0 || *at < 0 || *at > INT64_MAX - alignment || count > ( INT64_MAX - *at - alignment ) / width ) { return 0; }
+    *at = ( *at + alignment - 1 ) & ~( alignment - 1 );
+    *at += count * width;
+    return 1;
+}
+typedef struct tabledemo_table_sequence_fill_t
+{
+    tabledemo_table_sequence_t * value;
+    tabledemo_table_worker_t * worker;
+    uint8_t * array;
+    int64_t width;
+    int32_t capacity;
+    int ok, refused;
+} tabledemo_table_sequence_fill_t;
+static SCHEMA_UNUSED tabledemo_table_sequence_fill_t tabledemo_table_sequence_fill( tabledemo_table_sink_t * sink, tabledemo_table_sequence_t * value, uint64_t count, int64_t width, int64_t alignment )
+{
+    tabledemo_table_sequence_fill_t f;
+    memset( &f, 0, sizeof( f ) );
+    f.value = value;
+    f.width = width;
+    memset( value, 0, sizeof( *value ) );
+    if ( sink == NULL ) { return f; }
+    if ( count > INT32_MAX )
+    {
+        f.refused = sink->worker != NULL;
+        return f;
+    }
+    f.worker = sink->worker;
+    f.capacity = (int32_t) count;
+    if ( f.worker != NULL )
+    {
+        f.ok = 1;
+        return f;
+    }
+    if ( sink->region != NULL )
+    {
+        tabledemo_table_region_sink_t * region = sink->region;
+        int64_t at = region->used;
+        if ( !tabledemo_table_extent_reserve( &at, (int64_t) count, width, alignment ) || at > region->capacity ) { return f; }
+        f.array = region->base + at - (int64_t) count * width;
+        region->used = at;
+        if ( count ) { value->items.value = (int64_t) ( f.array - (uint8_t *) (void *) &value->items ); }
+        f.ok = 1;
+    }
+    return f;
+}
+static SCHEMA_UNUSED void * tabledemo_table_sequence_fill_next( tabledemo_table_sequence_fill_t * f )
+{
+    if ( !f->ok || f->value->count >= f->capacity ) { return NULL; }
+    if ( f->worker != NULL ) { return tabledemo_table_sequence_add( f->worker, f->value, f->width ); }
+    return f->array + (int64_t) f->value->count++ * f->width;
+}
+static SCHEMA_UNUSED void tabledemo_table_sequence_fill_drop( tabledemo_table_sequence_fill_t * f, void * element )
+{
+    if ( f->worker != NULL ) { tabledemo_table_sequence_erase( f->worker->arena, f->value, element, f->width ); }
+    else if ( f->value->count > 0 ) { f->value->count--; }
+}
+static SCHEMA_UNUSED void tabledemo_table_sequence_fill_end( tabledemo_table_sequence_fill_t * f )
+{
+    if ( f->worker == NULL && f->value->count == 0 ) { f->value->items.value = 0; }
+}
+#endif
+#ifndef SCHEMA_TABLEDEMO_TABLE_LIST_RUNTIME
+#define SCHEMA_TABLEDEMO_TABLE_LIST_RUNTIME
+typedef tabledemo_table_sequence_t tabledemo_table_list_t;
+#endif
+
 #ifndef SCHEMA_TABLEDEMO_TABLE_GRAPH_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_GRAPH_RUNTIME
 typedef struct tabledemo_table_numbering_t tabledemo_table_numbering_t;
@@ -4166,7 +4481,7 @@ struct tabledemo_table_numbering_t
     const tabledemo_table_ctx_t * ctx;
     uint8_t * pack_base;
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-    TableSequenceOrder * orders;
+    tabledemo_table_sequence_order_t * orders;
 #endif
     tabledemo_table_allocator_t allocator;
     tabledemo_table_node_entry_t * entries;
@@ -4282,7 +4597,7 @@ static SCHEMA_UNUSED int tabledemo_table_number_edge( tabledemo_table_numbering_
 static SCHEMA_UNUSED void tabledemo_table_number_dispose( tabledemo_table_numbering_t * n )
 {
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-    table_sequence_orders_release( n->allocator, n->orders );
+    tabledemo_table_sequence_orders_release( n->allocator, n->orders );
 #endif
     tabledemo_table_release( n->allocator, n->entries );
     tabledemo_table_release( n->allocator, n->slots );
@@ -5191,7 +5506,7 @@ static SCHEMA_UNUSED int tabledemo_table_cycle_acyclic( tabledemo_table_node_map
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x74f8a79e113ca9dfull
+#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x2ee1bb849c945752ull
 
 #endif /* SCHEMA_TABLEDEMO_BUILD_VERSION */
 
@@ -5398,14 +5713,14 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x01,
     0x01,
     0x09,
-    0xdf,
-    0xa9,
-    0x3c,
-    0x11,
-    0x9e,
-    0xa7,
-    0xf8,
-    0x74,
+    0x52,
+    0x57,
+    0x94,
+    0x9c,
+    0x84,
+    0xbb,
+    0xe1,
+    0x2e,
     0x02,
     0x0e,
     0x89,
@@ -9762,7 +10077,7 @@ static SCHEMA_UNUSED int schema_tabledemo_table_cook_text_( tabledemo_table_numb
     if ( len < 0 ) { return 0; }
     if ( len == 0 ) { return 1; }
     bytes = tabledemo_table_blob_storage( (int64_t) len, 1 );
-    if ( bytes < 0 || !table_extent_reserve( at, 1, bytes, 8 ) ) { return 0; }
+    if ( bytes < 0 || !tabledemo_table_extent_reserve( at, 1, bytes, 8 ) ) { return 0; }
     if ( slot != NULL && extent != NULL )
     {
         uint8_t * raw = extent + *at - bytes;
@@ -9831,6 +10146,7 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0x031ec0c4b7d28bf1 ),
     UINT64_C( 0x04dc16aea8ff5276 ),
     UINT64_C( 0x0577780d86c4b0c3 ),
+    UINT64_C( 0x05d94ead8f7094de ),
     UINT64_C( 0x065ee827cf99fbb4 ),
     UINT64_C( 0x08a60c07b54d8dc7 ),
     UINT64_C( 0x09ae5613b0051271 ),
@@ -10934,6 +11250,15 @@ typedef struct tabledemo_mood_field_t
     uint16_t tail;
 } tabledemo_mood_field_t;
 
+/* table VarMoods — TABLE-wire storage: relocatable, bounded. C has no member
+   initializers, so the declared defaults live in var_moods_reset and nowhere
+   else — one definition of what a default is (docs/SPEC-TABLES.md) */
+typedef struct tabledemo_var_moods_t
+{
+    tabledemo_table_list_t row;
+    tabledemo_mood_t mood;
+} tabledemo_var_moods_t;
+
 typedef uint8_t tabledemo_min_pick_type_t;
 #define TABLEDEMO_MIN_PICK_TYPE_NONE 0
 #define TABLEDEMO_MIN_PICK_TYPE_FEW 1
@@ -10988,6 +11313,8 @@ static SCHEMA_UNUSED void tabledemo_moods_reset( tabledemo_moods_t * value );
 static SCHEMA_UNUSED void schema_tabledemo_moods_reset_raw_( void * storage );
 static SCHEMA_UNUSED void tabledemo_mood_field_reset( tabledemo_mood_field_t * value );
 static SCHEMA_UNUSED void schema_tabledemo_mood_field_reset_raw_( void * storage );
+static SCHEMA_UNUSED void tabledemo_var_moods_reset( tabledemo_var_moods_t * value );
+static SCHEMA_UNUSED void schema_tabledemo_var_moods_reset_raw_( void * storage );
 static SCHEMA_UNUSED void tabledemo_min_arm_fix_reset( tabledemo_min_arm_fix_t * value );
 static SCHEMA_UNUSED void schema_tabledemo_min_arm_fix_reset_raw_( void * storage );
 static SCHEMA_UNUSED void tabledemo_min_plain_fix_reset( tabledemo_min_plain_fix_t * value );
@@ -11109,6 +11436,14 @@ static SCHEMA_UNUSED void tabledemo_mood_field_reset( tabledemo_mood_field_t * v
 
 static SCHEMA_UNUSED void schema_tabledemo_mood_field_reset_raw_( void * storage ) { tabledemo_mood_field_reset( (tabledemo_mood_field_t *) storage ); }
 
+static SCHEMA_UNUSED void tabledemo_var_moods_reset( tabledemo_var_moods_t * value )
+{
+    memset( &value->row, 0, sizeof( value->row ) );
+    value->mood = TABLEDEMO_MOOD_FIERCE;
+}
+
+static SCHEMA_UNUSED void schema_tabledemo_var_moods_reset_raw_( void * storage ) { tabledemo_var_moods_reset( (tabledemo_var_moods_t *) storage ); }
+
 static SCHEMA_UNUSED void tabledemo_min_arm_fix_reset( tabledemo_min_arm_fix_t * value )
 {
     memset( &value->pick, 0, sizeof( value->pick ) );
@@ -11147,6 +11482,12 @@ static SCHEMA_UNUSED void tabledemo_debuff_reset( tabledemo_debuff_t * value )
 
 static SCHEMA_UNUSED void schema_tabledemo_debuff_reset_raw_( void * storage ) { tabledemo_debuff_reset( (tabledemo_debuff_t *) storage ); }
 
+/* ---- pointer targets: allocation and resolution (docs/SPEC-TABLES.md §2) ----
+
+   A reference resolves differently in the two forms, and the CONTEXT says
+   which: with an arena it is an offset; with none it is a self-relative
+   delta, so the deref below is one add and needs no base pointer. */
+
 /* ---- codecs: measure/save/load per closure member ---- */
 
 static SCHEMA_UNUSED int64_t tabledemo_weapon_config_measure( const tabledemo_weapon_config_t * value );
@@ -11173,6 +11514,8 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int tabledemo_moods_load_body
 static SCHEMA_UNUSED int64_t tabledemo_mood_field_measure( const tabledemo_mood_field_t * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int tabledemo_mood_field_save_body( tabledemo_table_writer_t * w, const tabledemo_mood_field_t * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int tabledemo_mood_field_load_body( tabledemo_table_reader_t * r, tabledemo_mood_field_t * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int tabledemo_var_moods_save_body( tabledemo_table_writer_t * w, const tabledemo_var_moods_t * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int tabledemo_var_moods_load_body( tabledemo_table_reader_t * r, tabledemo_var_moods_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_min_arm_fix_measure( const tabledemo_min_arm_fix_t * value );
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_save_body( tabledemo_table_writer_t * w, const tabledemo_min_arm_fix_t * value );
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_load_body( tabledemo_table_reader_t * r, tabledemo_min_arm_fix_t * value );
@@ -11197,11 +11540,19 @@ static SCHEMA_UNUSED int schema_tabledemo_counted_min_body_pack_( struct tablede
 static SCHEMA_UNUSED int schema_tabledemo_float_bound_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
 static SCHEMA_UNUSED int schema_tabledemo_moods_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
 static SCHEMA_UNUSED int schema_tabledemo_mood_field_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_extent_pack_( tabledemo_table_numbering_t * n, const void * storage, uint8_t * record, uint8_t * extent, int64_t * at, int order );
 static SCHEMA_UNUSED int schema_tabledemo_min_arm_fix_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
 static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
 static SCHEMA_UNUSED int schema_tabledemo_attachment_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
 static SCHEMA_UNUSED int schema_tabledemo_buff_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
 static SCHEMA_UNUSED int schema_tabledemo_debuff_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_schema_tabledemo_var_moods_arena_alignment_, SCHEMA_TABLE_ALIGNOF( tabledemo_var_moods_t ) <= TABLEDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_graph_edges_( tabledemo_table_numbering_t * numbering, const void * storage );
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_cycle_edges_( tabledemo_table_cycle_t * cycle, const void * storage );
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_extent_( tabledemo_table_numbering_t * n, const void * storage, uint8_t * target, int64_t * at );
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_wire_extent_( tabledemo_table_reader_t r, int64_t * at );
+static SCHEMA_UNUSED int64_t schema_tabledemo_var_moods_wire_storage_( const tabledemo_table_reader_t * r );
 static SCHEMA_UNUSED int schema_tabledemo_effect_wire_extent_( tabledemo_table_reader_t * r, int64_t * at );
 static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_extent_( tabledemo_table_reader_t * r, int64_t * at );
 static SCHEMA_UNUSED int tabledemo_weapon_config_save_message_body( tabledemo_table_bit_writer_t *, const tabledemo_weapon_config_t * );
@@ -11474,7 +11825,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_save_( tabledemo_table_wri
     {
         case TABLEDEMO_EFFECT_TYPE_NONE: tabledemo_table_writer_leb( w, 0 ); break;
         case TABLEDEMO_EFFECT_TYPE_BUFF:
-            tabledemo_table_writer_header_at( w, 169, 0xffb5be9be2e469ccull, 13 );
+            tabledemo_table_writer_header_at( w, 170, 0xffb5be9be2e469ccull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11491,7 +11842,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_save_( tabledemo_table_wri
             }
             break;
         case TABLEDEMO_EFFECT_TYPE_DEBUFF:
-            tabledemo_table_writer_header_at( w, 12, 0x13cdc5ede73d2fd7ull, 13 );
+            tabledemo_table_writer_header_at( w, 13, 0x13cdc5ede73d2fd7ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11550,6 +11901,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load_( tabledemo_table_rea
                 break;
             }
             tabledemo_buff_load_body( &arm, &( *value ).as.buff );
+            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -11567,6 +11919,7 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load_( tabledemo_table_rea
                 break;
             }
             tabledemo_debuff_load_body( &arm, &( *value ).as.debuff );
+            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -11615,7 +11968,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_save_( tabledemo_table_w
     {
         case TABLEDEMO_MIN_PICK_TYPE_NONE: tabledemo_table_writer_leb( w, 0 ); break;
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
-            tabledemo_table_writer_header_at( w, 145, 0xdcc67d18feea8c19ull, 14 );
+            tabledemo_table_writer_header_at( w, 146, 0xdcc67d18feea8c19ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11632,7 +11985,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_save_( tabledemo_table_w
             }
             break;
         case TABLEDEMO_MIN_PICK_TYPE_OTHER:
-            tabledemo_table_writer_header_at( w, 8, 0x0a24ad61c2562a55ull, 4 );
+            tabledemo_table_writer_header_at( w, 9, 0x0a24ad61c2562a55ull, 4 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11788,6 +12141,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_load_( tabledemo_table_r
                 }
             }
             if ( ( *value ).as.few.value_count < 2 ) { r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -11872,6 +12226,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_load_( tabledemo_table_r
         bad_arm_other:
             break;
         read_arm_other:;
+            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -11905,7 +12260,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 73, 0x7f6308be8ab37fc0ull, 10 );
+            tabledemo_table_writer_header_at( w, 74, 0x7f6308be8ab37fc0ull, 10 );
             if ( !tabledemo_table_float_finite( value->damage ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->damage ) );
         }
@@ -11918,7 +12273,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 14, 0x1733055702acb1d2ull, 10 );
+            tabledemo_table_writer_header_at( w, 15, 0x1733055702acb1d2ull, 10 );
             if ( !tabledemo_table_float_finite( value->speed ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->speed ) );
         }
@@ -11931,7 +12286,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 54, 0x4f31c5309e13e932ull, 4 );
+            tabledemo_table_writer_header_at( w, 55, 0x4f31c5309e13e932ull, 4 );
             schema_assert( !( value->penetration < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->penetration > 10 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->penetration ) );
@@ -11945,7 +12300,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 94, 0xa5013e9ad5caeda4ull, 6 );
+            tabledemo_table_writer_header_at( w, 95, 0xa5013e9ad5caeda4ull, 6 );
             schema_assert( (uint64_t) ( value->channel ) <= 0x3full ); /* bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->channel ) );
         }
@@ -11958,7 +12313,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 103, 0xad6587bc602e3f59ull, 1 );
+            tabledemo_table_writer_header_at( w, 104, 0xad6587bc602e3f59ull, 1 );
             tabledemo_table_writer_put8( w, value->homing ? 1 : 0 );
         }
     }
@@ -11970,7 +12325,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 40, 0x36c1c83b51f24394ull, 15 );
+            tabledemo_table_writer_header_at( w, 41, 0x36c1c83b51f24394ull, 15 );
             if ( !schema_tabledemo_effect_wire_save_( w, &value->effect ) ) { return 0; }
         }
     }
@@ -12002,6 +12357,7 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_save( const tabledemo_weapo
 
 static SCHEMA_UNUSED int tabledemo_weapon_config_load_body( tabledemo_table_reader_t * r, tabledemo_weapon_config_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_weapon_config_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -12923,7 +13279,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 37, 0x32a89b2977c48ad4ull, 30 );
+            tabledemo_table_writer_header_at( w, 38, 0x32a89b2977c48ad4ull, 30 );
             switch ( value->grade )
             {
                 case TABLEDEMO_GRADE_NONE: tabledemo_table_writer_leb( w, 0 ); break;
@@ -12944,7 +13300,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 141, 0xd90a4e7682f799c5ull, 14 );
+            tabledemo_table_writer_header_at( w, 142, 0xd90a4e7682f799c5ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -12979,7 +13335,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 107, 0xb46ff45a23d72549ull, 14 );
+            tabledemo_table_writer_header_at( w, 108, 0xb46ff45a23d72549ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -13004,7 +13360,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 52, 0x4b06f5847096e54aull, 9 );
+            tabledemo_table_writer_header_at( w, 53, 0x4b06f5847096e54aull, 9 );
             schema_assert( ( (uint64_t) ( value->perks ) >> 3 ) == 0 ); /* the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->perks ) );
         }
@@ -13021,7 +13377,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 120, 0xbf31137ff783e939ull, 13 );
+            tabledemo_table_writer_header_at( w, 121, 0xbf31137ff783e939ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -13046,7 +13402,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 147, 0xde28f0f5118acc24ull, 14 );
+            tabledemo_table_writer_header_at( w, 148, 0xde28f0f5118acc24ull, 14 );
             int64_t element_sizes[2]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -13073,7 +13429,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_body( tabledemo_table_wri
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 161, 0xf901aa0340249a41ull, 14 );
+            tabledemo_table_writer_header_at( w, 162, 0xf901aa0340249a41ull, 14 );
             int64_t element_sizes[8]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -13119,6 +13475,7 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_save( const tabledemo_load
 
 static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_reader_t * r, tabledemo_loadout_config_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_loadout_config_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -13485,6 +13842,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                     return 0;
                 }
                 tabledemo_weapon_config_load_body( &sub, &value->primary );
+                if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13551,6 +13909,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                                 goto end_backups;
                             }
                             tabledemo_weapon_config_load_body( &elem, &value->backups[i] );
+                            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -13624,6 +13983,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body( tabledemo_table_rea
                                 goto end_attachments;
                             }
                             tabledemo_attachment_load_body( &elem, &value->attachments[i] );
+                            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -14392,7 +14752,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
         schema_assert( 0 <= value->name_length && value->name_length <= 32 );
         if ( value->name_length != 0 )
         {
-            tabledemo_table_writer_header_at( w, 126, 0xc4bcadba8e631b86ull, 12 );
+            tabledemo_table_writer_header_at( w, 127, 0xc4bcadba8e631b86ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -14413,7 +14773,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
         schema_assert( 0 <= value->icon_length && value->icon_length <= 16 );
         if ( value->icon_length != 0 )
         {
-            tabledemo_table_writer_header_at( w, 143, 0xdbff4cc56c2092f0ull, 14 );
+            tabledemo_table_writer_header_at( w, 144, 0xdbff4cc56c2092f0ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -14433,56 +14793,56 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
     { /* experience */
         if ( !( value->experience == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 101, 0xab8b6d521f80b969ull, 8 );
+            tabledemo_table_writer_header_at( w, 102, 0xab8b6d521f80b969ull, 8 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->experience ) );
         }
     }
     { /* tilt */
         if ( !( value->tilt == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 23, 0x1e5088ef2e9bafc6ull, 2 );
+            tabledemo_table_writer_header_at( w, 24, 0x1e5088ef2e9bafc6ull, 2 );
             tabledemo_table_writer_put8( w, (uint8_t) ( value->tilt ) );
         }
     }
     { /* heading */
         if ( !( value->heading == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 105, 0xb128829190ca0f75ull, 3 );
+            tabledemo_table_writer_header_at( w, 106, 0xb128829190ca0f75ull, 3 );
             tabledemo_table_writer_put16( w, (uint16_t) ( value->heading ) );
         }
     }
     { /* timestamp */
         if ( !( value->timestamp == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 61, 0x5ddc92338ef53403ull, 5 );
+            tabledemo_table_writer_header_at( w, 62, 0x5ddc92338ef53403ull, 5 );
             tabledemo_table_writer_put64( w, (uint64_t) ( value->timestamp ) );
         }
     }
     { /* badge */
         if ( !( value->badge == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 11, 0x10bda981fe095518ull, 6 );
+            tabledemo_table_writer_header_at( w, 12, 0x10bda981fe095518ull, 6 );
             tabledemo_table_writer_put8( w, (uint8_t) ( value->badge ) );
         }
     }
     { /* port */
         if ( !( value->port == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 81, 0x8c2cdb0da8933fa6ull, 7 );
+            tabledemo_table_writer_header_at( w, 82, 0x8c2cdb0da8933fa6ull, 7 );
             tabledemo_table_writer_put16( w, (uint16_t) ( value->port ) );
         }
     }
     { /* epoch */
         if ( !( value->epoch == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 162, 0xfc9697d1196e6ba6ull, 9 );
+            tabledemo_table_writer_header_at( w, 163, 0xfc9697d1196e6ba6ull, 9 );
             tabledemo_table_writer_put64( w, (uint64_t) ( value->epoch ) );
         }
     }
     { /* precision */
         if ( !( tabledemo_table_double_to_bits( value->precision ) == tabledemo_table_double_to_bits( 0.0 ) ) )
         {
-            tabledemo_table_writer_header_at( w, 28, 0x288427f5babd05f7ull, 11 );
+            tabledemo_table_writer_header_at( w, 29, 0x288427f5babd05f7ull, 11 );
             if ( !tabledemo_table_double_finite( value->precision ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put64( w, tabledemo_table_double_to_bits( value->precision ) );
         }
@@ -14500,7 +14860,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
         }
         if ( rides )
         {
-            tabledemo_table_writer_header_at( w, 114, 0xb921eb8a3d0cb0f9ull, 14 );
+            tabledemo_table_writer_header_at( w, 115, 0xb921eb8a3d0cb0f9ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -14520,7 +14880,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
     { /* has_loadout */
         if ( !( value->has_loadout == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 91, 0xa06f5e0a148e253cull, 1 );
+            tabledemo_table_writer_header_at( w, 92, 0xa06f5e0a148e253cull, 1 );
             tabledemo_table_writer_put8( w, value->has_loadout ? 1 : 0 );
         }
     }
@@ -14531,7 +14891,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
         tabledemo_table_writer_rewind( &default_probe );
         if ( default_probe.offset > 1 )
         {
-            tabledemo_table_writer_header_at( w, 57, 0x5759ce7586bbb5a3ull, 13 );
+            tabledemo_table_writer_header_at( w, 58, 0x5759ce7586bbb5a3ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -14576,6 +14936,7 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_save( const tabledemo_prof
 
 static SCHEMA_UNUSED int tabledemo_profile_config_load_body( tabledemo_table_reader_t * r, tabledemo_profile_config_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_profile_config_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -15301,6 +15662,7 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_body( tabledemo_table_rea
                     return 0;
                 }
                 tabledemo_loadout_config_load_body( &sub, &value->loadout );
+                if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -16291,7 +16653,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body( tabledemo_table_writer
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 80, 0x8a67c9728746d394ull, 12 );
+            tabledemo_table_writer_header_at( w, 81, 0x8a67c9728746d394ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -16317,7 +16679,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body( tabledemo_table_writer
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 47, 0x41cbd901b87fabb6ull, 14 );
+            tabledemo_table_writer_header_at( w, 48, 0x41cbd901b87fabb6ull, 14 );
             int64_t element_sizes[8]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -16344,7 +16706,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_body( tabledemo_table_writer
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 77, 0x8181e61fc0436767ull, 14 );
+            tabledemo_table_writer_header_at( w, 78, 0x8181e61fc0436767ull, 14 );
             int64_t element_sizes[4]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -16390,6 +16752,7 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_save( const tabledemo_root_co
 
 static SCHEMA_UNUSED int tabledemo_root_config_load_body( tabledemo_table_reader_t * r, tabledemo_root_config_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_root_config_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -16524,6 +16887,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_body( tabledemo_table_reader
                                 goto end_weapons;
                             }
                             tabledemo_weapon_config_load_body( &elem, &value->weapons[i] );
+                            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -16605,6 +16969,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_body( tabledemo_table_reader
                                 goto end_profiles;
                             }
                             tabledemo_profile_config_load_body( &elem, &value->profiles[i] );
+                            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -17041,7 +17406,7 @@ static SCHEMA_UNUSED int tabledemo_counted_min_save_body( tabledemo_table_writer
         }
         if ( birth_rides )
         {
-            tabledemo_table_writer_header_at( w, 145, 0xdcc67d18feea8c19ull, 14 );
+            tabledemo_table_writer_header_at( w, 146, 0xdcc67d18feea8c19ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -17086,6 +17451,7 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_save( const tabledemo_counted
 
 static SCHEMA_UNUSED int tabledemo_counted_min_load_body( tabledemo_table_reader_t * r, tabledemo_counted_min_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_counted_min_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -17524,7 +17890,7 @@ static SCHEMA_UNUSED int tabledemo_float_bound_save_body( tabledemo_table_writer
         if ( !( value->level == 0.0f ) )
         {
             if ( !tabledemo_table_float_finite( value->level ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            tabledemo_table_writer_id_at( w, 152, 0xe8ddc90a9d7c709dull );
+            tabledemo_table_writer_id_at( w, 153, 0xe8ddc90a9d7c709dull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
@@ -17537,7 +17903,7 @@ static SCHEMA_UNUSED int tabledemo_float_bound_save_body( tabledemo_table_writer
     { /* level */
         if ( !( value->level == 0.0f ) )
         {
-            tabledemo_table_writer_header_at( w, 152, 0xe8ddc90a9d7c709dull, 10 );
+            tabledemo_table_writer_header_at( w, 153, 0xe8ddc90a9d7c709dull, 10 );
             if ( !tabledemo_table_float_finite( value->level ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             schema_assert( !( value->level < 0.0f ) && !( value->level > 0.1f ) ); /* a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10) */
             tabledemo_table_writer_put32( w, tabledemo_table_stored_float_bits( value->level ) );
@@ -17571,6 +17937,7 @@ static SCHEMA_UNUSED int64_t tabledemo_float_bound_save( const tabledemo_float_b
 
 static SCHEMA_UNUSED int tabledemo_float_bound_load_body( tabledemo_table_reader_t * r, tabledemo_float_bound_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_float_bound_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -17923,7 +18290,7 @@ static SCHEMA_UNUSED int tabledemo_moods_save_body( tabledemo_table_writer_t * w
         schema_assert( 0 <= value->row_count && value->row_count <= 4 );
         if ( value->row_count > 0 )
         {
-            tabledemo_table_writer_header_at( w, 79, 0x8a0bc1196111ad9bull, 14 );
+            tabledemo_table_writer_header_at( w, 80, 0x8a0bc1196111ad9bull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -17968,6 +18335,7 @@ static SCHEMA_UNUSED int64_t tabledemo_moods_save( const tabledemo_moods_t * val
 
 static SCHEMA_UNUSED int tabledemo_moods_load_body( tabledemo_table_reader_t * r, tabledemo_moods_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_moods_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -18381,7 +18749,7 @@ static SCHEMA_UNUSED int tabledemo_mood_field_save_body( tabledemo_table_writer_
     { /* mood */
         if ( !( value->mood == TABLEDEMO_MOOD_FIERCE ) )
         {
-            tabledemo_table_writer_header_at( w, 9, 0x0d5cfaa2c43877beull, 30 );
+            tabledemo_table_writer_header_at( w, 10, 0x0d5cfaa2c43877beull, 30 );
             switch ( value->mood )
             {
                 case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
@@ -18399,7 +18767,7 @@ static SCHEMA_UNUSED int tabledemo_mood_field_save_body( tabledemo_table_writer_
     { /* tail */
         if ( !( value->tail == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 142, 0xd94c56ef0798d723ull, 7 );
+            tabledemo_table_writer_header_at( w, 143, 0xd94c56ef0798d723ull, 7 );
             tabledemo_table_writer_put16( w, (uint16_t) ( value->tail ) );
         }
     }
@@ -18431,6 +18799,7 @@ static SCHEMA_UNUSED int64_t tabledemo_mood_field_save( const tabledemo_mood_fie
 
 static SCHEMA_UNUSED int tabledemo_mood_field_load_body( tabledemo_table_reader_t * r, tabledemo_mood_field_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_mood_field_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -18860,13 +19229,277 @@ refuse:
     *count = 0;
     return 0;
 }
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_wire_row_( tabledemo_table_writer_t * w, const tabledemo_var_moods_t * value )
+{
+    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( w->nodes ? w->nodes->ctx : NULL, &value->row, sizeof( tabledemo_mood_t ) );
+    int32_t i;
+    if ( !cursor.ok ) { return 0; }
+    tabledemo_table_writer_put8( w, 30 );
+    tabledemo_table_writer_leb( w, (uint64_t) value->row.count );
+    for ( i = 0; i < value->row.count; i++ )
+    {
+        const tabledemo_mood_t * element = (const tabledemo_mood_t *) tabledemo_table_sequence_next( &cursor );
+        if ( element == NULL ) { return 0; }
+        switch ( ( *element ) )
+        {
+            case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
+            case TABLEDEMO_MOOD_CALM: tabledemo_table_writer_id( w, 0xdfa47a9ce9ac16d6ull ); break;
+            case TABLEDEMO_MOOD_OLD:
+                schema_assert( ( *element ) != TABLEDEMO_MOOD_OLD ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull );
+                break;
+            case TABLEDEMO_MOOD_FIERCE: tabledemo_table_writer_id( w, 0x199c482b49ef9acbull ); break;
+            default:
+                return 0; /* no declared identity */
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int tabledemo_var_moods_save_body( tabledemo_table_writer_t * w, const tabledemo_var_moods_t * value )
+{
+    (void) value;
+    { /* row */
+        if ( value->row.count < 0 ) { return 0; }
+        if ( value->row.count > 0 )
+        {
+            tabledemo_table_writer_header_at( w, 80, 0x8a0bc1196111ad9bull, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_var_moods_wire_row_( w, value ) ) { return 0; }
+                tabledemo_table_writer_leb( w, (uint64_t) ( w->offset - frame_begin ) );
+            }
+            else
+            {
+                tabledemo_table_writer_t probe = tabledemo_table_writer_probe( w );
+                if ( !schema_tabledemo_var_moods_wire_row_( &probe, value ) ) { return 0; }
+                tabledemo_table_writer_rewind( &probe );
+                tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_var_moods_wire_row_( w, value ) ) { return 0; }
+            }
+        }
+    }
+    { /* mood */
+        if ( !( value->mood == TABLEDEMO_MOOD_FIERCE ) )
+        {
+            tabledemo_table_writer_header_at( w, 10, 0x0d5cfaa2c43877beull, 30 );
+            switch ( value->mood )
+            {
+                case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
+                case TABLEDEMO_MOOD_CALM: tabledemo_table_writer_id( w, 0xdfa47a9ce9ac16d6ull ); break;
+                case TABLEDEMO_MOOD_OLD:
+                    schema_assert( value->mood != TABLEDEMO_MOOD_OLD ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                    tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull );
+                    break;
+                case TABLEDEMO_MOOD_FIERCE: tabledemo_table_writer_id( w, 0x199c482b49ef9acbull ); break;
+                default:
+                    return 0; /* no declared identity */
+            }
+        }
+    }
+    tabledemo_table_writer_leb( w, 0 );
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int tabledemo_var_moods_load_body( tabledemo_table_reader_t * r, tabledemo_var_moods_t * value )
+{
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
+    tabledemo_var_moods_reset( value );
+    uint8_t seen_ref[512];
+    memset( seen_ref, 0, sizeof( seen_ref ) );
+    for ( ;; )
+    {
+        uint64_t ref, id;
+        uint8_t kind;
+        if ( !tabledemo_table_reader_leb( r, &ref ) )
+        {
+            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        if ( ref == 0 ) { return 1; }
+        if ( ref > r->id_count || !tabledemo_table_reader_has( r, 1 ) )
+        {
+            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        id = tabledemo_table_reader_id_at( r, ref );
+        kind = tabledemo_table_reader_get8( r );
+        if ( ( id == 0xffffffffffffffffull && r->nested ) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull )
+        {
+            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        if ( ref <= 4096 )
+        {
+            if ( seen_ref[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) )
+            {
+                r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            seen_ref[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        }
+        switch ( id )
+        {
+            case 0x8a0bc1196111ad9bull: /* row */
+            {
+                if ( kind != 14 )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !tabledemo_table_reader_skip( r, kind ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return 0;
+                    }
+                    break;
+                }
+                tabledemo_table_reader_t sub;
+                if ( !tabledemo_table_reader_span( r, &sub ) )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    return 0;
+                }
+                if ( sub.size < 2 )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    break;
+                }
+                if ( sub.size >= 2 )
+                {
+                    uint8_t elem_kind;
+                    uint64_t count, i;
+                    tabledemo_table_sequence_fill_t fill;
+                    if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                    }
+                    if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                    }
+                    if ( elem_kind != 30 && !( tabledemo_table_kind_widens( elem_kind, 30 ) ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                        break;
+                    }
+                    fill = tabledemo_table_sequence_fill( r->nodes ? r->nodes->sink : NULL, &value->row, count, sizeof( tabledemo_mood_t ), 1 );
+                    if ( fill.refused )
+                    {
+                        r->nodes->refused = 1;
+                        return 0;
+                    }
+                    if ( elem_kind != 30 ) { r->report->widened++; }
+                    if ( !fill.ok )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                    }
+                    for ( i = 0; i < count; i++ )
+                    {
+                        tabledemo_mood_t * element = (tabledemo_mood_t *) tabledemo_table_sequence_fill_next( &fill );
+                        if ( element == NULL )
+                        {
+                            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                        }
+                        do
+                        {
+                            {
+                                uint64_t variant_ref;
+                                if ( !tabledemo_table_reader_leb( &sub, &variant_ref ) || variant_ref > sub.id_count )
+                                {
+                                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                                    tabledemo_table_sequence_fill_drop( &fill, element );
+                                    goto list_end_row;
+                                }
+                                if ( variant_ref == 0 ) { ( *element ) = TABLEDEMO_MOOD_NONE; }
+                                else
+                                {
+                                    switch ( tabledemo_table_reader_id_at( &sub, variant_ref ) )
+                                    {
+                                        case 0xdfa47a9ce9ac16d6ull: ( *element ) = TABLEDEMO_MOOD_CALM; break;
+                                        case 0x3018cd19bf898cd6ull: ( *element ) = TABLEDEMO_MOOD_OLD; break;
+                                        case 0x199c482b49ef9acbull: ( *element ) = TABLEDEMO_MOOD_FIERCE; break;
+                                        default:
+                                            ( *element ) = TABLEDEMO_MOOD_NONE;
+                                            r->report->unknown++;
+                                            break;
+                                    }
+                                }
+                            }
+                        } while ( 0 );
+                    }
+                list_end_row:
+                    tabledemo_table_sequence_fill_end( &fill );
+                    if ( sub.offset != sub.size ) { r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+                }
+                break;
+            }
+            case 0x0d5cfaa2c43877beull: /* mood */
+            {
+                if ( kind != 30 )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !tabledemo_table_reader_skip( r, kind ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return 0;
+                    }
+                    break;
+                }
+                {
+                    uint64_t variant_ref;
+                    if ( !tabledemo_table_reader_leb( &( *r ), &variant_ref ) || variant_ref > ( *r ).id_count )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return 0;
+                    }
+                    if ( variant_ref == 0 ) { value->mood = TABLEDEMO_MOOD_NONE; }
+                    else
+                    {
+                        switch ( tabledemo_table_reader_id_at( &( *r ), variant_ref ) )
+                        {
+                            case 0xdfa47a9ce9ac16d6ull: value->mood = TABLEDEMO_MOOD_CALM; break;
+                            case 0x3018cd19bf898cd6ull: value->mood = TABLEDEMO_MOOD_OLD; break;
+                            case 0x199c482b49ef9acbull: value->mood = TABLEDEMO_MOOD_FIERCE; break;
+                            default:
+                                value->mood = TABLEDEMO_MOOD_NONE;
+                                r->report->unknown++;
+                                break;
+                        }
+                    }
+                }
+                break;
+            }
+            case UINT64_MAX:
+                if ( r->nodes == NULL ) { r->report->unknown++; }
+                if ( !tabledemo_table_reader_skip( r, kind ) )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    return 0;
+                }
+                break;
+            default:
+                r->report->unknown++;
+                if ( !tabledemo_table_reader_skip_checked( r, kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ) ) )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    return 0;
+                }
+                break;
+        }
+    }
+}
+
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_save_body( tabledemo_table_writer_t * w, const tabledemo_min_arm_fix_t * value )
 {
     (void) value;
     { /* pick */
         if ( value->pick.type != TABLEDEMO_MIN_PICK_TYPE_NONE )
         {
-            tabledemo_table_writer_header_at( w, 119, 0xbf0bc40dc513bbd8ull, 15 );
+            tabledemo_table_writer_header_at( w, 120, 0xbf0bc40dc513bbd8ull, 15 );
             if ( !schema_tabledemo_min_pick_wire_save_( w, &value->pick ) ) { return 0; }
         }
     }
@@ -18898,6 +19531,7 @@ static SCHEMA_UNUSED int64_t tabledemo_min_arm_fix_save( const tabledemo_min_arm
 
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_load_body( tabledemo_table_reader_t * r, tabledemo_min_arm_fix_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_min_arm_fix_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -19206,7 +19840,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body( tabledemo_table_writ
         }
         if ( birth_rides )
         {
-            tabledemo_table_writer_header_at( w, 145, 0xdcc67d18feea8c19ull, 14 );
+            tabledemo_table_writer_header_at( w, 146, 0xdcc67d18feea8c19ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -19251,6 +19885,7 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_save( const tabledemo_min_p
 
 static SCHEMA_UNUSED int tabledemo_min_plain_fix_load_body( tabledemo_table_reader_t * r, tabledemo_min_plain_fix_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_min_plain_fix_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -19688,13 +20323,13 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->slot == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 66, 0x6a771618f6fe31d1ull );
+            tabledemo_table_writer_id_at( w, 67, 0x6a771618f6fe31d1ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( tabledemo_table_float_to_bits( value->power ) == tabledemo_table_float_to_bits( 1.0f ) ) )
         {
             if ( !tabledemo_table_float_finite( value->power ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            tabledemo_table_writer_id_at( w, 155, 0xeef9d1358ae7b4e6ull );
+            tabledemo_table_writer_id_at( w, 156, 0xeef9d1358ae7b4e6ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
@@ -19707,7 +20342,7 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
     { /* slot */
         if ( !( value->slot == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 66, 0x6a771618f6fe31d1ull, 4 );
+            tabledemo_table_writer_header_at( w, 67, 0x6a771618f6fe31d1ull, 4 );
             schema_assert( !( value->slot < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->slot > 7 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->slot ) );
@@ -19716,7 +20351,7 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
     { /* power */
         if ( !( tabledemo_table_float_to_bits( value->power ) == tabledemo_table_float_to_bits( 1.0f ) ) )
         {
-            tabledemo_table_writer_header_at( w, 155, 0xeef9d1358ae7b4e6ull, 10 );
+            tabledemo_table_writer_header_at( w, 156, 0xeef9d1358ae7b4e6ull, 10 );
             if ( !tabledemo_table_float_finite( value->power ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->power ) );
         }
@@ -19749,6 +20384,7 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_save( const tabledemo_attachme
 
 static SCHEMA_UNUSED int tabledemo_attachment_load_body( tabledemo_table_reader_t * r, tabledemo_attachment_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_attachment_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -20223,7 +20859,7 @@ static SCHEMA_UNUSED int tabledemo_buff_save_body( tabledemo_table_writer_t * w,
         if ( !( tabledemo_table_float_to_bits( value->multiplier ) == tabledemo_table_float_to_bits( 1.0f ) ) )
         {
             if ( !tabledemo_table_float_finite( value->multiplier ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            tabledemo_table_writer_id_at( w, 87, 0x9adc623a805c87c6ull );
+            tabledemo_table_writer_id_at( w, 88, 0x9adc623a805c87c6ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
@@ -20236,7 +20872,7 @@ static SCHEMA_UNUSED int tabledemo_buff_save_body( tabledemo_table_writer_t * w,
     { /* multiplier */
         if ( !( tabledemo_table_float_to_bits( value->multiplier ) == tabledemo_table_float_to_bits( 1.0f ) ) )
         {
-            tabledemo_table_writer_header_at( w, 87, 0x9adc623a805c87c6ull, 10 );
+            tabledemo_table_writer_header_at( w, 88, 0x9adc623a805c87c6ull, 10 );
             if ( !tabledemo_table_float_finite( value->multiplier ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->multiplier ) );
         }
@@ -20268,6 +20904,7 @@ static SCHEMA_UNUSED int64_t tabledemo_buff_save( const tabledemo_buff_t * value
 
 static SCHEMA_UNUSED int tabledemo_buff_load_body( tabledemo_table_reader_t * r, tabledemo_buff_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_buff_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -20573,7 +21210,7 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body( tabledemo_table_writer_t * 
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->amount == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 76, 0x8113fe7ea2b16969ull );
+            tabledemo_table_writer_id_at( w, 77, 0x8113fe7ea2b16969ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
@@ -20586,7 +21223,7 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body( tabledemo_table_writer_t * 
     { /* amount */
         if ( !( value->amount == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 76, 0x8113fe7ea2b16969ull, 4 );
+            tabledemo_table_writer_header_at( w, 77, 0x8113fe7ea2b16969ull, 4 );
             schema_assert( !( value->amount < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->amount > 100 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->amount ) );
@@ -20620,6 +21257,7 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_save( const tabledemo_debuff_t * v
 
 static SCHEMA_UNUSED int tabledemo_debuff_load_body( tabledemo_table_reader_t * r, tabledemo_debuff_t * value )
 {
+    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_debuff_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -35103,6 +35741,24 @@ static SCHEMA_UNUSED int64_t tabledemo_min_plain_fix_fixed_load( tabledemo_min_p
     return n;
 }
 
+static SCHEMA_UNUSED tabledemo_mood_t * tabledemo_var_moods_row_add( tabledemo_table_worker_t * worker, tabledemo_table_list_t * list )
+{
+    tabledemo_mood_t * element = (tabledemo_mood_t *) tabledemo_table_sequence_add( worker, list, sizeof( tabledemo_mood_t ) );
+    if ( element == NULL ) { return NULL; }
+    memset( element, 0, sizeof( *element ) );
+    return element;
+}
+static SCHEMA_UNUSED int tabledemo_var_moods_row_erase( tabledemo_table_arena_t * arena, tabledemo_table_list_t * list, const tabledemo_mood_t * element )
+{ return tabledemo_table_sequence_erase( arena, list, element, sizeof( tabledemo_mood_t ) ); }
+static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_var_moods_row_each( const tabledemo_table_ctx_t * ctx, const tabledemo_table_list_t * list )
+{ return tabledemo_table_sequence_cursor( ctx, list, sizeof( tabledemo_mood_t ) ); }
+static SCHEMA_UNUSED const tabledemo_mood_t * tabledemo_var_moods_row_at( const tabledemo_table_list_t * list, int32_t index )
+{
+    const tabledemo_mood_t * element;
+    if ( index < 0 || index >= list->count || list->items.value == 0 ) { return NULL; }
+    element = (const tabledemo_mood_t *) ( (const uint8_t *) (const void *) &list->items + list->items.value ) + (int64_t) index;
+    return element;
+}
 static SCHEMA_UNUSED int tabledemo_weapon_config_save_body_retain( tabledemo_table_writer_t *, const tabledemo_weapon_config_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_weapon_config_load_body_retain( tabledemo_table_reader_t *, tabledemo_weapon_config_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_loadout_config_save_body_retain( tabledemo_table_writer_t *, const tabledemo_loadout_config_t *, tabledemo_table_retain_walk_t retention );
@@ -35119,6 +35775,8 @@ static SCHEMA_UNUSED int tabledemo_moods_save_body_retain( tabledemo_table_write
 static SCHEMA_UNUSED int tabledemo_moods_load_body_retain( tabledemo_table_reader_t *, tabledemo_moods_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_mood_field_save_body_retain( tabledemo_table_writer_t *, const tabledemo_mood_field_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_mood_field_load_body_retain( tabledemo_table_reader_t *, tabledemo_mood_field_t *, tabledemo_table_retain_walk_t retention );
+static SCHEMA_UNUSED int tabledemo_var_moods_save_body_retain( tabledemo_table_writer_t *, const tabledemo_var_moods_t *, tabledemo_table_retain_walk_t retention );
+static SCHEMA_UNUSED int tabledemo_var_moods_load_body_retain( tabledemo_table_reader_t *, tabledemo_var_moods_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_save_body_retain( tabledemo_table_writer_t *, const tabledemo_min_arm_fix_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_load_body_retain( tabledemo_table_reader_t *, tabledemo_min_arm_fix_t *, tabledemo_table_retain_walk_t retention );
 static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body_retain( tabledemo_table_writer_t *, const tabledemo_min_plain_fix_t *, tabledemo_table_retain_walk_t retention );
@@ -35270,6 +35928,10 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load__retain( tabledemo_ta
             }
             retention = tabledemo_table_retain_step( retention, 0, 0 );
             tabledemo_buff_load_body_retain( &arm, &( *value ).as.buff, retention );
+            if ( r->nodes != NULL && r->nodes->refused )
+            {
+                return 0;
+            }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -35291,6 +35953,10 @@ static SCHEMA_UNUSED int schema_tabledemo_effect_wire_load__retain( tabledemo_ta
             }
             retention = tabledemo_table_retain_step( retention, 1, 0 );
             tabledemo_debuff_load_body_retain( &arm, &( *value ).as.debuff, retention );
+            if ( r->nodes != NULL && r->nodes->refused )
+            {
+                return 0;
+            }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -35564,6 +36230,10 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_load__retain( tabledemo_
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE;
             }
+            if ( r->nodes != NULL && r->nodes->refused )
+            {
+                return 0;
+            }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -35654,6 +36324,10 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_load__retain( tabledemo_
         bad_arm_other:
             break;
         read_arm_other:;
+            if ( r->nodes != NULL && r->nodes->refused )
+            {
+                return 0;
+            }
             if ( arm.offset != arm.size )
             {
                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -35797,6 +36471,10 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_load_body_retain( tabledemo_tab
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_weapon_config_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -36511,6 +37189,10 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_loadout_config_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -36932,6 +37614,10 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                     return 0;
                 }
                 tabledemo_weapon_config_load_body_retain( &sub, &value->primary, retention );
+                if ( r->nodes != NULL && r->nodes->refused )
+                {
+                    return 0;
+                }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -37008,6 +37694,10 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                                 goto end_backups;
                             }
                             tabledemo_weapon_config_load_body_retain( &elem, &value->backups[i], retention );
+                            if ( r->nodes != NULL && r->nodes->refused )
+                            {
+                                return 0;
+                            }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -37094,6 +37784,10 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_body_retain( tabledemo_ta
                                 goto end_attachments;
                             }
                             tabledemo_attachment_load_body_retain( &elem, &value->attachments[i], retention );
+                            if ( r->nodes != NULL && r->nodes->refused )
+                            {
+                                return 0;
+                            }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -37427,6 +38121,10 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_body_retain( tabledemo_ta
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_profile_config_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -38211,6 +38909,10 @@ static SCHEMA_UNUSED int tabledemo_profile_config_load_body_retain( tabledemo_ta
                     return 0;
                 }
                 tabledemo_loadout_config_load_body_retain( &sub, &value->loadout, retention );
+                if ( r->nodes != NULL && r->nodes->refused )
+                {
+                    return 0;
+                }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -38458,6 +39160,10 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_body_retain( tabledemo_table
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_root_config_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -38608,6 +39314,10 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_body_retain( tabledemo_table
                                 goto end_weapons;
                             }
                             tabledemo_weapon_config_load_body_retain( &elem, &value->weapons[i], retention );
+                            if ( r->nodes != NULL && r->nodes->refused )
+                            {
+                                return 0;
+                            }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -38702,6 +39412,10 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_body_retain( tabledemo_table
                                 goto end_profiles;
                             }
                             tabledemo_profile_config_load_body_retain( &elem, &value->profiles[i], retention );
+                            if ( r->nodes != NULL && r->nodes->refused )
+                            {
+                                return 0;
+                            }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -38829,6 +39543,10 @@ static SCHEMA_UNUSED int tabledemo_counted_min_load_body_retain( tabledemo_table
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_counted_min_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -39050,6 +39768,10 @@ static SCHEMA_UNUSED int tabledemo_float_bound_load_body_retain( tabledemo_table
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_float_bound_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -39241,6 +39963,10 @@ static SCHEMA_UNUSED int tabledemo_moods_load_body_retain( tabledemo_table_reade
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_moods_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -39467,6 +40193,10 @@ static SCHEMA_UNUSED int tabledemo_mood_field_load_body_retain( tabledemo_table_
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_mood_field_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -39638,6 +40368,357 @@ static SCHEMA_UNUSED int tabledemo_mood_field_load_body_retain( tabledemo_table_
     }
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_wire_row__retain( tabledemo_table_writer_t * w, const tabledemo_var_moods_t * value, tabledemo_table_retain_walk_t retention )
+{
+    (void) retention;
+
+    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( w->nodes ? w->nodes->ctx : NULL, &value->row, sizeof( tabledemo_mood_t ) );
+    int32_t i;
+    if ( !cursor.ok )
+    {
+        return 0;
+    }
+    tabledemo_table_writer_put8( w, 30 );
+    tabledemo_table_writer_leb( w, (uint64_t) value->row.count );
+    for ( i = 0; i < value->row.count; i++ )
+    {
+        const tabledemo_mood_t * element = (const tabledemo_mood_t *) tabledemo_table_sequence_next( &cursor );
+        if ( element == NULL )
+        {
+            return 0;
+        }
+        switch ( ( *element ) )
+        {
+            case TABLEDEMO_MOOD_NONE:
+                tabledemo_table_writer_leb( w, 0 );
+                break;
+            case TABLEDEMO_MOOD_CALM:
+                tabledemo_table_retain_writer_id( w, 0xdfa47a9ce9ac16d6ull, retention );
+                break;
+            case TABLEDEMO_MOOD_OLD:
+                schema_assert( ( *element ) != TABLEDEMO_MOOD_OLD );
+                /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                tabledemo_table_retain_writer_id( w, 0x3018cd19bf898cd6ull, retention );
+                break;
+            case TABLEDEMO_MOOD_FIERCE:
+                tabledemo_table_retain_writer_id( w, 0x199c482b49ef9acbull, retention );
+                break;
+            default:
+                return 0;
+                /* no declared identity */
+        }
+    }
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int tabledemo_var_moods_save_body_retain( tabledemo_table_writer_t * w, const tabledemo_var_moods_t * value, tabledemo_table_retain_walk_t retention )
+{
+    (void) retention;
+
+    (void) value;
+    tabledemo_table_retain_walk_t body_keep = retention;
+    { /* row */
+        retention = tabledemo_table_retain_step( body_keep, 0, 0 );
+        if ( value->row.count < 0 )
+        {
+            return 0;
+        }
+        if ( value->row.count > 0 )
+        {
+            tabledemo_table_retain_writer_id( w, 0x8a0bc1196111ad9bull, retention );
+            tabledemo_table_writer_put8( w, 14 );
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !schema_tabledemo_var_moods_wire_row__retain( w, value, retention ) )
+                {
+                    return 0;
+                }
+                tabledemo_table_writer_leb( w, (uint64_t) ( w->offset - frame_begin ) );
+            }
+            else
+            {
+                tabledemo_table_writer_t probe = tabledemo_table_retain_probe( w, retention );
+                if ( !schema_tabledemo_var_moods_wire_row__retain( &probe, value, retention ) )
+                {
+                    return 0;
+                }
+                tabledemo_table_retain_rewind( &probe, retention );
+                tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !schema_tabledemo_var_moods_wire_row__retain( w, value, retention ) )
+                {
+                    return 0;
+                }
+            }
+        }
+    }
+    { /* mood */
+        retention = tabledemo_table_retain_step( body_keep, 1, 0 );
+        if ( !( value->mood == TABLEDEMO_MOOD_FIERCE ) )
+        {
+            tabledemo_table_retain_writer_id( w, 0x0d5cfaa2c43877beull, retention );
+            tabledemo_table_writer_put8( w, 30 );
+            switch ( value->mood )
+            {
+                case TABLEDEMO_MOOD_NONE:
+                    tabledemo_table_writer_leb( w, 0 );
+                    break;
+                case TABLEDEMO_MOOD_CALM:
+                    tabledemo_table_retain_writer_id( w, 0xdfa47a9ce9ac16d6ull, retention );
+                    break;
+                case TABLEDEMO_MOOD_OLD:
+                    schema_assert( value->mood != TABLEDEMO_MOOD_OLD );
+                    /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                    tabledemo_table_retain_writer_id( w, 0x3018cd19bf898cd6ull, retention );
+                    break;
+                case TABLEDEMO_MOOD_FIERCE:
+                    tabledemo_table_retain_writer_id( w, 0x199c482b49ef9acbull, retention );
+                    break;
+                default:
+                    return 0;
+                    /* no declared identity */
+            }
+        }
+    }
+    retention = body_keep;
+    if ( !tabledemo_table_retain_tail( w, retention ) ) return 0;
+    tabledemo_table_writer_leb( w, 0 );
+    return !w->overflow;
+}
+
+static SCHEMA_UNUSED int tabledemo_var_moods_load_body_retain( tabledemo_table_reader_t * r, tabledemo_var_moods_t * value, tabledemo_table_retain_walk_t retention )
+{
+    (void) retention;
+
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
+    tabledemo_var_moods_reset( value );
+    tabledemo_table_retain_walk_t body_keep = retention;
+    tabledemo_table_retain_discard( retention, 0, 0 );
+    uint8_t seen_ref[512];
+    memset( seen_ref, 0, sizeof( seen_ref ) );
+    for ( ;; )
+    {
+        uint64_t ref, id;
+        uint8_t kind;
+        if ( !tabledemo_table_reader_leb( r, &ref ) )
+        {
+            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        if ( ref == 0 )
+        {
+            return 1;
+        }
+        if ( ref > r->id_count || !tabledemo_table_reader_has( r, 1 ) )
+        {
+            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        id = tabledemo_table_reader_id_at( r, ref );
+        kind = tabledemo_table_reader_get8( r );
+        if ( ( id == 0xffffffffffffffffull && r->nested ) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull )
+        {
+            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        if ( ref <= 4096 )
+        {
+            if ( seen_ref[( ref - 1 ) >> 3] & (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) ) )
+            {
+                r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            seen_ref[( ref - 1 ) >> 3] |= (uint8_t) ( 1u << ( ( ref - 1 ) & 7 ) );
+        }
+        switch ( id )
+        {
+            case 0x8a0bc1196111ad9bull: /* row */
+            {
+                if ( kind != 14 )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !tabledemo_table_reader_skip( r, kind ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return 0;
+                    }
+                    break;
+                }
+                retention = tabledemo_table_retain_step( body_keep, 0, 0 );
+                tabledemo_table_reader_t sub;
+                if ( !tabledemo_table_reader_span( r, &sub ) )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    return 0;
+                }
+                if ( sub.size < 2 )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    break;
+                }
+                if ( sub.size >= 2 )
+                {
+                    uint8_t elem_kind;
+                    uint64_t count, i;
+                    tabledemo_table_sequence_fill_t fill;
+                    if ( !tabledemo_table_reader_array_header( &sub, r, &elem_kind, &count ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                    }
+                    if ( !tabledemo_table_array_element_kind_allowed( elem_kind ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                    }
+                    if ( elem_kind != 30 && !( tabledemo_table_kind_widens( elem_kind, 30 ) ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                        break;
+                    }
+                    fill = tabledemo_table_sequence_fill( r->nodes ? r->nodes->sink : NULL, &value->row, count, sizeof( tabledemo_mood_t ), 1 );
+                    if ( fill.refused )
+                    {
+                        r->nodes->refused = 1;
+                        return 0;
+                    }
+                    if ( elem_kind != 30 )
+                    {
+                        r->report->widened++;
+                    }
+                    if ( !fill.ok )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                    }
+                    for ( i = 0; i < count; i++ )
+                    {
+                        tabledemo_mood_t * element = (tabledemo_mood_t *) tabledemo_table_sequence_fill_next( &fill );
+                        if ( element == NULL )
+                        {
+                            r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                        }
+                        do
+                        {
+                            {
+                                uint64_t variant_ref;
+                                if ( !tabledemo_table_reader_leb( &sub, &variant_ref ) || variant_ref > sub.id_count )
+                                {
+                                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                                    tabledemo_table_sequence_fill_drop( &fill, element );
+                                    goto list_end_row;
+                                }
+                                if ( variant_ref == 0 )
+                                {
+                                    ( *element ) = TABLEDEMO_MOOD_NONE;
+                                }
+                                else
+                                {
+                                    switch ( tabledemo_table_reader_id_at( &sub, variant_ref ) )
+                                    {
+                                        case 0xdfa47a9ce9ac16d6ull:
+                                            ( *element ) = TABLEDEMO_MOOD_CALM;
+                                            break;
+                                        case 0x3018cd19bf898cd6ull:
+                                            ( *element ) = TABLEDEMO_MOOD_OLD;
+                                            break;
+                                        case 0x199c482b49ef9acbull:
+                                            ( *element ) = TABLEDEMO_MOOD_FIERCE;
+                                            break;
+                                        default:
+                                            ( *element ) = TABLEDEMO_MOOD_NONE;
+                                            r->report->unknown++;
+                                            r->report->retain_lost += retention.retain != NULL;
+                                            break;
+                                    }
+                                }
+                            }
+                        } while ( 0 );
+                    }
+                list_end_row:
+                    tabledemo_table_sequence_fill_end( &fill );
+                    if ( sub.offset != sub.size )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    }
+                }
+                break;
+            }
+            case 0x0d5cfaa2c43877beull: /* mood */
+            {
+                if ( kind != 30 )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    if ( !tabledemo_table_reader_skip( r, kind ) )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return 0;
+                    }
+                    break;
+                }
+                retention = tabledemo_table_retain_step( body_keep, 1, 0 );
+                {
+                    uint64_t variant_ref;
+                    if ( !tabledemo_table_reader_leb( &( *r ), &variant_ref ) || variant_ref > ( *r ).id_count )
+                    {
+                        r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        return 0;
+                    }
+                    if ( variant_ref == 0 )
+                    {
+                        value->mood = TABLEDEMO_MOOD_NONE;
+                    }
+                    else
+                    {
+                        switch ( tabledemo_table_reader_id_at( &( *r ), variant_ref ) )
+                        {
+                            case 0xdfa47a9ce9ac16d6ull:
+                                value->mood = TABLEDEMO_MOOD_CALM;
+                                break;
+                            case 0x3018cd19bf898cd6ull:
+                                value->mood = TABLEDEMO_MOOD_OLD;
+                                break;
+                            case 0x199c482b49ef9acbull:
+                                value->mood = TABLEDEMO_MOOD_FIERCE;
+                                break;
+                            default:
+                                value->mood = TABLEDEMO_MOOD_NONE;
+                                r->report->unknown++;
+                                r->report->retain_lost += retention.retain != NULL;
+                                break;
+                        }
+                    }
+                }
+                break;
+            }
+            case UINT64_MAX:
+                if ( r->nodes == NULL )
+                {
+                    r->report->unknown++;
+                    r->report->retain_lost += retention.retain != NULL;
+                }
+                if ( !tabledemo_table_reader_skip( r, kind ) )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    return 0;
+                }
+                break;
+            default:
+                r->report->unknown += 1;
+                if ( !tabledemo_table_retain_capture( r, id, kind, body_keep ) )
+                {
+                    r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                    return 0;
+                }
+                break;
+        }
+    }
+}
+
 static SCHEMA_UNUSED int tabledemo_min_arm_fix_save_body_retain( tabledemo_table_writer_t * w, const tabledemo_min_arm_fix_t * value, tabledemo_table_retain_walk_t retention )
 {
     (void) retention;
@@ -39666,6 +40747,10 @@ static SCHEMA_UNUSED int tabledemo_min_arm_fix_load_body_retain( tabledemo_table
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_min_arm_fix_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -39831,6 +40916,10 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_load_body_retain( tabledemo_tab
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_min_plain_fix_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -40063,6 +41152,10 @@ static SCHEMA_UNUSED int tabledemo_attachment_load_body_retain( tabledemo_table_
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_attachment_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -40298,6 +41391,10 @@ static SCHEMA_UNUSED int tabledemo_buff_load_body_retain( tabledemo_table_reader
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_buff_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -40423,6 +41520,10 @@ static SCHEMA_UNUSED int tabledemo_debuff_load_body_retain( tabledemo_table_read
 {
     (void) retention;
 
+    if ( r->nodes != NULL && r->nodes->refused )
+    {
+        return 0;
+    }
     tabledemo_debuff_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -40671,6 +41772,981 @@ static SCHEMA_UNUSED int schema_tabledemo_min_pick_wire_extent_( tabledemo_table
         default: break;
     }
     return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_extent_( tabledemo_table_numbering_t * n, const void * storage, uint8_t * target, int64_t * at )
+{
+    const tabledemo_var_moods_t * value = (const tabledemo_var_moods_t *) storage;
+    tabledemo_var_moods_t * out = (tabledemo_var_moods_t *) (void *) target;
+    (void) n;
+    (void) value;
+    (void) out;
+    (void) at;
+    {
+        tabledemo_table_sequence_cursor_t extent1 = tabledemo_table_sequence_cursor( n ? n->ctx : NULL, &value->row, sizeof( tabledemo_mood_t ) );
+        int32_t extent1_i;
+        uint8_t * extent1_array = NULL;
+        if ( !extent1.ok || !tabledemo_table_extent_reserve( at, value->row.count, sizeof( tabledemo_mood_t ), 1 ) ) { return 0; }
+        if ( target != NULL )
+        {
+            extent1_array = n->pack_base + *at - (int64_t) value->row.count * sizeof( tabledemo_mood_t );
+            out->row.items.value = value->row.count ? (int64_t) ( extent1_array - (uint8_t *) (void *) &out->row.items ) : 0;
+        }
+        for ( extent1_i = 0; extent1_i < value->row.count; extent1_i++ )
+        {
+            const tabledemo_mood_t * extent1_in = (const tabledemo_mood_t *) tabledemo_table_sequence_next( &extent1 );
+            tabledemo_mood_t * extent1_out = target ? (tabledemo_mood_t *) (void *) extent1_array + extent1_i : NULL;
+            if ( extent1_in == NULL ) { return 0; }
+            if ( extent1_out != NULL ) { memcpy( extent1_out, extent1_in, sizeof( tabledemo_mood_t ) ); }
+        }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_wire_extent_( tabledemo_table_reader_t r, int64_t * at )
+{
+    (void) at;
+    for ( ;; )
+    {
+        uint64_t ref, id;
+        uint8_t kind;
+        if ( !tabledemo_table_reader_leb( &r, &ref ) || ref == 0 || ref > r.id_count || !tabledemo_table_reader_has( &r, 1 ) ) { return 1; }
+        id = tabledemo_table_reader_id_at( &r, ref );
+        kind = tabledemo_table_reader_get8( &r );
+        switch ( id )
+        {
+            case UINT64_C( 0x8a0bc1196111ad9b ):
+                if ( kind == 14 )
+                {
+                    {
+                        tabledemo_table_reader_t extent_body1;
+                        if ( !tabledemo_table_reader_span( &r, &extent_body1 ) ) { return 1; }
+                        if ( extent_body1.size >= 2 )
+                        {
+                            uint64_t extent_body1_count;
+                            uint8_t wire_kind = tabledemo_table_reader_get8( &extent_body1 );
+                            if ( ( wire_kind != 30 && !( tabledemo_table_kind_widens( wire_kind, 30 ) ) ) || !tabledemo_table_reader_leb( &extent_body1, &extent_body1_count ) ) { goto extent_body1_done; }
+                            int64_t floor = 1;
+                            if ( extent_body1_count > INT32_MAX )
+                            {
+                                extent_body1.report->reason = 11;
+                                return 0;
+                            }
+                            if ( extent_body1_count > (uint64_t) ( ( extent_body1.size - extent_body1.offset ) / floor ) )
+                            {
+                                extent_body1.report->reason = 10;
+                                return 0;
+                            }
+                            if ( !tabledemo_table_extent_reserve( at, (int64_t) extent_body1_count, sizeof( tabledemo_mood_t ), 1 ) ) { return 0; }
+                        }
+                    extent_body1_done:;
+                    }
+                    continue;
+                }
+                break;
+            default: break;
+        }
+        if ( !tabledemo_table_reader_skip( &r, kind ) ) { return 1; }
+    }
+}
+static SCHEMA_UNUSED int64_t schema_tabledemo_var_moods_wire_storage_( const tabledemo_table_reader_t * r )
+{
+    int64_t at = tabledemo_table_align_up64( (int64_t) sizeof( tabledemo_var_moods_t ) );
+    if ( !schema_tabledemo_var_moods_wire_extent_( *r, &at ) || at > INT64_MAX - TABLEDEMO_K_TABLE_ALIGN ) { return -1; }
+    return tabledemo_table_align_up64( at );
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_node_save_( tabledemo_table_writer_t * w, const void * storage )
+{ return tabledemo_var_moods_save_body( w, (const tabledemo_var_moods_t *) storage ); }
+static const tabledemo_table_node_type_t schema_tabledemo_var_moods_node_type_ = { UINT64_C( 0x05d94ead8f7094de ), sizeof( tabledemo_var_moods_t ), schema_tabledemo_var_moods_node_save_, schema_tabledemo_var_moods_graph_edges_, 0, schema_tabledemo_var_moods_extent_, schema_tabledemo_var_moods_wire_storage_, 8, 1, schema_tabledemo_var_moods_body_pack_, schema_tabledemo_var_moods_extent_pack_ };
+
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_graph_edges_( tabledemo_table_numbering_t * numbering, const void * storage )
+{
+    const tabledemo_var_moods_t * value = (const tabledemo_var_moods_t *) storage;
+    (void) value;
+    (void) numbering;
+    {
+        tabledemo_table_sequence_cursor_t edges1 = tabledemo_table_sequence_cursor( numbering ? numbering->ctx : NULL, &value->row, sizeof( tabledemo_mood_t ) );
+        int32_t edges1_i;
+        if ( !edges1.ok ) { return 0; }
+        for ( edges1_i = 0; edges1_i < value->row.count; edges1_i++ )
+        {
+            const tabledemo_mood_t * edges1_value = (const tabledemo_mood_t *) tabledemo_table_sequence_next( &edges1 );
+            if ( edges1_value == NULL ) { return 0; }
+        }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_cycle_edges_( tabledemo_table_cycle_t * cycle, const void * storage )
+{
+    const tabledemo_var_moods_t * value = (const tabledemo_var_moods_t *) storage;
+    (void) value;
+    (void) cycle;
+    {
+        tabledemo_table_sequence_cursor_t cycle1 = tabledemo_table_sequence_cursor( &cycle->ctx, &value->row, sizeof( tabledemo_mood_t ) );
+        int32_t cycle1_i;
+        if ( !cycle1.ok ) { return 0; }
+        for ( cycle1_i = 0; cycle1_i < value->row.count; cycle1_i++ )
+        {
+            const tabledemo_mood_t * cycle1_value = (const tabledemo_mood_t *) tabledemo_table_sequence_next( &cycle1 );
+            if ( cycle1_value == NULL ) { return 0; }
+        }
+    }
+    return 1;
+}
+/* ---- VarMoods: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
+
+   MUTABLE: VarMoodsBuilder — allocate nodes, wire them together, then Lock.
+   CONST:   one packed region, root at its base. Lock produces it and Load
+            produces it, so a locked structure and a loaded one are the
+            SAME representation with one view API. There is no unlock:
+            re-editing means loading the const form into a fresh builder.
+   VarMoods is never held by value — a file-format-scale structure is a region
+   and a root pointer, not a struct you copy.
+
+   THE MEMBERS ARE PUBLIC, which is C's answer to C++'s accessors: `region`
+   is the packed const form and NULL until Lock succeeds, `region_bytes` is
+   its length, and `arena.locked` is the one-way flag. Read them; the four
+   functions below are the only ones that write them. */
+typedef struct tabledemo_var_moods_builder_t
+{
+    tabledemo_table_arena_t arena;
+    tabledemo_table_worker_t main;       /* the calling thread's allocation front */
+    tabledemo_table_ref_t root_ref;
+    uint8_t * region;       /* the packed const form, produced by var_moods_builder_lock */
+    int64_t region_bytes;
+} tabledemo_var_moods_builder_t;
+
+/* Allocate a node in THIS thread's front: no lock, no atomic per node. One
+   worker per thread; allocate on your own, and synchronize your own writes
+   to nodes another worker allocated (§6.4). */
+static SCHEMA_UNUSED int tabledemo_var_moods_builder_init_with_allocator( tabledemo_var_moods_builder_t * builder, tabledemo_table_allocator_t allocator )
+{
+    uint32_t at;
+    tabledemo_table_arena_init_with_allocator( &builder->arena, allocator );
+    builder->main = tabledemo_table_worker_make( &builder->arena );
+    builder->root_ref.value = 0;
+    builder->region = NULL;
+    builder->region_bytes = 0;
+    /* the ROOT is allocated like any node and is not a pointer target, so
+       it takes the arena's untyped bump directly rather than an var_moods_emplace
+       that only a pointed-at table has */
+    at = tabledemo_table_worker_bump( &builder->main, (uint32_t) sizeof( tabledemo_var_moods_t ) );
+    if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
+    builder->root_ref.value = (int64_t) at;
+    tabledemo_var_moods_reset( (tabledemo_var_moods_t *) (void *) tabledemo_table_arena_at( &builder->arena, at ) );
+    return 1;
+}
+
+static SCHEMA_UNUSED int tabledemo_var_moods_builder_init( tabledemo_var_moods_builder_t * builder ) { return tabledemo_var_moods_builder_init_with_allocator( builder, tabledemo_table_default_allocator() ); }
+
+static SCHEMA_UNUSED void tabledemo_var_moods_builder_shutdown( tabledemo_var_moods_builder_t * builder )
+{
+    tabledemo_table_arena_shutdown( &builder->arena );
+    tabledemo_table_release( builder->arena.allocator, builder->region );
+    builder->region = NULL;
+    builder->region_bytes = 0;
+}
+
+/* The mutable root, or NULL once the builder is locked. */
+static SCHEMA_UNUSED tabledemo_var_moods_t * tabledemo_var_moods_builder_root( tabledemo_var_moods_builder_t * builder )
+{
+    if ( builder->arena.locked || builder->root_ref.value == 0 ) { return NULL; }
+    return (tabledemo_var_moods_t *) (void *) tabledemo_table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+}
+
+static SCHEMA_UNUSED int tabledemo_var_moods_builder_lock( tabledemo_var_moods_builder_t * builder )
+{
+    tabledemo_table_ctx_t ctx;
+    const tabledemo_var_moods_t * root;
+    uint8_t * packed;
+    int64_t bytes;
+    if ( builder->arena.locked ) { return builder->region != NULL; }
+    if ( builder->root_ref.value == 0 ) { return 0; }
+    ctx.arena = &builder->arena;
+    root = (const tabledemo_var_moods_t *) tabledemo_table_arena_at( &builder->arena, (uint32_t) builder->root_ref.value );
+    packed = tabledemo_table_graph_pack( &ctx, root, &schema_tabledemo_var_moods_node_type_, &bytes );
+    if ( packed == NULL ) { return 0; }
+    builder->region = packed;
+    builder->region_bytes = bytes;
+    builder->arena.locked = 1;
+    tabledemo_table_arena_shutdown( &builder->arena );
+    return 1;
+}
+
+static SCHEMA_UNUSED const tabledemo_table_node_type_t * schema_tabledemo_var_moods_node_lookup_( uint64_t id )
+{
+    switch ( id )
+    {
+        default: return NULL;
+    }
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_node_declared_( uint64_t id )
+{
+    switch ( id )
+    {
+        case UINT64_C( 0x413e7bcf261bc3c7 ):
+        case UINT64_C( 0x2c8168f122124937 ):
+        case UINT64_C( 0x19212a5b5b3ccb4b ):
+        case UINT64_C( 0xffb1dfb1f6ce215b ):
+        case UINT64_C( 0x5fcbe04615411b64 ):
+        case UINT64_C( 0xb76842b2253337af ):
+        case UINT64_C( 0x3066b130dfbd7890 ):
+        case UINT64_C( 0xd6633ae4e94deecf ):
+        case UINT64_C( 0xa6aa0caea28dcca1 ):
+        case UINT64_C( 0xe2f227393c6b20a2 ):
+        case UINT64_C( 0xf5b735fce4011ff4 ):
+        case UINT64_C( 0x33de720d0bcfd78a ):
+        case UINT64_C( 0xad3596f9de08e3b7 ):
+        case UINT64_C( 0xd02d825db114336e ):
+        case UINT64_C( 0x1c182e1c2529027b ):
+        case UINT64_C( 0x19fffcb7859da778 ):
+        case UINT64_C( 0xec79751dda28be2e ):
+        case UINT64_C( 0x031ec0c4b7d28bf1 ):
+        case UINT64_C( 0xbf59694e9e4f5ed7 ):
+        case UINT64_C( 0x5f4843f6def45e87 ):
+        case UINT64_C( 0x1d1a9911da171a29 ):
+        case UINT64_C( 0x1cf8555d11fb113a ):
+        case UINT64_C( 0x469dba0c16b2ad15 ):
+        case UINT64_C( 0x05d94ead8f7094de ):
+        case UINT64_C( 0x0577780d86c4b0c3 ):
+        case UINT64_C( 0xab6a6961d3366451 ):
+        case UINT64_C( 0x2f2ec0474f1c4fe4 ):
+        case UINT64_C( 0x704be0d8faaffc58 ): return 1;
+        default: return 0;
+    }
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_measure_with_allocator( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * root, tabledemo_table_allocator_t allocator )
+{
+    return tabledemo_table_graph_save( ctx, root, &schema_tabledemo_var_moods_node_type_, NULL, INT64_MAX, allocator );
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_measure( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * root )
+{ return tabledemo_var_moods_measure_with_allocator( ctx, root, ctx != NULL && ctx->arena != NULL ? ctx->arena->allocator : tabledemo_table_default_allocator() ); }
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_save_with_allocator( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * root, uint8_t * buffer, int64_t capacity, tabledemo_table_allocator_t allocator )
+{
+    if ( buffer == NULL || capacity < 0 ) { return -1; }
+    return tabledemo_table_graph_save( ctx, root, &schema_tabledemo_var_moods_node_type_, buffer, capacity, allocator );
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_save( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * root, uint8_t * buffer, int64_t capacity )
+{ return tabledemo_var_moods_save_with_allocator( ctx, root, buffer, capacity, ctx != NULL && ctx->arena != NULL ? ctx->arena->allocator : tabledemo_table_default_allocator() ); }
+static SCHEMA_UNUSED int64_t schema_tabledemo_var_moods_load_layout_( const tabledemo_table_reader_t * reader, int64_t * data_out, int64_t * records_out )
+{
+    tabledemo_table_node_scan_t scan = tabledemo_table_node_scan_begin( reader );
+    tabledemo_table_reader_t body;
+    uint64_t id;
+    int64_t data = schema_tabledemo_var_moods_wire_storage_( reader ), records = 0;
+    if ( data < 0 ) { return -1; }
+    while ( tabledemo_table_node_scan_next( &scan, &id, &body ) )
+    {
+        const tabledemo_table_node_type_t * type = schema_tabledemo_var_moods_node_lookup_( id );
+        if ( type != NULL )
+        {
+            int64_t size = tabledemo_table_node_wire_storage( type, &body );
+            if ( size < 0 || size > INT64_MAX - data ) { return -1; }
+            data += size;
+        }
+        records++;
+    }
+    if ( !tabledemo_table_node_scan_whole( &scan ) )
+    {
+        if ( reader->report != NULL )
+        {
+            reader->report->refused = 1;
+            reader->report->reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        }
+        return -1;
+    }
+    if ( records >= INT64_MAX / (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) - 1 || ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) > INT64_MAX - data ) { return -1; }
+    *data_out = data;
+    *records_out = records;
+    return data + ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t );
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_wire_blob_shared_( const uint8_t * wire, int64_t bytes, int64_t total );
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_load_measure_ex( const uint8_t * wire, int64_t bytes, int64_t * attribution, tabledemo_table_refuse_reason_t * reason )
+{
+    tabledemo_table_report_t report;
+    tabledemo_table_reader_t reader;
+    int64_t data, records, total, file_bytes = bytes;
+    (void) file_bytes;
+    memset( &report, 0, sizeof( report ) );
+    if ( attribution != NULL ) { *attribution = 0; }
+    if ( !tabledemo_table_wire_open( &reader, wire, bytes, &report ) )
+    {
+        if ( report.refused && report.refuse_reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_OK && reason != NULL ) { *reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
+        return -1;
+    }
+    report.reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_LENGTH;
+    total = schema_tabledemo_var_moods_load_layout_( &reader, &data, &records );
+    if ( total < 0 && reason != NULL ) { *reason = report.reason; }
+    if ( total >= 0 && schema_tabledemo_var_moods_wire_blob_shared_( wire, file_bytes, total ) )
+    {
+        if ( reason != NULL ) { *reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED; }
+        return -1;
+    }
+    if ( total >= 0 && attribution != NULL ) { *attribution = ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t ); }
+    return total;
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_load_measure( const uint8_t * wire, int64_t bytes )
+{
+    tabledemo_table_report_t report;
+    tabledemo_table_reader_t reader;
+    int64_t data, records, total;
+    memset( &report, 0, sizeof( report ) );
+    if ( !tabledemo_table_wire_open( &reader, wire, bytes, &report ) ) { return -1; }
+    total = schema_tabledemo_var_moods_load_layout_( &reader, &data, &records );
+    return total >= 0 ? total : -1;
+}
+static SCHEMA_UNUSED uint32_t schema_tabledemo_var_moods_cycle_ordinal_( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case UINT64_C( 0x05d94ead8f7094de ): return 1u;
+        default: return 0u;
+    }
+}
+static SCHEMA_UNUSED uint64_t schema_tabledemo_var_moods_cycle_id_( uint32_t ordinal )
+{
+    switch ( ordinal )
+    {
+        case 1u: return UINT64_C( 0x05d94ead8f7094de );
+        default: return 0u;
+    }
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_cycle_node_( tabledemo_table_cycle_t * cycle, uint32_t ordinal, const void * value )
+{
+    switch ( ordinal )
+    {
+        case 1u: return schema_tabledemo_var_moods_cycle_edges_( cycle, value );
+        default: return 1;
+    }
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_load_graph_( tabledemo_table_reader_t * reader, tabledemo_var_moods_t * root, tabledemo_table_node_map_t * nodes, tabledemo_table_node_dir_entry_t * directory, tabledemo_table_sink_t * sink )
+{
+    tabledemo_table_node_scan_t scan = tabledemo_table_node_scan_begin( reader );
+    tabledemo_table_reader_t body;
+    uint64_t id, k = 0;
+    int32_t unknown = 0;
+    int32_t non_finite_before = reader->report->non_finite_floats, missing_before = reader->report->missing_required;
+    tabledemo_var_moods_reset( root );
+    nodes->declared = schema_tabledemo_var_moods_node_declared_;
+    while ( tabledemo_table_node_scan_next( &scan, &id, &body ) )
+    {
+        const tabledemo_table_node_type_t * type = schema_tabledemo_var_moods_node_lookup_( id );
+        directory[k + 1].type_id = id;
+        directory[k + 1].offset = UINT64_MAX;
+        if ( ( id == UINT64_C( 0x2f2ec0474f1c4fe4 ) || id == UINT64_C( 0x704be0d8faaffc58 ) ) && body.size > UINT32_MAX )
+        {
+            reader->report->reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+            return 0;
+        }
+        if ( id == UINT64_C( 0x704be0d8faaffc58 ) && !tabledemo_table_wire_utf8( body.buffer, body.size ) )
+        {
+            reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            k++;
+            continue;
+        }
+        if ( type == NULL )
+        {
+            if ( id != UINT64_C( 0x2f2ec0474f1c4fe4 ) && id != UINT64_C( 0x704be0d8faaffc58 ) && tabledemo_table_skip_body( body, (int64_t) ( nodes->count - 1 ), 0, 0 ) != body.size )
+            {
+                reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            unknown++;
+        }
+        else if ( sink->region != NULL )
+        {
+            int64_t at = sink->region->used, size = tabledemo_table_node_wire_storage( type, &body );
+            if ( size < 0 || size > sink->region->capacity - at )
+            {
+                reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            directory[k + 1].offset = (uint64_t) at;
+            sink->region->used += size;
+        }
+        else
+        {
+            uint32_t at = tabledemo_table_worker_alloc( sink->worker, type->blob ? tabledemo_table_node_wire_storage( type, &body ) : type->size );
+            if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED )
+            {
+                reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            directory[k + 1].offset = at;
+        }
+        k++;
+    }
+    nodes->cycle_indices = 1;
+    nodes->good = tabledemo_table_node_scan_whole( &scan );
+    if ( nodes->good ) { reader->report->unknown += unknown; }
+    else
+    {
+        reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+    }
+    if ( nodes->good )
+    {
+        scan = tabledemo_table_node_scan_begin( reader );
+        k = 0;
+        while ( tabledemo_table_node_scan_next( &scan, &id, &body ) )
+        {
+            if ( directory[k + 1].offset != UINT64_MAX )
+            {
+                void * value = nodes->arena ? tabledemo_table_arena_at( sink->worker->arena, (uint32_t) directory[k + 1].offset ) : nodes->base + directory[k + 1].offset;
+                tabledemo_table_region_sink_t extent;
+                tabledemo_table_sink_t carve;
+                const tabledemo_table_node_type_t * type = schema_tabledemo_var_moods_node_lookup_( id );
+                carve.worker = sink->worker;
+                carve.region = NULL;
+                if ( !nodes->arena )
+                {
+                    extent.base = (uint8_t *) value;
+                    extent.used = tabledemo_table_align_up64( type->size );
+                    extent.capacity = tabledemo_table_node_wire_storage( type, &body );
+                    carve.region = &extent;
+                }
+                nodes->sink = &carve;
+                body.nodes = nodes;
+                switch ( id )
+                {
+                    default: break;
+                }
+                nodes->sink = NULL;
+                if ( nodes->refused ) { break; }
+            }
+            k++;
+        }
+    }
+    reader->nodes = nodes;
+    reader->nested = 0;
+    {
+        int read_ok = 0;
+        if ( !nodes->refused )
+        {
+            tabledemo_table_region_sink_t extent;
+            tabledemo_table_sink_t carve;
+            carve.worker = sink->worker;
+            carve.region = NULL;
+            if ( !nodes->arena )
+            {
+                extent.base = (uint8_t *) (void *) root;
+                extent.used = tabledemo_table_align_up64( (int64_t) sizeof( *root ) );
+                extent.capacity = schema_tabledemo_var_moods_wire_storage_( reader );
+                carve.region = &extent;
+            }
+            nodes->sink = &carve;
+            read_ok = tabledemo_var_moods_load_body( reader, root );
+            nodes->sink = NULL;
+        }
+        /* a NaN or an infinity anywhere in the graph refuses the read, the strict one too (§3.3) */
+        if ( tabledemo_table_non_finite_refused( reader->report, non_finite_before ) ) { return 0; }
+        /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+        if ( nodes->good && !nodes->refused && !tabledemo_table_nodes_all_named( reader, (uint64_t) ( nodes->count - 1 ), reader->report ) )
+        {
+            reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        if ( nodes->good && !nodes->refused && !tabledemo_table_cycle_acyclic( nodes, nodes->arena ? sink->worker->arena : NULL, schema_tabledemo_var_moods_cycle_ordinal_, schema_tabledemo_var_moods_cycle_node_, schema_tabledemo_var_moods_cycle_id_ ) )
+        {
+            reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        return !nodes->refused && ( !nodes->arena || ( read_ok && reader->report->missing_required == missing_before ) );
+    }
+}
+/* var_moods_load is the STRICT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
+static SCHEMA_UNUSED const tabledemo_var_moods_t * tabledemo_var_moods_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    tabledemo_table_reader_t reader;
+    tabledemo_table_node_map_t nodes;
+    tabledemo_table_node_dir_entry_t * directory;
+    tabledemo_table_region_sink_t place;
+    tabledemo_table_sink_t sink;
+    int64_t data, records, total;
+    int refused_before, reason_before;
+    int32_t non_finite_before;
+    memset( &ignored, 0, sizeof( ignored ) );
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
+    reason_before = report->reason;
+    non_finite_before = report->non_finite_floats;
+    report->refused = 0;
+    if ( !tabledemo_table_wire_open( &reader, wire, wire_bytes, report ) )
+    {
+        report->refused = report->refused || refused_before;
+        return NULL;
+    }
+    total = schema_tabledemo_var_moods_load_layout_( &reader, &data, &records );
+    report->reason = (tabledemo_table_refuse_reason_t) reason_before;
+    if ( total < 0 )
+    {
+        tabledemo_var_moods_builder_t builder;
+        tabledemo_table_node_scan_t scan;
+        tabledemo_table_reader_t body;
+        uint64_t id;
+        tabledemo_var_moods_t * root;
+        if ( region != NULL && region_bytes > 0 && ( (uintptr_t) region & ( TABLEDEMO_K_TABLE_ALIGN - 1 ) ) == 0 ) { memset( region, 0, (size_t) region_bytes ); }
+        records = 0;
+        scan = tabledemo_table_node_scan_begin( &reader );
+        while ( tabledemo_table_node_scan_next( &scan, &id, &body ) ) { records++; }
+        if ( records >= INT64_MAX / (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) - 1 || !tabledemo_var_moods_builder_init( &builder ) )
+        {
+            report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return NULL;
+        }
+        root = tabledemo_var_moods_builder_root( &builder );
+        directory = (tabledemo_table_node_dir_entry_t *) tabledemo_table_allocate( builder.arena.allocator, ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) );
+        if ( root == NULL || directory == NULL )
+        {
+            tabledemo_table_release( builder.arena.allocator, directory );
+            tabledemo_var_moods_builder_shutdown( &builder );
+            report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = UINT64_C( 0x05d94ead8f7094de );
+        memset( &nodes, 0, sizeof( nodes ) );
+        nodes.entries = directory;
+        nodes.count = (uint64_t) records + 1;
+        nodes.arena = 1;
+        sink.region = NULL;
+        sink.worker = &builder.main;
+        (void) schema_tabledemo_var_moods_load_graph_( &reader, root, &nodes, directory, &sink );
+        tabledemo_table_release( builder.arena.allocator, directory );
+        tabledemo_table_release( builder.arena.allocator, nodes.blob_named );
+        tabledemo_var_moods_builder_shutdown( &builder );
+        if ( tabledemo_table_non_finite_refused( report, non_finite_before ) )
+        {
+            report->refused = report->refused || refused_before;
+            return NULL;
+        }
+        if ( nodes.refused && !report->refused )
+        {
+            report->refused = 1;
+            report->reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
+            report->refused = 1;
+            return NULL;
+        }
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return NULL;
+    }
+    if ( region == NULL || region_bytes < total || ( (uintptr_t) region & ( TABLEDEMO_K_TABLE_ALIGN - 1 ) ) != 0 )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return NULL;
+    }
+    memset( region, 0, (size_t) total );
+    directory = (tabledemo_table_node_dir_entry_t *) (void *) ( region + data );
+    directory[0].offset = 0;
+    directory[0].type_id = UINT64_C( 0x05d94ead8f7094de );
+    nodes.base = region;
+    nodes.entries = directory;
+    nodes.count = (uint64_t) records + 1;
+    nodes.good = 0;
+    nodes.arena = 0;
+    nodes.refused = 0;
+    nodes.sink = NULL;
+    nodes.blob_named = NULL;
+    place.base = region;
+    place.capacity = data;
+    place.used = schema_tabledemo_var_moods_wire_storage_( &reader );
+    sink.region = &place;
+    sink.worker = NULL;
+    if ( !schema_tabledemo_var_moods_load_graph_( &reader, (tabledemo_var_moods_t *) (void *) region, &nodes, directory, &sink ) || tabledemo_table_report_finish( report, 1 ) )
+    {
+        report->refused = 1;
+        memset( region, 0, (size_t) total );
+        tabledemo_table_release( tabledemo_table_default_allocator(), nodes.blob_named );
+        return NULL;
+    } /* a refusal discards the whole load (§4) */
+    tabledemo_table_release( tabledemo_table_default_allocator(), nodes.blob_named );
+    return (const tabledemo_var_moods_t *) (const void *) region;
+}
+/* var_moods_load_builder is the STRICT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
+static SCHEMA_UNUSED int tabledemo_var_moods_load_builder( tabledemo_var_moods_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    tabledemo_table_reader_t reader;
+    tabledemo_table_node_map_t nodes;
+    tabledemo_table_node_dir_entry_t * directory;
+    tabledemo_table_sink_t sink;
+    tabledemo_table_node_scan_t scan;
+    tabledemo_table_reader_t body;
+    uint64_t id;
+    int64_t records = 0;
+    tabledemo_var_moods_t * root;
+    int ok, refused_before;
+    int32_t non_finite_before;
+    memset( &ignored, 0, sizeof( ignored ) );
+    if ( report == NULL ) { report = &ignored; }
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
+    non_finite_before = report->non_finite_floats;
+    report->refused = 0;
+    root = builder != NULL ? tabledemo_var_moods_builder_root( builder ) : NULL;
+    if ( root == NULL )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return 0;
+    }
+    if ( !tabledemo_table_wire_open( &reader, wire, wire_bytes, report ) )
+    {
+        report->refused = report->refused || refused_before;
+        tabledemo_var_moods_reset( root );
+        return 0;
+    }
+    scan = tabledemo_table_node_scan_begin( &reader );
+    while ( tabledemo_table_node_scan_next( &scan, &id, &body ) ) { records++; }
+    if ( records >= INT64_MAX / (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) - 1 )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        tabledemo_var_moods_reset( root );
+        return 0;
+    }
+    directory = (tabledemo_table_node_dir_entry_t *) tabledemo_table_allocate( builder->arena.allocator, ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) );
+    if ( directory == NULL )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        tabledemo_var_moods_reset( root );
+        return 0;
+    }
+    directory[0].offset = (uint64_t) builder->root_ref.value;
+    directory[0].type_id = UINT64_C( 0x05d94ead8f7094de );
+    nodes.base = NULL;
+    nodes.entries = directory;
+    nodes.count = (uint64_t) records + 1;
+    nodes.good = 0;
+    nodes.arena = 1;
+    nodes.refused = 0;
+    nodes.sink = NULL;
+    nodes.blob_named = NULL;
+    sink.region = NULL;
+    sink.worker = &builder->main;
+    ok = schema_tabledemo_var_moods_load_graph_( &reader, root, &nodes, directory, &sink );
+    if ( !ok )
+    {
+        if ( nodes.refused && !report->refused && report->non_finite_floats == non_finite_before )
+        {
+            report->refused = 1;
+            report->reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
+        }
+        report->refused = report->refused || refused_before;
+    } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */
+    tabledemo_table_release( builder->arena.allocator, directory );
+    tabledemo_table_release( builder->arena.allocator, nodes.blob_named );
+    if ( !ok || tabledemo_table_report_finish( report, ok ) )
+    {
+        report->refused = 1;
+        tabledemo_var_moods_reset( root );
+        return 0;
+    } /* a refusal discards the whole load (§4) */
+    report->refused = report->refused || refused_before;
+    return 1;
+}
+/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the strict report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_wire_blob_shared_( const uint8_t * wire, int64_t bytes, int64_t total )
+{
+    uint8_t * region;
+    tabledemo_table_report_t report;
+    const tabledemo_var_moods_t * loaded;
+    int shared;
+    region = (uint8_t *) tabledemo_table_allocate( tabledemo_table_default_allocator(), total );
+    if ( region == NULL ) { return 1; }
+    memset( &report, 0, sizeof( report ) );
+    loaded = tabledemo_var_moods_load( region, total, wire, bytes, &report );
+    tabledemo_table_release( tabledemo_table_default_allocator(), region );
+    if ( loaded == NULL ) { return 1; }
+    shared = report.blob_shared > 0;
+    return shared;
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_load_graph_retain_( tabledemo_table_reader_t * reader, tabledemo_var_moods_t * root, tabledemo_table_node_map_t * nodes, tabledemo_table_node_dir_entry_t * directory, tabledemo_table_sink_t * sink, tabledemo_table_retain_walk_t retention )
+{
+    (void) retention;
+
+    tabledemo_table_node_scan_t scan = tabledemo_table_node_scan_begin( reader );
+    tabledemo_table_reader_t body;
+    uint64_t id, k = 0;
+    int32_t unknown = 0;
+    int32_t non_finite_before = reader->report->non_finite_floats, missing_before = reader->report->missing_required;
+    tabledemo_var_moods_reset( root );
+    nodes->declared = schema_tabledemo_var_moods_node_declared_;
+    while ( tabledemo_table_node_scan_next( &scan, &id, &body ) )
+    {
+        const tabledemo_table_node_type_t * type = schema_tabledemo_var_moods_node_lookup_( id );
+        directory[k + 1].type_id = id;
+        directory[k + 1].offset = UINT64_MAX;
+        if ( ( id == UINT64_C( 0x2f2ec0474f1c4fe4 ) || id == UINT64_C( 0x704be0d8faaffc58 ) ) && body.size > UINT32_MAX )
+        {
+            reader->report->reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_OVER_SIZE_CAP;
+            return 0;
+        }
+        if ( id == UINT64_C( 0x704be0d8faaffc58 ) && !tabledemo_table_wire_utf8( body.buffer, body.size ) )
+        {
+            reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            k++;
+            continue;
+        }
+        if ( type == NULL )
+        {
+            if ( id != UINT64_C( 0x2f2ec0474f1c4fe4 ) && id != UINT64_C( 0x704be0d8faaffc58 ) && tabledemo_table_skip_body( body, (int64_t) ( nodes->count - 1 ), 0, 0 ) != body.size )
+            {
+                reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            unknown++;
+        }
+        else if ( sink->region != NULL )
+        {
+            int64_t at = sink->region->used, size = tabledemo_table_node_wire_storage( type, &body );
+            if ( size < 0 || size > sink->region->capacity - at )
+            {
+                reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            directory[k + 1].offset = (uint64_t) at;
+            sink->region->used += size;
+        }
+        else
+        {
+            uint32_t at = tabledemo_table_worker_alloc( sink->worker, type->blob ? tabledemo_table_node_wire_storage( type, &body ) : type->size );
+            if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED )
+            {
+                reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                return 0;
+            }
+            directory[k + 1].offset = at;
+        }
+        k++;
+    }
+    nodes->cycle_indices = 1;
+    nodes->good = tabledemo_table_node_scan_whole( &scan );
+    if ( nodes->good )
+    {
+        reader->report->unknown += unknown;
+        if ( retention.retain ) reader->report->retain_lost += unknown;
+    }
+    else
+    {
+        reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+    }
+    if ( nodes->good )
+    {
+        scan = tabledemo_table_node_scan_begin( reader );
+        k = 0;
+        while ( tabledemo_table_node_scan_next( &scan, &id, &body ) )
+        {
+            if ( directory[k + 1].offset != UINT64_MAX )
+            {
+                void * value = nodes->arena ? tabledemo_table_arena_at( sink->worker->arena, (uint32_t) directory[k + 1].offset ) : nodes->base + directory[k + 1].offset;
+                tabledemo_table_region_sink_t extent;
+                tabledemo_table_sink_t carve;
+                const tabledemo_table_node_type_t * type = schema_tabledemo_var_moods_node_lookup_( id );
+                carve.worker = sink->worker;
+                carve.region = NULL;
+                if ( !nodes->arena )
+                {
+                    extent.base = (uint8_t *) value;
+                    extent.used = tabledemo_table_align_up64( type->size );
+                    extent.capacity = tabledemo_table_node_wire_storage( type, &body );
+                    carve.region = &extent;
+                }
+                nodes->sink = &carve;
+                body.nodes = nodes;
+                switch ( id )
+                {
+                    default: break;
+                }
+                nodes->sink = NULL;
+                if ( nodes->refused )
+                {
+                    break;
+                }
+            }
+            k++;
+        }
+    }
+    reader->nodes = nodes;
+    reader->nested = 0;
+    {
+        int read_ok = 0;
+        if ( !nodes->refused )
+        {
+            tabledemo_table_region_sink_t extent;
+            tabledemo_table_sink_t carve;
+            carve.worker = sink->worker;
+            carve.region = NULL;
+            if ( !nodes->arena )
+            {
+                extent.base = (uint8_t *) (void *) root;
+                extent.used = tabledemo_table_align_up64( (int64_t) sizeof( *root ) );
+                extent.capacity = schema_tabledemo_var_moods_wire_storage_( reader );
+                carve.region = &extent;
+            }
+            nodes->sink = &carve;
+            retention.path = tabledemo_table_retain_root( root, 1 );
+            read_ok = tabledemo_var_moods_load_body_retain( reader, root, retention );
+            nodes->sink = NULL;
+        }
+        /* a NaN or an infinity anywhere in the graph refuses the read, the strict one too (§3.3) */
+        if ( tabledemo_table_non_finite_refused( reader->report, non_finite_before ) )
+        {
+            return 0;
+        }
+        /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+        if ( nodes->good && !nodes->refused && !tabledemo_table_nodes_all_named( reader, (uint64_t) ( nodes->count - 1 ), reader->report ) )
+        {
+            reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        if ( nodes->good && !nodes->refused && !tabledemo_table_cycle_acyclic( nodes, nodes->arena ? sink->worker->arena : NULL, schema_tabledemo_var_moods_cycle_ordinal_, schema_tabledemo_var_moods_cycle_node_, schema_tabledemo_var_moods_cycle_id_ ) )
+        {
+            reader->report->refused = 1, reader->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return 0;
+        }
+        return !nodes->refused && ( !nodes->arena || ( read_ok && reader->report->missing_required == missing_before ) );
+    }
+}
+static SCHEMA_UNUSED const tabledemo_var_moods_t * tabledemo_var_moods_load_retain( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_retain_t * retain, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored = { 0 };
+    tabledemo_table_reader_t reader;
+    tabledemo_table_node_map_t nodes;
+    tabledemo_table_node_dir_entry_t * directory;
+    tabledemo_table_region_sink_t place;
+    tabledemo_table_sink_t sink;
+    tabledemo_table_retain_walk_t retention;
+    int64_t data, records, total;
+    int refused_before, reason_before;
+    int32_t non_finite_before;
+    if ( report == NULL ) report = &ignored;
+    refused_before = report->refused;
+    reason_before = report->reason;
+    non_finite_before = report->non_finite_floats;
+    report->refused = 0;
+    tabledemo_table_retain_reset( retain, NULL, NULL );
+    if ( !tabledemo_table_wire_open( &reader, wire, wire_bytes, report ) )
+    {
+        report->refused = report->refused || refused_before;
+        return NULL;
+    }
+    total = schema_tabledemo_var_moods_load_layout_( &reader, &data, &records );
+    report->reason = (tabledemo_table_refuse_reason_t) reason_before;
+    if ( total < 0 )
+    {
+        tabledemo_var_moods_builder_t builder;
+        tabledemo_table_node_scan_t scan;
+        tabledemo_table_reader_t body;
+        uint64_t id;
+        tabledemo_var_moods_t * root;
+        if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region & ( TABLEDEMO_K_TABLE_ALIGN - 1 ) ) == 0 ) ) memset( region, 0, (size_t) region_bytes );
+        records = 0;
+        scan = tabledemo_table_node_scan_begin( &reader );
+        while ( tabledemo_table_node_scan_next( &scan, &id, &body ) ) records++;
+        if ( records >= INT64_MAX / (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) - 1 || !tabledemo_var_moods_builder_init( &builder ) )
+        {
+            report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return NULL;
+        }
+        root = tabledemo_var_moods_builder_root( &builder );
+        directory = (tabledemo_table_node_dir_entry_t *) tabledemo_table_allocate( builder.arena.allocator, ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) );
+        if ( root == NULL || directory == NULL )
+        {
+            tabledemo_table_release( builder.arena.allocator, directory );
+            tabledemo_var_moods_builder_shutdown( &builder );
+            report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = UINT64_C( 0x05d94ead8f7094de );
+        memset( &nodes, 0, sizeof( nodes ) );
+        nodes.entries = directory;
+        nodes.count = (uint64_t) records + 1;
+        nodes.arena = 1;
+        sink.region = NULL;
+        sink.worker = &builder.main;
+        tabledemo_table_retain_reset( retain, &nodes, NULL );
+        memset( &retention, 0, sizeof( retention ) );
+        retention.retain = retain;
+        retention.path = tabledemo_table_retain_root( root, 1 );
+        (void) schema_tabledemo_var_moods_load_graph_retain_( &reader, root, &nodes, directory, &sink, retention );
+        tabledemo_table_release( builder.arena.allocator, directory );
+        tabledemo_var_moods_builder_shutdown( &builder );
+        tabledemo_table_retain_reset( retain, NULL, NULL );
+        if ( tabledemo_table_non_finite_refused( report, non_finite_before ) )
+        {
+            report->refused = report->refused || refused_before;
+            return NULL;
+        }
+        if ( nodes.refused && !report->refused )
+        {
+            report->refused = 1;
+            report->reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
+            report->refused = 1;
+            return NULL;
+        }
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return NULL;
+    }
+    if ( region == NULL || region_bytes < total || ( (uintptr_t) region & ( TABLEDEMO_K_TABLE_ALIGN - 1 ) ) )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return NULL;
+    }
+    memset( region, 0, (size_t) total );
+    directory = (tabledemo_table_node_dir_entry_t *) (void *) ( region + data );
+    directory[0].offset = 0;
+    directory[0].type_id = UINT64_C( 0x05d94ead8f7094de );
+    memset( &nodes, 0, sizeof( nodes ) );
+    nodes.base = region;
+    nodes.entries = directory;
+    nodes.count = (uint64_t) records + 1;
+    place.base = region;
+    place.capacity = data;
+    place.used = schema_tabledemo_var_moods_wire_storage_( &reader );
+    sink.region = &place;
+    sink.worker = NULL;
+    tabledemo_table_retain_reset( retain, &nodes, region );
+    memset( &retention, 0, sizeof( retention ) );
+    retention.retain = retain;
+    retention.path = tabledemo_table_retain_root( region, 1 );
+    if ( !schema_tabledemo_var_moods_load_graph_retain_( &reader, (tabledemo_var_moods_t *) (void *) region, &nodes, directory, &sink, retention ) || report->refused )
+    {
+        report->refused = report->refused || refused_before;
+        memset( region, 0, (size_t) total );
+        tabledemo_table_retain_reset( retain, NULL, NULL );
+        return NULL;
+    } /* damage discards the whole load, the retention store too (§4) */
+    report->refused = report->refused || refused_before;
+    return (const tabledemo_var_moods_t *) (const void *) region;
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_retain_save_node_( tabledemo_table_writer_t * w, const void * value, uint64_t id, tabledemo_table_retain_walk_t retention )
+{
+    switch ( id )
+    {
+        case UINT64_C( 0x05d94ead8f7094de ): return tabledemo_var_moods_save_body_retain( w, (const tabledemo_var_moods_t *) value, retention );
+        default: return 0;
+    }
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_measure_retain_with_allocator( const tabledemo_var_moods_t * root, tabledemo_table_retain_t * retain, tabledemo_table_allocator_t allocator )
+{
+    if ( !root ) return -1;
+    return tabledemo_table_retain_graph_save( root, &schema_tabledemo_var_moods_node_type_, retain, NULL, INT64_MAX, NULL, allocator, schema_tabledemo_var_moods_retain_save_node_ );
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_measure_retain( const tabledemo_var_moods_t * root, tabledemo_table_retain_t * retain )
+{
+    return tabledemo_var_moods_measure_retain_with_allocator( root, retain, tabledemo_table_default_allocator() );
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_save_retain_with_allocator( const tabledemo_var_moods_t * root, tabledemo_table_retain_t * retain, uint8_t * buffer, int64_t capacity, tabledemo_table_report_t * report, tabledemo_table_allocator_t allocator )
+{
+    if ( !root || !buffer || capacity < 0 || !report ) return -1;
+    return tabledemo_table_retain_graph_save( root, &schema_tabledemo_var_moods_node_type_, retain, buffer, capacity, report, allocator, schema_tabledemo_var_moods_retain_save_node_ );
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_save_retain( const tabledemo_var_moods_t * root, tabledemo_table_retain_t * retain, uint8_t * buffer, int64_t capacity, tabledemo_table_report_t * report )
+{
+    return tabledemo_var_moods_save_retain_with_allocator( root, retain, buffer, capacity, report, tabledemo_table_default_allocator() );
 }
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define tabledemo_weapon_config_load_retain( ... ) ( (void) sizeof( struct { int retention_requires_variable_region_root : -1; } ) )
@@ -41010,6 +43086,33 @@ static SCHEMA_UNUSED const tabledemo_mood_field_t * tabledemo_mood_field_open_ex
 static SCHEMA_UNUSED const tabledemo_mood_field_t * tabledemo_mood_field_open( const void * bytes, uint64_t length )
 {
     return (const tabledemo_mood_field_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_mood_field_t ), (uint64_t) 2 );
+}
+
+/* var_moods_open: match the header and POINT. On a match the bytes ARE what this
+   build wrote, in this build's layout and this build's byte order, so there
+   is nothing to validate and nothing to fix up and the root comes back as it
+   lies. On ANY refusal it returns NULL and the caller falls back to a wire
+   load, which is the path that carries every version.
+
+   It is O(1) IN THE FILE'S SIZE — the header and nothing per node — so a one
+   megabyte cook and a one gigabyte cook open in the same time, and a mapped
+   file's pages are touched only as they are used.
+
+   A REFERENCE INSIDE THE REGION IS DEREFERENCED THROUGH var_moods_at with a NULL
+   context: the slot holds the signed self-relative byte delta of §6.3, so a
+   deref is one add and needs no base pointer, a whole region relocates by
+   plain memcpy, and a delta of zero is null.
+
+   There is ONE entry point and no strict twin: a build either wrote this
+   file or it did not, and the build version is what says which. Validating a
+   file whose provenance a person doubts is schema cook-check, offline, over
+   the ATTRIBUTION part beside the data — a person's decision, never a
+   parameter on a load. */
+static SCHEMA_UNUSED const tabledemo_var_moods_t * tabledemo_var_moods_open_ex( const void * bytes, uint64_t length, tabledemo_table_refuse_reason_t * reason )
+{ return (const tabledemo_var_moods_t *) tabledemo_table_cook_open_ex( bytes, length, sizeof( tabledemo_var_moods_t ), 8, reason ); }
+static SCHEMA_UNUSED const tabledemo_var_moods_t * tabledemo_var_moods_open( const void * bytes, uint64_t length )
+{
+    return (const tabledemo_var_moods_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_var_moods_t ), (uint64_t) 8 );
 }
 
 /* min_arm_fix_open: match the header and POINT. On a match the bytes ARE what this
@@ -41427,6 +43530,57 @@ static SCHEMA_UNUSED int tabledemo_mood_field_cook( const tabledemo_mood_field_t
     tabledemo_table_cook_header( raw, SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE, 8, 1, 8, order );
     return 1;
 }
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order )
+{
+    const tabledemo_var_moods_t * value = (const tabledemo_var_moods_t *) storage;
+    (void) n;
+    (void) at;
+    (void) value;
+    (void) order;
+    tabledemo_table_cook_put( at + 16, (uint64_t) value->mood, 1, order );
+    return 1;
+}
+static SCHEMA_UNUSED int schema_tabledemo_var_moods_extent_pack_( tabledemo_table_numbering_t * n, const void * storage, uint8_t * record, uint8_t * extent, int64_t * at, int order )
+{
+    const tabledemo_var_moods_t * value = (const tabledemo_var_moods_t *) storage;
+    (void) n;
+    (void) value;
+    (void) record;
+    (void) extent;
+    (void) at;
+    (void) order;
+    uint8_t * cook_extent1_slot = ( record != NULL ? record + 0 : NULL );
+    {
+        tabledemo_table_sequence_cursor_t cook_extent1 = tabledemo_table_sequence_cursor( n ? n->ctx : NULL, &value->row, sizeof( tabledemo_mood_t ) );
+        int32_t cook_extent1_i;
+        uint8_t * cook_extent1_array;
+        if ( !cook_extent1.ok || !tabledemo_table_extent_reserve( at, value->row.count, sizeof( tabledemo_mood_t ), 1 ) ) { return 0; }
+        cook_extent1_array = cook_extent1_slot != NULL ? extent + *at - (int64_t) value->row.count * sizeof( tabledemo_mood_t ) : NULL;
+        if ( cook_extent1_array != NULL )
+        {
+            tabledemo_table_cook_put( cook_extent1_slot, value->row.count ? (uint64_t) ( cook_extent1_array - ( cook_extent1_slot ) ) : 0, 8, order );
+            tabledemo_table_cook_put( cook_extent1_slot + 8, (uint32_t) value->row.count, 4, order );
+        }
+        for ( cook_extent1_i = 0; cook_extent1_i < value->row.count; cook_extent1_i++ )
+        {
+            const tabledemo_mood_t * cook_extent1_in = (const tabledemo_mood_t *) tabledemo_table_sequence_next( &cook_extent1 );
+            if ( cook_extent1_in == NULL ) { return 0; }
+            if ( cook_extent1_array != NULL )
+            {
+                tabledemo_table_cook_put( ( cook_extent1_array != NULL ? cook_extent1_array + cook_extent1_i * sizeof( tabledemo_mood_t ) : NULL ), (uint64_t) ( *cook_extent1_in ), 1, order );
+            }
+        }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_cook_measure_with_allocator( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * value, tabledemo_table_allocator_t allocator )
+{ return tabledemo_table_graph_cook( ctx, value, &schema_tabledemo_var_moods_node_type_, NULL, 0, TABLEDEMO_TABLE_BYTE_ORDER_LITTLE, allocator, SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE, 1 ); }
+static SCHEMA_UNUSED int tabledemo_var_moods_cook_with_allocator( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * value, void * output, uint64_t capacity, tabledemo_table_byte_order_t order, tabledemo_table_allocator_t allocator )
+{ return tabledemo_table_graph_cook( ctx, value, &schema_tabledemo_var_moods_node_type_, output, capacity, order, allocator, SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE, 0 ) >= 0; }
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_cook_measure( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * value )
+{ return tabledemo_var_moods_cook_measure_with_allocator( ctx, value, ctx != NULL && ctx->arena != NULL ? ctx->arena->allocator : tabledemo_table_default_allocator() ); }
+static SCHEMA_UNUSED int tabledemo_var_moods_cook( const tabledemo_table_ctx_t * ctx, const tabledemo_var_moods_t * value, void * output, uint64_t capacity, tabledemo_table_byte_order_t order )
+{ return tabledemo_var_moods_cook_with_allocator( ctx, value, output, capacity, order, ctx != NULL && ctx->arena != NULL ? ctx->arena->allocator : tabledemo_table_default_allocator() ); }
 static SCHEMA_UNUSED int schema_tabledemo_min_arm_fix_body_pack_( struct tabledemo_table_numbering_t * n, uint8_t * at, const void * storage, int order )
 {
     const tabledemo_min_arm_fix_t * value = (const tabledemo_min_arm_fix_t *) storage;
@@ -41627,6 +43781,10 @@ SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MoodField_sizeof, sizeof( tabledemo_mood_f
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MoodField_alignof, SCHEMA_TABLE_ALIGNOF( tabledemo_mood_field_t ) == 2, "MoodField's alignof moved: the build version was taken over 2 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MoodField_mood_offset, offsetof( tabledemo_mood_field_t, mood ) == 0, "MoodField's field mood moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MoodField_tail_offset, offsetof( tabledemo_mood_field_t, tail ) == 2, "MoodField's field tail moved: the build version was taken over offset 2 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_VarMoods_sizeof, sizeof( tabledemo_var_moods_t ) == 24, "VarMoods's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_VarMoods_alignof, SCHEMA_TABLE_ALIGNOF( tabledemo_var_moods_t ) == 8, "VarMoods's alignof moved: the build version was taken over 8 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_VarMoods_row_offset, offsetof( tabledemo_var_moods_t, row ) == 0, "VarMoods's field row moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
+SCHEMA_TABLE_STATIC_ASSERT( tabledemo_VarMoods_mood_offset, offsetof( tabledemo_var_moods_t, mood ) == 16, "VarMoods's field mood moved: the build version was taken over offset 16 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MinArmFix_sizeof, sizeof( tabledemo_min_arm_fix_t ) == 24, "MinArmFix's sizeof moved: the build version was taken over 24, so a cook of it would not be this build's file (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MinArmFix_alignof, SCHEMA_TABLE_ALIGNOF( tabledemo_min_arm_fix_t ) == 4, "MinArmFix's alignof moved: the build version was taken over 4 (docs/SPEC-TABLES.md §20.3)" );
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_MinArmFix_pick_offset, offsetof( tabledemo_min_arm_fix_t, pick ) == 0, "MinArmFix's field pick moved: the build version was taken over offset 0 (docs/SPEC-TABLES.md §20.3)" );
@@ -41660,6 +43818,7 @@ extern const tabledemo_table_type_info_t schema_tabledemo_counted_min_info_;
 extern const tabledemo_table_type_info_t schema_tabledemo_float_bound_info_;
 extern const tabledemo_table_type_info_t schema_tabledemo_moods_info_;
 extern const tabledemo_table_type_info_t schema_tabledemo_mood_field_info_;
+extern const tabledemo_table_type_info_t schema_tabledemo_var_moods_info_;
 extern const tabledemo_table_type_info_t schema_tabledemo_min_arm_fix_info_;
 extern const tabledemo_table_type_info_t schema_tabledemo_min_plain_fix_info_;
 extern const tabledemo_table_type_info_t schema_tabledemo_attachment_info_;
@@ -41674,6 +43833,7 @@ static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_counted_min_t
 static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_float_bound_table_type( void ) { return &schema_tabledemo_float_bound_info_; }
 static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_moods_table_type( void ) { return &schema_tabledemo_moods_info_; }
 static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_mood_field_table_type( void ) { return &schema_tabledemo_mood_field_info_; }
+static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_var_moods_table_type( void ) { return &schema_tabledemo_var_moods_info_; }
 static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_min_arm_fix_table_type( void ) { return &schema_tabledemo_min_arm_fix_info_; }
 static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_min_plain_fix_table_type( void ) { return &schema_tabledemo_min_plain_fix_info_; }
 static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_attachment_table_type( void ) { return &schema_tabledemo_attachment_info_; }
@@ -41889,6 +44049,31 @@ static SCHEMA_UNUSED int64_t tabledemo_mood_field_to_json( const tabledemo_mood_
 {
     return schema_tabledemo_mood_field_to_json_( value, buffer, capacity );
 }
+
+int schema_tabledemo_var_moods_from_json_( tabledemo_var_moods_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report );
+int64_t schema_tabledemo_var_moods_to_json_( const tabledemo_var_moods_t * value, char * buffer, int64_t capacity, tabledemo_table_allocator_t allocator );
+static SCHEMA_UNUSED int tabledemo_var_moods_from_json( tabledemo_var_moods_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    tabledemo_var_moods_t * root;
+    int decoded;
+    if ( report == NULL )
+    {
+        memset( &ignored, 0, sizeof( ignored ) );
+        report = &ignored;
+    }
+    memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
+    decoded = schema_tabledemo_var_moods_from_json_( builder, text, bytes, report );
+    if ( !tabledemo_table_report_finish( report, decoded ) ) { return 1; }
+    root = tabledemo_var_moods_builder_root( builder );
+    if ( root != NULL ) { tabledemo_var_moods_reset( root ); } /* a refusal discards the whole load (§4) */
+    return 0;
+}
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_to_json_measure( const tabledemo_var_moods_t * value ) { return schema_tabledemo_var_moods_to_json_( value, NULL, 0, tabledemo_table_default_allocator() ); }
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_to_json( const tabledemo_var_moods_t * value, char * buffer, int64_t capacity ) { return schema_tabledemo_var_moods_to_json_( value, buffer, capacity, tabledemo_table_default_allocator() ); }
+
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_to_json_with_allocator( const tabledemo_var_moods_t * value, char * buffer, int64_t capacity, tabledemo_table_allocator_t allocator ) { return schema_tabledemo_var_moods_to_json_( value, buffer, capacity, allocator ); }
+static SCHEMA_UNUSED int64_t tabledemo_var_moods_to_json_measure_with_allocator( const tabledemo_var_moods_t * value, tabledemo_table_allocator_t allocator ) { return schema_tabledemo_var_moods_to_json_( value, NULL, 0, allocator ); }
 
 /* MinArmFix in and out of a JSON text — one instance, one text, the generic
    walk over this type's descriptors (docs/SPEC-TABLES.md §16). Defined in

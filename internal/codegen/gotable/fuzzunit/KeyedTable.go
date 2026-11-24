@@ -170,7 +170,7 @@ func TeamConfigSaveBody(w *TableWriter, value *TeamConfig) bool {
 func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 	{
 		if value.SpawnCount != 4 {
-			if ref := w.Ids.refAtHit(130, 0xceec99e2d65db674); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(131, 0xceec99e2d65db674); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
@@ -184,7 +184,7 @@ func TeamConfigSaveBodyFields(w *TableWriter, value *TeamConfig) bool {
 			return false
 		}
 		if value.BannerLength > 0 {
-			if ref := w.Ids.refAtHit(117, 0xbca0dab1c7a00ccf); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(118, 0xbca0dab1c7a00ccf); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.BannerLength < 0 || value.BannerLength > 16 {
@@ -422,7 +422,7 @@ func TeamConfigSaveBodyRetain(w *TableRetainWriter, value *TeamConfig) bool {
 func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) bool {
 	{
 		if value.SpawnCount != 4 {
-			if ref := w.Ids.refAtHit(130, 0xceec99e2d65db674); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(131, 0xceec99e2d65db674); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
@@ -436,7 +436,7 @@ func TeamConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TeamConfig) boo
 			return false
 		}
 		if value.BannerLength > 0 {
-			if ref := w.Ids.refAtHit(117, 0xbca0dab1c7a00ccf); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(118, 0xbca0dab1c7a00ccf); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.BannerLength < 0 || value.BannerLength > 16 {
@@ -610,10 +610,10 @@ func GunnerConfigMeasureBody(value *GunnerConfig, ids *TableIds) int64 {
 		return -1
 	}
 	if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
-		bytes += tableLebBytes(ids.refAtHit(110, 0xb75aa3662201646a)) + 1 + 4
+		bytes += tableLebBytes(ids.refAtHit(111, 0xb75aa3662201646a)) + 1 + 4
 	} // reaction
 	if value.Tracking != false {
-		bytes += tableLebBytes(ids.refAtHit(98, 0xa6bf719a4602b0bc)) + 1 + 1
+		bytes += tableLebBytes(ids.refAtHit(99, 0xa6bf719a4602b0bc)) + 1 + 1
 	} // tracking
 	if ids.Overflow {
 		return -1
@@ -644,7 +644,7 @@ func GunnerConfigSaveBody(w *TableWriter, value *GunnerConfig) bool {
 func GunnerConfigSaveBodyFields(w *TableWriter, value *GunnerConfig) bool {
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
-			if ref := w.Ids.refAtHit(110, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(111, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Reaction-value.Reaction != 0 {
@@ -655,7 +655,7 @@ func GunnerConfigSaveBodyFields(w *TableWriter, value *GunnerConfig) bool {
 	}
 	{
 		if value.Tracking != false {
-			if ref := w.Ids.refAtHit(98, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(99, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Tracking {
@@ -843,7 +843,7 @@ func GunnerConfigSaveBodyRetain(w *TableRetainWriter, value *GunnerConfig) bool 
 func GunnerConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerConfig) bool {
 	{
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
-			if ref := w.Ids.refAtHit(110, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(111, 0xb75aa3662201646a); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Reaction-value.Reaction != 0 {
@@ -854,7 +854,7 @@ func GunnerConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *GunnerConfig)
 	}
 	{
 		if value.Tracking != false {
-			if ref := w.Ids.refAtHit(98, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(99, 0xa6bf719a4602b0bc); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Tracking {
@@ -1005,7 +1005,7 @@ func TurretConfigSaveBody(w *TableWriter, value *TurretConfig) bool {
 func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
-			if ref := w.Ids.refAtHit(73, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(74, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Damage-value.Damage != 0 {
@@ -1016,7 +1016,7 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 	}
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
-			if ref := w.Ids.refAtHit(144, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(145, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Cooldown-value.Cooldown != 0 {
@@ -1028,7 +1028,7 @@ func TurretConfigSaveBodyFields(w *TableWriter, value *TurretConfig) bool {
 	if value.GunnerPresent {
 		{
 			mark := w.Ids.Count
-			ref := w.Ids.refAtHit(45, 0x40dbb648c0cd44aa)
+			ref := w.Ids.refAtHit(46, 0x40dbb648c0cd44aa)
 			start := w.Ids.Count
 			n := GunnerConfigMeasureBody(&value.Gunner, w.Ids)
 			if n < 0 || w.Ids.Overflow {
@@ -1166,6 +1166,10 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 			if !GunnerConfigLoadBody(&sub, &value.Gunner) {
 				return false
 			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
@@ -1258,7 +1262,7 @@ func TurretConfigSaveBodyRetain(w *TableRetainWriter, value *TurretConfig) bool 
 func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig) bool {
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
-			if ref := w.Ids.refAtHit(73, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(74, 0x7f6308be8ab37fc0); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Damage-value.Damage != 0 {
@@ -1269,7 +1273,7 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 	}
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
-			if ref := w.Ids.refAtHit(144, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(145, 0xdc2cbe6953343d48); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Cooldown-value.Cooldown != 0 {
@@ -1281,7 +1285,7 @@ func TurretConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *TurretConfig)
 	if value.GunnerPresent {
 		{
 			mark := w.Ids.Count
-			ref := w.Ids.refAtHit(45, 0x40dbb648c0cd44aa)
+			ref := w.Ids.refAtHit(46, 0x40dbb648c0cd44aa)
 			start := w.Ids.Count
 			payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 			{
@@ -1460,6 +1464,10 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 			if !GunnerConfigLoadBodyRetain(&sub, &value.Gunner) {
 				return false
 			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
+				return false
+			}
 			if sub.Offset != int64(len(sub.Buffer)) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
@@ -1516,7 +1524,7 @@ func HullConfigSaveBody(w *TableWriter, value *HullConfig) bool {
 func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
-			if ref := w.Ids.refAtHit(74, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(75, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Health-value.Health != 0 {
@@ -1527,7 +1535,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
-			if ref := w.Ids.refAtHit(24, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(25, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Mass-value.Mass != 0 {
@@ -1538,7 +1546,7 @@ func HullConfigSaveBodyFields(w *TableWriter, value *HullConfig) bool {
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(78, 0x84f8260bc283608c)
+		ref := w.Ids.refAtHit(79, 0x84f8260bc283608c)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -1915,6 +1923,11 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 					if !TurretConfigLoadBody(&elem, &value.Turrets[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1922,6 +1935,10 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -2012,7 +2029,7 @@ func HullConfigSaveBodyRetain(w *TableRetainWriter, value *HullConfig) bool {
 func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) bool {
 	{
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
-			if ref := w.Ids.refAtHit(74, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(75, 0x7f69d4b5288ba9cf); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Health-value.Health != 0 {
@@ -2023,7 +2040,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
-			if ref := w.Ids.refAtHit(24, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
+			if ref := w.Ids.refAtHit(25, 0x1f3757a2ce7b0ab1); !w.headerPair(ref, 10) {
 				w.headerRest(ref, 10)
 			}
 			if value.Mass-value.Mass != 0 {
@@ -2034,7 +2051,7 @@ func HullConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *HullConfig) boo
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(78, 0x84f8260bc283608c)
+		ref := w.Ids.refAtHit(79, 0x84f8260bc283608c)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -2455,6 +2472,11 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 					if !TurretConfigLoadBodyRetain(&elem, &value.Turrets[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -2462,6 +2484,10 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -2518,7 +2544,7 @@ func KeyedConfigSaveBody(w *TableWriter, value *KeyedConfig) bool {
 func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(115, 0xbaaeb048a5a8fa6d)
+		ref := w.Ids.refAtHit(116, 0xbaaeb048a5a8fa6d)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -2727,7 +2753,7 @@ func KeyedConfigSaveBodyFields(w *TableWriter, value *KeyedConfig) bool {
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(129, 0xce0ac3c25694d8ff)
+		ref := w.Ids.refAtHit(130, 0xce0ac3c25694d8ff)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -3091,6 +3117,11 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 					if !TeamConfigLoadBody(&elem, &value.Teams[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3098,6 +3129,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -3177,6 +3212,11 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 					if !HullConfigLoadBody(&elem, &value.Hulls[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -3184,6 +3224,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -3203,6 +3247,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 				return false
 			}
 			if !ScoreBoardLoadBody(&sub, &value.Scores) {
+				return false
+			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -3296,7 +3344,7 @@ func KeyedConfigSaveBodyRetain(w *TableRetainWriter, value *KeyedConfig) bool {
 func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(115, 0xbaaeb048a5a8fa6d)
+		ref := w.Ids.refAtHit(116, 0xbaaeb048a5a8fa6d)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -3545,7 +3593,7 @@ func KeyedConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *KeyedConfig) b
 	}
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(129, 0xce0ac3c25694d8ff)
+		ref := w.Ids.refAtHit(130, 0xce0ac3c25694d8ff)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -3993,6 +4041,11 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 					if !TeamConfigLoadBodyRetain(&elem, &value.Teams[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -4000,6 +4053,10 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -4083,6 +4140,11 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 					if !HullConfigLoadBodyRetain(&elem, &value.Hulls[int(slot)-1]) {
 						return false
 					}
+					sub.Take(elem)
+					if sub.Nodes.Carve.Refused {
+						r.Nodes.Carve = sub.Nodes.Carve
+						return false
+					}
 					if elem.Offset != int64(len(elem.Buffer)) {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -4090,6 +4152,10 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -4110,6 +4176,10 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 				return false
 			}
 			if !ScoreBoardLoadBodyRetain(&sub, &value.Scores) {
+				return false
+			}
+			r.Take(sub)
+			if r.Nodes.Carve.Refused {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -4171,7 +4241,7 @@ func ScoreBoardSaveBody(w *TableWriter, value *ScoreBoardRow) bool {
 func ScoreBoardSaveBodyFields(w *TableWriter, value *ScoreBoardRow) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(157, 0xf10fad739a0e1660)
+		ref := w.Ids.refAtHit(158, 0xf10fad739a0e1660)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -4543,6 +4613,10 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		default:
 			r.Report.Unknown++
@@ -4607,7 +4681,7 @@ func ScoreBoardSaveBodyRetain(w *TableRetainWriter, value *ScoreBoardRow) bool {
 func ScoreBoardSaveBodyFieldsRetain(w *TableRetainWriter, value *ScoreBoardRow) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(157, 0xf10fad739a0e1660)
+		ref := w.Ids.refAtHit(158, 0xf10fad739a0e1660)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -4971,6 +5045,10 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 				}
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}

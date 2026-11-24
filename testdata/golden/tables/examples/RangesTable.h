@@ -462,6 +462,15 @@ struct TableFieldInfo
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
     const TableUnionInfo * ( *arms )();
+    // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and
+    // hand it back at its defaults. A MAP places BY KEY, a string key comes
+    // in as the bytes and the length, an integer key as the value, and NULL
+    // is NOT INSERTED: a key past the bound, or an arena that could not carve
+    // another segment. A LIST ignores the key and APPENDS, NULL at the arena
+    // or the int32 cap. NULL on every field that is neither. FRESH says the
+    // caller already knows no entry holds this key (the text read keeps a
+    // set of the keys it placed), so a map skips its linear find.
+    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -664,7 +673,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 171;
+    static const int32_t kCapacity = 172;
     static const int32_t kBuckets = 512;
     // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
     // table past kTableProbeBound entries, so the 4097th id overflows.
@@ -2549,14 +2558,14 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xdf,
-    0xa9,
-    0x3c,
-    0x11,
-    0x9e,
-    0xa7,
-    0xf8,
-    0x74,
+    0x52,
+    0x57,
+    0x94,
+    0x9c,
+    0x84,
+    0xbb,
+    0xe1,
+    0x2e,
     0x02,
     0x0e,
     0x89,
@@ -4388,12 +4397,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0x74f8a79e113ca9dfull )
+    if ( vocabulary.strict && version != 0x2ee1bb849c945752ull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0x74f8a79e113ca9dfull;
+        to->build_version_own = 0x2ee1bb849c945752ull;
         return false;
     }
 
@@ -8001,6 +8010,38 @@ struct TableWorker
         return blob;
     }
 
+    // RAW, ZEROED storage of the bytes asked for, at the alignment asked for: a MAP's or a LIST's builder
+    // head and its segments (docs/SPEC-TABLES.md §2.8, §2.9). It is not a node: it carries
+    // no type id, takes no index and has no Reset, so it goes through the same
+    // slab and span the blob path uses rather than through Alloc.
+    uint8_t * AllocRaw( int64_t bytes, int64_t align, uint32_t & at )
+    {
+        at = 0;
+        if ( arena == NULL || arena->locked ) { return NULL; }
+        if ( bytes <= 0 || align > (int64_t) kTableAlign ) { return NULL; }
+        const int64_t rounded = TableAlignUp64( bytes );
+        if ( rounded > (int64_t) kTableSlabBytes )
+        {
+            at = TableArenaGrabSpan( *arena, rounded );
+            if ( at == kTableAllocFailed )
+            {
+                at = 0;
+                return NULL;
+            }
+            return TableArenaAt( *arena, at );
+        }
+        if ( end == 0 || next + (uint32_t) rounded > end )
+        {
+            uint32_t offset = TableArenaGrabSlab( *arena );
+            if ( offset == kTableAllocFailed ) { return NULL; }
+            next = offset;
+            end = offset + kTableSlabBytes;
+            if ( next == 0 ) { next = kTableAlign; } // offset 0 is null: the arena's head stays reserved
+        }
+        at = next;
+        next += (uint32_t) rounded;
+        return TableArenaAt( *arena, at ); // the segment came back zeroed
+    }
     // a *bytes node: the bytes to write through, and the reference to store
     TableBytesSlot AllocBytes( int64_t length )
     {
@@ -8510,6 +8551,10 @@ struct TableNodeDirEntry
     uint64_t type_id;
 };
 
+// the node's extent cursor, defined with the extent runtime (docs/SPEC-TABLES.md
+// §2.8, §2.9); the node map names it only through a pointer.
+struct TableExtentCarve;
+
 // TableNodeMap is what a pointer slot resolves through while a body decodes.
 struct TableNodeMap
 {
@@ -8524,6 +8569,21 @@ struct TableNodeMap
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;
+    // WHERE A MAP'S ENTRIES AND A LIST'S ELEMENTS LAND while this node's body
+    // decodes (docs/SPEC-TABLES.md §2.8, §2.9): the node's own extent on the
+    // region path and the builder's arena on the tool's. It is MUTABLE
+    // because the cursor belongs to ONE node's decode and the dispatch that
+    // owns that node holds the map by const reference, exactly as it did
+    // before either construct existed. The decoder's signature does not
+    // move for a construct it may not carry.
+    mutable TableExtentCarve * carve = NULL;
+    // and the TOOL's path's allocation front, set once: there the arrays
+    // are the builder's arena's rather than a node's extent.
+    TableWorker * worker = NULL;
+    // THE TOOL PATH'S REFUSAL (docs/SPEC-TABLES.md §2.9): a count above the
+    // int32 cap met while a body decoded. LoadBuilder answers NULL for it
+    // and moves no counter; mutable for the reason the cursor is.
+    mutable bool refused = false;
     // During construction, keep validated TABLE indices for the cycle check.
     // Blob references resolve normally. No root is returned in this state.
     bool cycle_indices = false;
@@ -9556,7 +9616,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 171;
+static const int32_t kTableRetainKnownIds = 172;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9567,6 +9627,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0x031ec0c4b7d28bf1ull,
     0x04dc16aea8ff5276ull,
     0x0577780d86c4b0c3ull,
+    0x05d94ead8f7094deull,
     0x065ee827cf99fbb4ull,
     0x08a60c07b54d8dc7ull,
     0x09ae5613b0051271ull,
@@ -10851,6 +10912,898 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
 
 #endif // TABLEDEMO_SCHEMA_TABLE_RETAIN
 
+#ifndef TABLEDEMO_SCHEMA_TABLE_EXTENT
+#define TABLEDEMO_SCHEMA_TABLE_EXTENT
+
+namespace tabledemo {
+
+// ---- the NODE EXTENT: where a map's entries and a list's elements live (§2.8, §2.9) ----
+
+// TableExtentCarve is a node's extent cursor, PRE-ORDER: a container's whole
+// array first, then, element by element in the container's own order, the
+// arrays of any list or map an element holds by value. The cursor is the node
+// map's, because the generated decoder is threaded with that and not with a
+// region.
+struct TableExtentCarve
+{
+    uint8_t * at = NULL;         // the region path: the node's extent, unspent
+    int64_t left = 0;
+    TableWorker * worker = NULL; // the TOOL's path: the arrays come from the arena
+};
+
+// AN UNREACHED SLOT MUST HOLD NO LIST OR MAP WITH ELEMENTS IN IT (§2.8, §2.9,
+// §7.6). An empty one takes no bytes, so a record whose extent measures ZERO is
+// a record whose every by-value list and map is empty. A measure that REFUSED
+// answers non-zero here too, and refusing on it is the same answer one level up.
+inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
+
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) )
+    {
+        len = -1;
+        return NULL;
+    }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 )
+    {
+        slot.value = 0;
+        return true;
+    }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 )
+    {
+        dst.value = 0;
+        return true;
+    }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength )
+    {
+        reason = blob_over_size_cap;
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
+// ---- LoadMeasure's framing walk (§6.5) ----
+//
+// The measure reads no field value: it walks each record's field headers,
+// skipping every payload by its framing, to reach each N at every depth. A
+// false is a REFUSAL, and it carries its reason (§6.5).
+typedef bool ( *TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+
+// the framing walk over an ARRAY OF TABLES held by value: its elements' own
+// lists and maps are part of this node's extent too
+inline bool TableWireExtentElements( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+// and over an ENUM-KEYED array, whose triples carry a key REFERENCE before each
+// length-prefixed element (docs/SPEC-TABLES.md §3.2)
+inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t & at, TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 13 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key = 0;
+        if ( !r.getleb( key ) ) { return true; }
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; }
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace tabledemo
+
+#endif // TABLEDEMO_SCHEMA_TABLE_EXTENT
+
+#ifndef TABLEDEMO_SCHEMA_TABLE_LIST
+#define TABLEDEMO_SCHEMA_TABLE_LIST
+
+namespace tabledemo {
+
+// ---- an UNBOUNDED ARRAY: a counted array whose count the data decides (§2.9) ----
+//
+// On the wire, in a region and in a cook a list is the kind 14 body a [..N]T
+// writes, its elements by-value records inside the holder's node extent. What
+// this adds is the slot, a builder that appends into segments that never
+// move, and a const surface that indexes and iterates in place. There is no
+// sort, no key and no lookup: the order is INSERTION order, and it is
+// identity the way position is identity in a fixed array.
+
+// elements carved from ONE call to the allocator pair. A new segment is
+// appended when the current one fills, and nothing ever moves (§6.4)
+static const int32_t kTableListSegmentElements = 32;
+
+// THE ELEMENT STORAGE: T itself, and a TableRef slot for a []*T, whose
+// elements are references exactly as a pointer field's slot is (§2.1)
+template <typename T>
+struct TableListStorage
+{
+    typedef T Element;
+};
+template <typename T>
+struct TableListStorage<T *>
+{
+    typedef TableRef Element;
+};
+
+// WHAT THE CONST FORM ANSWERS: the element by reference, and on a []*T the
+// RESOLVED pointer, one add on the self-relative delta, NULL for a null slot,
+// exactly as <T>At answers it (§6.2, §6.3)
+template <typename T>
+struct TableListConst
+{
+    typedef const T & Result;
+    static Result At( const T * element ) { return *element; }
+};
+template <typename T>
+struct TableListConst<T *>
+{
+    typedef const T * Result;
+    static Result At( const TableRef * element )
+    {
+        return element->value != 0 ? (const T *) ( (const uint8_t *) element + element->value ) : NULL;
+    }
+};
+
+// ---- the storage: SIXTEEN BYTES in the holder's record (§2.9, §7.2) ----
+//
+// An int64 self-relative reference to the element array and an int32 count,
+// then padding to eight. The reference is a TableRef like a pointer's: in the
+// arena it names the builder's HEAD, in a region it is the delta from the slot
+// to the first element, and 0 is the empty list in both. It is the map's slot
+// exactly, because it is the same two facts.
+template <typename T>
+struct TableList
+{
+    typedef typename TableListStorage<T>::Element Element;
+
+    TableRef elements;
+    int32_t count = 0;   // the LIVE count, in both forms
+    int32_t padding = 0; // named, so the record has no unwritten byte in it
+
+    // ---- the CONST form: a locked region, a loaded one, an opened cook ----
+    //
+    // One surface over one encoding (§6.3). A region reference resolves from
+    // the slot's own address, so every one of these is a member and needs no
+    // base and no context.
+    const Element * Elements() const
+    {
+        return elements.value != 0 ? (const Element *) ( (const uint8_t *) &elements + elements.value ) : NULL;
+    }
+    int32_t size() const { return count; }
+
+    // INDEXING IS BOUNDS-CHECKED IN EVERY BUILD (§2.4, §2.9): the extent is a
+    // number that CAME FROM A FILE, so an index past it is not a mistake a
+    // release build gets to make cheaply. There is no undefined-behavior path
+    // here in any configuration. The assert carries the message where a
+    // debugger can read it and NDEBUG removes that. The fatal is what stands
+    // after it. Both go through the hooks: define schema_assert and
+    // schema_fatal and this refusal lands in your own handler.
+    void RefuseIndex( int32_t index ) const
+    {
+        if ( (uint32_t) index >= (uint32_t) count )
+        {
+            schema_assert( false && "an unbounded array is indexed inside its count, which came from a file" );
+            schema_fatal();
+        }
+    }
+    typename TableListConst<T>::Result operator[]( int32_t index ) const
+    {
+        RefuseIndex( index );
+        return TableListConst<T>::At( Elements() + index );
+    }
+
+    // ---- iteration: INDEX order, the element and no key ----
+    //
+    // It carries no iterator_traits, for the reason TableKeyed's does not
+    // (§13.9).
+    struct ConstIterator
+    {
+        const Element * at;
+        typename TableListConst<T>::Result operator*() const { return TableListConst<T>::At( at ); }
+        ConstIterator & operator++()
+        {
+            at++;
+            return *this;
+        }
+        bool operator==( const ConstIterator & other ) const { return at == other.at; }
+        bool operator!=( const ConstIterator & other ) const { return at != other.at; }
+    };
+
+    ConstIterator begin() const { return ConstIterator{ Elements() }; }
+    ConstIterator end() const { return ConstIterator{ Elements() + count }; }
+};
+
+// ---- the BUILDER's side: a head, and segments that never move (§2.9, §6.4) ----
+//
+// The head is a small node in the arena holding the segment chain, the live
+// count and the dead count, allocated when the first element is added. Each
+// segment is a fixed number of elements carved from one call to the allocator
+// pair. An element's address is stable for the arena's life, so a T * handed
+// back by Add stays valid while other elements arrive.
+struct TableListHead
+{
+    TableRef first; // the arena offset of the first segment
+    TableRef last;  // and of the one an Add appends into
+    int32_t live;
+    int32_t dead;
+};
+
+template <typename Element>
+struct TableListSegment
+{
+    TableRef next;
+    int32_t used;                                          // elements carved from this segment
+    int32_t padding;
+    uint32_t dead[( kTableListSegmentElements + 31 ) / 32]; // Erase marks one bit, never the element
+    Element elements[kTableListSegmentElements];
+};
+
+inline bool TableListSegmentDead( const uint32_t * dead, int32_t index )
+{
+    return ( dead[index / 32] & ( 1u << ( index % 32 ) ) ) != 0;
+}
+
+// the head, allocated when the first element is added
+template <typename T>
+inline TableListHead * TableListReach( TableWorker & worker, TableList<T> & list )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return NULL; }
+    if ( list.elements.value != 0 ) { return (TableListHead *) TableArenaAt( *worker.arena, (uint32_t) list.elements.value ); }
+    uint32_t at = 0;
+    TableListHead * head = (TableListHead *) worker.AllocRaw( (int64_t) sizeof( TableListHead ), (int64_t) alignof( TableListHead ), at );
+    if ( head == NULL ) { return NULL; }
+    head->first.value = 0;
+    head->last.value = 0;
+    head->live = 0;
+    head->dead = 0;
+    list.elements.value = (int64_t) at;
+    return head;
+}
+
+// one element's storage, appended: the current segment when it has room, a
+// new one carved from one call to the pair when it does not. NULL means NOT
+// ADDED: an arena that cannot carve another segment, or a count at the int32
+// cap (§2.2, §2.9).
+template <typename T>
+inline typename TableList<T>::Element * TableListAppend( TableWorker & worker, TableListHead * head, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.count >= INT32_MAX ) { return NULL; } // the int32 storage cap
+    TableListSegment<Element> * segment = NULL;
+    if ( head->last.value != 0 )
+    {
+        segment = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        if ( segment->used >= kTableListSegmentElements ) { segment = NULL; }
+    }
+    if ( segment == NULL )
+    {
+        uint32_t at = 0;
+        segment = (TableListSegment<Element> *) worker.AllocRaw( (int64_t) sizeof( TableListSegment<Element> ), (int64_t) alignof( TableListSegment<Element> ), at );
+        if ( segment == NULL ) { return NULL; } // the arena could not carve another segment
+        segment->next.value = 0;
+        segment->used = 0;
+        segment->padding = 0;
+        for ( int32_t i = 0; i < (int32_t) ( sizeof( segment->dead ) / sizeof( segment->dead[0] ) ); i++ ) { segment->dead[i] = 0; }
+        if ( head->last.value != 0 )
+        {
+            TableListSegment<Element> * previous = (TableListSegment<Element> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+            previous->next.value = (int64_t) at;
+        }
+        else
+        {
+            head->first.value = (int64_t) at;
+        }
+        head->last.value = (int64_t) at;
+    }
+    Element * element = segment->elements + segment->used;
+    segment->used++;
+    head->live++;
+    list.count++;
+    return element;
+}
+
+// ADD, whole: the head, the append, and the element at its declared defaults
+// (§2.9). The text form's placement is this same call, because a list has no
+// key to place under (§16).
+template <typename T>
+inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    TableListHead * head = TableListReach( worker, list );
+    if ( head == NULL ) { return NULL; }
+    Element * element = TableListAppend( worker, head, list );
+    if ( element == NULL ) { return NULL; }
+    new ( element ) Element(); // value-init: the declared defaults, and null for a slot
+    return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
+}
+
+// ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
+// handle, because a list has no key and the address is the one thing the
+// builder promises never moves (§6.4). It marks the element DEAD, one bit in
+// the segment's slot and not in the element storage, and decrements the live
+// count. False when the pointer is not this list's. Its storage is reclaimed
+// at RESET and never reused mid-build, the map's rule for the map's reason.
+template <typename T>
+inline bool TableListErase( TableArena & arena, TableList<T> & list, const typename TableList<T>::Element * element )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || element == NULL ) { return false; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    TableRef segment_ref = head->first;
+    while ( segment_ref.value != 0 )
+    {
+        TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) segment_ref.value );
+        if ( element >= segment->elements && element < segment->elements + segment->used )
+        {
+            const int32_t i = (int32_t) ( element - segment->elements );
+            if ( TableListSegmentDead( segment->dead, i ) ) { return false; } // already erased
+            segment->dead[i / 32] |= 1u << ( i % 32 );
+            head->live--;
+            head->dead++;
+            list.count--;
+            return true;
+        }
+        segment_ref = segment->next;
+    }
+    return false;
+}
+
+// ---- iterate on the BUILDER: INDEX order, live elements only (§2.9) ----
+template <typename T>
+struct TableListEach
+{
+    typedef typename TableList<T>::Element Element;
+    const TableArena * arena;
+    TableRef first;
+
+    struct Iterator
+    {
+        const TableArena * arena;
+        TableListSegment<Element> * segment;
+        int32_t index;
+
+        void Skip()
+        {
+            for ( ;; )
+            {
+                if ( segment == NULL ) { return; }
+                if ( index >= segment->used )
+                {
+                    segment = segment->next.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    index = 0;
+                    continue;
+                }
+                if ( TableListSegmentDead( segment->dead, index ) )
+                {
+                    index++;
+                    continue;
+                }
+                return;
+            }
+        }
+        Element * operator*() const { return segment->elements + index; }
+        Iterator & operator++()
+        {
+            index++;
+            Skip();
+            return *this;
+        }
+        // the end is a NULL segment at any index: the loop body then never sees a NULL segment
+        bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
+        bool operator!=( const Iterator & other ) const { return !( *this == other ); }
+    };
+
+    Iterator begin() const
+    {
+        Iterator it = { arena, first.value != 0 ? (TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL, 0 };
+        it.Skip();
+        return it;
+    }
+    Iterator end() const
+    {
+        Iterator it = { arena, NULL, 0 };
+        return it;
+    }
+};
+
+template <typename T>
+inline TableListEach<T> TableListEachOf( const TableArena & arena, const TableList<T> & list )
+{
+    TableListEach<T> each = { &arena, TableRef() };
+    if ( list.elements.value != 0 )
+    {
+        const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+        each.first = head->first;
+    }
+    return each;
+}
+
+// ---- the INDEX-ORDER CURSOR the four writing walks read (§2.9) ----
+//
+// Measure, Save, Lock and Cook each visit a list's live elements in the order
+// they were added, and they allocate nothing to do it: a region's cursor is
+// the array in place, and the builder's walks the segment chain. Indexing the
+// builder's form is SEQUENTIAL by construction, every walk steps i, i + 1,
+// i + 2, so the cursor remembers where the last access landed and moves one
+// live slot per step. An access behind the memo restarts from the first
+// segment, which no walk here does.
+template <typename Element>
+struct TableListCursor
+{
+    const Element * elements = NULL; // the region's form: the array in place
+    const TableArena * arena = NULL; // the builder's form: the segments
+    TableRef first;
+    int32_t count = 0;
+    bool ok = false;
+    // the memo: the segment and slot the last access landed on, and the live
+    // index that slot holds
+    mutable const TableListSegment<Element> * segment = NULL;
+    mutable int32_t within = -1;
+    mutable int32_t logical = -1;
+
+    const Element * At( int32_t index ) const
+    {
+        if ( elements != NULL ) { return elements + index; }
+        if ( segment == NULL || index < logical )
+        {
+            segment = first.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) first.value ) : NULL;
+            within = -1;
+            logical = -1;
+        }
+        while ( logical < index )
+        {
+            for ( ;; )
+            {
+                within++;
+                while ( segment != NULL && within >= segment->used )
+                {
+                    segment = segment->next.value != 0 ? (const TableListSegment<Element> *) TableArenaAt( *arena, (uint32_t) segment->next.value ) : NULL;
+                    within = 0;
+                }
+                if ( segment == NULL ) { return NULL; } // the slot and the head disagree
+                if ( !TableListSegmentDead( segment->dead, within ) ) { break; }
+            }
+            logical++;
+        }
+        return segment->elements + within;
+    }
+    const Element & operator[]( int32_t index ) const { return *At( index ); }
+};
+
+// the REGION form: the array is the cursor
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableRegionCtx &, const TableList<T> & list )
+{
+    TableListCursor<typename TableList<T>::Element> cursor;
+    cursor.elements = list.Elements();
+    cursor.count = list.count;
+    cursor.ok = true;
+    return cursor;
+}
+
+// the BUILDER's form: the live elements out of the segment chain, in the
+// order they were added. A dead element costs nothing on any wire (§2.9).
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableArena & arena, const TableList<T> & list )
+{
+    TableListCursor<typename TableList<T>::Element> cursor;
+    cursor.arena = &arena;
+    cursor.count = list.count;
+    if ( list.elements.value == 0 || list.count <= 0 )
+    {
+        cursor.ok = list.count == 0;
+        cursor.count = 0;
+        return cursor;
+    }
+    const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->live != list.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
+    cursor.first = head->first;
+    cursor.ok = true;
+    return cursor;
+}
+
+template <typename T>
+inline TableListCursor<typename TableList<T>::Element> TableListElements( const TableArenaCtx & ctx, const TableList<T> & list )
+{
+    return TableListElements( *ctx.arena, list );
+}
+
+// ---- the LOAD side: where a decoded element lands (§2.9) ----
+//
+// The same two shapes the map's fill takes, because the decoder above them
+// cannot tell which it has: a REGION carves the element array out of the
+// holder node's own extent, PRE-ORDER, and the TOOL's path appends into the
+// builder's arena.
+template <typename T>
+struct TableListFill
+{
+    typedef typename TableList<T>::Element Element;
+    TableList<T> * list = NULL;
+    Element * array = NULL;      // the region path: the carved array
+    int32_t capacity = 0;
+    TableWorker * worker = NULL; // the TOOL's path
+    bool ok = false;
+    bool refused = false;        // a count above the int32 cap on the tool's path: LoadBuilder answers NULL
+};
+
+template <typename T>
+inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableList<T> & list, uint64_t n )
+{
+    typedef typename TableList<T>::Element Element;
+    TableListFill<T> fill;
+    fill.list = &list;
+    list.elements.value = 0;
+    list.count = 0;
+    if ( nodes.carve == NULL ) { return fill; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        // A COUNT ABOVE THE int32 STORAGE CAP (§2.2, §2.9): into a region it was
+        // refused by LoadMeasure before this ran, and into a builder it is the
+        // refusal LoadBuilder answers NULL for, moving no counter
+        fill.refused = nodes.carve->worker != NULL;
+        return fill;
+    }
+    if ( nodes.carve->worker != NULL )
+    {
+        fill.worker = nodes.carve->worker; // the tool's path: the arena carves
+        fill.ok = true;
+        return fill;
+    }
+    const int64_t align = (int64_t) alignof( Element );
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + (uintptr_t) ( align - 1 ) ) & ~( (uintptr_t) ( align - 1 ) ) );
+    const int64_t bytes = (int64_t) n * (int64_t) sizeof( Element );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return fill; } // the measure and the load disagree: refused
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    fill.array = (Element *) base;
+    fill.capacity = (int32_t) n;
+    list.elements.value = (int64_t) ( base - (const uint8_t *) &list.elements );
+    fill.ok = true;
+    return fill;
+}
+
+// the next slot, at the element's declared defaults. NULL when the arena
+// could not carve, which the decoder reports as framing damage
+template <typename T>
+inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( fill.array != NULL )
+    {
+        if ( fill.list->count >= fill.capacity ) { return NULL; }
+        Element * element = fill.array + fill.list->count;
+        new ( element ) Element();
+        fill.list->count++;
+        return element;
+    }
+    return TableListPlace( *fill.worker, *fill.list );
+}
+
+// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9): an element whose own
+// framing gave out was not decoded. That is damage, and the load that met it is
+// discarded whole (§4); until it is, the region's form uncounts the slot and the
+// builder's marks it dead, which is what the storage rule allows mid-build.
+template <typename T>
+inline void TableListFillDrop( TableListFill<T> & fill )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( fill.array != NULL )
+    {
+        if ( fill.list->count > 0 ) { fill.list->count--; }
+        return;
+    }
+    if ( fill.list->elements.value == 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( *fill.worker->arena, (uint32_t) fill.list->elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * segment = (TableListSegment<Element> *) TableArenaAt( *fill.worker->arena, (uint32_t) head->last.value );
+    if ( segment->used <= 0 ) { return; }
+    const int32_t i = segment->used - 1;
+    if ( TableListSegmentDead( segment->dead, i ) ) { return; }
+    segment->dead[i / 32] |= 1u << ( i % 32 );
+    head->live--;
+    head->dead++;
+    fill.list->count--;
+}
+
+// an EMPTY list's reference is null in both encodings, so a load that placed
+// nothing leaves the slot exactly as a Reset does
+template <typename T>
+inline void TableListFillEnd( TableListFill<T> & fill )
+{
+    if ( fill.array != NULL && fill.list->count == 0 ) { fill.list->elements.value = 0; }
+}
+
+// ---- LoadMeasure's term, from the FRAMING alone (§2.9, §6.5) ----
+//
+// N x sizeof( T ) rounded to alignof( T ), AT EVERY DEPTH. N is framing and
+// not a value, so this reads no field: it walks the list's own header and,
+// where a table element holds a list or a map of its own, the elements'
+// headers under it. Every -1 carries its REASON (§6.5): the int32 cap first,
+// because a count past it cannot fit any body, and then the body's own L.
+inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t & at,
+    int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
+    TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, ids );
+    if ( length < 2 ) { return true; }              // no array header: nothing rides
+    const uint8_t wire_kind = r.get8();
+    if ( wire_kind != elem_kind )
+    {
+        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }
+        // Load accepts the widening ladder. Its extent still stores the
+        // declared element width, while L is bounded by the wire width.
+        elem_floor = TableKindWidth( wire_kind );
+    }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        reason = count_over_extent_cap;
+        return false;
+    }
+    const int64_t rest = length - r.offset;
+    if ( n > (uint64_t) ( rest / elem_floor ) )
+    {
+        reason = count_over_length;
+        return false;
+    } // an N the list's L cannot carry
+    at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
+    at += (int64_t) n * elem_size;
+    if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t elem = 0;
+        if ( !r.getleb( elem ) || !r.room( elem ) ) { return true; } // framing damage: the load reports it
+        if ( !inner( r.buffer + r.offset, (int64_t) elem, at, ids, reason ) ) { return false; }
+        r.offset += (int64_t) elem;
+    }
+    return true;
+}
+
+} // namespace tabledemo
+
+#endif // TABLEDEMO_SCHEMA_TABLE_LIST
+
 #ifndef TABLEDEMO_SCHEMA_BUILD_VERSION
 #define TABLEDEMO_SCHEMA_BUILD_VERSION
 
@@ -10868,7 +11821,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x74f8a79e113ca9dfull;
+static const uint64_t BuildVersion = 0x2ee1bb849c945752ull;
 
 } // namespace tabledemo
 
@@ -11342,42 +12295,42 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBodyRetain( TableReader & r, RangedW
 inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 50, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
+    if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 51, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
     schema_assert( value.i8_low <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 84, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
+    if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 85, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
     schema_assert( value.i8_high >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 136, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
+    if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
     schema_assert( value.i8_inside >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i8_inside <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 156, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
-    if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 109, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
+    if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 157, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
+    if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 110, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
     schema_assert( value.i16_low <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
+    if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 138, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
     schema_assert( value.i16_high >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 83, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
+    if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 84, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
     schema_assert( value.i16_inside >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i16_inside <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 65, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
-    if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
+    if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 66, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
+    if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 152, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
     schema_assert( value.i32_low <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
+    if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
     schema_assert( value.i32_high >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
+    if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 129, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
     schema_assert( value.i32_inside >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i32_inside <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 139, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
-    if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 70, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
+    if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 140, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
+    if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 71, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
     schema_assert( value.i64_low <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
+    if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
     schema_assert( value.i64_high >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
+    if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 44, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
     schema_assert( value.i64_inside >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i64_inside <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 138, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
+    if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 139, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
-        const uint64_t ref_edges = ids.ref_at( 127, 0xc70cde6b85b6197dull );
+        const uint64_t ref_edges = ids.ref_at( 128, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
         body_edges += 1 + TableLebBytes( (uint64_t) ( value.edges_count ) ); // the element kind byte and the count
         body_edges += (int64_t) ( value.edges_count ) * 2;
@@ -11400,96 +12353,96 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.i8_span != 0 )
     {
-        w.header( ids.ref_at( 50, 0x48121511bf702eb5ull ), 2 ); // i8_span
+        w.header( ids.ref_at( 51, 0x48121511bf702eb5ull ), 2 ); // i8_span
         w.put8( uint8_t( value.i8_span ) );
     }
     if ( value.i8_low != 0 )
     {
-        w.header( ids.ref_at( 84, 0x942bfe3168090f7dull ), 2 ); // i8_low
+        w.header( ids.ref_at( 85, 0x942bfe3168090f7dull ), 2 ); // i8_low
         schema_assert( value.i8_low <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_low ) );
     }
     if ( value.i8_high != 0 )
     {
-        w.header( ids.ref_at( 136, 0xd182acd105b55dd1ull ), 2 ); // i8_high
+        w.header( ids.ref_at( 137, 0xd182acd105b55dd1ull ), 2 ); // i8_high
         schema_assert( value.i8_high >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_high ) );
     }
     if ( value.i8_inside != 0 )
     {
-        w.header( ids.ref_at( 156, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
+        w.header( ids.ref_at( 157, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
         schema_assert( value.i8_inside >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i8_inside <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_inside ) );
     }
     if ( value.i16_span != 0 )
     {
-        w.header( ids.ref_at( 109, 0xb655574ea23760b4ull ), 3 ); // i16_span
+        w.header( ids.ref_at( 110, 0xb655574ea23760b4ull ), 3 ); // i16_span
         w.put16( uint16_t( value.i16_span ) );
     }
     if ( value.i16_low != 0 )
     {
-        w.header( ids.ref_at( 137, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
+        w.header( ids.ref_at( 138, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
         schema_assert( value.i16_low <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_low ) );
     }
     if ( value.i16_high != 0 )
     {
-        w.header( ids.ref_at( 83, 0x90652f70c9127900ull ), 3 ); // i16_high
+        w.header( ids.ref_at( 84, 0x90652f70c9127900ull ), 3 ); // i16_high
         schema_assert( value.i16_high >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_high ) );
     }
     if ( value.i16_inside != 0 )
     {
-        w.header( ids.ref_at( 65, 0x6a659d7c354db158ull ), 3 ); // i16_inside
+        w.header( ids.ref_at( 66, 0x6a659d7c354db158ull ), 3 ); // i16_inside
         schema_assert( value.i16_inside >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i16_inside <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_inside ) );
     }
     if ( value.i32_span != 0 )
     {
-        w.header( ids.ref_at( 151, 0xe693bd88532c91d6ull ), 4 ); // i32_span
+        w.header( ids.ref_at( 152, 0xe693bd88532c91d6ull ), 4 ); // i32_span
         w.put32( uint32_t( value.i32_span ) );
     }
     if ( value.i32_low != 0 )
     {
-        w.header( ids.ref_at( 5, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
+        w.header( ids.ref_at( 6, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
         schema_assert( value.i32_low <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_low ) );
     }
     if ( value.i32_high != 0 )
     {
-        w.header( ids.ref_at( 128, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
+        w.header( ids.ref_at( 129, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
         schema_assert( value.i32_high >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_high ) );
     }
     if ( value.i32_inside != 0 )
     {
-        w.header( ids.ref_at( 139, 0xd363dfa465acf27aull ), 4 ); // i32_inside
+        w.header( ids.ref_at( 140, 0xd363dfa465acf27aull ), 4 ); // i32_inside
         schema_assert( value.i32_inside >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i32_inside <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_inside ) );
     }
     if ( value.i64_span != 0 )
     {
-        w.header( ids.ref_at( 70, 0x7549c70700c49d6full ), 5 ); // i64_span
+        w.header( ids.ref_at( 71, 0x7549c70700c49d6full ), 5 ); // i64_span
         w.put64( uint64_t( value.i64_span ) );
     }
     if ( value.i64_low != 0 )
     {
-        w.header( ids.ref_at( 20, 0x1cce6617419771dbull ), 5 ); // i64_low
+        w.header( ids.ref_at( 21, 0x1cce6617419771dbull ), 5 ); // i64_low
         schema_assert( value.i64_low <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_low ) );
     }
     if ( value.i64_high != 0 )
     {
-        w.header( ids.ref_at( 43, 0x3b54fa60620b5597ull ), 5 ); // i64_high
+        w.header( ids.ref_at( 44, 0x3b54fa60620b5597ull ), 5 ); // i64_high
         schema_assert( value.i64_high >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_high ) );
     }
     if ( value.i64_inside != 0 )
     {
-        w.header( ids.ref_at( 138, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
+        w.header( ids.ref_at( 139, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
         schema_assert( value.i64_inside >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i64_inside <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_inside ) );
@@ -11497,7 +12450,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
-        const uint64_t ref_edges = ids.ref_at( 127, 0xc70cde6b85b6197dull );
+        const uint64_t ref_edges = ids.ref_at( 128, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
         body_edges += 1 + TableLebBytes( (uint64_t) ( value.edges_count ) ); // the element kind byte and the count
         body_edges += (int64_t) ( value.edges_count ) * 2;
@@ -14588,42 +15541,42 @@ inline bool RangedSignedLoadMessages( RangedSigned * values, int64_t * count, co
 inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
+    if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
     schema_assert( value.u8_low <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
+    if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
     schema_assert( value.u8_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 92, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
+    if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 93, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
     schema_assert( value.u8_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u8_inside <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
-    if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
+    if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
+    if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
     schema_assert( value.u16_low <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 158, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
+    if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 159, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
     schema_assert( value.u16_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 55, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
+    if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 56, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
     schema_assert( value.u16_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u16_inside <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 135, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
-    if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
+    if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 136, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
+    if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
     schema_assert( value.u32_low <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 95, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
+    if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 96, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
     schema_assert( value.u32_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 86, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
+    if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 87, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
     schema_assert( value.u32_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u32_inside <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 82, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
-    if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 118, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
+    if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 83, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
+    if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 119, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
     schema_assert( value.u64_low <= 18446744073709551614ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
     schema_assert( value.u64_high >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 159, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
+    if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 160, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
     schema_assert( value.u64_inside >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u64_inside <= 18446744073709551614ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 69, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
+    if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 70, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
-        const uint64_t ref_counts = ids.ref_at( 122, 0xc341febe5aae51e5ull );
+        const uint64_t ref_counts = ids.ref_at( 123, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
         body_counts += 1 + TableLebBytes( (uint64_t) ( value.counts_count ) ); // the element kind byte and the count
         body_counts += (int64_t) ( value.counts_count ) * 8;
@@ -14646,79 +15599,79 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
 {
     if ( value.u8_span != 0 )
     {
-        w.header( ids.ref_at( 10, 0x0f8897557f37c021ull ), 6 ); // u8_span
+        w.header( ids.ref_at( 11, 0x0f8897557f37c021ull ), 6 ); // u8_span
         w.put8( uint8_t( value.u8_span ) );
     }
     if ( value.u8_low != 0 )
     {
-        w.header( ids.ref_at( 33, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
+        w.header( ids.ref_at( 34, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
         schema_assert( value.u8_low <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_low ) );
     }
     if ( value.u8_high != 1 )
     {
-        w.header( ids.ref_at( 92, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
+        w.header( ids.ref_at( 93, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
         schema_assert( value.u8_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_high ) );
     }
     if ( value.u8_inside != 1 )
     {
-        w.header( ids.ref_at( 19, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
+        w.header( ids.ref_at( 20, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
         schema_assert( value.u8_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u8_inside <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_inside ) );
     }
     if ( value.u16_span != 0 )
     {
-        w.header( ids.ref_at( 53, 0x4ca0c150b1790960ull ), 7 ); // u16_span
+        w.header( ids.ref_at( 54, 0x4ca0c150b1790960ull ), 7 ); // u16_span
         w.put16( uint16_t( value.u16_span ) );
     }
     if ( value.u16_low != 0 )
     {
-        w.header( ids.ref_at( 158, 0xf252136836b04cb2ull ), 7 ); // u16_low
+        w.header( ids.ref_at( 159, 0xf252136836b04cb2ull ), 7 ); // u16_low
         schema_assert( value.u16_low <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_low ) );
     }
     if ( value.u16_high != 1 )
     {
-        w.header( ids.ref_at( 55, 0x4f37e1f216e7610cull ), 7 ); // u16_high
+        w.header( ids.ref_at( 56, 0x4f37e1f216e7610cull ), 7 ); // u16_high
         schema_assert( value.u16_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_high ) );
     }
     if ( value.u16_inside != 1 )
     {
-        w.header( ids.ref_at( 135, 0xd176b605978f3304ull ), 7 ); // u16_inside
+        w.header( ids.ref_at( 136, 0xd176b605978f3304ull ), 7 ); // u16_inside
         schema_assert( value.u16_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u16_inside <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_inside ) );
     }
     if ( value.u32_span != 0 )
     {
-        w.header( ids.ref_at( 25, 0x200b924de7479cdaull ), 8 ); // u32_span
+        w.header( ids.ref_at( 26, 0x200b924de7479cdaull ), 8 ); // u32_span
         w.put32( uint32_t( value.u32_span ) );
     }
     if ( value.u32_low != 0 )
     {
-        w.header( ids.ref_at( 95, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
+        w.header( ids.ref_at( 96, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
         schema_assert( value.u32_low <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_low ) );
     }
     if ( value.u32_high != 1 )
     {
-        w.header( ids.ref_at( 86, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
+        w.header( ids.ref_at( 87, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
         schema_assert( value.u32_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_high ) );
     }
     if ( value.u32_inside != 1 )
     {
-        w.header( ids.ref_at( 82, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
+        w.header( ids.ref_at( 83, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
         schema_assert( value.u32_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u32_inside <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_inside ) );
     }
     if ( value.u64_span != 0 )
     {
-        w.header( ids.ref_at( 118, 0xbeecef11dbdf8973ull ), 9 ); // u64_span
+        w.header( ids.ref_at( 119, 0xbeecef11dbdf8973ull ), 9 ); // u64_span
         w.put64( uint64_t( value.u64_span ) );
     }
     if ( value.u64_low != 0 )
@@ -14729,13 +15682,13 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     }
     if ( value.u64_high != 1ull )
     {
-        w.header( ids.ref_at( 159, 0xf2b45af3b50689dbull ), 9 ); // u64_high
+        w.header( ids.ref_at( 160, 0xf2b45af3b50689dbull ), 9 ); // u64_high
         schema_assert( value.u64_high >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_high ) );
     }
     if ( value.u64_inside != 1ull )
     {
-        w.header( ids.ref_at( 69, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
+        w.header( ids.ref_at( 70, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
         schema_assert( value.u64_inside >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u64_inside <= 18446744073709551614ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_inside ) );
@@ -14743,7 +15696,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
-        const uint64_t ref_counts = ids.ref_at( 122, 0xc341febe5aae51e5ull );
+        const uint64_t ref_counts = ids.ref_at( 123, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
         body_counts += 1 + TableLebBytes( (uint64_t) ( value.counts_count ) ); // the element kind byte and the count
         body_counts += (int64_t) ( value.counts_count ) * 8;
@@ -17600,14 +18553,14 @@ inline bool RangedUnsignedLoadMessages( RangedUnsigned * values, int64_t * count
 inline int64_t RangedWidthsMeasureBody( TableIds & ids, const RangedWidths & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
-    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 165, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
-    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 167, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
-    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 164, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
+    if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
+    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 166, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
+    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 168, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
+    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 165, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
     schema_assert( value.b12 <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
-    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 166, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
+    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 167, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
     schema_assert( value.b48 <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
-    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 163, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
+    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 164, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     return bytes;
 }
 
@@ -17625,33 +18578,33 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.b8 != 0 )
     {
-        w.header( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ), 6 ); // b8
+        w.header( ids.ref_at( 7, 0x08a60c07b54d8dc7ull ), 6 ); // b8
         w.put8( uint8_t( value.b8 ) );
     }
     if ( value.b16 != 0 )
     {
-        w.header( ids.ref_at( 165, 0xff95701912ad97beull ), 7 ); // b16
+        w.header( ids.ref_at( 166, 0xff95701912ad97beull ), 7 ); // b16
         w.put16( uint16_t( value.b16 ) );
     }
     if ( value.b32 != 0 )
     {
-        w.header( ids.ref_at( 167, 0xff9c5c1912b39470ull ), 8 ); // b32
+        w.header( ids.ref_at( 168, 0xff9c5c1912b39470ull ), 8 ); // b32
         w.put32( uint32_t( value.b32 ) );
     }
     if ( value.b64 != 0 )
     {
-        w.header( ids.ref_at( 164, 0xff92701912ab61e7ull ), 9 ); // b64
+        w.header( ids.ref_at( 165, 0xff92701912ab61e7ull ), 9 ); // b64
         w.put64( uint64_t( value.b64 ) );
     }
     if ( value.b12 != 0 )
     {
-        w.header( ids.ref_at( 166, 0xff95741912ad9e8aull ), 7 ); // b12
+        w.header( ids.ref_at( 167, 0xff95741912ad9e8aull ), 7 ); // b12
         schema_assert( value.b12 <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
         w.put16( uint16_t( value.b12 ) );
     }
     if ( value.b48 != 0 )
     {
-        w.header( ids.ref_at( 163, 0xff8b681912a535a1ull ), 9 ); // b48
+        w.header( ids.ref_at( 164, 0xff8b681912a535a1ull ), 9 ); // b48
         schema_assert( value.b48 <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
         w.put64( uint64_t( value.b48 ) );
     }
@@ -20935,42 +21888,42 @@ inline int64_t RangedWidthsFixedLoad( RangedWidths * values, int64_t capacity, c
 inline int64_t RangedSignedMeasureBodyRetain( TableRetainIds & ids, const RangedSigned & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 50, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
+    if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 51, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
     schema_assert( value.i8_low <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 84, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
+    if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 85, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
     schema_assert( value.i8_high >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 136, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
+    if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
     schema_assert( value.i8_inside >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i8_inside <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 156, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
-    if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 109, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
+    if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 157, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
+    if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 110, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
     schema_assert( value.i16_low <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
+    if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 138, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
     schema_assert( value.i16_high >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 83, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
+    if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 84, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
     schema_assert( value.i16_inside >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i16_inside <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 65, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
-    if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
+    if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 66, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
+    if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 152, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
     schema_assert( value.i32_low <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
+    if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
     schema_assert( value.i32_high >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
+    if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 129, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
     schema_assert( value.i32_inside >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i32_inside <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 139, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
-    if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 70, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
+    if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 140, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
+    if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 71, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
     schema_assert( value.i64_low <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
+    if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
     schema_assert( value.i64_high >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
+    if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 44, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
     schema_assert( value.i64_inside >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.i64_inside <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 138, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
+    if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 139, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
-        const uint64_t ref_edges = ids.ref_at( 127, 0xc70cde6b85b6197dull );
+        const uint64_t ref_edges = ids.ref_at( 128, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
         body_edges += 1 + TableLebBytes( (uint64_t) ( value.edges_count ) ); // the element kind byte and the count
         body_edges += (int64_t) ( value.edges_count ) * 2;
@@ -20984,96 +21937,96 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
 {
     if ( value.i8_span != 0 )
     {
-        w.header( ids.ref_at( 50, 0x48121511bf702eb5ull ), 2 ); // i8_span
+        w.header( ids.ref_at( 51, 0x48121511bf702eb5ull ), 2 ); // i8_span
         w.put8( uint8_t( value.i8_span ) );
     }
     if ( value.i8_low != 0 )
     {
-        w.header( ids.ref_at( 84, 0x942bfe3168090f7dull ), 2 ); // i8_low
+        w.header( ids.ref_at( 85, 0x942bfe3168090f7dull ), 2 ); // i8_low
         schema_assert( value.i8_low <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_low ) );
     }
     if ( value.i8_high != 0 )
     {
-        w.header( ids.ref_at( 136, 0xd182acd105b55dd1ull ), 2 ); // i8_high
+        w.header( ids.ref_at( 137, 0xd182acd105b55dd1ull ), 2 ); // i8_high
         schema_assert( value.i8_high >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_high ) );
     }
     if ( value.i8_inside != 0 )
     {
-        w.header( ids.ref_at( 156, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
+        w.header( ids.ref_at( 157, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
         schema_assert( value.i8_inside >= -127 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i8_inside <= 126 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.i8_inside ) );
     }
     if ( value.i16_span != 0 )
     {
-        w.header( ids.ref_at( 109, 0xb655574ea23760b4ull ), 3 ); // i16_span
+        w.header( ids.ref_at( 110, 0xb655574ea23760b4ull ), 3 ); // i16_span
         w.put16( uint16_t( value.i16_span ) );
     }
     if ( value.i16_low != 0 )
     {
-        w.header( ids.ref_at( 137, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
+        w.header( ids.ref_at( 138, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
         schema_assert( value.i16_low <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_low ) );
     }
     if ( value.i16_high != 0 )
     {
-        w.header( ids.ref_at( 83, 0x90652f70c9127900ull ), 3 ); // i16_high
+        w.header( ids.ref_at( 84, 0x90652f70c9127900ull ), 3 ); // i16_high
         schema_assert( value.i16_high >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_high ) );
     }
     if ( value.i16_inside != 0 )
     {
-        w.header( ids.ref_at( 65, 0x6a659d7c354db158ull ), 3 ); // i16_inside
+        w.header( ids.ref_at( 66, 0x6a659d7c354db158ull ), 3 ); // i16_inside
         schema_assert( value.i16_inside >= -32767 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i16_inside <= 32766 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.i16_inside ) );
     }
     if ( value.i32_span != 0 )
     {
-        w.header( ids.ref_at( 151, 0xe693bd88532c91d6ull ), 4 ); // i32_span
+        w.header( ids.ref_at( 152, 0xe693bd88532c91d6ull ), 4 ); // i32_span
         w.put32( uint32_t( value.i32_span ) );
     }
     if ( value.i32_low != 0 )
     {
-        w.header( ids.ref_at( 5, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
+        w.header( ids.ref_at( 6, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
         schema_assert( value.i32_low <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_low ) );
     }
     if ( value.i32_high != 0 )
     {
-        w.header( ids.ref_at( 128, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
+        w.header( ids.ref_at( 129, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
         schema_assert( value.i32_high >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_high ) );
     }
     if ( value.i32_inside != 0 )
     {
-        w.header( ids.ref_at( 139, 0xd363dfa465acf27aull ), 4 ); // i32_inside
+        w.header( ids.ref_at( 140, 0xd363dfa465acf27aull ), 4 ); // i32_inside
         schema_assert( value.i32_inside >= -2147483647 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i32_inside <= 2147483646 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.i32_inside ) );
     }
     if ( value.i64_span != 0 )
     {
-        w.header( ids.ref_at( 70, 0x7549c70700c49d6full ), 5 ); // i64_span
+        w.header( ids.ref_at( 71, 0x7549c70700c49d6full ), 5 ); // i64_span
         w.put64( uint64_t( value.i64_span ) );
     }
     if ( value.i64_low != 0 )
     {
-        w.header( ids.ref_at( 20, 0x1cce6617419771dbull ), 5 ); // i64_low
+        w.header( ids.ref_at( 21, 0x1cce6617419771dbull ), 5 ); // i64_low
         schema_assert( value.i64_low <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_low ) );
     }
     if ( value.i64_high != 0 )
     {
-        w.header( ids.ref_at( 43, 0x3b54fa60620b5597ull ), 5 ); // i64_high
+        w.header( ids.ref_at( 44, 0x3b54fa60620b5597ull ), 5 ); // i64_high
         schema_assert( value.i64_high >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_high ) );
     }
     if ( value.i64_inside != 0 )
     {
-        w.header( ids.ref_at( 138, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
+        w.header( ids.ref_at( 139, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
         schema_assert( value.i64_inside >= -9223372036854775807ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.i64_inside <= 9223372036854775806ll ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.i64_inside ) );
@@ -21081,7 +22034,7 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBodyRetain( TableWriter & w, TableRe
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.edges_count > 0 )
     {
-        const uint64_t ref_edges = ids.ref_at( 127, 0xc70cde6b85b6197dull );
+        const uint64_t ref_edges = ids.ref_at( 128, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
         body_edges += 1 + TableLebBytes( (uint64_t) ( value.edges_count ) ); // the element kind byte and the count
         body_edges += (int64_t) ( value.edges_count ) * 2;
@@ -22009,42 +22962,42 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedLoadBodyRetain( TableReader & r, RangedS
 inline int64_t RangedUnsignedMeasureBodyRetain( TableRetainIds & ids, const RangedUnsigned & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 10, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
+    if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
     schema_assert( value.u8_low <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
+    if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
     schema_assert( value.u8_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 92, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
+    if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 93, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
     schema_assert( value.u8_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u8_inside <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
-    if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
+    if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
+    if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
     schema_assert( value.u16_low <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 158, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
+    if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 159, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
     schema_assert( value.u16_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 55, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
+    if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 56, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
     schema_assert( value.u16_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u16_inside <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 135, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
-    if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
+    if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 136, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
+    if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
     schema_assert( value.u32_low <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 95, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
+    if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 96, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
     schema_assert( value.u32_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 86, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
+    if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 87, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
     schema_assert( value.u32_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u32_inside <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 82, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
-    if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 118, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
+    if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 83, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
+    if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 119, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
     schema_assert( value.u64_low <= 18446744073709551614ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
     schema_assert( value.u64_high >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 159, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
+    if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 160, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
     schema_assert( value.u64_inside >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     schema_assert( value.u64_inside <= 18446744073709551614ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
-    if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 69, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
+    if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 70, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
-        const uint64_t ref_counts = ids.ref_at( 122, 0xc341febe5aae51e5ull );
+        const uint64_t ref_counts = ids.ref_at( 123, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
         body_counts += 1 + TableLebBytes( (uint64_t) ( value.counts_count ) ); // the element kind byte and the count
         body_counts += (int64_t) ( value.counts_count ) * 8;
@@ -22058,79 +23011,79 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
 {
     if ( value.u8_span != 0 )
     {
-        w.header( ids.ref_at( 10, 0x0f8897557f37c021ull ), 6 ); // u8_span
+        w.header( ids.ref_at( 11, 0x0f8897557f37c021ull ), 6 ); // u8_span
         w.put8( uint8_t( value.u8_span ) );
     }
     if ( value.u8_low != 0 )
     {
-        w.header( ids.ref_at( 33, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
+        w.header( ids.ref_at( 34, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
         schema_assert( value.u8_low <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_low ) );
     }
     if ( value.u8_high != 1 )
     {
-        w.header( ids.ref_at( 92, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
+        w.header( ids.ref_at( 93, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
         schema_assert( value.u8_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_high ) );
     }
     if ( value.u8_inside != 1 )
     {
-        w.header( ids.ref_at( 19, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
+        w.header( ids.ref_at( 20, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
         schema_assert( value.u8_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u8_inside <= 254 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put8( uint8_t( value.u8_inside ) );
     }
     if ( value.u16_span != 0 )
     {
-        w.header( ids.ref_at( 53, 0x4ca0c150b1790960ull ), 7 ); // u16_span
+        w.header( ids.ref_at( 54, 0x4ca0c150b1790960ull ), 7 ); // u16_span
         w.put16( uint16_t( value.u16_span ) );
     }
     if ( value.u16_low != 0 )
     {
-        w.header( ids.ref_at( 158, 0xf252136836b04cb2ull ), 7 ); // u16_low
+        w.header( ids.ref_at( 159, 0xf252136836b04cb2ull ), 7 ); // u16_low
         schema_assert( value.u16_low <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_low ) );
     }
     if ( value.u16_high != 1 )
     {
-        w.header( ids.ref_at( 55, 0x4f37e1f216e7610cull ), 7 ); // u16_high
+        w.header( ids.ref_at( 56, 0x4f37e1f216e7610cull ), 7 ); // u16_high
         schema_assert( value.u16_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_high ) );
     }
     if ( value.u16_inside != 1 )
     {
-        w.header( ids.ref_at( 135, 0xd176b605978f3304ull ), 7 ); // u16_inside
+        w.header( ids.ref_at( 136, 0xd176b605978f3304ull ), 7 ); // u16_inside
         schema_assert( value.u16_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u16_inside <= 65534 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put16( uint16_t( value.u16_inside ) );
     }
     if ( value.u32_span != 0 )
     {
-        w.header( ids.ref_at( 25, 0x200b924de7479cdaull ), 8 ); // u32_span
+        w.header( ids.ref_at( 26, 0x200b924de7479cdaull ), 8 ); // u32_span
         w.put32( uint32_t( value.u32_span ) );
     }
     if ( value.u32_low != 0 )
     {
-        w.header( ids.ref_at( 95, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
+        w.header( ids.ref_at( 96, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
         schema_assert( value.u32_low <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_low ) );
     }
     if ( value.u32_high != 1 )
     {
-        w.header( ids.ref_at( 86, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
+        w.header( ids.ref_at( 87, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
         schema_assert( value.u32_high >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_high ) );
     }
     if ( value.u32_inside != 1 )
     {
-        w.header( ids.ref_at( 82, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
+        w.header( ids.ref_at( 83, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
         schema_assert( value.u32_inside >= 1 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u32_inside <= 4294967294 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.u32_inside ) );
     }
     if ( value.u64_span != 0 )
     {
-        w.header( ids.ref_at( 118, 0xbeecef11dbdf8973ull ), 9 ); // u64_span
+        w.header( ids.ref_at( 119, 0xbeecef11dbdf8973ull ), 9 ); // u64_span
         w.put64( uint64_t( value.u64_span ) );
     }
     if ( value.u64_low != 0 )
@@ -22141,13 +23094,13 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
     }
     if ( value.u64_high != 1ull )
     {
-        w.header( ids.ref_at( 159, 0xf2b45af3b50689dbull ), 9 ); // u64_high
+        w.header( ids.ref_at( 160, 0xf2b45af3b50689dbull ), 9 ); // u64_high
         schema_assert( value.u64_high >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_high ) );
     }
     if ( value.u64_inside != 1ull )
     {
-        w.header( ids.ref_at( 69, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
+        w.header( ids.ref_at( 70, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
         schema_assert( value.u64_inside >= 1ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         schema_assert( value.u64_inside <= 18446744073709551614ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put64( uint64_t( value.u64_inside ) );
@@ -22155,7 +23108,7 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBodyRetain( TableWriter & w, Table
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.counts_count > 0 )
     {
-        const uint64_t ref_counts = ids.ref_at( 122, 0xc341febe5aae51e5ull );
+        const uint64_t ref_counts = ids.ref_at( 123, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
         body_counts += 1 + TableLebBytes( (uint64_t) ( value.counts_count ) ); // the element kind byte and the count
         body_counts += (int64_t) ( value.counts_count ) * 8;
@@ -23083,14 +24036,14 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedLoadBodyRetain( TableReader & r, Range
 inline int64_t RangedWidthsMeasureBodyRetain( TableRetainIds & ids, const RangedWidths & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
-    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 165, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
-    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 167, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
-    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 164, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
+    if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
+    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 166, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
+    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 168, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
+    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 165, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
     schema_assert( value.b12 <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
-    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 166, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
+    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 167, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
     schema_assert( value.b48 <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
-    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 163, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
+    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 164, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -23099,33 +24052,33 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBodyRetain( TableWriter & w, TableRe
 {
     if ( value.b8 != 0 )
     {
-        w.header( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ), 6 ); // b8
+        w.header( ids.ref_at( 7, 0x08a60c07b54d8dc7ull ), 6 ); // b8
         w.put8( uint8_t( value.b8 ) );
     }
     if ( value.b16 != 0 )
     {
-        w.header( ids.ref_at( 165, 0xff95701912ad97beull ), 7 ); // b16
+        w.header( ids.ref_at( 166, 0xff95701912ad97beull ), 7 ); // b16
         w.put16( uint16_t( value.b16 ) );
     }
     if ( value.b32 != 0 )
     {
-        w.header( ids.ref_at( 167, 0xff9c5c1912b39470ull ), 8 ); // b32
+        w.header( ids.ref_at( 168, 0xff9c5c1912b39470ull ), 8 ); // b32
         w.put32( uint32_t( value.b32 ) );
     }
     if ( value.b64 != 0 )
     {
-        w.header( ids.ref_at( 164, 0xff92701912ab61e7ull ), 9 ); // b64
+        w.header( ids.ref_at( 165, 0xff92701912ab61e7ull ), 9 ); // b64
         w.put64( uint64_t( value.b64 ) );
     }
     if ( value.b12 != 0 )
     {
-        w.header( ids.ref_at( 166, 0xff95741912ad9e8aull ), 7 ); // b12
+        w.header( ids.ref_at( 167, 0xff95741912ad9e8aull ), 7 ); // b12
         schema_assert( value.b12 <= 4095ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(12))
         w.put16( uint16_t( value.b12 ) );
     }
     if ( value.b48 != 0 )
     {
-        w.header( ids.ref_at( 163, 0xff8b681912a535a1ull ), 9 ); // b48
+        w.header( ids.ref_at( 164, 0xff8b681912a535a1ull ), 9 ); // b48
         schema_assert( value.b48 <= 281474976710655ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(48))
         w.put64( uint64_t( value.b48 ) );
     }
@@ -23731,6 +24684,88 @@ inline bool RangedWidthsCookBody( uint8_t * at, const RangedWidths & value, Tabl
     return true;
 }
 
+template <typename Ctx>
+inline bool RangedSignedCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RangedSigned & value, TableByteOrder order );
+template <typename Ctx>
+inline bool RangedUnsignedCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RangedUnsigned & value, TableByteOrder order );
+template <typename Ctx>
+inline bool RangedWidthsCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RangedWidths & value, TableByteOrder order );
+
+// RangedSignedCookExtent: RangedSigned's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx>
+inline bool RangedSignedCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RangedSigned & value, TableByteOrder order )
+{
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
+    return true; // no list or map below this record
+}
+
+// RangedUnsignedCookExtent: RangedUnsigned's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx>
+inline bool RangedUnsignedCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RangedUnsigned & value, TableByteOrder order )
+{
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
+    return true; // no list or map below this record
+}
+
+// RangedWidthsCookExtent: RangedWidths's arrays into the node's extent, PRE-ORDER, a map's entries
+// in ASCENDING key order and a list's elements in INDEX order, each through its
+// own cook writer (§2.8, §2.9, §7.6).
+template <typename Ctx>
+inline bool RangedWidthsCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const RangedWidths & value, TableByteOrder order )
+{
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
+    return true; // no list or map below this record
+}
+
+// RangedSignedCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx>
+inline bool RangedSignedCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const RangedSigned & value, TableByteOrder order )
+{
+    if ( !RangedSignedCookBody( at, value, order ) ) { return false; }
+    int64_t extent_at = 0;
+    return RangedSignedCookExtent( ctx, region, at + 80, extent_at, at, value, order );
+}
+
+// RangedUnsignedCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx>
+inline bool RangedUnsignedCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const RangedUnsigned & value, TableByteOrder order )
+{
+    if ( !RangedUnsignedCookBody( at, value, order ) ) { return false; }
+    int64_t extent_at = 0;
+    return RangedUnsignedCookExtent( ctx, region, at + 104, extent_at, at, value, order );
+}
+
+// RangedWidthsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
+template <typename Ctx>
+inline bool RangedWidthsCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const RangedWidths & value, TableByteOrder order )
+{
+    if ( !RangedWidthsCookBody( at, value, order ) ) { return false; }
+    int64_t extent_at = 0;
+    return RangedWidthsCookExtent( ctx, region, at + 40, extent_at, at, value, order );
+}
+
 // RangedSignedCookMeasure: the whole cooked file's bytes — the header, the data part
 // and the attribution part (docs/SPEC-TABLES.md §7.1). It answers in int64_t
 // because a cook's part lengths are 64 bits: the scale this form exists for is
@@ -23974,6 +25009,7 @@ static_assert( offsetof( RangedWidths, b64 ) == 16, "RangedWidths's field b64 mo
 static_assert( offsetof( RangedWidths, b12 ) == 24, "RangedWidths's field b12 moved: the build version was taken over offset 24 (docs/SPEC-TABLES.md §20.3)" );
 static_assert( offsetof( RangedWidths, b48 ) == 32, "RangedWidths's field b48 moved: the build version was taken over offset 32 (docs/SPEC-TABLES.md §20.3)" );
 
+
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----
 
 inline const TableTypeInfo * RangedSignedTableType();
@@ -23990,56 +25026,56 @@ extern const TableTypeInfo RangedUnsignedTableInfo;
 extern const TableTypeInfo RangedWidthsTableInfo;
 
 inline const TableFieldInfo RangedSignedTableFields[] = {
-    { "i8_span", "i8_span", "int8", 0x48121511bf702eb5ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_span ), (uint32_t) sizeof( RangedSigned::i8_span ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 127.0, -128ll, 127ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i8_low", "i8_low", "int8", 0x942bfe3168090f7dull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_low ), (uint32_t) sizeof( RangedSigned::i8_low ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 126.0, -128ll, 126ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i8_high", "i8_high", "int8", 0xd182acd105b55dd1ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_high ), (uint32_t) sizeof( RangedSigned::i8_high ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 127.0, -127ll, 127ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i8_inside", "i8_inside", "int8", 0xef9ded23c8912a81ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_inside ), (uint32_t) sizeof( RangedSigned::i8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 126.0, -127ll, 126ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i16_span", "i16_span", "int16", 0xb655574ea23760b4ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_span ), (uint32_t) sizeof( RangedSigned::i16_span ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32767.0, -32768ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i16_low", "i16_low", "int16", 0xd217b3af8d7a2bdeull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_low ), (uint32_t) sizeof( RangedSigned::i16_low ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32766.0, -32768ll, 32766ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i16_high", "i16_high", "int16", 0x90652f70c9127900ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_high ), (uint32_t) sizeof( RangedSigned::i16_high ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32767.0, -32767ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i16_inside", "i16_inside", "int16", 0x6a659d7c354db158ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_inside ), (uint32_t) sizeof( RangedSigned::i16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32766.0, -32767ll, 32766ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i32_span", "i32_span", "int32", 0xe693bd88532c91d6ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_span ), (uint32_t) sizeof( RangedSigned::i32_span ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483647e+09, -2147483648ll, 2147483647ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i32_low", "i32_low", "int32", 0x065ee827cf99fbb4ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_low ), (uint32_t) sizeof( RangedSigned::i32_low ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483646e+09, -2147483648ll, 2147483646ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i32_high", "i32_high", "int32", 0xc9b121c4c2a186eeull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_high ), (uint32_t) sizeof( RangedSigned::i32_high ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483647e+09, -2147483647ll, 2147483647ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i32_inside", "i32_inside", "int32", 0xd363dfa465acf27aull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_inside ), (uint32_t) sizeof( RangedSigned::i32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483646e+09, -2147483647ll, 2147483646ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i64_span", "i64_span", "int64", 0x7549c70700c49d6full, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_span ), (uint32_t) sizeof( RangedSigned::i64_span ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, ( -9223372036854775807ll - 1 ), 9223372036854775807ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i64_low", "i64_low", "int64", 0x1cce6617419771dbull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_low ), (uint32_t) sizeof( RangedSigned::i64_low ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, ( -9223372036854775807ll - 1 ), 9223372036854775806ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i64_high", "i64_high", "int64", 0x3b54fa60620b5597ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_high ), (uint32_t) sizeof( RangedSigned::i64_high ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -9223372036854775807ll, 9223372036854775807ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( RangedSigned::i64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -9223372036854775807ll, 9223372036854775806ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "edges", "edges", "int16", 0xc70cde6b85b6197dull, 3, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( RangedSigned::edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, true, -32768.0, 32767.0, -32768ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i8_span", "i8_span", "int8", 0x48121511bf702eb5ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_span ), (uint32_t) sizeof( RangedSigned::i8_span ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 127.0, -128ll, 127ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i8_low", "i8_low", "int8", 0x942bfe3168090f7dull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_low ), (uint32_t) sizeof( RangedSigned::i8_low ), 0xffffffffu, 0xffffffffu, NULL, true, -128.0, 126.0, -128ll, 126ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i8_high", "i8_high", "int8", 0xd182acd105b55dd1ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_high ), (uint32_t) sizeof( RangedSigned::i8_high ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 127.0, -127ll, 127ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i8_inside", "i8_inside", "int8", 0xef9ded23c8912a81ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i8_inside ), (uint32_t) sizeof( RangedSigned::i8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -127.0, 126.0, -127ll, 126ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i16_span", "i16_span", "int16", 0xb655574ea23760b4ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_span ), (uint32_t) sizeof( RangedSigned::i16_span ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32767.0, -32768ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i16_low", "i16_low", "int16", 0xd217b3af8d7a2bdeull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_low ), (uint32_t) sizeof( RangedSigned::i16_low ), 0xffffffffu, 0xffffffffu, NULL, true, -32768.0, 32766.0, -32768ll, 32766ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i16_high", "i16_high", "int16", 0x90652f70c9127900ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_high ), (uint32_t) sizeof( RangedSigned::i16_high ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32767.0, -32767ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i16_inside", "i16_inside", "int16", 0x6a659d7c354db158ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i16_inside ), (uint32_t) sizeof( RangedSigned::i16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -32767.0, 32766.0, -32767ll, 32766ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i32_span", "i32_span", "int32", 0xe693bd88532c91d6ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_span ), (uint32_t) sizeof( RangedSigned::i32_span ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483647e+09, -2147483648ll, 2147483647ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i32_low", "i32_low", "int32", 0x065ee827cf99fbb4ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_low ), (uint32_t) sizeof( RangedSigned::i32_low ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483648e+09, 2.147483646e+09, -2147483648ll, 2147483646ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i32_high", "i32_high", "int32", 0xc9b121c4c2a186eeull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_high ), (uint32_t) sizeof( RangedSigned::i32_high ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483647e+09, -2147483647ll, 2147483647ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i32_inside", "i32_inside", "int32", 0xd363dfa465acf27aull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i32_inside ), (uint32_t) sizeof( RangedSigned::i32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -2.147483647e+09, 2.147483646e+09, -2147483647ll, 2147483646ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i64_span", "i64_span", "int64", 0x7549c70700c49d6full, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_span ), (uint32_t) sizeof( RangedSigned::i64_span ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, ( -9223372036854775807ll - 1 ), 9223372036854775807ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i64_low", "i64_low", "int64", 0x1cce6617419771dbull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_low ), (uint32_t) sizeof( RangedSigned::i64_low ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, ( -9223372036854775807ll - 1 ), 9223372036854775806ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i64_high", "i64_high", "int64", 0x3b54fa60620b5597ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_high ), (uint32_t) sizeof( RangedSigned::i64_high ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -9223372036854775807ll, 9223372036854775807ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "i64_inside", "i64_inside", "int64", 0xd308fcb98ece5d23ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedSigned, i64_inside ), (uint32_t) sizeof( RangedSigned::i64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, -9.223372036854776e+18, 9.223372036854776e+18, -9223372036854775807ll, 9223372036854775806ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "edges", "edges", "int16", 0xc70cde6b85b6197dull, 3, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RangedSigned, edges ), (uint32_t) sizeof( RangedSigned::edges[0] ), (uint32_t) offsetof( RangedSigned, edges_count ), 0xffffffffu, NULL, true, -32768.0, 32767.0, -32768ll, 32767ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo RangedSignedTableInfo = { "RangedSigned", (uint32_t) sizeof( RangedSigned ), 17, RangedSignedTableFields, +[]( void * p ) { RangedSignedReset( *(RangedSigned *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RangedSignedTableType() { return &RangedSignedTableInfo; }
 
 inline const TableFieldInfo RangedUnsignedTableFields[] = {
-    { "u8_span", "u8_span", "uint8", 0x0f8897557f37c021ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_span ), (uint32_t) sizeof( RangedUnsigned::u8_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, 0, 0ull, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u8_low", "u8_low", "uint8", 0x2e17553f8200a2a1ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_low ), (uint32_t) sizeof( RangedUnsigned::u8_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 254.0, 0, 0, 0ull, 254ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u8_high", "u8_high", "uint8", 0xa0e5c60df9301b7dull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_high ), (uint32_t) sizeof( RangedUnsigned::u8_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 255.0, 0, 0, 1ull, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u8_inside", "u8_inside", "uint8", 0x1cb2c073a6f5844dull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_inside ), (uint32_t) sizeof( RangedUnsigned::u8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 254.0, 0, 0, 1ull, 254ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u16_span", "u16_span", "uint16", 0x4ca0c150b1790960ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_span ), (uint32_t) sizeof( RangedUnsigned::u16_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0ull, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u16_low", "u16_low", "uint16", 0xf252136836b04cb2ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_low ), (uint32_t) sizeof( RangedUnsigned::u16_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65534.0, 0, 0, 0ull, 65534ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u16_high", "u16_high", "uint16", 0x4f37e1f216e7610cull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_high ), (uint32_t) sizeof( RangedUnsigned::u16_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65535.0, 0, 0, 1ull, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u16_inside", "u16_inside", "uint16", 0xd176b605978f3304ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_inside ), (uint32_t) sizeof( RangedUnsigned::u16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65534.0, 0, 0, 1ull, 65534ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u32_span", "u32_span", "uint32", 0x200b924de7479cdaull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_span ), (uint32_t) sizeof( RangedUnsigned::u32_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0ull, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u32_low", "u32_low", "uint32", 0xa53d2f2a31b5acb0ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_low ), (uint32_t) sizeof( RangedUnsigned::u32_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967294e+09, 0, 0, 0ull, 4294967294ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u32_high", "u32_high", "uint32", 0x9759be8ea1a4e3d2ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_high ), (uint32_t) sizeof( RangedUnsigned::u32_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967295e+09, 0, 0, 1ull, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u32_inside", "u32_inside", "uint32", 0x8dc515fc082e3c0eull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_inside ), (uint32_t) sizeof( RangedUnsigned::u32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967294e+09, 0, 0, 1ull, 4294967294ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u64_span", "u64_span", "uint64", 0xbeecef11dbdf8973ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_span ), (uint32_t) sizeof( RangedUnsigned::u64_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u64_low", "u64_low", "uint64", 0x0117ad66e0fff227ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_low ), (uint32_t) sizeof( RangedUnsigned::u64_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551614ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u64_high", "u64_high", "uint64", 0xf2b45af3b50689dbull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_high ), (uint32_t) sizeof( RangedUnsigned::u64_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, 0, 1ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( RangedUnsigned::u64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, 0, 1ull, 18446744073709551614ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( RangedUnsigned::counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u8_span", "u8_span", "uint8", 0x0f8897557f37c021ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_span ), (uint32_t) sizeof( RangedUnsigned::u8_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, 0, 0ull, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u8_low", "u8_low", "uint8", 0x2e17553f8200a2a1ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_low ), (uint32_t) sizeof( RangedUnsigned::u8_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 254.0, 0, 0, 0ull, 254ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u8_high", "u8_high", "uint8", 0xa0e5c60df9301b7dull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_high ), (uint32_t) sizeof( RangedUnsigned::u8_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 255.0, 0, 0, 1ull, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u8_inside", "u8_inside", "uint8", 0x1cb2c073a6f5844dull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u8_inside ), (uint32_t) sizeof( RangedUnsigned::u8_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 254.0, 0, 0, 1ull, 254ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u16_span", "u16_span", "uint16", 0x4ca0c150b1790960ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_span ), (uint32_t) sizeof( RangedUnsigned::u16_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0ull, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u16_low", "u16_low", "uint16", 0xf252136836b04cb2ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_low ), (uint32_t) sizeof( RangedUnsigned::u16_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65534.0, 0, 0, 0ull, 65534ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u16_high", "u16_high", "uint16", 0x4f37e1f216e7610cull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_high ), (uint32_t) sizeof( RangedUnsigned::u16_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65535.0, 0, 0, 1ull, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u16_inside", "u16_inside", "uint16", 0xd176b605978f3304ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u16_inside ), (uint32_t) sizeof( RangedUnsigned::u16_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 65534.0, 0, 0, 1ull, 65534ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u32_span", "u32_span", "uint32", 0x200b924de7479cdaull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_span ), (uint32_t) sizeof( RangedUnsigned::u32_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0ull, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u32_low", "u32_low", "uint32", 0xa53d2f2a31b5acb0ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_low ), (uint32_t) sizeof( RangedUnsigned::u32_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967294e+09, 0, 0, 0ull, 4294967294ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u32_high", "u32_high", "uint32", 0x9759be8ea1a4e3d2ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_high ), (uint32_t) sizeof( RangedUnsigned::u32_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967295e+09, 0, 0, 1ull, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u32_inside", "u32_inside", "uint32", 0x8dc515fc082e3c0eull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u32_inside ), (uint32_t) sizeof( RangedUnsigned::u32_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 4.294967294e+09, 0, 0, 1ull, 4294967294ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u64_span", "u64_span", "uint64", 0xbeecef11dbdf8973ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_span ), (uint32_t) sizeof( RangedUnsigned::u64_span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u64_low", "u64_low", "uint64", 0x0117ad66e0fff227ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_low ), (uint32_t) sizeof( RangedUnsigned::u64_low ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551614ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u64_high", "u64_high", "uint64", 0xf2b45af3b50689dbull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_high ), (uint32_t) sizeof( RangedUnsigned::u64_high ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, 0, 1ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "u64_inside", "u64_inside", "uint64", 0x713e12017eebcaf7ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedUnsigned, u64_inside ), (uint32_t) sizeof( RangedUnsigned::u64_inside ), 0xffffffffu, 0xffffffffu, NULL, true, 1.0, 1.8446744073709552e+19, 0, 0, 1ull, 18446744073709551614ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "counts", "counts", "uint64", 0xc341febe5aae51e5ull, 9, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RangedUnsigned, counts ), (uint32_t) sizeof( RangedUnsigned::counts[0] ), (uint32_t) offsetof( RangedUnsigned, counts_count ), 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo RangedUnsignedTableInfo = { "RangedUnsigned", (uint32_t) sizeof( RangedUnsigned ), 17, RangedUnsignedTableFields, +[]( void * p ) { RangedUnsignedReset( *(RangedUnsigned *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RangedUnsignedTableType() { return &RangedUnsignedTableInfo; }
 
 inline const TableFieldInfo RangedWidthsTableFields[] = {
-    { "b8", "b8", "bits(8)", 0x08a60c07b54d8dc7ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b8 ), (uint32_t) sizeof( RangedWidths::b8 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, 0, 0, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "b16", "b16", "bits(16)", 0xff95701912ad97beull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b16 ), (uint32_t) sizeof( RangedWidths::b16 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "b32", "b32", "bits(32)", 0xff9c5c1912b39470ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b32 ), (uint32_t) sizeof( RangedWidths::b32 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "b64", "b64", "bits(64)", 0xff92701912ab61e7ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b64 ), (uint32_t) sizeof( RangedWidths::b64 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "b12", "b12", "bits(12)", 0xff95741912ad9e8aull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( RangedWidths::b12 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
-    { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( RangedWidths::b48 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 281474976710655ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "b8", "b8", "bits(8)", 0x08a60c07b54d8dc7ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b8 ), (uint32_t) sizeof( RangedWidths::b8 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, 0, 0, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "b16", "b16", "bits(16)", 0xff95701912ad97beull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b16 ), (uint32_t) sizeof( RangedWidths::b16 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "b32", "b32", "bits(32)", 0xff9c5c1912b39470ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b32 ), (uint32_t) sizeof( RangedWidths::b32 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "b64", "b64", "bits(64)", 0xff92701912ab61e7ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b64 ), (uint32_t) sizeof( RangedWidths::b64 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "b12", "b12", "bits(12)", 0xff95741912ad9e8aull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b12 ), (uint32_t) sizeof( RangedWidths::b12 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "b48", "b48", "bits(48)", 0xff8b681912a535a1ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RangedWidths, b48 ), (uint32_t) sizeof( RangedWidths::b48 ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 281474976710655ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo RangedWidthsTableInfo = { "RangedWidths", (uint32_t) sizeof( RangedWidths ), 6, RangedWidthsTableFields, +[]( void * p ) { RangedWidthsReset( *(RangedWidths *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RangedWidthsTableType() { return &RangedWidthsTableInfo; }

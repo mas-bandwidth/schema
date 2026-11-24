@@ -165,6 +165,7 @@ shapes_fixed_f64_ok 13150 78 8752
 sp_count_min_current 1058 3 896
 sp_enum_moods 1353 3 1132
 sp_enum_moodfield 1099 4 868
+sp_varmoods 2972 2 1859
 surf_arrays_full 3505 15 2462
 surf_chain127_vals 361593 771 277390
 surf_chain128_vals 191496 1 91475

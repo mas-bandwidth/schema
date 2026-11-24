@@ -51,7 +51,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.LabelLength > 0 {
-			if ref := w.Ids.refAtHit(42, 0x39f7fcec8fcb623d); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(43, 0x39f7fcec8fcb623d); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.LabelLength < 0 || value.LabelLength > 70000 {
@@ -101,7 +101,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.PayloadLength > 0 {
-			if ref := w.Ids.refAtHit(132, 0xcfb8a9d063b5e9e5); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(133, 0xcfb8a9d063b5e9e5); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.PayloadLength < 0 || value.PayloadLength > 70000 {
@@ -142,7 +142,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.SamplesCount > 0 {
-			if ref := w.Ids.refAtHit(150, 0xe3b1ca6a3b48dddc); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(151, 0xe3b1ca6a3b48dddc); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.SamplesCount < 0 || value.SamplesCount > 70000 {
@@ -292,6 +292,10 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		case 0xe3b1ca6a3b48dddc: // samples
 			if kind != 14 {
@@ -339,6 +343,10 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 				value.SamplesCount = int32(count)
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -423,7 +431,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.LabelLength > 0 {
-			if ref := w.Ids.refAtHit(42, 0x39f7fcec8fcb623d); !w.headerPair(ref, 12) {
+			if ref := w.Ids.refAtHit(43, 0x39f7fcec8fcb623d); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
 			if value.LabelLength < 0 || value.LabelLength > 70000 {
@@ -473,7 +481,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.PayloadLength > 0 {
-			if ref := w.Ids.refAtHit(132, 0xcfb8a9d063b5e9e5); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(133, 0xcfb8a9d063b5e9e5); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.PayloadLength < 0 || value.PayloadLength > 70000 {
@@ -514,7 +522,7 @@ func WideBlobSaveBodyFieldsRetain(w *TableRetainWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.SamplesCount > 0 {
-			if ref := w.Ids.refAtHit(150, 0xe3b1ca6a3b48dddc); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(151, 0xe3b1ca6a3b48dddc); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.SamplesCount < 0 || value.SamplesCount > 70000 {
@@ -667,6 +675,10 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
+					return false
+				}
 			}
 		case 0xe3b1ca6a3b48dddc: // samples
 			if kind != 14 {
@@ -715,6 +727,10 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 				value.SamplesCount = int32(count)
 				if sub.Offset != int64(len(sub.Buffer)) {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
+				r.Take(sub)
+				if r.Nodes.Carve.Refused {
 					return false
 				}
 			}
@@ -774,7 +790,7 @@ var WideBlobTableFields = []TableFieldInfo{
 var WideBlobTableInfo TableTypeInfo
 
 func init() {
-	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CycleIndex: 29, CycleType: tableCycleType, CookSize: 280016, CookAlign: 4}
+	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CycleIndex: 30, CycleType: tableCycleType, CookSize: 280016, CookAlign: 4}
 }
 
 // WideBlobTableType returns WideBlob's reflection descriptor.

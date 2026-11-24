@@ -341,6 +341,10 @@ func init() {
 	tableCookLayoutOffset("TurretConfigRow.Damage", unsafe.Offsetof(TurretConfigRow{}.Damage), 0)
 	tableCookLayoutOffset("TurretConfigRow.Cooldown", unsafe.Offsetof(TurretConfigRow{}.Cooldown), 4)
 	tableCookLayoutOffset("TurretConfigRow.Gunner", unsafe.Offsetof(TurretConfigRow{}.Gunner), 8)
+	tableCookLayoutSize("VarMoodsRow", unsafe.Sizeof(VarMoodsRow{}), 24)
+	tableCookLayoutSize("VarMoodsRow alignment", unsafe.Alignof(VarMoodsRow{}), 8)
+	tableCookLayoutOffset("VarMoodsRow.Row", unsafe.Offsetof(VarMoodsRow{}.Row), 0)
+	tableCookLayoutOffset("VarMoodsRow.Mood", unsafe.Offsetof(VarMoodsRow{}.Mood), 16)
 	tableCookLayoutSize("WeaponConfigRow", unsafe.Sizeof(WeaponConfigRow{}), 28)
 	tableCookLayoutSize("WeaponConfigRow alignment", unsafe.Alignof(WeaponConfigRow{}), 4)
 	tableCookLayoutOffset("WeaponConfigRow.Damage", unsafe.Offsetof(WeaponConfigRow{}.Damage), 0)
@@ -379,7 +383,7 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 // §11 fact rather than a taste: a name derived from a DECLARATION's own
 // spelling is a name a declaration can collide with, and the checker has no
 // machinery for a prefix-and-name product. One fixed name is one claim.
-var tableCookRecords = make([]TableCookInfo, 29)
+var tableCookRecords = make([]TableCookInfo, 30)
 
 // THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is
@@ -640,6 +644,13 @@ func init() {
 		},
 	}
 	tableCookRecords[27] = TableCookInfo{
+		Name: "VarMoods", Size: 24, Align: 8, NumFields: 2,
+		Fields: []TableCookFieldInfo{
+			{Name: "row", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "mood", Offset: 16, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+		},
+	}
+	tableCookRecords[28] = TableCookInfo{
 		Name: "WeaponConfig", Size: 28, Align: 4, NumFields: 6,
 		Fields: []TableCookFieldInfo{
 			{Name: "damage", Offset: 0, Size: 4, ElemSize: 4, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
@@ -650,7 +661,7 @@ func init() {
 			{Name: "effect", Offset: 20, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[28] = TableCookInfo{
+	tableCookRecords[29] = TableCookInfo{
 		Name: "WideBlob", Size: 280016, Align: 4, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "label", Offset: 0, Size: 70008, ElemSize: 70008, IsArray: false, ArrayBound: 70000, IsPointer: false, CountOffset: 70004, PresentOffset: -1, Storage: TableCookStorageString},
@@ -663,14 +674,14 @@ func init() {
 	tableCookRecords[10].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[25] }
 	tableCookRecords[10].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[9] }
 	tableCookRecords[10].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[23] }
-	tableCookRecords[11].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[11].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[11].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[28] }
+	tableCookRecords[11].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[28] }
 	tableCookRecords[11].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[1] }
 	tableCookRecords[16].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[6] }
 	tableCookRecords[16].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[24] }
 	tableCookRecords[16].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[24] }
 	tableCookRecords[18].Fields[12].Record = func() *TableCookInfo { return &tableCookRecords[11] }
-	tableCookRecords[22].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[22].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[28] }
 	tableCookRecords[22].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[18] }
 	tableCookRecords[24].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[8] }
 	tableCookRecords[26].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[7] }
@@ -742,7 +753,7 @@ func PatrolAt(slot *int64, arena ...*TableArena) *PatrolRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c PatrolCook) Type() *TableCookInfo { return &tableCookRecords[17] }
 
-const tableCookBuildVersion uint64 = 0x74f8a79e113ca9df
+const tableCookBuildVersion uint64 = 0x2ee1bb849c945752
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -904,7 +915,48 @@ func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order Tab
 	w.put(64+data+8, t.ID, 8)
 	return true
 }
-func (w *tableCookWriter) empty(base unsafe.Pointer, f *TableFieldInfo) bool { return true }
+
+func (w *tableCookWriter) empty(base unsafe.Pointer, f *TableFieldInfo) bool {
+	p := unsafe.Add(base, f.Offset)
+	if f.List || f.Map {
+		return (*tableContainer)(p).Count == 0
+	}
+	if f.Pointer || f.CookElemSize == 0 {
+		return true
+	}
+	if f.Table == nil && f.Arms == nil {
+		return true
+	}
+	count := int32(1)
+	if f.IsArray {
+		count = f.ArrayBound
+		if f.Counted {
+			count = max(int32(0), min(count, *(*int32)(unsafe.Add(base, f.CountOffset))))
+		}
+	}
+	for i := int32(0); i < count; i++ {
+		q := unsafe.Add(p, int64(i)*int64(f.ElemSize))
+		if f.Table != nil {
+			t := f.Table()
+			for j := range t.Fields {
+				if !w.empty(q, &t.Fields[j]) {
+					return false
+				}
+			}
+		}
+		if f.Arms != nil {
+			u := f.Arms()
+			tag := tableJSONGetRaw(unsafe.Add(q, u.TagOffset), u.TagSize)
+			if tag == 0 || tag >= uint64(len(u.Arms)) || u.Arms[tag].Void {
+				continue
+			}
+			if !w.empty(q, &u.Arms[tag].Field) {
+				return false
+			}
+		}
+	}
+	return true
+}
 
 func (w *tableCookWriter) reference(slot *int64, at int64) bool {
 	if *slot == 0 {
@@ -987,8 +1039,36 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 	}
 	return total, TableRefuseOk
 }
+
 func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
-	return false
+	h := (*tableContainer)(p)
+	if h.Count < 0 || !live && h.Count != 0 {
+		return false
+	}
+	if h.Count == 0 {
+		return true
+	}
+	if w.numbering == nil {
+		return false
+	}
+	alignment := int64(f.ElemAlign)
+	w.at = (w.at + alignment - 1) & -alignment
+	start := w.at
+	w.at += int64(h.Count) * int64(f.CookElemSize)
+	if w.at < start {
+		return false
+	}
+	w.put(at, uint64(start-at), 8)
+	w.put(at+8, uint64(h.Count), 4)
+	cursor := tableMapCursor(h, f, w.numbering.arena)
+	defer cursor.Release()
+	for i := range h.Count {
+		elem := cursor.Next()
+		if elem == nil || !w.value(elem, f, start+int64(i)*int64(f.CookElemSize), true) {
+			return false
+		}
+	}
+	return true
 }
 func PatrolCookMeasure(value *Patrol, context ...TableWriteContext) int64 {
 	arena, allocator := tableWriteOptions(context)

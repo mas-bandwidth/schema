@@ -1,4 +1,4 @@
-0x74f8a79e113ca9df
+0x2ee1bb849c945752
 schema-build-version 6
 protocol 5c9bc5717146f630
 byteorder little
@@ -149,6 +149,9 @@ record TurretConfig sizeof=20 alignof=4
     field 7f6308be8ab37fc0 kind=10 offset=0 size=4 default=10.0
     field dc2cbe6953343d48 kind=10 offset=4 size=4 default=0.5
     field 40dbb648c0cd44aa kind=13 offset=8 size=9 type=GunnerConfig optional=true
+record VarMoods sizeof=24 alignof=8
+    field 8a0bc1196111ad9b kind=14 offset=0 size=16 enum=Mood elem=1 elemkind=30 array=unbounded
+    field 0d5cfaa2c43877be kind=30 offset=16 size=1 enum=Mood default=Fierce
 record WeaponConfig sizeof=28 alignof=4
     field 7f6308be8ab37fc0 kind=10 offset=0 size=4 default=21.0
     field 1733055702acb1d2 kind=10 offset=4 size=4 default=500.0
