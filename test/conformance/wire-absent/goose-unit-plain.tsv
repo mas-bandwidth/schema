@@ -1,0 +1,18 @@
+# goose-unit-plain: the roots the one-unit Goose legs of make/goose-wirefuzz.sh
+# answer absent on their fixed arm (`--leg goose-unit --unit <u>`, no
+# --builder), matched as an exact set per unit (test/conformance/harness/
+# wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Each is a variable
+# root of a unit with fixed roots too: the fixed arm reads the value-only
+# roots and the same unit's builder arm fuzzes these, which the builder run
+# checks. Measured at main e5ef2e0604:
+# 51 seeds over 10 roots.
+cooktorture.TortureCook	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (3 seeds)
+messagedemo.ToolEnvelope	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (6 seeds)
+packetunions.ShapeDoc	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (2 seeds)
+shapes.Bounds	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (4 seeds)
+tblsurf.Chain	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (2 seeds)
+tblsurf.Counted	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (1 seeds)
+tblsurf.Holder	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (2 seeds)
+tblvaluedefaults.VarDefaults	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (2 seeds)
+tblvarevo1.EvoDoc	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (18 seeds)
+tblvarevo3.EvoDoc	split: a variable root, fuzzed by the goose-unit builder arm (make/goose-wirefuzz.sh) (11 seeds)

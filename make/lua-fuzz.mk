@@ -15,15 +15,15 @@
 
 LUA_FUZZ_SEED ?= 1
 LUA_FUZZ_N    ?= 2000
-# The seeds whose root the Lua leg has no codec for (form-2 batches and the
-# retain arm), measured on the committed corpus. A root that drops out of the
-# leg moves this count and the recipe goes red, instead of fuzzing less.
-LUA_WIRE_FUZZ_ABSENT_SEEDS := 20
+# The roots the Lua leg has no codec for are the exact set in
+# test/conformance/wire-absent/lua-plain.tsv (test/conformance/harness/wirefuzz_absent.go, W-ROSTER):
+# the harness fails any other absent root, and a listed root the leg answers.
+# The registered count this replaced (20) was stale: the leg left 22 absent.
 
 .PHONY: tables-lua-wire-fuzz
 tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
 	@mkdir -p build
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --leg lua \
 		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/conformance-lua' \
 		--seed $(LUA_FUZZ_SEED) --n $(LUA_FUZZ_N) \
 		> build/tables-lua-wire-fuzz.log 2>&1; \
@@ -32,8 +32,6 @@ tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
 	@grep -q '0 divergences' build/tables-lua-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-lua-wire-fuzz.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-lua-wire-fuzz.log
-	@grep -qE ', $(LUA_WIRE_FUZZ_ABSENT_SEEDS) seeds absent \(' build/tables-lua-wire-fuzz.log || { \
-		echo "tables-lua-wire-fuzz: the absent seed count is not the $(LUA_WIRE_FUZZ_ABSENT_SEEDS) registered: $$(grep -oE '[0-9]+ seeds absent' build/tables-lua-wire-fuzz.log || echo none absent)"; exit 1; }
 
 # The harness-driven differential is part of the leg's certification run, as
 # the Go, JavaScript, Java and Dart card wire-fuzz gates are part of theirs.

@@ -5530,8 +5530,8 @@ tables-distinctness-negative-control: bin/schema test/tables/distinct_main.cpp
 
 .PHONY: tables-wire-fuzz
 tables-wire-fuzz: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-$(SEED).log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-asan-$(SEED).log ./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-$(SEED).log ./build/conformance-harness wire-fuzz --leg cpp --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-plain-asan-$(SEED).log ./build/conformance-harness wire-fuzz --leg cpp --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-asan-$(SEED).bin
 
 # THE WIRE FUZZER'S NEGATIVE CONTROLS (docs/SPEC-TABLES.md §4.2). A fuzzer
@@ -6074,8 +6074,8 @@ tables-wire-fuzz-nested-arm-trailing-negative-control: build/conformance-harness
 # name (§3.3).
 .PHONY: tables-wire-fuzz-retain
 tables-wire-fuzz-retain: build/conformance-harness build/wire-fuzz-cpp build/wire-fuzz-cpp-asan
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-$(SEED).log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
-	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-asan-$(SEED).log ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-$(SEED).log ./build/conformance-harness wire-fuzz --leg cpp --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N)
+	sh test/conformance/wire-fuzz-complete build/wire-fuzz-cpp-retain-asan-$(SEED).log ./build/conformance-harness wire-fuzz --leg cpp --retain --driver ./build/wire-fuzz-cpp-asan --seed $(SEED) --n $(N) \
 		--failed build/wire-fuzz/failed-retain-asan-$(SEED).bin
 
 # TWO NEGATIVE CONTROLS STAND BEHIND THE RETENTION LEG, one per engine,
@@ -6100,7 +6100,7 @@ tables-wire-fuzz-retain-oracle-negative-control: build/conformance-harness build
 	@printf '{"Replace":{"%s/internal/tablewire/retain.go":"%s/$(RETAIN_ORACLE_NC)/retain.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RETAIN_ORACLE_NC)/overlay.json
 	go build -overlay $(RETAIN_ORACLE_NC)/overlay.json -o $(RETAIN_ORACLE_NC)/harness ./test/conformance/harness
-	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
+	@if $(RETAIN_ORACLE_NC)/harness wire-fuzz --leg cpp --retain --driver ./build/wire-fuzz-cpp --seed $(SEED) --n $(N) \
 			--failed $(RETAIN_ORACLE_NC)/failed.bin > $(RETAIN_ORACLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the oracle's drop rule is gone and the retention leg stayed green"; \
 		cat $(RETAIN_ORACLE_NC)/log; exit 1; \
@@ -6134,7 +6134,7 @@ define retain_fuzz_control
 		test/tables/wire_fuzz_main.cpp \
 		$(subst build/tables-generated/,build/wire-fuzz-nc-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o build/wire-fuzz-nc-$(1)/leg
-	@if ./build/conformance-harness wire-fuzz --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
+	@if ./build/conformance-harness wire-fuzz --leg cpp --retain --driver ./build/wire-fuzz-nc-$(1)/leg --seed $(SEED) --n $(N) \
 			--failed build/wire-fuzz-nc-$(1)/failed.bin > build/wire-fuzz-nc-$(1)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) check is gone and the retention leg stayed green"; \
 		cat build/wire-fuzz-nc-$(1)/log; exit 1; \

@@ -1542,7 +1542,7 @@ $(CARDS_DART_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 # make/go.mk's cards-wire-fuzz does.
 .PHONY: cards-dart-wire-fuzz
 cards-dart-wire-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@./build/conformance-harness wire-fuzz --builder \
+	@./build/conformance-harness wire-fuzz --leg cards-dart --builder \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 \
 		> build/cards-dart-wire-fuzz.log 2>&1; \
@@ -1564,7 +1564,7 @@ test-dart: cards-dart-wire-fuzz
 # --retain, so a retained save is held to the Go reference leg byte for byte.
 .PHONY: cards-dart-retain-fuzz
 cards-dart-retain-fuzz: cards-dart-generate build/conformance-harness build/conformance-dart
-	@./build/conformance-harness wire-fuzz --builder \
+	@./build/conformance-harness wire-fuzz --leg cards-dart --builder \
 		--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \
 		--driver 'build/conformance-dart wire-fuzz' --seed 24845619678 --n 100 --retain \
 		> build/cards-dart-retain-fuzz.log 2>&1; \
@@ -1801,7 +1801,7 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 # Save the value cannot honour (a cycle, a blob two slots name) is the
 # StateError the driver answers as a refusal. The default N and SEED are the
 # Makefile's. The driver also binds LoadRetain/SaveRetain for every root
-# (wire-fuzz --builder --retain, docs/SPEC-TABLES.md §6.6). Dart's mutable
+# (the wire-fuzz arm with --builder --retain, docs/SPEC-TABLES.md §6.6). Dart's mutable
 # file reader uses the builder oracle; region sizing remains independently
 # checked by native extent tests.
 # THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's
@@ -1818,7 +1818,7 @@ tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
 
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
 	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartBuilderRefusalAndRetentionVectors TestDartReservedNodeTypeVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors|ReservedNodeTypeVectors)$$'
-	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
+	./build/conformance-harness wire-fuzz --leg dart --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
 # (tools/sabotage table-dart-wire-widen), every unit the driver reads is

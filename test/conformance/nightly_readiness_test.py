@@ -756,8 +756,8 @@ class Contracts(unittest.TestCase):
             # every interpreter the plan starts is a pin, never a bare name
             for name,argv,cwd in runner.calls:
                 for i,word in enumerate(argv):
-                    if i and argv[i-1]=="--lang":
-                        continue  # a language name, not a command word
+                    if i and argv[i-1] in ("--lang","--leg"):
+                        continue  # a language or leg name, not a command word
                     for token in word.split():
                         self.assertIsNone(m.re.fullmatch(r"python[0-9.]*",token),(name,argv))
             runner.temporary.cleanup()

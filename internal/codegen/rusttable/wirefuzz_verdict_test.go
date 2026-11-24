@@ -33,7 +33,7 @@ import (
 func rustWireFuzzVerdictMakefileCheck(mk string) error {
 	for _, want := range []string{
 		"cards-rust-wire-fuzz: build/conformance-harness build/conformance-rust-card",
-		"./build/conformance-harness wire-fuzz \\",
+		"./build/conformance-harness wire-fuzz --leg cards-rust \\",
 		"--manifest tables/cards/fuzz/MANIFEST.txt --json tables/cards/fuzz --vectors '' \\",
 		`--driver 'build/conformance-rust-card wire-fuzz' --seed 24845619678 --n 100`,
 		"cards-rust-retain-fuzz: build/conformance-harness build/conformance-rust-card",
@@ -120,6 +120,7 @@ func runRustWireFuzzVerdictPipe(t *testing.T, repo, harness, leg string, retain 
 	t.Helper()
 	args := []string{
 		"wire-fuzz",
+		"--leg", "cards-rust",
 		"--manifest", "tables/cards/fuzz/MANIFEST.txt",
 		"--json", "tables/cards/fuzz",
 		"--vectors", "",

@@ -49,7 +49,7 @@ if [ "$planted" -lt 1 ]; then
 fi
 
 if SCHEMA_MOO_GENERATED="$out/conformance-moo" MOOFUZZ_STAGE="$out/stage" \
-	build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver \
+	build/conformance-harness wire-fuzz --leg moo --driver test/conformance/moo/wirefuzz-driver \
 	--seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
 	cat "$out/log"
 	echo "NEGATIVE CONTROL FAILED: a load that does not count a string frame past its body left the wire fuzz green" >&2

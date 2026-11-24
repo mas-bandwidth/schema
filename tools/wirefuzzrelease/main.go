@@ -3,15 +3,20 @@
 // table and verdict. It is the gate's judgement, moved out of shell so that it
 // has unit tests; make/checks/wire-fuzz-release-run.sh still runs the harness.
 //
-//	wirefuzzrelease row   -leg L -arm A -seed S -dir D [-owed F] [-absent F] (-no-driver | -status N -secs N -n N)
+//	wirefuzzrelease row   -leg L -arm A -seed S -dir D [-owed F] (-no-driver | -status N -secs N -n N)
 //	wirefuzzrelease table -leg L -dir D -arms "plain retain" -seeds "1 2 3" -n N
 //
 // `row` reads <dir>/<leg>.<arm>.<seed>.log and writes <dir>/<leg>.<arm>.<seed>.row:
 // leg, arm, seed, verdict, tab-separated. A run is green only when the harness
 // exited 0 AND its summary line proves the run: no divergence, at least one
 // seed over at least one root, the random mutants the gate asked for (-n) and
-// not merely some, and no seed absent that the absent list does not name with
-// its exact count. That is the rule for
+// not merely some, and an absence the gate can read: a seed the leg has no
+// codec for is held by name in the leg's ledger under
+// test/conformance/wire-absent/ (the harness stops the run on any other,
+// W-ROSTER), and the summary says how many in its words, `N ledgered seeds
+// absent (<ledger>)`; a summary that speaks of absent seeds in any other
+// words is RED, never read as none. The ledgered count rides in the row's
+// pass verdict. That is the rule for
 // every leg; it was Python's alone, and any other leg passed with zero
 // mutants or with part of its roster absent.
 //
@@ -30,6 +35,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/wireabsent"
 )
 
 func main() {
@@ -44,7 +51,6 @@ func main() {
 		seed := fs.String("seed", "", "the run's seed")
 		dir := fs.String("dir", "", "where the run's log is and its row goes")
 		owed := fs.String("owed", "test/conformance/wire-fuzz-owed.txt", "the owed arms")
-		absent := fs.String("absent", "test/conformance/wire-fuzz-absent.txt", "the absent seeds held by name")
 		noDriver := fs.Bool("no-driver", false, "the leg has no wire-fuzz driver")
 		status := fs.Int("status", -1, "the harness's exit status")
 		secs := fs.Int("secs", 0, "how long the run took")
@@ -53,7 +59,7 @@ func main() {
 		if *leg == "" || *arm == "" || *seed == "" || *dir == "" || (!*noDriver && (*status < 0 || *asked <= 0)) {
 			usage()
 		}
-		if err := writeRow(*leg, *arm, *seed, *dir, *owed, *absent, *noDriver, *status, *secs, *asked); err != nil {
+		if err := writeRow(*leg, *arm, *seed, *dir, *owed, *noDriver, *status, *secs, *asked); err != nil {
 			fmt.Fprintln(os.Stderr, "wirefuzzrelease:", err)
 			os.Exit(2)
 		}
@@ -102,7 +108,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: wirefuzzrelease row -leg L -arm A -seed S -dir D [-owed F] [-absent F] (-no-driver | -status N -secs N -n N)\n"+
+	fmt.Fprintln(os.Stderr, "usage: wirefuzzrelease row -leg L -arm A -seed S -dir D [-owed F] (-no-driver | -status N -secs N -n N)\n"+
 		"       wirefuzzrelease table -leg L -dir D -arms \"plain retain\" -seeds \"1 2 3\" -n N\n"+
 		"       wirefuzzrelease cases [dir]")
 	os.Exit(2)
@@ -125,12 +131,8 @@ func listed(path, leg, arm string) (string, error) {
 	return "", nil
 }
 
-func writeRow(leg, arm, seed, dir, owedPath, absentPath string, noDriver bool, status, secs, asked int) error {
+func writeRow(leg, arm, seed, dir, owedPath string, noDriver bool, status, secs, asked int) error {
 	owed, err := listed(owedPath, leg, arm)
-	if err != nil {
-		return err
-	}
-	held, err := heldAbsent(absentPath, leg, arm)
 	if err != nil {
 		return err
 	}
@@ -146,7 +148,7 @@ func writeRow(leg, arm, seed, dir, owedPath, absentPath string, noDriver bool, s
 		if err != nil {
 			return err
 		}
-		verdict = score(leg, arm, seed, string(log), status, secs, asked, owed, owedPath, held, absentPath)
+		verdict = score(leg, arm, seed, string(log), status, secs, asked, owed, owedPath)
 	}
 	verdict = strings.NewReplacer("\t", " ", "\n", " ").Replace(verdict)
 	if len(verdict) > 400 {
@@ -155,50 +157,33 @@ func writeRow(leg, arm, seed, dir, owedPath, absentPath string, noDriver bool, s
 	return os.WriteFile(base+".row", []byte(leg+"\t"+arm+"\t"+seed+"\t"+verdict+"\n"), 0o644)
 }
 
-// absentHold is one line of the absent list: how many seeds the leg has no
-// codec for on this arm, and why. -1 is no line.
-type absentHold struct {
-	count int
-	why   string
-}
-
-func heldAbsent(path, leg, arm string) (absentHold, error) {
-	rest, err := listed(path, leg, arm)
-	if err != nil {
-		return absentHold{}, err
-	}
-	if rest == "" {
-		return absentHold{count: -1}, nil
-	}
-	n, why, _ := strings.Cut(rest, " ")
-	count, err := strconv.Atoi(n)
-	if err != nil || count <= 0 || strings.TrimSpace(why) == "" {
-		return absentHold{}, fmt.Errorf("%s: the %s %s line is `<leg> <arm> <count above zero> <why>`, got %q", path, leg, arm, rest)
-	}
-	return absentHold{count: count, why: why}, nil
-}
-
 var (
-	seedRE     = regexp.MustCompile(`: seed (\d+),`)
-	summaryRE  = regexp.MustCompile(`(\d+) seeds over (\d+) roots`)
-	absentRE   = regexp.MustCompile(`(\d+) seeds absent`)
-	mutantsRE  = regexp.MustCompile(`(\d+) enumerated \+ (\d+) random = (\d+) mutants`)
-	zeroDivRE  = regexp.MustCompile(`(^|[^0-9])0 divergences`)
-	failedRE   = regexp.MustCompile(`FAILED after (\d+) mutants: (.*)`)
-	whereRE    = regexp.MustCompile(`(?m)^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),`)
-	errorishRE = regexp.MustCompile(`FAILED|harness:|wire-fuzz:|panic|error`)
+	seedRE    = regexp.MustCompile(`: seed (\d+),`)
+	summaryRE = regexp.MustCompile(`(\d+) seeds over (\d+) roots`)
+	// THE ABSENCE CLAUSE is internal/wireabsent's, the one spelling the
+	// harness prints: every absent seed is in the leg's ledger or the run
+	// stopped. absentWordRE is any mention of absence or of a ledger at all,
+	// so a clause in other words ("24 ledgered seeds missing") is RED and
+	// never read as none.
+	absentRE     = wireabsent.ClauseRE
+	absentWordRE = regexp.MustCompile(`(?i)absent|ledger`)
+	mutantsRE    = regexp.MustCompile(`(\d+) enumerated \+ (\d+) random = (\d+) mutants`)
+	zeroDivRE    = regexp.MustCompile(`(^|[^0-9])0 divergences`)
+	failedRE     = regexp.MustCompile(`FAILED after (\d+) mutants: (.*)`)
+	whereRE      = regexp.MustCompile(`(?m)^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),`)
+	errorishRE   = regexp.MustCompile(`FAILED|harness:|wire-fuzz:|panic|error`)
 )
 
 // score is one run's verdict, from the harness's exit status and its log.
-func score(leg, arm, seed, log string, status, secs, asked int, owed, owedPath string, held absentHold, absentPath string) string {
-	red := runRed(leg, arm, seed, log, status, asked, held, absentPath)
+func score(leg, arm, seed, log string, status, secs, asked int, owed, owedPath string) string {
+	red, ledgered := runRed(leg, arm, seed, log, status, asked)
 	if red == "" {
 		mutants := mutantsRE.FindAllStringSubmatch(log, -1)
 		m := mutants[len(mutants)-1][3]
 		if owed != "" {
 			return fmt.Sprintf("RED: owed but green (%s mutants): remove '%s %s' from %s", m, leg, arm, owedPath)
 		}
-		return fmt.Sprintf("pass (%s mutants, %d s)", m, secs)
+		return fmt.Sprintf("pass (%s mutants, %d s%s)", m, secs, ledgered)
 	}
 	if owed != "" {
 		return "owed: " + owed + " (runs red: " + strings.TrimPrefix(red, "RED: ") + ")"
@@ -210,7 +195,9 @@ func score(leg, arm, seed, log string, status, secs, asked int, owed, owedPath s
 // its summary line proves what it ran: the random pass is exactly the count
 // the gate asked for (the harness draws --n random mutants after the
 // enumerated ones), so a run of one mutant under a budget of 100,000 is red.
-func runRed(leg, arm, seed, log string, status, asked int, held absentHold, absentPath string) string {
+// The second answer is the ledgered absence for the pass verdict, "" when
+// no seed is absent.
+func runRed(leg, arm, seed, log string, status, asked int) (string, string) {
 	if status != 0 {
 		if f := failedRE.FindStringSubmatch(log); f != nil {
 			// THE FIRST DIVERGENCE: the root, the mutant after the ones that
@@ -221,11 +208,11 @@ func runRed(leg, arm, seed, log string, status, asked int, held absentHold, abse
 			}
 			passed, err := strconv.Atoi(f[1])
 			if err != nil {
-				return fmt.Sprintf("RED: %s, mutant after %s: %s", where, f[1], f[2])
+				return fmt.Sprintf("RED: %s, mutant after %s: %s", where, f[1], f[2]), ""
 			}
-			return fmt.Sprintf("RED: %s, mutant %d: %s", where, passed+1, f[2])
+			return fmt.Sprintf("RED: %s, mutant %d: %s", where, passed+1, f[2]), ""
 		}
-		return fmt.Sprintf("RED: exit %d: %s", status, firstErrorLine(log))
+		return fmt.Sprintf("RED: exit %d: %s", status, firstErrorLine(log)), ""
 	}
 	summary := ""
 	for line := range strings.SplitSeq(log, "\n") {
@@ -234,74 +221,81 @@ func runRed(leg, arm, seed, log string, status, asked int, held absentHold, abse
 		}
 	}
 	if summary == "" {
-		return "RED: exit 0 and no summary line: the run does not say what it ran: " + firstErrorLine(log)
+		return "RED: exit 0 and no summary line: the run does not say what it ran: " + firstErrorLine(log), ""
 	}
 	if !zeroDivRE.MatchString(summary) {
-		return "RED: exit 0 and the summary does not say 0 divergences: " + summary
+		return "RED: exit 0 and the summary does not say 0 divergences: " + summary, ""
 	}
 	// THE RUN'S COORDINATES: the summary is this arm's at this seed, not a
 	// line another run left in the log's place
 	label, _, _ := strings.Cut(summary, ":")
 	if strings.Contains(label, "retain") != (arm == "retain") {
-		return fmt.Sprintf("RED: the summary is not the %s arm's: %s", arm, summary)
+		return fmt.Sprintf("RED: the summary is not the %s arm's: %s", arm, summary), ""
 	}
 	if c := seedRE.FindStringSubmatch(summary); c == nil || c[1] != seed {
-		return fmt.Sprintf("RED: the summary is not seed %s's: %s", seed, summary)
+		return fmt.Sprintf("RED: the summary is not seed %s's: %s", seed, summary), ""
 	}
 	s := summaryRE.FindStringSubmatch(summary)
 	seeds, err := strconv.Atoi(s[1])
 	if err != nil {
-		return "RED: malformed wire-fuzz seed count: " + summary
+		return "RED: malformed wire-fuzz seed count: " + summary, ""
 	}
 	roots, err := strconv.Atoi(s[2])
 	if err != nil {
-		return "RED: malformed wire-fuzz root count: " + summary
+		return "RED: malformed wire-fuzz root count: " + summary, ""
 	}
 	if seeds == 0 || roots == 0 {
-		return fmt.Sprintf("RED: empty wire-fuzz roster: %d seeds over %d roots", seeds, roots)
+		return fmt.Sprintf("RED: empty wire-fuzz roster: %d seeds over %d roots", seeds, roots), ""
 	}
 	m := mutantsRE.FindStringSubmatch(summary)
 	if m == nil {
-		return "RED: missing wire-fuzz mutation count: " + summary
+		return "RED: missing wire-fuzz mutation count: " + summary, ""
 	}
 	enumerated, err := strconv.Atoi(m[1])
 	if err != nil {
-		return "RED: malformed wire-fuzz enumerated count: " + m[0]
+		return "RED: malformed wire-fuzz enumerated count: " + m[0], ""
 	}
 	random, err := strconv.Atoi(m[2])
 	if err != nil {
-		return "RED: malformed wire-fuzz random count: " + m[0]
+		return "RED: malformed wire-fuzz random count: " + m[0], ""
 	}
 	total, err := strconv.Atoi(m[3])
 	if err != nil {
-		return "RED: malformed wire-fuzz total count: " + m[0]
+		return "RED: malformed wire-fuzz total count: " + m[0], ""
 	}
 	switch {
 	case total == 0:
-		return "RED: empty wire-fuzz mutation count: 0 mutants over " + s[0]
+		return "RED: empty wire-fuzz mutation count: 0 mutants over " + s[0], ""
 	case enumerated+random != total:
-		return fmt.Sprintf("RED: the summary's mutation counts do not add up: %s", m[0])
+		return fmt.Sprintf("RED: the summary's mutation counts do not add up: %s", m[0]), ""
 	case random != asked:
-		return fmt.Sprintf("RED: short wire-fuzz run: %d random mutants ran and the gate asked for %d (%s)", random, asked, m[0])
+		return fmt.Sprintf("RED: short wire-fuzz run: %d random mutants ran and the gate asked for %d (%s)", random, asked, m[0]), ""
 	case enumerated == 0:
-		return fmt.Sprintf("RED: no enumerated mutant ran: %s", m[0])
+		return fmt.Sprintf("RED: no enumerated mutant ran: %s", m[0]), ""
 	}
-	absent := 0
-	if a := absentRE.FindStringSubmatch(summary); a != nil {
-		absent, err = strconv.Atoi(a[1])
-		if err != nil {
-			return "RED: malformed wire-fuzz absent count: " + summary
-		}
-	}
+	a := absentRE.FindAllStringSubmatch(summary, -1)
 	switch {
-	case absent > 0 && held.count < 0:
-		return fmt.Sprintf("RED: incomplete wire-fuzz roster: %d seeds absent and %s does not name '%s %s'", absent, absentPath, leg, arm)
-	case absent > 0 && absent != held.count:
-		return fmt.Sprintf("RED: incomplete wire-fuzz roster: %d seeds absent and %s holds %d for '%s %s'", absent, absentPath, held.count, leg, arm)
-	case absent == 0 && held.count > 0:
-		return fmt.Sprintf("RED: no seed is absent and %s still holds %d for '%s %s': remove the line", absentPath, held.count, leg, arm)
+	case len(a) == 0 && absentWordRE.MatchString(summary):
+		return "RED: the summary speaks of absent seeds in words the gate does not read (want `, N ledgered seeds absent (<ledger>)`): " + summary, ""
+	case len(a) == 0:
+		return "", ""
+	case len(a) > 1:
+		return "RED: the summary has more than one absence clause: " + summary, ""
 	}
-	return ""
+	absent, err := strconv.Atoi(a[0][1])
+	if err != nil || absent <= 0 {
+		return "RED: malformed wire-fuzz absent count: " + summary, ""
+	}
+	// the clause cites THIS row's ledger: another leg's or arm's would excuse
+	// roots this run was never held to
+	if want := wireabsent.LedgerPath(wireabsent.Dir, leg, arm); a[0][2] != want {
+		return fmt.Sprintf("RED: the absence clause cites %s, not the %s %s row's ledger %s: %s", a[0][2], leg, arm, want, summary), ""
+	}
+	// what is left once the clause is read must not speak of absence again
+	if absentWordRE.MatchString(strings.Replace(summary, a[0][0], "", 1)) {
+		return "RED: the summary speaks of absent seeds outside its one clause: " + summary, ""
+	}
+	return "", fmt.Sprintf(", %d ledgered seeds absent (%s)", absent, a[0][2])
 }
 
 func firstErrorLine(log string) string {

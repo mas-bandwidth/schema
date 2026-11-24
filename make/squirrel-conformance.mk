@@ -139,7 +139,7 @@ SQUIRREL_RELEASE_FUZZ_N ?= 20000
 tables-squirrel-release:
 	$(MAKE) conformance-squirrel-wire-pin
 	$(MAKE) tables-squirrel-wire-fuzz
-	for s in 2 3; do ./build/conformance-harness wire-fuzz --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed $$s --n $(SQUIRREL_RELEASE_FUZZ_N) --failed build/wire-fuzz/failed-squirrel-builder-$$s.bin || exit 1; done
+	for s in 2 3; do ./build/conformance-harness wire-fuzz --leg squirrel --driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" --builder --seed $$s --n $(SQUIRREL_RELEASE_FUZZ_N) --failed build/wire-fuzz/failed-squirrel-builder-$$s.bin || exit 1; done
 	$(MAKE) conformance-negative-control-squirrel
 	$(MAKE) conformance-negative-control-squirrel-walk
 	$(MAKE) conformance-negative-control-squirrel-block

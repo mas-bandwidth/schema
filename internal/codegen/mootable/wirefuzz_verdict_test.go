@@ -206,7 +206,7 @@ func runMooWireFuzzVerdictPipe(t *testing.T, generatedRel, manifest string, reta
 	harness := mooFuzzHarness(t)
 	host := mooFuzzHost(t)
 	failed := filepath.Join(t.TempDir(), "failed.bin")
-	args := []string{"wire-fuzz"}
+	args := []string{"wire-fuzz", "--leg", "moo-fixture"}
 	if retain {
 		args = append(args, "--retain")
 	}

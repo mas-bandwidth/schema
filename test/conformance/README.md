@@ -194,8 +194,10 @@ sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
 `make tables-c-retain` run C natively and under ASan/UBSan; the corresponding
 C# managed, native, builder and retention targets are in make/cs.mk.
 
-Unsupported roots are printed as `N seeds absent (roots the leg has no codec
-for)`. Absence is explicit and never counted as a passing fixture.
+A root the leg has no codec for is held by name in the leg's ledger,
+`test/conformance/wire-absent/<leg>-<arm>.tsv`, or the run stops red naming
+it (`--leg`, W-ROSTER); a held one is printed as `N ledgered seeds absent
+(<ledger>)`. Absence is explicit and never counted as a passing fixture.
 PORTING.md M20 records the coverage and gates.
 
 **Absent is not failure, and the distinction is the whole reason the matrix
@@ -852,7 +854,7 @@ make tables-wire-fuzz                      the C++ reference, plain and sanitize
 make tables-wire-fuzz-negative-control     both controls: a check removed, the fuzzer red
 make tables-wire-fuzz-retain               the same mutants through the RETAINING paths
 make tables-wire-fuzz-retain-negative-control   its own pair, one control per engine
-./build/conformance-harness wire-fuzz --driver <cmd> [--seed S] [--n N]
+./build/conformance-harness wire-fuzz --leg <leg> --driver <cmd> [--seed S] [--n N]
 ./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
 ```
 
@@ -1081,7 +1083,7 @@ Named, with the reason, so a port knows what it is not being asked for:
   twin) and the cook's. A fuzzer is a search, not a case, and the finds it
   produces land here as forgery rows — `block_offset_overflow` is one.
 
-The optional `wire-fuzz --builder` arm uses mutable file readers over variable
+The optional wire-fuzz `--builder` arm uses mutable file readers over variable
 file roots. `--mixed-builder` preserves the full roster and uses the mutable
 oracle only for variable file roots, keeping fixed and message roots. These
 profiles share the same acceptance and exact write-back comparison. `--builder`
