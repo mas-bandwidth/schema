@@ -1,11 +1,13 @@
 # go-builder: the roots the Go builder-arm wire-fuzz driver (conformance-go
 # wire-fuzz-builder, make/go.mk tables-go-builders) answers absent, matched as an
 # exact set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md
-# W-ROSTER). Measured on intel at main 2d352b7dd8 plus this guard: 24 seeds over 7 roots. Delete a
+# W-ROSTER). Measured at main e5ef2e0604:
+# 26 seeds over 8 roots. Delete a
 # line in the change that adds its root to the builder driver, and the file with
 # its last line.
 featurewitnesses.ArrayRoot	owed: the Go builder driver has no mutable codec for this root (2 seeds)
 featurewitnesses.Root	owed: the Go builder driver has no mutable codec for this root (11 seeds)
+packetunions.ShapeDoc	owed: wire-seed-roots-go (2 seeds)
 shapes.Bounds	owed: the Go builder driver has no mutable codec for this root (4 seeds)
 tblsurf.Chain	owed: the Go builder driver has no mutable codec for this root (2 seeds)
 tblsurf.Counted	owed: the Go builder driver has no mutable codec for this root (1 seeds)

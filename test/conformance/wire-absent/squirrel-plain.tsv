@@ -1,6 +1,6 @@
 # squirrel-plain: the roots the squirrel plain-arm wire-fuzz driver answers absent, matched as an exact
-# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at
-# main 2d352b7dd8: 227 seeds over 47 roots. Delete a line in the change that
+# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at main e5ef2e0604:
+# 233 seeds over 50 roots. Delete a line in the change that
 # adds its root to the driver, and the file with its last line.
 backenddemo.LoginRequest@message	owed: wire-seed-roots-squirrel (6 seeds)
 backenddemo.MatchResult@message	owed: wire-seed-roots-squirrel (2 seeds)
@@ -30,6 +30,8 @@ mapdemo.Spans	split: a variable root, fuzzed by the squirrel-builder arm (make/s
 mapdemo.Text	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (3 seeds)
 mapdemo.Trails	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
 messagedemo.ToolEnvelope	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (6 seeds)
+packetunions.ShapeDoc	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
+packetunions.ShapeMsg@message	owed: wire-seed-roots-squirrel (2 seeds)
 shapes.Bounds	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (4 seeds)
 streamdemo.Feed	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (22 seeds)
 tblg1.Guarded	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (4 seeds)
@@ -37,6 +39,7 @@ tblp2.Chain	split: a variable root, fuzzed by the squirrel-builder arm (make/squ
 tblsurf.Chain	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
 tblsurf.Counted	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (1 seeds)
 tblsurf.Holder	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
+tblvaluedefaults.VarDefaults	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (2 seeds)
 tblvarevo1.EvoDoc	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (18 seeds)
 tblvarevo1.EvoMsg@message	owed: wire-seed-roots-squirrel (1 seeds)
 tblvarevo2.EvoDoc	split: a variable root, fuzzed by the squirrel-builder arm (make/squirrel-fuzz.mk) (3 seeds)

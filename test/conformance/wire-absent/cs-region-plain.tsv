@@ -1,7 +1,8 @@
 # cs-region-plain: the roots the C# region-arm wire-fuzz driver (schemaconformance.dll
 # wire-fuzz-region, make/cs.mk tables-cs-region-fuzz) answers absent, matched as an
 # exact set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md
-# W-ROSTER). Measured on intel at main 2d352b7dd8 plus this guard: 330 seeds over 54 roots. Delete a
+# W-ROSTER). Measured at main e5ef2e0604:
+# 338 seeds over 58 roots. Delete a
 # line in the change that adds its root to the region driver, and the file with
 # its last line.
 backenddemo.LoginRequest	owed: the C# region driver has no region codec for this root (5 seeds)
@@ -13,6 +14,8 @@ backenddemo.StorePurchase@message	owed: the C# region driver has no region codec
 cooktorture.TortureFixedWref	owed: the C# region driver has no region codec for this root (2 seeds)
 messagedemo.ToolEnvelope	owed: the C# region driver has no region codec for this root (6 seeds)
 messagedemo.ToolMessage	owed: the C# region driver has no region codec for this root (34 seeds)
+packetunions.ShapeMsg	owed: wire-seed-roots-cs-region (2 seeds)
+packetunions.ShapeMsg@message	owed: wire-seed-roots-cs-region (2 seeds)
 scalars.SimState	owed: the C# region driver has no region codec for this root (7 seeds)
 shapes.Bounds	owed: the C# region driver has no region codec for this root (4 seeds)
 shapes.FixedBounds	owed: the C# region driver has no region codec for this root (18 seeds)
@@ -46,6 +49,8 @@ tblsurf.Narrow	owed: the C# region driver has no region codec for this root (1 s
 tblsurf.Wide	owed: the C# region driver has no region codec for this root (1 seeds)
 tblv1.Cfg	owed: the C# region driver has no region codec for this root (10 seeds)
 tblv2.Cfg	owed: the C# region driver has no region codec for this root (7 seeds)
+tblvaluedefaults.FixedDefaults	owed: wire-seed-roots-cs-region (2 seeds)
+tblvaluedefaults.VarDefaults	owed: wire-seed-roots-cs-region (2 seeds)
 tblvarevo1.EvoMsg	owed: the C# region driver has no region codec for this root (1 seeds)
 tblvarevo1.EvoMsg@message	owed: the C# region driver has no region codec for this root (1 seeds)
 tblvarevo3.EvoMsg	owed: the C# region driver has no region codec for this root (2 seeds)

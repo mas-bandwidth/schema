@@ -1,8 +1,10 @@
 # dart-retain: the roots the dart-retain wire-fuzz driver answers absent, matched as an exact
-# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at
-# main 2d352b7dd8: 9 seeds over 4 roots. Delete a line in the change that
+# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at main e5ef2e0604:
+# 13 seeds over 6 roots. Delete a line in the change that
 # adds its root to the driver, and the file with its last line.
+packetunions.ShapeDoc	owed: wire-seed-roots-dart (2 seeds)
 shapes.Bounds	owed: wire-seed-roots-dart (4 seeds)
 tblsurf.Chain	owed: wire-seed-roots-dart (2 seeds)
 tblsurf.Counted	owed: wire-seed-roots-dart (1 seeds)
 tblsurf.Holder	owed: wire-seed-roots-dart (2 seeds)
+tblvaluedefaults.VarDefaults	owed: wire-seed-roots-dart (2 seeds)
