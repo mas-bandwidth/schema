@@ -48,6 +48,9 @@ type messageFuzzOptions struct {
 	seed       uint64
 	n          int
 	maxMutants int
+	// deadLedger is the leg's dead-root ledger (messagefuzz_dead.go); empty
+	// excuses nothing.
+	deadLedger string
 }
 
 type messageFuzzTarget struct {
@@ -370,6 +373,14 @@ func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
 		leg.kill()
 		return fmt.Errorf("message-fuzz: driver %q answered 0 for all %d Form-2 roots", driverCmd, len(roots))
 	}
+	var deadLedger map[string]string
+	if opts.deadLedger != "" {
+		if deadLedger, err = readDeadRootLedger(opts.deadLedger); err != nil {
+			leg.kill()
+			return err
+		}
+	}
+	dead := deadMessageRoots(roots, leg.known)
 
 	if opts.replay != "" {
 		if opts.unit == "" || opts.root == "" {
@@ -443,7 +454,10 @@ func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
 
 	_, _ = fmt.Fprintf(w, "message-fuzz: seed %d, %d/%d roots live, %d systematic + %d random = %d mutants (%d accepted), 0 divergences\n",
 		opts.seed, knownCount, len(roots), sysRun, randRun, total, accepted)
-	return nil
+	if len(dead) > 0 {
+		_, _ = fmt.Fprintf(w, "message-fuzz: %d dead roots: %s\n", len(dead), strings.Join(dead, ", "))
+	}
+	return checkDeadMessageRoots(dead, deadLedger, opts.deadLedger)
 }
 
 func checkOneMessageMutant(leg *wireLeg, roots []*messageFuzzRoot, ri int, label string, frame []byte, failedPath string) error {

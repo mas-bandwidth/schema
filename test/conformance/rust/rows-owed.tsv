@@ -1,0 +1,27 @@
+# Conformance rows the rust leg owes: every row file under test/conformance/rust/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
+# written against an older generated API; "fails" is a row that runs and is red.
+C10	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+C3	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
+C4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+C7	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+C8	owed: does not build: error[E0609]: no field `oor` on type `tabledemo::TableFixedReport`
+E6	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+E9	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedReport`
+P4	owed: does not build: error[E0061]: this function takes 6 arguments but 5 arguments were supplied
+R14	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedReport`
+R24	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+R26	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport`
+R3	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport`
+R30	owed: does not build: error: couldn't read `test/conformance/rust/rows/../../../../build/tables-generated-rust/vnew_cfloat_res_refine/build_version.rs`: No such file or directory (os...
+UnionArraysValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
+UnsignedIntegersValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
+VD_signed_128	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+W12	owed: fails: test hash_is_fnv1a64_over_the_block_count_included ... FAILED
+W13	owed: does not build: error: couldn't read `test/conformance/rust/rows/../../../../build/tables-generated-rust/v1/fixed_runtime.rs`: No such file or directory (os error 2)
+W2	owed: does not build: error[E0609]: no field `oor` on type `tblp3::TableFixedReport`
+W4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
+W7	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
+W8	owed: fails: test test_row_w8 ... FAILED

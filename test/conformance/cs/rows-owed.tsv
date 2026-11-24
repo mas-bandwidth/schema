@@ -1,0 +1,11 @@
+# Conformance rows the cs leg owes: every row file under test/conformance/cs/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
+# written against an older generated API; "fails" is a row that runs and is red.
+C12	owed: fails: FAIL: byte 2 load
+C13	owed: fails: FAIL: byte 3 load
+E5	owed: does not build: test/conformance/cs/rows/E5/Program.cs(91,32): error CS0103: The name 'Tblp1' does not exist in the current context [test/conformance/cs/rows/E5/E5.csproj]
+FlagsValuesValidData	owed: does not build: build/tables-generated-cs/examples/Tables.cs(11,7): error CS0246: The type or namespace name 'Serialize' could not be found (are you missing a using directive o...
+R21	owed: fails: Assertion failed.
+ScalarDefaultsValidData	owed: does not build: build/tables-generated-cs/scalars/Scalars.cs(122,27): error CS1061: 'ReadStream' does not contain a definition for 'SerializeEnd' and no accessible extension me...

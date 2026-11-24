@@ -833,9 +833,9 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 # writer's caller contracts are DEBUG ONLY, so -ea proves they fire and the
 # default proves they are gone and the bytes are still the reference's.
 .PHONY: tables-java-fixedform
-tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
-	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
-	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
+tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixedform-corpus/.stamp
+	./build/retiredskips -leg java -- $(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
+	./build/retiredskips -leg java -- $(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
 
 # THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
 # docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).

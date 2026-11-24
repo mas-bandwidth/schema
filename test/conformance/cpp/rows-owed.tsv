@@ -1,0 +1,33 @@
+# Conformance rows the cpp leg owes: every row file under test/conformance/cpp/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
+# written against an older generated API; "fails" is a row that runs and is red.
+BitsValuesValidData	owed: does not build: test/conformance/cpp/rows/BitsValuesValidData.cpp:72:43: error: ‘struct tabledemo::TableReport’ has no member named ‘malformed’
+BoolValuesValidData	owed: does not build: test/conformance/cpp/rows/BoolValuesValidData.cpp:67:43: error: ‘struct tabledemo::TableReport’ has no member named ‘malformed’
+C12	owed: does not build: test/conformance/cpp/rows/C12.cpp:98:39: error: ‘struct tabledemo::TableReport’ has no member named ‘malformed’
+C13	owed: does not build: test/conformance/cpp/rows/C13.cpp:108:39: error: ‘struct hb::TableReport’ has no member named ‘malformed’
+C3	owed: does not build: test/conformance/cpp/rows/C3.cpp:86:43: error: ‘struct tabledemo::TableReport’ has no member named ‘malformed’
+C7	owed: does not build: test/conformance/cpp/rows/C7.cpp:67:18: error: ‘struct tblfx1::TableReport’ has no member named ‘clamped’
+C8	owed: does not build: test/conformance/cpp/rows/C8.cpp:89:60: error: ‘struct vnew_fixed_i_grow::TableReport’ has no member named ‘clamped’
+E3OtherRequiredWidens	owed: does not build: test/conformance/cpp/rows/E3OtherRequiredWidens.cpp:78:36: error: ‘struct vnew_uint_widen::TableReport’ has no member named ‘kind_mismatch’
+E5	owed: does not build: test/conformance/cpp/rows/E5.cpp:53:33: error: ‘struct tblp3::TableReport’ has no member named ‘kind_mismatch’
+E6	owed: does not build: test/conformance/cpp/rows/E6.cpp:152:43: error: ‘struct tblv1::TableReport’ has no member named ‘malformed’
+F12	owed: does not build: test/conformance/cpp/rows/F12.cpp:85:43: error: ‘struct tblfx1::TableReport’ has no member named ‘malformed’
+OptionalScalarsValidData	owed: does not build: test/conformance/cpp/rows/OptionalScalarsValidData.cpp:47:1: error: multi-line comment [-Werror=comment]
+P1	owed: does not build: test/conformance/cpp/rows/P1.cpp:18:40: error: ‘const struct tblp1::TableReport’ has no member named ‘kind_mismatch’
+R16	owed: does not build: test/conformance/cpp/rows/R16.cpp:378:96: error: ‘struct vnew_enum_append::TableReport’ has no member named ‘duplicate’
+R17	owed: does not build: test/conformance/cpp/rows/R17.cpp:258:32: error: ‘const struct tabledemo::TableReport’ has no member named ‘kind_mismatch’
+R20	owed: does not build: test/conformance/cpp/rows/R20.cpp:197:32: error: ‘struct vnew_float_widen::TableReport’ has no member named ‘clamped’
+R21	owed: does not build: test/conformance/cpp/rows/R21.cpp:116:41: error: ‘FloatWidenFixedLoadTolerant’ is not a member of ‘vnew_float_widen’; did you mean ‘FloatWidenFixedLoa...
+R31	owed: does not build: test/conformance/cpp/rows/R31.cpp:253:13: error: ‘struct tblfu1::TableReport’ has no member named ‘clamped’
+R32	owed: does not build: test/conformance/cpp/rows/R32.cpp:93:29: error: ‘struct vnew_floor::TableReport’ has no member named ‘malformed’
+R6	owed: does not build: test/conformance/cpp/rows/R6.cpp:38:1: error: multi-line comment [-Werror=comment]
+ScalarDefaultsValidData	owed: does not build: test/conformance/cpp/rows/ScalarDefaultsValidData.cpp:86:49: error: ‘struct scalardemo::TableReport’ has no member named ‘malformed’
+SignedFixedPointValidData	owed: does not build: test/conformance/cpp/rows/SignedFixedPointValidData.cpp:117:18: error: ‘struct vold_fixed_i_grow::TableReport’ has no member named ‘clamped’
+TextBytesFlagsDefaultsValidData	owed: does not build: test/conformance/cpp/rows/TextBytesFlagsDefaultsValidData.cpp:109:43: error: ‘struct tblw1::TableReport’ has no member named ‘malformed’
+W2	owed: does not build: test/conformance/cpp/rows/W2.cpp:65:18: error: ‘struct tblp3::TableReport’ has no member named ‘clamped’
+W4	owed: does not build: test/conformance/cpp/rows/W4.cpp:131:21: error: ‘struct tblv1::TableReport’ has no member named ‘malformed’
+W6	owed: does not build: test/conformance/cpp/rows/W6.cpp:69:74: error: ‘struct vold_enum_append::TableReport’ has no member named ‘duplicate’
+W7	owed: does not build: test/conformance/cpp/rows/W7.cpp:220:43: error: ‘struct backenddemo::TableReport’ has no member named ‘malformed’
+W8	owed: does not build: test/conformance/cpp/rows/W8.cpp:87:44: error: ‘struct tblw1::TableReport’ has no member named ‘malformed’

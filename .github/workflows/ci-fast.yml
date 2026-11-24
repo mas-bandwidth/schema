@@ -229,6 +229,7 @@ jobs:
       lint_packages: ${{ steps.pick.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
+      rows_legs: ${{ steps.pick.outputs.rows_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
       pins: ${{ steps.pick.outputs.pins }}
@@ -636,6 +637,24 @@ jobs:
             [ -n "$verify_legs_json" ] || verify_legs_json='[]'
           fi
 
+          # THE CONFORMANCE ROWS (make/conformance-rows.mk, job conformance-rows).
+          # The legs are the ones with a test/conformance/<leg>/rows directory,
+          # read off the tree (Go's rows are TestRow functions, run by go test).
+          # A verified leg runs its rows; a change to the runner, its make file
+          # or any rows directory or owed-row ledger runs every leg's.
+          rows_set=$verify_set
+          if grep -qE '^(tools/conformancerows/|make/conformance-rows\.mk$|test/conformance/[a-z]+/rows(/|-owed\.tsv$))' <<<"$files"; then
+            rows_set="$rows_set $(cd test/conformance && ls -d */rows | cut -d/ -f1 | tr '\n' ' ')"
+          fi
+          rows_legs=""
+          for leg in $rows_set; do
+            if [ "$leg" != go ] && [ -d "test/conformance/$leg/rows" ]; then
+              rows_legs="$rows_legs $leg"
+            fi
+          done
+          rows_legs_json=$(printf '%s' "$rows_legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} NF{printf "%s\"%s\"", (n++?",":""), $1} END{printf "]"}')
+          [ -n "$rows_legs_json" ] || rows_legs_json='[]'
+
           # THE GENERATED-TREE DRIFT GATE (generated-current). Runs when the
           # diff touches codegen, IR, compiler, tables, any .schema file, or
           # generated/ itself.
@@ -692,6 +711,7 @@ jobs:
           echo "src_packages=$src_packages" >> "$GITHUB_OUTPUT"
           echo "legs=$json"                 >> "$GITHUB_OUTPUT"
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
+          echo "rows_legs=$rows_legs_json"     >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
           echo "pins=$pins"                 >> "$GITHUB_OUTPUT"
@@ -1591,6 +1611,91 @@ jobs:
           esac
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "$provides" "$PGROUP_GO_TEST_JSON"
+
+  # THE CONFORMANCE ROWS: every row file of every selected leg's rows
+  # directory (make/conformance-rows.mk, tools/conformancerows), held to the
+  # leg's owed-row ledger as an exact set. Two shards per leg (every other row
+  # by name) keep each job inside the per-commit two minutes; every row is in
+  # exactly one shard.
+  conformance-rows:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.rows_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: conformance-rows (${{ matrix.leg }}, ${{ matrix.shard }}/2)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.rows_legs) }}
+        shard: [0, 1]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.c serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          case "${{ matrix.leg }}" in
+            c)    git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c ;;
+            rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+            cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+            js)   git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js ;;
+          esac
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: read the .NET SDK pin
+        if: matrix.leg == 'cs'
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: matrix.leg == 'cs' && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
+        with:
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      - name: make conformance-rows-${{ matrix.leg }} (shard ${{ matrix.shard }}/2)
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          shard="CONFORMANCE_ROWS_SHARD=${{ matrix.shard }}/2"
+          case "${{ matrix.leg }}" in
+            rust)   make "conformance-rows-${{ matrix.leg }}" "$shard" RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
+            dart)   make "conformance-rows-${{ matrix.leg }}" "$shard" DART=dart ;;
+            java)   make "conformance-rows-${{ matrix.leg }}" "$shard" JAVA=java JAVAC=javac ;;
+            js)     make "conformance-rows-${{ matrix.leg }}" "$shard" NODE=node ;;
+            elixir) make "conformance-rows-${{ matrix.leg }}" "$shard" BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" ;;
+            *)      make "conformance-rows-${{ matrix.leg }}" "$shard" ;;
+          esac
 
   # Take only artifacts from the successful agreement rows in this workflow run.
   # A failed-jobs-only rerun can reuse successful shards from an earlier attempt.
@@ -2986,7 +3091,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, conformance-rows, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -3015,6 +3120,7 @@ jobs:
               lang-lint) [ "$(out lints)" = '[]' ] ;;
               nightly-fast) [ "$(out nightly_rows)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
+              conformance-rows) [ "$(out rows_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;

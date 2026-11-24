@@ -141,6 +141,25 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+- **MF-ROSTER: every message-fuzz root is answered or ledgered.** A root of
+  the message-fuzz roster that a leg answers with nothing (no known message
+  in any case) is dead, and `harness message-fuzz` is red on a dead root the
+  leg's `test/conformance/message-absent/<leg>.tsv` does not name, and on a
+  line there naming a root the leg now answers. Lines are `<unit>.<Root>`, a
+  tab, and the reason; the set is exact.
+- **Every conformance row file runs.** A leg's row list is its directory
+  `test/conformance/<leg>/rows/`, never a list copied by hand: `make
+  conformance-rows-<leg>` (tools/conformancerows) builds and runs every row
+  file, and Go's rows are named off the `TestRow*` functions of its rows
+  directory. A row the leg cannot answer yet is named, with its cause, in
+  `test/conformance/<leg>/rows-owed.tsv`; an owed row still runs, a failing
+  row the ledger does not name is red, and a ledgered row that passes is red
+  until its line is removed.
+- **Every §5.6 fixed-form retirement is ledgered.** The fixed-form gates of the
+  native legs print a `SKIP`/`RETIRED` line for each test retired by
+  FIXED-FORM-ALGORITHM.md §5.6; `tools/retiredskips` holds the printed set to
+  the leg's lines of `test/conformance/fixed-retired.json` exactly, so a new
+  unledgered skip, or a ledgered retirement that no longer prints, is red.
 
 **The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
 the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):

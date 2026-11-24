@@ -1,0 +1,21 @@
+# Conformance rows the js leg owes: every row file under test/conformance/js/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
+# written against an older generated API; "fails" is a row that runs and is red.
+C3	owed: fails: FAIL - C3 IDENTITY: a forged name length past the cap is a clamp and not a refusal — the record still reads
+C9	owed: fails: FAIL: report.oor is exactly 1 (got 0)
+F4	owed: fails: FAIL F4 boundary: exactly 20+L bytes is NOT truncated — zero records, no refusal (n=-1, refused=0)
+P4	owed: fails: FAIL P4 wrong plan yields non-zero Flags at CameraId bytes
+R14	owed: fails: R14.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:1133
+R15	owed: fails: TypeError: Cannot create property 'power' on number '0'
+R16	owed: fails: FAIL: count negative: clamped >= 1 (u32 > bound 4)
+R23	owed: fails: RED: TableFixedKnownLayout has 5 own members
+R25	owed: fails: TypeError: Cannot read properties of undefined (reading 'fill')
+R6	owed: fails: R6.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:518
+W13	owed: fails: FAIL FixedTableFixedHashLo: got 614323680, expected 2124077328
+W14	owed: fails: FAIL the generated tree carries the fixed tables (0 table modules)
+W4	owed: fails: FAIL reads correctly: a peer that leaves garbage in the slack still loads (n=-1, never a refusal)
+W5	owed: fails: FAIL: no write-side check: the writer answers its measure on a contract-violating length, refusing nothing and throwing nothing
+W6	owed: fails: TypeError: Cannot read properties of null (reading '5')
+W9	owed: fails: FAIL vector: the artifact's identity plan, dst rows and prefill table are all present (null/null/null lanes)

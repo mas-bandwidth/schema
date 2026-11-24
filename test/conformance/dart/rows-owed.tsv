@@ -1,0 +1,33 @@
+# Conformance rows the dart leg owes: every row file under test/conformance/dart/rows/ runs
+# (tools/conformancerows), and these still fail. Exact set: a failing row not named
+# here is red, and a row named here that passes is red until its line goes.
+# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
+# written against an older generated API; "fails" is a row that runs and is red.
+C1	owed: fails: test/conformance/dart/rows/C1.dart:120:12: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+C10	owed: fails: test/conformance/dart/rows/C10.dart:84:9: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+C12	owed: fails: test/conformance/dart/rows/C12.dart:44:29: Error: Method not found: 'hostileFixedMeasure'.
+C2	owed: fails: test/conformance/dart/rows/C2.dart:94:14: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+C3	owed: fails: test/conformance/dart/rows/C3.dart:100:62: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+C8	owed: fails: test/conformance/dart/rows/C8.dart:246:35: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+E3OtherRequiredWidens	owed: fails: Unhandled exception:
+E6	owed: fails: test/conformance/dart/rows/E6.dart:168:10: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+F12	owed: fails: test/conformance/dart/rows/F12.dart:100:39: Error: Member not found: 'layoutMalformed'.
+F4	owed: fails: test/conformance/dart/rows/F4.dart:85:45: Error: Member not found: 'layoutMalformed'.
+F8	owed: fails: print('FAIL: red case expected -1 malformed, got $n2 malformed=${report.malformed} refused=${report.refused}');
+P2	owed: fails: test/conformance/dart/rows/P2.dart:148:13: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+P3	owed: fails: test/conformance/dart/rows/P3.dart:125:14: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+P4	owed: fails: test/conformance/dart/rows/P4.dart:125:18: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+R10	owed: fails: test/conformance/dart/rows/R10.dart:196:47: Error: Member not found: 'layoutMalformed'.
+R16	owed: fails: test/conformance/dart/rows/R16.dart:93:9: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+R18	owed: fails: test/conformance/dart/rows/R18.dart:423:45: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+R19	owed: fails: Error: AOT compilation failed
+R23	owed: fails: test/conformance/dart/rows/R23.dart:99:13: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+R27	owed: fails: test/conformance/dart/rows/R27.dart:284:17: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+R31	owed: fails: test/conformance/dart/rows/R31.dart:92:37: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
+R32	owed: fails: test/conformance/dart/rows/R32.dart:132:19: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+R4	owed: fails: FAIL: R4: PaddedRow digest is empty — fnv1a64(layout_bytes) == stored hash (0x-697c96a5413a389e == 0x-6a0f030fb6326ae3)
+R5	owed: fails: FAIL: R5: PaddedRow has no digest entries — fnv1a64(layout) == hash (0x-697c96a5413a389e == 0x-6a0f030fb6326ae3)
+R7	owed: fails: test/conformance/dart/rows/R7.dart:152:67: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+R9	owed: fails: test/conformance/dart/rows/R9.dart:102:46: Error: Member not found: 'layoutMalformed'.
+VD_signed_integers	owed: fails: test/conformance/dart/rows/VD_signed_integers.dart:167:8: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
+W13	owed: fails: FAIL: Cell hash: dart 0x210ba0ea336b070f, C++ reference 0x70cc58293abe4686
