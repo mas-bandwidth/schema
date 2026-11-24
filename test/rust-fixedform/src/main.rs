@@ -313,7 +313,7 @@ fn the_compiled_plan(dir: &str) {
 fn an_older_writer(dir: &str) {
     if retired(
         "an_older_writer",
-        "FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_newer` before a record",
+        "FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_unknown` before a record",
         LINEAGE,
     ) {
         return;
@@ -377,7 +377,7 @@ fn a_newer_writer(dir: &str) {
 fn an_optional(dir: &str) {
     if retired(
         "an_optional",
-        "P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer`",
+        "P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_unknown`",
         LINEAGE,
     ) {
         return;
@@ -453,7 +453,7 @@ fn the_negative_controls(dir: &str) {
         );
     }
 
-    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_newer`, AND
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_unknown`, AND
     //     THAT IS THE BETTER CONTROL (§5.3's own row). The hash is TAKEN AS
     //     GIVEN and nothing is recomputed from the wire, so a flipped hash is
     //     simply a version this build's lineage does not hold: the refusal
@@ -472,8 +472,8 @@ fn the_negative_controls(dir: &str) {
         let n = tblfx1::fx_root_fixed_load(&mut values, &lying, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "the header's hash: a lying header is refused");
         check(
-            report.refused && report.reason == tblfx1::TableFixedReason::LayoutNewer,
-            "the header's hash: refused BY NAME — layout_newer, because the hash is taken AS GIVEN",
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutUnknown,
+            "the header's hash: refused BY NAME — layout_unknown, because the hash is taken AS GIVEN",
         );
         check(
             report.layout_hash == flipped,
@@ -551,7 +551,7 @@ fn the_negative_controls(dir: &str) {
     //    whose plan does not fit is a refusal rather than a heap.
     if !retired(
         "the_negative_controls' plan_too_large case",
-        "a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5)",
+        "a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_unknown` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5)",
         "the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached",
     ) {
         let fx1 = slurp(dir, "fx1.bin");
@@ -883,7 +883,7 @@ fn the_layout_validation() {
     // THE BUILD'S OWN FILE, which is the only file a break can still be the one
     // thing that moved in. It used to be FX2's, read by FX1 through a plan
     // compiled from it — and that compile is exactly what §5.6 retired: FX1
-    // handed FX2's file now answers `layout_newer` and never reaches a rule. So
+    // handed FX2's file now answers `layout_unknown` and never reaches a rule. So
     // FX1 writes it and FX1 reads it, its own hash resolves in its own lineage,
     // and the ONE case §5.3 keeps — a KNOWN hash whose layout bytes are not the
     // lock's — is reachable.
@@ -1032,7 +1032,7 @@ fn the_layout_validation() {
     }
     if !retired(
         "RULE: the layout outlasts the tree",
-        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
+        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_unknown` before any rule of the layout's own could fire",
         THE_LOCK,
     ) {
         // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
@@ -1091,7 +1091,7 @@ fn the_layout_validation() {
     //    other rule could fire. Nothing in §3.4 fixes the number.
     if !retired(
         "RULE: a nesting depth past the walk's own bound",
-        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
+        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_unknown` before any rule of the layout's own could fire",
         THE_LOCK,
     ) {
         let depth: u32 = 4096; // far past any reader's own bound
@@ -1113,7 +1113,7 @@ fn the_layout_validation() {
     // the seven named rules never reach.
     if !retired(
         "RULE: fewer bytes than a header is layout_malformed",
-        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
+        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_unknown` before any rule of the layout's own could fire",
         THE_LOCK,
     ) {
         refuses(
@@ -1133,7 +1133,7 @@ fn the_layout_validation() {
 //
 // THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
 // field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
-// never parses a stranger — unknown hash is `layout_newer` — so the bound is
+// never parses a stranger — unknown hash is `layout_unknown` — so the bound is
 // asserted on `table_fixed_compile` directly, which is the path a known older
 // writer still takes. A Load of the same bytes still refuses, and sets nothing.
 //
@@ -1219,7 +1219,7 @@ fn the_record_bound() {
         let n = tblfx1::fx_root_fixed_load(&mut values, &f, &mut plan, &mut remap, &mut report);
         check(
             n.is_none() && report.refused,
-            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)",
+            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_unknown)",
         );
         check(
             report.unknown == 0
@@ -2428,7 +2428,7 @@ fn the_prefill_holes(dir: &str) {
     // poisoned so leftover dest cannot stand in for the hole.
     if !retired(
         "the_prefill_holes' compiled missing-field block",
-        "FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_newer` on a generated build the CLI hands no lineage",
+        "FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_unknown` on a generated build the CLI hands no lineage",
         LINEAGE,
     ) {
         let golden = slurp(dir, "fx1.bin");

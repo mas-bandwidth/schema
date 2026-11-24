@@ -1761,7 +1761,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
 	g.pf("  # against these and on NOTHING ELSE; the layout it carries is COMPARED with\n")
 	g.pf("  # the bytes the lock recorded and never parsed. A hash no entry holds is\n")
-	g.pf("  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in\n")
+	g.pf("  # `:layout_unknown` (§5.3 step 5). The four members are §5.9 #19's, in\n")
 	g.pf("  # its order, with the byte length riding BESIDE the bytes.\n")
 	g.pf("  @%s_known {\n", snake)
 	for i, e := range lineage {
@@ -1790,7 +1790,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  }\n\n")
 	g.pf("  # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
 	g.pf("  # a layout this build once served is retired and the answer is\n")
-	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.\n")
+	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.\n")
 	g.pf("  @%s_floor %d\n\n", snake, floor)
 	retired := []string{}
 	for _, e := range lineage {

@@ -29,9 +29,10 @@
 //   order).
 // - kind 1 is a bool (the frozen §3 kind vocabulary, docs/SPEC-TABLES.md §3);
 //   a bool's slot is one byte.
-// - refusal 15 is `layout_newer`: the integers are each leg's own, taken in
-//   the order §5.3 names the refusals, and this leg's 15 agrees with the JS
-//   leg's TableFixedRefusal.LayoutNewer = 15 (internal/codegen/jstable/
+// - refusal 25 is `layout_unknown`: the integers are each leg's own, taken in
+//   the order §5.3 names the refusals, and this leg's 25 agrees with the JS
+//   leg's TableFixedRefusal.LayoutUnknown = 25 (appended; 15 is the retired
+//   layout_unknown, which no read answers) (internal/codegen/jstable/
 //   fixedruntime.go:135); the NAME is the contract.
 // - 0x0EADBEEFCAFEF00D is a forged header hash no lineage entry holds, the
 //   versioning gate's hash_unknown case.
@@ -128,14 +129,14 @@ void main() {
   final r = v1rt.TableFixedReport();
   final n = v1.cfgFixedLoad(back, 1, file, file.length, plan, r);
 
-  // REFUSED BY NAME, before any record: `layout_newer`, the older build's
-  // answer to a newer file. The integer 15 is this leg's own spelling of the
+  // REFUSED BY NAME, before any record: `layout_unknown`, the older build's
+  // answer to a newer file. The integer 25 is this leg's own spelling of the
   // §5.3 name (the JS leg agrees); the name is the contract.
   check(n == -1, 'E8: the older reader refuses the newer file (n=$n)');
-  check(r.refused == 15, 'E8: the refusal is 15, the legs\' shared spelling '
-      'of layout_newer (got ${r.refused})');
+  check(r.refused == 25, 'E8: the refusal is 25, the legs\' shared spelling '
+      'of layout_unknown (got ${r.refused})');
   check(
-    v1rt.TableFixedRefusal.name(r.refused) == 'layout_newer',
+    v1rt.TableFixedRefusal.name(r.refused) == 'layout_unknown',
     'E8: refused BY NAME — ${v1rt.TableFixedRefusal.name(r.refused)}',
   );
   check(r.refused != v1rt.TableFixedRefusal.damaged,
@@ -186,10 +187,10 @@ void main() {
   final n2 = v1.cfgFixedLoad(back, 1, file, file.length, plan2, r2);
   check(
     n2 == -1 &&
-        r2.refused == 15 &&
-        v1rt.TableFixedRefusal.name(r2.refused) == 'layout_newer' &&
+        r2.refused == 25 &&
+        v1rt.TableFixedRefusal.name(r2.refused) == 'layout_unknown' &&
         r2.layoutHash == 0x0EADBEEFCAFEF00D,
-    'E8: a hash in no lineage entry refuses layout_newer and reports the '
+    'E8: a hash in no lineage entry refuses layout_unknown and reports the '
     'file\'s (forged) hash',
   );
   var poison2 = true;

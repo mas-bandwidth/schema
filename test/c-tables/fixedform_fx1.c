@@ -209,7 +209,7 @@ void fixed_fx1_form_headers( const uint8_t * data, int64_t bytes )
 }
 
 /* CASE 3: A NEWER WRITER — under §5.6 a file whose hash this build's lineage
-   does not hold refuses as layout_newer before any record is touched. */
+   does not hold refuses as layout_unknown before any record is touched. */
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
 {
     tblfx1_fx_root_t back;
@@ -218,8 +218,8 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
     tblfx1_fx_root_reset( &back );
     memset( &r, 0, sizeof( r ) );
     n = tblfx1_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
-    fixed_check( n < 0 && r.refused && r.reason == SCHEMA_TBLFX1_TABLE_LAYOUT_NEWER,
-                 "newer writer: layout_newer refuses the read" );
+    fixed_check( n < 0 && r.refused && r.reason == SCHEMA_TBLFX1_TABLE_LAYOUT_UNKNOWN,
+                 "newer writer: layout_unknown refuses the read" );
 }
 
 /* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4, §6.5). A

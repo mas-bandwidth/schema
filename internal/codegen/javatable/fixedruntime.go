@@ -537,9 +537,9 @@ public final class TableFixed {
         /** more records than the values array the caller handed in. */
         batchTooLarge,
         /**
-         * A HASH IN NO LINEAGE ENTRY: the writer is NEWER than this reader, and the operator's
-         * answer is SHIP THE READER. Its report carries the file's hash AND NOTHING ELSE (ALG 5.3,
-         * bill 12.4).
+         * RETIRED (ALG 5.3 step 5, decided 2026-11-03): nothing in the lineage proves a hash newer,
+         * so no read answers it. It keeps its place so no ordinal moves; a hash in no lineage entry
+         * is {@code layoutUnknown}, appended below.
          */
         layoutNewer,
         /**
@@ -568,7 +568,13 @@ public final class TableFixed {
          * A BOOL OR A PRESENT BYTE OTHER THAN 0 OR 1 in live data (docs/FIXED-FORM-ALGORITHM.md
          * §4.5): no writer emits one, and the read refuses it by name rather than land it.
          */
-        wireDamaged
+        wireDamaged,
+        /**
+         * A HASH IN NO LINEAGE ENTRY (ALG 5.3 step 5's answer, in every leg). Its report carries
+         * the file's hash AND NOTHING ELSE (ALG 5.3, bill 12.4). Appended, so no ordinal above
+         * moves (ALG 5.9 #14: the names are the contract).
+         */
+        layoutUnknown
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
