@@ -133,8 +133,9 @@ fixed table T
 // landing is TestFixedVersioning's NEW-READS-OLD column (a widened integer or
 // float exact with `widened` counted; the shorter array's and string's slack
 // the template's zeros; an older enum's ordinals the reader's; an added field
-// its declared default) and TestFixedVersioningUnknownCensus' (a deprecated
-// field dropped and counted once under `unknown` per plan). This subtest reads
+// its declared default) and TestFixedVersioningUnknownCensus' (a writer field
+// this reader names nowhere makes the entry UNLAWFUL: no plan, the load
+// refuses layout_malformed, nothing counted). This subtest reads
 // the runtime's own landing sites, so a planted break in one of them is red by
 // name and not hidden behind the other leg's suite.
 func t04R20(t *testing.T) {
@@ -145,10 +146,16 @@ func t04R20(t *testing.T) {
 	// A narrower integer or float is widened exactly and counts once.
 	t04Has(t, n, "if (report != null) { report.Widened++; }",
 		"R20 a widen counts `widened`")
-	// A deprecated field is dropped and counted ONCE per field per plan, on the
-	// compile census (§5.4), never per record.
-	t04Has(t, n, "if (!named && census && c.Report != null) { c.Report.Unknown++; }",
-		"R20 a dropped field is counted once under `unknown`")
+	// A writer field this reader names nowhere is not dropped and counted: the
+	// lineage entry is UNLAWFUL, no plan is laid, and the entry's lane refuses
+	// layout_malformed (§5.2 MATCH, §5.4, §5.9 #30). There is no compile census.
+	t04Has(t, n, "if (!named) { c.Unlawful = 1; return; }",
+		"R20 a writer field this reader names nowhere makes the entry unlawful")
+	t04Has(t, n, "if (made == -4) { lane.Why = \"layout_malformed\"; break; }",
+		"R20 an unlawful entry's lane refuses layout_malformed")
+	if strings.Contains(n, "c.Report.Unknown++") || strings.Contains(n, "lane.Unknown") {
+		t.Errorf("R20: the fixed compile census is back: a dropped writer field is counted under `unknown` instead of refusing the entry")
+	}
 	// A shorter counted array lands with the reader's slack as template zeros:
 	// the copy clamps the ragged count to the plan's (the writer's) bound and
 	// counts, so the reader's slack stays the template's zeros.

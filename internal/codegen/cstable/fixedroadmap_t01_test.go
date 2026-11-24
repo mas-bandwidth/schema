@@ -184,7 +184,7 @@ func t01Probes() []csVersionProbe {
 			suffix: strings.NewReplacer("cs/", "", "_", "").Replace(strings.ToLower(name)),
 			file:   "new_field_append.bin", body: t01Body(t01PoisonLineage, t01UntouchedLineage, t01DefaultedLineage, steps)}
 	}
-	census := func(name, steps string) csVersionProbe {
+	unlawful := func(name, steps string) csVersionProbe {
 		return csVersionProbe{name: name, reader: "VNEW_unknown_census", older: []string{"VOLD_unknown_census"},
 			suffix: strings.NewReplacer("cs/", "", "_", "").Replace(strings.ToLower(name)),
 			file:   "old_unknown_census.bin", body: t01Body(t01PoisonCensus, t01UntouchedCensus, t01DefaultedCensus, steps)}
@@ -227,17 +227,17 @@ func t01Probes() []csVersionProbe {
                 ReadsClean(name + " capacity 4", three, 4, 3);
             }
 `),
-		// F9 over a lineage lane that owes a census: the refusal comes AFTER the
-		// plan is resolved, so a census landed early would show here as Unknown.
-		census("cs/F9_census", `            byte[] g = Corpus("old_unknown_census.bin");
-            {
-                @TABLE@[] back = Fresh(1);
-                TableReport r = new TableReport();
-                long n = Schema.@TABLE@FixedLoad(back, g, new TableFixedEntry[8192], r);
-                if (n != 1 || r.Unknown != 1) { bad += ProbeLog.Fail(@NAME@, "the control: the clean lineage read owes a census of one: n=" + n + " unknown=" + r.Unknown); }
-            }
-            Expect("capacity 0", g, 0, "batch_too_large", 0);
-            Expect("two records, capacity 1", Records(g, 2), 1, "batch_too_large", 0);
+		// F9 over an UNLAWFUL lineage lane (a writer field this reader names
+		// nowhere; FIXED-FORM-ALGORITHM §5.4, §5.9 #30): the lane's own refusal is
+		// read when the plan is resolved (§5.3 step 8), BEFORE the capacity check
+		// (step 10), so every capacity refuses layout_malformed, moves no counter
+		// and leaves every poisoned row at its declared default.
+		unlawful("cs/F9_unlawful", `            byte[] g = Corpus("old_unknown_census.bin");
+            Expect("capacity 1", g, 1, "layout_malformed", 0);
+            Expect("capacity 1, again", g, 1, "layout_malformed", 0);
+            Expect("capacity 0", g, 0, "layout_malformed", 0);
+            Expect("two records, capacity 1", Records(g, 2), 1, "layout_malformed", 0);
+            Expect("two records, capacity 2", Records(g, 2), 2, "layout_malformed", 0);
 `),
 		// R7, §5.3 "EVERY HASH A RUNTIME HOLDS WAS HANDED TO IT": the header's hash is
 		// taken as given. A header hash outside the lineage over the file's TRUE layout
@@ -325,15 +325,37 @@ func t01Probes() []csVersionProbe {
 		// R13, §5.3 "REFUSE is total", over the identity file and the lineage file
 		// (whose plan carries a nonempty prefill: the appended Lineage.w default).
 		lineage("cs/R13", strings.Replace(t01Refusals, "@FILES@", files, 1)),
-		// R13 over a lineage lane that owes a census (Unknown == 1 on a clean read):
-		// a refusal must land none of it.
-		census("cs/R13_census", `            {
-                @TABLE@[] back = Fresh(1);
-                TableReport r = new TableReport();
-                long n = Schema.@TABLE@FixedLoad(back, Corpus("old_unknown_census.bin"), new TableFixedEntry[8192], r);
-                if (n != 1 || r.Unknown != 1) { bad += ProbeLog.Fail(@NAME@, "the control: the clean lineage read owes a census of one: n=" + n + " unknown=" + r.Unknown); }
+		// R13 over an UNLAWFUL lineage lane: REFUSE is total. The header's own
+		// refusals (steps 1-7) keep their names; from the lane's resolution on
+		// (step 8) every read refuses layout_malformed — a record hash naming no
+		// layout, a batch past capacity, a ragged tail — and none of them moves a
+		// counter or leaves a poisoned row off its declared default.
+		unlawful("cs/R13_unlawful", `            {
+                byte[] g = Corpus("old_unknown_census.bin");
+                int end = 20 + LayoutBytes(g);
+                byte[] noLayout = (byte[])g.Clone();
+                for (int i = 0; i < 8; ++i) { noLayout[end + i] ^= 0xFF; }
+                byte[] ragged = new byte[g.Length + 1];
+                Array.Copy(g, ragged, g.Length);
+                byte[] shortLayout = new byte[g.Length - 1];
+                Array.Copy(g, 0, shortLayout, 0, end - 1);
+                Array.Copy(g, end, shortLayout, end - 1, g.Length - end);
+                W(shortLayout, 16, LayoutBytes(g) - 1, 4);
+                Expect("unbroken", g, 1, "layout_malformed", 0);
+                Expect("unbroken, again", g, 1, "layout_malformed", 0);
+                Expect("a record hash naming no layout", noLayout, 1, "layout_malformed", 0);
+                Expect("batch past capacity", Records(g, 2), 1, "layout_malformed", 0);
+                Expect("ragged tail", ragged, 1, "layout_malformed", 0);
+                Expect("layout_newer", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_newer", 0x1122334455667788UL);
+                Expect("layout_malformed bytes", Put(g, 24, Rd(g, 24, 4) ^ 0xFF, 4), 1, "layout_malformed", 0);
+                Expect("layout_malformed length", shortLayout, 1, "layout_malformed", 0);
+                Expect("layout_malformed past the file", Put(g, 16, g.Length, 4), 1, "layout_malformed", 0);
+                Expect("previous_form", Put(g, 0, 1, 1), 1, "previous_form", 0);
+                Expect("message_form_as_file", Put(g, 0, 2, 1), 1, "message_form_as_file", 0);
+                Expect("newer_form", Put(g, 0, 9, 1), 1, "newer_form", 0);
+                Expect("reserved byte", Put(g, 3, 1, 1), 1, null, 0);
             }
-`+strings.Replace(t01Refusals, "@FILES@", `"old_unknown_census.bin"`, 1)),
+`),
 		// R13 for layout_unsupported: below the floor, over a retired entry.
 		{name: "cs/R13_floor", reader: "VNEW_floor", older: []string{"VOLD_floor", "VMID_floor"}, retire: 1, suffix: "r1",
 			file: "old_floor.bin", body: t01Body(t01PoisonFloor, t01UntouchedFloor, t01DefaultedFloor, `            byte[] g = Corpus("old_floor.bin");
@@ -470,7 +492,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		check  func(t *testing.T)
 	}{
 		{id: "cs/F4", probes: []string{"cs/F4"}},
-		{id: "cs/F9", probes: []string{"cs/F9", "cs/F9_census"}},
+		{id: "cs/F9", probes: []string{"cs/F9", "cs/F9_unlawful"}},
 		{id: "cs/R7", probes: []string{"cs/R7"}, check: func(t *testing.T) {
 			// §5.3: the identity lane is an INDEX COMPARISON — the resolved lineage
 			// index against the reader's own index (the last entry) — never a
@@ -485,7 +507,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 			}
 		}},
 		{id: "cs/R9", probes: []string{"cs/R9"}},
-		{id: "cs/R13", probes: []string{"cs/R13", "cs/R13_census", "cs/R13_floor"}},
+		{id: "cs/R13", probes: []string{"cs/R13", "cs/R13_unlawful", "cs/R13_floor"}},
 	}
 	for _, r := range rows {
 		t.Run(r.id, func(t *testing.T) {

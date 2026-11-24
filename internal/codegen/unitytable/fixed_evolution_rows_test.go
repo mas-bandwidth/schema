@@ -404,8 +404,8 @@ func TestUnityFixedRowNormalization(t *testing.T) {
 	}
 }
 
-// 5. reports (R15, R16, R27, R28): stale report reset, once-per-endpoint Unknown
-// census over multiple records and array elements, LayoutHash on unknown/retired,
+// 5. reports (R15, R16, R27, R28): stale report reset, an unlawful entry refused
+// with no census over multiple records and array elements, LayoutHash on unknown/retired,
 // guarded dynamic widened count, zero counters on refusal + negative control.
 func TestUnityFixedRowReports(t *testing.T) {
 	slowtest.Gate(t, "dotnet")
@@ -416,9 +416,14 @@ func TestUnityFixedRowReports(t *testing.T) {
 	three := unityRowSave(t, older, "C", "        r[2].Lead = 5U;\n        r[2].Items.E3.A = 99;\n        r[2].Trail = 6U;", 3)
 	lin := unityRowLineage(t, older, "C")
 	got := unityRowLoad(t, newer, "C", lin, three, nil)
-	// Two unknown fields in writer closure (Item.drop counted ONCE across [4]Item, plus C.extra = 2 total across 3 records!).
-	if got.head() != "ok 3 u2 w0" || got.fields["r2.lead"] != "5" || got.fields["r2.items[3].a"] != "99" || got.fields["r2.trail"] != "6" {
-		t.Errorf("R16 census over 3 records and 4 elements: %s %v, want ok 3 u2 w0", got.head(), got.fields)
+	// Two writer fields this reader names nowhere (Item.drop inside [4]Item, and
+	// C.extra at the root): §5.1 refuses a removal, so the handed-in entry is
+	// UNLAWFUL. No plan is laid, the load of all three records refuses
+	// layout_malformed, and no counter moves — there is no compile census to
+	// count once per endpoint (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30).
+	// TestUnityFixedUnlawfulLineage holds the rows to their declared defaults.
+	if got.head() != "refused layout_malformed" || got.counters.Unknown != 0 || got.counters.Widened != 0 {
+		t.Errorf("R16 unlawful entry over 3 records and 4 elements: %s unknown=%d widened=%d, want refused layout_malformed with every counter zero", got.head(), got.counters.Unknown, got.counters.Widened)
 	}
 
 	// LayoutHash populated on layout_unknown and layout_unsupported, 0 on clean and other refusals.

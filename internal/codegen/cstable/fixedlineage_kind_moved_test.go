@@ -27,8 +27,8 @@ import (
 
 // The pair below is a KIND MOVE and not a widen: the one field is an int32
 // (wire kind 4) in the older writer and text (wire kind 12) in the reader.
-// Widens never bridges those two, so the C# Compile census counts it in
-// KindChanged, and no lawful plan can lay the field.
+// Widens never bridges those two, so the C# Compile marks the entry UNLAWFUL
+// and answers -4 (layout_malformed): no lawful plan can lay the field.
 const (
 	csKindMovedOlder  = "package old\n\nfixed table Lineage\n{\n    a int32\n}\n"
 	csKindMovedReader = "package reader\n\nfixed table Lineage\n{\n    a string(8)\n}\n"
@@ -65,8 +65,9 @@ func csKindMovedFiles(t *testing.T) (map[string][]byte, uint64) {
 }
 
 // csKindMovedRefusal reads the emitted LineagePlans and holds it to the strict
-// rule: a compile whose census counted a moved kind must set that lane's own
-// refusal (layout_malformed) and break BEFORE any plan storage is accepted.
+// rule: a compile that found the entry unlawful (-4) must set that lane's own
+// refusal (layout_malformed) and break BEFORE any plan storage is accepted,
+// and before the capacity retry could rename it plan_too_large.
 // The identity lane continues first, so the reader's own files are untouched.
 func csKindMovedRefusal(files map[string][]byte) error {
 	const sig = "public static TableFixedLineagePlan[] LineagePlans("
@@ -88,19 +89,20 @@ func csKindMovedRefusal(files map[string][]byte) error {
 	}
 	n := strings.Join(strings.Fields(body), " ")
 
-	const guard = `if (census.KindChanged != 0) { lane.Why = "layout_malformed"; break; }`
+	const guard = `if (made == -4) { lane.Why = "layout_malformed"; break; }`
 	gi := strings.Index(n, guard)
 	if gi < 0 {
 		return fmt.Errorf("LineagePlans does not refuse a moved kind with layout_malformed; its body is:\n%s", n)
 	}
 	identity := strings.Index(n, "if (known[i].Hash == own) { continue; }")
-	compile := strings.Index(n, "int made = Compile(parsed, my_layout, dst, buffer, census, out int split);")
+	compile := strings.Index(n, "int made = Compile(parsed, my_layout, dst, buffer, null, out int split);")
+	retry := strings.Index(n, "if (made < 0) {")
 	accept := strings.Index(n, "lane.Entries = buffer;")
-	if identity < 0 || compile < 0 || accept < 0 {
-		return fmt.Errorf("LineagePlans' shape moved: identity=%d compile=%d accept=%d", identity, compile, accept)
+	if identity < 0 || compile < 0 || retry < 0 || accept < 0 {
+		return fmt.Errorf("LineagePlans' shape moved: identity=%d compile=%d retry=%d accept=%d", identity, compile, retry, accept)
 	}
-	if identity >= compile || compile >= gi || gi >= accept {
-		return fmt.Errorf("the moved-kind refusal is not between the compile and the plan acceptance: identity=%d compile=%d guard=%d accept=%d", identity, compile, gi, accept)
+	if identity >= compile || compile >= gi || gi >= retry || retry >= accept {
+		return fmt.Errorf("the moved-kind refusal is not between the compile and the capacity retry: identity=%d compile=%d guard=%d retry=%d accept=%d", identity, compile, gi, retry, accept)
 	}
 	if c := strings.Count(n, "lane.Entries = buffer;"); c != 1 {
 		return fmt.Errorf("LineagePlans accepts a plan at %d sites, want the one guarded acceptance", c)
@@ -127,7 +129,7 @@ func TestCSharpLineageKindMovedRefusesNegativeControl(t *testing.T) {
 	if err := csKindMovedRefusal(files); err != nil {
 		t.Fatalf("NEGATIVE CONTROL setup: the real artifact is already red before sabotage: %v", err)
 	}
-	const anchor = "census.KindChanged != 0"
+	const anchor = "made == -4"
 	planted := 0
 	for name, data := range files {
 		s := string(data)
@@ -144,4 +146,31 @@ func TestCSharpLineageKindMovedRefusesNegativeControl(t *testing.T) {
 		t.Fatal("NEGATIVE CONTROL FAILED: disabling the moved-kind refusal in the real artifact left the check GREEN")
 	}
 	t.Logf("negative control: the moved-kind guard disabled in the real artifact turns the check red, as required: %v", err)
+}
+
+// TestCSharpLineageOptionalUnwrappedIsKindMismatch: the writer's ?T into this
+// reader's bare T is the one moved kind that refuses by another name, kind_mismatch
+// (ruling R2, 2026-11-22), as the Go reference does (gotable c.unlawful = 3). The
+// compiler marks it 3, Compile answers -5, and the lane refuses kind_mismatch
+// before any plan is accepted.
+func TestCSharpLineageOptionalUnwrappedIsKindMismatch(t *testing.T) {
+	files, _ := csKindMovedFiles(t)
+	var n string
+	for _, data := range files {
+		if s := string(data); strings.Contains(s, "public static TableFixedLineagePlan[] LineagePlans(") {
+			n = strings.Join(strings.Fields(s), " ")
+		}
+	}
+	if n == "" {
+		t.Fatal("the emitted runtime carries no LineagePlans")
+	}
+	for _, want := range []string{
+		"c.Unlawful = te.Kind == 35 ? (byte)3 : (byte)1;",
+		"if (c.Unlawful != 0) { return c.Unlawful == 3 ? -5 : -4; }",
+		`if (made == -5) { lane.Why = "kind_mismatch"; break; }`,
+	} {
+		if !strings.Contains(n, want) {
+			t.Errorf("the writer's ?T into a bare T does not refuse kind_mismatch: the emitted runtime lacks %q", want)
+		}
+	}
 }

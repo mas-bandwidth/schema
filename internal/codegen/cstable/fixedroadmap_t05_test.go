@@ -321,9 +321,10 @@ func t05CsE9(t *testing.T) {
 
 // ---- cs/R16 -----------------------------------------------------------------
 
-// t05CsR16 holds R16 to §5.4's exact counters. Unknown is the COMPILE census,
-// once per endpoint and never per record: the load adds census_unknown once, after
-// the record loop. Widened moves once per entry per record (the widen and
+// t05CsR16 holds R16 to §5.4's exact counters. There is no COMPILE census: a
+// writer field this reader names nowhere makes the lineage entry UNLAWFUL and
+// its lane refuses layout_malformed (§5.4, §5.9 #30), so the fixed load never
+// adds to Unknown. Widened moves once per entry per record (the widen and
 // widenf cases) and the folded wide run reports its element count. Clamped
 // moves once per entry for the count and text ops. The copy and const ops move
 // nothing.
@@ -343,12 +344,15 @@ func t05CsR16(t *testing.T) {
 			t.Errorf("R16: case %s does not refuse exactly once per entry", op)
 		}
 	}
-	if !strings.Contains(run, "if (!named && census && c.Report != null) { c.Report.Unknown++; }") {
-		t.Error("R16: the COMPILE census does not count unknown once per field per endpoint")
+	if !strings.Contains(strings.Join(strings.Fields(run), " "), "if (!named) { c.Unlawful = 1; return; }") {
+		t.Error("R16: a writer field this reader names nowhere does not make the lineage entry unlawful")
+	}
+	if strings.Contains(run, "c.Report.Unknown++") || strings.Contains(run, "c.Report.KindChanged++") {
+		t.Error("R16: the fixed COMPILE census is back: an unlawful entry is counted instead of refused")
 	}
 	_, src := t02Table(t, t02Flat)
-	if n := strings.Count(src, "report.Unknown += census_unknown;"); n != 1 {
-		t.Errorf("R16: the load adds the unknown census %d times, want exactly once per endpoint", n)
+	if n := strings.Count(src, "report.Unknown +="); n != 0 {
+		t.Errorf("R16: the fixed load adds to Unknown at %d sites; an unlawful entry refuses and a lawful one has nothing unknown", n)
 	}
 }
 

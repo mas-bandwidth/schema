@@ -11,60 +11,88 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
-// §5.8 row 11 `unknown_census`, the ordinary ONE-record row every leg but cs
-// already had: the NEW build reads `old_unknown_census.bin` through a
-// HANDED-IN lineage entry (§5.1 refuses the removal, so no lock). One record,
-// four `items` carrying `a` = 10..13 and the removed `drop`. `r.Unknown` is
-// asserted EXACTLY `== 1` because `Item.drop` is one field of one endpoint, so the
-// census is 1 however many elements carry it — `4` is the divergence this row
-// exists to catch, and the exact defect rust, cpp and cs itself once carried.
+// §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) is handed the
+// OLD writer's layout as a lineage entry (§5.1 refuses the removal, so there is
+// no lock). A lawful older writer never carries a field the reader lacks, so
+// the entry is UNLAWFUL: COMPILE lays no plan for it and the load refuses
+// `layout_malformed` with every counter at zero — `unknown` included, because
+// there is no compile census (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4,
+// §5.9 #30). The dropped field sits inside an array of tables, so the rule is
+// read in every element's slot. After the refusal every row handed in, poisoned
+// first, is back at its declared defaults (SPEC-TABLES §6.5), and a second load
+// refuses the same way.
 func TestFixedVersioningUnknownCensus(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
-
-	corpus := csFixedCorpus(t)
-	dir := t.TempDir()
-
-	probe := csVersionProbe{
+	corpus := csFixedCorpusFile(t, "old_unknown_census.bin")
+	csRunOneVersionProbe(t, corpus, csVersionProbe{
 		name:   "unknown_census/new_reads_old",
 		reader: "VNEW_unknown_census",
 		older:  []string{"VOLD_unknown_census"},
 		file:   "old_unknown_census.bin",
-		body: `            byte[] data = System.IO.File.ReadAllBytes(System.IO.Path.Combine(corpus, @FILE@));
+		body: csUnlawfulBody(
+			`back[k].Lead = 99u; back[k].Trail = 88u; for (int i = 0; i < 4; ++i) { back[k].Items[i].A = 5 + i; }`,
+			`back[k].Lead == 1u && back[k].Trail == 2u && back[k].Items[0].A == 0 && back[k].Items[1].A == 0 && back[k].Items[2].A == 0 && back[k].Items[3].A == 0`),
+	})
+}
+
+// csFixedCorpusFile is csFixedCorpus for a probe that reads one named file: a
+// corpus built before that file existed is the same failure as no corpus at
+// all — LOUD under SCHEMA_REQUIRE_CORPUS or CI's slow half, a named skip
+// otherwise — and never a probe that dies on a missing file.
+func csFixedCorpusFile(t *testing.T, file string) string {
+	t.Helper()
+	corpus := csFixedCorpus(t)
+	if _, err := os.Stat(filepath.Join(corpus, file)); err != nil {
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle has no %s in %s: %v", file, corpus, err)
+		}
+		t.Skipf("the reference's byte oracle has no %s: make tables-fixedform-corpus", file)
+	}
+	return corpus
+}
+
+// csUnlawfulBody is the probe body every unlawful-entry row shares: TWO loads,
+// each over rows POISONED first, each refusing `layout_malformed` by name,
+// landing nothing, moving no counter and leaving every row handed in at its
+// declared defaults. `poison` sets non-default values in back[k]; `check` is
+// true when back[k] is at its declared defaults.
+func csUnlawfulBody(poison, check string) string {
+	return `            byte[] data = System.IO.File.ReadAllBytes(System.IO.Path.Combine(corpus, @FILE@));
             @TABLE@[] back = new @TABLE@[8];
             for (int i = 0; i < back.Length; ++i) { back[i] = new @TABLE@(); }
-            TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
-            long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
-            if (n != 1)
+            for (int pass = 0; pass < 2; ++pass)
             {
-                bad += ProbeLog.Fail(@NAME@, "expected one record, not " + n);
-            }
-            if (r.Refused || r.Verdict != Schema.TableWire.Verdict.Ok || r.Reason != null)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a clean read is not a refusal: reason=" + r.Reason + " verdict=" + r.Verdict);
-            }
-            if (r.Unknown != 1)
-            {
-                bad += ProbeLog.Fail(@NAME@, "the census is once per field per endpoint, not once per element: unknown=" + r.Unknown);
-            }
-            if (r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
-            {
-                bad += ProbeLog.Fail(@NAME@, "only the unknown counter may move: widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
-            }
-            if (back[0].Lead != 1u || back[0].Trail != 2u)
-            {
-                bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
-            }
-            int[] wantA = { 10, 11, 12, 13 };
-            for (int k = 0; k < 4; ++k)
-            {
-                if (back[0].Items[k].A != wantA[k])
+                for (int k = 0; k < back.Length; ++k) { ` + poison + ` }
+                TableReport r = new TableReport();
+                long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
+                if (n >= 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "item " + k + " did not land its own a: " + back[0].Items[k].A + " != " + wantA[k]);
+                    bad += ProbeLog.Fail(@NAME@, "pass " + pass + ": the unlawful entry LOADED " + n + " records");
                 }
-            }`,
-	}
+                if (!r.Refused || r.Verdict != Schema.TableWire.Verdict.Refused || r.Reason != "layout_malformed")
+                {
+                    bad += ProbeLog.Fail(@NAME@, "pass " + pass + ": not refused layout_malformed: refused=" + r.Refused + " reason=" + r.Reason + " verdict=" + r.Verdict);
+                }
+                if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
+                {
+                    bad += ProbeLog.Fail(@NAME@, "pass " + pass + ": a refusal moved a counter: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                }
+                for (int k = 0; k < back.Length; ++k)
+                {
+                    if (!(` + check + `))
+                    {
+                        bad += ProbeLog.Fail(@NAME@, "pass " + pass + ": row " + k + " is not at its declared defaults");
+                    }
+                }
+            }`
+}
 
+// csRunOneVersionProbe generates the probe's reader with its handed-in lineage,
+// builds one probe assembly over it and runs it, asserting `ROW <name>: ok`.
+func csRunOneVersionProbe(t *testing.T, corpus string, probe csVersionProbe) {
+	t.Helper()
+	dir := t.TempDir()
 	ns, table, files := csVersionGenerate(t, probe)
 	gen := filepath.Join(dir, "gen", "u000")
 	csVersionWrite(t, gen, files)
@@ -170,5 +198,5 @@ static class ProbeMain
 	cmd.Env = append(os.Environ(), "SCHEMA_FIXEDFORM_CORPUS="+corpus, "DOTNET_NOLOGO=1")
 	out, runErr := cmd.CombinedOutput()
 
-	csVersionAssert(t, out, runErr, "unknown_census/new_reads_old")
+	csVersionAssert(t, out, runErr, probe.name)
 }
