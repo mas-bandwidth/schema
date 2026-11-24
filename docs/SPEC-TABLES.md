@@ -4697,10 +4697,11 @@ holds the Java leg's three binary writers, scalar and element, beside the
 lawful variant. Every leg answers the shared rows `wref_enum_deprecated`,
 `wref_enum_scalar_deprecated`, `fref_enum_deprecated` and
 `fref_enum_scalar_deprecated` (refused) and their `_ok` twins (written) on the
-`write-refusal` and `write-refusal-fixed` surfaces. A leg whose driver saves a
-FIXED root through its fixed form on both surfaces holds its variable save to
-the rule by its own test (`TestJsDeprecatedVariantNeverWritten`), since the
-shared rows reach that writer only through a variable root. The block builder
+`write-refusal` and `write-refusal-fixed` surfaces. A driver may save a FIXED
+root through its fixed form on both surfaces, so the VARIABLE save is reached
+through the variable-only root `VarMoods` (`row []Mood`, `mood Mood = Fierce`):
+`wref_varmoods_deprecated` and `wref_varmoods_scalar_deprecated` (refused) and
+their `_ok` twins (written), every leg. The block builder
 holds the rule too (an assert leg in its debug build): Dart's
 (`TestDartBlockBuildRefusesDeprecatedVariant`), as Rust's message writer does
 (`TestRustDeprecatedVariantMessageNeverWritten`).
