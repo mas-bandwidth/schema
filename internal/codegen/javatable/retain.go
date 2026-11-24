@@ -460,7 +460,18 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	}
 	if variableUnion(f) != nil {
 		condition := "v." + varMember(f) + ".tag!=0"
-		if f.Array != ir.ArrayNone {
+		if f.Array == ir.ArrayFixed {
+			// A FIXED ARRAY OF UNIONS ELIDES WHEN EVERY ELEMENT IS THE EMPTY UNION
+			// (docs/SPEC-TABLES.md §3, §6.6), as the variable codec and the
+			// reference encoder elide it: an unknown arm is never retained, so an
+			// element whose arm this build could not name loads empty and carries
+			// no retained tail. Testing only for a non-empty list wrote a widened
+			// [2]EditBody of two empty unions where the oracle writes nothing.
+			present := "present_" + varMember(f)
+			fmt.Fprintf(b, "        boolean %s=false;for(int i=0;i<v.%s.size();i++)if(!(%s)){%s=true;break;}", present, varMember(f), variableDefaultTest(variableElement(f), "v."+varMember(f)+".get(i)"), present)
+			b.WriteByte(10)
+			condition = present
+		} else if f.Array != ir.ArrayNone {
 			condition = variableRidesGuard(b, f, "v")
 		}
 		fmt.Fprintf(b, "if(%s){w.putLeb(w.ref(%sVariable.F_%s));w.put8(%d);path[2*depth]=%d;path[2*depth+1]=0;\n", condition, st.Name, varMember(f), variableWireKind(f), ordinal)

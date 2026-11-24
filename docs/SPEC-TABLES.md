@@ -11376,8 +11376,9 @@ The first save is a different byte string carrying the same fields, and the
 golden for it is a pinned byte string like every other golden, not a
 comparison "modulo the move".
 
-Two consequences follow, and each is a rule:
+Three consequences follow, and each is a rule:
 
+- **A RETAINING SAVE ELIDES EXACTLY WHAT THE PLAIN SAVE ELIDES, WHEN NOTHING WAS RETAINED.** Retention adds content and never removes an elision. A fixed array of unions `[N]U` whose every element is the empty union writes nothing under the retaining save as under the plain one (§3), and that includes an element whose arm id this reader could not name: an unknown arm is never retained (the table above), so the element loads empty and carries no tail. A save that tested the list for being non-empty wrote N empty unions where the reference writes no field (Java, the `retain_fixed_union_array_unknown_arm` vector, messagedemo.ToolEnvelope).
 - **A body that carries a retained field does not ELIDE.** A by-value `T` at
   its defaults writes nothing (§3). One whose body holds a retained field
   writes its body, that field and its terminator. Elision is about what a body

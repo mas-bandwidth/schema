@@ -425,3 +425,13 @@ retain_node_flags tblw1 Fleet testdata/wire/tables/fuzz-vectors/retain_node_flag
 retain_node_record_unknown graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_node_record_unknown.bin
 retain_scalar_array_default mapdemo Cells testdata/wire/tables/fuzz-vectors/retain_scalar_array_default.bin
 text_ill_formed_repeat_reads_default backenddemo StorePurchase testdata/wire/tables/fuzz-vectors/text_ill_formed_repeat_reads_default.bin
+
+# A FIXED ARRAY OF UNIONS WHOSE ELEMENTS ALL LOAD EMPTY ELIDES UNDER THE RETAINING
+# SAVE TOO (docs/SPEC-TABLES.md §6.6, §3). The widenbound_envelope corpus seed
+# with element 0 of Transaction.pending ([2]EditBody) naming an arm id this
+# reader cannot name: an unknown arm is never retained, so both elements load
+# as the empty union and the field elides, as the plain save elides it. Java’s
+# retaining save tested the list for being non-empty and wrote two empty unions
+# (178 bytes against the reference’s 163). Found by the enumerated retain pass at
+# mutant 240441 on Nightly conformance run 45119714773.
+retain_fixed_union_array_unknown_arm messagedemo ToolEnvelope testdata/wire/tables/fuzz-vectors/retain_fixed_union_array_unknown_arm.bin
