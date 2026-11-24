@@ -7155,15 +7155,17 @@ Where each refusal runs is each form's own:
 | VARIABLE (§3) | the same: the WRITER refuses, and the READ refuses a non-finite value and then a finite one outside the reader's declared range (§4), `out_of_range` |
 | TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
 
-**THE NON-FINITE REFUSAL COMES FIRST, IN EVERY BUILD.** A NaN or an infinity
-also fails the range compare, so a writer that checks the range in its debug
-build only (an assert leg, SPEC.md §5.1) holds that range check to a FINITE
-value: a non-finite value passes it and reaches the `non_finite_float`
-refusal, which answers `-1` in every build. A debug range check that fires on
-a NaN or an infinity first is a defect, on the message writer as on the fixed
-one: the same value would be refused with `-1` in a release build and abort a
-debug one (Java's message writer, 2026-11-24, held by `TestJavaFiniteFloats`
-`form-write-ranged`).
+**A DEBUG RANGE CHECK DOES NOT MASK THE NON-FINITE REFUSAL.** A NaN or an
+infinity also fails the range compare. Where a leg's writer has its own
+`non_finite_float` refusal, the leg's debug range check on a compressed or
+ranged float holds a FINITE value only, so a non-finite value passes it and
+reaches that refusal. A debug range check that fires on a NaN or an infinity
+first, masking the leg's own refusal, is a defect, on the message writer as on
+the fixed one (Java's message writer, 2026-11-24, held by
+`TestJavaFiniteFloats` `form-write-ranged`). This asks nothing of a release
+build: an assert leg's release build has no write-side refusal (SPEC.md §5.1),
+and a leg whose non-finite check is itself a debug assert (C#, for one) meets
+this rule as it stands.
 
 The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
 `TableMessageDequantize`) on two shapes, because a range that starts at `0`
