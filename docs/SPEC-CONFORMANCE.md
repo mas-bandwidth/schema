@@ -723,3 +723,63 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
   go test -count=1 ./internal/codegen/... \
   -run 'Test(JS|Luau)?FixedVersioning(UnknownCensus|KindMoved)|TestUnityFixedUnlawfulLineage|TestFixedVersioningUnlawfulEntryRefuses'
 ```
+
+### Unlawful handed-in lineage entry, every leg: the narrowings, one shared corpus
+
+The rest of the unlawful set, as the Go reference already held it
+(`internal/codegen/gotable/fixedruntime.go`, `tableFixedChildrenNamed` and the
+EMIT checks beside it). A lineage entry is UNLAWFUL, lays no plan, moves no
+counter, and a file under its hash refuses, when the writer carries:
+
+- a union arm the reader names nowhere (an arm removed);
+- an enum variant the reader names nowhere (a variant removed), on the
+  grown-width widen path and on the same-width remap path alike, so a remap
+  never sends a removed variant to None;
+- a keyed key the reader names nowhere, or more keyed slots than the reader;
+- a `[N]`, `[..N]` or `bytes(N)` with more slots than the reader's (a shrunk
+  array), never truncated to the reader's bound;
+- a `string(N)` wider than the reader's (narrowed text);
+- a same-kind leaf wider than the reader's.
+
+[FIXED-FORM-ALGORITHM §5.2](FIXED-FORM-ALGORITHM.md) EMIT now says each of these
+where it used to take `min(their_n, my_n)` and `min(me.size, te.size)`;
+`min` is the writer's own number on every lawful entry, so the lawful rows do
+not move. The §5.4 table row names the whole set. §5.1 refuses every one of
+these at commit, so a lawful lineage never reaches them; the load refusal is
+for a handed-in or hostile entry, and it holds in every build on every leg.
+
+**One shared corpus, defined once** (`internal/fixedunlawful`): ten cases,
+`unknown_census`, `unknown_census_many`, `kind_moved` and the seven narrowing
+rows `arm_removed`, `variant_removed`, `key_removed`, `array_shrunk`,
+`counted_shrunk`, `text_narrowed`, `bytes_narrowed`
+([FIXED-FORM-VERSIONING-TESTS.md](FIXED-FORM-VERSIONING-TESTS.md)). Each OLD
+file holds only values the NEW reader could still name or hold, so a leg that
+drops, remaps, truncates or checks only the live length loads it and fails;
+only a refusal passes. Every leg in `fixedunlawful.Legs` answers every case
+through `fixedunlawful.Run`, which refuses a missing answer and a stray one by
+name, and `TestEveryLegAnswers` refuses a leg with no driver. The verdict is
+compared (refuses, counters zero, every poisoned row at its declared defaults,
+twice); the refusal name is each leg's own assertion (`refusal-verdict-only`):
+`layout_malformed`, Dart `layout_damaged`. The Go driver also holds the Go
+writer's bytes to every corpus file.
+
+| leg | before | after |
+|---|---|---|
+| go (reference), elixir | all ten refuse | all ten refuse |
+| cpp, c, cs, java, js, rust, luau, dart | the seven narrowing rows load | all ten refuse |
+| unity | `arm_removed`, `variant_removed`, `key_removed` load | all ten refuse |
+| goose, lobster | all ten load or count (`unknown`, `kind_mismatch`) | all ten refuse |
+| lua | all ten load | all ten refuse |
+
+A union's declared default is None. Java's refusal reset used to re-tag the
+union and leave the unselected arm's storage as the caller poisoned it; it now
+resets the whole row (SPEC-TABLES §6.5). JS's `Init` is the tag alone by the
+JS target's own design, so its driver holds the tag to None.
+
+Run, with the corpus built (`make tables-fixedform-corpus`):
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
+  go test -count=1 ./internal/fixedunlawful ./internal/codegen/... \
+  -run 'TestEvery(LegAnswers|CaseIsInTheCorpus)|TestUnansweredRefuses|Test[A-Za-z]*FixedUnlawfulCorpus'
+```
