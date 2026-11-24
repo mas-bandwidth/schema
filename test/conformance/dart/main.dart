@@ -8278,6 +8278,21 @@ int surfaceReadInto(String outDir) {
           answer.write(surfw.narrowToJson(w));
         }
         answer.write(_readIntoLine(() => read(lawful)));
+      case 'fixed tblfixedevo EvoRoot':
+        // a lawful v1 record read through the lineage into the values the v3
+        // record filled (docs/SPEC-TABLES.md §3.4)
+        final values = List<tblfixedevo_fixed.EvoRoot>.generate(count, (_) => tblfixedevo_fixed.EvoRoot());
+        final report = tblfixedevo_fixed.TableFixedReport();
+        final plan = fixedevo_fixed.evoRootFixedNewPlan();
+        bool read(Uint8List b) => fixedevo_fixed.evoRootFixedLoad(values, count, b, b.length, plan, report) >= 0 && report.refused == 0;
+        answer.write(_readIntoLine(() => read(lawful)));
+        answer.write(_readIntoLine(() => read(damaged)));
+        for (final v in values) {
+          final w = tblfixedevo.EvoRoot();
+          _f2w_fixedevo_EvoRoot(v, w);
+          answer.write(tblfixedevo.evoRootToJson(w));
+        }
+        answer.write(_readIntoLine(() => read(lawful)));
       case 'message backenddemo StorePurchase':
         final vocab = backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0)));
         final announced = backenddemo_fixed.TableReport();

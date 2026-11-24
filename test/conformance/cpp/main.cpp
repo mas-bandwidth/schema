@@ -3206,6 +3206,7 @@ static const ReadIntoCodec read_into_codecs[] = {
     READINTO_VAR( "tblsurf", surfaces, Counted ),
     READINTO_FIXED( "tblsurf", surfaces, Narrow ),
     READINTO_FIXED( "backenddemo", backenddemo, StorePurchase ),
+    READINTO_FIXED( "tblfixedevo", tblfixedevo, EvoRoot ),
 };
 
 // read-into <case> <unit> <root> <form> <lawful> <damaged> <count or -> <announcement or ->

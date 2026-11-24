@@ -13,7 +13,11 @@
 //     (FL-02), a refusal leaves every value the call was handed at its declared
 //     defaults (FL-03), and the read refuses through its report and never by
 //     throwing (FL-29). Its `fixed-nocap` form loads a fixed file with no
-//     stated capacity and owes the file's own record count (FL-17).
+//     stated capacity and owes the file's own record count (FL-17). A
+//     `fixed` row's second read may instead be a LAWFUL older writer's
+//     record, read through the lineage: every field that record does not
+//     supply then holds its declared default, never the value the first read
+//     left there (§3.4).
 //   - `json-write-into` runs the text writer in a comma-decimal process
 //     locale (FL-14) into a caller buffer larger than the text, whose bytes
 //     past the text must be untouched (FL-15).
@@ -362,9 +366,24 @@ func generate1122(u *units, m *Manifest) error {
 			// the document ends with one line feed (§16.14 W2), as ToJson
 			// writes it
 			defaults = oneText(defaults)
-			answer = []byte("read\nrefused\n")
-			for range r.Count {
-				answer = append(answer, defaults...)
+			// A FIXED ROW'S SECOND READ MAY BE LAWFUL: an older writer's
+			// record, read through the lineage into the values the first
+			// read filled. Every field that record does not supply then holds
+			// its declared default (§3.4, THE PREFILL IS WHAT ANSWERS "ABSENT
+			// FIELD"), so the values owed are the engine's read of that file
+			// into a FRESH value, never a merge into the caller's old one.
+			second, err := readIntoLawfulSecond(model, root, r)
+			if err != nil {
+				return err
+			}
+			if second != nil {
+				answer = []byte("read\nread\n")
+				answer = append(answer, second...)
+			} else {
+				answer = []byte("read\nrefused\n")
+				for range r.Count {
+					answer = append(answer, defaults...)
+				}
 			}
 			answer = append(answer, "read\n"...)
 		}
@@ -374,4 +393,33 @@ func generate1122(u *units, m *Manifest) error {
 		fmt.Printf("conformance: %-22s read-into %s\n", r.Name, r.Form)
 	}
 	return nil
+}
+
+// readIntoLawfulSecond is a `fixed` row's second read when the engine reads
+// it: the §16 text of the file read into a fresh value. It answers nil when
+// the engine refuses the file (the row's second read is the refused one) and
+// for every other form, whose second read is always the refused one. A lawful
+// second read is handed one value: a fixed batch's rows past the second
+// file's count are not this row's question.
+func readIntoLawfulSecond(model *tabletext.Model, root *ir.Struct, r ReadInto) ([]byte, error) {
+	if r.Form != "fixed" {
+		return nil, nil
+	}
+	wire, err := os.ReadFile(r.RefusedInput)
+	if err != nil {
+		return nil, fmt.Errorf("read-into %s: %w", r.Name, err)
+	}
+	value := model.New(root)
+	var rep tabletext.Report
+	if ok, _ := strictDecode(model, value, wire, &rep); !ok {
+		return nil, nil
+	}
+	if r.Count != 1 {
+		return nil, fmt.Errorf("read-into %s: a fixed row whose second read is lawful is handed one value, not %d", r.Name, r.Count)
+	}
+	text, err := model.Write(value)
+	if err != nil {
+		return nil, fmt.Errorf("read-into %s: the second read's text: %w", r.Name, err)
+	}
+	return oneText(text), nil
 }

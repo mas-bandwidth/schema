@@ -908,7 +908,7 @@ static const ConformanceUnit1122 * find_unit1122( const char * unit )
 {
     static const ConformanceUnit1122 * ( * const getters[] )( void ) = {
         conformance_unit1122_tblsurf, conformance_unit1122_tblann4096, conformance_unit1122_tblann4097,
-        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo,
+        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo, conformance_unit1122_tblfixedevo,
     };
     size_t i;
     for ( i = 0; i < sizeof( getters ) / sizeof( getters[0] ); i++ )

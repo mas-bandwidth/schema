@@ -405,7 +405,13 @@ an answer the runtime did not give.
   `read\nrefused\n<defaults × count>read\n`: every read zeroes the report it
   is handed (FL-02), and a refusal leaves every value the call was handed at
   its declared defaults, a fixed batch checking every record before any lands
-  (FL-03). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
+  (FL-03). A `fixed` row's second file may instead be LAWFUL, an older
+  writer's one record read through the lineage (`ri_fixed_lineage`): the
+  driver runs the same three reads, and the owed answer is
+  `read\nread\n<that record's value>read\n`, the value being what a FRESH
+  value reads from the second file, so every field that writer did not supply
+  holds its declared default and never what the first read left (SPEC-TABLES
+  §3.4). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
   with NO stated capacity and answers `read\n` and the record count it
   returned (FL-17: the omitted capacity is the file's own 5000 records, never
   a default the port invented). A leg whose fixed load cannot omit the

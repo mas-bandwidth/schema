@@ -596,6 +596,12 @@ pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
                 let text = read_into_fixed!(tblsurf, NarrowRow, Narrow, narrow_fixed_load, narrow_to_json_checked, case, lawful, damaged, count());
                 spill(out, case, text.as_bytes());
             }
+            // a lawful v1 record read through the lineage into the values the v3
+            // record filled (docs/SPEC-TABLES.md §3.4)
+            ("fixed", "tblfixedevo", "EvoRoot") => {
+                let text = read_into_fixed!(tblfixedevo, EvoRootRow, EvoRoot, evo_root_fixed_load, evo_root_to_json_checked, case, lawful, damaged, count());
+                spill(out, case, text.as_bytes());
+            }
             ("message", "backenddemo", "StorePurchase") => {
                 let text = read_into_message!(backenddemo, StorePurchaseRow, StorePurchase, store_purchase_load_messages, store_purchase_to_json_checked, case, lawful, damaged, count(), ann);
                 spill(out, case, text.as_bytes());

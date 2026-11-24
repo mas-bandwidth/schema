@@ -448,6 +448,16 @@ static partial class Program
                         (values, bytes) => Surfaces.Schema.NarrowFixedLoad(values, bytes, plan, report) >= 0 && !report.Refused && !report.Damaged, lawful, damaged);
                     break;
                 }
+                case "tblfixedevo EvoRoot fixed":
+                {
+                    // a lawful v1 record read through the lineage into the value the v3
+                    // record filled (docs/SPEC-TABLES.md §3.4)
+                    var report = new Tblfixedevo.TableReport();
+                    var plan = new Tblfixedevo.TableFixedEntry[FixedPlanCapacity];
+                    result = ReadIntoRun<Tblfixedevo.EvoRoot>(codec, count, () => new Tblfixedevo.EvoRoot(),
+                        (values, bytes) => Tblfixedevo.Schema.EvoRootFixedLoad(values, bytes, plan, report) >= 0 && !report.Refused && !report.Damaged, lawful, damaged);
+                    break;
+                }
                 case "backenddemo StorePurchase message":
                 {
                     var vocabulary = new Backenddemo.TableVocabulary();

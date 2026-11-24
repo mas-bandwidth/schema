@@ -148,7 +148,11 @@ json-write-into <case> <instance>
   `<lawful>`, a read of `<damaged>` and a read of `<lawful>` again
   (docs/SPEC-TABLES.md §6.5). `<form>` is `variable`, `json`, `fixed`,
   `message` (`<unit>` a connection key) or `fixed-nocap` (damaged `-`, the
-  count the answer). The answer owed is `read-into/<case>.txt`, which `make
+  count the answer). In a `fixed` row with count `1`, `<damaged>` may be a
+  LAWFUL older writer's record that the engine reads through the lineage; the
+  answer then owes that read's value as a fresh value holds it (§3.4: a field
+  the writer did not supply holds its declared default, never the first
+  read's). The answer owed is `read-into/<case>.txt`, which `make
   conformance-generate` writes from the engine; the derived line withholds a
   `fixed-nocap` count and adds the connection's announcement file for a
   `message` row.
