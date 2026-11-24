@@ -135,7 +135,9 @@ function vsave(items) { const p = new vw.Probe(); p.items = items; return vw.Pro
 {
   const r = new vr.TableVariableReport();
   const x = vr.ProbeLoad(vsave([77]), r);
-  if (x !== null || r.oor !== 1 || r.damaged || r.mismatch !== 0) { fail("variable read of count 1 under [2..4]: " + (x === null ? "refused" : JSON.stringify(x.items)) + " " + JSON.stringify(r)); }
+  // a count below Min refuses count_over_bound by name and counts nothing
+  // (docs/SPEC-TABLES.md §22.2: a reader meeting a count below Min refuses count_over_bound in EVERY form)
+  if (x !== null || r.refused !== 1 || r.reason !== "count_over_bound: items" || r.oor !== 0 || r.damaged || r.mismatch !== 0) { fail("variable read of count 1 under [2..4]: " + (x === null ? "refused" : JSON.stringify(x.items)) + " " + JSON.stringify(r)); }
   const r2 = new vr.TableVariableReport();
   const y = vr.ProbeLoad(vsave([77, 78]), r2);
   if (y === null || y.items.length !== 2) { fail("variable read of count 2 under [2..4] was refused"); }
