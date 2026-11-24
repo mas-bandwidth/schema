@@ -27,7 +27,7 @@ tables-dart-view: bin/schema test/dart-tables/view_main.dart
 		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
 		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
 		$(DART) build/dart-view/$$pkg-main.dart > build/dart-view/$$pkg.listing \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout=0 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
 

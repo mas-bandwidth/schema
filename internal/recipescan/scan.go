@@ -19,7 +19,9 @@
 //	background        "cmd &" with no "wait" in the same recipe line or script,
 //	                  or a bare "wait" (no PID) after a background job: a bare
 //	                  wait returns 0 whatever the jobs did (F-068); or a
-//	                  "wait PID" whose status nothing reads
+//	                  "wait PID" whose status nothing reads, or a loop of
+//	                  them that only -e reads (it stops at the first failed
+//	                  job and leaves the rest running, #4956)
 //	early-exit        an early-exit reader (grep -q, grep -m, grep -l, head,
 //	                  read, awk exit, sed q) in a pipeline read as a condition
 //	                  under pipefail: the stage before it dies of SIGPIPE on a
@@ -134,6 +136,8 @@ func scanShell(text string, ctx shellContext, st *Stats) []Finding {
 					add(t, RuleBackground, "a bare wait returns 0 whatever the background jobs did: keep each $! and wait on it, reading its status")
 				} else if hasBackground && commandStart(toks, k) && !waitStatusRead(toks, k, ctx) {
 					add(t, RuleBackground, "nothing reads the status of this wait, so a failed background job is lost: wait \"$p\" || failed=1, or read $?")
+				} else if hasBackground && commandStart(toks, k) && waitStopsAtFirstFailure(toks, k, ctx) {
+					add(t, RuleBackground, "this wait loop stops at the first failed job under -e and leaves the rest running: rc=0; for p in $pids; do wait \"$p\" || rc=1; done; exit $rc")
 				}
 			case "touch":
 				// F-046: "gen && touch $@" whose status the next statements replace.
