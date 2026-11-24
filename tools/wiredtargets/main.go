@@ -311,9 +311,9 @@ var (
 	exprRef   = regexp.MustCompile(`\$\{\{\s*([^}]*?)\s*\}\}`)
 	matrixKey = regexp.MustCompile(`^matrix\.([A-Za-z0-9_-]+)$`)
 	shellRef  = regexp.MustCompile(`\$\{?[A-Za-z_][A-Za-z0-9_]*\}?`)
-	// a make command in shell text: the word make, then its arguments
+	// a make command in shell text: the word make, then its arguments.
 	makeCmd = regexp.MustCompile(`(?:^|[\s;&|(])make\s+([^\n]*)`)
-	// matrix literals: `key: [a, b]` and `- key: value`
+	// matrix literals: `key: [a, b]` and `- key: value`.
 	listLiteral    = regexp.MustCompile(`(?m)^\s+([A-Za-z0-9_-]+):\s*\[([^\]$]*)\]\s*$`)
 	includeLiteral = regexp.MustCompile(`(?m)^\s+-?\s*([A-Za-z0-9_-]+):\s*([A-Za-z0-9_.-]+)\s*$`)
 )
@@ -713,7 +713,7 @@ func makeDatabase(root string) ([]byte, error) {
 	var ee *exec.ExitError
 	if err == nil || !errors.As(err, &ee) || ee.ExitCode() != 2 ||
 		!strings.Contains(stderr.String(), "No rule to make target 'wiredtargets-no-such-target'") {
-		return nil, fmt.Errorf("make -pqrR did not read the makefiles to the end (%v):\n%s", err, stderr.String())
+		return nil, fmt.Errorf("make -pqrR did not read the makefiles to the end (%w):\n%s", err, stderr.String())
 	}
 	return stdout.Bytes(), nil
 }

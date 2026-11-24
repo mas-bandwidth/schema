@@ -96,7 +96,9 @@ func main() {
 		os.Exit(1)
 	}
 	if why := verdict(*plant, runErr, out.Bytes(), want, refuse); why != "" {
-		os.Stderr.Write(out.Bytes())
+		if _, werr := os.Stderr.Write(out.Bytes()); werr != nil {
+			fmt.Fprintf(os.Stderr, "gatecontrol: the leg's output could not be written to stderr: %v\n", werr)
+		}
 		fmt.Fprintf(os.Stderr, "NEGATIVE CONTROL FAILED: %s on %s (make %s; log %s): %s\n", *plant, *leg, *target, logPath, why)
 		os.Exit(1)
 	}

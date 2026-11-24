@@ -24,6 +24,16 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
+// refuse prints a refusal on stderr and returns its exit status. A refusal
+// whose text cannot be written still fails, with status 3, so the cause is
+// never lost to a broken stderr behind a status that looks the same.
+func refuse(stderr io.Writer, status int, format string, args ...any) int {
+	if _, err := fmt.Fprintf(stderr, format, args...); err != nil {
+		return 3
+	}
+	return status
+}
+
 // run is the command: its exit status, the matrix on stdout, every refusal
 // named on stderr.
 func run(args []string, stdout, stderr io.Writer) int {
@@ -38,34 +48,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintf(stderr, "nightlyrows: unexpected arguments %q\n", fs.Args())
-		return 2
+		return refuse(stderr, 2, "nightlyrows: unexpected arguments %q\n", fs.Args())
 	}
 	if *all && (*filesPath != "" || *legs != "" || *broad != "") {
-		fmt.Fprintln(stderr, "nightlyrows: -all takes every row; -files, -legs and -broad select some, so they are refused with it")
-		return 2
+		return refuse(stderr, 2, "nightlyrows: -all takes every row; -files, -legs and -broad select some, so they are refused with it\n")
 	}
 	if !*all && (*filesPath == "" || (*broad != "yes" && *broad != "no")) {
-		fmt.Fprintln(stderr, "nightlyrows: -files and -broad yes|no are required (or -all)")
-		return 2
+		return refuse(stderr, 2, "nightlyrows: -files and -broad yes|no are required (or -all)\n")
 	}
 	f, err := os.Open(*registry)
 	if err != nil {
-		fmt.Fprintln(stderr, "nightlyrows:", err)
-		return 1
+		return refuse(stderr, 1, "nightlyrows: %v\n", err)
 	}
 	rows, err := nightlyrows.Parse(f)
 	_ = f.Close()
 	if err != nil {
-		fmt.Fprintf(stderr, "nightlyrows: %s: %v\n", *registry, err)
-		return 1
+		return refuse(stderr, 1, "nightlyrows: %s: %v\n", *registry, err)
 	}
 	selected := rows
 	if !*all {
 		raw, err := os.ReadFile(*filesPath)
 		if err != nil {
-			fmt.Fprintln(stderr, "nightlyrows:", err)
-			return 1
+			return refuse(stderr, 1, "nightlyrows: %v\n", err)
 		}
 		var files []string
 		for l := range strings.SplitSeq(string(raw), "\n") {
@@ -86,9 +90,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	b, err := json.Marshal(picked)
 	if err != nil {
-		fmt.Fprintln(stderr, "nightlyrows:", err)
-		return 1
+		return refuse(stderr, 1, "nightlyrows: %v\n", err)
 	}
-	fmt.Fprintln(stdout, string(b))
+	if _, err := fmt.Fprintln(stdout, string(b)); err != nil {
+		return refuse(stderr, 1, "nightlyrows: the matrix could not be written: %v\n", err)
+	}
 	return 0
 }
