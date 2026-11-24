@@ -113,7 +113,7 @@ The tables surfaces are `wire`, `message`, `report`, `framing`, `retain`,
 `cook-write`, `cook-foreign`, `block`, `block-foreign`, `block-dump`,
 `forgery`, `cook-forgery`, `write-refusal`, `write-refusal-fixed`,
 `write-refusal-message`, `write-refusal-json`, `write-refusal-cook`,
-`write-refusal-block`, `announce`, `read-into` and `json-write-into`. The cards surfaces are
+`write-refusal-block`, `write-refusal-shape`, `announce`, `read-into` and `json-write-into`. The cards surfaces are
 `load`, `save`, `render`, `parse`, `bounds`, `upgrade`, `edit`, `taskhash`
 and `view`. `test/conformance/README.md` states what each one asks.
 
@@ -155,8 +155,11 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SF-05, SF-06: a fixed table past the size ceiling is checked by `SaveMessages` | `write-refusal-message` | `smref_big_*` |
 | FL-28, SF-29, SF-37: the cook refuses a cycle, a count outside `[Min, bound]`, a NaN or an infinity | `write-refusal-cook` | `cref_*` |
 | SF-31: the block builder refuses a count or a used length past its maximum | `write-refusal-block` | `bref_*` |
+| DW-TABLE-SHAPE: a table writer in a refuse-every-build leg (Go, JS, Elixir, Lua, Luau, Squirrel, moo, Goose) refuses a value of the wrong kind by name in every build — an integer, a string or null as a record, a union, an arm's payload or an array element; a string as a float (float32 included); an integer or null as a bool; a bare map or table as a union; an improper list as an array; anything but the root's record as the whole value — never crashing, raising or coercing it; each group has a lawful twin; the assert legs answer the twins and `unrepresentable` | `write-refusal-shape` (`shape`) | `shref_*` |
 | FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
 | FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
+| SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |
+| SPEC-TABLES §6.5, §6.6: the plain region `Load` and a fixed-root `LoadRetain` zero a PRE-FILLED report ([below](#the-plain-region-load-and-a-fixed-root-retaining-load-zero-the-report-too)) | `read-into` (`region`, `retain-fixed`) | `ri_region`, `ri_retain_fixed` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
 | FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
 | FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
@@ -328,6 +331,7 @@ per-port check where no shared case exercises it.
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |
+| builder-arm-claims-bound-roots | a wire-fuzz arm claims a root only when the leg holds that arm's read for it, and answers any other root absent by name; a truncated `shapes.Bounds` under `--builder` is refused as the engine refuses it, never thrown (SPEC-TABLES.md §4.2, AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT) | `make tables-cs-builder-fuzz` over the corpus seeds `shapes_bounds_*`, `tblsurf`, `tblvaluedefaults` and `packetunions` roots, red on an absent seed |
 | FL-01 | compressed -0 stored as +0 (SPEC-TABLES §3.3; rulings `fixed-compressed-negzero`) | `testdata/conformance/feature-witnesses/compressed-negzero-go` |
 | FL-08 | announcement over capacity refused before any entry (SPEC-TABLES §3.3 (the announcement)) | hostile corpus `announce-entries-too-large` |
 | FL-10 | the JSON read holds bytes to the UTF-8 rules (SPEC-TABLES §16.2, §16.3) | `str-illformed-at-bound`, `str-raw-non-ascii`, `str-lone-lead-surrogate` |
@@ -340,6 +344,8 @@ per-port check where no shared case exercises it.
 | GAP-15 | The LADDER is a normative table; never across signedness (FIXED-FORM-ALGORITHM §5); gaps OC9 | `report fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` |
 | GAP-16 | A fixed root's binary read has batch capacity one; older layouts come from the unit's `schema.lock` (README); gaps OC11, ObjC6, Zig16 | `report fixedevo_v3_batch2`; `fixedevo_v1_as_v3`, `fixedevo_v2_as_v3` |
 | GAP-21 | A refused read returns no value when it was handed none, and resets every instance it was handed (SPEC-TABLES §6.5, R4); gaps Sw R4 | FL-03's per-leg rows (docs/fix-ledger-1122.md) |
+| message-batch-refusal-resets-every-handed | a message batch read resets EVERY value it was handed, whatever the reason and wherever the refusal fell, a refusal before any body (`newer_form`, `no_vocabulary`, `batch_too_large`) included, and answers a count of `0` (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4). Java's `loadMessages` left the handed values as the caller held them on the capacity refusal | Java `TestMessageFormBatchJava/refusals_and_damage` (`batch_too_large_read`) |
+| armmin-arm-born-and-text-assert | a union arm `[A..B]T` is established at count `A` (SPEC §4.2, §4.6), so the C++ union reset states the arm's birth count after the resets of the arms that share its storage; and a write of an arm below `A` is a debug assert in every C++ writer, the text writer included (SPEC §5.1, row 3; R10). Both had been dropped from the C++ generator when Wave 2 landed (#4843) | C++ `TestCppArmMinHolds` (`arm-select`, `json`) and `TestCppArmMinHoldsNegativeControl`, whose plants each fail by name when they patch nothing |
 | GAP-23 | Compressed-float range ends compare at the field's width (SPEC-TABLES §3.3); gaps Li6 | `feature-witnesses/compressed-f32-ends` |
 | GAP-24 | A float32 field is written as a float32 (SPEC-TABLES §16.2); gaps Sw11 | the `text_float*` rows |
 | GAP-25 | A node is reached along every kind-17 edge from the root (SPEC-TABLES §4); gaps Hs7 | `framing varevo_cycle_*` |
@@ -693,3 +699,51 @@ SCHEMA_SLOW=1 go test -count=1 ./internal/check ./internal/codegen/goosetable ./
 | fixed-last-record-refusal-resets-every-row | a fixed batch read refused at its LAST record (`no_layout`, a bad layout hash) answers `-1` and leaves EVERY row handed in at its declared defaults, record 0 included; the caller's own values survive in none (SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4, GAP-21) | `TestGooseFixedHostileInput/P3`, `last_record_nolayout` |
 | message-batch-reset-after-the-walk | a refused message batch puts every value it was handed back at its declared defaults after the walk has decided the refusal, whatever refused: a non-finite float, an out-of-range value or damaged framing (SPEC-TABLES.md §6.5, "resets it after the refusal is decided"; R4) | `TestGooseLoadMessagesRefusalResetsBatch`; its negative control removes the `LoadMessages` reset and requires all three cases red |
 | wire-alone-rows-are-the-walks | `testdata/conformance/tables/WIRE-ALONE.txt` lists, by class, the framing rows whose condition §6.5 lists as DECIDABLE FROM THE WIRE ALONE. With a port's wire-alone walk removed, every listed row reads except the port's stated exceptions (rows its typed read also refuses, each with a reason), and no other row moves. moo states 6 exceptions (the inert-bytes rows, `frame_repeat_last_wins`, `node_table_twice`); Lua states 6 (the three `node_type_*` rows, the two ill-formed string-blob rows, `node_unknown_to_fixed_reader`). A listed row must be a refused framing row of MANIFEST.txt, and an exception must name a listed row and give a reason (SPEC-TABLES.md §6.5, DETECTION ORDER IS FREE) | `TestMooReadStrictWireCheckNegativeControl`, `TestLuaWireCheckNegativeControl`, `internal/wirealone` |
+
+### Retaining loads zero a reused report
+
+[SPEC-TABLES §6.5](SPEC-TABLES.md#65-the-two-load-paths-and-the-one-read)
+says every read zeroes a supplied report in full as its first act, and names
+the retain family among those reads. §6.6's "the report accumulates across
+the pair" is the save adding to the load's report, not the load keeping the
+caller's. Case `ri_retain` (`read-into`, form `retain`) loads
+[`retain_rt2.bin`](../testdata/wire/tables/retain_rt2.bin) as `tblrt1.Node`
+through `<Root>LoadRetain` with a roomy retention buffer, into a report the
+driver pre-filled: every counter nonzero, the refusal set (reason and detail
+too, where the language has them). After the read, every field of that report
+must equal the field the same read leaves in a fresh report, and the line is
+`zeroed`; any field that differs fails the row. The driver then loads the
+first 200 bytes of that file
+([`retain_rt2_cut.bin`](../testdata/conformance/tables/read-into/retain_rt2_cut.bin)),
+which every reader refuses, into the same report, and loads the lawful file
+once more and compares again. The answer owed is
+`read\nzeroed\nrefused\nread\nzeroed\n`, in every language.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §6.5: the retain family zeroes a supplied report in full, every counter and the refusal | `ri_retain` | red before its fix on C (kept and re-ORed a prior refusal, every counter), C++ (kept the caller's report and `damaged`), Java (no reset), C# (cleared three fields, kept `Damaged` and every counter; `Zero()` now also clears both build versions), Elixir (kept every counter but `missing_required`), Lua (kept every key but the two retain counters), Luau (never reset; retain counters piled up), Squirrel (reset only the two retain counters), Dart (kept the counters; fixed by #4950). Green with no fix: Go, JavaScript, Rust, Python, Ruby, C# (unity), Lobster, Goose, moo |
+
+### The plain region load and a fixed-root retaining load zero the report too
+
+Case `ri_region` (`read-into`, form `region`) runs the protocol of
+[`ri_retain`](#retaining-loads-zero-a-reused-report) through the PLAIN
+`<Root>Load` of `tblsurf.Counted`: the region read where the leg has one, the
+plain value `Load` otherwise. The lawful input is
+[`surf_counted_full.bin`](../testdata/conformance/tables/wire/surf_counted_full.bin)
+and the damaged one [`counted_cut.bin`](../testdata/conformance/tables/read-into/counted_cut.bin).
+The answer owed is `read\nzeroed\nrefused\nread\nzeroed\n`.
+
+Case `ri_retain_fixed` (form `retain-fixed`) calls `<Root>LoadRetain` on the
+FIXED-class root `tblsurf.Narrow` with a pre-filled report and the lawful
+[`surf_narrow_full.bin`](../testdata/conformance/tables/wire/surf_narrow_full.bin).
+§6.6 refuses that call by name. A leg whose refusal is a runtime one refuses
+through the report after zeroing it (§6.5), and owes `refused\nzeroed\n`. A
+leg whose refusal is at compile time, or a dynamic leg whose entry point
+raises a named error unconditionally before it touches the report, owes
+`unrepresentable\n`.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §6.5: the plain region `Load` zeroes a supplied report in full | `ri_region` | red before its fix on C# (`NativeLoadRegion` cleared three fields and restored `Damaged`), Lua (kept the count refusal, the out-of-range field and the retain counters), Luau and Squirrel (kept the retain counters; Squirrel also the shared-blob count). Green with no fix: C, C++, Go, Java, Dart, JavaScript, Rust, Python, Ruby, C# (unity), Elixir, Lobster, Goose, moo |
+| SPEC-TABLES §6.5, §6.6: a fixed-root `LoadRetain` refuses through a report it zeroed first | `ri_retain_fixed` | red before its fix on Goose and moo (refused, every other field kept), Elixir (handed back the caller's report), Squirrel (kept the shared-blob count) and Luau (READ the fixed root instead of refusing it, §6.6). `refused` then `zeroed` with no fix: Java, JavaScript, Rust, Lobster. `unrepresentable` (compile-time, or an unconditional named raise): C, C++, C# (modern and unity), Go, Dart, Python, Ruby, Lua |
+| SPEC-TABLES §6.5: `LoadRetain` of an UNKNOWN root name zeroes a supplied report before it answers nil (the fixed-root refusal alone comes first, §6.6) | Lua unit test `TestLuaLoadRetainUnknownRootZeroesReport` (no shared case: a root name the unit lacks is not a wire case) | red before its fix on Lua (the unknown-root `return nil` came before the zeroing, so the old report survived untouched). Not checked on the other legs |

@@ -695,14 +695,26 @@ end
 -- and counts one `retain_lost` there (§6.6). It defaults to C / 8, the bound
 -- no file can beat.
 local function load_retain(read: any, root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
-	if report.retained == nil then report.retained = 0 end
-	if report.retainLost == nil then report.retainLost = 0 end
+	-- EVERY READ ZEROES A SUPPLIED REPORT IN FULL as its first act (§6.5, the
+	-- retain family included): the plain load's own reset, then the two counters
+	-- the retaining load adds. They start at zero here and ACCUMULATE through
+	-- the capture; SaveRetain adds to what this load left (§6.6).
+	Load.resetReport(report)
+	report.retained = 0
+	report.retainLost = 0
 	local cap: number = capacity or 65536
 	if cap < 0 then cap = 0 end
 	local idCap: number = idCount or math.floor(cap / 8)
 	if idCap < 0 then idCap = 0 end
 	local new_store = function()
 		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0, idCap = idCap, nodeObjs = {} }
+	end
+	-- §6.6: retention needs a variable root. A FIXED-class root is refused by
+	-- name through the report, as the Squirrel leg's load does, and keeps nothing.
+	if S.lookup(root).fixed then
+		report.refused = 1
+		report.reason = "retention_requires_variable_region_root"
+		return nil, new_store()
 	end
 	local nodeObjs = {}
 	local v = read(root, bytes, report, nodeObjs)
