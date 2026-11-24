@@ -15,13 +15,12 @@ R14	owed: does not build: error[E0609]: no field `mismatch` on type `TableFixedR
 R24	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
 R26	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport`
 R3	owed: does not build: error[E0609]: no field `mismatch` on type `fixed_runtime::TableFixedReport`
-R30	owed: does not build: error: couldn't read `test/conformance/rust/rows/../../../../build/tables-generated-rust/vnew_cfloat_res_refine/build_version.rs`: No such file or directory (os...
 UnionArraysValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
 UnsignedIntegersValidData	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
 VD_signed_128	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
-W12	owed: fails: test hash_is_fnv1a64_over_the_block_count_included ... FAILED
-W13	owed: does not build: error: couldn't read `test/conformance/rust/rows/../../../../build/tables-generated-rust/v1/fixed_runtime.rs`: No such file or directory (os error 2)
+W12	owed: fails: thread 'hash_is_fnv1a64_over_the_block_count_included' panicked at test/conformance/rust/rows/W12.rs:84:9: assertion `left == right` failed: PaddedRow: the layout hash is not fnv1a64 over th...
+W13	owed: fails: thread 'cell_hash_is_the_cpp_reference' panicked at test/conformance/rust/rows/W13.rs:156:5: assertion `left == right` failed: Cell hash: rust 0x210ba0ea336b070f, C++ reference 0x70cc58293ab...
 W2	owed: does not build: error[E0609]: no field `oor` on type `tblp3::TableFixedReport`
 W4	owed: does not build: error[E0609]: no field `oor` on type `fixed_runtime::TableFixedReport`
 W7	owed: does not build: error[E0609]: no field `oor` on type `TableFixedReport`
-W8	owed: fails: test test_row_w8 ... FAILED
+W8	owed: fails: thread 'test_row_w8' panicked at test/conformance/rust/rows/W8.rs:153:10: the reader opens the wrong wire

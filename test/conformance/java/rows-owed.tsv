@@ -4,9 +4,7 @@
 # Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
 # written against an older generated API; "fails" is a row that runs and is red.
 P4	owed: fails: FAIL: K1 read under K2 produces 0 plan copy entries
-R26	owed: fails: required: KnownLayout[],byte[],int[],long,int
-R29	owed: fails: error: compilation failed
+R26	owed: does not build: test/conformance/java/rows/R26.java:85: error: method lineagePlans in class TableFixed cannot be applied to given types;
 R30	owed: fails: Exception in thread "main" java.lang.NumberFormatException: For input string: "adef4a350b922b78" under radix 16
 R9	owed: fails: RED: a known hash with the layout length one too large (L=1144 against the lock's 1143) — under the KNOWN hash the answer is the ONE name layout_malformed (go...
-W4	owed: fails: 372 passed, 18 failed
-W7	owed: fails: error: compilation failed
+W4	owed: fails: FAIL load returns 1 record

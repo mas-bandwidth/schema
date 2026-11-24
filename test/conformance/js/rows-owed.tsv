@@ -5,14 +5,15 @@
 # written against an older generated API; "fails" is a row that runs and is red.
 C3	owed: fails: FAIL - C3 IDENTITY: a forged name length past the cap is a clamp and not a refusal — the record still reads
 C9	owed: fails: FAIL: report.oor is exactly 1 (got 0)
+E6	owed: fails: placeholder that checks nothing: the row prints "PASS: E6 skeleton loaded" and exits 0 with no failure path (no non-zero exit, throw or assert), so the runner holds it red
 F4	owed: fails: FAIL F4 boundary: exactly 20+L bytes is NOT truncated — zero records, no refusal (n=-1, refused=0)
 P4	owed: fails: FAIL P4 wrong plan yields non-zero Flags at CameraId bytes
-R14	owed: fails: R14.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:1133
+R14	owed: fails: placeholder RED test that checks nothing: the row only prints "R14.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:1133" and exits 1 by design
 R15	owed: fails: TypeError: Cannot create property 'power' on number '0'
 R16	owed: fails: FAIL: count negative: clamped >= 1 (u32 > bound 4)
 R23	owed: fails: RED: TableFixedKnownLayout has 5 own members
 R25	owed: fails: TypeError: Cannot read properties of undefined (reading 'fill')
-R6	owed: fails: R6.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:518
+R6	owed: fails: placeholder RED test that checks nothing: the row only prints "R6.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:518" and exits 1 by design
 W13	owed: fails: FAIL FixedTableFixedHashLo: got 614323680, expected 2124077328
 W14	owed: fails: FAIL the generated tree carries the fixed tables (0 table modules)
 W4	owed: fails: FAIL reads correctly: a peer that leaves garbage in the slack still loads (n=-1, never a refusal)

@@ -4,7 +4,7 @@
 # Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
 # written against an older generated API; "fails" is a row that runs and is red.
 BoolValuesValidData	owed: fails: FAILED: hostile 0x7F: weapon_config_fixed_load returned {:error, :wire_damaged, %{unknown: 0, widened: 0, layout_hash: 0, retain_lost: 0, retained: 0}}
-P3	owed: fails: FAIL: mutant 4999 lead 43: escaping ** (CaseClauseError) no case clause matching:
+P3	owed: fails: FAIL: mutant 1 lead 13: escaping ** (CaseClauseError) no case clause matching: :not_a_cook
 R16	owed: fails: ** (RuntimeError) FAIL: bin/schema generate --lang elixir --out build/tmp-r16/unknown_census/new build/tmp-r16/unknown_census/lock/pair.schema exited 1: build/t...
 W12	owed: fails: FAIL W12 2 Elixir.Tabledemo.KeyedFixed.gunner_config: hash 0xD79E087C3613C2FD != fnv1a64(<<count=3::little-32>> ++ entries) — the 4-byte count is NOT in the h...
 W5	owed: fails: FAIL count within bounds writes successfully
