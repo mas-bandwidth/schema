@@ -91,7 +91,7 @@ verify-reuse-negative-control: verify-toolchain-js build/verify-reuse-bin build/
 		echo "NEGATIVE CONTROL FAILED: sabotaged dirty-instance JS message reader passed verify-reuse" >&2; exit 1; fi
 	@grep -q 'FAILED:' build/verify-reuse-nc/dirty.log || \
 		{ echo "NEGATIVE CONTROL FAILED: unexpected dirty-instance failure log:" >&2; cat build/verify-reuse-nc/dirty.log >&2; exit 1; }
-	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/block.go").read_text(); target = "new DataView(bytes.buffer, bytes.byteOffset, bytes.length)"; assert target in src, "missing JS block byteOffset anchor"; pathlib.Path("build/verify-reuse-nc/block.gotext").write_text(src.replace(target, "new DataView(bytes.buffer, 0, bytes.length)", 2))'
+	@python3 -c 'import pathlib; src = pathlib.Path("internal/codegen/jstable/block.go").read_text(); target = "new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length)"; assert target in src, "missing JS block byteOffset anchor"; pathlib.Path("build/verify-reuse-nc/block.gotext").write_text(src.replace(target, "new globalThis.DataView(bytes.buffer, 0, bytes.length)", 2))'
 	@printf '{"Replace":{"%s/internal/codegen/jstable/block.go":"%s/build/verify-reuse-nc/block.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-reuse-nc/overlay-subslice.json
 	go build -overlay=build/verify-reuse-nc/overlay-subslice.json -o build/verify-reuse-nc/schema-subslice ./cmd/schema
 	@if NODE="$(NODE)" ./build/verify-reuse-bin --lang js --schema ./build/verify-reuse-nc/schema-subslice --work build/verify-reuse-nc/work-subslice --corpus build/verify-reuse/corpus > build/verify-reuse-nc/subslice.log 2>&1; then \
