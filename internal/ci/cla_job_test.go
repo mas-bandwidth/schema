@@ -128,7 +128,7 @@ func TestCAASelfTestPullRequestIsLimitedToItsInputs(t *testing.T) {
 	wf := workflows(t, repoRoot(t))["caa-self-test.yml"]
 	var paths string
 	inPR := false
-	for _, l := range strings.Split(wf, "\n") {
+	for l := range strings.SplitSeq(wf, "\n") {
 		switch {
 		case l == "  pull_request:":
 			inPR = true
