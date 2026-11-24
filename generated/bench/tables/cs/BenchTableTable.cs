@@ -67,7 +67,7 @@ namespace Benchtable
         {
             Unknown = 0; Widened = 0; Retained = 0; RetainLost = 0; Refused = false; Reason = null;
             NonFiniteFloat = null; NonFiniteReason = null; Verdict = default; Damaged = false;
-            KindChanged = 0; LayoutHash = 0;
+            KindChanged = 0; BuildVersionRemote = 0; BuildVersionOwn = 0; LayoutHash = 0;
         }
     }
 
@@ -6689,6 +6689,12 @@ namespace Benchtable
                 int n = global::System.Math.Min(src.Length / width, dst.Length);
                 MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
                 if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+                // THE SLOT LANDS WHOLE (docs/SPEC-TABLES.md §3.4, THE PREFILL IS WHAT
+                // ANSWERS "ABSENT FIELD"; §6.5): an older writer's shorter [N]T marks
+                // the slot landed, so the hole list never resets it. The reader's
+                // elements past the writer's N therefore take their default here, and
+                // never keep the caller's old values.
+                dst.Slice(n).Clear();
             }
             public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
             {
@@ -11928,11 +11934,11 @@ namespace Benchtable
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Chat.Speaker = unchecked((uint)v), reset: (t) => { t.GameEvent.Chat.Speaker = 0; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.ItemId = unchecked((uint)v), reset: (t) => { t.GameEvent.Pickup.ItemId = 0; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.Amount = unchecked((int)v), reset: (t) => { t.GameEvent.Pickup.Amount = 0; }),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Loadout != null) b.Slice(0, global::System.Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); }, reset: (t) => { if (t.Loadout != null) Array.Clear(t.Loadout, 0, t.Loadout.Length); }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Loadout != null) { int c = global::System.Math.Min(b.Length, t.Loadout.Length); b.Slice(0, c).CopyTo(t.Loadout); t.Loadout.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Loadout != null) Array.Clear(t.Loadout, 0, t.Loadout.Length); }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PlayerNameLength = (int)v, reset: (t) => { t.PlayerNameLength = 0; }),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.PlayerName != null) b.Slice(0, global::System.Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); }, reset: (t) => { if (t.PlayerName != null) { Array.Clear(t.PlayerName, 0, t.PlayerName.Length); } }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.PlayerName != null) { int c = global::System.Math.Min(b.Length, t.PlayerName.Length); b.Slice(0, c).CopyTo(t.PlayerName); t.PlayerName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.PlayerName != null) { Array.Clear(t.PlayerName, 0, t.PlayerName.Length); } }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PayloadLength = (int)v, reset: (t) => { t.PayloadLength = 0; }),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Payload != null) b.Slice(0, global::System.Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); }, reset: (t) => { if (t.Payload != null) { Array.Clear(t.Payload, 0, t.Payload.Length); } }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Payload != null) { int c = global::System.Math.Min(b.Length, t.Payload.Length); b.Slice(0, c).CopyTo(t.Payload); t.Payload.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Payload != null) { Array.Clear(t.Payload, 0, t.Payload.Length); } }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimX = (float)d, reset: (t) => { t.AimX = 0.0f; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimY = (float)d, reset: (t) => { t.AimY = 0.0f; }),
             new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimZ = (float)d, reset: (t) => { t.AimZ = 0.0f; }),
@@ -12289,9 +12295,9 @@ namespace Benchtable
         {
             switch (slot)
             {
-                case 293: { if (t.Loadout != null) b.Slice(0, global::System.Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); } break;
-                case 295: { if (t.PlayerName != null) b.Slice(0, global::System.Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); } break;
-                case 297: { if (t.Payload != null) b.Slice(0, global::System.Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); } break;
+                case 293: { if (t.Loadout != null) { int c = global::System.Math.Min(b.Length, t.Loadout.Length); b.Slice(0, c).CopyTo(t.Loadout); t.Loadout.AsSpan(c).Clear(); } } break;
+                case 295: { if (t.PlayerName != null) { int c = global::System.Math.Min(b.Length, t.PlayerName.Length); b.Slice(0, c).CopyTo(t.PlayerName); t.PlayerName.AsSpan(c).Clear(); } } break;
+                case 297: { if (t.Payload != null) { int c = global::System.Math.Min(b.Length, t.Payload.Length); b.Slice(0, c).CopyTo(t.Payload); t.Payload.AsSpan(c).Clear(); } } break;
                 default: break;
             }
         }

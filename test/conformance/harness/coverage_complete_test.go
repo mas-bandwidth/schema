@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 func completeCoverage(shape map[coverageKey]*coverageExpected) ([]coverageRow, map[string]string) {
@@ -237,6 +238,7 @@ func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
 		if !guarded {
 			run = strings.ReplaceAll(run, "--require-original-nine", "")
 		}
+		testinputs.Files(t, ".github/workflows/nightly-conformance.yml")
 		cmd := exec.Command("bash", "--noprofile", "--norc", "-c", run)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "GITHUB_STEP_SUMMARY="+summary)
