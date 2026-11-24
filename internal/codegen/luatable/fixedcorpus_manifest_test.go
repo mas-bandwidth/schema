@@ -240,7 +240,7 @@ func luaSpell(v string, enum *ir.Enum) (string, error) {
 	}
 	raw, err := hex.DecodeString(h)
 	if err != nil {
-		return "", fmt.Errorf("the dumped text %q is not hex: %v", v, err)
+		return "", fmt.Errorf("the dumped text %q is not hex: %w", v, err)
 	}
 	if enum != nil {
 		for i, name := range enum.Variants {
