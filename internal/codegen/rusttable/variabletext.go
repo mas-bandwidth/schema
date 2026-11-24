@@ -1276,12 +1276,13 @@ func (g *gen) fieldKey(f *ir.Field) string {
 }
 
 // emitTextContainerCap refuses a container — an array, a text list, a map's
-// object or an enum-keyed array's object — written at depth `d` past the cap,
-// an empty `[]` or `{}` included. The read counts every container it walks
-// (docs/SPEC-TABLES.md §16.2), so the write counts the same ones in the same
-// unit (§16.14 W2; the oracle's containerCap in internal/tabletext/write.go),
-// through the refusal a table value past the cap takes, in every build. A
-// union's object is judged by <union>_json_write, a table's by its json_write.
+// object, an enum-keyed array's object or a flags value's array — written at
+// depth `d` past the cap, an empty `[]` or `{}` included. The read counts
+// every container it walks (docs/SPEC-TABLES.md §16.2), so the write counts the
+// same ones in the same unit (§16.14 W2; the oracle's containerCap in
+// internal/tabletext/write.go), through the refusal a table value past the cap
+// takes, in every build. A union's object is judged by <union>_json_write, a
+// table's by its json_write.
 func emitTextContainerCap(b *strings.Builder, d, ind string) {
 	fmt.Fprintf(b, "%sif %s > JSON_DEPTH_CAP { w.refused = true; }\n", ind, d)
 }
@@ -1415,6 +1416,8 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 			// a FLAGS MASK is the array of its set bits' names, in bit order
 			// (docs/SPEC-TABLES.md §16.2); a bit no variant names has no text
 			// spelling, so the writer refuses it as the oracle does
+			// the array is a container the depth cap counts, `[]` included (§16.14 W2)
+			emitTextContainerCap(b, d, ind)
 			fmt.Fprintf(b, "%s{\n", ind)
 			fmt.Fprintf(b, "%s    const NAMES: [&str; %d] = [", ind, len(fl.Variants))
 			for i, v := range fl.Variants {
