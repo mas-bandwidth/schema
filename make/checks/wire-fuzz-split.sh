@@ -32,6 +32,7 @@
 # that answers 0 seeds: every relation above holds between zeros, so a leg
 # that answered nothing would pass all of them.
 set -eu
+set -o pipefail
 
 usage() {
 	echo "usage: wire-fuzz-split.sh complete <recipe> <plain log> <arm log>... | complement <recipe> <plain log> <builder log>" >&2
@@ -47,8 +48,10 @@ split() {
 		echo "$recipe: $1 is missing: the arm's run left no log" >&2
 		exit 1
 	fi
-	# the pipeline's status is tail's, so a log with no match leaves line empty
-	line=$(grep -E '^wire-fuzz[a-z-]*( retain)?: seed [0-9]+, [0-9]+ seeds over [0-9]+ roots' "$1" | tail -1)
+	# the last summary line; awk names an unreadable log itself, and a log with no
+	# match leaves line empty, which is refused below. (grep | tail would now
+	# abort here on grep's status 1, with no word about which log it was.)
+	line=$(awk '/^wire-fuzz[a-z-]*( retain)?: seed [0-9]+, [0-9]+ seeds over [0-9]+ roots/ { l = $0 } END { print l }' "$1")
 	if [ -z "$line" ]; then
 		echo "$recipe: $1 carries no wire-fuzz summary line: the run proved nothing" >&2
 		exit 1
