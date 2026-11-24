@@ -83,7 +83,7 @@ define moo-wire-fuzz-run
 	@mkdir -p build/wire-fuzz
 	@rm -f $(3) && touch $(3)
 	@MOOFUZZ_NOTE=$(CURDIR)/$(3) \
-		./build/conformance-harness wire-fuzz --driver test/conformance/moo/wirefuzz-driver \
+		./build/conformance-harness wire-fuzz --leg moo --driver test/conformance/moo/wirefuzz-driver \
 		--seed $(MOO_WIRE_FUZZ_SEED) --n $(MOO_WIRE_FUZZ_N) $(1) --failed build/wire-fuzz/failed-moo.bin \
 		> $(2) 2>&1; \
 		status=$$?; cat $(2); \
