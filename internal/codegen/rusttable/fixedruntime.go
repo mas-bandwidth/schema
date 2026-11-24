@@ -2097,7 +2097,7 @@ fn compile_entry(
             // text: the length, held to MY bound in bytes, then the content.
             // A NARROWED CAPACITY is no widening of this reader (§5.1): the
             // entry is unlawful whatever length the file holds, never a text
-            // clamped to the shorter span.
+            // cut down to the shorter span.
             if te.size > me.size {
                 c.unlawful = 1;
                 return;

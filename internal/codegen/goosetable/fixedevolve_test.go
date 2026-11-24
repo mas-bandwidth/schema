@@ -97,21 +97,6 @@ func evolutionLoad(t *testing.T, schema string) *ir.Unit {
 	return u
 }
 
-// joinedProbe folds a probe's one input into one line: the verdict line then
-// the field lines it printed (one print per field).
-func joinedProbe(t *testing.T, out []byte) string {
-	t.Helper()
-	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	if len(lines) == 0 {
-		t.Fatalf("the probe printed nothing")
-	}
-	var parts []string
-	for _, line := range lines {
-		parts = append(parts, strings.TrimSpace(line))
-	}
-	return strings.Join(parts, " ")
-}
-
 // evolutionLines splits a probe's output into its one line per input.
 func evolutionLines(t *testing.T, out []byte, want int) []string {
 	t.Helper()
