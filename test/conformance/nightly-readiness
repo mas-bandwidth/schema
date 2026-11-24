@@ -397,7 +397,9 @@ class Runner:
         self.results = []
         self.native_passes = set()
         self.lang = lang
-        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1")
+        # SCHEMA_REQUIRE_CASEFOLD: a folding-volume test fails, never skips,
+        # when SCHEMA_CASEFOLD_DIR names no case-folding directory.
+        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1", SCHEMA_REQUIRE_CASEFOLD="1")
         # Never update a reference pin or accept cache/no-test overrides here.
         for key in tuple(self.env):
             if key in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES", "SCHEMA_SKIP_LEGS") or key.startswith("SCHEMA_UPDATE_"):
