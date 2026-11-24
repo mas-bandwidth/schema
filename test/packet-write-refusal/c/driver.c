@@ -1,10 +1,12 @@
 /* C packet Write refusal surface (docs/SPEC.md §5.1, write-refusal-packet).
-   Every shared case starts from the type's default value and changes ONE
-   field; it runs in a child, so a debug assert is observed as the refusal
-   (an abort) rather than ending the case list. A "wrote" twin must be
-   written, read back and compare equal. The driver fails on any case in
-   cases.txt it has no setter for, and on any setter cases.txt does not name.
-   Cases are loaded before any child starts: the child shares the open file
+   The one row list is test/conformance/write-refusal-packet/rows.txt
+   (<name> <verdict> <op> <arg>); this driver keys its setters by name and
+   leaves op and arg to the probes that apply them. Every row starts from the
+   type's default value and changes ONE field; it runs in a child, so a debug
+   assert is observed as the refusal (an abort) rather than ending the list. A
+   "wrote" twin must be written, read back and compare equal. The driver fails
+   on any row it has no setter for, and on any setter rows.txt does not name.
+   Rows are loaded before any child starts: the child shares the open file
    description, and an abort rewinds a buffered read. */
 #include <signal.h>
 #include <stdio.h>
@@ -16,7 +18,7 @@
 
 #include "RefusalPacketWire.h"
 
-typedef packetwriterefusal_packet_write_refusal_t value_t;
+typedef packetrefusal_packet_write_refusal_t value_t;
 
 static void set_text( value_t * v, int length, char fill )
 {
@@ -30,11 +32,12 @@ static void set_scalar_low( value_t * v ) { v->scalar = -1; }
 static void set_scalar_at_max( value_t * v ) { v->scalar = 10; }
 static void set_scalar_at_min( value_t * v ) { v->scalar = 0; }
 static void set_bits_wide( value_t * v ) { v->narrow = 200; }
+static void set_bits_just_wide( value_t * v ) { v->narrow = 128; }
 static void set_bits_at_max( value_t * v ) { v->narrow = 127; }
-static void set_enum_high( value_t * v ) { v->grade = (packetwriterefusal_grade_t) 4; }
-static void set_enum_at_max( value_t * v ) { v->grade = PACKETWRITEREFUSAL_GRADE_GOLD; }
-static void set_union_tag_high( value_t * v ) { v->shot.type = (packetwriterefusal_shot_type_t) 3; }
-static void set_union_tag_at_max( value_t * v ) { v->shot.type = PACKETWRITEREFUSAL_SHOT_TYPE_MAX; }
+static void set_enum_high( value_t * v ) { v->grade = (packetrefusal_grade_t) 4; }
+static void set_enum_at_max( value_t * v ) { v->grade = PACKETREFUSAL_GRADE_GOLD; }
+static void set_union_tag_high( value_t * v ) { v->shot.type = (packetrefusal_shot_type_t) 3; }
+static void set_union_tag_at_max( value_t * v ) { v->shot.type = PACKETREFUSAL_SHOT_TYPE_MAX; }
 static void set_count_high( value_t * v ) { v->window_count = 9; }
 static void set_count_low( value_t * v ) { v->window_count = 1; }
 static void set_count_at_max( value_t * v ) { v->window_count = 8; }
@@ -49,16 +52,18 @@ static void set_reserved_wrong( value_t * v ) { v->reserved_zero = 1; }
 static void set_reserved_at( value_t * v ) { v->reserved_zero = 0; }
 static void set_flags_wide( value_t * v ) { v->perks = 1ULL << 3; }
 static void set_flags_wide_high( value_t * v ) { v->perks = 1ULL << 40; }
-static void set_flags_at_max( value_t * v ) { v->perks = PACKETWRITEREFUSAL_PERK_SHIELD | PACKETWRITEREFUSAL_PERK_BOOST | PACKETWRITEREFUSAL_PERK_CLOAK; }
+static void set_flags_at_max( value_t * v ) { v->perks = PACKETREFUSAL_PERK_SHIELD | PACKETREFUSAL_PERK_BOOST | PACKETREFUSAL_PERK_CLOAK; }
 
 static const struct
 {
     const char * name;
     void ( *set )( value_t * );
 } setters[] = {
+    // write-refusal-packet setters: begin
     { "scalar_high", set_scalar_high }, { "scalar_low", set_scalar_low },
     { "scalar_at_max", set_scalar_at_max }, { "scalar_at_min", set_scalar_at_min },
-    { "bits_wide", set_bits_wide }, { "bits_at_max", set_bits_at_max },
+    { "bits_wide", set_bits_wide }, { "bits_just_wide", set_bits_just_wide },
+    { "bits_at_max", set_bits_at_max },
     { "enum_high", set_enum_high }, { "enum_at_max", set_enum_at_max },
     { "union_tag_high", set_union_tag_high }, { "union_tag_at_max", set_union_tag_at_max },
     { "count_high", set_count_high }, { "count_low", set_count_low },
@@ -69,6 +74,7 @@ static const struct
     { "reserved_wrong", set_reserved_wrong }, { "reserved_at", set_reserved_at },
     { "flags_wide", set_flags_wide }, { "flags_wide_high", set_flags_wide_high },
     { "flags_at_max", set_flags_at_max },
+    // write-refusal-packet setters: end
 };
 #define SETTER_COUNT ( (int) ( sizeof( setters ) / sizeof( setters[0] ) ) )
 
@@ -89,17 +95,17 @@ static int run_case( int setter )
     serialize_read_stream_t reader;
     int written;
 
-    value = packetwriterefusal_new_packet_write_refusal();
+    value = packetrefusal_new_packet_write_refusal();
     setters[setter].set( &value );
 
     serialize_write_stream_init( &writer, (unsigned char *) encoded, (int) sizeof( encoded ) );
-    if ( !packetwriterefusal_write_packet_write_refusal( &writer, &value ) ) { return 10; }
+    if ( !packetrefusal_write_packet_write_refusal( &writer, &value ) ) { return 10; }
     serialize_write_flush( &writer );
     written = serialize_write_bytes_processed( &writer );
 
     memset( &decoded, 0, sizeof( decoded ) );
     serialize_read_stream_init( &reader, (const unsigned char *) encoded, written );
-    if ( !packetwriterefusal_read_packet_write_refusal( &reader, &decoded ) ) { return 11; }
+    if ( !packetrefusal_read_packet_write_refusal( &reader, &decoded ) ) { return 11; }
     if ( decoded.scalar != value.scalar || decoded.narrow != value.narrow || decoded.grade != value.grade
          || decoded.window_count != value.window_count || decoded.text_length != value.text_length
          || memcmp( decoded.text, value.text, (size_t) value.text_length ) != 0 || decoded.shot.type != value.shot.type
@@ -129,22 +135,31 @@ int main( int argc, char ** argv )
     int wrote = 0;
     int i, j;
     memset( named, 0, sizeof( named ) );
-    if ( argc != 2 ) { fprintf( stderr, "usage: %s cases.txt\n", argv[0] ); return 2; }
+    if ( argc != 2 ) { fprintf( stderr, "usage: %s rows.txt\n", argv[0] ); return 2; }
     cases = fopen( argv[1], "r" );
     if ( cases == NULL ) { perror( argv[1] ); return 2; }
     while ( fgets( line, sizeof( line ), cases ) != NULL )
     {
         char * name;
         char * verdict;
+        char * op;
+        char * arg;
         char * first = trim( line );
         int setter = -1;
         if ( *first == 0 || *first == '#' ) { continue; }
-        name = strtok( first, "|" );
-        verdict = strtok( NULL, "|" );
-        if ( name == NULL || verdict == NULL ) { fprintf( stderr, "FAILED: packet-write-refusal: invalid case row\n" ); failed = 1; break; }
-        name = trim( name ); verdict = trim( verdict );
+        name = strtok( first, " \t" );
+        verdict = strtok( NULL, " \t" );
+        op = strtok( NULL, " \t" );
+        arg = strtok( NULL, " \t" );
+        if ( name == NULL || verdict == NULL || op == NULL || arg == NULL || strtok( NULL, " \t" ) != NULL )
+        {
+            fprintf( stderr, "FAILED: packet-write-refusal: a row is not <name> <verdict> <op> <arg>\n" );
+            failed = 1;
+            break;
+        }
         for ( j = 0; j < SETTER_COUNT; j++ ) { if ( strcmp( setters[j].name, name ) == 0 ) { setter = j; } }
-        if ( setter < 0 ) { fprintf( stderr, "FAILED: packet-write-refusal %s: neither run nor named not representable in C\n", name ); failed = 1; continue; }
+        if ( setter < 0 ) { fprintf( stderr, "FAILED: packet-write-refusal %s: a row in rows.txt this driver has no setter for\n", name ); failed = 1; continue; }
+        if ( named[setter] ) { fprintf( stderr, "FAILED: packet-write-refusal %s: named twice in rows.txt\n", name ); failed = 1; continue; }
         if ( count >= (int) ( sizeof( loaded ) / sizeof( loaded[0] ) ) || strlen( name ) >= sizeof( loaded[0].name ) || strlen( verdict ) >= sizeof( loaded[0].verdict ) )
         {
             fprintf( stderr, "FAILED: packet-write-refusal: invalid case row\n" );
@@ -161,7 +176,7 @@ int main( int argc, char ** argv )
     fclose( cases );
     for ( j = 0; j < SETTER_COUNT; j++ )
     {
-        if ( !named[j] ) { fprintf( stderr, "FAILED: packet-write-refusal %s: driver case missing from cases.txt\n", setters[j].name ); failed = 1; }
+        if ( !named[j] ) { fprintf( stderr, "FAILED: packet-write-refusal %s: a setter this driver runs that rows.txt does not name\n", setters[j].name ); failed = 1; }
     }
     if ( failed ) { return 1; }
 
@@ -199,6 +214,6 @@ int main( int argc, char ** argv )
         else { fprintf( stderr, "FAILED: packet-write-refusal %s: invalid verdict\n", loaded[i].name ); failed = 1; }
     }
     if ( failed ) { return 1; }
-    printf( "packet-write-refusal C: %d cases, %d refused, %d written\n", count, refused, wrote );
+    printf( "packet-write-refusal C: %d rows, %d refused, %d written\n", count, refused, wrote );
     return 0;
 }

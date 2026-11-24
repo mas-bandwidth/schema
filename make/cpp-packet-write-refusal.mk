@@ -1,13 +1,13 @@
 # THE WRITE-REFUSAL-PACKET SURFACE, C++ LEG (docs/SPEC.md §5.1; the Go leg is
-# TestWriteRefusalPacket). The shared cases under test/packet-write-refusal/
+# TestWriteRefusalPacket). The rows of test/conformance/write-refusal-packet/rows.txt
 # each change one field of a default packet and write it in a debug child, so
 # an abort is the refusal; a lawful twin at the same boundary must be written.
 PACKET_WRITE_REFUSAL_CPP := build/packet-write-refusal/cpp
 PACKET_WRITE_REFUSAL_CPP_NEGATIVE := build/packet-write-refusal/cpp-negative
-PACKET_WRITE_REFUSAL_SCHEMA := test/packet-write-refusal/RefusalPacket.schema
-PACKET_WRITE_REFUSAL_CASES := test/packet-write-refusal/cases.txt
+PACKET_WRITE_REFUSAL_SCHEMA := test/conformance/write-refusal-packet/RefusalPacket.schema
+PACKET_WRITE_REFUSAL_CASES := test/conformance/write-refusal-packet/rows.txt
 
-build/packet-write-refusal/cpp/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema make/cpp-packet-write-refusal.mk
+build/packet-write-refusal/cpp/.stamp: bin/schema test/conformance/write-refusal-packet/RefusalPacket.schema make/cpp-packet-write-refusal.mk
 	@mkdir -p $(PACKET_WRITE_REFUSAL_CPP)
 	./bin/schema generate --lang cpp --out $(PACKET_WRITE_REFUSAL_CPP) $(PACKET_WRITE_REFUSAL_SCHEMA)
 	@touch $@

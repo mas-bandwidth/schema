@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,13 +11,15 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	wrpacket "github.com/mas-bandwidth/schema/v2/test/conformance/write-refusal-packet"
 )
 
 // TestWriteRefusalPacket holds docs/SPEC.md §5.1's packet writer on the Go
-// leg: every caller-holdable value the declaration does not admit is refused
-// with serialize.ErrValueOutOfRange, and the lawful value at the same boundary
-// is written. The negative control changes the emitter's upper bound
-// comparison and requires the boundary case to go red.
+// leg over the one shared list, test/conformance/write-refusal-packet/rows.txt
+// and its RefusalPacket.schema: every caller-holdable value the declaration
+// does not admit is refused with serialize.ErrValueOutOfRange, and the lawful
+// value at the same boundary is written. The negative control changes the
+// emitter's upper bound comparison and requires the boundary case to go red.
 func TestWriteRefusalPacket(t *testing.T) {
 	runWriteRefusalPacket(t)
 
@@ -41,165 +44,161 @@ func TestWriteRefusalPacketSurface(t *testing.T) {
 	runWriteRefusalPacket(t)
 }
 
-// writeRefusalPacketSchema carries one field per row §5.1 names: a ranged
-// scalar, a bits(N) value, an enum, a counted array, a string, a union, and a
-// constant and a reserved-range field whose only lawful value is the
-// declared one, and a flags mask of width 3. The real const() and reserved() wire items ride beside them
-// so the writer's own constant and zero bits are exercised too.
-const writeRefusalPacketSchema = `package packetrefusal
-
-enum Grade
-{
-    Bronze
-    Silver
-    Gold
-}
-
-flags Perk
-{
-    Shield
-    Boost
-    Cloak
-}
-
-type Laser
-{
-    power uint32
-}
-
-type Missile
-{
-    fuel uint32
-}
-
-union Shot
-{
-    laser Laser
-    missile Missile
-}
-
-type PacketWriteRefusal
-{
-    scalar         int32   | min = 0, max = 10
-    narrow         bits(7)
-    grade          Grade
-    window         [2..8]uint32
-    text           string(8)
-    shot           Shot
-    fixed_constant int32 = 5 | min = 5, max = 5
-    reserved_zero  int32 = 0 | min = 0, max = 0
-    perks          Perk
-    const(0xAB, 8)
-    reserved(5)
-}
-`
-
-// writeRefusalPacketProbe runs every row's refused value and its lawful twin
-// through the generated packet writer.
-const writeRefusalPacketProbe = `package packetrefusal
+// writeRefusalPacketProbe is the Go leg's probe, built as its own main package
+// beside the generated unit: for every row of rows.txt it makes a fresh lawful
+// PacketWriteRefusal, applies the row's ONE op, runs the generated packet
+// writer and prints "<name> refused" for serialize.ErrValueOutOfRange or
+// "<name> wrote" for a completed write. Any other error, an unknown op, or an
+// argument the field cannot hold ends the run loudly: none is a refusal.
+const writeRefusalPacketProbe = `package main
 
 import (
+	"encoding/hex"
 	"errors"
-	"testing"
+	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+
+	packetrefusal "packetrefusalprobe"
 
 	"github.com/mas-bandwidth/serialize.go/v2"
 )
 
-func TestWriteRefusalPacketRows(t *testing.T) {
-	cases := []struct {
-		name string
-		want string
-		set  func(*PacketWriteRefusal)
-	}{
-		{"scalar_high", "refused", func(v *PacketWriteRefusal) { v.Scalar = 11 }},
-		{"scalar_low", "refused", func(v *PacketWriteRefusal) { v.Scalar = -1 }},
-		{"scalar_at_max", "wrote", func(v *PacketWriteRefusal) { v.Scalar = 10 }},
-		{"scalar_at_min", "wrote", func(v *PacketWriteRefusal) { v.Scalar = 0 }},
-		{"bits_wide", "refused", func(v *PacketWriteRefusal) { v.Narrow = 200 }},
-		{"bits_at_max", "wrote", func(v *PacketWriteRefusal) { v.Narrow = 127 }},
-		{"enum_high", "refused", func(v *PacketWriteRefusal) { v.Grade = Grade(4) }},
-		{"enum_at_max", "wrote", func(v *PacketWriteRefusal) { v.Grade = GradeGold }},
-		{"union_tag_high", "refused", func(v *PacketWriteRefusal) { v.Shot.Type = ShotType(3) }},
-		{"union_tag_at_max", "wrote", func(v *PacketWriteRefusal) { v.Shot.Type = ShotTypeMax }},
-		{"count_high", "refused", func(v *PacketWriteRefusal) { v.WindowCount = 9 }},
-		{"count_low", "refused", func(v *PacketWriteRefusal) { v.WindowCount = 1 }},
-		{"count_at_max", "wrote", func(v *PacketWriteRefusal) { v.WindowCount = 8 }},
-		{"count_at_min", "wrote", func(v *PacketWriteRefusal) { v.WindowCount = 2 }},
-		{"text_long", "refused", func(v *PacketWriteRefusal) { v.TextLength = 9 }},
-		{"text_illformed", "refused", func(v *PacketWriteRefusal) { v.Text[0] = 0xff; v.TextLength = 1 }},
-		{"text_zero", "refused", func(v *PacketWriteRefusal) { v.Text[0] = 0; v.TextLength = 1 }},
-		{"text_at_max", "wrote", func(v *PacketWriteRefusal) {
-			for i := range v.Text {
-				v.Text[i] = 'a'
-			}
-			v.TextLength = 8
-		}},
-		{"const_wrong", "refused", func(v *PacketWriteRefusal) { v.FixedConstant = 6 }},
-		{"const_at", "wrote", func(v *PacketWriteRefusal) { v.FixedConstant = 5 }},
-		{"reserved_wrong", "refused", func(v *PacketWriteRefusal) { v.ReservedZero = 1 }},
-		{"reserved_at", "wrote", func(v *PacketWriteRefusal) { v.ReservedZero = 0 }},
-		{"flags_wide", "refused", func(v *PacketWriteRefusal) { v.Perks = 1 << 3 }},
-		{"flags_wide_high", "refused", func(v *PacketWriteRefusal) { v.Perks = 1 << 40 }},
-		{"flags_at_max", "wrote", func(v *PacketWriteRefusal) { v.Perks = PerkShield | PerkBoost | PerkCloak }},
+func die(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "write-refusal-packet probe: "+format+"\n", args...)
+	os.Exit(2)
+}
+
+// set stores arg into an integer field of any width, and refuses a value the
+// field cannot hold rather than truncating it.
+func set(field reflect.Value, arg string) {
+	switch field.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n, err := strconv.ParseInt(arg, 10, 64)
+		if err != nil || field.OverflowInt(n) {
+			die("%q does not fit a %s", arg, field.Type())
+		}
+		field.SetInt(n)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n, err := strconv.ParseUint(arg, 10, 64)
+		if err != nil || field.OverflowUint(n) {
+			die("%q does not fit a %s", arg, field.Type())
+		}
+		field.SetUint(n)
+	default:
+		die("a field of kind %s is not an integer", field.Kind())
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			value := NewPacketWriteRefusal()
-			c.set(&value)
-			stream := serialize.NewWriteStream(make([]byte, 256))
-			err := WritePacketWriteRefusal(stream, &value)
-			switch c.want {
-			case "refused":
-				if !errors.Is(err, serialize.ErrValueOutOfRange) {
-					t.Fatalf("FAILED: %s: wrote or erred wrongly, got %v, want serialize.ErrValueOutOfRange", c.name, err)
-				}
-			case "wrote":
-				if err != nil {
-					t.Fatalf("FAILED: %s: the lawful value at the boundary was refused: %v", c.name, err)
-				}
-			default:
-				t.Fatalf("%s: unknown expectation %q", c.name, c.want)
-			}
-		})
+}
+
+func apply(v *packetrefusal.PacketWriteRefusal, op, arg string) {
+	r := reflect.ValueOf(v).Elem()
+	switch op {
+	case "scalar":
+		set(r.FieldByName("Scalar"), arg)
+	case "narrow":
+		set(r.FieldByName("Narrow"), arg)
+	case "grade":
+		set(r.FieldByName("Grade"), arg)
+	case "shot_tag":
+		set(r.FieldByName("Shot").FieldByName("Type"), arg)
+	case "window_count":
+		set(r.FieldByName("WindowCount"), arg)
+	case "text_length":
+		set(r.FieldByName("TextLength"), arg)
+	case "text_bytes":
+		b, err := hex.DecodeString(arg)
+		if err != nil || len(b) > len(v.Text) {
+			die("text_bytes %q", arg)
+		}
+		clear(v.Text[:])
+		copy(v.Text[:], b)
+		set(r.FieldByName("TextLength"), strconv.Itoa(len(b)))
+	case "text_fill":
+		n, err := strconv.Atoi(arg)
+		if err != nil || n < 0 || n > len(v.Text) {
+			die("text_fill %q", arg)
+		}
+		for i := range n {
+			v.Text[i] = 'a'
+		}
+		set(r.FieldByName("TextLength"), arg)
+	case "fixed_constant":
+		set(r.FieldByName("FixedConstant"), arg)
+	case "reserved_zero":
+		set(r.FieldByName("ReservedZero"), arg)
+	case "perks":
+		set(r.FieldByName("Perks"), arg)
+	default:
+		die("unknown op %q", op)
+	}
+}
+
+func main() {
+	data, err := os.ReadFile(os.Args[1])
+	if err != nil {
+		die("%v", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) != 4 {
+			die("%q is not <name> <verdict> <op> <arg>", line)
+		}
+		value := packetrefusal.NewPacketWriteRefusal()
+		apply(&value, f[2], f[3])
+		stream := serialize.NewWriteStream(make([]byte, 256))
+		switch err := packetrefusal.WritePacketWriteRefusal(stream, &value); {
+		case err == nil:
+			fmt.Println(f[0], "wrote")
+		case errors.Is(err, serialize.ErrValueOutOfRange):
+			fmt.Println(f[0], "refused")
+		default:
+			die("%s: the writer erred with something other than a refusal: %v", f[0], err)
+		}
 	}
 }
 `
 
-// runWriteRefusalPacket generates the unit for the Go leg, builds it with the
-// serialize.go runtime, and runs the probe. Behind slowtest.Gate — it shells
+// runWriteRefusalPacket generates the shared RefusalPacket.schema for the Go
+// leg, builds it with the serialize.go runtime and runs the probe over
+// rows.txt; wrpacket.Check holds the answers. Behind slowtest.Gate — it shells
 // out to the Go toolchain.
 func runWriteRefusalPacket(t *testing.T) {
 	t.Helper()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated packet writer)")
 	t.Chdir("../../..")
 
-	c := compiler.New()
-	dir := t.TempDir()
-	// the file name stays clear of the type name: the Java emitter writes one
-	// outer class per file, so a unit named PacketWriteRefusal refuses the type
-	schema := filepath.Join(dir, "RefusalPacket.schema")
-	if err := os.WriteFile(schema, []byte(writeRefusalPacketSchema), 0o600); err != nil {
+	const root = "."
+	rows := wrpacket.Rows(t, root)
+	dir := wrpacket.Generate(t, root, "go", compiler.Options{"runtime": "standalone"})
+	runtime := slowtest.SerializeGo(t, root)
+	gomod := fmt.Sprintf("module packetrefusalprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime)
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	u, err := c.Load([]string{schema})
-	if err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "probe"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	files, err := c.Generate(u, "go", compiler.Options{"runtime": "standalone"})
-	if err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "probe", "main.go"), []byte(writeRefusalPacketProbe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	runtime := slowtest.SerializeGo(t, ".")
-	files["go.mod"] = []byte(fmt.Sprintf("module packetrefusalprobe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", runtime))
-	files["writerefusal_probe_test.go"] = []byte(writeRefusalPacketProbe)
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	cmd := exec.Command("go", "test", "-count=1", ".")
+	ctx, cancel := slowtest.ProbeContext(t)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "run", "./probe", wrpacket.RowsPath(root))
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("the generated packet writer failed its probe: %v\n%s", err, out)
+	out, err := cmd.Output()
+	if err != nil {
+		var exit *exec.ExitError
+		stderr := ""
+		if errors.As(err, &exit) {
+			stderr = string(exit.Stderr)
+		}
+		t.Fatalf("the probe did not complete (an error is not a refusal): %v\n%s%s", err, out, stderr)
 	}
+	wrpacket.Check(t, string(out), rows, nil)
 }

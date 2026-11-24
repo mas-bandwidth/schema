@@ -1,10 +1,12 @@
 // The write-refusal-packet surface (docs/SPEC.md §5.1) in the C++ leg's own
-// mechanism: a debug assert. Each case in the shared cases.txt changes ONE
+// mechanism: a debug assert. Each row of the one shared list,
+// test/conformance/write-refusal-packet/rows.txt (<name> <verdict> <op> <arg>,
+// keyed here by name; op and arg are the probes'), changes ONE
 // field of a default PacketWriteRefusal and runs the generated packet Write in
 // a forked child, so an abort is the refusal and the parent never dies with
 // it. A written twin must be written, read back and have the same bit count.
-// A case in the file this driver does not run, or a case it runs that the file
-// does not name, fails.
+// A row in the file this driver does not run, or a setter it runs that the
+// file does not name, fails.
 //
 // A refusal must be the GENERATED assert, named by the text of its expression
 // on the child's stderr (refusedBy below). The runtime's write_bits asserts
@@ -25,7 +27,7 @@
 
 #include "RefusalPacketWire.h"
 
-using namespace packetwriterefusal;
+using namespace packetrefusal;
 
 typedef void ( *Setter )( PacketWriteRefusal & value );
 
@@ -43,6 +45,7 @@ static void scalarLow( PacketWriteRefusal & v ) { v.scalar = -1; }
 static void scalarAtMax( PacketWriteRefusal & v ) { v.scalar = 10; }
 static void scalarAtMin( PacketWriteRefusal & v ) { v.scalar = 0; }
 static void bitsWide( PacketWriteRefusal & v ) { v.narrow = 200; }
+static void bitsJustWide( PacketWriteRefusal & v ) { v.narrow = 128; }
 static void bitsAtMax( PacketWriteRefusal & v ) { v.narrow = 127; }
 static void enumHigh( PacketWriteRefusal & v ) { v.grade = static_cast<Grade>( 4 ); }
 static void enumAtMax( PacketWriteRefusal & v ) { v.grade = Grade::Gold; }
@@ -67,11 +70,13 @@ static void flagsAtMax( PacketWriteRefusal & v ) { v.perks = Perk_Shield | Perk_
 static std::map<std::string, Setter> setters()
 {
     std::map<std::string, Setter> m;
+    // write-refusal-packet setters: begin
     m["scalar_high"] = scalarHigh;
     m["scalar_low"] = scalarLow;
     m["scalar_at_max"] = scalarAtMax;
     m["scalar_at_min"] = scalarAtMin;
     m["bits_wide"] = bitsWide;
+    m["bits_just_wide"] = bitsJustWide;
     m["bits_at_max"] = bitsAtMax;
     m["enum_high"] = enumHigh;
     m["enum_at_max"] = enumAtMax;
@@ -92,6 +97,7 @@ static std::map<std::string, Setter> setters()
     m["flags_wide"] = flagsWide;
     m["flags_wide_high"] = flagsWideHigh;
     m["flags_at_max"] = flagsAtMax;
+    // write-refusal-packet setters: end
     return m;
 }
 
@@ -105,6 +111,7 @@ static std::map<std::string, std::string> refusedBy()
     m["scalar_high"] = "value.scalar";
     m["scalar_low"] = "value.scalar";
     m["bits_wide"] = "value.narrow";
+    m["bits_just_wide"] = "value.narrow";
     m["enum_high"] = "value.grade";
     m["union_tag_high"] = "value.type";
     m["count_high"] = "value.window_count";
@@ -153,16 +160,20 @@ static bool parseCases( const char * path, std::vector<Case> & cases )
         {
             continue;
         }
-        const std::string::size_type bar = text.find( '|' );
-        if ( bar == std::string::npos )
+        char name[128];
+        char verdictText[32];
+        char op[64];
+        char arg[128];
+        char extra[2];
+        if ( sscanf( text.c_str(), "%127s %31s %63s %127s %1s", name, verdictText, op, arg, extra ) != 4 )
         {
-            fprintf( stderr, "packet-write-refusal-cpp: malformed case line: %s\n", text.c_str() );
+            fprintf( stderr, "packet-write-refusal-cpp: a row is not <name> <verdict> <op> <arg>: %s\n", text.c_str() );
             fclose( file );
             return false;
         }
         Case c;
-        c.name = trim( text.substr( 0, bar ) );
-        const std::string verdict = trim( text.substr( bar + 1 ) );
+        c.name = name;
+        const std::string verdict = verdictText;
         if ( verdict != "refused" && verdict != "wrote" )
         {
             fprintf( stderr, "packet-write-refusal-cpp: unknown verdict %s\n", verdict.c_str() );
@@ -226,7 +237,7 @@ int main( int argc, char ** argv )
 {
     if ( argc != 2 )
     {
-        fprintf( stderr, "usage: %s <cases.txt>\n", argv[0] );
+        fprintf( stderr, "usage: %s <rows.txt>\n", argv[0] );
         return 2;
     }
     std::vector<Case> cases;
@@ -243,11 +254,17 @@ int main( int argc, char ** argv )
     for ( size_t i = 0; i < cases.size(); i++ )
     {
         const Case & c = cases[i];
+        if ( named.find( c.name ) != named.end() )
+        {
+            printf( "FAILED: packet-write-refusal-cpp: %s: named twice in rows.txt\n", c.name.c_str() );
+            failures++;
+            continue;
+        }
         named[c.name] = true;
         const std::map<std::string, Setter>::const_iterator it = table.find( c.name );
         if ( it == table.end() )
         {
-            printf( "FAILED: packet-write-refusal-cpp: %s: named in the cases and not run by this driver\n", c.name.c_str() );
+            printf( "FAILED: packet-write-refusal-cpp: %s: a row in rows.txt this driver has no setter for\n", c.name.c_str() );
             failures++;
             continue;
         }
@@ -330,10 +347,10 @@ int main( int argc, char ** argv )
     {
         if ( named.find( it->first ) == named.end() )
         {
-            printf( "FAILED: packet-write-refusal-cpp: %s: run by this driver and not named in the cases\n", it->first.c_str() );
+            printf( "FAILED: packet-write-refusal-cpp: %s: a setter this driver runs that rows.txt does not name\n", it->first.c_str() );
             failures++;
         }
     }
-    printf( "packet-write-refusal-cpp: %zu cases, %d refused, %d written\n", cases.size(), refused, written );
+    printf( "packet-write-refusal-cpp: %zu rows, %d refused, %d written\n", cases.size(), refused, written );
     return failures == 0 ? 0 : 1;
 }
