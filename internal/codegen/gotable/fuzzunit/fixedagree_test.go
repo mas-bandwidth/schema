@@ -51,7 +51,9 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 	for ti, target := range fixedTargets {
 		root := m.Lookup(target.name)
 		if root == nil || !tablewire.FixedRoot(m, root) {
-			t.Logf("%s: not an engine fixed root", target.name)
+			// every target has a generated FixedLoad, so the engine saying it is
+			// no fixed root is the generator and the engine disagreeing
+			t.Errorf("%s: the generator emits a fixed read for it and the engine says it is not a fixed root", target.name)
 			continue
 		}
 		for _, v := range []any{target.zero(), target.away()} {

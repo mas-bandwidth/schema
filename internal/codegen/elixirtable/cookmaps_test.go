@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -110,6 +112,10 @@ const cookMapsProbeHead = `
 defmodule Probe do
   def check(true, _name, _what), do: :ok
 
+  # a row is counted only when it ran to the end: loaded, measured, short
+  # buffer refused, and both byte orders compared
+  def row, do: Process.put(:rows, Process.get(:rows, 0) + 1)
+
   def check(false, name, what) do
     IO.puts(:stderr, "FAIL " <> name <> ": " <> what)
     Process.put(:failed, true)
@@ -124,7 +130,7 @@ rescue
   e -> Probe.check(false, "probe", Exception.format(:error, e, __STACKTRACE__))
 end
 
-if Process.get(:failed), do: System.halt(1), else: IO.puts("ok")
+if Process.get(:failed), do: System.halt(1), else: IO.puts("ok rows=" <> Integer.to_string(Process.get(:rows, 0)))
 `
 
 // TestCookWriteMapsAndListsElixir is the M19 cook-write gate on the Elixir leg
@@ -170,7 +176,7 @@ func TestCookWriteMapsAndListsElixir(t *testing.T) {
 {name, table, wire, little, big} = {%q, %q, %q, %q, %q}
 
 case %s.load(table, File.read!(wire)) do
-  {:ok, value, _report} ->
+  {:ok, value, %%{reason: "", unknown: 0, blob_shared: 0, missing_required: 0, retain_lost: 0, widened: 0, retained: 0}} ->
     case %s.cook_measure_reason(table, value) do
       {size, :ok} when size > 0 ->
         short = :binary.copy(<<0xA5>>, size - 1)
@@ -186,12 +192,14 @@ case %s.load(table, File.read!(wire)) do
           end
         end
 
+        Probe.row()
+
       other ->
         Probe.check(false, name, "absent: the measure answered " <> inspect(other))
     end
 
   other ->
-    Probe.check(false, name, "absent: the load answered " <> inspect(other))
+    Probe.check(false, name, "the load did not answer a clean report: " <> inspect(other))
 end
 `, r.name, r.root, filepath.Join(root, r.wire), filepath.Join(root, r.little), filepath.Join(root, r.big), mod, mod, mod, mod)
 			}
@@ -200,7 +208,15 @@ end
 			if !strings.Contains(out, "ok") {
 				t.Fatalf("probe did not finish:\n%s", out)
 			}
-			t.Logf("cook-write %s: %d/%d rows, both byte orders", p, len(rows), len(rows))
+			m := regexp.MustCompile(`ok rows=(\d+)`).FindStringSubmatch(out)
+			if m == nil {
+				t.Fatalf("the probe did not report how many rows it ran:\n%s", out)
+			}
+			ran, _ := strconv.Atoi(m[1])
+			if ran != len(rows) {
+				t.Fatalf("cook-write %s: the probe ran %d of %d rows", p, ran, len(rows))
+			}
+			t.Logf("cook-write %s: %d/%d rows measured, both byte orders", p, ran, len(rows))
 		})
 	}
 }
