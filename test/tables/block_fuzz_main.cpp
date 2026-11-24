@@ -459,6 +459,10 @@ static int64_t padded_seed_block( int v, uint8_t * out )
         storage.Destroy();
         return -1;
     }
+    // the projection's own fields are the producer's to fill, and Begin leaves
+    // them as the 0x5a pin wrote them: a bytes(12) length of 0x5a5a5a5a is out
+    // of its declared bound, which Bytes refuses (docs/SPEC-TABLES.md §19.1)
+    block.projection->blob_length = 0;
     const int64_t bytes = PaddedFrameBlockBytes( block );
     memcpy( (void *) out, storage.base, (size_t) bytes );
     storage.Destroy();

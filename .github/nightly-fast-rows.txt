@@ -67,3 +67,8 @@ lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobste
 appendix-java-announcement-budgets | java | ^docs/SPEC-CONFORMANCE\.md$|^tables/(backend|blobs)/ | make appendix-java-announcement-budgets
 appendix-go-fixed | go | ^docs/SPEC-CONFORMANCE\.md$|^test/(fixed-empty-batch/|go-tables/optional_array_resize_test\.gotext$)|^testdata/(wire/fixed-empty-batch/|conformance/(feature-witnesses/(fixed-load-capacity|declared-deprecated-enum)/|table-write-bounds/)) | make -j4 appendix-go-fixed table-optional-array-resize-go
 appendix-python-fixed | python | ^docs/SPEC-CONFORMANCE\.md$|^test/fixed-empty-batch/|^testdata/(wire/fixed-empty-batch/|conformance/feature-witnesses/fixed-load-capacity/) | make appendix-python-fixed
+
+# the C# block and cook pair compiles with no table source (make/cs-block-compile.mk):
+# its full form is tables-block-fuzz's C# half, nightly in ci-full.yml
+cs-block-compile | cs | ^test/cs-block/|^make/cs-block-compile\.mk$ | make tables-cs-block-compile
+cs-block-compile-negative-control | cs | ^test/cs-block/|^make/cs-block-compile\.mk$ | make tables-cs-block-compile-negative-control

@@ -179,6 +179,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if err != nil {
 		return nil, err
 	}
+	if name, src := generateBlockFill(u, blocks); src != nil {
+		out[name] = src
+	}
 	cooks, err := generateCookFiles(u, blocks)
 	if err != nil {
 		return nil, err
