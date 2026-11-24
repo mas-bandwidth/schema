@@ -1355,6 +1355,56 @@ if (mode == "read-into") {
       writeText(outdir + "/" + cname, "unrepresentable\n");
       continue;
     }
+    if (form == "retain") {
+      // THE `retain` FORM (test/conformance/README.md): ONE report, PRE-FILLED
+      // (every counter, the refusal flags, the reason and every detail the
+      // Squirrel report can carry), then the retaining load of <lawful>,
+      // <damaged>, <lawful> again. After each lawful load every field of the
+      // report must equal the field the same load leaves in a FRESH report
+      // (§6.5).
+      local lawfulBytes = readBytes(lawful), damagedBytes = readBytes(damaged);
+      local loadOnce = function(bytes, rep) {
+        local store = { capacity = 1 << 20, idCapacity = 1 << 17 };
+        local got = null;
+        try {
+          got = T[root + "LoadRetain"](bytes, store, rep);
+        } catch (e) {
+          return "threw\n";
+        }
+        local refusedHere = (("refused" in rep) && rep.refused) || (("bodyDamaged" in rep) && rep.bodyDamaged) ||
+                            (("reason" in rep) && rep.reason != null && rep.reason != "");
+        if (got == null || refusedHere) return "refused\n";
+        return "read\n";
+      };
+      local fresh = newReport();
+      if (loadOnce(lawfulBytes, fresh) != "read\n") throw cname + ": the lawful retaining load did not read into a fresh report";
+      local zeroed = function(rep) {
+        local diff = [];
+        foreach (k, v in rep) {
+          if (!(k in fresh) || fresh[k] != v) diff.append(k + "=" + v + " want " + ((k in fresh) ? fresh[k] : "absent"));
+        }
+        foreach (k, v in fresh) {
+          if (!(k in rep)) diff.append(k + "=absent want " + v);
+        }
+        if (diff.len() == 0) return "zeroed\n";
+        diff.sort();
+        local s = "kept";
+        foreach (d in diff) s += " " + d + ";";
+        return s + "\n";
+      };
+      local rep = newReport();
+      rep.unknown <- 7; rep.mismatch <- 7; rep.widened <- 7; rep.oor <- 7; rep.repeated <- 7;
+      rep.bodyDamaged <- true; rep.refused <- true;
+      rep.retained <- 7; rep.retainLost <- 7; rep.reason <- "stale"; rep.field <- "stale";
+      rep.nonFiniteFloat <- "stale"; rep.countRefusal <- true; rep.missingRequired <- true; rep.sharedBlob <- 7;
+      local out = loadOnce(lawfulBytes, rep);
+      out += zeroed(rep);
+      out += loadOnce(damagedBytes, rep);
+      out += loadOnce(lawfulBytes, rep);
+      out += zeroed(rep);
+      writeText(outdir + "/" + cname, out);
+      continue;
+    }
     local n = count.tointeger();
     if (n < 1) throw cname + ": " + count + " is not a count";
     local values = array(n);
