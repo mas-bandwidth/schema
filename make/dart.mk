@@ -746,7 +746,8 @@ define dart-cookwrite-nc-leg
 	@sed -e "s|../../../build/$(4)/|$(CURDIR)/$(DART_COOKWRITE_NC)/$(1)/generated/|g" \
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
-	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@# built as build/conformance-dart is, asserts on: Dart answers the write-refusal rows by debug assert, and a copy without them turns every refusal row red, not only this plant's cook-write rows
+	$(DART) compile exe --enable-asserts -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
 	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
@@ -766,9 +767,9 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \
-		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
-		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@# the own rows are dropped inside awk, not by grep -v: under pipefail a grep -v left with no line exits 1, and the clean outcome (no other row red) failed the target with no message
+	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / && index($$0, "dart / cook-write: $(6)") == 0 { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
 	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
 			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
