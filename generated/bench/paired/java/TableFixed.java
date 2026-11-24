@@ -1555,7 +1555,10 @@ public final class TableFixed {
         boolean recordTooLarge;
 
         /**
-         * a writer entry whose kind moved to one it does not widen into: the plan refuses whole.
+         * UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30): a writer
+         * field this reader names nowhere, or a pair whose kind moved off every ladder. The entry
+         * is not a lawful widening of this reader, so no plan is laid and a file under its hash
+         * refuses layoutMalformed; it is never counted and read past.
          */
         boolean unlawful;
 
@@ -1818,52 +1821,12 @@ public final class TableFixed {
         return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
     }
 
-    // matchChildren walks a TABLE's children on both sides, by NAME.
-    //
-    // The census flag is whether THIS entry is the FIRST time the writer's field is
-    // seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-    // ONCE PER FIELD PER ENDPOINT (5.4), so only element 0 censuses. Without it a
-    // writer's field dropped from a [4]Item is counted four times and the report
-    // says 4 where the law says 1.
-    private static void matchChildren(
-            Compiler c,
-            Layout theirs,
-            int ti,
-            int theirAt,
-            Layout mine,
-            int mi,
-            int myAt,
-            int guard,
-            long arg,
-            boolean census) {
+    // childrenNamed answers whether EVERY child of the writer's entry ti is named,
+    // by id, among the children of this reader's entry mi. A "was =" rename keeps
+    // the old id and is named; a removed field is not.
+    private static boolean childrenNamed(Layout theirs, int ti, Layout mine, int mi) {
         final long theirKids = theirs.children(ti);
         final long myKids = mine.children(mi);
-        int myChild = mi + 1;
-        for (long k = 0; k < myKids; k++) {
-            final long myId = mine.id(myChild);
-            int theirChild = ti + 1;
-            int theirOff = theirAt;
-            for (long j = 0; j < theirKids; j++) {
-                if (theirs.id(theirChild) == myId) {
-                    compileEntry(
-                            c,
-                            theirs,
-                            theirChild,
-                            theirOff,
-                            mine,
-                            myChild,
-                            myAt,
-                            guard,
-                            arg,
-                            census);
-                    break;
-                }
-                theirOff += (int) theirs.size(theirChild);
-                theirChild += theirs.subtree(theirChild);
-            }
-            myChild += mine.subtree(myChild);
-        }
-        // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
         int tcAt = ti + 1;
         for (long j = 0; j < theirKids; j++) {
             final long tid = theirs.id(tcAt);
@@ -1876,10 +1839,53 @@ public final class TableFixed {
                 }
                 mcAt += mine.subtree(mcAt);
             }
-            if (!named && census && c.report != null) {
-                c.report.unknown++;
+            if (!named) {
+                return false;
             }
             tcAt += theirs.subtree(tcAt);
+        }
+        return true;
+    }
+
+    // matchChildren walks a TABLE's children on both sides, by NAME.
+    //
+    // A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
+    // removal; a field is deprecated in place). A writer field no child of mine
+    // names makes the lineage entry UNLAWFUL before any entry is laid
+    // (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30): no plan, and a
+    // file under its hash refuses layoutMalformed. There is no compile census to
+    // count (§5.8 row 11's census is retired). It holds in every slot: the root,
+    // a nested table, every element of an array of tables.
+    private static void matchChildren(
+            Compiler c,
+            Layout theirs,
+            int ti,
+            int theirAt,
+            Layout mine,
+            int mi,
+            int myAt,
+            int guard,
+            long arg) {
+        if (!childrenNamed(theirs, ti, mine, mi)) {
+            c.unlawful = true; // §5.2 MATCH: a writer field this reader names nowhere
+            return;
+        }
+        final long theirKids = theirs.children(ti);
+        final long myKids = mine.children(mi);
+        int myChild = mi + 1;
+        for (long k = 0; k < myKids; k++) {
+            final long myId = mine.id(myChild);
+            int theirChild = ti + 1;
+            int theirOff = theirAt;
+            for (long j = 0; j < theirKids; j++) {
+                if (theirs.id(theirChild) == myId) {
+                    compileEntry(c, theirs, theirChild, theirOff, mine, myChild, myAt, guard, arg);
+                    break;
+                }
+                theirOff += (int) theirs.size(theirChild);
+                theirChild += theirs.subtree(theirChild);
+            }
+            myChild += mine.subtree(myChild);
         }
     }
 
@@ -1892,8 +1898,7 @@ public final class TableFixed {
             int mi,
             int myAt,
             int guard,
-            long arg,
-            boolean census) {
+            long arg) {
         final int theirKind = theirs.kind(ti);
         final int myKind = mine.kind(mi);
         final int theirSize = (int) theirs.size(ti);
@@ -1922,7 +1927,7 @@ public final class TableFixed {
         // payload lands under that same guard.
         if (myKind == 35 && theirKind != 35) {
             c.push(0, auxAt, 1, 1, guard, opConst, arg, (byte) 0, (byte) 0);
-            compileEntry(c, theirs, ti, theirAt, mine, mi + 1, myAt, guard, arg, census);
+            compileEntry(c, theirs, ti, theirAt, mine, mi + 1, myAt, guard, arg);
             return;
         }
         if (theirKind != myKind) {
@@ -1939,8 +1944,9 @@ public final class TableFixed {
                         signedKind(theirKind) ? (byte) 1 : (byte) 0);
                 return;
             }
-            // A KIND THAT MOVED IS NOT A LAWFUL LINEAGE (docs/plans/strict-only.md):
-            // the plan refuses whole, never reinterpreted and never counted
+            // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY (§5.2 EMIT,
+            // §5.4, docs/plans/strict-only.md): no plan is laid, never
+            // reinterpreted and never counted and read past
             c.unlawful = true;
             return;
         }
@@ -1952,13 +1958,12 @@ public final class TableFixed {
                         c.pushDeadSpan(theirAt + 1, payload, theirAt, 0, (byte) 1, guard, arg);
                     }
                     c.push(theirAt, auxAt, 1, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
-                    compileEntry(
-                            c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt, guard, arg, census);
+                    compileEntry(c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt, guard, arg);
                     break;
                 }
             case 13:
                 { // a nested table: match its fields
-                    matchChildren(c, theirs, ti, theirAt, mine, mi, at, guard, arg, census);
+                    matchChildren(c, theirs, ti, theirAt, mine, mi, at, guard, arg);
                     break;
                 }
             case 14:
@@ -1993,8 +1998,7 @@ public final class TableFixed {
                                 mi + 1,
                                 at + i * step,
                                 guard,
-                                arg,
-                                census && i == 0);
+                                arg);
                     }
                     break;
                 }
@@ -2021,8 +2025,7 @@ public final class TableFixed {
                                     myElemAt,
                                     at + (int) k * step,
                                     guard,
-                                    arg,
-                                    census && k == 0);
+                                    arg);
                             break;
                         }
                     }
@@ -2137,8 +2140,7 @@ public final class TableFixed {
                                         myArm,
                                         at,
                                         theirAt,
-                                        j + 1,
-                                        census);
+                                        j + 1);
                                 c.chainLen--;
                                 c.chainAt = savedAt;
                                 break;
@@ -2280,15 +2282,17 @@ public final class TableFixed {
         // THE WRITER'S OWN DECLARED RECORD BODY, out of its root entry's size,
         // and nothing from the file: every entry is bounded against it.
         c.theirBytes = (int) theirs.size(0);
-        matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, 0L, true);
+        matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, 0L);
         if (c.recordTooLarge) {
             if (report != null) {
                 report.refuse(Reason.layoutRecordTooLarge);
             }
             return -1;
         }
-        // A KIND THAT MOVED REFUSES THE PLAN WHOLE by layoutMalformed, as the
-        // Go leg's tableFixedCompile answers -2 for it: nothing is decoded
+        // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4, §5.9 #30): a writer field this
+        // reader names nowhere, or a kind off every ladder, refuses the plan
+        // whole by layoutMalformed, as the Go leg's tableFixedCompile does.
+        // Nothing is decoded and nothing is counted.
         if (c.unlawful) {
             if (report != null) {
                 report.refuse(Reason.layoutMalformed);
@@ -2569,16 +2573,15 @@ public final class TableFixed {
      * the lock, the walk happens once per class, off every load path, and a plan that will not
      * build is a refusal this entry CARRIES rather than one a load discovers.
      *
-     * <p>unknown is the COMPILE CENSUS: the plan's own number, fixed when it was built, landed on
-     * the report ONCE after the record loop and only on a read that returns (5.9 #6). remap is this
-     * plan's OWN ordinal table -- a static plan cannot borrow the caller's scratch, because the
-     * table is part of the plan (5.9 #24).
+     * <p>There is no compile census: an entry a reader field cannot name is UNLAWFUL and carries
+     * layoutMalformed instead of a plan (§5.4, §5.9 #30). remap is this plan's OWN ordinal table --
+     * a static plan cannot borrow the caller's scratch, because the table is part of the plan (5.9
+     * #24).
      */
     public static final class Plan {
         public final Entry[] entries;
         public final int count;
         public final short[] remap;
-        public final int unknown;
 
         /** The plan's hole list and cover, computed once beside the plan (§4.3). */
         public final Prefill prefill;
@@ -2586,11 +2589,10 @@ public final class TableFixed {
         /** Reason.none, or the name a file selecting this entry is refused by. */
         public final Reason why;
 
-        Plan(Entry[] entries, int count, short[] remap, int unknown, Reason why, Prefill prefill) {
+        Plan(Entry[] entries, int count, short[] remap, Reason why, Prefill prefill) {
             this.entries = entries;
             this.count = count;
             this.remap = remap;
-            this.unknown = unknown;
             this.why = why;
             this.prefill = prefill;
         }
@@ -2629,7 +2631,7 @@ public final class TableFixed {
             }
             final Layout theirs = parse(known[i].layout, 0, known[i].layoutBytes, new Report());
             if (theirs == null || me == null) {
-                out[i] = new Plan(null, 0, null, 0, Reason.layoutMalformed, null);
+                out[i] = new Plan(null, 0, null, Reason.layoutMalformed, null);
                 continue;
             }
             // THE FIRST TWO TERMS RETAIN THE EXISTING MAPPING ALLOWANCE; this
@@ -2651,35 +2653,29 @@ public final class TableFixed {
             final long room64 =
                     satAdd(satAdd(me.count, theirs.count), satAdd(deadRoom(theirs, 0), 1));
             if (room64 > java.lang.Integer.MAX_VALUE / 2) {
-                out[i] = new Plan(null, 0, null, 0, Reason.planTooLarge, null);
+                out[i] = new Plan(null, 0, null, Reason.planTooLarge, null);
                 continue;
             }
             final int room = (int) room64;
             final Entry[] p = plan(room);
             final short[] table = new short[java.lang.Math.max(1024, room * 2)];
-            final Report census = new Report();
-            final int made = compile(theirs, me, dest, p, table, census);
+            final Report result = new Report();
+            final int made = compile(theirs, me, dest, p, table, result);
             if (made >= 0) {
-                out[i] =
-                        new Plan(
-                                p,
-                                made,
-                                table,
-                                census.unknown,
-                                Reason.none,
-                                prefill(p, made, bodyBytes));
+                out[i] = new Plan(p, made, table, Reason.none, prefill(p, made, bodyBytes));
             } else {
                 // THE ENTRY'S OWN LANE CARRIES ITS OWN REASON (5.9 #36): an
-                // entry past the writer's record is layoutRecordTooLarge and a
-                // plan that would not fit is planTooLarge. Nothing throws out
-                // of the initializer and a lane nobody selects costs nothing.
+                // entry past the writer's record is layoutRecordTooLarge, an
+                // UNLAWFUL entry is layoutMalformed (§5.4) and a plan that
+                // would not fit is planTooLarge. Nothing throws out of the
+                // initializer and a lane nobody selects costs nothing.
                 final Reason why =
-                        (census.refused
-                                        && (census.reason == Reason.layoutRecordTooLarge
-                                                || census.reason == Reason.layoutMalformed))
-                                ? census.reason
+                        (result.refused
+                                        && (result.reason == Reason.layoutRecordTooLarge
+                                                || result.reason == Reason.layoutMalformed))
+                                ? result.reason
                                 : Reason.planTooLarge;
-                out[i] = new Plan(null, 0, null, 0, why, null);
+                out[i] = new Plan(null, 0, null, why, null);
             }
         }
         return out;

@@ -675,3 +675,51 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   ./internal/codegen/gotable ./internal/codegen/pythontable \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
+
+### Unlawful handed-in lineage entry, every leg: a removed field and a moved kind
+
+A lineage entry an older writer hands a newer reader is UNLAWFUL when the
+writer carries a field the reader names nowhere (by id, so a `was =` rename
+still matches) or a field whose kind moved off every ladder
+([FIXED-FORM-ALGORITHM §5.2](FIXED-FORM-ALGORITHM.md) MATCH and EMIT, §5.4,
+§5.9 #30). Removing a field is never a lawful fixed-form step: §5.1 refuses it
+and a field is deprecated in place instead, so a lawful lineage never reaches
+this case. An unlawful entry lays no plan and moves no counter, and a load of
+a file under its hash refuses. It is never counted as `unknown` and read on.
+
+Two rows of the shared fixed-form corpus answer it
+([FIXED-FORM-VERSIONING-TESTS.md](FIXED-FORM-VERSIONING-TESTS.md)):
+
+| row | the file | the reader | the verdict |
+|---|---|---|---|
+| `unknown_census` | `old_unknown_census.bin` (one record) and `many_unknown_census.bin` (three), written by `VOLD_unknown_census` | `VNEW_unknown_census`, which removed `Item.drop`, handed the OLD entry | refuse |
+| `kind_moved` | `old_kind_moved.bin` (one record, `v = 7`), written by `VOLD_kind_moved` | `VNEW_kind_moved`, `v int32` declared `float32`, handed the OLD entry | refuse |
+
+Each load refuses. Every row handed in, poisoned with non-default values
+first, holds its declared defaults afterwards (SPEC-TABLES §6.5:
+`lead = 1`, `trail = 2`, every `items[i].a = 0`; `v = 0` for `kind_moved`).
+A second load refuses the same way. `kind_moved` is the one that tells the two
+wrong answers apart from the right one: both kinds are four bytes, so a leg
+that reinterprets the bits and a leg that counts the field and reads on both
+load. The verdict is compared across legs; the refusal name is not
+(`refusal-verdict-only`, 2026-11-03). Each leg's own test holds its name:
+`layout_malformed` (Dart: `layout_damaged`). A writer `?T` read into a bare `T`
+stays `kind_mismatch` (ruling R2).
+
+The tests, one per leg and row: `TestFixedVersioningUnknownCensus`,
+`TestFixedVersioningUnknownCensusManyRecords` and `TestFixedVersioningKindMoved`
+in `internal/codegen/{cpptable,ctable,cstable,javatable,rusttable,darttable,elixirtable}`;
+`TestJSFixedVersioningUnknownCensus` and `TestJSFixedVersioningKindMoved` in
+`jstable`; `TestLuauFixedVersioningUnknownCensus` and
+`TestLuauFixedVersioningKindMoved` in `luautable`;
+`TestUnityFixedUnlawfulLineage` in `unitytable`. Go already held the rule
+(`gotable`, `tableFixedChildrenNamed`). Elixir's
+`TestFixedVersioningUnlawfulEntryRefuses` adds the rest of Go's unlawful set:
+a removed union arm, enum variant or keyed slot, a shrunk array, and narrowed
+text or bytes. Run, with the corpus built (`make tables-fixedform-corpus`):
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
+  go test -count=1 ./internal/codegen/... \
+  -run 'Test(JS|Luau)?FixedVersioning(UnknownCensus|KindMoved)|TestUnityFixedUnlawfulLineage|TestFixedVersioningUnlawfulEntryRefuses'
+```

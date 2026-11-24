@@ -5262,6 +5262,13 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    // UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+    // a writer field this reader does not name, or a pair whose kind moved off
+    // every ladder. The entry is not a lawful widening of this reader, so no
+    // plan is laid and a file under its hash refuses layout_malformed. It is
+    // never counted and read past. 1 is layout_malformed; 3 is kind_mismatch,
+    // the writer's ?T into this reader's bare T (ruling R2, 2026-11-22).
+    uint8_t unlawful = 0;
     uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
     TableReport * report = NULL;
 };
@@ -5361,42 +5368,21 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census );
+    uint32_t guard, uint64_t arg );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 //
-// The census flag is whether THIS entry is the FIRST time the writer's field is
-// seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-// writer's field dropped from a [4]Item is counted four times and the report says 4
-// where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
+// A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
+// removal; a field is deprecated in place). A writer field no child of mine
+// names makes the lineage entry UNLAWFUL before any entry is laid: there is no
+// compile census to count (§5.4, §5.9 #30; §5.8 row 11 is that census, retired).
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
-    int32_t my_child = mi + 1;
-    for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
-    {
-        const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
-        int32_t their_child = ti + 1;
-        uint32_t their_off = their_at;
-        for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
-        {
-            const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
-            if ( tc.id == mc.id )
-            {
-                TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
-                break;
-            }
-            their_off += tc.size;
-            their_child += TableFixedSubtree( theirs, their_child );
-        }
-        my_child += TableFixedSubtree( mine, my_child );
-    }
-    // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
     int32_t tc_at = ti + 1;
     for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
@@ -5412,15 +5398,38 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
             }
             mc_at += TableFixedSubtree( mine, mc_at );
         }
-        if ( !named && census && c.report != NULL ) { c.report->unknown++; }
+        if ( !named )
+        {
+            c.unlawful = 1;
+            return;
+        }
         tc_at += TableFixedSubtree( theirs, tc_at );
+    }
+    int32_t my_child = mi + 1;
+    for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
+    {
+        const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
+        int32_t their_child = ti + 1;
+        uint32_t their_off = their_at;
+        for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
+        {
+            const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
+            if ( tc.id == mc.id )
+            {
+                TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                break;
+            }
+            their_off += tc.size;
+            their_child += TableFixedSubtree( theirs, their_child );
+        }
+        my_child += TableFixedSubtree( mine, my_child );
     }
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -5454,7 +5463,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         e.arg = arg;
         e.op = kTableFixedPresent;
         TableFixedPush( c, e );
-        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
         return;
     }
     if ( te.kind != me.kind )
@@ -5473,12 +5482,10 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedPush( c, e );
             return;
         }
-        // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL )
-        {
-            c.report->refused = true;
-            c.report->refuse_reason = kind_mismatch;
-        }
+        // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
+        // REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4):
+        // no plan is laid. The writer's ?T into my bare T is kind_mismatch (R2).
+        c.unlawful = ( te.kind == 35 ) ? 3 : 1;
         return;
     }
     switch ( me.kind )
@@ -5492,7 +5499,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // to the present companion, which the reader's layout puts after it.
             const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
             const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
@@ -5512,7 +5519,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 13: // a nested table: match its fields
         {
-            TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
+            TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
             break;
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
@@ -5548,7 +5555,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
-                    mine, mi + 1, dst, at + i * d.stride, guard, arg, census && i == 0 );
+                    mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
             break;
         }
@@ -5566,7 +5573,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 {
                     if ( TableFixedEntryAt( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                     TableFixedCompileEntry( c, theirs, tel, their_at + j * tee.size,
-                        mine, mel, dst, at + k * d.stride, guard, arg, census && k == 0 );
+                        mine, mel, dst, at + k * d.stride, guard, arg );
                     break;
                 }
             }
@@ -5630,7 +5637,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                         tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                            mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                            mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
@@ -5783,11 +5790,23 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     c.report = report;
     c.record = TableFixedEntryAt( theirs, 0 ).size;
     c.want_guarded = false;
-    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0, 1 );
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
     const int32_t plain = c.count;
     c.want_guarded = true;
-    c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
-    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0, 1 );
+    c.report = NULL;
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
+    // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is layout_malformed, -4 the
+    // writer's ?T into a bare T, kind_mismatch (R2). Decided before overflow,
+    // so a capacity retry never turns an unlawful entry into plan_too_large.
+    if ( c.unlawful != 0 )
+    {
+        if ( report != NULL )
+        {
+            report->refused = true;
+            report->reason = ( c.unlawful == 3 ) ? kind_mismatch : layout_malformed;
+        }
+        return ( c.unlawful == 3 ) ? -4 : -3;
+    }
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }
