@@ -1058,7 +1058,7 @@ test-java: tables-java-keyed
 # must red TestKeyedArrayIndexingJava ON ITS OWN END AND ONLY THERE: a control
 # that reds both ends at once could not tell a symmetric guard from a broken one.
 JAVA_KEYED_SABOTAGE := build/java-keyed-sabotage
-JAVA_KEYED_COMPARE := "Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+JAVA_KEYED_COMPARE := "java.lang.Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
 tables-java-keyed-negative-control:
 	@rm -rf $(JAVA_KEYED_SABOTAGE) && mkdir -p $(JAVA_KEYED_SABOTAGE)
 	@set -e; for end in upper lower; do \
