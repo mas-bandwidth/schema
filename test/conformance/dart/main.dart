@@ -2690,6 +2690,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.mixedWireLoad, listdemo.mixedWireSave);
     case 'streamdemo Feed':
       return _wireResaveOne(wire, streamdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), streamdemo.feedWireLoad, streamdemo.feedWireSave);
+    case 'tabledemo VarMoods':
+      return _wireResaveOne(wire, tabledemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tabledemo.varMoodsWireLoad, tabledemo.varMoodsWireSave);
     case 'tabledemo WideBlob':
       return _wireResaveOne(wire, tabledemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tabledemo.wideBlobWireLoad, tabledemo.wideBlobWireSave);
     case 'graphdemo ListNode':
@@ -3291,6 +3293,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = streamdemo.feedFromJson(text, rep);
       if (rep.refused) return null;
       return streamdemo.feedWireSave(v);
+    case 'tabledemo VarMoods':
+      final rep = tabledemo.TableTextReport();
+      final v = tabledemo.varMoodsFromJson(text, rep);
+      if (rep.refused) return null;
+      return tabledemo.varMoodsWireSave(v);
     case 'tabledemo WideBlob':
       final rep = tabledemo.TableTextReport();
       final v = tabledemo.wideBlobFromJson(text, rep);
@@ -3817,6 +3824,11 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = streamdemo.feedWireLoad(wire, rep);
       if (rep.refused) return null;
       return streamdemo.feedToJson(v);
+    case 'tabledemo VarMoods':
+      final rep = tabledemo.TableWireReport();
+      final v = tabledemo.varMoodsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tabledemo.varMoodsToJson(v);
     case 'tabledemo WideBlob':
       final rep = tabledemo.TableWireReport();
       final v = tabledemo.wideBlobWireLoad(wire, rep);
@@ -5254,6 +5266,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = tabledemo.TableTextReport();
         final v = tabledemo.moodsFromJson(text, r);
         encode = () => tabledemo.moodsToJson(v);
+        break;
+      case 'tabledemo VarMoods':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.varMoodsFromJson(text, r);
+        encode = () => tabledemo.varMoodsToJson(v);
         break;
       case 'tabledemo MoodField':
         r = tabledemo.TableTextReport();
@@ -6716,6 +6733,10 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'tabledemo RootConfig':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.rootConfigFixedLoad, tables_fixed.rootConfigFixedMeasure, tables_fixed.rootConfigFixedSave));
+    case 'tabledemo VarMoods':
+      return _FuzzRoot(
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.varMoodsWireMeasure, tabledemo.varMoodsWireLoad, tabledemo.varMoodsWireSave),
+          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.varMoodsWireMeasure, tabledemo.varMoodsWireLoadRetain, tabledemo.varMoodsWireSaveRetain));
     case 'tabledemo WideBlob':
       return _FuzzRoot(
           (Uint8List _) => _fuzzReply(
@@ -7704,6 +7725,27 @@ int surfaceWriteRefusal(String outDir, String surface) {
           return 0;
         });
       }
+    } else if ('$unit $root' == 'tabledemo VarMoods') {
+      // §2.15 WRITE: a deprecated variant is never written by the VARIABLE
+      // save, as an element (row[0]) and as a scalar (mood); no fixed form
+      if (surface != 'write-refusal') return 1;
+      final rep = tabledemo.TableWireReport();
+      final w = tabledemo.varMoodsWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      switch ('$path $vkind') {
+        case 'row[0] ordinal':
+          if (w.row.isEmpty) return 1;
+          w.row[0] = (int.parse(text) as dynamic);
+        case 'mood ordinal':
+          w.mood = (int.parse(text) as dynamic);
+        default:
+          stderr.writeln('$surface $name: unsupported VarMoods mutation $path $vkind');
+          return 1;
+      }
+      answer = _catchWrite(() {
+        tabledemo.varMoodsWireSave(w);
+        return 0;
+      });
     } else if ('$unit $root' == 'listdemo Mixed') {
       final rep = listdemo.TableWireReport();
       final w = listdemo.mixedWireLoad(wire, rep);
