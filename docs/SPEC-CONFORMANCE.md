@@ -694,3 +694,28 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   ./internal/codegen/gotable ./internal/codegen/pythontable \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
+
+### Unlawful handed-in lineage entry
+
+Read the reference corpus files `old_unknown_census.bin` (one record) and
+`many_unknown_census.bin` (three records), written by `VOLD_unknown_census`,
+with a `VNEW_unknown_census` build whose lineage is handed the OLD layout as
+an entry. `VNEW` removed `Item.drop`, so the entry is unlawful
+([FIXED-FORM-ALGORITHM §5.4](FIXED-FORM-ALGORITHM.md#54-the-counter-and-the-refusals-per-op-and-per-condition),
+§5.9 #30; FIXED-FORM-VERSIONING-TESTS.md, `unknown_census`). Each load
+refuses `layout_malformed` before any record lands. Every report counter,
+`unknown` included, stays zero. A second load of the same file refuses the
+same way. A load that returns the named fields and counts `unknown` (1 for
+the field, or 4 or 3 when counted per element or per record) fails this
+test: it landed values from a layout the compile should have refused.
+
+Go answers both files with `TestFixedVersioningUnknownCensus` and
+`TestFixedVersioningUnknownCensusManyRecords` in `internal/codegen/gotable`.
+Elixir answers them with the same tests in `internal/codegen/elixirtable`,
+and its conformance row `test/conformance/elixir/rows/R16.exs` checks a
+three-record file the row writes itself. Run, with the corpus built:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable ./internal/codegen/elixirtable \
+  -run "^TestFixedVersioningUnknownCensus"
+```

@@ -16,36 +16,47 @@ defmodule W5 do
     case try(do: {:ok, f.()}, rescue: (e -> {:error, e})) do
       {:error, %ArgumentError{}} -> check(name, true)
       {:ok, _} -> check(name, false)
-      {:error, e} -> check(name, false)
+      {:error, _} -> check(name, false)
     end
   end
 
+  # raises ArgumentError whose message names the guard that tripped, so a
+  # value that is wrong some OTHER way (an enum spelled as an integer, a
+  # fixed array short) cannot pass for the guard under test.
+  def raises_naming(name, needle, f) do
+    case try(do: {:ok, f.()}, rescue: (e -> {:error, e})) do
+      {:error, %ArgumentError{message: m}} -> check("#{name} (#{inspect(m)})", String.contains?(m, needle))
+      {:ok, _} -> check(name, false)
+      {:error, e} -> check("#{name} (raised #{inspect(e)})", false)
+    end
+  end
+
+  # A LoadoutConfig that is valid in every field but the one a case varies:
+  # enums are atoms (Tabledemo.Grade.to_int/1 raises on an integer), podium
+  # is exactly [3]Grade and backups exactly [2]WeaponConfig.
+  def loadout(grades) do
+    %Tabledemo.LoadoutConfig{
+      grade: :silver, grades: grades,
+      podium: [:bronze, :silver, :gold], perks: 0,
+      primary: %Tabledemo.WeaponConfig{damage: 10.0},
+      backups: [%Tabledemo.WeaponConfig{}, %Tabledemo.WeaponConfig{}], attachments: []
+    }
+  end
+
   def run do
-    # R.count: a counted array past its declared bound raises
-    raises("count past max raises — R.count guards write", fn ->
-      Tabledemo.TablesFixed.loadout_config_fixed_write_body(
-        %Tabledemo.LoadoutConfig{
-          grade: 2, grades: [1, 2, 3, 4, 5],
-          podium: [1, 2, 3], perks: 0,
-          primary: %Tabledemo.WeaponConfig{damage: 10.0},
-          backups: [], attachments: []
-        }
-      )
+    # R.count: a counted array past its declared bound raises — grades is
+    # [..4]Grade, so five elements trip R.count(v_grades, 0, 4) and nothing else
+    raises_naming("count past max raises — R.count guards write",
+      "an array of 5 elements is outside the declared 0..4", fn ->
+      Tabledemo.TablesFixed.loadout_config_fixed_write_body(loadout([:bronze, :silver, :gold, :gold, :none]))
     end)
 
-    # R.count with value within bounds succeeds
+    # R.count with value within bounds succeeds, at the bound itself
     try do
-      Tabledemo.TablesFixed.loadout_config_fixed_write_body(
-        %Tabledemo.LoadoutConfig{
-          grade: 2, grades: [1, 2, 3],
-          podium: [1, 2, 3], perks: 0,
-          primary: %Tabledemo.WeaponConfig{damage: 10.0},
-          backups: [], attachments: []
-        }
-      )
+      Tabledemo.TablesFixed.loadout_config_fixed_write_body(loadout([:bronze, :silver, :gold, :gold]))
       check("count within bounds writes successfully", true)
     rescue
-      _ -> check("count within bounds writes successfully", false)
+      e -> check("count within bounds writes successfully (raised #{inspect(e)})", false)
     end
 
     # R.ranged: an integer past its declared range raises
