@@ -1106,6 +1106,11 @@ macro_rules! with_root {
                 use tabledemo::{wide_blob_from_json_bytes as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json};
                 Some($body)
             }
+            ("tabledemo", "VarMoods") => {
+                #[allow(unused_imports)]
+                use tabledemo::{var_moods_from_json_bytes as $from_json, var_moods_load as $load, var_moods_save_checked as $save, var_moods_to_json_checked as $to_json};
+                Some($body)
+            }
             ("tblg1", "Guarded") => {
                 #[allow(unused_imports)]
                 use tblg1::{guarded_from_json_bytes as $from_json, guarded_load as $load, guarded_save_checked as $save, guarded_to_json_checked as $to_json};
@@ -2222,6 +2227,7 @@ macro_rules! with_cook_root {
             ("tabledemo", "MinArmFix") => { use tabledemo::{min_arm_fix_load as $load, min_arm_fix_cook_write as $cook, min_arm_fix_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "MinPlainFix") => { use tabledemo::{min_plain_fix_load as $load, min_plain_fix_cook_write as $cook, min_plain_fix_from_json_bytes as $from}; Some($body) }
             ("tabledemo", "WideBlob") => { use tabledemo::{wide_blob_load as $load, wide_blob_cook_write as $cook, wide_blob_from_json_bytes as $from}; Some($body) }
+            ("tabledemo", "VarMoods") => { use tabledemo::{var_moods_load as $load, var_moods_cook_write as $cook, var_moods_from_json_bytes as $from}; Some($body) }
             ("tblv1", "Cfg") => { use tblv1::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }
             ("tblv2", "Cfg") => { use tblv2::{cfg_load as $load, cfg_cook_write as $cook, cfg_from_json_bytes as $from}; Some($body) }
             ("tblp1", "Chain") => { use tblp1::{chain_load as $load, chain_cook_write as $cook, chain_from_json_bytes as $from}; Some($body) }
@@ -2608,6 +2614,35 @@ fn wref_loadout_config(v: &mut tabledemo::LoadoutConfig, path: &str, kind: &str,
             Mutation::Done
         }
         _ => fail(&format!("write-refusal: LoadoutConfig names no {kind} path {path}")),
+    }
+}
+
+// THE DEPRECATED VARIANT on a VARIABLE root (docs/SPEC-TABLES.md §2.15
+// WRITE): VarMoods has no fixed form, so its rows reach the variable save.
+// Mood is a native Rust enum and the ordinal sets its variant, Old included;
+// the generated save's own debug assert is the refusal, the driver adds none.
+fn wref_var_moods(v: &mut tabledemo::VarMoods, path: &str, kind: &str, value: &str) -> Mutation {
+    use tabledemo::tables::Mood;
+    let mood = match value {
+        "0" => Mood::None,
+        "1" => Mood::Calm,
+        "2" => Mood::Old,
+        "3" => Mood::Fierce,
+        _ => return Mutation::Unrepresentable,
+    };
+    match (path, kind) {
+        ("row[0]", "ordinal") => {
+            if v.row.is_empty() {
+                fail("write-refusal: VarMoods fixture holds no row[0]");
+            }
+            v.row[0] = mood;
+            Mutation::Done
+        }
+        ("mood", "ordinal") => {
+            v.mood = mood;
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: VarMoods names no {kind} path {path}")),
     }
 }
 
@@ -3209,6 +3244,13 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = shapes::bounds_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_bounds(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| shapes::bounds_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("tabledemo", "VarMoods") => {
+                let Some(mut v) = tabledemo::var_moods_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_var_moods(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| tabledemo::var_moods_save_checked(&v)),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
