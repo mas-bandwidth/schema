@@ -17904,7 +17904,10 @@ static SCHEMA_UNUSED int schema_tabledemo_moods_wire_row_( tabledemo_table_write
         {
             case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
             case TABLEDEMO_MOOD_CALM: tabledemo_table_writer_id( w, 0xdfa47a9ce9ac16d6ull ); break;
-            case TABLEDEMO_MOOD_OLD: tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull ); break;
+            case TABLEDEMO_MOOD_OLD:
+                schema_assert( value->row[i] != TABLEDEMO_MOOD_OLD ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull );
+                break;
             case TABLEDEMO_MOOD_FIERCE: tabledemo_table_writer_id( w, 0x199c482b49ef9acbull ); break;
             default:
                 return 0; /* no declared identity */
@@ -18383,7 +18386,10 @@ static SCHEMA_UNUSED int tabledemo_mood_field_save_body( tabledemo_table_writer_
             {
                 case TABLEDEMO_MOOD_NONE: tabledemo_table_writer_leb( w, 0 ); break;
                 case TABLEDEMO_MOOD_CALM: tabledemo_table_writer_id( w, 0xdfa47a9ce9ac16d6ull ); break;
-                case TABLEDEMO_MOOD_OLD: tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull ); break;
+                case TABLEDEMO_MOOD_OLD:
+                    schema_assert( value->mood != TABLEDEMO_MOOD_OLD ); /* a deprecated variant is never written (SPEC-TABLES §2.15) */
+                    tabledemo_table_writer_id( w, 0x3018cd19bf898cd6ull );
+                    break;
                 case TABLEDEMO_MOOD_FIERCE: tabledemo_table_writer_id( w, 0x199c482b49ef9acbull ); break;
                 default:
                     return 0; /* no declared identity */
@@ -21773,6 +21779,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_moods_f
         for ( i = 0; i < ( value->row_count >= 0 && value->row_count <= 4 ? (int64_t) value->row_count : 0 ); ++i )
         {
             if ( (uint64_t) value->row[i] > 3u ) { ( *out_of_range )++; }
+            if ( value->row[i] == TABLEDEMO_MOOD_OLD ) { ( *out_of_range )++; } /* a deprecated variant is never written (SPEC-TABLES §2.15) */
         }
     }
 }
@@ -21784,6 +21791,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_mood_fi
     (void) out_of_range;
     (void) damaged;
     if ( (uint64_t) value->mood > 3u ) { ( *out_of_range )++; }
+    if ( value->mood == TABLEDEMO_MOOD_OLD ) { ( *out_of_range )++; } /* a deprecated variant is never written (SPEC-TABLES §2.15) */
 }
 
 /* MinArmFix's write check (docs/SPEC.md §5.1). */
@@ -39170,6 +39178,8 @@ static SCHEMA_UNUSED int schema_tabledemo_moods_wire_row__retain( tabledemo_tabl
                 tabledemo_table_retain_writer_id( w, 0xdfa47a9ce9ac16d6ull, retention );
                 break;
             case TABLEDEMO_MOOD_OLD:
+                schema_assert( value->row[i] != TABLEDEMO_MOOD_OLD );
+                /* a deprecated variant is never written (SPEC-TABLES §2.15) */
                 tabledemo_table_retain_writer_id( w, 0x3018cd19bf898cd6ull, retention );
                 break;
             case TABLEDEMO_MOOD_FIERCE:
@@ -39425,6 +39435,8 @@ static SCHEMA_UNUSED int tabledemo_mood_field_save_body_retain( tabledemo_table_
                     tabledemo_table_retain_writer_id( w, 0xdfa47a9ce9ac16d6ull, retention );
                     break;
                 case TABLEDEMO_MOOD_OLD:
+                    schema_assert( value->mood != TABLEDEMO_MOOD_OLD );
+                    /* a deprecated variant is never written (SPEC-TABLES §2.15) */
                     tabledemo_table_retain_writer_id( w, 0x3018cd19bf898cd6ull, retention );
                     break;
                 case TABLEDEMO_MOOD_FIERCE:
