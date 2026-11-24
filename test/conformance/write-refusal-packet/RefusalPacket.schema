@@ -55,6 +55,10 @@ type PacketWriteRefusal
     reserved_zero  int32 = 0 | min = 0, max = 0
     perks          Perk
     trio           [3]int16 | min = -5, max = 5
+    // a [N]uint8 a leg may hold in its own byte container (Squirrel's blob):
+    // every "wrote" row writes its fresh value, so a length check that names
+    // the wrong container refuses the whole lawful half (SPEC.md §5.1, SF-20)
+    octets         [4]uint8
     ints           [..3]int16 | min = -5, max = 5
     pick           Pick
     huge           int128 | min = -10, max = 100000000000000000000

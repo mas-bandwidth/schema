@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum d0
+{ Zfirst, Zsecond, Zthird }
+
+enum d2
+{ Zfirst, Zsecond, Zthird }
+
+enum d_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum da
+{ Zfirst, Zsecond, Zthird }
+
+enum damage
+{ Zfirst, Zsecond, Zthird }
+
+enum damage_reason
+{ Zfirst, Zsecond, Zthird }
+
+enum damaged
+{ Zfirst, Zsecond, Zthird }
+
+enum damagedBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum dataAddress
+{ Zfirst, Zsecond, Zthird }
+
+enum dataBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum dataLength
+{ Zfirst, Zsecond, Zthird }
+
+enum dataOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum dataWord
+{ Zfirst, Zsecond, Zthird }
+
+enum data_len
+{ Zfirst, Zsecond, Zthird }
+
+enum data_off
+{ Zfirst, Zsecond, Zthird }
+
+enum data_out
+{ Zfirst, Zsecond, Zthird }
+
+enum date
+{ Zfirst, Zsecond, Zthird }
+
+enum day
+{ Zfirst, Zsecond, Zthird }
+
+enum dayOfEra
+{ Zfirst, Zsecond, Zthird }
+
+enum dayOfYear
+{ Zfirst, Zsecond, Zthird }
+
+enum days
+{ Zfirst, Zsecond, Zthird }
+
+enum daysFrom
+{ Zfirst, Zsecond, Zthird }
+
+enum daysFromCivil
+{ Zfirst, Zsecond, Zthird }
+
+enum db
+{ Zfirst, Zsecond, Zthird }
+
+enum dbit
+{ Zfirst, Zsecond, Zthird }
+
+enum dbits
+{ Zfirst, Zsecond, Zthird }
+
+enum dchunk
+{ Zfirst, Zsecond, Zthird }
+
+enum dchunks
+{ Zfirst, Zsecond, Zthird }
+
+enum dcmp
+{ Zfirst, Zsecond, Zthird }
+
+enum dead
+{ Zfirst, Zsecond, Zthird }
+
+enum deadAllowed
+{ Zfirst, Zsecond, Zthird }
+
+enum deadArm
+{ Zfirst, Zsecond, Zthird }
+
+enum deadBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum deadStart
+{ Zfirst, Zsecond, Zthird }
+
+enum deadZero
+{ Zfirst, Zsecond, Zthird }
+
+enum dead_code
+{ Zfirst, Zsecond, Zthird }
+
+enum dead_end
+{ Zfirst, Zsecond, Zthird }
+
+enum dead_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum dead_why
+{ Zfirst, Zsecond, Zthird }
+
+enum dead_writer
+{ Zfirst, Zsecond, Zthird }
+
+enum debug
+{ Zfirst, Zsecond, Zthird }
+
+enum dec
+{ Zfirst, Zsecond, Zthird }
+
+enum dec_div
+{ Zfirst, Zsecond, Zthird }
+
+enum dec_integer
+{ Zfirst, Zsecond, Zthird }
+
+enum dec_less
+{ Zfirst, Zsecond, Zthird }
+
+enum dec_mul
+{ Zfirst, Zsecond, Zthird }
+
+enum dec_norm
+{ Zfirst, Zsecond, Zthird }
+
+enum dec_to_lanes
+{ Zfirst, Zsecond, Zthird }
+
+enum decimalBinary
+{ Zfirst, Zsecond, Zthird }
+
+enum decimalCompare
+{ Zfirst, Zsecond, Zthird }
+
+enum decimalOf
+{ Zfirst, Zsecond, Zthird }
+
+enum decimal_cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum decimal_parts
+{ Zfirst, Zsecond, Zthird }
+
+enum decimals
+{ Zfirst, Zsecond, Zthird }
+
+enum decl
+{ Zfirst, Zsecond, Zthird }
+
+enum decl_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum declaration
+{ Zfirst, Zsecond, Zthird }
+
+enum declarationMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum declare
+{ Zfirst, Zsecond, Zthird }
+
+enum declared
+{ Zfirst, Zsecond, Zthird }
+
+enum declaredElem
+{ Zfirst, Zsecond, Zthird }
+
+enum declared_length
+{ Zfirst, Zsecond, Zthird }
+
+enum declared_root
+{ Zfirst, Zsecond, Zthird }
+
+enum declared_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum declared_types
+{ Zfirst, Zsecond, Zthird }
+
+enum declares
+{ Zfirst, Zsecond, Zthird }
+
+enum declaresIntegrity
+{ Zfirst, Zsecond, Zthird }
+
+enum decode
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeArm
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeArray
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeBase64
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeBody
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeElement
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeEnum
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeField
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeFloat32
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeRune
+{ Zfirst, Zsecond, Zthird }
+
+enum decodeScalar
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    d0 Inner
+    d2 Inner
+    d_ok Inner
+    da Inner
+    damage Inner
+    damage_reason Inner
+    damaged Inner
+    damagedBefore Inner
+    dataAddress Inner
+    dataBytes Inner
+}
+
+table NameTypes0
+{
+    one0  d0
+    many0 [..4]d0
+    one1  d2
+    many1 [..4]d2
+    one2  d_ok
+    many2 [..4]d_ok
+    one3  da
+    many3 [..4]da
+    one4  damage
+    many4 [..4]damage
+    one5  damage_reason
+    many5 [..4]damage_reason
+    one6  damaged
+    many6 [..4]damaged
+    one7  damagedBefore
+    many7 [..4]damagedBefore
+    one8  dataAddress
+    many8 [..4]dataAddress
+    one9  dataBytes
+    many9 [..4]dataBytes
+}
+
+table NameFields0
+{
+    d0 uint32
+    d2 uint32
+    d_ok uint32
+    da uint32
+    damage uint32
+    damage_reason uint32
+    damaged uint32
+    damagedBefore uint32
+    dataAddress uint32
+    dataBytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    dataLength Inner
+    dataOffset Inner
+    dataWord Inner
+    data_len Inner
+    data_off Inner
+    data_out Inner
+    date Inner
+    day Inner
+    dayOfEra Inner
+    dayOfYear Inner
+}
+
+table NameTypes1
+{
+    one0  dataLength
+    many0 [..4]dataLength
+    one1  dataOffset
+    many1 [..4]dataOffset
+    one2  dataWord
+    many2 [..4]dataWord
+    one3  data_len
+    many3 [..4]data_len
+    one4  data_off
+    many4 [..4]data_off
+    one5  data_out
+    many5 [..4]data_out
+    one6  date
+    many6 [..4]date
+    one7  day
+    many7 [..4]day
+    one8  dayOfEra
+    many8 [..4]dayOfEra
+    one9  dayOfYear
+    many9 [..4]dayOfYear
+}
+
+table NameFields1
+{
+    dataLength uint32
+    dataOffset uint32
+    dataWord uint32
+    data_len uint32
+    data_off uint32
+    data_out uint32
+    date uint32
+    day uint32
+    dayOfEra uint32
+    dayOfYear uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    days Inner
+    daysFrom Inner
+    daysFromCivil Inner
+    db Inner
+    dbit Inner
+    dbits Inner
+    dchunk Inner
+    dchunks Inner
+    dcmp Inner
+    dead Inner
+}
+
+table NameTypes2
+{
+    one0  days
+    many0 [..4]days
+    one1  daysFrom
+    many1 [..4]daysFrom
+    one2  daysFromCivil
+    many2 [..4]daysFromCivil
+    one3  db
+    many3 [..4]db
+    one4  dbit
+    many4 [..4]dbit
+    one5  dbits
+    many5 [..4]dbits
+    one6  dchunk
+    many6 [..4]dchunk
+    one7  dchunks
+    many7 [..4]dchunks
+    one8  dcmp
+    many8 [..4]dcmp
+    one9  dead
+    many9 [..4]dead
+}
+
+table NameFields2
+{
+    days uint32
+    daysFrom uint32
+    daysFromCivil uint32
+    db uint32
+    dbit uint32
+    dbits uint32
+    dchunk uint32
+    dchunks uint32
+    dcmp uint32
+    dead uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    deadAllowed Inner
+    deadArm Inner
+    deadBytes Inner
+    deadStart Inner
+    deadZero Inner
+    dead_code Inner
+    dead_end Inner
+    dead_reader Inner
+    dead_why Inner
+    dead_writer Inner
+}
+
+table NameTypes3
+{
+    one0  deadAllowed
+    many0 [..4]deadAllowed
+    one1  deadArm
+    many1 [..4]deadArm
+    one2  deadBytes
+    many2 [..4]deadBytes
+    one3  deadStart
+    many3 [..4]deadStart
+    one4  deadZero
+    many4 [..4]deadZero
+    one5  dead_code
+    many5 [..4]dead_code
+    one6  dead_end
+    many6 [..4]dead_end
+    one7  dead_reader
+    many7 [..4]dead_reader
+    one8  dead_why
+    many8 [..4]dead_why
+    one9  dead_writer
+    many9 [..4]dead_writer
+}
+
+table NameFields3
+{
+    deadAllowed uint32
+    deadArm uint32
+    deadBytes uint32
+    deadStart uint32
+    deadZero uint32
+    dead_code uint32
+    dead_end uint32
+    dead_reader uint32
+    dead_why uint32
+    dead_writer uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    debug Inner
+    dec Inner
+    dec_div Inner
+    dec_integer Inner
+    dec_less Inner
+    dec_mul Inner
+    dec_norm Inner
+    dec_to_lanes Inner
+    decimalBinary Inner
+    decimalCompare Inner
+}
+
+table NameTypes4
+{
+    one0  debug
+    many0 [..4]debug
+    one1  dec
+    many1 [..4]dec
+    one2  dec_div
+    many2 [..4]dec_div
+    one3  dec_integer
+    many3 [..4]dec_integer
+    one4  dec_less
+    many4 [..4]dec_less
+    one5  dec_mul
+    many5 [..4]dec_mul
+    one6  dec_norm
+    many6 [..4]dec_norm
+    one7  dec_to_lanes
+    many7 [..4]dec_to_lanes
+    one8  decimalBinary
+    many8 [..4]decimalBinary
+    one9  decimalCompare
+    many9 [..4]decimalCompare
+}
+
+table NameFields4
+{
+    debug uint32
+    dec uint32
+    dec_div uint32
+    dec_integer uint32
+    dec_less uint32
+    dec_mul uint32
+    dec_norm uint32
+    dec_to_lanes uint32
+    decimalBinary uint32
+    decimalCompare uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    decimalOf Inner
+    decimal_cmp Inner
+    decimal_parts Inner
+    decimals Inner
+    decl Inner
+    decl_idx Inner
+    declaration Inner
+    declarationMisuse Inner
+    declare Inner
+    declared Inner
+}
+
+table NameTypes5
+{
+    one0  decimalOf
+    many0 [..4]decimalOf
+    one1  decimal_cmp
+    many1 [..4]decimal_cmp
+    one2  decimal_parts
+    many2 [..4]decimal_parts
+    one3  decimals
+    many3 [..4]decimals
+    one4  decl
+    many4 [..4]decl
+    one5  decl_idx
+    many5 [..4]decl_idx
+    one6  declaration
+    many6 [..4]declaration
+    one7  declarationMisuse
+    many7 [..4]declarationMisuse
+    one8  declare
+    many8 [..4]declare
+    one9  declared
+    many9 [..4]declared
+}
+
+table NameFields5
+{
+    decimalOf uint32
+    decimal_cmp uint32
+    decimal_parts uint32
+    decimals uint32
+    decl uint32
+    decl_idx uint32
+    declaration uint32
+    declarationMisuse uint32
+    declare uint32
+    declared uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    declaredElem Inner
+    declared_length Inner
+    declared_root Inner
+    declared_signed Inner
+    declared_types Inner
+    declares Inner
+    declaresIntegrity Inner
+    decode Inner
+    decodeArm Inner
+    decodeArray Inner
+}
+
+table NameTypes6
+{
+    one0  declaredElem
+    many0 [..4]declaredElem
+    one1  declared_length
+    many1 [..4]declared_length
+    one2  declared_root
+    many2 [..4]declared_root
+    one3  declared_signed
+    many3 [..4]declared_signed
+    one4  declared_types
+    many4 [..4]declared_types
+    one5  declares
+    many5 [..4]declares
+    one6  declaresIntegrity
+    many6 [..4]declaresIntegrity
+    one7  decode
+    many7 [..4]decode
+    one8  decodeArm
+    many8 [..4]decodeArm
+    one9  decodeArray
+    many9 [..4]decodeArray
+}
+
+table NameFields6
+{
+    declaredElem uint32
+    declared_length uint32
+    declared_root uint32
+    declared_signed uint32
+    declared_types uint32
+    declares uint32
+    declaresIntegrity uint32
+    decode uint32
+    decodeArm uint32
+    decodeArray uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    decodeBase64 Inner
+    decodeBody Inner
+    decodeElement Inner
+    decodeEnum Inner
+    decodeField Inner
+    decodeFloat32 Inner
+    decodeInteger Inner
+    decodeKeyed Inner
+    decodeRune Inner
+    decodeScalar Inner
+}
+
+table NameTypes7
+{
+    one0  decodeBase64
+    many0 [..4]decodeBase64
+    one1  decodeBody
+    many1 [..4]decodeBody
+    one2  decodeElement
+    many2 [..4]decodeElement
+    one3  decodeEnum
+    many3 [..4]decodeEnum
+    one4  decodeField
+    many4 [..4]decodeField
+    one5  decodeFloat32
+    many5 [..4]decodeFloat32
+    one6  decodeInteger
+    many6 [..4]decodeInteger
+    one7  decodeKeyed
+    many7 [..4]decodeKeyed
+    one8  decodeRune
+    many8 [..4]decodeRune
+    one9  decodeScalar
+    many9 [..4]decodeScalar
+}
+
+table NameFields7
+{
+    decodeBase64 uint32
+    decodeBody uint32
+    decodeElement uint32
+    decodeEnum uint32
+    decodeField uint32
+    decodeFloat32 uint32
+    decodeInteger uint32
+    decodeKeyed uint32
+    decodeRune uint32
+    decodeScalar uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

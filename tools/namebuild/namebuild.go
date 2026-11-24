@@ -14,6 +14,10 @@
 // refuses at generate is a defect, and the checker runs the emitters' name
 // rules so it refuses such a name itself.
 //
+// A builds row a target cannot build yet is written in owed.txt beside
+// cases.tsv, with its true cause (owed.go): the nightly counts that job owed,
+// and fails on any other failure and on any ledgered job that passes.
+//
 // TestNameBuildability is the nightly: under SCHEMA_SLOW=1 it builds the
 // compiler, generates every builds row in every
 // target, and builds and loads each output, every child through
@@ -239,6 +243,9 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- a unit with tables: the table backend's spans and pinned buffers are
+         unsafe code, which docs/CS-TABLES.md asks every consumer to allow -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
@@ -298,6 +305,10 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 		}
 		return stepEnv(run, dir, []string{"CARGO_TARGET_DIR=" + filepath.Join(dir, "target")}, env.Tool("CARGO", "cargo"), "build", "--quiet", "--offline")
 	case "go":
+		// a unit with tables imports the shared table runtime
+		// (github.com/mas-bandwidth/schema/v2/tables/goruntime), so this
+		// checkout's module rides beside serialize.go, as the gotable tests'
+		// own probe modules do
 		mod := "module probecase\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\n\tgithub.com/mas-bandwidth/schema/v2 => " + env.Root + "\n)\n"
 		if err := put(dir, "go.mod", mod); err != nil {
 			return err
