@@ -1504,12 +1504,13 @@ function S.LoadRetain(T, name, bytes, retain, report, into)
   -- the caller's report held survives. The counters the retaining load adds
   -- (retained, retain_lost) start at zero here and then ACCUMULATE through the
   -- capture; SaveRetain adds to what this load left (§6.6).
+  local desc = T.Tables[name]
+  if desc == nil then return nil end
+  -- a fixed root is refused by name before the report is touched (§6.6)
+  if not desc.variable then fixed_refusal(name) end
   if report ~= nil then
     for k in pairs(report) do report[k] = nil end
   end
-  local desc = T.Tables[name]
-  if desc == nil then return nil end
-  if not desc.variable then fixed_refusal(name) end
   if retain ~= nil then
     retain.list = {}
     retain.used = 0
