@@ -617,7 +617,7 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
 	cache := map[string]*cookUnit{}
-	checked := 0
+	checked, wireRefused := 0, 0
 	for _, row := range manifestRows(t) {
 		if row.kind != "instance" {
 			continue
@@ -632,10 +632,12 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			inst := cu.m.New(cu.m.Lookup(row.root))
-			var report tabletext.Report
-			if _, err = tablewire.Decode(cu.m, inst, wire, &report); err != nil {
-				t.Fatal(err)
+			// a wire-refused row has no value to cook: the oracle and the
+			// Luau strict read both refuse it, by verdict only
+			inst := cookRowOracle(t, cu, row, wire)
+			if inst == nil {
+				wireRefused++
+				return
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
 			if err != nil {
@@ -652,10 +654,10 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 			checked++
 		})
 	}
-	if checked == 0 {
-		t.Fatal("no valid cooked corpus checked")
+	if checked == 0 || wireRefused == 0 {
+		t.Fatalf("%d valid cooked corpus rows checked, %d wire-refused rows refused by both reads", checked, wireRefused)
 	}
-	t.Logf("%d valid reference cooks accepted by CheckWhole", checked)
+	t.Logf("%d valid reference cooks accepted by CheckWhole, %d wire-refused rows refused by the oracle and the Luau read", checked, wireRefused)
 }
 
 // An unreachable attributed table is still storage the diagnostic tool must

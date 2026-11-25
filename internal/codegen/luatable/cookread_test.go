@@ -54,6 +54,12 @@ func TestLuaCookRead(t *testing.T) {
 				t.Fatalf("%s: the unit has no table %s", row.caseName, row.root)
 			}
 			inst := m.New(root)
+			if row.wireRefused {
+				// No cook exists for a wire-refused instance: the strict
+				// read refuses it everywhere (docs/SPEC-TABLES.md §6.5).
+				requireWireRefusedBothRefuse(t, repo, paths, row, m, inst, wire)
+				return
+			}
 			var report tabletext.Report
 			if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
 				t.Fatalf("decode %s: %v", row.caseName, err)

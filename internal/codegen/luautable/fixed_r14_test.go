@@ -134,8 +134,9 @@ const r14LuauMalformed = "arm refused layout_malformed\n" +
 
 // r14LuauCases: the cell (THEIRS vs MINE(8)), its twins (MINE(1), MINE(2)),
 // and the same law from the writer's side: a writer whose tag is 8 bytes over
-// one arm (MINE(8) as THEIRS) is read at 8, and a writer tag of 0, 3 or 9
-// bytes is no tag at all (an ordinal width is 1, 2, 4 or 8).
+// one arm (MINE(8) as THEIRS) is read at 8, and a writer tag of 0, 3, 5, 6, 7
+// or 9 bytes is no tag at all (an ordinal width is exactly 1, 2, 4 or 8, never
+// "1..8": docs/FIXED-FORM-ALGORITHM.md, THE GUARD'S WIDTH).
 var r14LuauCases = []r14LuauCase{
 	{name: "theirs_vs_mine8", theirTag: 1, myTag: 8, want: r14LuauLawful},
 	{name: "theirs_vs_mine1", theirTag: 1, myTag: 1, want: r14LuauLawful},
@@ -143,6 +144,9 @@ var r14LuauCases = []r14LuauCase{
 	{name: "writer_tag8_vs_mine8", theirTag: 8, myTag: 8, want: r14LuauLawful},
 	{name: "writer_tag0_refused", theirTag: 0, myTag: 1, want: r14LuauMalformed},
 	{name: "writer_tag3_refused", theirTag: 3, myTag: 1, want: r14LuauMalformed},
+	{name: "writer_tag5_refused", theirTag: 5, myTag: 1, want: r14LuauMalformed},
+	{name: "writer_tag6_refused", theirTag: 6, myTag: 1, want: r14LuauMalformed},
+	{name: "writer_tag7_refused", theirTag: 7, myTag: 1, want: r14LuauMalformed},
 	{name: "writer_tag9_refused", theirTag: 9, myTag: 1, want: r14LuauMalformed},
 }
 

@@ -6,17 +6,33 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
-// TestPythonVtFixedClassValueModuleCollision preserves public enum, flags and
-// constant exports when their source modules have the same names.
+// TestPythonVtFixedClassValueModuleCollision preserves a public export whose
+// source module has the same name. A constant is the export that can still
+// collide: a unit refuses an enum or flags named after its own schema file
+// for every target (the Java outer class, SPEC §4.6), which this test holds
+// too, so the Python leg is never handed that collision.
 func TestPythonVtFixedClassValueModuleCollision(t *testing.T) {
 	t.Parallel()
-	src := t.TempDir()
 	for name, text := range map[string]string{
 		"Shade.schema":  "package collision\nenum Shade { Red, Blue }\n",
 		"Access.schema": "package collision\nflags Access { Read, Write }\n",
+	} {
+		ast, perrs := parser.Parse(name, []byte(text))
+		if len(perrs) > 0 {
+			t.Fatalf("parse %s: %v", name, perrs[0])
+		}
+		if _, cerrs := check.Unit([]check.SourceFile{{Path: name, Name: name, Base: strings.TrimSuffix(name, ".schema"), Bytes: []byte(text), AST: ast}}); len(cerrs) == 0 {
+			t.Fatalf("%s: a type named after its own schema file was admitted", name)
+		}
+	}
+	src := t.TempDir()
+	for name, text := range map[string]string{
+		"Values.schema": "package collision\nenum Shade { Red, Blue }\nflags Access { Read, Write }\n",
 		"Rate.schema":   "package collision\nconst Rate = 7\n",
 		"Root.schema":   "package collision\ntable Root { shade Shade\n access Access }\n",
 	} {
@@ -52,14 +68,14 @@ print('value-public-api')
 	if err != nil {
 		t.Fatal(err)
 	}
-	anchor := "from .Shade import Shade\n"
+	anchor := "from .Rate import Rate\n"
 	if strings.Count(string(init), anchor) != 1 {
-		t.Fatal("value collision control anchor changed")
+		t.Fatalf("value collision control anchor changed:\n%s", init)
 	}
-	if err := os.WriteFile(name, []byte(strings.Replace(string(init), anchor, "from . import Shade\n"+anchor, 1)), 0o600); err != nil {
+	if err := os.WriteFile(name, []byte(strings.Replace(string(init), anchor, "from . import Rate\n"+anchor, 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := pyrun.Analyze(t, dir, "collision"); err == nil || !strings.Contains(out, `Name "Shade" already defined`) {
+	if out, err := pyrun.Analyze(t, dir, "collision"); err == nil || !strings.Contains(out, `Name "Rate" already defined`) {
 		t.Fatalf("value collision control did not fail by name: %v\n%s", err, out)
 	}
 }

@@ -5,8 +5,9 @@
 # its own surfaces red:
 #
 #   1. the LOAD: every unknown field the load skips marks it malformed, so
-#      `report`, `retain`, `retain-save` and `framing` (on exactly its
-#      unknown-field rows, named) go red and nothing else;
+#      `report`, `retain`, `retain-save`, and `framing`, `retain-refusal`,
+#      `read-into` and `rewrite` on exactly their unknown-field rows (named)
+#      go red and nothing else;
 #   2. the ACCELERATOR READERS: the cook's reserved-words clause and the
 #      block's pitch clause are cut out of Check and BlockOpen, so the two
 #      forgery batteries and the two reason surfaces go red and nothing else.
@@ -85,22 +86,36 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 	echo "negative control failed: the luau load sabotage left conformance green" >&2
 	exit 1
 fi
+# Every surface that reads a wire through the load goes red where that wire
+# carries an unknown field: report, framing, the retaining reads (retain,
+# retain-save, retain-refusal, whose lawful first read retains one), read-into
+# (its retaining row) and rewrite (which reads before it writes back).
+want="report framing retain retain-save retain-refusal read-into rewrite "
 got=$(reds "$out/load.log")
-if [ "$got" != "report framing retain retain-save " ]; then
-	echo "negative control failed: the luau load sabotage turned [$got] red, want [report framing retain retain-save ]" >&2
+if [ "$got" != "$want" ]; then
+	echo "negative control failed: the luau load sabotage turned [$got] red, want [$want]" >&2
 	cat "$out/load.log" >&2
 	exit 1
 fi
-# framing goes red only on the rows whose wire carries an unknown field
-# (graph_reach_unknown_*, and node_type_undeclared, whose pointer names an
-# undeclared table, reads null and counts unknown): exactly those, by name
-rows="graph_reach_unknown_field graph_reach_unknown_keyed_slot graph_reach_unknown_nested graph_reach_unknown_union_arm node_type_undeclared"
-got=$(grep -oE "^ *luau / framing: [A-Za-z0-9_]+" "$out/load.log" | sed "s/.*: //" | sort -u | xargs echo)
-if [ "$got" != "$rows" ]; then
-	echo "negative control failed: the luau load sabotage turned framing rows [$got] red, want exactly the unknown-field rows [$rows]" >&2
-	cat "$out/load.log" >&2
-	exit 1
-fi
+# and on exactly the rows whose wire carries an unknown field, by name, so a
+# row the skip does not decide stays green (graph_reach_unknown_*, and
+# node_type_undeclared, whose pointer names an undeclared table, reads null and
+# counts unknown; varevo_v3_compat_as_v1, whose v3 fields a v1 reader does not
+# know; the retain-refusal rows' and ri_retain's lawful retaining wires)
+unknownrows="graph_reach_unknown_field graph_reach_unknown_keyed_slot graph_reach_unknown_nested graph_reach_unknown_union_arm node_type_undeclared"
+for pin in \
+	"framing:$unknownrows" \
+	"rewrite:$unknownrows varevo_v3_compat_as_v1" \
+	"retain-refusal:retain_refusal_body retain_refusal_empty retain_refusal_form_two retain_refusal_frame retain_refusal_short" \
+	"read-into:ri_retain"; do
+	surface=${pin%%:*} rows=${pin#*:}
+	got=$(grep -oE "^ *luau / $surface: [A-Za-z0-9_]+" "$out/load.log" | sed "s/.*: //" | sort -u | xargs echo)
+	if [ "$got" != "$rows" ]; then
+		echo "negative control failed: the luau load sabotage turned $surface rows [$got] red, want exactly the unknown-field rows [$rows]" >&2
+		cat "$out/load.log" >&2
+		exit 1
+	fi
+done
 
 reset
 n=0
@@ -127,4 +142,4 @@ if [ "$got" != "forgery cook-forgery " ]; then
 	cat "$out/accel.log" >&2
 	exit 1
 fi
-echo "Luau table negative control: the load sabotage turns exactly report, retain, retain-save and the unknown-field framing rows red; the reader sabotage exactly forgery and cook-forgery"
+echo "Luau table negative control: the load sabotage turns exactly report, retain, retain-save and the unknown-field rows of framing, retain-refusal, read-into and rewrite red; the reader sabotage exactly forgery and cook-forgery"

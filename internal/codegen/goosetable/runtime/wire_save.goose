@@ -451,6 +451,10 @@ fn header(c: SaveCtx&, id: u64, kind: u8) {
     put(c, kind);
 }
 
+// A `| required` FIELD NEVER ELIDES (docs/SPEC-TABLES.md §2.3, The `| required`
+// marker; tablewire.encodeField's `!f.Required &&` on every elision): the
+// writer emits it even at its default, so a reader never meets it absent and
+// refuses missing_required. Every elision test below is gated on !d.required.
 fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     if d.shape == ShapePtr || d.shape == ShapeSBlob || d.shape == ShapeBBlob {
         // NULL IS ELIDED unless required (FL-16: a null *T | required writes index 0)
@@ -485,35 +489,31 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
             if d.shape == ShapeStr && d.bound > 0 && c.vals[s].len > d.bound { refuse(c, SaveRefuseInvalidValue); return; }
             if !text_valid(c.data, c.vals[s].off, c.vals[s].len) { refuse(c, SaveRefuseInvalidValue); return; }
         }
-        if is_default(c, s, d) { return; }
+        if !d.required && is_default(c, s, d) { return; }
         header(c, d.id, KindString);
-        put_leb(c, c.vals[s].len as! u64);
-        put_view(c, c.vals[s].off, c.vals[s].len);
+        put_text(c, s, d); // an absent required text rides as its default
         return;
     }
     if d.shape == ShapeBytes {
         if state_of(c, s) != ValAbsent && d.bound > 0 && c.vals[s].len > d.bound { refuse(c, SaveRefuseInvalidValue); return; }
-        if is_default(c, s, d) { return; }
-        header(c, d.id, KindArray);
-        let n = c.vals[s].len as! u64;
-        put_leb(c, 1 + (leb_size(n) as! u64) + n);
-        put(c, KindU8); // bytes ride as an array of u8 (§2.5)
-        put_leb(c, n);
-        put_view(c, c.vals[s].off, c.vals[s].len);
+        if !d.required && is_default(c, s, d) { return; }
+        field_simple(c, s, d); // bytes ride as an array of u8 (§2.5)
         return;
     }
     if d.shape == ShapeArr {
         if d.array == ArrayCounted || d.array == ArrayList {
             // an unbounded array is the counted array's own bytes (§2.9); an
-            // empty one elides
-            let n = if s < 0 || !c.vals[s].made { 0 } else { c.vals[s].len };
+            // empty one elides unless required, and a required counted array
+            // nobody made is born at its Min (tablewire BornCount)
+            var n = if s < 0 || !c.vals[s].made { 0 } else { c.vals[s].len };
+            if d.required && d.array == ArrayCounted && (s < 0 || !c.vals[s].made) { n = d.min; }
             if d.array == ArrayCounted && s >= 0 && c.vals[s].made && n < d.min {
                 // an array a caller holds below its Min is refused, never
                 // elided as absent (docs/SPEC.md §5.1 row 3)
                 refuse(c, SaveRefuseInvalidValue);
                 return;
             }
-            if n == 0 { return; }
+            if n == 0 && !d.required { return; }
             if born_elides(c, s, d, n) { return; }
             field_array(c, s, d, n);
             return;
@@ -532,12 +532,19 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
                 if !elem_default(c, c.vals[s].first + k, e) { all = false; break; }
             }
         }
-        if all { return; }
+        if all && !d.required { return; }
         field_array(c, s, d, d.bound);
         return;
     }
     if d.shape == ShapeUnion {
-        if state_of(c, s) != ValPresent || c.vals[s].bits.lo == 0 { return; } // None elides
+        if state_of(c, s) != ValPresent || c.vals[s].bits.lo == 0 {
+            // None elides; a required None rides as the zero arm reference
+            if d.required {
+                header(c, d.id, KindUnion);
+                put_leb(c, 0);
+            }
+            return;
+        }
         header(c, d.id, KindUnion);
         arm_header(c, s, d.ref);
         return;
@@ -550,14 +557,14 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
         header(c, d.id, KindTable);
         let start = c.out.len;
         body(c, save_table_index(c, d.ref), s, false);
-        if c.out.len - start <= 1 {
+        if c.out.len - start <= 1 && !d.required {
             cut(c, at, mark);
             return;
         }
         frame(c, start);
         return;
     }
-    if is_default(c, s, d) { return; }
+    if !d.required && is_default(c, s, d) { return; }
     field_simple(c, s, d);
 }
 
@@ -874,22 +881,32 @@ fn field_keyed(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
             pairs += 1;
         }
     }
-    if pairs == 0 { cut(c, at, mark); return; }
+    if pairs == 0 && !d.required { cut(c, at, mark); return; }
     insert_leb(c, pairs_at, pairs);
     frame(c, start);
 }
 
 // field_map: kind 14 over element kind 13, the entries in ASCENDING KEY
-// ORDER with no key twice (§2.8); an empty map elides, and an entry always
-// rides.
+// ORDER with no key twice (§2.8); a plain empty map elides, an OPTIONAL map
+// rides exactly when present, its zero-entry body included, a required one
+// always rides (tablewire.encodeMap), and an entry always rides.
 fn field_map(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64) {
-    if s < 0 || !c.vals[s].made || c.vals[s].len == 0 { return; }
-    // the entry table is the record the load placed (<Owner><Slot>Entry)
-    let t = c.vals[c.vals[s].first].tab;
+    let n = if s < 0 || !c.vals[s].made { 0 } else { c.vals[s].len };
+    if d.optional {
+        if state_of(c, s) == ValAbsent { return; }
+    } else if n == 0 && !d.required {
+        return;
+    }
     header(c, d.id, KindArray);
     let start = c.out.len;
     put(c, KindTable);
-    put_leb(c, c.vals[s].len as! u64);
+    put_leb(c, n as! u64);
+    if n == 0 {
+        frame(c, start);
+        return;
+    }
+    // the entry table is the record the load placed (<Owner><Slot>Entry)
+    let t = c.vals[c.vals[s].first].tab;
     // the writer derives the order (map_entry_order): the value may hold the
     // entries in any order, the wire never does
     let mark = c.sorted.len;

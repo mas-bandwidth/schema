@@ -323,13 +323,18 @@ local function surfaceFraming(lines: { { string } })
 					local jr = report()
 					local json = u.json.ToJson(f[4], v, jr)
 					if json == nil then
-						error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+						-- the row answers, and fails by name, rather than ending
+						-- the driver: one row's refused text is that row's red,
+						-- never every framing row's
+						sayText(f[2], text .. "ToJson refused the value (" .. tostring(jr.reason) .. ")\n")
+						continue
 					end
 					text = text .. buffer.tostring(json)
 				end
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil then
-					error(f[2] .. ": save refused the value (" .. tostring(why and why.name) .. ")")
+					sayText(f[2], text .. "save refused the value (" .. tostring(why and why.name) .. ")\n")
+					continue
 				end
 				say(f[2] .. ".wire", saved)
 				sayText(f[2], text)
@@ -573,10 +578,25 @@ end
 
 -- ---- the COOK WRITE surface (docs/SPEC-TABLES.md §7.6, §19.1) -------------
 --
--- Load the instance's wire, measure the cook, then cook it in both byte
--- orders; `<case>` is the little-endian file and `<case>-be` the big. The
--- build version the header records is the unit's own
+-- Load the instance's wire with the strict read, measure the cook, then cook
+-- it in both byte orders; `<case>` is the little-endian file and `<case>-be`
+-- the big. The build version the header records is the unit's own
 -- (TableMessageBuildVersion), handed to the cook before it writes.
+--
+-- A SHARED BLOB IS BUILT, NEVER READ (docs/SPEC-TABLES.md §2.5, §6.5;
+-- docs/rulings.json strict-only-read): the derived line is
+-- `cook-write <instance> <input> <source> <alias>` (test/conformance/harness
+-- run.go). When it names a share, no read hands back a value whose two slots
+-- name one blob, so the value is the construction input's text read strictly,
+-- and the alias slot is then pointed at the source slot's one buffer, the value
+-- the cook writes once (§7.6).
+local function slotNamed(d: any, field: string): string
+	for _, fd in d.fields do
+		if fd.name == field then return fd.slot end
+	end
+	error("cook-write: " .. tostring(d.name) .. " declares no field " .. field)
+end
+
 local function surfaceCookWrite(lines: { { string } })
 	local instances: { [string]: { string } } = {}
 	for _, f in kind(lines, "instance") do
@@ -593,9 +613,22 @@ local function surfaceCookWrite(lines: { { string } })
 			say(f[2], nil)
 			say(f[2] .. "-be", nil)
 		else
-			local v = u.load.loadWalk(inst[4], file(inst[5]), report())
-			if v == nil then
-				error(f[2] .. ": cook input did not load")
+			local v: any = nil
+			local source, alias = f[4], f[5]
+			if source ~= nil and source ~= "-" then
+				if f[3] == nil or f[3] == "-" or alias == nil or alias == "-" then
+					error(f[2] .. ": a share needs a construction input and two fields")
+				end
+				v = u.json.FromJson(inst[4], file(f[3]), report())
+				if v == nil then
+					error(f[2] .. ": the cook's construction input did not read")
+				end
+				v[slotNamed(d, alias)] = v[slotNamed(d, source)]
+			else
+				v = u.load.load(inst[4], file(inst[5]), report())
+				if v == nil then
+					error(f[2] .. ": cook input did not load")
+				end
 			end
 			u.cook.BuildVersion = u.modules[1].TableMessageBuildVersion
 			local size = u.cook.CookMeasure(d, v)
@@ -1850,34 +1883,37 @@ local function surfaceReadInto(lines: { { string } })
 			end
 			local fresh = report()
 			if load(lawfulBytes, fresh) ~= "read\n" then
-				error(name .. ": the lawful retaining load did not read into a fresh report")
-			end
-			local function zeroed(rep: any): string
-				local diff = {}
-				for k, v in rep do
-					if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+				-- the row answers, and fails by name, rather than ending the driver:
+				-- a refused lawful load is this row's red, never every row's
+				sayText(name, "the lawful retaining load did not read into a fresh report\n")
+			else
+				local function zeroed(rep: any): string
+					local diff = {}
+					for k, v in rep do
+						if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+					end
+					for k, v in fresh do
+						if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
+					end
+					table.sort(diff)
+					if #diff == 0 then return "zeroed\n" end
+					return "kept " .. table.concat(diff, ", ") .. "\n"
 				end
-				for k, v in fresh do
-					if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
-				end
-				table.sort(diff)
-				if #diff == 0 then return "zeroed\n" end
-				return "kept " .. table.concat(diff, ", ") .. "\n"
+				local rep = {
+					malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
+					widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
+					retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
+					missingName = "stale", field = "stale", unknownField = "stale",
+					duplicateField = "stale",
+				}
+				local parts = {}
+				parts[#parts + 1] = load(lawfulBytes, rep)
+				parts[#parts + 1] = zeroed(rep)
+				parts[#parts + 1] = load(damagedBytes, rep)
+				parts[#parts + 1] = load(lawfulBytes, rep)
+				parts[#parts + 1] = zeroed(rep)
+				sayText(name, table.concat(parts))
 			end
-			local rep = {
-				malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
-				widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
-				retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
-				missingName = "stale", field = "stale", unknownField = "stale",
-				duplicateField = "stale",
-			}
-			local parts = {}
-			parts[#parts + 1] = load(lawfulBytes, rep)
-			parts[#parts + 1] = zeroed(rep)
-			parts[#parts + 1] = load(damagedBytes, rep)
-			parts[#parts + 1] = load(lawfulBytes, rep)
-			parts[#parts + 1] = zeroed(rep)
-			sayText(name, table.concat(parts))
 		else
 			local n = tonumber(count)
 			if n == nil or n < 1 then error(name .. ": " .. tostring(count) .. " is not a count") end

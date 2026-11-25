@@ -60,7 +60,10 @@ print(hex(again))
 `
 
 // nullElemReadOnlyProbe is the reversed witness's probe: it never saves, so a
-// planted reader defect is the only thing that can move its answer.
+// planted reader defect is the only thing that can move its answer. It
+// prints the walk's counters before its verdict: the walk counts onto the
+// report and, strict only (docs/rulings.json strict-only-read), hands back
+// no value past a kind mismatch, so a refused read prints "refused" second.
 const nullElemReadOnlyProbe = `require("./CartonTable")
 local json = require("./schema_json")
 local inputs = require("./inputs")
@@ -72,9 +75,9 @@ local function hex(b)
 end
 local r = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local v = json.fromJsonWalk("Box", inputs.text, r)
-if v == nil then print("refused"); return end
 print(string.format("km=%d u=%d c=%d d=%d w=%d malformed=%s",
 	r.kindMismatch, r.unknown, r.clamped, r.duplicate, r.widened, tostring(r.malformed)))
+if v == nil then print("refused"); return end
 local text = json.ToJson("Box", v)
 if text == nil then print("write-failed"); return end
 print(hex(text))
@@ -252,8 +255,10 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 
 	// THE REVERSED WITNESS: put the null-element read of the list and of the
 	// map back to a kind_mismatch count; every case must then report exactly
-	// its nulls as kind_mismatch and nothing else, so a crash or a refusal of the planted runtime
-	// cannot pass for red. The genuine runtime is the subtests' run.
+	// its nulls as kind_mismatch and nothing else, and the strict walk then
+	// refuses (docs/rulings.json strict-only-read), so a crash, or a refusal
+	// for any other count, cannot pass for red. The genuine runtime is the
+	// subtests' run.
 	m := nullElemUnit(t)
 	wg := generateFiles(t, map[string]string{"Carton.schema": nullElemSchema})
 	src, err := os.ReadFile(filepath.Join("runtime", "schema_json.luau"))
@@ -298,9 +303,9 @@ func TestLuauJsonNullElementsInArraysAndMaps(t *testing.T) {
 		}
 		want = append(want, '\n')
 		out := strings.TrimRight(string(luaurun.Run(t, wg.dir, "main.luau", map[string][]byte{"text": []byte(tc.text)})), "\n")
-		first, _, _ := strings.Cut(out, "\n")
-		if !nullElemPlantedReport.MatchString(first) {
-			t.Errorf("%s: the planted null-element reader reported %q, want only the kind_mismatch the plant counts (output %q)", tc.name, first, out)
+		first, rest, _ := strings.Cut(out, "\n")
+		if !nullElemPlantedReport.MatchString(first) || rest != "refused" {
+			t.Errorf("%s: the planted null-element reader reported %q, want only the kind_mismatch the plant counts, then the strict refusal (output %q)", tc.name, first, out)
 		}
 		if out == "km=0 u=0 c=0 d=0 w=0 malformed=false\n"+hexText(want) {
 			t.Errorf("%s: the planted null-element reader still matches the Go reference, so the witness is not red", tc.name)

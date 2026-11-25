@@ -794,10 +794,12 @@ async function blockUnit(unit, root) {
 // the wide-text corpus's Caption and Stamp (widedemo) and the message corpus's
 // ToolMessage and variable ToolEnvelope (messagedemo), through their unit's
 // <Package>Variable.js, and the stream, list, backend, vocabulary and
-// evolution-pair units below. A case whose pair is not here is answered
+// evolution-pair units below, and the roots the rewrite surface reads (its rows
+// reach this leg as instance lines on the wire surface, harness
+// deriveRewriteManifest). A case whose pair is not here is answered
 // `<case>.absent` beside where the answer would go, which the matrix counts as
 // the row of work that is left, never as a pass. The table is the manifest's
-// instance and report pairs less a named uncarried set (empty today), and
+// instance, report and rewrite pairs less a named uncarried set (empty today), and
 // TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
   ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
@@ -822,6 +824,9 @@ const wireRows = [
   ["tblp1", "Chain", "p1/Tblp1Variable.js"],
   ["tblp3", "Chain", "p3/Tblp3Variable.js"],
   ["graphdemo", "Scene", "pointers/GraphdemoVariable.js"],
+  // a ListNode read at its own root: the framing vectors that read, written
+  // back canonically on the rewrite surface (§22)
+  ["graphdemo", "ListNode", "pointers/GraphdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
   // a map whose value is a fixed-length array [N]T (§2.8, §3)
   ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
@@ -839,6 +844,8 @@ const wireRows = [
   ["mapdemo", "Slots", "maps/MapdemoVariable.js"],
   ["mapdemo", "Spans", "maps/MapdemoVariable.js"],
   ["mapdemo", "Trails", "maps/MapdemoVariable.js"],
+  // uint64 map keys at their extremes, the rewrite surface's edge vector (§22.7)
+  ["mapdemo", "EdgeRow", "maps/MapdemoVariable.js"],
   // fixed(W, F) / ufixed(W, F) and int128 / uint128 as the raw integer at the
   // declared width (§3, §15), and the evolved type reading them (§4)
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
@@ -872,6 +879,12 @@ const wireRows = [
   ["listdemo", "Save", "lists/ListdemoVariable.js"],
   ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
   ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  // the twin roots the rewrite surface reads (§22): Ints and Squad on the
+  // wire surface, and the fixed Bounded, whose form-1 input is framed today
+  // (harness framedRewrites) but whose pair a rewrite row still names
+  ["listdemo", "Bounded", "lists/ListdemoVariable.js"],
+  ["listdemo", "Ints", "lists/ListdemoVariable.js"],
+  ["listdemo", "Squad", "lists/ListdemoVariable.js"],
   // the extent's alignment is its arrays' (§2.8, §6.2): 128-bit elements in
   // holders aligned eight, the widelist unit
   ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],

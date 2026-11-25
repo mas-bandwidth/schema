@@ -45,14 +45,16 @@ func TestFixedRootRetainRefusalElixir(t *testing.T) {
 			fmt.Fprintf(&probe, `alias Fixedretain.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [{[],99,4,<<1,0,0,0>>}],used: 13,cap: 4096,ids: [99],id_cap: 256}
-report=%%{unknown: 3,kind_mismatch: 5,widened: 7,clamped: 11,malformed: false,retained: 13,retain_lost: 17,reason: "preserved"}
-expected={:error,:fixed_root,report,store}
+report=%%{unknown: 3,widened: 7,retained: 13,retain_lost: 17,reason: "preserved",missing_required: 1}
+# §6.5: every read zeroes the supplied report as its first act, the refused
+# retaining read of a fixed root alike; the save keeps the report it is handed
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for data<-[wire,<<>>,<<255>>] do
  result=T.load_retain("Stamp",data,store,report)
- unless result==expected,do: raise("fixed load must refuse before inspecting input or resetting stores: "<>inspect(result))
+ unless result=={:error,:fixed_root,zero,store},do: raise("fixed load must refuse into a zeroed report before inspecting input or resetting stores: "<>inspect(result))
 end
 unless T.measure_retain("Stamp",%%{"value"=>17},store)=={:error,:fixed_root},do: raise("fixed measure must refuse by name")
-unless T.save_retain("Stamp",%%{"value"=>17},store,report)==expected,do: raise("fixed save must refuse by name without changing report or stores")
+unless T.save_retain("Stamp",%%{"value"=>17},store,report)=={:error,:fixed_root,report,store},do: raise("fixed save must refuse by name without changing report or stores")
 alias Fixedretain.ProbeFixed, as: F
 {:ok, values, _report} = F.stamp_fixed_load(wire)
 saved = F.stamp_fixed_save(values)
@@ -74,7 +76,7 @@ unless saved == wire, do: raise("fixed plain canonical wire")
 						t.Fatal(err)
 					}
 					fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 {:ok,value,loaded,kept}=T.load_retain(%q,wire,store,zero)
 unless kept.records==[] and kept.used==0 and kept.ids==[],do: raise("variable load must reset the prior stores")
 unless T.measure_retain(%q,value,kept)==byte_size(wire),do: raise("variable retain measure changed")
@@ -147,7 +149,7 @@ func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
 	probe := fmt.Sprintf(`alias Messagedemo.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 {:error,:previous_form,_}=T.load("ToolMessage",wire)
 {:error,:malformed,report}=T.variable_load("ToolMessage",wire)
 unless report.reason=="wire_damaged", do: raise("hostile kind must refuse: " <> inspect(report))

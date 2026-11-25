@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -58,18 +57,19 @@ func LoadGoNeeds(path string) ([]GoNeed, error) {
 	return out, nil
 }
 
-// GoNeedsOf is the make targets the Go test pkg/test reads, sorted.
+// GoNeedsOf is the make targets the Go test pkg/test reads, each once, in
+// the order the table declares them: a build another reads (the generated
+// tree under build/conformance-go) is declared after it, so the run builds
+// the steps one at a time, each under its own limit, never one that builds
+// the rest inside it.
 func GoNeedsOf(needs []GoNeed, pkg, test string) []string {
-	set := map[string]bool{}
+	seen := map[string]bool{}
+	var out []string
 	for _, n := range needs {
-		if n.Package == pkg && n.Test.MatchString(test) {
-			set[n.Target] = true
+		if n.Package == pkg && n.Test.MatchString(test) && !seen[n.Target] {
+			seen[n.Target] = true
+			out = append(out, n.Target)
 		}
 	}
-	out := make([]string, 0, len(set))
-	for t := range set {
-		out = append(out, t)
-	}
-	sort.Strings(out)
 	return out
 }

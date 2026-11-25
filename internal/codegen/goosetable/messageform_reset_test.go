@@ -47,10 +47,11 @@ func TestGooseLoadMessagesRefusalResetsBatch(t *testing.T) {
 	}
 }
 
-// TestGooseLoadMessagesRefusalResetsBatchNegativeControl restores the
-// reasoned-refusal exit's early return in a copy of the generated reader: the
-// bodies the walk reached before the refusal keep their loaded values, and
-// the check above goes red naming the case.
+// TestGooseLoadMessagesRefusalResetsBatchNegativeControl takes the reset out
+// of a copy of the generated reader: <T>LoadMessages puts every value back at
+// its declared defaults when the walk answers 0, whatever refused (R4), so
+// without it the bodies the walk reached before a reasoned refusal keep their
+// loaded values, and the check above goes red naming the case.
 func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 	t.Parallel()
 	u := resetUnit(t)
@@ -59,8 +60,8 @@ func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 		t.Fatalf("the control needs a clean baseline:\n%s", strings.Join(errs, "\n"))
 	}
 	changed := resetUnitFiles(t, u, nil)
-	anchor := "            if r.reason != 0 {\n                report.reason = r.reason;\n                reasoned = true;\n                break;\n            }\n"
-	early := "            if r.reason != 0 {\n                report.reason = r.reason;\n                return 0;\n            }\n"
+	anchor := "    if n == 0 {\n        var j: i64 = 0;\n        while j < values.len { values[j] = "
+	early := "    if false {\n        var j: i64 = 0;\n        while j < values.len { values[j] = "
 	replaced := 0
 	for name, data := range changed {
 		if strings.Count(string(data), anchor) == 0 {
@@ -70,7 +71,7 @@ func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 		replaced += strings.Count(string(data), anchor)
 	}
 	if replaced < len(resetCases)-1 {
-		t.Fatalf("the reasoned-refusal reset anchor occurs %d times, want at least %d", replaced, len(resetCases)-1)
+		t.Fatalf("the refused-batch reset anchor occurs %d times, want at least %d", replaced, len(resetCases)-1)
 	}
 	got := resetProbe(t, u, changed)
 	errs := checkResetBodies(got)
@@ -82,7 +83,7 @@ func TestGooseLoadMessagesRefusalResetsBatchNegativeControl(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Fatalf("removing the reasoned-refusal reset did not turn %s red:\n%s", name, strings.Join(errs, "\n"))
+			t.Fatalf("removing the refused-batch reset did not turn %s red:\n%s", name, strings.Join(errs, "\n"))
 		}
 	}
 }

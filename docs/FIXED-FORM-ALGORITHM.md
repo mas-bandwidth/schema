@@ -1134,9 +1134,14 @@ sends all four elements and still requires exactly four widenings.
 
 **THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
 
-**`argw` is the guard's width in BYTES, `1..8`, and `0` reads as `1`.** A tag width outside `0..8` in a
-lineage entry is a LOCK-VALIDATION refusal: the entry is not a layout the lock can record, and its lane
-carries `layout_malformed` (§5.9 #36); nothing clamps it at compile or at run time. **Zero means one** because
+**`argw` is the guard's width in BYTES, EXACTLY ONE OF `1`, `2`, `4` OR `8`, and an `argw` of `0` in a plan
+entry reads as `1`.** Those four are the only widths a tag has: a tag is an ORDINAL, held at an ordinal width
+(§1's union row: 8, 16, 32 or 64 bits, the widths `StorageBitsFor` lays), and a union's tag width in a layout
+is `size - widest arm`. It is NOT a range: `3`, `5`, `6` and `7` lie between `1` and `8` and are no tag width at all. A lineage entry whose
+union lays ANY width outside `{1, 2, 4, 8}` — `0`, `3`, `5`, `6`, `7`, `9` or more — is a LOCK-VALIDATION
+refusal: the entry is not a layout the lock can record (the layout check names it `layout_size_mismatch`), and
+its lane carries `layout_malformed` (§5.9 #36); nothing clamps it at compile or at run time (until 2026-11-25
+this sentence said `1..8`, and the R14 card found Lua, Luau and Goose admitting 3, 5, 6, 7 and 9). **Zero means one** because
 one is the width a tag had when this lane did not exist, so a plan laid down before it still reads. The guard
 is tested at its FULL width and never at its first byte: one byte fires arm `1` on a foreign tag of `0x0101`,
 an ordinal no arm of this build names (§7, fix 12). And the guard's own reach, `guard + argw`, is bounded by

@@ -35,9 +35,12 @@ type loadFixECase struct {
 	unit string
 	root string
 	hex  string
-	// refuseSave: the loaded value names one blob from two slots, so both
-	// the engine and the Luau save refuse it (docs/SPEC-TABLES.md §2.5)
-	refuseSave bool
+	// refuseRead: the wire names one blob from two slots, so the engine
+	// and the Luau walk both refuse the read, compared by verdict only
+	// (docs/SPEC-TABLES.md §2.5, §6.5; docs/rulings.json strict-only-read,
+	// refusal-verdict-only). The writers' refusal of such a value made in
+	// memory is TestLuauBlobNamedTwice's.
+	refuseRead bool
 }
 
 // loadFixECases carries one case per group this card fixed.
@@ -60,10 +63,10 @@ var loadFixECases = []loadFixECase{
 		hex: "010110220d02020d030408000000040c0372656400050f030402000000040c05677265656e000610480d02073b080a00007a43090a000060400a102b0d020b0b0c0a000020420d0d0100000e1a0c0a0000a0400f0a000010410d0d0a100a0000403f1101019700001207090a0000404100130d1214100e040202040a00000005041e00000000006dfaa8a548b0aeba7c1bacfe19def19f74b65dd6e299eccecf0c01c7b1daa0bc1c3f95d58fd700cfffd89456c2c30ace1fbc0d42e1244d33cfa98b28b5d4697fb10a7bcea257371f8c6083c20b26f8847c762e3bbede5458c07fb38abe08637faa44cdc048b6db407652ffa8ae16dc04483d345369be2cdc6a64012266a35ab7bc3002469a71bfa6db230ed0a321236cb20f40270b6b980160160e9a73ad0ff11400000000000000",
 	},
 	{
-		// blob_shared: the tolerant load keeps one blob named from two slots,
-		// and every writer refuses that value by name, so the engine and the
-		// Luau save both refuse to re-save it (docs/SPEC-TABLES.md §2.5).
-		name: "shared blob refuses to re-save", refuseSave: true,
+		// blob_shared: one blob named from two slots refuses the read on
+		// every reader; there is no tolerant load that keeps it
+		// (docs/SPEC-TABLES.md §2.5, §6.5).
+		name: "shared blob refuses the read", refuseRead: true,
 		seed: 0xf5e118f73bb8f76d, unit: "blobdemo", root: "Catalog",
 		hex: "01010c047477696e021102031102040c070105041020304000861b638eba01bcc403b2f40f72193b61b746a665bb209250ffffffffffffffffe44f1c4f47c02e2f0500000000000000",
 	},
@@ -121,8 +124,10 @@ print(hex(b))
 type loadFixEAnswer struct {
 	loaded, refused bool
 	saveFail        bool
-	counts          loadFixECounts
-	saved           []byte
+	// readRefused: the engine refused the read itself (blob_shared)
+	readRefused bool
+	counts      loadFixECounts
+	saved       []byte
 }
 
 func loadFixEParse(t *testing.T, line string) loadFixEAnswer {
@@ -185,8 +190,7 @@ func loadFixEEngineFor(t *testing.T, units map[string][]string, unitKey, rootNam
 		o.refused = true
 	case tablewire.ReadRefusal(derr):
 		if tablewire.RefusalReason(derr) == tablewire.ReasonBlobShared {
-			o.loaded = true
-			o.saveFail = true
+			o.readRefused = true
 			return o, true
 		}
 		o.counts.malformed = true
@@ -246,12 +250,15 @@ func TestLuauLoadKeyedAndBlobSaveAgreeWithTheEngine(t *testing.T) {
 			if !ok {
 				t.Fatalf("seed %#016x %s: the engine refused the root itself", c.seed, c.name)
 			}
-			if c.refuseSave {
-				if !got.loaded || !got.saveFail || !want.saveFail {
-					t.Fatalf("seed %#016x %s: loaded=%t, Luau saveFail=%t, engine saveFail=%t; want a loaded value both refuse to save",
-						c.seed, c.name, got.loaded, got.saveFail, want.saveFail)
+			if c.refuseRead {
+				if got.loaded || !want.readRefused {
+					t.Fatalf("seed %#016x %s: Luau loaded=%t, the engine refused the read=%t; want both to refuse the read",
+						c.seed, c.name, got.loaded, want.readRefused)
 				}
 				return
+			}
+			if want.readRefused {
+				t.Fatalf("seed %#016x %s: the engine refuses the read; the case does not say so", c.seed, c.name)
 			}
 			if !got.loaded || got.saveFail {
 				t.Fatalf("seed %#016x %s: the Luau leg loaded=%t saveFail=%t, want a loaded, saved value (%+v)",

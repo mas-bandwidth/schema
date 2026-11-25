@@ -74,9 +74,12 @@ fixed table Probe
     x uint8
 }
 `)
-	// The announcement names the root's own field, so the bound read holds it;
-	// only its announced shape is the peer's.
-	id := ir.TableFieldEntry(u.Tables["Probe"].Fields[0]).Id
+	// The announcement names a field this reader does not know: a known id
+	// announced under another kind refuses the whole load kind_mismatch
+	// (docs/SPEC-TABLES.md §4) before any run is read, so the run rides an
+	// unknown entry the walk steps over by its announced shape (as the Rust
+	// leg's twin does), and the bits-left bound is met there.
+	const id = 0x5a5a5a5a00000001
 	flat := zeroWidthAnnouncement(
 		zeroWidthEntry(id, 14, zeroWidthArray(far, far, 0, nil)),
 	)
@@ -138,9 +141,11 @@ defmodule Probe do
         other -> raise "announce_read refused the announcement: #{inspect(other)}"
       end
 
+    # the honest run of %[2]d zero-width elements is stepped over whole: the
+    # body reads, holding no field
     case M.load_messages(vocab, batch) do
-      {:ok, [[{1, names}]]} ->
-        check(names == List.duplicate(:name, %[2]d), label <> " decoded " <> inspect(names))
+      {:ok, [[]]} ->
+        :ok
 
       other ->
         check(false, label <> " refused " <> inspect(other))
