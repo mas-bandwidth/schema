@@ -131,7 +131,7 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | a build that fails fails every row that needed it, by name, and its call never runs | `TestAFailedPrepareFailsItsGroupByName` |
 | the adapters that take the checkout (make, golden, plant, model-check) run one after another, each deadline starting with its own call (`testreg.Serial`) | `TestSerialAdaptersRunOneAfterAnother`, `TestTheCheckoutAdaptersRunOneAfterAnother` |
 | the env plants of one language are one block of a shard, as a golden writer's rows are | `TestAnEnvPlantsRowsShareOneShardByLanguage` |
-| each golden writer, each language's env plants and every other plant is an adapter call of its own, under its own deadline | `TestEachWriterAndPlantIsACallOfItsOwn` |
+| each golden writer, each language's env plants, every other plant and every make row is an adapter call of its own, under its own deadline | `TestEachWriterAndPlantIsACallOfItsOwn` |
 | a row is weighed by what it cost: its adapter's seconds, else its share of its call's time, plus its share of its group's Prepare; a plant by its baseline and sabotaged run | `TestARowsSecondsAreItsCallsShareAndItsPrepares`, `TestAPlantResultCarriesItsMeasuredSeconds` |
 | a verdict other than pass or fail: there is no skipped verdict | `TestThereIsNoSkippedVerdict` |
 | a harness that logs a skip | `TestAHarnessSkipLineFails` |

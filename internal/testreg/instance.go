@@ -302,15 +302,16 @@ func unitOf(inst Instance) string {
 // callUnit is what one adapter call answers, or "" for the adapter's whole
 // group: a unit (unitOf) is a call of its own, so each golden writer and
 // each language's env plants have their own deadline, and so is every other
-// plant, a baseline and a sabotaged run that no other plant shares. A call
+// plant, a baseline and a sabotaged run that no other plant shares, and every
+// make row, a gate no other row shares. A call
 // that answered every writer or plant of a shard at once would need the
 // shard's whole time under one deadline.
 func callUnit(inst Instance) string {
 	if u := unitOf(inst); u != "" {
 		return u
 	}
-	if inst.Test.Adapter == "plant" {
-		return "plant " + inst.Full
+	if inst.Test.Adapter == "plant" || inst.Test.Adapter == "make" {
+		return inst.Test.Adapter + " " + inst.Full
 	}
 	return ""
 }

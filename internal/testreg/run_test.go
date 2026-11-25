@@ -620,7 +620,7 @@ func (c *stepClock) now() time.Time {
 }
 
 // TestEachWriterAndPlantIsACallOfItsOwn: a golden writer's rows are one
-// call and each plant is one, each under its own deadline, never the whole
+// call, and each plant and each make row is one, each under its own deadline, never the whole
 // shard's writers or plants under one.
 func TestEachWriterAndPlantIsACallOfItsOwn(t *testing.T) {
 	t.Parallel()
@@ -641,18 +641,21 @@ func TestEachWriterAndPlantIsACallOfItsOwn(t *testing.T) {
 	row := func(full, adapter, inputs string) Instance {
 		return Instance{Full: full, Lang: LangFree, Test: Test{Key: full, Scope: LangFree, Adapter: adapter, Family: "f", Inputs: []byte(inputs)}}
 	}
-	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{"golden": counting("golden"), "plant": counting("plant")}, Context: WithTimeout(0)}
+	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{"golden": counting("golden"), "plant": counting("plant"), "make": counting("make")}, Context: WithTimeout(0)}
 	rep := rn.Run(context.Background(), []Instance{
 		row("w1", "golden", `{"writer":"pins-x","files":["a"]}`), row("v1", "golden", `{"writer":"pins-y","files":["b"]}`),
 		row("w2", "golden", `{"writer":"pins-x","files":["c"]}`), row("p1", "plant", `{"edits":[]}`), row("p2", "plant", `{"edits":[]}`),
+		row("m1", "make", `{"file":"Makefile","target":"a"}`), row("m2", "make", `{"file":"Makefile","target":"b"}`),
 	})
 	if !rep.OK() {
 		t.Fatalf("the run is red: %v", rep.Problems)
 	}
 	slices.Sort(calls["golden"])
 	slices.Sort(calls["plant"])
-	if g, p := strings.Join(calls["golden"], " | "), strings.Join(calls["plant"], " | "); g != "v1 | w1,w2" || p != "p1 | p2" {
-		t.Fatalf("golden calls %q, plant calls %q; want one per writer and one per plant", g, p)
+	slices.Sort(calls["make"])
+	g, p, m := strings.Join(calls["golden"], " | "), strings.Join(calls["plant"], " | "), strings.Join(calls["make"], " | ")
+	if g != "v1 | w1,w2" || p != "p1 | p2" || m != "m1 | m2" {
+		t.Fatalf("golden calls %q, plant calls %q, make calls %q; want one per writer, one per plant and one per make row", g, p, m)
 	}
 }
 
