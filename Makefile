@@ -8140,7 +8140,7 @@ tables-go-checked-cook:
 #
 # Each row of ci-full.yml's pins matrix rewrites one family of committed pins
 # under testdata/ and diffs testdata/ against HEAD. `make conformance-pin
-# update-goldens` remains the single-command maintainer entry point; the eight
+# update-goldens` remains the single-command maintainer entry point; the nine
 # targets below partition the same writers across parallel fleet rows without
 # update-goldens' duplicate closing `go test ./...` (already run by go-test),
 # so every row finishes well inside the 2-minute per-commit cap:
@@ -8396,11 +8396,6 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	printf '%s\n' block maps lists arms retain | \
 	xargs -P "$$procs" -I{} bash -c 'exec $(CXX) $(TABLES_CXXFLAGS) "$$2/$$1"/*.o -o "build/schema_test_$$1"' _ {} "$$objdir"; \
 	rm -rf "$$objdir"
-	$(call pins_compile_cxx,build/schema_test_block,$(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES),test/tables/block_main.cpp $(BLOCK_SOURCES),wire-block)
-	$(call pins_compile_cxx,build/schema_test_maps,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/maps_main.cpp $(MAPS_SOURCES),wire-maps)
-	$(call pins_compile_cxx,build/schema_test_lists,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/lists_main.cpp $(LISTS_SOURCES),wire-lists)
-	$(call pins_compile_cxx,build/schema_test_arms,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/arms_main.cpp $(ARMS_SOURCES),wire-arms)
-	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/retain_main.cpp -o build/schema_test_retain
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_maps
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_lists

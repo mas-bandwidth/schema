@@ -2104,9 +2104,10 @@ jobs:
   # Those four language-toolchain installs and `update-goldens`'s closing
   # `go test ./...` existed only for that duplicate `go test ./...`, which
   # `go-test` already runs across its matrix rows. The pin writers themselves
-  # now fan out across eight parallel rows (`pins-source-cpp`, `pins-source-c`,
+  # now fan out across nine parallel rows (`pins-source-cpp`, `pins-source-c`,
   # `pins-source-cs`, `pins-source-goldens`, `pins-wire-packet`,
-  # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance`), each
+  # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance-cook`,
+  # `pins-conformance-block`), each
   # generating and compiling only the units its writer touches in parallel and
   # diffing `testdata/` against HEAD in ~10-25s wall. The source family is the
   # slowest, so its three table writers and its pure-Go golden writer are rows
@@ -2121,7 +2122,7 @@ jobs:
     # PROTECT (the owner, 2026-11-15: heavy suite
     # failure on main is fine, like a hierarchical merge; this supersedes
     # issue #1421 for the PR gate only). Every merge, the nightly and a dispatch
-    # run all eight rows. The text that follows is the history:
+    # run all nine rows. The text that follows is the history:
     #
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
@@ -2155,8 +2156,10 @@ jobs:
             target: pins-wire-tables
           - row: wire-tables-forms
             target: pins-wire-tables-forms
-          - row: conformance
-            target: pins-conformance
+          - row: conformance-cook
+            target: pins-conformance-cook
+          - row: conformance-block
+            target: pins-conformance-block
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
