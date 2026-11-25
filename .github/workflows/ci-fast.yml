@@ -881,7 +881,7 @@ jobs:
           if [ -n "$(echo "$touched_legs" | xargs)" ] && [ "$all" != yes ]; then
             every_row=$(go run ./tools/inputfamilies select -pr -all -changed "$RUNNER_TEMP/diff-files.txt" | sed -n 's/^input_rows=//p')
             input_rows=$(jq -c --arg legs " $(echo "$touched_legs" | xargs) " --argjson every "$every_row" \
-              '(. + [$every[] | select(($legs | index(" " + .leg + " ")) != null)]) | unique_by([.family, .leg])' <<<"$input_rows")
+              '(. + [$every[] | select(.leg as $l | ($legs | index(" " + $l + " ")) != null)]) | unique_by([.family, .leg])' <<<"$input_rows")
           fi
           # The Dart conformance accounting consumer needs the AOT driver
           # from its verify producer. Other readers remain independent.
