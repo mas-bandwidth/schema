@@ -234,7 +234,7 @@ func TestGoTestVerdicts(t *testing.T) {
 // fail; a name with no outcome fails naming the run's problem.
 func TestSchemaTestVerdicts(t *testing.T) {
 	t.Parallel()
-	out := []byte("schema-test run a b c d: 4 names\n  a\n  b\nPASS a\nFAIL b: wrong bytes\nMISSING c: language lua has no adapter\nFAIL run: the go adapter crashed\nschema-test FAIL: expected 4, ran 2\n")
+	out := []byte("schema-test run a b c d: 4 names\n  a\n  b\nPASS a\nFAIL b: wrong bytes\nMISSING c: language lua has no adapter\nFAIL run: the go adapter crashed\nschema-test FAIL: expected 4, ran 2, passed 1, failed 1, missing 1, unrepresentable 0\n")
 	got := schemaTestVerdicts(out, []string{"a", "b", "c", "d"}, errors.New("exit status 1"))
 	want := map[string]string{"b": "FAIL: wrong bytes", "c": "MISSING: language lua has no adapter"}
 	for n, first := range want {
@@ -245,11 +245,11 @@ func TestSchemaTestVerdicts(t *testing.T) {
 	if a := got["a"]; a.Verdict != Fail || !strings.Contains(a.First, "FAIL run: the go adapter crashed") {
 		t.Errorf("a pass beside a crashed adapter: %+v", a)
 	}
-	summed := schemaTestVerdicts([]byte("PASS a\nFAIL b: wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	summed := schemaTestVerdicts([]byte("PASS a\nFAIL b: wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
 	if a := summed["a"]; a.Verdict != Pass {
 		t.Errorf("a pass beside another name's failure and the run's summary: %+v", a)
 	}
-	exited := schemaTestVerdicts([]byte("PASS a\n"), []string{"a"}, errors.New("exit status 2"))
+	exited := schemaTestVerdicts([]byte("PASS a\nschema-test PASS: expected 1, ran 1, passed 1, failed 0, missing 0, unrepresentable 0\n"), []string{"a"}, errors.New("exit status 2"))
 	if a := exited["a"]; a.Verdict != Fail || !strings.Contains(a.First, "exit status 2") {
 		t.Errorf("a pass from a run that exited non-zero: %+v", a)
 	}
@@ -1047,9 +1047,14 @@ func TestAShortRunTheMissingNamesExplainIsTheirs(t *testing.T) {
 	if b := got["b"]; b.Verdict != Fail || !strings.HasPrefix(b.First, "MISSING") {
 		t.Errorf("the MISSING name: %+v", b)
 	}
-	odd := schemaTestVerdicts([]byte("PASS a\nMISSING b: owed\nFAIL run: expected 3 instances to run, 1 ran\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	odd := schemaTestVerdicts([]byte("PASS a\nMISSING b: owed\nFAIL run: expected 3 instances to run, 1 ran\nschema-test FAIL: expected 3, ran 1, passed 1, failed 0, missing 1, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
 	if a := odd["a"]; a.Verdict != Fail || !strings.Contains(a.First, "expected 3 instances to run, 1 ran") {
 		t.Errorf("a pass beside a short run its MISSING names do not explain: %+v", a)
+	}
+	// an adapter that echoes a name's MISSING line: the name is MISSING once
+	echoed := schemaTestVerdicts([]byte("MISSING b: owed\nPASS a\nMISSING b: owed\nFAIL run: expected 2 instances to run, 1 ran\nschema-test FAIL: expected 2, ran 1, passed 1, failed 0, missing 1, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := echoed["a"]; a.Verdict != Pass {
+		t.Errorf("a pass beside a MISSING name printed twice: %+v", a)
 	}
 }
 
@@ -1126,11 +1131,12 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 
 // TestRereadRefusesAShardThatHasNotFinished: a shard with no DONE is still
 // running or was never finished; its logs may be cut short, so it is not
-// reread. Results with a line that is not a result are refused too.
+// reread. Nor are results that leave a name without one; a line cut short
+// that a later result covers is dropped, as the shard dropped it.
 func TestRereadRefusesAShardThatHasNotFinished(t *testing.T) {
 	t.Parallel()
 	out := t.TempDir()
-	mb, err := json.Marshal(Manifest{Run: "r", Shard: "h-1"})
+	mb, err := json.Marshal(Manifest{Run: "r", Shard: "h-1", Units: []Unit{{ID: "u", Kind: KindGoTest, Names: []Name{{Name: "a"}, {Name: "b"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1145,18 +1151,44 @@ func TestRereadRefusesAShardThatHasNotFinished(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, doneFile), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "are not results") {
-		t.Errorf("results with a cut line: %v", err)
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "b of unit u has no result") {
+		t.Errorf("results with a cut line nothing after it covers: %v", err)
+	}
+	// the shard ran the unit again after the cut, as a shard does
+	if err := os.WriteFile(filepath.Join(out, resultsFile), []byte("{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\"}\n{\"name\":\"b\",\"unit\n{\"name\":\"b\",\"unit\":\"u\",\"verdict\":\"PASS\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := reread(out, io.Discard); err != nil {
+		t.Errorf("results with a cut line a later result covers: %v", err)
 	}
 }
 
-// TestTwoOutcomesForOneNameAreTheRunsProblem: a reason that spans lines
-// can print a second outcome line for a name ("FAIL b: x" then "MISSING
-// b: y"); that report is not trusted, so the passes beside it fail.
+// TestTwoOutcomesForOneNameAreTheRunsProblem: a reason that spans lines,
+// or an adapter's output schema-test passes through, can print an outcome
+// line. Outcomes for a name that disagree, more passes than the summary
+// counts, and a run with no summary are not trusted, and the passes beside
+// them fail; an echo that agrees with the report is harmless, and lines
+// after the summary are not schema-test's.
 func TestTwoOutcomesForOneNameAreTheRunsProblem(t *testing.T) {
 	t.Parallel()
-	got := schemaTestVerdicts([]byte("PASS a\nFAIL b: x\nMISSING b: y\nFAIL run: expected 3 instances to run, 2 ran\n"), []string{"a", "b", "c"}, errors.New("exit status 1"))
-	if a := got["a"]; a.Verdict != Fail || !strings.Contains(a.First, "2 outcomes for b") {
-		t.Errorf("a pass beside a name reported twice: %+v", a)
+	got := schemaTestVerdicts([]byte("PASS a\nFAIL b: x\nMISSING b: y\nFAIL run: expected 3 instances to run, 2 ran\nschema-test FAIL: expected 3, ran 2, passed 1, failed 1, missing 1, unrepresentable 0\n"), []string{"a", "b", "c"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Fail || !strings.Contains(a.First, "outcomes for b that disagree") {
+		t.Errorf("a pass beside a name whose outcomes disagree: %+v", a)
+	}
+	forged := schemaTestVerdicts([]byte("PASS a\nFAIL b: x\nPASS b\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if b := forged["b"]; b.Verdict != Fail {
+		t.Errorf("a forged pass after a name's fail: %+v", b)
+	}
+	counted := schemaTestVerdicts([]byte("PASS a\nPASS b: x\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := counted["a"]; a.Verdict != Fail || !strings.Contains(a.First, "summary counts 1 passes") {
+		t.Errorf("more passes than the summary counts: %+v", a)
+	}
+	cut := schemaTestVerdicts([]byte("FAIL b: x\nPASS c\n"), []string{"b", "c"}, errors.New("signal: killed"))
+	if c := cut["c"]; c.Verdict != Fail || !strings.Contains(c.First, "no summary (exit: signal: killed)") {
+		t.Errorf("a pass from a run that printed no summary: %+v", c)
+	}
+	echoed := schemaTestVerdicts([]byte("PASS a\nPASS a (0.01s)\nPASS b (0.01s)\nschema-test PASS: expected 2, ran 2, passed 2, failed 0, missing 0, unrepresentable 0\nFAIL a: after the report\n"), []string{"a", "b"}, nil)
+	if a, b := echoed["a"], echoed["b"]; a.Verdict != Pass || b.Verdict != Pass {
+		t.Errorf("an adapter's echo of a pass, and a line after the summary: %+v %+v", a, b)
 	}
 }

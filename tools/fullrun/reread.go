@@ -20,7 +20,7 @@ const rereadBackup = resultsFile + ".before-reread"
 // verdict the launcher misread is corrected without running anything.
 // The results as the shard wrote them are kept in results.jsonl.before-reread.
 // A shard that has not finished, one a shard still holds, one already reread
-// and results with a line that is not a result are refused. A log that cannot be read as a whole
+// and results that leave a name of the manifest without one are refused. A log that cannot be read as a whole
 // run (no exit line) is an error naming it, never a verdict.
 func reread(out string, log io.Writer) error {
 	mb, err := os.ReadFile(filepath.Join(out, "manifest.json"))
@@ -51,18 +51,20 @@ func reread(out string, log io.Writer) error {
 	if err != nil {
 		return err
 	}
-	rows := 0
-	for l := range strings.SplitSeq(string(orig), "\n") {
-		if strings.TrimSpace(l) != "" {
-			rows++
-		}
-	}
-	if rows != len(res) {
-		return fmt.Errorf("%s: %d of its %d lines are not results: not reread", path, rows-len(res), rows)
-	}
+	// a line a shard's death cut short is dropped, as the shard dropped it
+	// when it ran that unit again; a name with no result is refused
 	units := map[string]Unit{}
+	have := map[string]bool{}
+	for _, r := range res {
+		have[r.Unit+"\x00"+r.Name] = true
+	}
 	for _, u := range m.Units {
 		units[u.ID] = u
+		for _, n := range u.Names {
+			if !have[u.ID+"\x00"+n.Name] {
+				return fmt.Errorf("%s: %s of unit %s has no result: not reread", path, n.Name, u.ID)
+			}
+		}
 	}
 	type key struct{ unit, log string }
 	verdicts := map[key]map[string]Result{}

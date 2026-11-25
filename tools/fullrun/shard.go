@@ -403,8 +403,16 @@ var outcomeRE = regexp.MustCompile(`^(PASS|FAIL|MISSING|UNASKED|UNREPRESENTABLE)
 // is the asked names' own problem when their MISSING lines account for it.
 var shortRE = regexp.MustCompile(`^FAIL run: expected ([0-9]+) instances to run, ([0-9]+) ran$`)
 
+// summaryRE is the counts line schema-test's report ends with.
+var summaryRE = regexp.MustCompile(`^schema-test (?:PASS|FAIL): expected [0-9]+, ran [0-9]+, passed ([0-9]+),`)
+
 // schemaTestVerdicts reads schema-test run's outcome lines for the asked
 // names. A name with no outcome line fails, naming the run's first problem.
+// The report ends with schema-test's summary, after everything its adapters
+// passed through: lines after the last summary are not read, a run with no
+// summary is the run's problem, and so are outcome lines for a name that
+// disagree and more passes than the summary counts. The last of a name's
+// outcome lines is its outcome.
 func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Result {
 	want := map[string]bool{}
 	for _, a := range asked {
@@ -414,8 +422,23 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 	var problems []string // the run's own problems, and then its summary
 	runProblems := 0      // FAIL run: lines, a problem no name's outcome shows
 	short, shortBy := "", 0
-	lines := map[string]int{} // outcome lines per asked name
-	for line := range strings.SplitSeq(string(out), "\n") {
+	status := map[string]string{} // an asked name's first outcome status
+	disagree := map[string]bool{} // an asked name with outcome lines that disagree
+	all := strings.Split(string(out), "\n")
+	summed := -1 // the passes schema-test's summary counts
+	report := all
+	for i := len(all) - 1; i >= 0; i-- {
+		if m := summaryRE.FindStringSubmatch(strings.TrimRight(all[i], "\r")); m != nil {
+			summed, _ = strconv.Atoi(m[1])
+			report = all[:i+1]
+			break
+		}
+	}
+	if summed < 0 {
+		problems = append(problems, fmt.Sprintf("FAIL run: schema-test printed no summary (exit: %v): its report is not all there", runErr))
+		runProblems++
+	}
+	for _, line := range report {
 		line = strings.TrimRight(line, "\r")
 		if m := shortRE.FindStringSubmatch(line); m != nil && short == "" {
 			x, _ := strconv.Atoi(m[1])
@@ -436,7 +459,11 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 		if m == nil || !want[m[2]] {
 			continue
 		}
-		lines[m[2]]++
+		if st, ok := status[m[2]]; !ok {
+			status[m[2]] = m[1]
+		} else if st != m[1] {
+			disagree[m[2]] = true
+		}
 		if m[1] == "PASS" {
 			got[m[2]] = Result{Verdict: Pass}
 			continue
@@ -447,17 +474,27 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 		}
 		got[m[2]] = Result{Verdict: Fail, First: clip(reason)}
 	}
-	// a name with two outcome lines is a report this cannot trust (a
-	// reason that spans lines can print one): it is the run's problem
-	missing := 0
+	// outcome lines for a name that disagree, or more passes than the
+	// summary counts, are a report this cannot trust (a reason that spans
+	// lines, or an adapter's own output, can print an outcome line): the
+	// run's problem
+	missing, passes := 0, 0
 	for _, a := range asked {
-		if lines[a] > 1 {
-			problems = append([]string{"FAIL run: schema-test printed " + strconv.Itoa(lines[a]) + " outcomes for " + a}, problems...)
+		if disagree[a] {
+			problems = append([]string{"FAIL run: schema-test printed outcomes for " + a + " that disagree"}, problems...)
 			runProblems++
 		}
-		if v, ok := got[a]; ok && strings.HasPrefix(v.First, "MISSING") {
+		v, ok := got[a]
+		if ok && strings.HasPrefix(v.First, "MISSING") {
 			missing++
 		}
+		if ok && v.Verdict == Pass {
+			passes++
+		}
+	}
+	if summed >= 0 && passes > summed {
+		problems = append([]string{fmt.Sprintf("FAIL run: %d asked names read as passed, but schema-test's summary counts %d passes", passes, summed)}, problems...)
+		runProblems++
 	}
 	// instances that did not run are the run's problem unless the asked
 	// names that are MISSING are exactly them
