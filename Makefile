@@ -5469,9 +5469,13 @@ build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_
 	@mkdir -p $(@D)
 	perl tools/compile-seconds.pl $(@:.o=.seconds) $(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
-build/conformance-cpp: build/tables-generated/.stamp $(CONFORMANCE_DRIVER_SOURCES) $(CONFORMANCE_DRIVER_HEADERS)
+#
+# The objects are the link's own prerequisites (named from the schemas, so
+# safe at parse time, as CONFORMANCE_OBJECTS says): no sub-make reparses this
+# Makefile before the first compiler starts, and an object rebuilt for any
+# reason relinks the driver.
+build/conformance-cpp: $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS) -o $@
 
 # THE BUDGET ON ONE UNIT (above): every unit's recorded CPU seconds, each held
