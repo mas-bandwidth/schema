@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2246.
+Functional tests every language answers: 2468. Language-free tests: 2247.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4648,10 +4648,11 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.luatable.lua-fixed-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestLuaFixedR14GrownTagReadsTheWritersTagWidth in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `internal/codegen/luatable/fixed_r14_test.go:235` |
 | `none.functional.evolution.luatable.lua-fixed-unlawful-corpus` | `gotest` | Go test TestLuaFixedUnlawfulCorpus in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luatable/fixed_unlawful_corpus_test.go:104` |
 
-#### `evolution` family `luautable`, 2 tests
+#### `evolution` family `luautable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.evolution.luautable.luau-fixed-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestLuauFixedR14GrownTagReadsTheWritersTagWidth in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `internal/codegen/luautable/fixed_r14_test.go:191` |
 | `none.functional.evolution.luautable.luau-fixed-unlawful-corpus` | `gotest` | Go test TestLuauFixedUnlawfulCorpus in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luautable/fixed_unlawful_corpus_test.go:86` |
 | `none.functional.evolution.luautable.luau-fixed-versioning-kind-moved` | `gotest` | Go test TestLuauFixedVersioningKindMoved in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedVersioningKindMoved` | the Go test passes | `internal/codegen/luautable/fixedversioning_kind_moved_test.go:14` |
 
