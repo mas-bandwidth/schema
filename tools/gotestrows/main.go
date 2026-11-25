@@ -1,7 +1,7 @@
 // Command gotestrows cuts ci-fast's go-test-touched selection into matrix
 // rows that each finish inside the fleet's two-minute per-commit cap.
 //
-//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] [-changed-files <file>] <package>...
+//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-registry <file>] [-dependents-of "<package>..."] [-changed-files <file>] <package>...
 //
 // It prints one line of JSON, a GitHub Actions matrix `include` list: one
 // object per row, {"row": "k/n", "packages": "...", "run": "...", "skip":
@@ -33,6 +33,12 @@
 // -gotable-extras adds the two make rows go-test-touched has always run when
 // gotable is selected (schema#1376): tables-go-fixedform and
 // conformance-go-rows-a and -b, each a row of its own.
+//
+// -registry names the test registry (test/registry/registry.jsonl): a test
+// with a gotest row runs in ci-fast's schema-test-pr shards, so it is left
+// out here (registered.go). A package whose every test is a row leaves the
+// selection, and a package with tests no row runs yet gets one row running
+// only those.
 //
 // The table is .github/go-test-rows.txt; it says how it was measured.
 package main
@@ -110,6 +116,7 @@ func run(argv []string, golist func() (string, error), exists func(string) bool,
 	changedFiles := fs.String("changed-files", "", "a file listing the diff's paths, one per line: a changed non-.go file a package embeds seeds -dependents-of with that package (a test embed selects the package alone)")
 	packagesOut := fs.String("packages-out", "", "write the finalized selection, space-separated, to this file")
 	tableFile := fs.String("table", tablePath, "the weights and splits table")
+	registry := fs.String("registry", "", "the test registry: a test with a gotest row runs through the driver, so it is left out here")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -139,7 +146,28 @@ func run(argv []string, golist func() (string, error), exists func(string) bool,
 	if err != nil {
 		return err
 	}
-	rows := plan(t, pkgs, *short, *budget)
+	var left map[string][]string
+	if *registry != "" {
+		reg, err := registered(*registry)
+		if err != nil {
+			return err
+		}
+		if pkgs, left, err = unregistered(".", pkgs, reg); err != nil {
+			return err
+		}
+	}
+	var whole []string
+	for _, p := range pkgs {
+		if _, ok := left[p]; !ok {
+			whole = append(whole, p)
+		}
+	}
+	rows := plan(t, whole, *short, *budget)
+	for _, p := range pkgs {
+		if names, ok := left[p]; ok {
+			rows = append(rows, Row{Packages: p, Run: "^(" + strings.Join(names, "|") + ")$"})
+		}
+	}
 	if *extras {
 		// the two conformance halves are rows of their own: whole, the target ran
 		// 156 s on a loaded bench, past the two-minute cap

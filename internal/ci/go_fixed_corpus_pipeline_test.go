@@ -170,8 +170,18 @@ func TestGoFixedCorpusDependencyStates(t *testing.T) {
 	if got, err := jobRunsInWorkflow(string(data), "go-fixed-corpus", event); err != nil || !got {
 		t.Fatalf("selected producer missing: %v %v", got, err)
 	}
+	// the registry's pr shards read the corpus on every run, so the producer
+	// runs with no fixed-form row selected too, and the shards run only on
+	// a corpus it produced
 	event.PlanRows = "[]"
-	if got, err := jobRunsInWorkflow(string(data), "go-fixed-corpus", event); err != nil || got {
-		t.Fatalf("unneeded producer admitted: %v %v", got, err)
+	if got, err := jobRunsInWorkflow(string(data), "go-fixed-corpus", event); err != nil || !got {
+		t.Fatalf("producer withheld from the schema-test-pr shards: %v %v", got, err)
+	}
+	for _, state := range []string{"success", "skipped", "failure", "cancelled"} {
+		event.GoCorpusResult = state
+		got, err := jobRunsInWorkflow(string(data), "schema-test-pr", event)
+		if want := state == "success"; err != nil || got != want {
+			t.Errorf("schema-test-pr after producer %s: got %v want %v err %v", state, got, want, err)
+		}
 	}
 }

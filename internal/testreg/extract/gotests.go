@@ -88,9 +88,12 @@ func (s *scan) goPkgTests(p *goPkg) {
 		if b := p.build[e.file]; b != "" {
 			gates = append(gates, "build: "+b)
 		}
-		slow, skips := p.reach(e.fn)
+		slow, short, skips := p.reach(e.fn)
 		if slow {
 			gates = append(gates, "slow")
+		}
+		if short {
+			gates = append(gates, "short")
 		}
 		for _, sk := range skips {
 			gates = append(gates, "skip: "+sk)
@@ -143,12 +146,13 @@ func (p *goPkg) pos(pos token.Pos) string {
 }
 
 // reach returns whether fn, or a package function it calls (transitively),
-// opens the slow gate, and every Skip reachable that way, each as
-// "file:line" with the condition of the if around it.
-func (p *goPkg) reach(fn *ast.FuncDecl) (bool, []string) {
+// opens the slow gate, whether it reads testing.Short(), and every Skip
+// reachable that way, each as "file:line" with the condition of the if
+// around it.
+func (p *goPkg) reach(fn *ast.FuncDecl) (bool, bool, []string) {
 	seen := map[*ast.FuncDecl]bool{}
 	var skips []string
-	slow := false
+	slow, short := false, false
 	var visit func(*ast.FuncDecl)
 	visit = func(f *ast.FuncDecl) {
 		if seen[f] {
@@ -173,6 +177,9 @@ func (p *goPkg) reach(fn *ast.FuncDecl) (bool, []string) {
 					if identIs(fun.X, "slowtest") && (fun.Sel.Name == "Gate" || fun.Sel.Name == "Enabled") {
 						slow = true
 					}
+					if identIs(fun.X, "testing") && fun.Sel.Name == "Short" {
+						short = true
+					}
 					switch fun.Sel.Name {
 					case "Skip", "SkipNow", "Skipf":
 						skips = append(skips, p.pos(x.Pos())+p.cond(stack))
@@ -194,7 +201,7 @@ func (p *goPkg) reach(fn *ast.FuncDecl) (bool, []string) {
 	visit(fn)
 	sort.Strings(skips)
 	skips = slices.Compact(skips)
-	return slow, skips
+	return slow, short, skips
 }
 
 // cond is " if <condition>" for the innermost if whose body holds the call.

@@ -1,6 +1,8 @@
 package testreg
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -104,6 +106,68 @@ func TestLoadRefusesAKeyThatIsNotTypeFamilyCase(t *testing.T) {
 	t.Parallel()
 	bad := `{"rec":"test","key":"roundtrip.other.one","type":"roundtrip","family":"fam","case":"one","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x"}` + "\n"
 	refused(t, fixture+bad, "fixture.jsonl:15:", "key is not type.family.case")
+}
+
+func TestLoadRefusesNegativeSeconds(t *testing.T) {
+	t.Parallel()
+	bad := `{"rec":"test","key":"roundtrip.fam.x","type":"roundtrip","family":"fam","case":"x","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x","seconds":-1}` + "\n"
+	refused(t, fixture+bad, "fixture.jsonl:15:", "seconds -1 is negative")
+}
+
+// TestWriteSecondsKeepsEveryOtherByte: measured seconds land on their test's
+// line, replacing an earlier measure and rounding up to the hundredth; the
+// rest of the file is as it was; a key with no test line writes nothing.
+func TestWriteSecondsKeepsEveryOtherByte(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "r.jsonl")
+	if err := os.WriteFile(path, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []float64{3.001, 0.5} {
+		if n, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.two": s}); err != nil || n != 1 {
+			t.Fatalf("WriteSeconds: %d %v", n, err)
+		}
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(fixture, `"expect":"same"}`+"\n"+`{"rec":"test","key":"load-refusal`, `"expect":"same","seconds":0.5}`+"\n"+`{"rec":"test","key":"load-refusal`, 1)
+	if string(got) != want {
+		t.Fatalf("after WriteSeconds:\n%s\nwant\n%s", got, want)
+	}
+	reg := load(t, string(got))
+	if tt, _ := reg.Test("roundtrip.fam.two"); tt.Seconds != 0.5 {
+		t.Fatalf("seconds read back as %v", tt.Seconds)
+	}
+	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.fam.nine": 1}); err == nil || !strings.Contains(err.Error(), "no test line for roundtrip.fam.nine") {
+		t.Fatalf("a key with no line: %v", err)
+	}
+}
+
+// TestWriteSecondsTouchesOnlyTheLastField: a "seconds" key inside a row's
+// inputs is the row's data, not its measure: WriteSeconds sets and replaces
+// only the line's last field. The plant is a match anywhere on the line,
+// which takes the inputs' key away.
+func TestWriteSecondsTouchesOnlyTheLastField(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "r.jsonl")
+	const line = `{"rec":"test","key":"tooling.a.b","inputs":{"x":1,"seconds":7},"expect":"e"}`
+	if err := os.WriteFile(path, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []float64{2, 3} {
+		if n, err := WriteSeconds(path, map[string]float64{"tooling.a.b": s}); err != nil || n != 1 {
+			t.Fatalf("WriteSeconds: %d %v", n, err)
+		}
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"rec":"test","key":"tooling.a.b","inputs":{"x":1,"seconds":7},"expect":"e","seconds":3}` + "\n"; string(got) != want {
+		t.Fatalf("after WriteSeconds:\n%s\nwant\n%s", got, want)
+	}
 }
 
 // TestTheRegistryLoads holds the committed registry to Load, its language

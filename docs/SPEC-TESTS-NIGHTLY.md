@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 0. Language-free tests: 0.
+Nightly tests every language answers: 0. Language-free tests: 1.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -19,7 +19,15 @@ None.
 
 Each runs once, as `none.nightly.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
-None.
+### Type `compiler`
+
+the compiler or IR itself (parse, check, plan), with no generated language involved.
+
+#### `compiler` family `compiler`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.compiler.compiler.issue710-packet-string-bounds` | `gotest` | Go test TestIssue710PacketStringBounds in ./compiler | `package: ./compiler`<br>`test: TestIssue710PacketStringBounds` | the Go test passes | `compiler/issue710_test.go:259` |
 
 ## Declared unrepresentable
 

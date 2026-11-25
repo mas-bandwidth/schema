@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,6 +25,9 @@ import (
 //	schema-test extract --write-ledger     rewrite the ledger to what is unmoved now
 //	schema-test extract --shrinks-from F   also hold the ledger to F (main's), which it may not exceed
 //	schema-test extract --since DIR        also name each test DIR (main's tree) lacks that has no row
+//	schema-test extract --move L           give every unmoved test of layer L's ledger lines its
+//	                                       registry row (the kinds the driver has an adapter for), then
+//	                                       rewrite the ledger
 func extractCmd(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("schema-test extract", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -33,6 +37,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 	write := fs.Bool("write-ledger", false, "")
 	shrinks := fs.String("shrinks-from", "", "")
 	since := fs.String("since", "", "")
+	move := fs.String("move", "", "")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
@@ -60,13 +65,30 @@ func extractCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	ledgerPath := filepath.Join(*root, extract.LedgerPath)
+	if *move != "" {
+		ledger, err := extract.LoadLedger(ledgerPath)
+		if err != nil {
+			return err
+		}
+		n, err := moveLayer(*root, *path, *move, res, reg, ledger)
+		if err != nil {
+			return err
+		}
+		if reg, err = testreg.Load(filepath.Join(*root, *path)); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "schema-test extract: moved %d tests of layer %s into %s\n", n, *move, *path); err != nil {
+			return err
+		}
+		*write = true
+	}
 	if *write {
 		if len(res.Unparsed) > 0 {
 			return fmt.Errorf("--write-ledger: %d files the extract could not read, first %s: %s; a ledger written now would miscount", len(res.Unparsed), res.Unparsed[0].File, res.Unparsed[0].Reason)
 		}
 		// the unmoved lines are counted again; the skip-red lines are
 		// measurements, not counts, so they carry over as they are
-		lines := extract.Ledger(res, reg, plan(reg))
+		lines := extract.Ledger(res, reg, plan(*root, reg))
 		if old, err := extract.LoadLedger(ledgerPath); err == nil {
 			lines = append(lines, extract.SkipReds(old)...)
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -173,18 +195,30 @@ const ledgerHeader = `# The unmoved ledger: the tests the repository holds that 
 `
 
 // plan is the layer that moves a kind's tests in, and why they wait.
-func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
+func plan(root string, reg *testreg.Registry) func(kind, dir string, items []extract.Item) (string, string) {
 	langs := map[string]bool{}
 	for _, l := range reg.Langs {
 		langs[l.Name] = true
 	}
-	return func(kind, dir string) (string, string) {
+	return func(kind, dir string, items []extract.Item) (string, string) {
 		switch kind {
 		case extract.KindGoTest:
 			if l := langOf(dir, langs); l != "" {
 				return "L5", "per-language (" + l + ") Go tests: " + l + "'s adapter runs them when their families move in"
 			}
-			return "L3", "language-free Go tests: the gotest adapter runs them when their package moves in"
+			layer, reason := "", ""
+			for _, it := range items {
+				l, r := goTestLayer(root, it)
+				if l == "L3" {
+					return l, r
+				}
+				if layer == "" {
+					layer, reason = l, r
+				} else if r != reason && !strings.Contains(reason, r) {
+					reason += "; " + r
+				}
+			}
+			return layer, reason
 		case extract.KindDataCase, extract.KindDriver:
 			return "L4", "corpus data and harnesses: each language's adapter answers them when their family moves in"
 		case extract.KindNegativeControl:
@@ -198,6 +232,86 @@ func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
 		}
 		panic(errors.New("unknown kind " + kind))
 	}
+}
+
+// goTestLayer is the layer that moves one language-free Go test in. The
+// gotest adapter (L3) runs a test of the root module; a
+// benchmark waits for the bench adapter, a test in a Go module of its own
+// runs against the generated Go it is copied beside (go's adapter), and a
+// test that can still skip and has no row yet is one a make target drives, with the build and
+// environment its recipe provides, or on a volume a runner provides (the
+// make adapter).
+func goTestLayer(root string, it extract.Item) (string, string) {
+	switch {
+	case strings.HasPrefix(it.Name, "Benchmark"):
+		return "L6", "Go benchmarks: the bench adapter runs them"
+	case nestedModule(root, it.Dir):
+		return "L5", "Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them"
+	case heavyGate[it.Dir+":"+it.Name] != "":
+		return "L6", "Go tests heavier than one per-PR shard (heavyGate in tools/schema-test/extract.go names each and its seconds): split each into rows that fit, then move them"
+	case redSlowGate[it.Dir+":"+it.Name] != "":
+		return "L6", "Go tests red once their slow gate opens (redSlowGate in tools/schema-test/extract.go names each and its red): fix the red, then move the test"
+	case slices.ContainsFunc(it.Gates, func(g string) bool { return strings.HasPrefix(g, "build: schema_leg_") }):
+		return "L5", "Go tests behind a leg's build tag (schema_leg_<leg>): that language's adapter runs them"
+	case slices.ContainsFunc(it.Gates, func(g string) bool { return g == "build: windows" || g == "build: darwin" }):
+		return "L6", "Go tests built only for another platform: a runner of that platform runs them"
+	case slices.ContainsFunc(it.Gates, func(g string) bool { return strings.HasPrefix(g, "skip:") }):
+		return "L6", "Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them"
+	}
+	return "L3", "language-free Go tests: the gotest adapter runs them when their package moves in"
+}
+
+// redSlowGate are the language-free Go tests that are red once their slow
+// gate opens: the gotest adapter runs them with SCHEMA_SLOW=1 and
+// SCHEMA_REQUIRE_CORPUS=1, and each failed there, by name, on fleet runners
+// (ci-fast run 45548420274) and again on hetzner2, at the L3 branch's
+// 2026-11-25 tip. Outside the driver their slow gate still skips them, as on
+// main. They stay in the unmoved ledger, counted, until the red is fixed; a
+// fixed test leaves this list: schema-test extract --write-ledger then counts
+// it on its package's L3 line, and --move L3 gives it its row.
+var redSlowGate = map[string]string{
+	"cmd/schema:TestCheckNamesEveryFileTheToolWrites":                "schema check exits 1 on the data.attr the tool wrote",
+	"cmd/schema:TestCheckRefusesUnknownLeadingBytesAndListsTheKnown": "schema check exits 1 on saved.bin",
+	"cmd/schema:TestGenerateGoCompilesGoOnlyWords":                   "generate refuses len and print: the Python target cannot express them",
+	"compiler:TestCppTableAnnouncementDistinctQuantizedShapes":       "the C++ probe does not compile",
+	"compiler:TestCPPTextFormIntegralNumbersFunctional":              "the C++ text-form driver disagrees with the expected rows",
+	"compiler:TestFlagsElementWidening":                              "the C++ probe does not compile (using namespace p against package px)",
+	"compiler:TestIssue611JsonUnsignedOverflowLandsCeiling":          "check refuses Probe.schema: the Lobster target cannot express a name in it",
+	"compiler:TestIssue710ListRefusal":                               "an emitted C/C++ helper fails its compile-and-run probe",
+	"compiler:TestIssue710TableRecovery":                             "an emitted C/C++ helper fails its compile-and-run probe",
+	"compiler:TestIssue715Base64ReaderDefaults":                      "dotnet run exits 1",
+	"compiler:TestTableClosureCountDefaults":                         "a leg's closure-count defaults disagree with the Go engine",
+	"compiler:TestUnityFixedFormMatchesCpp":                          "its sabotage control patched nothing",
+	"compiler:TestUnityTableSurfaceAndBoolIntFrame":                  "Unity agrees with the Go engine on 1527 wires but 1 is absent",
+	"internal/ci:TestRubyGeneratedStrictGate":                        "the pinned rubocop (dist/ruby-4.0.9) is absent",
+	"internal/ci:TestRubyGeneratedStrictGateFast":                    "the pinned rubocop (dist/ruby-4.0.9) is absent",
+	"internal/ci:TestRubyGeneratedStrictGatePlantedPattern":          "the pinned rubocop (dist/ruby-4.0.9) is absent",
+	"internal/codegen/csharp:TestNameCorpusBuildsCs":                 "schema check refuses table_Math, so the case proves nothing",
+	"internal/goldens:TestGeneratedTextNamesNoMachine":               "the elixir and unity vocab9 trees use a banned term",
+	"test/conformance/harness:TestGooseDriverWritesPriorRefused":     "the goose driver exits 2 on the message-prior surface",
+	"test/conformance/harness:TestLobsterDriverWritesPriorRefused":   "the lobster driver exits 1 on the message-prior surface",
+	"test/conformance/harness:TestLuauDriverWritesPriorRefused":      "the luau driver exits 2 on the message-prior surface",
+	"test/conformance/harness:TestMooDriverWritesPriorRefused":       "test/conformance/moo/split.pl, which it opens, is not in the tree",
+}
+
+// heavyGate are the language-free Go tests heavier than one per-PR shard
+// (60 s of measured tests): one Go test that is a whole gate. The sharder
+// splits a list of rows, never one row, so each stays in the unmoved ledger
+// until it is split into rows that fit (by language, package or target); a
+// nightly tier is never the way under the budget (docs/TEST-REGISTRY.md,
+// "Sharding"). A split test leaves this list, and its rows move in.
+var heavyGate = map[string]string{
+	"tools/namebuild:TestNameBuildability": "every name of the corpus built in every language: 595 s on hetzner2 (2026-11-25), where go test's ten-minute default cut it short",
+}
+
+// nestedModule reports whether a directory is in a Go module below root's.
+func nestedModule(root, dir string) bool {
+	for d := filepath.FromSlash(dir); d != "." && d != string(filepath.Separator); d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(root, d, "go.mod")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // langOf is the language a path names: a segment that is a language, or

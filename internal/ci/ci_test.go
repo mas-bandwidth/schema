@@ -1260,7 +1260,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1345,7 +1345,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1501,6 +1501,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:pins",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:schema-test",
+		"ci-fast.yml:schema-test-pr",
 		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-cpp-conformance",
 		"ci-fast.yml:verify-dart-conformance",

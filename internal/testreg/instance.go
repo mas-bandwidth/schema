@@ -248,19 +248,110 @@ func (r *Registry) Select(q Query) (Selection, error) {
 	return sel, nil
 }
 
-// Shard is the i-th of n parts (1-based) of a name list: name k goes to
-// part k mod n + 1, so the parts cover every name exactly once. An empty
-// part is an error: a shard that would run nothing fails.
+// DefaultSeconds is what a test with no measured run time weighs when a
+// list is cut into shards.
+const DefaultSeconds = 1.0
+
+// minSeconds is the least a measured test weighs: a test the clock saw as 0 s
+// still costs its line of the run.
+const minSeconds = 0.01
+
+// Weight is what an instance costs its shard: its test's measured seconds
+// (at least minSeconds), or DefaultSeconds when none was measured.
+func Weight(inst Instance) float64 {
+	if s := inst.Test.Seconds; s > 0 {
+		return max(s, minSeconds)
+	}
+	return DefaultSeconds
+}
+
+// Parts cuts a name list, in its order, into n contiguous parts, the
+// heaviest as light as a contiguous cut allows, weighed by Weight, and the
+// rest as even as that allows: a part ends near its share of what is left,
+// so one heavy test does not leave the parts after it empty. The list is
+// registry order, so the tests of one Go package stay together and each part
+// builds few packages. Every name is in exactly one part; when there are
+// more parts than names, the parts past the last name are empty.
+func Parts(instances []Instance, n int) [][]Instance {
+	if n < 1 {
+		return nil
+	}
+	parts := make([][]Instance, n)
+	if len(instances) == 0 {
+		return parts
+	}
+	weights := make([]float64, len(instances))
+	after := make([]float64, len(instances)+1) // after[k]: the weight from k on
+	heaviest := 0.0
+	for k, inst := range instances {
+		weights[k] = Weight(inst)
+		heaviest = max(heaviest, weights[k])
+	}
+	for k := len(instances) - 1; k >= 0; k-- {
+		after[k] = after[k+1] + weights[k]
+	}
+	// fits: the names from k on fill at most m parts of capacity c, greedily
+	fits := func(k, m int, c float64) bool {
+		used, load := 1, 0.0
+		for _, w := range weights[k:] {
+			if load > 0 && load+w > c {
+				used++
+				load = 0
+			}
+			load += w
+		}
+		return used <= m
+	}
+	// the least capacity a contiguous cut can meet in n parts
+	lo, hi := max(heaviest, after[0]/float64(n)), after[0]
+	for range 64 {
+		mid := (lo + hi) / 2
+		if fits(0, n, mid) {
+			hi = mid
+		} else {
+			lo = mid
+		}
+	}
+	p, load := 0, 0.0
+	for k, w := range weights {
+		if len(parts[p]) > 0 && p < n-1 {
+			left, partsLeft := len(instances)-k, n-p-1
+			share := (load + after[k]) / float64(n-p)
+			switch {
+			case load+w > hi || left <= partsLeft:
+				// this part is full, or every later part needs a name
+				p, load = p+1, 0
+			case load+w/2 > share && fits(k, partsLeft, hi):
+				// past its share, and the rest still fit the parts after it
+				p, load = p+1, 0
+			}
+		}
+		parts[p] = append(parts[p], instances[k])
+		load += w
+	}
+	return parts
+}
+
+// PartSeconds is each part's weight, in seconds.
+func PartSeconds(parts [][]Instance) []float64 {
+	out := make([]float64, len(parts))
+	for i, part := range parts {
+		for _, inst := range part {
+			out[i] += Weight(inst)
+		}
+	}
+	return out
+}
+
+// Shard is the i-th of n parts (1-based) of a name list, cut by Parts: the
+// parts cover every name exactly once, and each weighs about 1/n of the
+// list's measured seconds. An empty part is an error: a shard that would
+// run nothing fails.
 func Shard(instances []Instance, i, n int) ([]Instance, error) {
 	if n < 1 || i < 1 || i > n {
 		return nil, fmt.Errorf("shard %d/%d: want 1 <= i <= n", i, n)
 	}
-	var out []Instance
-	for k, inst := range instances {
-		if k%n == i-1 {
-			out = append(out, inst)
-		}
-	}
+	out := Parts(instances, n)[i-1]
 	if len(out) == 0 {
 		return nil, fmt.Errorf("shard %d/%d of %d names matches 0 tests", i, n, len(instances))
 	}

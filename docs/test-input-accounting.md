@@ -39,7 +39,7 @@ change touched.
 | packet-end | `testdata/wire/packet-end/`, `test/packet-end/*` | `packet-end-<leg>`, 14 legs | wildcard in goose, lua, squirrel; hard names elsewhere | inputaccount | family |
 | packet-finite, packet-void, packet-write-bareint, packet-write-cfloat, packet-write-text | `test/packet-<x>/*` (schemas, `cases.txt`) | `packet-<x>-<leg>` | `cases.txt`; mustrun counts | inputaccount | family |
 | conformance corpus | `testdata/conformance/tables/` | `verify-<leg>-conformance`, 18 legs; the harness | `MANIFEST.txt` | inputaccount over the manifest and `wire/*.bin`; the harness checks rows against files | family + go |
-| hostile corpus | `internal/ci/hostilecorpus/corpus/` | `schema-<leg>-runs-hostile-corpus`, 18 legs; Go engine tests | manifest; per-port counts typed | source trees swept (`corpus.go` Uncovered); inputaccount owed | the per-port runs are the heavy workflows moved off pull requests (2026-11-15), so not a PR row; the Go tests run in ci-policy on every PR |
+| hostile corpus | `internal/ci/hostilecorpus/corpus/` | `schema-<leg>-runs-hostile-corpus`, 18 legs; Go engine tests | manifest; per-port counts typed | source trees swept (`corpus.go` Uncovered); inputaccount owed | the per-port runs are the heavy workflows moved off pull requests (2026-11-15), so not a PR row; the Go tests are registry rows the pr group runs on every PR |
 | hostile ledgers | `test/*-hostile/known-{skips,findings}.tsv` | the leg's hostile target | hand list | both ways | the leg's own path rule |
 | feature witnesses | `testdata/conformance/feature-witnesses/` | most legs' make files, Go tests | hand-typed paths | none | go |
 | wire vector sets | `testdata/wire/{non-canonical,skipped-value,pointer-target-type,message-one-encoding,fixed-empty-batch,json-*}` | `<lang>table` Go tests, harness, compiler spec tests | manifests and hard names | manifest rows; no reverse sweep | go |
@@ -51,4 +51,4 @@ change touched.
 | fuzz seed corpora | `*/testdata/fuzz/Fuzz*/` | go test replay | go test | go replays every file | package-local owner rule |
 | nightly fuzz saved inputs | `testdata/{lua,luau}-nightly-fuzz/`, `testdata/moo-wire-fuzz-pinned-controls/` | nightly fuzz make files, internal/ci tests | hand lists | luau INPUTS and moo list both ways | go |
 | JSONTestSuite | `testdata/jsontestsuite/` | tabletext, gotable, luautable, mootable, pythontable | ReadDir + SHA256SUMS | both ways | go |
-| skip ledger | `.github/skip-ledger.txt` | `tools/gotestreport -skips`, internal/ci | hand list | every skip names a ledger reason | ci-policy always |
+| skip ledger | `.github/skip-ledger.txt` | `tools/gotestreport -skips`, internal/ci | hand list | every skip names a ledger reason | go-test-touched, verify-leg; the registry fails every skip |

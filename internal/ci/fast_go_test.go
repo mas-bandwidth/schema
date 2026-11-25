@@ -1,12 +1,20 @@
 package ci
 
 import (
+	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
 // cardAddedGoFixedFormTest is a harvest-card name (schema#1374, P2 on the go
@@ -119,7 +127,7 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 		PlanPkgs: "./internal/codegen/gotable",
 		PlanLegs: `["go"]`,
 	}
-	for _, job := range []string{"plan", "lint-fast", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "block-gate", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, ev); err != nil || !ok {
 			t.Fatalf("ci-fast.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
@@ -466,31 +474,92 @@ func splitShell(s string) []string {
 	return out
 }
 
-// TestCIFastPolicyRunsSlowtestGateScan ensures ci-fast.yml's ci-policy job
-// runs ./internal/slowtest/... on every PR/push so any test file under
-// compiler/ or internal/codegen/ reaching os/exec without slowtest.Gate(t) is
-// caught in < 2m on the PR rather than waiting for certify.yml's core-go.
+// TestCIFastPolicyRunsSlowtestGateScan ensures every test of
+// ./internal/slowtest runs on every PR/push, so any test file under compiler/
+// or internal/codegen/ reaching os/exec without slowtest.Gate(t) is caught in
+// < 2m on the PR rather than waiting for certify.yml's core-go. They run as
+// registry rows: each is in the `pr` group the schema-test-pr shards run
+// (docs/TEST-REGISTRY.md), and a test with no row there is red by name.
 func TestCIFastPolicyRunsSlowtestGateScan(t *testing.T) {
 	t.Parallel()
-	wf, ok := workflows(t, repoRoot(t))["ci-fast.yml"]
+	root := repoRoot(t)
+	reg, err := testreg.Load(filepath.Join(root, "test", "registry", "registry.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, ok := reg.Group("pr")
 	if !ok {
-		t.Fatal("ci-fast.yml is missing")
+		t.Fatal("the registry has no pr group")
 	}
-	check := func(wfText string) bool {
-		policy, ok := yamlJobs(wfText)["ci-policy"]
-		if !ok {
-			return false
+	sel, err := reg.Select(g.Query())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []testreg.Test
+	for _, inst := range sel.Instances {
+		rows = append(rows, inst.Test)
+	}
+	declared := goTestsDeclared(t, filepath.Join(root, "internal", "slowtest"))
+	if len(declared) == 0 {
+		t.Fatal("internal/slowtest declares no test: the reader is reading the wrong text")
+	}
+	if missing := slowtestUnrun(declared, rows); len(missing) > 0 {
+		t.Fatalf("internal/slowtest tests the pr group does not run: %s", strings.Join(missing, ", "))
+	}
+	// negative control: the pr group without one slowtest row leaves that test unrun
+	for i, r := range rows {
+		var in struct{ Package, Test string }
+		if r.Adapter == "gotest" && json.Unmarshal(r.Inputs, &in) == nil && in.Package == "./internal/slowtest" {
+			cut := slices.Delete(slices.Clone(rows), i, i+1)
+			if got := slowtestUnrun(declared, cut); !slices.Equal(got, []string{in.Test}) {
+				t.Fatalf("NEGATIVE CONTROL FAILED: dropping %s's row left %v unrun", in.Test, got)
+			}
+			return
 		}
-		return strings.Contains(policy, "go test ./internal/slowtest/...")
 	}
-	if !check(wf) {
-		t.Fatal("ci-fast.yml ci-policy does not run `go test ./internal/slowtest/...`")
+	t.Fatal("NEGATIVE CONTROL FAILED: the pr group holds no ./internal/slowtest row")
+}
+
+// slowtestUnrun is the declared tests of ./internal/slowtest no gotest row
+// among rows runs, sorted.
+func slowtestUnrun(declared []string, rows []testreg.Test) []string {
+	run := map[string]bool{}
+	for _, r := range rows {
+		var in struct{ Package, Test string }
+		if r.Adapter == "gotest" && json.Unmarshal(r.Inputs, &in) == nil && in.Package == "./internal/slowtest" {
+			run[in.Test] = true
+		}
 	}
-	mutated := strings.Replace(wf, "go test ./internal/slowtest/...", "true", 1)
-	if mutated == wf {
-		t.Fatal("negative control did not mutate ci-fast.yml")
+	var out []string
+	for _, n := range declared {
+		if !run[n] {
+			out = append(out, n)
+		}
 	}
-	if check(mutated) {
-		t.Fatal("NEGATIVE CONTROL FAILED: dropping `go test ./internal/slowtest/...` from ci-policy stayed green")
+	return out
+}
+
+// goTestsDeclared is the top-level Test functions a package directory's
+// _test.go files declare, parsed (a test in a fixture string is not one), sorted.
+func goTestsDeclared(t *testing.T, dir string) []string {
+	t.Helper()
+	files, err := provesran.Glob(filepath.Join(dir, "*_test.go"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	var out []string
+	fset := token.NewFileSet()
+	for _, f := range files {
+		file, err := parser.ParseFile(fset, f, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, d := range file.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && strings.HasPrefix(fn.Name.Name, "Test") && fn.Name.Name != "TestMain" {
+				out = append(out, fn.Name.Name)
+			}
+		}
+	}
+	slices.Sort(out)
+	return out
 }

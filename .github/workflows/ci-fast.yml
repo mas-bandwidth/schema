@@ -64,7 +64,7 @@ name: CI fast
 # minutes is reachable; twenty seconds is not, without a self-hosted warm pool.
 #
 # THE MERGE GATE RUNS ON THE FLEET, like every Linux job in .github/workflows:
-# we run our own GitHub runners on the fleet. `plan`, `lint-fast`, `ci-policy`,
+# we run our own GitHub runners on the fleet. `plan`, `lint-fast`, `schema-test-pr`,
 # `block-gate` and `go-test-touched` are the checks a pull request must pass,
 # and each is `runs-on: [self-hosted, Linux, X64, fleet, schema]` behind the
 # fork guard below. The hosted queue was the failure mode that moved them: jobs
@@ -566,7 +566,7 @@ jobs:
               case " $packages " in *" ./internal/fuzz "*) ;; *) packages="$packages ./internal/fuzz" ;; esac
             fi
             # THE WORKFLOW & READINESS AUDITORS. Packages outside ./internal/ci
-            # (which ci-policy always runs) whose fast unit tests assert
+            # (which the schema-test-pr shards always run) whose fast unit tests assert
             # invariants on .github/workflows/*.yml, .github/actions/*, or
             # test/conformance/nightly-readiness: pythontable and rubytable
             # readiness checks, negativecontrols matrix checks, and
@@ -802,7 +802,9 @@ jobs:
             echo "* every leg (push to main): **$all**"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # THE GO TEST ROWS (tools/gotestrows): the packages above, cut into
+      # THE GO TEST ROWS (tools/gotestrows): the packages above, less the
+      # tests the registry runs (-registry: a test with a gotest row runs in
+      # the schema-test-pr shards, never here too), cut into
       # go-test-touched matrix rows that each fit the fleet's two-minute
       # per-commit cap. Light packages are packed together by their measured
       # seconds (.github/go-test-rows.txt); a package the table splits gets a
@@ -826,7 +828,7 @@ jobs:
           # own packages (THE DEPENDENTS in `pick`), and so do the dependents of a
           # package that embeds a changed non-.go file (a runtime-only diff)
           # shellcheck disable=SC2086
-          rows=$(go run ./tools/gotestrows $flags -dependents-of "$SRC_PACKAGES" -changed-files "$RUNNER_TEMP/diff-files.txt" -packages-out "$RUNNER_TEMP/selected-packages.txt" $PACKAGES)
+          rows=$(go run ./tools/gotestrows $flags -registry test/registry/registry.jsonl -dependents-of "$SRC_PACKAGES" -changed-files "$RUNNER_TEMP/diff-files.txt" -packages-out "$RUNNER_TEMP/selected-packages.txt" $PACKAGES)
           echo "$rows"
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
           echo "packages=$(cat "$RUNNER_TEMP/selected-packages.txt")" >> "$GITHUB_OUTPUT"
@@ -842,7 +844,7 @@ jobs:
   # NOT here: each downloads and compiles a tool of its own, which is a minute
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
-    needs: ci-policy
+    needs: [ci-policy, schema-test, schema-test-pr]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
@@ -854,13 +856,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
-      # A skipped or failed policy job must fail the existing required check.
-      - name: require CI policy success
+      # A skipped or failed policy or registry job must fail the existing
+      # required check: the CI policy tests (internal/ci and the policy
+      # packages) are registry rows the schema-test-pr shards run
+      # (docs/TEST-REGISTRY.md), and ci-policy runs the policy scripts.
+      - name: require CI policy and the registry's pr group success
         env:
           POLICY_RESULT: ${{ needs.ci-policy.result }}
+          REGISTRY_RESULT: ${{ needs.schema-test.result }}
+          SHARDS_RESULT: ${{ needs.schema-test-pr.result }}
         run: |
-          if [ "$POLICY_RESULT" != success ]; then
-            echo "::error::CI policy result: $POLICY_RESULT"
+          if [ "$POLICY_RESULT" != success ] || [ "$REGISTRY_RESULT" != success ] || [ "$SHARDS_RESULT" != success ]; then
+            echo "::error::results: ci-policy $POLICY_RESULT, schema-test $REGISTRY_RESULT, schema-test-pr $SHARDS_RESULT"
             exit 1
           fi
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
@@ -925,144 +932,41 @@ jobs:
       - name: no dropped errors in cmd/ and tools/
         run: go run ./tools/errdiscard
 
-  # Keep policy checks in a separate two-minute job: on loaded runners the
-  # whole-tree modernizer and these checks exceed the combined budget.
-  #
-  # THREE ROWS, BY TEST NAME (2026-11-21). One `go test ./internal/ci/` ran
-  # 57-63 s of tests at GOMAXPROCS 2 (run 44928202537, 1m17s job) and went
-  # past the two-minute cap under load (run 44928096491, cancelled at 2m5s).
-  # Measured serially on amd-2 the package is ~74 s of test time, a third of
-  # it the fast-plan and opt-verify selector tests (one bash per case) and
-  # another seventh the Python plan. So the package runs as three rows side
-  # by side, each on its own runner with the cap to itself. The rows are
-  # COMPLETE BY CONSTRUCTION: every row but `rest` selects with `-run`, and
-  # `rest` is `-skip` of exactly the union of those patterns, so a new test
-  # lands in `rest` unless it is named into a row.
-  # TestCIPolicyShardsCoverEveryTest holds that union and checks every Test
-  # function in the package is selected by exactly one row.
+  # THE CI POLICY SCRIPTS. The policy Go tests (internal/ci, internal/slowtest
+  # and the other policy packages) are registry rows the schema-test-pr shards
+  # run (docs/TEST-REGISTRY.md); what is left here is the policy checks that
+  # are not Go tests, until the registry's make adapter runs make targets and
+  # scripts as rows. Each costs seconds.
   ci-policy:
     if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    name: ci-policy (${{ matrix.shard }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
-    # Bound Go's nested policy-test fan-out to the validated bench setting.
-    env:
-      GOMAXPROCS: '2'
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: selectors
-            select: -run '^(TestFastPlan|TestOptVerify)'
-          - shard: python-legs
-            select: -run '^(TestPython|TestConformance|TestCertify|TestNo)'
-          - shard: rest
-            select: -skip '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
-      # the gate runs hosted, so setup-go always runs here; the guard keeps the
-      # step correct on a fleet runner too
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
-
-      # The Go build cache, restore only — ci-full.yml's `go-test` is the one
-      # Linux writer. The block on that job carries the reasoning.
-      - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
-        run: |
-          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
-          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
-
-      # On a self-hosted runner the build cache is the runner dir's own and already warm: there
-      # is nothing to restore, and no stale entry can forge a green.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          path: ${{ env.GO_BUILD_CACHE }}
-          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
-          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
-
-      # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt). With
-      # PGROUP_GO_TEST_JSON set, tools/pgroup records the `go test -json`
-      # event stream of every go test this job's steps run, at the -timeout
-      # each one named: nothing is lifted. The job's last step reads the
-      # record. It costs the job no second run.
-      - name: where this job records its go test events
-        run: |
-          rm -rf "$RUNNER_TEMP/go-test-json"
-          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
-
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
       # test exits 0 — so a make target running a bare `go test` on such a
-      # package goes GREEN HAVING RUN NOTHING. Fourteen did. This scan fails any
-      # such recipe line BY NAME, costs milliseconds, and is on the FAST lane
-      # because the regression it catches is somebody adding the fifteenth.
-      # The scan, the slowtest gate and the bench parse cost seconds; they run
-      # once, in the `rest` row.
+      # package goes GREEN HAVING RUN NOTHING. This scan fails any such recipe
+      # line BY NAME and costs milliseconds.
       - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
-        if: matrix.shard == 'rest'
         run: make slow-gate-scan
-
-      - name: every toolchain test source calls slowtest.Gate (issue #1025)
-        if: matrix.shard == 'rest'
-        run: go test ./internal/slowtest/...
-      # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
-      # tree — this one included: every `uses:` names a full commit SHA with the
-      # tag in a trailing comment, nothing runs @latest, and every csproj
-      # agrees with the one .NET SDK pin.
-      - name: CI lints itself — action pins and the .NET SDK pin
-        run: go test ${{ matrix.select }} ./internal/ci/
       - name: bench scripts parse
-        if: matrix.shard == 'rest'
         run: bash -n bench/run.sh
-
       # THE PYTHON TOOLING TESTS (nightly_readiness_test.py, wire_fuzz_complete_test.py):
       # no job ran the first, so main went red unseen. About a second. The
       # guard in internal/ci (python_tests_run_test.go) fails a *_test.py that
       # no target runs.
       - name: python tooling tests
-        if: matrix.shard == 'rest'
         run: make python-tooling-tests
-
-      # A SKIP NAMES A REASON, AND THIS JOB COUNTS ITS SKIPS. The policy gates
-      # shell out to make and git, which every runner of this job has: a gate
-      # that skipped for want of either checked nothing, and is red here. So
-      # is a skip with no reason, and a reason the ledger does not name.
-      - name: the skip ledger — every skip this job's go test recorded, by reason
-        if: always()
-        env:
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          set -euo pipefail
-          require=""
-          if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
-          go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
-            -provides "short platform tool:make tool:git tool:sh" "$PGROUP_GO_TEST_JSON"
-
-      # EVERY TEST THAT RAN ON MAIN STILL RUNS (tools/testguard). The same
-      # record, held to test/testguard/ci-policy-<shard>.tsv: every skip is in
-      # its ledger by test, the row's packages each ran a test, and every test
-      # in test/testguard/ci-policy-<shard>/ (one empty file per test) ran,
-      # with none running unlisted. A change that adds or removes a test adds
-      # or deletes its file. Where it meets the step above: both read skips
-      # (that step by reason, this one by test) and both refuse a record of
-      # nothing; the baseline is this step's alone.
-      - name: testguard — every test that ran on main still runs
-        if: always()
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: |
-          set -euo pipefail
-          go run ./tools/testguard check --config "test/testguard/ci-policy-$SHARD.tsv" "$PGROUP_GO_TEST_JSON"/*.jsonl
 
   # GO VET, a job of its own beside lint-fast: in one job with modernize the
   # two whole-tree type-checks ran one after the other, and vet alone took
@@ -2234,7 +2138,7 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-      # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt), as in ci-policy:
+      # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt), as the go test lanes keep it:
       # tools/pgroup records this job's `go test -json` events
       - name: where this job records its go test events
         run: |
@@ -2282,9 +2186,13 @@ jobs:
   # The full Go fixed-form gate used ~35s producing its reference, then
   # >80s in tests on vision. Keep the same corpus and test recipe in distinct
   # per-commit jobs; artifacts are run-scoped and bound to checkout + bytes.
+  #
+  # EVERY RUN BUILDS IT: the schema-test-pr shards read it (the registry's
+  # functional Go tests read the fixed corpus, and a missing corpus is a
+  # failure there, never a skip).
   go-fixed-corpus:
     needs: plan
-    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"')
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -3121,7 +3029,7 @@ jobs:
   # never from a hand list) and fails on any result but success, except a job
   # the plan selected nothing for: a skip is green only where this script names
   # the plan output that made it, and the gates that always run (plan,
-  # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
+  # schema-test, schema-test-pr, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   # THE ONE TEST DRIVER (docs/TEST-REGISTRY.md): the registry's stored query
   # `pr` (test/registry/registry.jsonl, rec group) runs every unit and
@@ -3152,6 +3060,7 @@ jobs:
           (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
+
       # EVERY TEST IS A REGISTRY ROW OR IN THE UNMOVED LEDGER, AND THE LEDGER
       # ONLY SHRINKS (docs/TEST-REGISTRY.md). extract holds the repository,
       # the registry and test/registry/unmoved.tsv to each other exactly, and
@@ -3175,16 +3084,67 @@ jobs:
             echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
             go run ./tools/schema-test extract --since "$RUNNER_TEMP/main-tree"
           fi
-      - name: schema-test run --group pr
+
+  # THE REGISTRY'S PER-PR GROUP, `pr` (docs/TEST-REGISTRY.md): every ready
+  # test of tiers unit and functional, cut into shards by the seconds each
+  # test was measured at (rec test "seconds"), so each shard fits the
+  # two-minute cap. The step that runs tests calls only the driver; the steps
+  # before it put in place what the functional tier needs, and a test that
+  # finds it missing fails by name. tools/schema-test's
+  # TestThePRShardsFitTheirJobs holds this matrix to the registry: the
+  # shards are exactly 1/N..N/N, and none carries more than its budget.
+  schema-test-pr:
+    needs: [go-fixed-corpus]
+    if: (always() && !cancelled() && needs.go-fixed-corpus.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: schema-test-pr (${{ matrix.shard }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["1/46", "2/46", "3/46", "4/46", "5/46", "6/46", "7/46", "8/46", "9/46", "10/46", "11/46", "12/46", "13/46", "14/46", "15/46", "16/46", "17/46", "18/46", "19/46", "20/46", "21/46", "22/46", "23/46", "24/46", "25/46", "26/46", "27/46", "28/46", "29/46", "30/46", "31/46", "32/46", "33/46", "34/46", "35/46", "36/46", "37/46", "38/46", "39/46", "40/46", "41/46", "42/46", "43/46", "44/46", "45/46", "46/46"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: the C++, C, C#, Go and Rust serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: ./.github/actions/dist-pins
+        with:
+          pins: lua luau goose lobster
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
+          path: build
+      - name: the fixed reference belongs to this checkout
+        run: sh tools/go-ci-corpus.sh verify
+      - name: schema-test run --group pr --shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
             . /opt/nova/sdk/env.sh
           fi
-          go run ./tools/schema-test run --group pr
+          go run ./tools/schema-test run --group pr --shard "$SHARD"
 
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test, schema-test-pr, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -3219,7 +3179,6 @@ jobs:
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
-              go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
               newleg-scaffold) [ "$(out newleg)" = no ] ;;
               pins) [ "$(out pins)" != yes ] ;;

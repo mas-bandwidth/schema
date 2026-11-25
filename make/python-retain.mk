@@ -3,7 +3,7 @@
 # two-minute per-commit cap; each row carries about a quarter of the heavy
 # interpreter-plus-mypy tests. internal/ci's TestPythonRetainCIPlan proves that
 # every ^TestPythonRetain function in the package source is selected by exactly
-# one row, so a new retention test fails ci-policy until it is given a row.
+# one row, so a new retention test fails the pr group until it is given a row.
 PYTHON_RETAIN_SHARDS := $(addprefix python-retain-,0 1 2 3)
 PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_RETAIN_SHARDS) python-retain-negative-control
 .PHONY: python-retain $(PYTHON_RETAIN_SHARDS) python-retain-negative-control
