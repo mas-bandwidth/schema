@@ -132,35 +132,56 @@ func (a *goTestAdapter) moduleOf(pkg string) (string, string, error) {
 }
 
 func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	byPkg := map[string][]goTestCall{} // package -> its calls, cut by weight
-	var pkgs []string
+	calls := goTestCalls{}
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", inst.Full, err)
 		}
-		if byPkg[in.Package] == nil {
-			pkgs = append(pkgs, in.Package)
-		}
-		byPkg[in.Package] = addToCall(byPkg[in.Package], in.Test, inst, a.callBudget())
+		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
 	}
-	// packages run at once, a package's calls one after another: its tests
-	// were written to share one process at a time (a test that is not
-	// t.Parallel may hold a path its siblings use)
+	return a.runCalls(ctx, calls)
+}
+
+// goTestPackage is one go test invocation's package and its build tags.
+type goTestPackage struct {
+	pkg, tags string
+}
+
+// goTestCalls is every package's calls, cut by weight, in first-asked order.
+type goTestCalls struct {
+	order []goTestPackage
+	calls map[goTestPackage][]goTestCall
+}
+
+func (c *goTestCalls) add(p goTestPackage, test string, inst testreg.Instance, budget float64) {
+	if c.calls == nil {
+		c.calls = map[goTestPackage][]goTestCall{}
+	}
+	if c.calls[p] == nil {
+		c.order = append(c.order, p)
+	}
+	c.calls[p] = addToCall(c.calls[p], test, inst, budget)
+}
+
+// runCalls runs the calls: packages at once, a package's calls one after
+// another, since its tests were written to share one process at a time (a
+// test that is not t.Parallel may hold a path its siblings use).
+func (a *goTestAdapter) runCalls(ctx context.Context, calls goTestCalls) ([]testreg.Result, error) {
 	type pkgRun struct {
 		res []testreg.Result
 		err error
 	}
-	runs := make([]pkgRun, len(pkgs))
+	runs := make([]pkgRun, len(calls.order))
 	sem := make(chan struct{}, a.jobs)
 	var wg sync.WaitGroup
-	for i, pkg := range pkgs {
+	for i, p := range calls.order {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			var errs []error
-			for _, c := range byPkg[pkg] {
-				res, err := a.runPackage(ctx, pkg, c.tests)
+			for _, c := range calls.calls[p] {
+				res, err := a.runPackage(ctx, p, c.tests)
 				runs[i].res = append(runs[i].res, res...)
 				if err != nil {
 					errs = append(errs, err)
@@ -182,7 +203,8 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 }
 
 // runPackage runs one package's asked tests in one go test.
-func (a *goTestAdapter) runPackage(ctx context.Context, pkg string, tests map[string]string) ([]testreg.Result, error) {
+func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests map[string]string) ([]testreg.Result, error) {
+	pkg := p.pkg
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
 	}
@@ -195,7 +217,12 @@ func (a *goTestAdapter) runPackage(ctx context.Context, pkg string, tests map[st
 		names = append(names, n)
 	}
 	slices.Sort(names)
-	cmd := exec.CommandContext(ctx, "go", "test", "-count=1", "-json", "-timeout", goTestTimeout(ctx, time.Now()), "-run", "^("+strings.Join(names, "|")+")$", rel)
+	args := []string{"test", "-count=1", "-json", "-timeout", goTestTimeout(ctx, time.Now())}
+	if p.tags != "" {
+		args = append(args, "-tags", p.tags)
+	}
+	args = append(args, "-run", "^("+strings.Join(names, "|")+")$", rel)
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = dir
 	bound(cmd)
 	// nothing in a test decides whether it runs: which tests run is the

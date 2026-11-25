@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"regexp"
@@ -313,6 +314,35 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 		}
 		reg.Tests = append(reg.Tests, t)
 		reg.test[t.Key] = len(reg.Tests)
+	}
+	// a union row's Go tests: a per-language row, naming only languages the
+	// registry lists, and no Go test twice
+	unionTest := map[string]string{}
+	for _, t := range reg.Tests {
+		tests, ok, err := GoTestsOf(t)
+		switch {
+		case !ok:
+			continue
+		case err != nil:
+			fail(t.Line, "%v", err)
+			continue
+		case !t.PerLang():
+			fail(t.Line, "test %s names per-language Go tests but is scoped %q", t.Key, t.Scope)
+			continue
+		}
+		for _, lang := range slices.Sorted(maps.Keys(tests)) {
+			g := tests[lang]
+			if reg.lang[lang] == 0 || lang == LangFree {
+				fail(t.Line, "test %s names a Go test for %q, which is not a language of the registry", t.Key, lang)
+				continue
+			}
+			id := g.Package + " " + g.Test
+			if prev, dup := unionTest[id]; dup {
+				fail(t.Line, "test %s names %s %s, which %s already names", t.Key, g.Package, g.Test, prev)
+				continue
+			}
+			unionTest[id] = t.Key
+		}
 	}
 	for _, u := range reg.Unreps {
 		k := [2]string{u.Test, u.Lang}

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -140,6 +142,23 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				continue
 			}
 			out[id] = t.Key
+			continue
+		}
+		if tests, ok, err := testreg.GoTestsOf(t); ok {
+			// a union row: each language's own Go test for the case
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %v", reg.Path, t.Line, err))
+				continue
+			}
+			for _, lang := range slices.Sorted(maps.Keys(tests)) {
+				g := tests[lang]
+				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(g.Package, "./"), Name: g.Test}.ID()
+				if prev, dup := out[id]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s for %s, which %s already runs", reg.Path, t.Line, t.Key, g.Package, g.Test, lang, prev))
+					continue
+				}
+				out[id] = t.Key
+			}
 			continue
 		}
 		if t.Adapter != "gotest" && t.PerLang() {
