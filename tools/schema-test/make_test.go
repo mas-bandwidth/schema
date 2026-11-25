@@ -588,7 +588,7 @@ func TestABuildStepRunsInPrepare(t *testing.T) {
 // does not report, or fails, or passes only as a subtest, fails the row by name.
 func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 	t.Parallel()
-	in := makeInputs{File: "make/x.mk", Target: "gate-check", Package: "./tables/cards", GoTests: []string{"TestA", "TestB"}}
+	in := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards TestA", "./tables/cards TestB"}}
 	for log, missing := range map[string]string{
 		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n":     "",
 		"--- PASS: TestA (0.01s)\n":                              "TestB",
@@ -614,18 +614,18 @@ func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 func TestAMakeRowNamesItsGoTestsWithTheirPackage(t *testing.T) {
 	t.Parallel()
 	for _, in := range []string{
-		`{"file":"make/x.mk","target":"a","gotests":["TestA"]}`,
-		`{"file":"make/x.mk","target":"a","package":"./tables/cards"}`,
-		`{"file":"make/x.mk","target":"a","package":"tables/cards","gotests":["TestA"]}`,
-		`{"file":"make/x.mk","target":"a","package":"./tables/../cards","gotests":["TestA"]}`,
-		`{"file":"make/x.mk","target":"a","package":"./tables/cards","gotests":["Helper"]}`,
-		`{"file":"make/x.mk","target":"a","package":"./tables/cards","gotests":["TestA","TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["tables/cards TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/../cards TestA"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards Helper"]}`,
+		`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards TestA"]}`,
 	} {
 		if _, err := decodeMakeInputs(json.RawMessage(in)); err == nil {
 			t.Errorf("%s decoded", in)
 		}
 	}
-	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","package":"./tables/cards","gotests":["TestA","FuzzB"]}`)); err != nil {
+	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards FuzzB"]}`)); err != nil {
 		t.Errorf("a lawful row: %v", err)
 	}
 }

@@ -25,8 +25,8 @@
 # skipped run can never pass as green.
 schema-moo-runs-hostile-corpus: toolchain-moo
 	sh test/slowgate/proof schema-moo-runs-hostile-corpus \
-		'TestSchemaMooRunsHostileCorpus TestSchemaMooHostileScorerOutcomes' \
-		./internal/ci -run '^(TestSchemaMooRunsHostileCorpus|TestSchemaMooHostileScorerOutcomes)$$' -count=1 -timeout 600s
+		'TestHostileCorpus_moo TestSchemaMooHostileScorerOutcomes' \
+		./internal/ci -run '^(TestHostileCorpus_moo|TestSchemaMooHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 schema-moo-runs-hostile-corpus-negative-control: toolchain-moo
 	sh test/slowgate/proof schema-moo-runs-hostile-corpus-negative-control \

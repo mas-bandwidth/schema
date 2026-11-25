@@ -191,17 +191,23 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			claim(t, Item{Kind: KindModel, Dir: "tla", Name: in.Config}, "tla/"+in.Config)
 		case "make":
 			var in struct {
-				File, Target, Package string
-				Reads, GoTests        []string
+				File, Target string
+				Reads        []string
+				GoTests      []string `json:"go_tests"`
 			}
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make row without a file and a target in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
 			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
-			for _, name := range in.GoTests {
-				// the Go tests of a module of its own the target runs (tables/cards)
-				claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: name}, "make "+in.Target+" "+in.Package+" "+name)
+			for _, g := range in.GoTests {
+				// the Go tests the target runs, "<package> <Test>" (tables/cards)
+				pkg, name, ok := strings.Cut(g, " ")
+				if !ok {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s: go_tests entry %q is not \"<package> <Test>\"", reg.Path, t.Line, t.Key, g))
+					continue
+				}
+				claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(pkg, "./"), Name: name}, "make "+in.Target+" "+g)
 			}
 			for _, f := range in.Reads {
 				dir, name := path.Split(f)
@@ -297,6 +303,7 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // case of the extract holds names a test that does not exist, by name.
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
 	out, problems := Covered(reg)
+	problems = append(problems, perLangClaims(res, reg, out)...)
 	named := map[string]bool{}
 	held := map[string]bool{}
 	for _, files := range res.CaseFiles {
@@ -336,6 +343,71 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 		}
 	}
 	return out, problems
+}
+
+// perLangClaims adds to out what a per-language row's one run per language
+// runs (docs/TEST-REGISTRY.md, "The hostile corpus"): its inputs' "target",
+// a make target with {lang} for each listed language, and "go_tests",
+// "<package> <Test>" with {lang}, the Go tests such a target runs. Each
+// language's item is claimed when the extract holds it (a language whose
+// target runs no Go test has none), by the first row of the family that
+// names it, since every case row of the family names the same run. An item
+// another row already claims is a problem named: it would run twice.
+func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []string {
+	var problems []string
+	byID := map[string]bool{}
+	targets := map[string][]Item{}
+	for _, it := range res.Items {
+		byID[it.ID()] = true
+		if it.Kind == KindMakeTarget {
+			targets[it.Name] = append(targets[it.Name], it)
+		}
+	}
+	family := map[string]string{} // an item, by the family whose rows claim it
+	claim := func(t testreg.Test, it Item) {
+		id := it.ID()
+		if family[id] == t.Family {
+			return
+		}
+		if prev, dup := out[id]; dup {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s, which %s already runs", reg.Path, t.Line, t.Key, it.Kind, it.Name, prev))
+			return
+		}
+		out[id] = t.Key
+		family[id] = t.Family
+	}
+	for _, t := range reg.Tests {
+		if !t.PerLang() {
+			continue
+		}
+		var in struct {
+			Target  string   `json:"target"`
+			GoTests []string `json:"go_tests"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil || !strings.Contains(in.Target, testreg.LangPlaceholder) {
+			continue // a row whose inputs name no per-language target
+		}
+		for _, l := range reg.Langs {
+			if l.Name == testreg.LangFree {
+				continue
+			}
+			for _, it := range targets[strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)] {
+				claim(t, it)
+			}
+			for _, g := range in.GoTests {
+				pkg, name, ok := strings.Cut(g, " ")
+				if !ok {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s: go_tests entry %q is not \"<package> <Test>\"", reg.Path, t.Line, t.Key, g))
+					continue
+				}
+				it := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(pkg, "./"), Name: strings.ReplaceAll(name, testreg.LangPlaceholder, l.Name)}
+				if byID[it.ID()] {
+					claim(t, it)
+				}
+			}
+		}
+	}
+	return problems
 }
 
 // Indexed reports, for each data case and driver a per-language registry row

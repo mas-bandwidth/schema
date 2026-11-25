@@ -91,12 +91,13 @@ type makeInputs struct {
 	// context's environment, set on make's command line and named in the
 	// row's verdict, so a red re-runs by name with --seed and that number.
 	Seed string `json:"seed,omitempty"`
-	// Package and GoTests name the Go tests of a module of its own that the
-	// target runs with go test -v beside the generated Go they test
-	// (tables/cards): each must report --- PASS in the target's log, or the
-	// row fails naming it, and the ledger counts them as this row's.
-	Package string   `json:"package,omitempty"`
-	GoTests []string `json:"gotests,omitempty"`
+	// GoTests names the Go tests the target runs, each "<package> <Test>"
+	// (the hostile rows' spelling), such as the tests of a module of its
+	// own run beside the generated Go they test (tables/cards). Each must
+	// report --- PASS in the target's log (gotestrun writes what go test -v
+	// would), or the row fails naming it, and the ledger counts them as
+	// this row's.
+	GoTests []string `json:"go_tests,omitempty"`
 }
 
 func newMakeAdapter() makeAdapter {
@@ -211,16 +212,12 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 			return in, fmt.Errorf("reads %q: want a file of the repository by its path", r)
 		}
 	}
-	if (in.Package == "") != (len(in.GoTests) == 0) {
-		return in, fmt.Errorf("package %q and %d tests: a row names its Go tests with their package, or neither", in.Package, len(in.GoTests))
-	}
-	if rest, ok := strings.CutPrefix(in.Package, "./"); in.Package != "" && (!ok || rest == "" || path.Clean(rest) != rest || strings.HasPrefix(rest, "../") || rest == "..") {
-		return in, fmt.Errorf("package %q: want it written ./<dir>", in.Package)
-	}
 	seen := map[string]bool{}
-	for _, name := range in.GoTests {
-		if !goTestName.MatchString(name) || seen[name] {
-			return in, fmt.Errorf("test %q: want a Go test named once", name)
+	for _, g := range in.GoTests {
+		pkg, name, ok := strings.Cut(g, " ")
+		dir, dotted := strings.CutPrefix(pkg, "./")
+		if !ok || !dotted || dir == "" || dir == ".." || path.Clean(dir) != dir || strings.HasPrefix(dir, "../") || !goTestName.MatchString(name) || seen[name] {
+			return in, fmt.Errorf("go_tests entry %q: want \"./<package> <Test>\", each test named once", g)
 		}
 		seen[name] = true
 	}
@@ -309,9 +306,9 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		case plain != "":
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
 				Reason: fmt.Sprintf("make %s exited 0, and its log holds go test's plain output, which prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, plain)})
-		case len(unreported(lines, in.GoTests)) > 0:
+		case len(unreported(lines, goTestNames(in.GoTests))) > 0:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
-				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(lines, in.GoTests), " "))})
+				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(lines, goTestNames(in.GoTests)), " "))})
 		default:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
 		}
@@ -505,4 +502,14 @@ func unreported(lines, tests []string) []string {
 		}
 	}
 	return missing
+}
+
+// goTestNames is the test names of go_tests entries ("<package> <Test>").
+func goTestNames(entries []string) []string {
+	var names []string
+	for _, g := range entries {
+		_, name, _ := strings.Cut(g, " ")
+		names = append(names, name)
+	}
+	return names
 }

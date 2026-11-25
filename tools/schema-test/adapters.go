@@ -93,7 +93,7 @@ func harnessFor(t testreg.Test) (harness, bool) {
 	case family == nameBuild.Name:
 		return nameBuild, true
 	}
-	return harness{}, false
+	return hostileHarnessFor(family)
 }
 
 // adapters are the adapters a language row may name: the families each
