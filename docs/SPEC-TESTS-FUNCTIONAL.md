@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2245.
+Functional tests every language answers: 2468. Language-free tests: 2249.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4605,11 +4605,12 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.elixirtable.fixed-versioning-unlawful-entry-control-loads` | `gotest` | Go test TestFixedVersioningUnlawfulEntryControlLoads in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningUnlawfulEntryControlLoads` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:196` |
 | `none.functional.evolution.elixirtable.fixed-versioning-unlawful-entry-refuses` | `gotest` | Go test TestFixedVersioningUnlawfulEntryRefuses in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningUnlawfulEntryRefuses` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:178` |
 
-#### `evolution` family `goosetable`, 2 tests
+#### `evolution` family `goosetable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.goosetable.goose-fixed-form-kind-moved-unlawful` | `gotest` | Go test TestGooseFixedFormKindMovedUnlawful in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedFormKindMovedUnlawful` | the Go test passes | `internal/codegen/goosetable/fixedevolve_test.go:198` |
+| `none.functional.evolution.goosetable.goose-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestGooseFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/goosetable/fixed_r14_test.go:45` |
 | `none.functional.evolution.goosetable.goose-fixed-unlawful-corpus` | `gotest` | Go test TestGooseFixedUnlawfulCorpus in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/goosetable/fixed_unlawful_corpus_test.go:60` |
 
 #### `evolution` family `gotable`, 4 tests
@@ -4635,10 +4636,11 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.jstable.js-fixed-unlawful-corpus` | `gotest` | Go test TestJSFixedUnlawfulCorpus in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/jstable/fixed_unlawful_corpus_test.go:113` |
 | `none.functional.evolution.jstable.js-fixed-versioning-kind-moved` | `gotest` | Go test TestJSFixedVersioningKindMoved in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedVersioningKindMoved` | the Go test passes | `internal/codegen/jstable/fixedversioning_kind_moved_test.go:20` |
 
-#### `evolution` family `lobstertable`, 1 test
+#### `evolution` family `lobstertable`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.evolution.lobstertable.lobster-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestLobsterFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/lobstertable/fixed_r14_test.go:48` |
 | `none.functional.evolution.lobstertable.lobster-fixed-unlawful-corpus` | `gotest` | Go test TestLobsterFixedUnlawfulCorpus in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/lobstertable/fixed_unlawful_corpus_test.go:86` |
 
 #### `evolution` family `luatable`, 1 test
@@ -4654,12 +4656,24 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.luautable.luau-fixed-unlawful-corpus` | `gotest` | Go test TestLuauFixedUnlawfulCorpus in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luautable/fixed_unlawful_corpus_test.go:86` |
 | `none.functional.evolution.luautable.luau-fixed-versioning-kind-moved` | `gotest` | Go test TestLuauFixedVersioningKindMoved in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedVersioningKindMoved` | the Go test passes | `internal/codegen/luautable/fixedversioning_kind_moved_test.go:14` |
 
+#### `evolution` family `mootable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.mootable.moo-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestMooFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/mootable | `package: ./internal/codegen/mootable`<br>`test: TestMooFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/mootable/fixed_r14_test.go:45` |
+
 #### `evolution` family `rusttable`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.rusttable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/rusttable/fixedversioning_kind_moved_test.go:16` |
 | `none.functional.evolution.rusttable.rust-fixed-unlawful-corpus` | `gotest` | Go test TestRustFixedUnlawfulCorpus in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/rusttable/fixed_unlawful_corpus_test.go:80` |
+
+#### `evolution` family `squirreltable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.squirreltable.squirrel-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestSquirrelFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/squirreltable | `package: ./internal/codegen/squirreltable`<br>`test: TestSquirrelFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/squirreltable/fixed_r14_test.go:53` |
 
 #### `evolution` family `unitytable`, 2 tests
 
