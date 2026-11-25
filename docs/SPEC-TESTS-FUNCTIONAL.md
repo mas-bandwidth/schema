@@ -5137,7 +5137,7 @@ generated or runtime code is clean under the language's strict analyser.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.lint.make-schema-dart-generated-strict-analyze-gate.schema-dart-generated-strict-analyze-gate` | `make` | make schema-dart-generated-strict-analyze-gate (make/schema-dart-generated-strict-analyze-gate.mk) exits 0 | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`target: schema-dart-generated-strict-analyze-gate`<br>`tools: ["dart"]`<br>`vars: {"DART":"dart"}` | the target exits 0 with no skip in its log | `make/schema-dart-generated-strict-analyze-gate.mk:157` |
-| `none.functional.lint.make-schema-dart-generated-strict-analyze-gate.schema-dart-generated-strict-analyze-gate-all` | `make` | make schema-dart-generated-strict-analyze-gate-all (make/schema-dart-generated-strict-analyze-gate.mk) exits 0 | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`target: schema-dart-generated-strict-analyze-gate-all` | the target exits 0 with no skip in its log | `make/schema-dart-generated-strict-analyze-gate.mk:184` |
+| `none.functional.lint.make-schema-dart-generated-strict-analyze-gate.schema-dart-generated-strict-analyze-gate-all` | `make` | make schema-dart-generated-strict-analyze-gate-all (make/schema-dart-generated-strict-analyze-gate.mk) exits 0 | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`target: schema-dart-generated-strict-analyze-gate-all`<br>`vars: {"DART":"dart"}` | the target exits 0 with no skip in its log | `make/schema-dart-generated-strict-analyze-gate.mk:184` |
 
 #### `lint` family `make-schema-go-generated-golangci-lint-gate`, 1 test
 

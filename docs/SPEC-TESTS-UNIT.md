@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2887.
+Unit tests every language answers: 2. Language-free tests: 2888.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2938,7 +2938,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 89 tests
+#### `tooling` family `schema-test`, 90 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2948,6 +2948,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-database-read-in-part-fails-the-row` | `gotest` | Go test TestADatabaseReadInPartFailsTheRow in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADatabaseReadInPartFailsTheRow` | the Go test passes | `tools/schema-test/make_test.go:489` |
 | `none.unit.tooling.schema-test.a-deleted-golden-is-missing` | `gotest` | Go test TestADeletedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADeletedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:125` |
 | `none.unit.tooling.schema-test.a-failed-writer-fails-only-its-own-rows` | `gotest` | Go test TestAFailedWriterFailsOnlyItsOwnRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFailedWriterFailsOnlyItsOwnRows` | the Go test passes | `tools/schema-test/golden_test.go:334` |
+| `none.unit.tooling.schema-test.a-fuzz-row-takes-its-runs-seed` | `gotest` | Go test TestAFuzzRowTakesItsRunsSeed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFuzzRowTakesItsRunsSeed` | the Go test passes | `tools/schema-test/make_seed_test.go:19` |
 | `none.unit.tooling.schema-test.a-go-test-family-never-takes-the-corpus-prefix` | `gotest` | Go test TestAGoTestFamilyNeverTakesTheCorpusPrefix in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestFamilyNeverTakesTheCorpusPrefix` | the Go test passes | `tools/schema-test/gotest_test.go:119` |
 | `none.unit.tooling.schema-test.a-go-test-that-exits-non-zero-fails-its-rows` | `gotest` | Go test TestAGoTestThatExitsNonZeroFailsItsRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestThatExitsNonZeroFailsItsRows` | the Go test passes | `tools/schema-test/gotest_test.go:235` |
 | `none.unit.tooling.schema-test.a-golden-edited-by-hand-fails` | `gotest` | Go test TestAGoldenEditedByHandFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenEditedByHandFails` | the Go test passes | `tools/schema-test/golden_test.go:81` |

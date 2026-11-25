@@ -209,8 +209,8 @@ func TestRetiredWorkflowProblemsAreSeen(t *testing.T) {
 	}
 	empty := t.TempDir()
 	for name, c := range map[string]struct{ old, new, want string }{
-		"row gone": {`"key":"resource-bounds.make-schema-luau-resource-bounds.schema-luau-resource-bounds"`,
-			`"key":"resource-bounds.make-schema-luau-resource-bounds.planted-away"`,
+		"row gone": {`"key":"resource-bounds.make-schema-luau-resource-bounds.schema-luau-resource-bounds","type":"resource-bounds","family":"make-schema-luau-resource-bounds","case":"schema-luau-resource-bounds"`,
+			`"key":"resource-bounds.make-schema-luau-resource-bounds.planted-away","type":"resource-bounds","family":"make-schema-luau-resource-bounds","case":"planted-away"`,
 			"no registry row resource-bounds.make-schema-luau-resource-bounds.schema-luau-resource-bounds"},
 		"tier moved": {`"key":"lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck","type":"lint","family":"make-schema-lua-generated-luacheck-gate","case":"tables-lua-luacheck","tier":"functional"`,
 			`"key":"lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck","type":"lint","family":"make-schema-lua-generated-luacheck-gate","case":"tables-lua-luacheck","tier":"nightly"`,

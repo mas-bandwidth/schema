@@ -329,32 +329,32 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz` | `make` | make schema-dart-nightly-fuzz (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`target: schema-dart-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:88` |
+| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz` | `make` | make schema-dart-nightly-fuzz (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`seed: DART_NIGHTLY_FUZZ_SEED`<br>`target: schema-dart-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:88` |
 | `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
 
 #### `fuzz` family `make-schema-lua-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-lua-nightly-fuzz.schema-lua-nightly-fuzz` | `make` | make schema-lua-nightly-fuzz (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`target: schema-lua-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:105` |
+| `none.nightly.fuzz.make-schema-lua-nightly-fuzz.schema-lua-nightly-fuzz` | `make` | make schema-lua-nightly-fuzz (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`seed: LUA_FUZZ_SEED`<br>`target: schema-lua-nightly-fuzz`<br>`vars: {"LUA_FUZZ_SECONDS":"600"}` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:105` |
 
 #### `fuzz` family `make-schema-luau-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz` | `make` | make luau-nightly-fuzz (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`target: luau-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:689` |
+| `none.nightly.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz` | `make` | make luau-nightly-fuzz (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`seed: LUAU_FUZZ_SEED`<br>`target: luau-nightly-fuzz`<br>`vars: {"LUAU_FUZZ_TIME":"600"}` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:689` |
 
 #### `fuzz` family `make-schema-moo-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-moo-nightly-fuzz.schema-moo-nightly-fuzz` | `make` | make schema-moo-nightly-fuzz (make/schema-moo-nightly-fuzz.mk) exits 0 | `file: make/schema-moo-nightly-fuzz.mk`<br>`target: schema-moo-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-moo-nightly-fuzz.mk:35` |
+| `none.nightly.fuzz.make-schema-moo-nightly-fuzz.schema-moo-nightly-fuzz` | `make` | make schema-moo-nightly-fuzz (make/schema-moo-nightly-fuzz.mk) exits 0 | `file: make/schema-moo-nightly-fuzz.mk`<br>`seed: MOO_NIGHTLY_FUZZ_SEED`<br>`target: schema-moo-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-moo-nightly-fuzz.mk:35` |
 
 #### `fuzz` family `make-schema-squirrel-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-squirrel-nightly-fuzz.schema-squirrel-nightly-fuzz` | `make` | make schema-squirrel-nightly-fuzz (make/schema-squirrel-nightly-fuzz.mk) exits 0 | `file: make/schema-squirrel-nightly-fuzz.mk`<br>`target: schema-squirrel-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-squirrel-nightly-fuzz.mk:63` |
+| `none.nightly.fuzz.make-schema-squirrel-nightly-fuzz.schema-squirrel-nightly-fuzz` | `make` | make schema-squirrel-nightly-fuzz (make/schema-squirrel-nightly-fuzz.mk) exits 0 | `file: make/schema-squirrel-nightly-fuzz.mk`<br>`seed: SQUIRREL_FUZZ_SEED`<br>`target: schema-squirrel-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-squirrel-nightly-fuzz.mk:63` |
 
 ### Type `plant`
 
