@@ -39,8 +39,9 @@ got `refuse/damaged`). The tree is untouched.
 
 `make schema-python-runs-hostile-corpus` is the gate and
 `make schema-python-runs-hostile-corpus-negative-control` its control;
-`.github/workflows/schema-python-runs-hostile-corpus.yml` runs the sweep and
-the control nightly and on dispatch.
+the registry runs the sweep nightly as the hostile family's python
+instances (one row per case, tools/schema-test/hostile.go), and the control as
+its own row.
 
 ## The resource bounds
 

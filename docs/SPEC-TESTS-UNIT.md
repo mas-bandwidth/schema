@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2890.
+Unit tests every language answers: 2. Language-free tests: 2889.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1772,7 +1772,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 277 tests
+#### `tooling` family `ci`, 276 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2038,7 +2038,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.squirrel-resource-bounds-allocation-counter` | `gotest` | Go test TestSquirrelResourceBoundsAllocationCounter in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelResourceBoundsAllocationCounter` | the Go test passes | `internal/ci/schema_squirrel_resource_bounds_test.go:145` |
 | `none.unit.tooling.ci.squirrel-resource-bounds-gate` | `gotest` | Go test TestSquirrelResourceBoundsGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelResourceBoundsGate` | the Go test passes | `internal/ci/schema_squirrel_resource_bounds_test.go:61` |
 | `none.unit.tooling.ci.squirrel-resource-bounds-stem-is-not-a-port` | `gotest` | Go test TestSquirrelResourceBoundsStemIsNotAPort in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelResourceBoundsStemIsNotAPort` | the Go test passes | `internal/ci/schema_squirrel_resource_bounds_test.go:114` |
-| `none.unit.tooling.ci.squirrel-runs-hostile-corpus-workflow-is-fleet-only` | `gotest` | Go test TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly` | the Go test passes | `internal/ci/schema_squirrel_runs_hostile_corpus_test.go:526` |
 | `none.unit.tooling.ci.strict-only-models-are-recorded` | `gotest` | Go test TestStrictOnlyModelsAreRecorded in ./internal/ci | `package: ./internal/ci`<br>`test: TestStrictOnlyModelsAreRecorded` | the Go test passes | `internal/ci/strictonly_tla_test.go:21` |
 | `none.unit.tooling.ci.tables-cpp-memaccess-destinations-are-void-cast` | `gotest` | Go test TestTablesCppMemaccessDestinationsAreVoidCast in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesCppMemaccessDestinationsAreVoidCast` | the Go test passes | `internal/ci/tables_cpp_memaccess_test.go:88` |
 | `none.unit.tooling.ci.tables-suite-parts-cover-main` | `gotest` | Go test TestTablesSuitePartsCoverMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesSuitePartsCoverMain` | the Go test passes | `internal/ci/tables_suite_parts_test.go:20` |

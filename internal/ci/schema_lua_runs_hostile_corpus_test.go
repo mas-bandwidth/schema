@@ -602,9 +602,9 @@ func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	t.Logf("the planted reader bug is red: %s", bad[0])
 }
 
-// TestSchemaLuaHostileCorpusLane pins the target and the workflow: the corpus
-// runner is part of the port's unit target, the heavy replay is nightly, and a
-// lane with no blade is not a gate.
+// TestSchemaLuaHostileCorpusLane pins the target: the corpus runner is part of
+// the port's unit target and the planted reader is its own target. The corpus
+// runs as the registry's per-case hostile rows (tools/schema-test/hostile.go).
 func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -621,24 +621,5 @@ func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 		if !strings.Contains(mk, want) {
 			t.Errorf("make/schema-lua-runs-hostile-corpus.mk does not carry %q", want)
 		}
-	}
-	wf := readCI(t, root, ".github/workflows/schema-lua-runs-hostile-corpus.yml")
-	for _, want := range []string{
-		"cron:", "workflow_dispatch:",
-		"make schema-lua-runs-hostile-corpus-planted",
-		"make schema-lua-runs-hostile-corpus",
-		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-	} {
-		if !strings.Contains(wf, want) {
-			t.Errorf("the lua hostile-corpus workflow does not carry %q", want)
-		}
-	}
-	// Nightly and dispatch only (the owner, 2026-11-15: "I want everything that is
-	// not light moved to nightly test now." "no exceptions.").
-	for _, p := range luaHeavyLaneTriggerProblems(wf) {
-		t.Errorf("schema-lua-runs-hostile-corpus.yml: %s", p)
-	}
-	if len(luaHeavyLaneTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
-		t.Error("nightly-only control: a restored push trigger was not refused")
 	}
 }

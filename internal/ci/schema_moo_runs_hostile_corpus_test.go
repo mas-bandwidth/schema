@@ -620,9 +620,9 @@ func TestSchemaMooRunsHostileCorpusPlantedReader(t *testing.T) {
 	t.Logf("the planted text reader moved %d of %d text accepts", len(got), len(want))
 }
 
-// TestSchemaMooHostileCorpusLane pins the target and the workflow: the corpus
-// runner is part of the port's unit target, the control is its own target, and
-// the workflow is nightly and dispatch only.
+// TestSchemaMooHostileCorpusLane pins the target: the corpus
+// runner is part of the port's unit target and the control is its own target.
+// The corpus runs as the registry's per-case hostile rows.
 func TestSchemaMooHostileCorpusLane(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -640,22 +640,5 @@ func TestSchemaMooHostileCorpusLane(t *testing.T) {
 		if !strings.Contains(mk, want) {
 			t.Errorf("make/schema-moo-runs-hostile-corpus.mk does not carry %q", want)
 		}
-	}
-	wf := readCI(t, root, ".github/workflows/schema-moo-runs-hostile-corpus.yml")
-	for _, want := range []string{
-		"cron:", "workflow_dispatch:",
-		"uses: ./.github/actions/moo",
-		"make schema-moo-runs-hostile-corpus-negative-control",
-		"make schema-moo-runs-hostile-corpus\n",
-	} {
-		if !strings.Contains(wf, want) {
-			t.Errorf("the moo hostile-corpus workflow does not carry %q", want)
-		}
-	}
-	for _, p := range nightlyOnlyTriggerProblems(wf) {
-		t.Errorf("schema-moo-runs-hostile-corpus.yml: %s", p)
-	}
-	if len(nightlyOnlyTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
-		t.Error("nightly-only control: a restored push trigger was not refused")
 	}
 }

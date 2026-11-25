@@ -26,11 +26,14 @@ test/go-hostile/
 make/checks/schema-shared-hostile-corpus.mk
     the gate and generator targets (included explicitly with the other
     make/checks gates).
-.github/workflows/schema-shared-hostile-corpus.yml
-    the nightly (schedule) and workflow_dispatch run of the drift gate and of
-    its negative controls; no pull request starts this workflow. The same
-    tests are Go tests of internal/ci, registry rows the pr group runs
-    (ci-fast.yml schema-test-pr) on every pull request and every push to main.
+tools/schema-test/hostile.go
+    the registry's hostile family: one row per manifest case, which every
+    language answers from one run of make schema-<lang>-runs-hostile-corpus
+    (each case's verdict is its line in that run; verdicts.go reads them).
+    The drift gate's and its control's tests are Go tests of internal/ci,
+    registry rows the pr group runs (ci-fast.yml schema-test-pr) on every pull
+    request and every push to main; the control's make target is a nightly
+    registry row.
 ```
 
 `internal/ci/hostilecorpus/wide/` is a second corpus directory in the same format: its own `manifest.tsv`, `inputs/` and schema, built and checked by the same `Generate` and `Verify`.

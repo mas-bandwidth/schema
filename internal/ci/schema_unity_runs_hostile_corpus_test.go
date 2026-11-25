@@ -10,8 +10,8 @@ import (
 // TestSchemaUnityRunsHostileCorpusWiring holds the card's blades without
 // needing a .NET SDK in the Go unit tier: the make target exists and is a
 // prerequisite of the port's normal unit target, its runner reads the committed
-// manifest and every FIX-CARD names a case the manifest carries, and the
-// workflow runs nightly and on dispatch only (the owner, 2026-11-15).
+// manifest and every FIX-CARD names a case the manifest carries. The corpus
+// runs as the registry's per-case hostile rows (tools/schema-test/hostile.go).
 func TestSchemaUnityRunsHostileCorpusWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -103,90 +103,5 @@ func TestSchemaUnityRunsHostileCorpusWiring(t *testing.T) {
 		if !strings.HasPrefix(f[1], "unity-hostile-") || strings.TrimSpace(f[3]) == "" {
 			t.Errorf("carried finding %q has no FIX-CARD slug and one line: %q", f[0], line)
 		}
-	}
-
-	workflow, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-unity-runs-hostile-corpus.yml"))
-	if err != nil {
-		t.Fatalf("the card's workflow is missing: %v", err)
-	}
-	workflowText := string(workflow)
-	for _, want := range []string{
-		"schedule:",
-		"workflow_dispatch:",
-		"runs-on: [self-hosted, linux, x64, schema]",
-		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
-	} {
-		if !strings.Contains(workflowText, want) {
-			t.Errorf("the workflow does not carry %q", want)
-		}
-	}
-	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that is
-	// not light moved to nightly test now." "no exceptions."): the on: block
-	// carries no push and no pull_request trigger.
-	for _, p := range nightlyOnlyTriggerProblems(workflowText) {
-		t.Errorf("schema-unity-runs-hostile-corpus.yml: %s", p)
-	}
-	if strings.Contains(workflowText, "runs-on: ubuntu-latest") {
-		t.Error("the workflow runs on a GitHub-hosted runner; every CI job is on the fleet")
-	}
-	if !strings.Contains(workflowText, "schema-unity-runs-hostile-corpus-negative-control") {
-		t.Error("the workflow does not run the planted-verdict control")
-	}
-
-	// Self-hosted admission for corpus and negative-control.
-	for _, ev := range []ciEvent{
-		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"},
-		{Name: "pull_request", Branch: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema", Labels: []string{"full-ci"}},
-	} {
-		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || ok {
-			t.Errorf("Unity corpus job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
-		}
-		if ok, err := jobSelectsSelfHosted(workflowText, "negative-control", ev); err != nil || ok {
-			t.Errorf("Unity negative-control job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
-		}
-	}
-	for _, ev := range []ciEvent{
-		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
-		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
-	} {
-		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || !ok {
-			t.Errorf("Unity corpus job did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
-		}
-		if ok, err := jobSelectsSelfHosted(workflowText, "negative-control", ev); err != nil || !ok {
-			t.Errorf("Unity negative-control did not run for allowed event (%+v): ok=%v err=%v", ev, ok, err)
-		}
-	}
-	// No pull request and no push, to main, dev or a card branch, starts this
-	// workflow: a push or pull request runs only the fast lane, ci-fast.yml.
-	for _, ev := range []ciEvent{
-		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-unity", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
-		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "sprint/schema-unity", Repo: "mas-bandwidth/schema"},
-	} {
-		if ok, err := jobSelectsSelfHosted(workflowText, "corpus", ev); err != nil || ok {
-			t.Errorf("Unity corpus job ran on (%+v): ok=%v err=%v; the workflow is nightly and dispatch only", ev, ok, err)
-		}
-	}
-	// Mutation checks: a restored pull_request or push trigger is seen, both by
-	// the job evaluator and by the nightly-only check.
-	withPR := strings.Replace(workflowText, "\non:\n", "\non:\n  pull_request:\n", 1)
-	if ok, err := jobSelectsSelfHosted(withPR, "corpus", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || !ok {
-		t.Errorf("trigger mutation control: a restored pull_request trigger was not seen: ok=%v err=%v", ok, err)
-	}
-	if len(nightlyOnlyTriggerProblems(withPR)) == 0 {
-		t.Error("nightly-only control: a restored pull_request trigger was not refused")
-	}
-	withPush := strings.Replace(workflowText, "\non:\n", "\non:\n  push:\n    branches: [ main, dev ]\n", 1)
-	if ok, err := jobSelectsSelfHosted(withPush, "corpus", ciEvent{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"}); err != nil || !ok {
-		t.Errorf("trigger mutation control: a restored push trigger was not seen: ok=%v err=%v", ok, err)
-	}
-	if len(nightlyOnlyTriggerProblems(withPush)) == 0 {
-		t.Error("nightly-only control: a restored push trigger was not refused")
-	}
-	noSchedule := strings.Replace(workflowText, "\n  schedule:\n", "\n  # schedule removed\n", 1)
-	if len(nightlyOnlyTriggerProblems(noSchedule)) == 0 {
-		t.Error("nightly-only control: a workflow without schedule: was not refused")
 	}
 }

@@ -23,7 +23,8 @@
 # row here or to a named ci-fast job, and every make target named here to a
 # definition.
 
-# the per-language hostile-input corpora (schema-<lang>-runs-hostile-corpus.yml)
+# the per-language hostile-input corpora (make schema-<lang>-runs-hostile-corpus;
+# each night the registry's hostile family runs them, schema-test-nightly.yml)
 hostile-c | c | (^|/)schema[-_]c[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-c-runs-hostile-corpus SERIALIZE_C=../serialize.c
 hostile-cpp | cpp | (^|/)schema[-_]cpp[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-cpp-runs-hostile-corpus SERIALIZE=../serialize
 hostile-cs | cs | (^|/)schema[-_]cs[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-cs-runs-hostile-corpus SERIALIZE_CS=../serialize.cs

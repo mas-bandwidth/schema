@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 608. Language-free tests: 1353.
+Nightly tests every language answers: 608. Language-free tests: 1355.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -2741,6 +2741,12 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2497` |
 | `none.nightly.plant.make-c.tables-c-retain-hashzero-negative-control` | `make` | make tables-c-retain-hashzero-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-retain-hashzero-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2526` |
 
+#### `plant` family `make-checks-schema-shared-hostile-corpus`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.make-checks-schema-shared-hostile-corpus.schema-shared-hostile-corpus-negative-control` | `plant` | negative control schema-shared-hostile-corpus-negative-control (excluded from the groups of make/negative-controls.json, its reason there): the hostile-corpus drift gate goes red on its planted bad pattern | `file: make/checks/schema-shared-hostile-corpus.mk`<br>`group: (excluded)`<br>`make: schema-shared-hostile-corpus-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3595` |
+
 #### `plant` family `make-cpp-cook-write`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -3524,10 +3530,11 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds-negative-control` | `make` | make schema-ruby-resource-bounds-negative-control (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-resource-bounds-negative-control` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:15` |
 | `none.nightly.plant.make-schema-ruby-runs-hostile-corpus.schema-ruby-runs-hostile-corpus-negative-control` | `make` | make schema-ruby-runs-hostile-corpus-negative-control (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-runs-hostile-corpus-negative-control` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:9` |
 
-#### `plant` family `make-schema-rust-runs-hostile-corpus`, 1 test
+#### `plant` family `make-schema-rust-runs-hostile-corpus`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.nightly.plant.make-schema-rust-runs-hostile-corpus.schema-rust-runs-hostile-corpus-negative-control` | `plant` | negative control schema-rust-runs-hostile-corpus-negative-control (excluded from the groups of make/negative-controls.json, its reason there): a committed wire verdict changed in a scratch manifest turns both the release and the debug Rust runners red | `file: make/schema-rust-runs-hostile-corpus.mk`<br>`group: (excluded)`<br>`make: schema-rust-runs-hostile-corpus-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3539` |
 | `none.nightly.plant.make-schema-rust-runs-hostile-corpus.schema-rust-runs-hostile-corpus-registry-control` | `make` | make schema-rust-runs-hostile-corpus-registry-control (make/schema-rust-runs-hostile-corpus.mk) exits 0 | `file: make/schema-rust-runs-hostile-corpus.mk`<br>`target: schema-rust-runs-hostile-corpus-registry-control` | the target exits 0 with no skip in its log | `make/schema-rust-runs-hostile-corpus.mk:142` |
 
 #### `plant` family `make-schema-unity-runs-hostile-corpus`, 1 test

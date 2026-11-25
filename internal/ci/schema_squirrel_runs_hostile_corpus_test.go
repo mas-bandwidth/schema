@@ -533,35 +533,6 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	}
 }
 
-// TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly is the harness's own gate:
-// the corpus and the planted control run on fleet hardware, never a hosted
-// runner, and a pull request from a fork never starts a fleet job. A workflow
-// that quietly moved a job to ubuntu-latest, dropped the same-repository guard,
-// or stopped running either target is red here.
-func TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly(t *testing.T) {
-	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "schema-squirrel-runs-hostile-corpus.yml"))
-	if err != nil {
-		t.Fatalf("read workflow: %v", err)
-	}
-	text := string(data)
-	for _, want := range []string{
-		"runs-on: [self-hosted, Linux, X64, fleet, schema]",
-		"github.event.pull_request.head.repo.full_name == github.repository",
-		"make schema-squirrel-runs-hostile-corpus\n",
-		"make schema-squirrel-runs-hostile-corpus-negative-control\n",
-		"schedule:",
-		"workflow_dispatch:",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("workflow missing %q", want)
-		}
-	}
-	if strings.Contains(text, "ubuntu-latest") {
-		t.Errorf("workflow still carries %q", "ubuntu-latest")
-	}
-}
-
 const squirrelHostilePrelude = `local inputs = dofile("inputs.nut", true);
 local fresh = function() { return {}; };
 local HEX2 = array(256);

@@ -16,9 +16,11 @@ GO ?= go
 
 .PHONY: schema-squirrel-runs-hostile-corpus schema-squirrel-runs-hostile-corpus-negative-control
 
-# THE FAST GATE (push and pull request): every manifest input through the
-# port's generated reader, the planted-bad-pattern control, and the workflow's
-# own fleet/fork guard.
+# THE CORPUS GATE: every manifest input through the port's generated reader,
+# and the scorer's own outcomes. Each case's verdict is a line the runner
+# writes to $SCHEMA_HOSTILE_VERDICTS, which the registry's hostile rows read
+# (tools/schema-test/hostile.go). The planted control is its own target below,
+# so the corpus run proves the corpus and nothing runs twice.
 #
 # THE SLOW GATE. The two interpreter-driven tests skip at internal/slowtest.Gate
 # in a plain `go test ./internal/ci/` (a machine without dist/squirrel-3.2/bin/sq

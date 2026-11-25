@@ -24,7 +24,8 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 # the emitted fixed.lua (the form gate refuses the form it carries, so the
 # accepted form-3 wire is refused: a changed verdict, since a refusal conforms on
 # its verdict alone), and the corpus comparison must go red. Red with the plant in, green with it
-# out; the heavy corpus replay stays nightly, this control rides every push.
+# out. Both run nightly as registry rows: the corpus as the hostile family, the
+# control as its own plant row.
 .PHONY: schema-lua-runs-hostile-corpus-planted
 schema-lua-runs-hostile-corpus-planted: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \
