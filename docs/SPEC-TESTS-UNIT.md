@@ -849,11 +849,10 @@ generated source compiles and is clean.
 | `L.unit.codegen.elixir-filemodule.file-module-yields-to-a-fixed-table-value-module` | a file module steps aside when a fixed table's value module would take the same name | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixir/filemodule_test.go:201` |
 | `L.unit.codegen.elixir-filemodule.file-module-yields-to-a-same-named-declaration` | a file module steps aside when a declaration of the same name exists, and cross-file references name the stepped-aside module | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixir/filemodule_test.go:81` |
 
-#### `codegen` family `elixir-fixedform`, 7 tests
+#### `codegen` family `elixir-fixedform`, 6 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.elixir-fixedform.fixed-generation-is-deterministic` | Regenerating the fixed form gives byte-stable output, so the layout whose hash is the wire cannot move between runs. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixirtable/fixedform_test.go:387` |
 | `L.unit.codegen.elixir-fixedform.fixed-list-walk-unrolls-small-records` | A run of small flat records is unrolled into one multi-element clause, larger records stay one element, and the hostile clause keeps the clamp. | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixirtable/fixedform_test.go:436` |
 | `L.unit.codegen.elixir-fixedform.fixed-runtime-utf8-is-one-walk` | The generated utf-8 content rule is one walk over the bytes. | `tests: {"elixir":{"package":"./internal/codegen/elixirtable","test":"TestFixedRuntimeUtf8IsOneWalk"}}` | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixirtable/fixedform_test.go:491` |
 | `L.unit.codegen.elixir-fixedform.identity-plan-of-everything-is-one-run` | the identity plan of a fixed record holding every field kind is still a single entry | `inputs.tests` (101 bytes, held in the registry row's `inputs.tests`) | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixirtable/fixedform_test.go:157` |
@@ -972,7 +971,7 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.unit.codegen.fixedevolve-unit-lock.fixed-evolve-lock-lives-for-one-generation` | The fixed lineage lookup reads the unit's lock only for one generation call, so generating again after the lock changes reads the new lock and a finished unit is collectable. | `inputs.tests` (114 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/fixedevolve_unit_lock_test.go:78` |
 
-#### `codegen` family `fixedform`, 34 tests
+#### `codegen` family `fixedform`, 35 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -990,6 +989,7 @@ generated source compiles and is clean.
 | `L.unit.codegen.fixedform.fixed-form-fu1-fu2-one-path` | The generated fixed load is one path where the layout hash chooses the plan, with no second reader or identity door. | `tests: {"dart":{"package":"./internal/codegen/darttable","test":"TestFixedFormFU1FU2OnePath"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/fixedform_test.go:704` |
 | `L.unit.codegen.fixedform.fixed-form-load-prefills-the-plan-holes` | a fixed load prefills exactly the ranges the plan does not land and identity prefills nothing | `inputs.tests` (381 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedform_test.go:80` |
 | `L.unit.codegen.fixedform.fixed-form-skips-what-it-cannot-carry` | A table the fixed form cannot carry (pointer, map, unbounded array, guarded branch) is left out of it without affecting other tables. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedform_test.go:337` |
+| `L.unit.codegen.fixedform.fixed-generation-is-deterministic` | Regenerating the fixed form gives byte-stable output, so the layout whose hash is the wire cannot move between runs. | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedform_test.go:387` |
 | `L.unit.codegen.fixedform.fixed-guard-compared-at-arg-w` | a union guard is compared at its full tag width and never as a one-byte prefix | `inputs.tests` (169 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedform_test.go:18` |
 | `L.unit.codegen.fixedform.fixed-guard-compares-at-its-own-width` | A union guard is compared at the writer's full tag width, never its first byte. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedform_test.go:625` |
 | `L.unit.codegen.fixedform.fixed-identity-cover-is-the-plan-and-holes-are-empty` | The identity plan's cover equals its destinations, so subtracting what it lands leaves no holes and the prefill is empty. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/darttable/fixedform_test.go:368` |
@@ -1103,6 +1103,12 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.fixedwide.fixed-form128-bit-leaves` | int128, uint128 and fixed(112,16) leaves of a fixed record occupy sixteen bytes low half first, match the reference bytes and load back | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/fixedwide_test.go:25` |
+
+#### `codegen` family `float32-default`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.codegen.float32-default.table-float32-default-is-its-float32` | a float32 default is emitted as the float32 value of its declaration, not the decimal double | `tests: {"js":{"package":"./internal/codegen/jstable","test":"TestJsTableFloat32DefaultIsItsFloat32"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/float32_default_test.go:17` |
 
 #### `codegen` family `forms-construct`, 1 test
 
@@ -1336,12 +1342,6 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.js-float32-accessor-shape.block-float32-accessor-calls-no-closure` | emitted float32 accessors call one named module-level conversion and build no closure on the read path | `tests: {"js":{"package":"./internal/codegen/jstable","test":"TestBlockFloat32AccessorCallsNoClosure"}}` | the js Go test for the case (inputs.tests) passes | `internal/codegen/jstable/float32_accessor_shape_test.go:16` |
-
-#### `codegen` family `js-float32-default`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.codegen.js-float32-default.table-float32-default-is-its-float32` | a float32 default is emitted as the float32 value of its declaration, not the decimal double | `tests: {"js":{"package":"./internal/codegen/jstable","test":"TestJsTableFloat32DefaultIsItsFloat32"}}` | the js Go test for the case (inputs.tests) passes | `internal/codegen/jstable/float32_default_test.go:17` |
 
 #### `codegen` family `js-gatecoverage`, 1 test
 
@@ -6347,7 +6347,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.elixir-filemodule.file-module-steps-aside-byte-identical-to-base` | `elixir` | Elixir file module naming output |
 | `codegen.elixir-filemodule.file-module-yields-to-a-fixed-table-value-module` | `elixir` | Elixir module name collision with table module |
 | `codegen.elixir-filemodule.file-module-yields-to-a-same-named-declaration` | `elixir` | Elixir module name collision with file module |
-| `codegen.elixir-fixedform.fixed-generation-is-deterministic` | `elixir` | Elixir emitter output byte stability |
 | `codegen.elixir-fixedform.fixed-list-walk-unrolls-small-records` | `elixir` | Elixir clause unrolling and consing shape |
 | `codegen.elixir-fixedform.fixed-runtime-utf8-is-one-walk` | `elixir` | Elixir clause shape of the utf-8 walk replacing String.valid? |
 | `codegen.elixir-fixedform.identity-plan-of-everything-is-one-run` | `elixir` | shape of the Elixir fixed read plan and projection |
@@ -6390,7 +6389,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.js-fixedform-inplace.spec-in-place-list-has-a-guard` | `js` | The spec names JavaScript alone as an in-place identity reader, and the test holds the guard set of that JavaScript reader. |
 | `codegen.js-fixedlanes-agree.fixed-lane-count-is-read-from-the-runtime` | `js` | lane count constant of the emitted JS runtime and roadmap sites |
 | `codegen.js-float32-accessor-shape.block-float32-accessor-calls-no-closure` | `js` | JS heap allocation shape of emitted float32 accessors (no closure per read) |
-| `codegen.js-float32-default.table-float32-default-is-its-float32` | `js` | JS reads literals as doubles so the in-memory float32 default spelling is JS-only |
 | `codegen.js-gatecoverage.every-roadmap-test-is-run-by-a-make-target` | `js` | JS leg's own make targets and test coverage of them |
 | `codegen.js-serialize-lookup.serialize-lookup-holds-the-lane-promise` | `js` | locating the staged serialize.js runtime via env var or sibling |
 | `codegen.lobster-accelerator-overlay.accelerator-overlay-names-every-clause` | `lobster` | Reads docs/roadmap-evidence/lobster-accelerators.sexp, the Lobster lane's own roadmap evidence file, which no other language's rows are kept in. |

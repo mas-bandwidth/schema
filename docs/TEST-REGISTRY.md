@@ -341,7 +341,7 @@ A timing comparison of the language's own code shapes or its runtime's speed; it
 | ruby | fixed-proof-suite, packet |
 | unity | misc |
 
-#### Memory, allocation, GC and concurrency (47 rows)
+#### Memory, allocation, GC and concurrency (46 rows)
 
 The language runtime's own memory model: allocation counts and budgets, garbage collection, reference counting, atom tables, race detection; other runtimes have none of these to test.
 
@@ -352,7 +352,7 @@ The language runtime's own memory model: allocation counts and budgets, garbage 
 | elixir | alloc-budget (2), allocaudit, fixed-keyed-save-keys, fixedsave-names, offsets |
 | go | alloc (7), array-length-cache, blockbuild, fixedloadallocs, goleg-size-core, messagesets, sizebudget, soak (3), strictdefault-alloc, strictreadalloc |
 | java | fixedloadalloc, variablenoscratch (3) |
-| js | float32-accessor-shape, float32-default |
+| js | float32-accessor-shape |
 | lobster | release (4) |
 | lua | alloc (4), fixedlineage, soak (2) |
 | moo | fixedform-unit-lock, unit-lock-scope |
@@ -404,7 +404,7 @@ How the language finds and loads code: module and package names, require paths, 
 | rust | cardsform, misc, rusttable (2) |
 | squirrel | loader, misc, runtime-rebuild |
 
-#### Names the language reserves (28 rows)
+#### Names the language reserves (27 rows)
 
 Generated names that would collide with the language's own keywords, builtins or class members; the collision set is the language's.
 
@@ -412,7 +412,7 @@ Generated names that would collide with the language's own keywords, builtins or
 |---|---|
 | cpp | armsetter (2), misc, review-fixes, spec-agreement |
 | dart | blockbuild-names, cooknames, cookwrite, misc, rowmembers, rowmembers-native |
-| go | enumtypeword, reservedescape, unions |
+| go | reservedescape, unions |
 | java | variableunions |
 | js | builtin-shadow (2), cursor-names (2), fixedform-inplace |
 | lobster | fixed-guard-names, runtime-global-names |
@@ -422,7 +422,7 @@ Generated names that would collide with the language's own keywords, builtins or
 | squirrel | misc |
 | unity | misc |
 
-#### Emitted source shape (64 rows)
+#### Emitted source shape (63 rows)
 
 The shape of the source the language's emitter writes (literal suffixes, guards, accessor and constructor forms, emitter line budgets), which has no counterpart in another language's source.
 
@@ -432,7 +432,7 @@ The shape of the source the language's emitter writes (literal suffixes, guards,
 | cpp | conformance-driver-reads-generated, expr, hostile-corpus-rules, json-utf8-comment, review-coverage (4), review-fixes (2), spec-agreement, union-invalid-tag-save |
 | cs | cstable (2), elem-cache, fixedform-csunions (2) |
 | dart | byteorder |
-| elixir | fixedform (6), helper-name |
+| elixir | fixedform (5), helper-name |
 | go | jsonseams, measurebody (2), prune, putleb, refat (3), requirednodefault, retain, sourceseams (2), unreferencedhelpers |
 | java | doc-unicode-escape (3), variablenoscratch |
 | js | fixedlanes-agree |
@@ -443,7 +443,7 @@ The shape of the source the language's emitter writes (literal suffixes, guards,
 | ruby | fixedchunk (2) |
 | unity | misc |
 
-#### Runtime internals (21 rows)
+#### Runtime internals (18 rows)
 
 A detail of the language's own runtime or bridge (stream latches, typed tables, integer libraries, report objects) that no other runtime has.
 
@@ -455,7 +455,7 @@ A detail of the language's own runtime or bridge (stream latches, typed tables, 
 | js | serialize-lookup, wirerows-conformance |
 | lua | armslot, constants |
 | luau | fixed-hotpath-bench |
-| moo | checkedbuild (2), checkedbuild-leb, fixed-hotpath-bench, read-latch (2) |
+| moo | checkedbuild (2), fixed-hotpath-bench |
 | squirrel | unpinnedvm |
 
 #### Build, CI and test-driver wiring (34 rows)
@@ -478,13 +478,13 @@ The language leg's own make targets, CI lanes, conformance-driver plumbing, test
 | squirrel | misc |
 | unity | fixed-harness |
 
-#### Language semantics the generated code must respect (19 rows)
+#### Language semantics the generated code must respect (18 rows)
 
 A rule of the language itself (integer overflow, struct padding and alignment, number model, operator ambiguity, constant shadowing, enum underlying types) that the generated code works within.
 
 | language | families (rows) |
 |---|---|
-| c | bool, identity (2), json-placed, offsets, widelist-align16 |
+| c | bool, identity (2), json-placed, offsets |
 | cpp | range-assert-wide, reasonenum |
 | cs | fixedform, wideclamp |
 | dart | floatinline |
