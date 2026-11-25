@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2905.
+Unit tests every language answers: 2. Language-free tests: 2906.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2073,15 +2073,16 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-covers` | `gotest` | Go test TestWideBoundsCorpusCovers in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusCovers` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:32` |
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-verify` | `gotest` | Go test TestWideBoundsCorpusVerify in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusVerify` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:17` |
 
-#### `tooling` family `compilebudget`, 5 tests
+#### `tooling` family `compilebudget`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.compilebudget.check-passes-the-recorded-shape` | `gotest` | Go test TestCheckPassesTheRecordedShape in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckPassesTheRecordedShape` | the Go test passes | `tools/compilebudget/main_test.go:85` |
-| `none.unit.tooling.compilebudget.check-reds-a-missing-timing` | `gotest` | Go test TestCheckRedsAMissingTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAMissingTiming` | the Go test passes | `tools/compilebudget/main_test.go:116` |
-| `none.unit.tooling.compilebudget.check-reds-a-unit-over-budget` | `gotest` | Go test TestCheckRedsAUnitOverBudget in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAUnitOverBudget` | the Go test passes | `tools/compilebudget/main_test.go:98` |
-| `none.unit.tooling.compilebudget.check-reds-an-unreadable-timing` | `gotest` | Go test TestCheckRedsAnUnreadableTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAnUnreadableTiming` | the Go test passes | `tools/compilebudget/main_test.go:128` |
-| `none.unit.tooling.compilebudget.the-recorded-shape-is-the-makefiles` | `gotest` | Go test TestTheRecordedShapeIsTheMakefiles in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestTheRecordedShapeIsTheMakefiles` | the Go test passes | `tools/compilebudget/main_test.go:68` |
+| `none.unit.tooling.compilebudget.check-passes-the-recorded-shape` | `gotest` | Go test TestCheckPassesTheRecordedShape in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckPassesTheRecordedShape` | the Go test passes | `tools/compilebudget/main_test.go:86` |
+| `none.unit.tooling.compilebudget.check-reds-a-missing-timing` | `gotest` | Go test TestCheckRedsAMissingTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAMissingTiming` | the Go test passes | `tools/compilebudget/main_test.go:117` |
+| `none.unit.tooling.compilebudget.check-reds-a-unit-over-budget` | `gotest` | Go test TestCheckRedsAUnitOverBudget in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAUnitOverBudget` | the Go test passes | `tools/compilebudget/main_test.go:99` |
+| `none.unit.tooling.compilebudget.check-reds-an-unreadable-timing` | `gotest` | Go test TestCheckRedsAnUnreadableTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAnUnreadableTiming` | the Go test passes | `tools/compilebudget/main_test.go:129` |
+| `none.unit.tooling.compilebudget.run-exits-by-the-verdict` | `gotest` | Go test TestRunExitsByTheVerdict in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestRunExitsByTheVerdict` | the Go test passes | `tools/compilebudget/main_test.go:150` |
+| `none.unit.tooling.compilebudget.the-recorded-shape-is-the-makefiles` | `gotest` | Go test TestTheRecordedShapeIsTheMakefiles in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestTheRecordedShapeIsTheMakefiles` | the Go test passes | `tools/compilebudget/main_test.go:69` |
 
 #### `tooling` family `conformancerows`, 7 tests
 
