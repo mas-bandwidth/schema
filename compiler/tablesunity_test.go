@@ -734,7 +734,7 @@ func (h *unityTableHarness) wireSurface(cases []unityTableCase) {
 		"forgery", "cook-forgery",
 		"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
 		"write-refusal-cook", "write-refusal-block", "write-refusal-shape",
-		"announce", "read-into", "json-write-into", "unit shapes",
+		"announce", "read-into", "json-write-into", "unit shapes", "unit tblmoodmap",
 	}
 	if out, code := h.run(nil, manifest, "list"); code != 0 || !slices.Equal(strings.Split(strings.TrimSuffix(out, "\n"), "\n"), wantSurfaces) {
 		h.t.Errorf("list: exit %d, %q; want %v", code, out, wantSurfaces)
