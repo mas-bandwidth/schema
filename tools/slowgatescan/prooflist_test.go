@@ -40,6 +40,26 @@ func TestProofListNamesOnlyExistingTests(t *testing.T) {
 			t.Fatalf("the fixture must report exactly the planted name, got %d: %v", len(findings), findings)
 		}
 	})
+	t.Run("computed", func(t *testing.T) {
+		// a names list make computes with $(shell …): read off the
+		// package's own test files it is accepted whole; read off any
+		// other files (PLANTED) it is reported, never split into its
+		// function words and checked as names
+		const own = `sh test/slowgate/proof rows '$(sort $(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' pkg/rows/*_test.go))' ./pkg/rows -count=1`
+		planted := strings.Replace(own, "pkg/rows/*_test.go", "pkg/other/*_test.go", 1)
+		for _, c := range []struct {
+			cmd    string
+			unread int
+		}{{own, 0}, {planted, 1}} {
+			refs, unread := proofRefsFromRecipes([]recipe{{file: "Makefile", line: 1, target: "rows", cmd: c.cmd, packages: []string{"./pkg/rows"}}})
+			if len(refs) != 0 {
+				t.Errorf("%s: a computed list was read as names: %v", c.cmd, refs)
+			}
+			if len(unread) != c.unread {
+				t.Errorf("%s: want %d unread, got %v", c.cmd, c.unread, unread)
+			}
+		}
+	})
 	t.Run("tree", func(t *testing.T) {
 		root := filepath.Join("..", "..")
 		gated, err := gatedPackages(root)
