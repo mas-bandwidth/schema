@@ -30,8 +30,8 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3163 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4872 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `unit` | 3164 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4876 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
 | `nightly` | 2522 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
@@ -430,8 +430,8 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 21/110 | 8 | 31.6 |
 | `none` | 22/110 | 80 | 29.5 |
 | `none` | 23/110 | 3 | 30.2 |
-| `none` | 24/110 | 104 | 32.7 |
-| `none` | 25/110 | 58 | 32.4 |
+| `none` | 24/110 | 107 | 32.8 |
+| `none` | 25/110 | 55 | 32.3 |
 | `none` | 26/110 | 22 | 33.7 |
 | `none` | 27/110 | 58 | 32.7 |
 | `none` | 28/110 | 11 | 33.4 |
@@ -479,19 +479,19 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 70/110 | 83 | 31.5 |
 | `none` | 71/110 | 81 | 29.7 |
 | `none` | 72/110 | 2 | 43.1 |
-| `none` | 73/110 | 44 | 31.3 |
-| `none` | 74/110 | 115 | 30.6 |
-| `none` | 75/110 | 187 | 30.1 |
-| `none` | 76/110 | 79 | 31.3 |
-| `none` | 77/110 | 34 | 21.1 |
-| `none` | 78/110 | 62 | 31.7 |
-| `none` | 79/110 | 303 | 31.5 |
-| `none` | 80/110 | 97 | 31.7 |
-| `none` | 81/110 | 90 | 34.8 |
-| `none` | 82/110 | 69 | 31.9 |
-| `none` | 83/110 | 82 | 32.0 |
-| `none` | 84/110 | 232 | 31.2 |
-| `none` | 85/110 | 75 | 44.3 |
+| `none` | 73/110 | 47 | 31.4 |
+| `none` | 74/110 | 113 | 32.1 |
+| `none` | 75/110 | 189 | 31.4 |
+| `none` | 76/110 | 79 | 31.6 |
+| `none` | 77/110 | 32 | 38.5 |
+| `none` | 78/110 | 257 | 30.7 |
+| `none` | 79/110 | 142 | 31.7 |
+| `none` | 80/110 | 124 | 31.1 |
+| `none` | 81/110 | 54 | 30.8 |
+| `none` | 82/110 | 99 | 30.6 |
+| `none` | 83/110 | 97 | 30.9 |
+| `none` | 84/110 | 235 | 30.4 |
+| `none` | 85/110 | 1 | 32.1 |
 | `none` | 86/110 | 16 | 33.3 |
 | `none` | 87/110 | 7 | 27.8 |
 | `none` | 88/110 | 2 | 27.1 |
@@ -512,12 +512,12 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 103/110 | 1 | 59.6 |
 | `none` | 104/110 | 4 | 26.9 |
 | `none` | 105/110 | 2 | 43.8 |
-| `none` | 106/110 | 15 | 23.1 |
-| `none` | 107/110 | 8 | 25.2 |
+| `none` | 106/110 | 21 | 23.5 |
+| `none` | 107/110 | 2 | 24.7 |
 | `none` | 108/110 | 107 | 21.3 |
-| `none` | 109/110 | 22 | 22.2 |
-| `none` | 110/110 | 25 | 21.9 |
-| **every row** | **470 jobs** | **51589** | **20090.1** |
+| `none` | 109/110 | 24 | 24.2 |
+| `none` | 110/110 | 28 | 24.9 |
+| **every row** | **470 jobs** | **51594** | **20095.1** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or
