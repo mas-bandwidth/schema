@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,5 +198,59 @@ func TestSinglePassCheckNamesTheFile(t *testing.T) {
 		if _, err := checkTrees(before, after, tc.trees); err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("-trees %v: got %v, want a refusal naming %q", tc.trees, err, tc.want)
 		}
+	}
+}
+
+// A chain no configuration reaches is red unless it sits in a guarded twin:
+// clang-cl (_WIN32 and __clang__ together) is no configuration, so a chain
+// only it reaches is never compared, and that is named, not counted. A twin
+// in another branch of its parent, or after an #undef of its guard, is not
+// proven dead.
+func TestSinglePassCheckNamesAChainNoConfigurationReaches(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"a chain under a combination no configuration takes",
+			"#if defined( _WIN32 ) && defined( __clang__ )\n#if defined( A )\nint a;\n#else\nint b;\n#endif\n#endif\n",
+			"line 2: #if defined( A ): a chain no configuration reaches"},
+		{"a twin after an #undef of its guard",
+			"#if defined( _WIN32 ) && defined( __clang__ )\n#ifndef G\n#define G\n#endif\n#undef G\n#ifndef G\n#if defined( A )\nint a;\n#else\nint b;\n#endif\n#endif\n#endif\n",
+			"line 7: #if defined( A ): a chain no configuration reaches"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			after, err := ccommon.SinglePassConditionals(tc.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = Compare(tc.in, after, "c")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+		})
+	}
+	_, chains := markChains("#if defined( Q )\n#ifndef G\n#define G\n#endif\n#else\n#ifndef G\n#if defined( A )\nint a;\n#else\nint b;\n#endif\n#endif\n#endif\n")
+	for _, c := range chains {
+		if c.dead {
+			t.Fatalf("the chain at line %d is called dead, but its twin's guard was defined in another branch", c.line)
+		}
+	}
+}
+
+// A configuration is run again only where it differs from an earlier one on
+// a name the file's directives name; one that differs only elsewhere keeps
+// the same text and is not run.
+func TestSinglePassCheckRunsEachDistinctConfigurationOnce(t *testing.T) {
+	configs := [][]string{
+		{},
+		{"-U__x86_64__"},
+		{"-D_MSC_VER=1930", "-U__x86_64__"},
+		{"-D_MSC_VER=1930"},
+		{"-D__cplusplus=201703L"},
+		{"-DB=1"},
+	}
+	src := "#if defined( _MSC_VER )\nint a;\n#endif\n#if defined( __cplusplus )\nint c;\n#endif\n#define X B\n"
+	if got, want := fmt.Sprint(sameAs(src, "c", configs)), "[-1 0 -1 2 -1 -1]"; got != want {
+		t.Errorf("c: got %s, want %s", got, want)
+	}
+	if got, want := fmt.Sprint(sameAs(src, "c++", configs)), "[-1 0 -1 2 0 -1]"; got != want {
+		t.Errorf("c++: got %s, want %s", got, want)
 	}
 }

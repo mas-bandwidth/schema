@@ -2596,8 +2596,12 @@ SINGLE_PASS_TREES := tables-c,tables-cpp,bench-tables-c,bench-paired-c,bench-tab
 .PHONY: tables-single-pass-equivalence single-pass-generate
 tables-single-pass-equivalence: bin/schema
 	@rm -rf $(SINGLE_PASS_OUT) && mkdir -p $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
-	@SCHEMA_CONDITIONALS_AS_EMITTED=1 $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/before
-	@env -u SCHEMA_CONDITIONALS_AS_EMITTED $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/after
+	@# the two generations are independent: run side by side, each logged
+	@SCHEMA_CONDITIONALS_AS_EMITTED=1 $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/before > $(SINGLE_PASS_OUT)/before.log 2>&1 & b=$$!; \
+	env -u SCHEMA_CONDITIONALS_AS_EMITTED $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/after > $(SINGLE_PASS_OUT)/after.log 2>&1 & a=$$!; \
+	fail=0; wait $$b || { echo "single-pass equivalence: generating the trees as emitted failed"; cat $(SINGLE_PASS_OUT)/before.log; fail=1; }; \
+	wait $$a || { echo "single-pass equivalence: generating the rewritten trees failed"; cat $(SINGLE_PASS_OUT)/after.log; fail=1; }; \
+	[ $$fail = 0 ]
 	go run ./tools/singlepasscheck -trees $(SINGLE_PASS_TREES) $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
 
 # single-pass-generate writes the six trees with SINGLE_PASS_SCHEMA into

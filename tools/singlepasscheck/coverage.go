@@ -27,6 +27,7 @@ type markedBranch struct {
 type markedChain struct {
 	line     int
 	branches []markedBranch
+	dead     bool // inside a guarded twin whose guard the file has already defined
 }
 
 var ppCondDirective = regexp.MustCompile(`^[ \t]*#[ \t]*(if|ifdef|ifndef|elif|elifdef|elifndef|else|endif)\b`)
@@ -37,11 +38,32 @@ var ppCondDirective = regexp.MustCompile(`^[ \t]*#[ \t]*(if|ifdef|ifndef|elif|el
 func markChains(src string) (string, []markedChain) {
 	lines := strings.SplitAfter(src, "\n")
 	type open struct {
-		at       int   // the #if's line index
-		branches []int // each branch directive's last line index (continuations joined)
-		starts   []int // each branch directive's first line index
+		parent   *open  // the conditional this one sits in; nil at the top
+		once     string // for #ifndef N, N
+		dead     bool   // a guarded twin: N was defined by an earlier #ifndef N / #define N under the same parent
+		at       int    // the #if's line index
+		branches []int  // each branch directive's last line index (continuations joined)
+		starts   []int  // each branch directive's first line index
 	}
 	var stack []*open
+	// onceDefined[N] holds every place (a parent and its branch; the top of
+	// the file is a nil parent) where an "#ifndef N" opened with "#define N"
+	// as its first line: a later #ifndef N in the same place is reached only
+	// after that block defined N, so it is dead in every translation unit. An
+	// #undef N anywhere after it takes that proof away.
+	type place struct {
+		parent *open
+		branch int
+	}
+	placeOf := func(p *open) place {
+		if p == nil {
+			return place{}
+		}
+		return place{p, len(p.branches)}
+	}
+	onceDefined := map[string][]place{}
+	ppIfndefName := regexp.MustCompile(`^[ \t]*#[ \t]*ifndef[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*(?://.*|/\*.*)?$`)
+	ppUndefName := regexp.MustCompile(`^[ \t]*#[ \t]*undef[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
 	var chains []markedChain
 	before := map[int][]string{} // lines to insert before line i
 	after := map[int][]string{}  // lines to insert after line i
@@ -56,7 +78,23 @@ func markChains(src string) (string, []markedChain) {
 				}
 				switch m[1] {
 				case "if", "ifdef", "ifndef":
-					stack = append(stack, &open{at: start, branches: []int{i}, starts: []int{start}})
+					o := &open{at: start, branches: []int{i}, starts: []int{start}}
+					if len(stack) > 0 {
+						o.parent = stack[len(stack)-1]
+						o.dead = o.parent.dead
+					}
+					if g := ppIfndefName.FindStringSubmatch(strings.TrimRight(line, "\r\n")); g != nil && start == i {
+						o.once = g[1]
+						for _, p := range onceDefined[o.once] {
+							if p == placeOf(o.parent) {
+								o.dead = true
+							}
+						}
+						if i+1 < len(lines) && strings.TrimSpace(lines[i+1]) == "#define "+o.once {
+							onceDefined[o.once] = append(onceDefined[o.once], placeOf(o.parent))
+						}
+					}
+					stack = append(stack, o)
 				case "endif":
 					if len(stack) == 0 {
 						continue
@@ -67,7 +105,7 @@ func markChains(src string) (string, []markedChain) {
 						continue
 					}
 					k := len(chains)
-					mc := markedChain{line: c.at + 1}
+					mc := markedChain{line: c.at + 1, dead: c.dead}
 					before[c.at] = append(before[c.at], fmt.Sprintf("%s%d\n", markerPrefix, k))
 					for j, end := range c.branches {
 						after[end] = append(after[end], fmt.Sprintf("%s%d_%d\n", markerPrefix, k, j))
@@ -82,6 +120,9 @@ func markChains(src string) (string, []markedChain) {
 					}
 				}
 				continue
+			}
+			if u := ppUndefName.FindStringSubmatch(line); u != nil {
+				delete(onceDefined, u[1])
 			}
 		}
 		inComment = commentOpenAfter(line, inComment)
@@ -146,13 +187,19 @@ func takeMarkers(tokens []string, seen map[string]bool) []string {
 }
 
 // uncovered names every branch of a marked chain whose context was kept under
-// some configuration and which no configuration took, and counts the rest.
+// some configuration and which no configuration took, and every chain no
+// configuration reached unless it sits in a guarded twin (markChains), which
+// is dead in every translation unit and is counted.
 func uncovered(chains []markedChain, seen map[string]bool) ([]string, Coverage) {
 	var out []string
 	cov := Coverage{Chains: len(chains)}
 	for k, c := range chains {
 		if !seen[strconv.Itoa(k)] {
-			cov.Unreached++
+			if c.dead {
+				cov.Unreached++
+			} else {
+				out = append(out, fmt.Sprintf("line %d: %s: a chain no configuration reaches, and not inside a guarded twin", c.line, c.branches[0].directive))
+			}
 			continue
 		}
 		cov.Branches += len(c.branches)

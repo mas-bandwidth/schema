@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2279.
+Functional tests every language answers: 2560. Language-free tests: 2281.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5503,16 +5503,18 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.schema-test.every-hostile-target-dry-runs-without-writing` | `gotest` | Go test TestEveryHostileTargetDryRunsWithoutWriting in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDryRunsWithoutWriting` | the Go test passes | `tools/schema-test/hostile_test.go:425` |
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
 
-#### `tooling` family `singlepasscheck`, 6 tests
+#### `tooling` family `singlepasscheck`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.tooling.singlepasscheck.single-pass-check-defines-the-project-names` | `gotest` | Go test TestSinglePassCheckDefinesTheProjectNames in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckDefinesTheProjectNames` | the Go test passes | `tools/singlepasscheck/check_test.go:123` |
 | `none.functional.tooling.singlepasscheck.single-pass-check-names-a-branch-no-configuration-keeps` | `gotest` | Go test TestSinglePassCheckNamesABranchNoConfigurationKeeps in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckNamesABranchNoConfigurationKeeps` | the Go test passes | `tools/singlepasscheck/check_test.go:105` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-names-a-chain-no-configuration-reaches` | `gotest` | Go test TestSinglePassCheckNamesAChainNoConfigurationReaches in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckNamesAChainNoConfigurationReaches` | the Go test passes | `tools/singlepasscheck/check_test.go:208` |
 | `none.functional.tooling.singlepasscheck.single-pass-check-names-the-file` | `gotest` | Go test TestSinglePassCheckNamesTheFile in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckNamesTheFile` | the Go test passes | `tools/singlepasscheck/check_test.go:144` |
 | `none.functional.tooling.singlepasscheck.single-pass-check-passes-the-rewrite` | `gotest` | Go test TestSinglePassCheckPassesTheRewrite in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckPassesTheRewrite` | the Go test passes | `tools/singlepasscheck/check_test.go:38` |
 | `none.functional.tooling.singlepasscheck.single-pass-check-refuses-a-preprocessor-error` | `gotest` | Go test TestSinglePassCheckRefusesAPreprocessorError in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckRefusesAPreprocessorError` | the Go test passes | `tools/singlepasscheck/check_test.go:96` |
 | `none.functional.tooling.singlepasscheck.single-pass-check-refuses-a-wrong-rewrite` | `gotest` | Go test TestSinglePassCheckRefusesAWrongRewrite in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckRefusesAWrongRewrite` | the Go test passes | `tools/singlepasscheck/check_test.go:60` |
+| `none.functional.tooling.singlepasscheck.single-pass-check-runs-each-distinct-configuration-once` | `gotest` | Go test TestSinglePassCheckRunsEachDistinctConfigurationOnce in ./tools/singlepasscheck | `package: ./tools/singlepasscheck`<br>`test: TestSinglePassCheckRunsEachDistinctConfigurationOnce` | the Go test passes | `tools/singlepasscheck/check_test.go:240` |
 
 #### `tooling` family `slowtest`, 1 test
 

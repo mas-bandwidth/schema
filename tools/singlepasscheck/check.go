@@ -80,6 +80,46 @@ func configsFor(src string, chains []markedChain) [][]string {
 	return out
 }
 
+var ppAnyDirectiveLine = regexp.MustCompile(`(?m)^[ \t]*#[ \t]*(?:if|ifdef|ifndef|elif|define|undef)\b(?:[^\n]*\\\n)*[^\n]*`)
+
+// sameAs says, for each configuration, which earlier one gives src the same
+// preprocessed text, or -1. In directives-only mode the output depends on a
+// macro only where a directive names it, so two configurations whose flags
+// agree on every name any #if, #ifdef, #ifndef, #elif, #define or #undef of
+// src names (and in the same order) keep the same text, and the later one
+// is not run again. A flag on a name src never names cannot change it.
+func sameAs(src, lang string, configs [][]string) []int {
+	named := map[string]bool{}
+	for _, d := range ppAnyDirectiveLine.FindAllString(src, -1) {
+		for _, id := range ppIdentifier.FindAllString(d, -1) {
+			named[id] = true
+		}
+	}
+	keys := make([]string, len(configs))
+	out := make([]int, len(configs))
+	for i, cfg := range configs {
+		var eff []string
+		for _, f := range cfg {
+			if lang == "c++" && strings.HasPrefix(f, "-D__cplusplus=") {
+				continue
+			}
+			name, _, _ := strings.Cut(f[2:], "=")
+			if named[name] {
+				eff = append(eff, f)
+			}
+		}
+		keys[i] = strings.Join(eff, "\x00")
+		out[i] = -1
+		for j := 0; j < i; j++ {
+			if keys[j] == keys[i] {
+				out[i] = j
+				break
+			}
+		}
+	}
+	return out
+}
+
 // an #include, #error or #warning becomes a plain line the preprocessor
 // passes through where its branch is kept, so a rewrite that moves, drops or
 // doubles one changes the tokens: no header outside the file is read (both
@@ -119,7 +159,7 @@ var Compiler = "gcc"
 
 // Coverage counts what a Compare reached: the chains it took apart, their
 // branches (each kept under some configuration), and the chains whose own
-// context no configuration keeps (inside the second of two guarded twins, say), whose
+// context no configuration keeps and which sit inside a guarded twin, whose
 // branches the preprocessor drops under every configuration.
 type Coverage struct{ Chains, Branches, Unreached int }
 
@@ -135,7 +175,11 @@ func Compare(before, after, lang string) (Coverage, error) {
 	}
 	seen := map[string]bool{}
 	configs := configsFor(before, chains)
+	same := sameAs(before+"\n"+after, lang, configs)
 	for i, cfg := range configs {
+		if same[i] >= 0 {
+			continue
+		}
 		tb, err := Preprocess(marked, lang, cfg)
 		if err != nil {
 			return cov, fmt.Errorf("config %d, the form as emitted: %w", i, err)

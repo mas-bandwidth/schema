@@ -48,7 +48,7 @@ func main() {
 		fmt.Printf("single-pass equivalence: %d problems over %d files\n", len(res.problems), res.files)
 		os.Exit(1)
 	}
-	fmt.Printf("single-pass equivalence: %d generated C and C++ files in %d trees, %d of them rewritten, preprocess to the same tokens as emitted under %d configurations; all %d branches of the %d chains a configuration reaches were kept under one; %d chains sit where no configuration reaches, so none of the configurations compares them\n",
+	fmt.Printf("single-pass equivalence: %d generated C and C++ files in %d trees, %d of them rewritten, preprocess to the same tokens as emitted under %d configurations; all %d branches of the %d chains a configuration reaches were kept under one; %d chains sit inside guarded twins (an #ifndef N after the block that defined N, in the same place), dead in every translation unit\n",
 		res.files, len(res.trees), res.rewritten, len(Configs), res.cov.Branches, res.cov.Chains-res.cov.Unreached, res.cov.Unreached)
 }
 
