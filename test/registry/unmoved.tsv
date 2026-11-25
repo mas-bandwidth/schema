@@ -19,7 +19,7 @@ go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them
 go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/baseline	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/check	123	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	329	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/ci	330	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/ci/hostilecorpus	10	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/ccommon	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -160,13 +160,13 @@ make-target	make/rust.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another la
 make-target	make/schema-dart-generated-strict-analyze-gate.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 make-target	make/schema-go-generated-golangci-lint-gate.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 make-target	make/schema-lua-generated-luacheck-gate.mk	2	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-negative-control	(excluded)	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
+negative-control	(excluded)	27	L6b, L7	the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it
 negative-control	go-proof-4	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
 negative-control	lua-format	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
 negative-control	schema-dart-strict-analyze	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	29	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	30	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry
@@ -314,7 +314,7 @@ data-case	internal/ci/hostilecorpus/testdata/carry/findings	5	L4	corpus data and
 data-case	internal/ci/hostilecorpus/testdata/carry/findings-lobster	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/hostilecorpus/testdata/carry/text-corpus	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/hostilecorpus/testdata/carry/text-corpus/inputs	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/ci/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/ci/testdata	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/c-no-core-children	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/f171	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/f180-lanes	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
