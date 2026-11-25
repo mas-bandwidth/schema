@@ -166,7 +166,7 @@ func TestIssue710TableRecovery(t *testing.T) {
 		}
 	}
 	var cpp strings.Builder
-	cpp.WriteString("#include <cstring>\n#include \"ProbeTable.h\"\nusing namespace p;\nint main(){\n")
+	cpp.WriteString("#include <cstring>\n#include \"ProbeTable.h\"\nusing namespace px;\nint main(){\n")
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			v := m.New(m.Lookup(tc.root))
@@ -366,7 +366,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		}
 	}
 	var cpp strings.Builder
-	cpp.WriteString("#include \"ProbeTable.h\"\nusing namespace p;\nint main(){\n")
+	cpp.WriteString("#include \"ProbeTable.h\"\nusing namespace px;\nint main(){\n")
 	for _, tc := range []struct {
 		root string
 		body []byte
