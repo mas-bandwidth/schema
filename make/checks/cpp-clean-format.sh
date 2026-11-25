@@ -40,13 +40,15 @@ sh "$here/shard-filter.sh" "$shard" "$OUT/format/all.txt" < "$OUT/format/all.txt
 [ -s "$OUT/format/files.txt" ] || { echo "tables-cpp-clean: no generated C++ under $*"; exit 1; }
 
 # one line per file that is not clean: DRIFT, SLOW (killed by the CPU
-# limit, a signal, status above 128) or FAILED (any other formatter failure);
+# limit: SIGXCPU at the soft limit, 152; SIGKILL at the hard one, 137, which
+# `ulimit -t` sets to the same number) or FAILED (any other formatter
+# failure, another signal included);
 # the formatter's own status is read apart from the comparison
 xargs -P "$JOBS" -n 1 sh -c '
 	tmp="$FMT_TMP/fmt.$$"
 	rc=0
 	( ulimit -c 0; ulimit -t "$FILE_SECONDS"; exec "$CLANG_FORMAT" --style="$style" "$1" ) > "$tmp" || rc=$?
-	if [ "$rc" -gt 128 ]; then
+	if [ "$rc" -eq 152 ] || [ "$rc" -eq 137 ]; then
 		echo "SLOW $1"
 	elif [ "$rc" -ne 0 ]; then
 		echo "FAILED $1"

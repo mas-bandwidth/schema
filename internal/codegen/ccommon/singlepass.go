@@ -30,12 +30,22 @@ import (
 // one layout, so the file is read once. What the preprocessor keeps is
 // unchanged: exactly one branch's text, chosen by the same conditions.
 //
-// THAT EQUIVALENCE HOLDS ONLY WHILE NO BRANCH CHANGES A LATER CONDITION: the
-// rewrite evaluates every condition after the branches before it, where the
-// chain evaluated it before them. A branch that #defines or #undefs a name
-// any condition of its chain reads is refused by name, and so is a chain
-// that is never closed or an #elif, #else or #endif with no #if.
+// THAT EQUIVALENCE HOLDS ONLY WHILE NO BRANCH CHANGES A LATER CONDITION AND
+// EVERY CONDITION CAN BE EVALUATED ANYWHERE: the rewrite evaluates every
+// condition after the branches before it, and evaluates an #elif the chain
+// never reached. So a chain that carries an #elif or #else may test only
+// defined( NAME ), integer literals and implementation-reserved names
+// (ppDefinedOnly: a program's macro could expand to anything, and
+// __has_builtin( x ) is a syntax error where it is not defined), and a branch
+// that #defines or #undefs a name its chain reads, or #includes a project
+// header that might (a system header, <x.h>, is taken not to redefine the
+// compiler's own names), is refused by name. So is what the parser does not
+// know: #elifdef and #elifndef, a carriage return, a chain that is never
+// closed, and an #elif, #else or #endif with no #if.
 func SinglePassConditionals(src string) (string, error) {
+	if i := strings.IndexByte(src, '\r'); i >= 0 {
+		return "", fmt.Errorf("line %d: a carriage return; the rewrite reads \\n line endings only", strings.Count(src[:i], "\n")+1)
+	}
 	lines := strings.SplitAfter(src, "\n")
 	p := &ppParser{lines: lines}
 	nodes, err := p.block(0)
@@ -159,6 +169,8 @@ func (p *ppParser) block(depth int) ([]*ppNode, error) {
 		case "elif", "else", "endif":
 			flush()
 			return nodes, nil
+		case "elifdef", "elifndef":
+			return nil, fmt.Errorf("line %d: #%s is not one the rewrite knows", p.at+1, word)
 		case "if", "ifdef", "ifndef":
 			flush()
 			n, err := p.chain(indent, word, rest, depth)
@@ -240,6 +252,48 @@ func ppCondition(rest string) string {
 
 var ppIdent = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 var ppDefines = regexp.MustCompile(`^[ \t]*#[ \t]*(?:define|undef)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
+var ppInclude = regexp.MustCompile(`^[ \t]*#[ \t]*include[ \t]*[^ \t<]`)
+var ppToken = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9][0-9A-Za-z]*|&&|\|\||==|!=|<=|>=|[!()<>])`)
+var ppReserved = regexp.MustCompile(`^(?:__|_[A-Z])`)
+
+// ppDefinedOnly says why cond may not be evaluated out of its chain's
+// order, or "" when it may: it is built from defined( NAME ), defined NAME,
+// integer literals and the implementation's own names (__x, _X, which no
+// program may #define, so none expands to a defined() or changes under a
+// branch), compared and joined by ! == != < > <= >= && ||. A call of any
+// kind (__has_builtin( x )) is refused: it is a syntax error wherever the
+// name is not a function-like macro.
+func ppDefinedOnly(cond string) string {
+	var toks []string
+	for rest := strings.TrimSpace(cond); rest != ""; rest = strings.TrimSpace(rest) {
+		t := ppToken.FindString(rest)
+		if t == "" {
+			return fmt.Sprintf("%q is not part of a defined() test", rest)
+		}
+		toks = append(toks, t)
+		rest = rest[len(t):]
+	}
+	name := func(i int) bool { return i < len(toks) && ppIdent.MatchString(toks[i]) && toks[i] != "defined" }
+	for i := 0; i < len(toks); i++ {
+		switch t := toks[i]; {
+		case strings.ContainsAny(t[:1], "!&|()<>=") || t[0] >= '0' && t[0] <= '9':
+		case t == "defined":
+			switch {
+			case i+3 < len(toks) && toks[i+1] == "(" && name(i+2) && toks[i+3] == ")":
+				i += 3
+			case name(i + 1):
+				i++
+			default:
+				return "a defined with no name"
+			}
+		case i+1 < len(toks) && toks[i+1] == "(":
+			return t + "( ... ) is called"
+		case !ppReserved.MatchString(t):
+			return t + " is tested by value; only defined() or an implementation-reserved name (__x, _X) may be"
+		}
+	}
+	return ""
+}
 
 // check refuses a chain one of whose branches defines or undefines a name
 // a condition of the chain reads: the rewrite would read that name after
@@ -250,6 +304,11 @@ func (n *ppNode) check() error {
 	}
 	read := map[string]bool{}
 	for _, br := range n.branches {
+		if br.word != "else" {
+			if why := ppDefinedOnly(br.cond); why != "" {
+				return fmt.Errorf("line %d: #%s %s: %s; a chain with an #elif or #else is split only when every condition can be evaluated out of order", br.start, br.word, br.cond, why)
+			}
+		}
 		for _, id := range ppIdent.FindAllString(br.cond, -1) {
 			if id != "defined" {
 				read[id] = true
@@ -260,6 +319,9 @@ func (n *ppNode) check() error {
 	walk = func(nodes []*ppNode) error {
 		for _, c := range nodes {
 			for _, line := range c.text {
+				if ppInclude.MatchString(line) {
+					return fmt.Errorf("line %d: a branch of this chain #includes a project file, which may change a name the chain reads; it cannot be split into independent conditionals", n.branches[0].start)
+				}
 				if m := ppDefines.FindStringSubmatch(line); m != nil && read[m[1]] {
 					return fmt.Errorf("line %d: a branch of this chain changes %s, which a condition of the chain reads; it cannot be split into independent conditionals", n.branches[0].start, m[1])
 				}

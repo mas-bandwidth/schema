@@ -322,6 +322,14 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \
 	done
+	@for f in build/tables-generated-c/v1/*TableData.h \
+	          build/tables-generated-c/v2/*TableData.h build/tables-generated-c/p1/*TableData.h \
+	          build/tables-generated-c/p3/*TableData.h; do \
+		test -e "$$f" || continue; \
+		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
+			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
+		fi; \
+	done
 	@echo "tables C zero-cost gate: value-only tables carry no pointer machinery"
 
 # THE GENERIC-WALK GATE, C side (docs/SPEC-TABLES.md §16). Every name the walk

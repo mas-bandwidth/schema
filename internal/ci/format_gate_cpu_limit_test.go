@@ -103,6 +103,8 @@ func TestFormatGatesHoldTheCPULimit(t *testing.T) {
 				{"the formatter runs under the limit it was given", `[ "$(ulimit -t)" = 7 ] || exit 3`, "7", ""},
 				{"a file over the limit is red by name", `case $2 in *a.h) kill -s XCPU $$ ;; esac`, "7", "clang-format took more than 7 s of CPU on gen/a.h"},
 				{"a formatter that fails is red by name", `case $2 in *a.h) exit 3 ;; esac`, "7", "clang-format failed on gen/a.h"},
+				// a crash is not the limit: it is FAILED, never SLOW
+				{"a formatter killed by another signal is red as failed", `case $2 in *a.h) kill -s SEGV $$ ;; esac`, "7", "clang-format failed on gen/a.h"},
 				{"no limit is red", "", "-", "FILE_SECONDS must name the per-file CPU limit"},
 				{"a limit of zero is red", "", "0", "FILE_SECONDS must name the per-file CPU limit"},
 				{"a limit that is not whole seconds is red", "", "2.5", "FILE_SECONDS must name the per-file CPU limit"},

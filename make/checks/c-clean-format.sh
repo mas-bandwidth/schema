@@ -61,8 +61,10 @@ fi
 checked=$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')
 if [ -s "$OUT/c-format-files.txt" ]; then
 	# the formatter's own status is read apart from the comparison: killed
-	# by the CPU limit (a signal, status above 128) is SLOW, any other
-	# failure is FAILED, and only a finished run is held to the file
+	# by the CPU limit is SLOW (SIGXCPU at the soft limit, 152; SIGKILL at the
+	# hard one, 137, which `ulimit -t` sets to the same number), any other
+	# failure (another signal included) is FAILED, and only a finished run is
+	# held to the file
 	xargs -P "$jobs" -n 16 sh -c '
 		cf=$1; st=$2; wk=$3; secs=$4; shift 4
 		out="$wk/res.$$"
@@ -70,7 +72,7 @@ if [ -s "$OUT/c-format-files.txt" ]; then
 		for f in "$@"; do
 			rc=0
 			( ulimit -c 0; ulimit -t "$secs"; exec "$cf" --style="$st" "$f" ) > "$tmp" || rc=$?
-			if [ "$rc" -gt 128 ]; then
+			if [ "$rc" -eq 152 ] || [ "$rc" -eq 137 ]; then
 				printf "SLOW\t%s\n" "$f" >> "$out"
 			elif [ "$rc" -ne 0 ]; then
 				printf "FAILED\t%s\n" "$f" >> "$out"

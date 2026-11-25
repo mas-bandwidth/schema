@@ -565,6 +565,13 @@ tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
 				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
 			fi; \
 		done; \
+		for f in $(1)/$$u/*TableData.h; do \
+			test -e "$$f" || continue; \
+			if $(call tables_zero_cost_leaks,$$f); then \
+				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
+				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
+			fi; \
+		done; \
 	done
 
 .PHONY: tables-zero-cost
@@ -8477,6 +8484,7 @@ endef
 
 define tables_zero_cost_symbol_grep
 	@for f in $(1); do \
+		if ! test -r "$$f"; then echo "BLOCK ZERO-COST GATE FAILED: no readable file $$f"; exit 1; fi; \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
@@ -8514,7 +8522,7 @@ tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKFUL,cpp blockful)
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
-	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*TableData.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
 	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100)
 

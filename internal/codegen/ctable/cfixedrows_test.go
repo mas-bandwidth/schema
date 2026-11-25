@@ -24,10 +24,12 @@ func cNamedFixedRoot(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 }
 
 // cFixedPlanNotes names the root's identity plan rows, in published order:
-// the width-split plan the emitter writes.
+// the plan the emitter writes, its union tags split out, then split by width.
 func cFixedPlanNotes(u *ir.Unit, st *ir.Struct) []string {
 	entries := ir.TableFixedWalkRoot(st)
 	plan, guarded, _ := ir.TableFixedBuildPlanPresentDefaultsWithPool(u, st)
+	// the emitter keeps union tags as validation boundaries before the width split
+	plan, guarded = fixedDeadMetaOf(u, st).splitUnionTags(plan, guarded)
 	var notes []string
 	for _, e := range ir.TableFixedSplitByWidth(entries, plan, guarded).Plan {
 		notes = append(notes, e.Note)
