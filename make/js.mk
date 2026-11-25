@@ -87,7 +87,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/lawful/v1l/V1L.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
@@ -119,6 +119,10 @@ build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/fea
 	./bin/schema generate --lang js --out build/tables-generated-js/blockhome tables/blockhome
 	./bin/schema generate --lang js --out build/tables-generated-js/v1 test/tables/V1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/v2 test/tables/V2.schema
+	# V1L, V1 with only its unlawful edits taken back: the LAWFUL older writer
+	# for V2 (test/tables/lawful/v1l), which conformance row js/W6 compiles
+	# against V2 for a plan with both partitions (V1 itself lays none, §5.4).
+	./bin/schema generate --lang js --out build/tables-generated-js/lawful/v1l test/tables/lawful/v1l/V1L.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/w1 test/tables/W1.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/w2 test/tables/W2.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/r1 test/tables/R1.schema
@@ -940,10 +944,12 @@ tables-js-fixed-roadmap-negative-control:
 .PHONY: tables-js-versioning-negative-control
 tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-versioning-sabotage && mkdir -p build/js-versioning-sabotage
-	@sed 's|TableFixedRefusal.LayoutNewer, hashLo|TableFixedRefusal.LayoutUnsupported, hashLo|' \
+	@sed 's|TableFixedRefusal.LayoutUnknown, hashLo|TableFixedRefusal.LayoutUnsupported, hashLo|' \
 		internal/codegen/jstable/fixedmodule.go > build/js-versioning-sabotage/fixedmodule.go.txt
-	@grep -q 'TableFixedRefusal.LayoutNewer' build/js-versioning-sabotage/fixedmodule.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
+	@! cmp -s internal/codegen/jstable/fixedmodule.go build/js-versioning-sabotage/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@grep -q 'TableFixedRefusal.LayoutUnknown, hashLo' build/js-versioning-sabotage/fixedmodule.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage left a step-5 layout_unknown return in place"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-versioning-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-versioning-sabotage/overlay.json
 	@if NODE=$(NODE) $(GO_TEST_RED) -overlay=build/js-versioning-sabotage/overlay.json \
@@ -952,7 +958,7 @@ tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 		echo "NEGATIVE CONTROL FAILED: a file outside the lineage refused under the wrong name and the gate stayed green"; \
 		cat build/js-versioning-sabotage/log; exit 1; \
 	fi
-	@grep -q "owes layout_newer" build/js-versioning-sabotage/log || \
+	@grep -q "owes layout_unknown" build/js-versioning-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/js-versioning-sabotage/log; exit 1; }
 	@echo 'tables JS versioning negative control: the wrong name on a file outside the lineage reds every OLD-REFUSES-NEW row'
