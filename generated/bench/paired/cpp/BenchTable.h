@@ -15837,12 +15837,20 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.wide_key != 0 )
     {
         w.put( 21, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.wide_key ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 64 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.wide_key ) - serialize::uint128_t( 0 );
+            w.put( uint64_t( raw_v ), 64 );
+            w.put( uint64_t( raw_v >> 64 ), 64 );
+        }
     }
     if ( value.flux != 0 )
     {
         w.put( 22, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 38 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) );
+            w.put( uint64_t( raw_v ), 64 );
+            w.put( uint64_t( raw_v >> 64 ), 38 );
+        }
     }
     if ( value.ping != 0 )
     {

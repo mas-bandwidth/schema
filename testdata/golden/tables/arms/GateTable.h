@@ -12917,7 +12917,13 @@ inline int64_t GateNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
     switch ( type_id )
     {
         case 0x31badbc06c5f0b97ull: return TableAlignUp64( (int64_t) sizeof( Only ) ); // Only
-        case kTableStringTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, true ); // *string
+        case kTableStringTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, true ); // *string
         default: break;
     }
     return -1;
@@ -12961,7 +12967,13 @@ inline void GateNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
             OnlyReset( *node );
             break;
         } // Only
-        case kTableStringTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *string
+        case kTableStringTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *string
         default: break;
     }
 }
@@ -13017,7 +13029,9 @@ inline void GateNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
         case 0x31badbc06c5f0b97ull:
             OnlyLoadBody( r, *(Only *) at );
             break; // Only
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
@@ -14394,7 +14408,9 @@ inline void GateNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
         case 0x31badbc06c5f0b97ull:
             OnlyLoadBodyRetain( r, *(Only *) at, retain, TableRetainPathRoot( (const void *) at, node ) );
             break; // Only
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done

@@ -14388,43 +14388,43 @@ inline bool TrayNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
 {
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Slots
     {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case SlotsType::Many:
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
-            for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+            case SlotsType::Many:
             {
+                for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
                 {
-                    const Node * pointee = NodeAt( ctx, value.entries[i].many.value[k] ); // many
-                    if ( pointee != NULL )
                     {
-                        const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-                        if ( found != NULL )
+                        const Node * pointee = NodeAt( ctx, value.entries[i].many.value[k] ); // many
+                        if ( pointee != NULL )
                         {
-                            if ( found->open != 0 ) { return false; } // a data cycle
-                        }
-                        else
-                        {
-                            TableNodeEntry node;
-                            node.node = (const void *) pointee;
-                            node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
-                            node.measure = &TableNodeMeasureThunk<Ctx, Node>;
-                            node.save = &TableNodeSaveThunk<Ctx, Node>;
-                            node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
-                            node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                            node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
-                            node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
-                            node.close = false;
-                            node.hint = 0;
-                            if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                            if ( found != NULL )
+                            {
+                                if ( found->open != 0 ) { return false; } // a data cycle
+                            }
+                            else
+                            {
+                                TableNodeEntry node;
+                                node.node = (const void *) pointee;
+                                node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
+                                node.measure = &TableNodeMeasureThunk<Ctx, Node>;
+                                node.save = &TableNodeSaveThunk<Ctx, Node>;
+                                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
+                                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                                node.close = false;
+                                node.hint = 0;
+                                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                            }
                         }
                     }
                 }
+                break;
             }
-            break;
+            default: break;
         }
-        default: break;
-    }
     }
     return true;
 }
@@ -14502,18 +14502,18 @@ inline bool TrayCycleSlots( const Ctx & ctx, TableCycle & cycle, const Tray & va
     (void) value;
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Slots
     {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case SlotsType::Many:
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
-            for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+            case SlotsType::Many:
             {
-                if ( !TableCycleEdge( cycle, value.entries[i].many.value[k] ) ) { return false; } // many
+                for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+                {
+                    if ( !TableCycleEdge( cycle, value.entries[i].many.value[k] ) ) { return false; } // many
+                }
+                break;
             }
-            break;
+            default: break;
         }
-        default: break;
-    }
     }
     return true;
 }
@@ -14545,27 +14545,27 @@ inline bool TrayPackSlots( const Ctx & ctx, TablePackMap & seen, const Tray & sr
 {
     for ( int32_t i = 0; i < src.entries_count && i < 2; i++ ) // entries: [..2]Slots
     {
-    switch ( src.entries[i].type ) // entries: the set arm is the edge
-    {
-        case SlotsType::Many:
+        switch ( src.entries[i].type ) // entries: the set arm is the edge
         {
-            for ( int32_t k = 0; k < src.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+            case SlotsType::Many:
             {
+                for ( int32_t k = 0; k < src.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
                 {
-                    dst.entries[i].many.value[k].value = 0; // many
-                    const Node * pointee = NodeAt( ctx, src.entries[i].many.value[k] );
-                    if ( pointee != NULL )
                     {
-                        const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-                        if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-                        dst.entries[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.entries[i].many.value[k] );
+                        dst.entries[i].many.value[k].value = 0; // many
+                        const Node * pointee = NodeAt( ctx, src.entries[i].many.value[k] );
+                        if ( pointee != NULL )
+                        {
+                            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                            dst.entries[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.entries[i].many.value[k] );
+                        }
                     }
                 }
+                break;
             }
-            break;
+            default: break;
         }
-        default: break;
-    }
     }
     return true;
 }

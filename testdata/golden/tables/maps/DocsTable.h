@@ -13184,7 +13184,11 @@ inline bool DocsPackSlots( const Ctx & ctx, TablePackMap & seen, const Docs & sr
         DocsPagesEntry * placed_pages = (DocsPagesEntry *) ( dst.pages.entries.value != 0 ? ( (uint8_t *) &dst.pages.entries + dst.pages.entries.value ) : NULL );
         for ( int32_t i = 0; i < cursor_pages.count; i++ )
         {
-            if ( !DocsPagesEntryPackSlots( ctx, seen, *cursor_pages[i], placed_pages[i], base ) ) { TableMapRelease( cursor_pages ); return false; }
+            if ( !DocsPagesEntryPackSlots( ctx, seen, *cursor_pages[i], placed_pages[i], base ) )
+            {
+                TableMapRelease( cursor_pages );
+                return false;
+            }
         }
         TableMapRelease( cursor_pages );
     }
@@ -13409,7 +13413,13 @@ inline int64_t DocsNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
 {
     switch ( type_id )
     {
-        case kTableStringTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, true ); // *string
+        case kTableStringTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, true ); // *string
         default: break;
     }
     return -1;
@@ -13474,7 +13484,13 @@ inline void DocsNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     switch ( type_id )
     {
-        case kTableStringTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *string
+        case kTableStringTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *string
         default: break;
     }
 }
@@ -13522,7 +13538,9 @@ inline void DocsNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     (void) nodes; // every node this root can name is a FIXED table
     switch ( type_id )
     {
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
@@ -14923,7 +14941,9 @@ inline void DocsNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
     (void) node;
     switch ( type_id )
     {
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done

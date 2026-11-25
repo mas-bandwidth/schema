@@ -18678,7 +18678,11 @@ inline bool FleetPackSlots( const Ctx & ctx, TablePackMap & seen, const Fleet & 
         FleetByIdEntry * placed_by_id = (FleetByIdEntry *) ( dst.by_id.entries.value != 0 ? ( (uint8_t *) &dst.by_id.entries + dst.by_id.entries.value ) : NULL );
         for ( int32_t i = 0; i < cursor_by_id.count; i++ )
         {
-            if ( !FleetByIdEntryPackSlots( ctx, seen, *cursor_by_id[i], placed_by_id[i], base ) ) { TableMapRelease( cursor_by_id ); return false; }
+            if ( !FleetByIdEntryPackSlots( ctx, seen, *cursor_by_id[i], placed_by_id[i], base ) )
+            {
+                TableMapRelease( cursor_by_id );
+                return false;
+            }
         }
         TableMapRelease( cursor_by_id );
     }

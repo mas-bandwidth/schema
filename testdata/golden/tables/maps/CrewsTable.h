@@ -13243,7 +13243,11 @@ inline bool CrewsPackSlots( const Ctx & ctx, TablePackMap & seen, const Crews & 
         CrewsMembersEntry * placed_members = (CrewsMembersEntry *) ( dst.members.entries.value != 0 ? ( (uint8_t *) &dst.members.entries + dst.members.entries.value ) : NULL );
         for ( int32_t i = 0; i < cursor_members.count; i++ )
         {
-            if ( !CrewsMembersEntryPackSlots( ctx, seen, *cursor_members[i], placed_members[i], base ) ) { TableMapRelease( cursor_members ); return false; }
+            if ( !CrewsMembersEntryPackSlots( ctx, seen, *cursor_members[i], placed_members[i], base ) )
+            {
+                TableMapRelease( cursor_members );
+                return false;
+            }
         }
         TableMapRelease( cursor_members );
     }

@@ -8899,7 +8899,10 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.reach != 0 )
     {
         w.put( 7, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.reach ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); w.put( uint64_t( raw_v ), 37 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.reach ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) );
+            w.put( uint64_t( raw_v ), 37 );
+        }
     }
     if ( value.ticks != 0 )
     {
@@ -8924,7 +8927,10 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.mass != 0 )
     {
         w.put( 12, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.mass ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 37 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.mass ) - serialize::uint128_t( 0 );
+            w.put( uint64_t( raw_v ), 37 );
+        }
     }
     if ( value.frames != 0 )
     {
@@ -8934,17 +8940,28 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.flux != 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 38 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) );
+            w.put( uint64_t( raw_v ), 64 );
+            w.put( uint64_t( raw_v >> 64 ), 38 );
+        }
     }
     if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
     {
         w.put( 15, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.energy ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); w.put( uint64_t( raw_v ), 34 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.energy ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) );
+            w.put( uint64_t( raw_v ), 34 );
+        }
     }
     if ( value.entity_id != 0 )
     {
         w.put( 16, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 64 ); }
+        {
+            serialize::uint128_t raw_v = serialize::uint128_t( value.entity_id ) - serialize::uint128_t( 0 );
+            w.put( uint64_t( raw_v ), 64 );
+            w.put( uint64_t( raw_v >> 64 ), 64 );
+        }
     }
     if ( value.scale != 65536 )
     {
@@ -9013,7 +9030,11 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         w.put( (uint64_t) ( value.seeds_count ) - 0, 2 );
         for ( int32_t i = 0; i < value.seeds_count; i++ )
         {
-            { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.seeds[i] ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v_2 ), 64 ); w.put( uint64_t( raw_v_2 >> 64 ), 64 ); }
+            {
+                serialize::uint128_t raw_v_2 = serialize::uint128_t( value.seeds[i] ) - serialize::uint128_t( 0 );
+                w.put( uint64_t( raw_v_2 ), 64 );
+                w.put( uint64_t( raw_v_2 >> 64 ), 64 );
+            }
         }
     }
     {

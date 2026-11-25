@@ -13252,7 +13252,11 @@ inline bool PairsPackSlots( const Ctx & ctx, TablePackMap & seen, const Pairs & 
         PairsSlotsEntry * placed_slots = (PairsSlotsEntry *) ( dst.slots.entries.value != 0 ? ( (uint8_t *) &dst.slots.entries + dst.slots.entries.value ) : NULL );
         for ( int32_t i = 0; i < cursor_slots.count; i++ )
         {
-            if ( !PairsSlotsEntryPackSlots( ctx, seen, *cursor_slots[i], placed_slots[i], base ) ) { TableMapRelease( cursor_slots ); return false; }
+            if ( !PairsSlotsEntryPackSlots( ctx, seen, *cursor_slots[i], placed_slots[i], base ) )
+            {
+                TableMapRelease( cursor_slots );
+                return false;
+            }
         }
         TableMapRelease( cursor_slots );
     }

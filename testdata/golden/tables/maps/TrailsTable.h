@@ -13356,7 +13356,11 @@ inline bool TrailsPackSlots( const Ctx & ctx, TablePackMap & seen, const Trails 
         TrailsStepsEntry * placed_steps = (TrailsStepsEntry *) ( dst.steps.entries.value != 0 ? ( (uint8_t *) &dst.steps.entries + dst.steps.entries.value ) : NULL );
         for ( int32_t i = 0; i < cursor_steps.count; i++ )
         {
-            if ( !TrailsStepsEntryPackSlots( ctx, seen, *cursor_steps[i], placed_steps[i], base ) ) { TableMapRelease( cursor_steps ); return false; }
+            if ( !TrailsStepsEntryPackSlots( ctx, seen, *cursor_steps[i], placed_steps[i], base ) )
+            {
+                TableMapRelease( cursor_steps );
+                return false;
+            }
         }
         TableMapRelease( cursor_steps );
     }

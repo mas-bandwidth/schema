@@ -820,7 +820,7 @@ func (g *tableGen) emitPackSlots(st *ir.Struct) {
 			g.pf("        %s * placed_%s = (%s *) ( dst.%s.entries.value != 0 ? ( (uint8_t *) &dst.%s.entries + dst.%s.entries.value ) : NULL );\n",
 				entry.Name, f.Name, entry.Name, f.Name, f.Name, f.Name)
 			g.pf("        for ( int32_t i = 0; i < cursor_%s.count; i++ )\n        {\n", f.Name)
-			g.pf("            if ( !%sPackSlots( ctx, seen, *cursor_%s[i], placed_%s[i], base ) ) { TableMapRelease( cursor_%s ); return false; }\n",
+			g.pf("            if ( !%sPackSlots( ctx, seen, *cursor_%s[i], placed_%s[i], base ) )\n            {\n                TableMapRelease( cursor_%s );\n                return false;\n            }\n",
 				entry.Name, f.Name, f.Name, f.Name)
 			g.pf("        }\n")
 			g.pf("        TableMapRelease( cursor_%s );\n    }\n", f.Name)
@@ -1352,7 +1352,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 			// A BLOB PAST THE SIZE CAP is refused at load (docs/SPEC-TABLES.md
 			// §3.1, §6.5, §11): the measure answers -1 with its reason, and a
 			// Load past it counts malformed
-			g.pf("        case %s: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
+			g.pf("        case %s:\n            if ( length > kTableBlobMaxLength )\n            {\n                reason = blob_over_size_cap;\n                return kTableNodeRefused;\n            }\n            return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
 		}
 		if len(blobs) == 0 && !anyExtent {
 			g.pf("        default: break;\n    }\n")
@@ -1403,7 +1403,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 				ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name, t.Name)
 		}
 		for _, b := range blobs {
-			g.pf("        case %s: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *%s\n", b.constant, b.word)
+			g.pf("        case %s:\n        {\n            TableBlob * blob = (TableBlob *) at;\n            blob->length = (uint32_t) length;\n            blob->zero = 0;\n            break;\n        } // *%s\n", b.constant, b.word)
 		}
 		g.pf("        default: break;\n    }\n")
 	}
@@ -1534,7 +1534,7 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 		}
 		for _, b := range blobs {
 			// the bytes verbatim; the storage's zeros are a string's terminator
-			g.pf("        case %s: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *%s\n", b.constant, b.word)
+			g.pf("        case %s:\n            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }\n            break; // *%s\n", b.constant, b.word)
 		}
 		g.pf("        default: break;\n    }\n")
 	}
@@ -1616,11 +1616,11 @@ func (g *tableGen) emitVariableUnionWalk(f *ir.Field, v edgeVisitor) {
 	switch f.Array {
 	case ir.ArrayCounted:
 		g.pf("    for ( int32_t i = 0; i < %s.%s_count && i < %d; i++ ) // %s: [..%d]%s\n    {\n", v.read, f.Name, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		g.emitUnionArmWalk(un, g.elementExpr(v, f, "i"), v, f.Name, "    ")
+		g.emitUnionArmWalk(un, g.elementExpr(v, f, "i"), v, f.Name, "        ")
 		g.pf("    }\n")
 	case ir.ArrayFixed:
 		g.pf("    for ( int32_t i = 0; i < %d; i++ ) // %s: [%d]%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		g.emitUnionArmWalk(un, g.elementExpr(v, f, "i"), v, f.Name, "    ")
+		g.emitUnionArmWalk(un, g.elementExpr(v, f, "i"), v, f.Name, "        ")
 		g.pf("    }\n")
 	default:
 		g.emitUnionArmWalk(un, g.fieldExpr(v, f), v, f.Name, "    ")

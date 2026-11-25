@@ -13679,7 +13679,9 @@ inline bool ForceWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason
     r.offset += (int64_t) arm_len;
     switch ( arm_id )
     {
-        case 0xd5c2bb95d63e6331ull: if ( !SquadWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // squad
+        case 0xd5c2bb95d63e6331ull:
+            if ( !SquadWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; }
+            break; // squad
         default: break; // an arm this reader cannot name reads None
     }
     return true;

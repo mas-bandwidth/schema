@@ -11213,8 +11213,20 @@ inline int64_t AssetNodeStorage( uint64_t type_id, int64_t length, TableRefuseRe
     switch ( type_id )
     {
         case 0x8e4e6dccfe5f64fbull: return TableAlignUp64( (int64_t) sizeof( Asset ) ); // Asset
-        case kTableBytesTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, false ); // *bytes
-        case kTableStringTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, true ); // *string
+        case kTableBytesTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, false ); // *bytes
+        case kTableStringTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, true ); // *string
         default: break;
     }
     return -1;
@@ -11248,8 +11260,20 @@ inline void AssetNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
             AssetReset( *node );
             break;
         } // Asset
-        case kTableBytesTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *bytes
-        case kTableStringTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *string
+        case kTableBytesTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *bytes
+        case kTableStringTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *string
         default: break;
     }
 }
@@ -11278,8 +11302,12 @@ inline void AssetNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
         case 0x8e4e6dccfe5f64fbull:
             AssetLoadBody( r, nodes, *(Asset *) at );
             break; // Asset
-        case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableBytesTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *bytes
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
 }
@@ -12168,8 +12196,20 @@ inline int64_t CatalogNodeStorage( uint64_t type_id, int64_t length, TableRefuse
     switch ( type_id )
     {
         case 0x8e4e6dccfe5f64fbull: return TableAlignUp64( (int64_t) sizeof( Asset ) ); // Asset
-        case kTableBytesTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, false ); // *bytes
-        case kTableStringTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, true ); // *string
+        case kTableBytesTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, false ); // *bytes
+        case kTableStringTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, true ); // *string
         default: break;
     }
     return -1;
@@ -12203,8 +12243,20 @@ inline void CatalogNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
             AssetReset( *node );
             break;
         } // Asset
-        case kTableBytesTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *bytes
-        case kTableStringTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *string
+        case kTableBytesTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *bytes
+        case kTableStringTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *string
         default: break;
     }
 }
@@ -12233,8 +12285,12 @@ inline void CatalogNodeBody( uint64_t type_id, TableReader & r, const TableNodeM
         case 0x8e4e6dccfe5f64fbull:
             AssetLoadBody( r, nodes, *(Asset *) at );
             break; // Asset
-        case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableBytesTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *bytes
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
 }
@@ -13635,8 +13691,12 @@ inline void AssetNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
         case 0x8e4e6dccfe5f64fbull:
             AssetLoadBodyRetain( r, nodes, *(Asset *) at, retain, TableRetainPathRoot( (const void *) at, node ) );
             break; // Asset
-        case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableBytesTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *bytes
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
 }
@@ -14027,8 +14087,12 @@ inline void CatalogNodeBodyRetain( uint64_t type_id, TableReader & r, const Tabl
         case 0x8e4e6dccfe5f64fbull:
             AssetLoadBodyRetain( r, nodes, *(Asset *) at, retain, TableRetainPathRoot( (const void *) at, node ) );
             break; // Asset
-        case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
-        case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
+        case kTableBytesTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *bytes
+        case kTableStringTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *string
         default: break;
     }
 }

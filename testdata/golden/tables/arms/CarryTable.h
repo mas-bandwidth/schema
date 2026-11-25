@@ -12866,24 +12866,24 @@ inline bool HandExtentAt( const Ctx & ctx, const Hand & value, int64_t & at )
 {
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Carry
     {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case CarryType::Leaf:
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
-            if ( !LeafExtentAt<Ctx, schema_cook_extent>( ctx, value.entries[i].leaf, at ) ) { return false; }
-            break;
+            case CarryType::Leaf:
+            {
+                if ( !LeafExtentAt<Ctx, schema_cook_extent>( ctx, value.entries[i].leaf, at ) ) { return false; }
+                break;
+            }
+            default: break;
         }
-        default: break;
     }
-    }
-    if (value.entries_count < 0 || value.entries_count > 2) { return false; }
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; }
     for ( int32_t i = value.entries_count; i < 2; i++ ) // hidden union slots have no extent placement
     {
         switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
             case CarryType::Leaf:
             {
-                if ( !TableExtentUnreachedEmpty(LeafExtent( ctx,value.entries[i].leaf) ) ) { return false; }
+                if ( !TableExtentUnreachedEmpty( LeafExtent( ctx, value.entries[i].leaf ) ) ) { return false; }
                 break;
             }
             default: break;
@@ -12910,24 +12910,24 @@ inline bool HandExtentPack( const Ctx & ctx, const Hand & src, Hand & dst, uint8
 {
     for ( int32_t i = 0; i < src.entries_count && i < 2; i++ ) // entries: [..2]Carry
     {
-    switch ( src.entries[i].type ) // entries: the set arm is the edge
-    {
-        case CarryType::Leaf:
+        switch ( src.entries[i].type ) // entries: the set arm is the edge
         {
-            if ( !LeafExtentPack( ctx, src.entries[i].leaf, dst.entries[i].leaf, extent, at, capacity ) ) { return false; }
-            break;
+            case CarryType::Leaf:
+            {
+                if ( !LeafExtentPack( ctx, src.entries[i].leaf, dst.entries[i].leaf, extent, at, capacity ) ) { return false; }
+                break;
+            }
+            default: break;
         }
-        default: break;
     }
-    }
-    if (src.entries_count < 0 || src.entries_count > 2) { return false; }
+    if ( src.entries_count < 0 || src.entries_count > 2 ) { return false; }
     for ( int32_t i = src.entries_count; i < 2; i++ ) // hidden union slots have no extent placement
     {
         switch ( src.entries[i].type ) // entries: the set arm is the edge
         {
             case CarryType::Leaf:
             {
-                if ( !TableExtentUnreachedEmpty(LeafExtent( ctx,src.entries[i].leaf) ) ) { return false; }
+                if ( !TableExtentUnreachedEmpty( LeafExtent( ctx, src.entries[i].leaf ) ) ) { return false; }
                 break;
             }
             default: break;
@@ -13079,7 +13079,9 @@ inline bool CarryWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason
     r.offset += (int64_t) arm_len;
     switch ( arm_id )
     {
-        case 0x24ad84ada20208d5ull: if ( !LeafWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // leaf
+        case 0x24ad84ada20208d5ull:
+            if ( !LeafWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; }
+            break; // leaf
         default: break; // an arm this reader cannot name reads None
     }
     return true;
@@ -13452,15 +13454,15 @@ inline bool HandNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
 {
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Carry
     {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case CarryType::Leaf:
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
-            if ( !LeafNumberEdges( ctx, numbering, value.entries[i].leaf ) ) { return false; }
-            break;
+            case CarryType::Leaf:
+            {
+                if ( !LeafNumberEdges( ctx, numbering, value.entries[i].leaf ) ) { return false; }
+                break;
+            }
+            default: break;
         }
-        default: break;
-    }
     }
     return true;
 }
@@ -13538,15 +13540,15 @@ inline bool HandCycleSlots( const Ctx & ctx, TableCycle & cycle, const Hand & va
     (void) value;
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Carry
     {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case CarryType::Leaf:
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
-            if ( !LeafCycleSlots( ctx, cycle, value.entries[i].leaf ) ) { return false; }
-            break;
+            case CarryType::Leaf:
+            {
+                if ( !LeafCycleSlots( ctx, cycle, value.entries[i].leaf ) ) { return false; }
+                break;
+            }
+            default: break;
         }
-        default: break;
-    }
     }
     return true;
 }
@@ -13579,15 +13581,15 @@ inline bool HandPackSlots( const Ctx & ctx, TablePackMap & seen, const Hand & sr
 {
     for ( int32_t i = 0; i < src.entries_count && i < 2; i++ ) // entries: [..2]Carry
     {
-    switch ( src.entries[i].type ) // entries: the set arm is the edge
-    {
-        case CarryType::Leaf:
+        switch ( src.entries[i].type ) // entries: the set arm is the edge
         {
-            if ( !LeafPackSlots( ctx, seen, src.entries[i].leaf, dst.entries[i].leaf, base ) ) { return false; }
-            break;
+            case CarryType::Leaf:
+            {
+                if ( !LeafPackSlots( ctx, seen, src.entries[i].leaf, dst.entries[i].leaf, base ) ) { return false; }
+                break;
+            }
+            default: break;
         }
-        default: break;
-    }
     }
     return true;
 }
@@ -22029,24 +22031,24 @@ inline bool HandCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
     (void) region; // a table element's and an entry's references resolve through their own bodies
     for ( int32_t i = 0; i < value.entries_count && i < 2; i++ ) // entries: [..2]Carry
     {
-    switch ( value.entries[i].type ) // entries: the set arm is the edge
-    {
-        case CarryType::Leaf:
+        switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
-            if ( !LeafCookExtent( ctx, region, extent, at, record + 0 + i * 24 + 8, value.entries[i].leaf, order ) ) { return false; }
-            break;
+            case CarryType::Leaf:
+            {
+                if ( !LeafCookExtent( ctx, region, extent, at, record + 0 + i * 24 + 8, value.entries[i].leaf, order ) ) { return false; }
+                break;
+            }
+            default: break;
         }
-        default: break;
     }
-    }
-    if (value.entries_count < 0 || value.entries_count > 2) { return false; }
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; }
     for ( int32_t i = value.entries_count; i < 2; i++ ) // hidden union slots have no extent placement
     {
         switch ( value.entries[i].type ) // entries: the set arm is the edge
         {
             case CarryType::Leaf:
             {
-                if ( !TableExtentUnreachedEmpty(LeafExtent( ctx,value.entries[i].leaf) ) ) { return false; }
+                if ( !TableExtentUnreachedEmpty( LeafExtent( ctx, value.entries[i].leaf ) ) ) { return false; }
                 break;
             }
             default: break;

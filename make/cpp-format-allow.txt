@@ -5,21 +5,7 @@
 # Make a file clean, then delete its line. Never add one. The packet emitter's
 # files (<Name>.h, <Name>Wire.h) are clean and are never listed.
 # `make tables-cpp-clean-census` writes the list as it stands.
-build/tables-generated/arms/CarryTable.h
-build/tables-generated/arms/GateTable.h
-build/tables-generated/arms/NestTable.h
-build/tables-generated/arms/RingTable.h
-build/tables-generated/blobs/AssetsTable.h
-build/tables-generated/cooktorture/CookTortureTable.h
-build/tables-generated/cooktorturewide/CookTortureWideTable.h
-build/tables-generated/fixedevo/FixedEvoTable.h
-build/tables-generated/maps/ChunksTable.h
-build/tables-generated/maps/CrewsTable.h
-build/tables-generated/maps/DepthTable.h
-build/tables-generated/maps/DocsTable.h
-build/tables-generated/maps/FleetTable.h
-build/tables-generated/maps/PairsTable.h
-build/tables-generated/maps/TrailsTable.h
-build/tables-generated/scalars/ScalarsTable.h
-build/tables-generated/scalars2/Scalars2Table.h
-generated/bench/paired/cpp/BenchTable.h
+#
+# EMPTY since #424: every generated C++ file, table and packet, is what
+# clang-format writes. The file stays so the gate's engine reads a ratchet,
+# and an empty one means any drift fails.

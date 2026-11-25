@@ -12064,7 +12064,9 @@ inline bool InnerWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason
     r.offset += (int64_t) arm_len;
     switch ( arm_id )
     {
-        case 0x24ad84ada20208d5ull: if ( !LeafWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; } break; // leaf
+        case 0x24ad84ada20208d5ull:
+            if ( !LeafWireExtent( arm_body, (int64_t) arm_len, at, r.ids, reason ) ) { return false; }
+            break; // leaf
         default: break; // an arm this reader cannot name reads None
     }
     return true;

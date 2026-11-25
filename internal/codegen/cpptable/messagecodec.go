@@ -547,11 +547,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 			if lo > 64 {
 				lo, hi = 64, width-64
 			}
-			g.pf("%s{ serialize::uint128_t raw_v%s = serialize::uint128_t( %s ) - %s; w.put( uint64_t( raw_v%s ), %d );", ind, sfx, expr, base, sfx, lo)
+			g.pf("%[1]s{\n%[1]s    serialize::uint128_t raw_v%[2]s = serialize::uint128_t( %[3]s ) - %[4]s;\n%[1]s    w.put( uint64_t( raw_v%[2]s ), %[5]d );\n", ind, sfx, expr, base, lo)
 			if hi > 0 {
-				g.pf(" w.put( uint64_t( raw_v%s >> 64 ), %d );", sfx, hi)
+				g.pf("%s    w.put( uint64_t( raw_v%s >> 64 ), %d );\n", ind, sfx, hi)
 			}
-			g.pf(" }\n")
+			g.pf("%s}\n", ind)
 			return
 		}
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {

@@ -13155,7 +13155,11 @@ inline bool ChunksPackSlots( const Ctx & ctx, TablePackMap & seen, const Chunks 
         ChunksBlobsEntry * placed_blobs = (ChunksBlobsEntry *) ( dst.blobs.entries.value != 0 ? ( (uint8_t *) &dst.blobs.entries + dst.blobs.entries.value ) : NULL );
         for ( int32_t i = 0; i < cursor_blobs.count; i++ )
         {
-            if ( !ChunksBlobsEntryPackSlots( ctx, seen, *cursor_blobs[i], placed_blobs[i], base ) ) { TableMapRelease( cursor_blobs ); return false; }
+            if ( !ChunksBlobsEntryPackSlots( ctx, seen, *cursor_blobs[i], placed_blobs[i], base ) )
+            {
+                TableMapRelease( cursor_blobs );
+                return false;
+            }
         }
         TableMapRelease( cursor_blobs );
     }
@@ -13380,7 +13384,13 @@ inline int64_t ChunksNodeStorage( uint64_t type_id, int64_t length, TableRefuseR
 {
     switch ( type_id )
     {
-        case kTableBytesTypeId: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, false ); // *bytes
+        case kTableBytesTypeId:
+            if ( length > kTableBlobMaxLength )
+            {
+                reason = blob_over_size_cap;
+                return kTableNodeRefused;
+            }
+            return TableBlobStorage( length, false ); // *bytes
         default: break;
     }
     return -1;
@@ -13445,7 +13455,13 @@ inline void ChunksNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     switch ( type_id )
     {
-        case kTableBytesTypeId: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *bytes
+        case kTableBytesTypeId:
+        {
+            TableBlob * blob = (TableBlob *) at;
+            blob->length = (uint32_t) length;
+            blob->zero = 0;
+            break;
+        } // *bytes
         default: break;
     }
 }
@@ -13493,7 +13509,9 @@ inline void ChunksNodeBody( uint64_t type_id, TableReader & r, const TableNodeMa
     (void) nodes; // every node this root can name is a FIXED table
     switch ( type_id )
     {
-        case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
+        case kTableBytesTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *bytes
         default: break;
     }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
@@ -14857,7 +14875,9 @@ inline void ChunksNodeBodyRetain( uint64_t type_id, TableReader & r, const Table
     (void) node;
     switch ( type_id )
     {
-        case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
+        case kTableBytesTypeId:
+            if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); }
+            break; // *bytes
         default: break;
     }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
