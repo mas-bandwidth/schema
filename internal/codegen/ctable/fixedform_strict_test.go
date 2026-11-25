@@ -27,25 +27,18 @@ var cFixedFormSourceFiles = []string{
 	"fixedform_main.c",
 	"fixedform_fx1.c",
 	"fixedform_fx2.c",
-	"fixedform_layout.c",
 	"fixedform_v1.c",
-	"fixedform_v2.c",
 	"fixedform_ut1.c",
 	"fixedform_ut2.c",
 	"fixedform_fu1.c",
-	"fixedform_fu2.c",
 }
 
 var cFixedFormReaderUnits = []string{
 	"fixedform_fx1.c",
 	"fixedform_fx2.c",
-	"fixedform_layout.c",
 	"fixedform_v1.c",
-	"fixedform_v2.c",
 	"fixedform_ut1.c",
-	"fixedform_ut2.c",
 	"fixedform_fu1.c",
-	"fixedform_fu2.c",
 }
 
 var cFixedFormForbiddenTokens = []string{
@@ -896,7 +889,7 @@ func TestCFixedFormSourcesStrictNegativeControl(t *testing.T) {
 			{"fx1_tolerant_call", "fixedform_fx1.c", "/* schema_tblfx1_fx_root_fixed_load_tolerant */\n"},
 			{"fu1_clamped_field", "fixedform_fu1.c", "/* r.clamped */\n"},
 			{"v1_malformed_field", "fixedform_v1.c", "/* r.malformed */\n"},
-			{"v2_kind_mismatch_field", "fixedform_v2.c", "/* r.kind_mismatch */\n"},
+			{"ut2_kind_mismatch_field", "fixedform_ut2.c", "/* r.kind_mismatch */\n"},
 		}
 		for _, p := range plants {
 			mut := maps.Clone(base)

@@ -20,28 +20,18 @@ void fixed_check( int ok, const char * what )
     if ( !ok ) { printf( "FAIL: %s\n", what ); failures++; }
 }
 
-/* RETIRED BY NAME, NEVER DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, §5.7 step 5).
-   §5.6 retires "reading a layout the lock has never seen" and "the run-time walk
-   of a stranger's layout": under §5 a file whose hash this build's LINEAGE does
-   not hold comes back layout_newer, so every check below that handed one
-   generation's file to another generation BUILT WITH NO LINEAGE is asserting a
-   reader that no longer exists. The functions stay in the tree — a deleted test
-   is a coverage claim nobody can audit — and each one FAILS by name, saying
-   where the coverage is OWED AGAIN (a retired case is never a pass; it is
-   left out only at the root): the versioning harness, internal/codegen/ctable/
-   fixedversioning_test.go, which hands the reader the peer's locked entry and
-   reads both of §5.7's columns; and §1.1's seven rules, which move to the LOCK's
-   validation of what it records. */
-static int retired = 0;
-static void fixed_retired( const char * what, const char * owed )
-{
-    printf( "FAIL: %s — retired by docs/FIXED-FORM-ALGORITHM.md §5.6 and not run; owed again on %s\n", what, owed );
-    retired++;
-    failures++;
-}
-
-#define LineageHarness "the lineage harness (internal/codegen/ctable/fixedversioning_test.go)"
-#define LockValidation "the LOCK's validation of what it records (internal/lockfile)"
+/* WHAT §5.6 RETIRED HAS LEFT THIS PROGRAM (docs/FIXED-FORM-ALGORITHM.md §5.6).
+   Under §5 a file whose hash this build's LINEAGE does not hold comes back
+   layout_newer, so every check that handed one generation's file to another
+   generation BUILT WITH NO LINEAGE asserted a reader that no longer exists:
+   FX2 reading FX1 (and its plan cache and compiled bounds pass), FX1 reading
+   FX2, V2 reading V1, UT1 and UT2 reading each other, FU2 reading FU1, and
+   §1.1's seven layout rules at read time. Their coverage lives in the
+   versioning harness, internal/codegen/ctable/fixedversioning_test.go, which
+   hands the reader the peer's locked entry and reads both of §5.7's columns,
+   and in the LOCK's validation of what it records (internal/lockfile). A case
+   not run is never a pass, so none is kept here to be printed and passed over
+   (tools/retiredskips fails the gate on any such line). */
 
 #define BufferBytes 65536
 static uint8_t g_buffer[BufferBytes];
@@ -54,30 +44,23 @@ int main( void )
     fixed_check( n == fixed_fx1_bytes(), "FX1 save" );
     fixed_fx1_read_own( g_buffer, n );
     fixed_fx1_form_headers( g_buffer, n );
-    fixed_retired( "fixed_fx2_read_fx1 (the PLAN PATH: FX2 compiling FX1's layout at run time)", LineageHarness ); /* fixed_fx2_read_fx1( g_buffer, n ); */
-    fixed_retired( "fixed_fx2_plan_cache (the caller-supplied plan cache: the plans are static now, §5.8 row 3)", LineageHarness ); /* fixed_fx2_plan_cache( g_buffer, n ); */
     fixed_fx2_bytes_row_control( g_buffer, n );
     fixed_fx1_slack();
 
     n = fixed_fx2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_fx2_bytes(), "FX2 save" );
-    fixed_retired( "fixed_fx1_read_fx2 (a FORWARD read: under §5 this file is layout_newer)", LineageHarness ); /* fixed_fx1_read_fx2( g_buffer, n ); */
-    fixed_retired( "fixed_fx1_layout_validation (§1.1's seven rules at read time)", LockValidation ); /* fixed_fx1_layout_validation( g_buffer, n ); */
 
     n = fixed_v1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_v1_bytes(), "V1 save" );
-    fixed_retired( "fixed_v2_read_v1 (the plan path over the V1/V2 pair)", LineageHarness ); /* fixed_v2_read_v1( g_buffer, n ); */
 
     n = fixed_ut1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut1_bytes(), "UT1 save" );
     fixed_ut1_read_own( g_buffer, n );
     fixed_ut2_shared_lane_control();
-    fixed_retired( "fixed_ut2_read_ut1 (the guard and flavour lanes compiled from a stranger's layout)", LineageHarness ); /* fixed_ut2_read_ut1( g_buffer, n ); */
 
     n = fixed_fx1_write_out_of_range( g_buffer, BufferBytes );
     fixed_check( n == fixed_fx1_bytes(), "FX1 out-of-range save" );
     fixed_fx1_bounds( g_buffer, n );
-    fixed_retired( "fixed_fx2_bounds (the hostile pass reached through a compiled plan)", LineageHarness ); /* fixed_fx2_bounds( g_buffer, n ); */
     fixed_ut1_bounds();
     fixed_v1_bounds();
     fixed_v1_absent_optional();
@@ -86,12 +69,10 @@ int main( void )
 
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
-    fixed_retired( "fixed_ut1_read_ut2 (TEXT UNDER THE SECOND ARM, compiled: the arg lane's own probe)", LineageHarness ); /* fixed_ut1_read_ut2( g_buffer, n ); */
 
     n = fixed_fu1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_fu1_bytes(), "FU1 save" );
     fixed_fu1_read_own( g_buffer, n );
-    fixed_retired( "fixed_fu2_read_fu1 (the union pair's compiled read)", LineageHarness ); /* fixed_fu2_read_fu1( g_buffer, n ); */
 
     /* THE BYTE-FLIP FUZZ, and §3.4 says it is not optional. Every byte of a
        form-3 file, one bit at a time, handed to a reader of the other
@@ -111,7 +92,6 @@ int main( void )
             }
         }
         fixed_check( n == fixed_fx1_bytes(), "the fuzz put every byte back" );
-        fixed_retired( "fixed_fx2_read_fx1, after the fuzz (the PLAN PATH again, on the restored bytes)", LineageHarness );
     }
 
     if ( failures != 0 )
@@ -119,6 +99,6 @@ int main( void )
         printf( "the fixed form's versioning conformance FAILED: %d\n", failures );
         return 1;
     }
-    printf( "the fixed form reads BACKWARD, on the C leg: the identity plan, %d checks retired by §5.6 and named, and %lld byte flips answered inside the buffer\n", retired, (long long) ( n * 8 ) );
+    printf( "the fixed form reads BACKWARD, on the C leg: the identity plan, and %lld byte flips answered inside the buffer\n", (long long) ( n * 8 ) );
     return 0;
 }
