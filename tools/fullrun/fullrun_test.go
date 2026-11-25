@@ -1019,3 +1019,106 @@ func TestAShardThatFinishesWhileLookedAtIsDone(t *testing.T) {
 		t.Errorf("a shard that finished while looked at: %+v", st)
 	}
 }
+
+// TestATimedOutcomeLineIsRead: schema-test prints how long an instance
+// took after its name ("PASS a (0.02s)", "FAIL b (1.20s): reason"); the
+// outcome is the name's, not "no outcome".
+func TestATimedOutcomeLineIsRead(t *testing.T) {
+	t.Parallel()
+	got := schemaTestVerdicts([]byte("PASS a (0.02s)\nFAIL b (1.20s): wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Pass {
+		t.Errorf("a timed pass: %+v", a)
+	}
+	if b := got["b"]; b.Verdict != Fail || b.First != "FAIL: wrong bytes" {
+		t.Errorf("a timed fail: %+v", b)
+	}
+}
+
+// TestAShortRunTheMissingNamesExplainIsTheirs: "expected N instances to
+// run, M ran" is the MISSING names' own red when they are exactly the
+// N-M; a pass beside it stays a pass. When they are not, it is the run's
+// problem and fails the passes too.
+func TestAShortRunTheMissingNamesExplainIsTheirs(t *testing.T) {
+	t.Parallel()
+	got := schemaTestVerdicts([]byte("PASS a\nMISSING b: lobster owes it\nFAIL run: expected 2 instances to run, 1 ran\nschema-test FAIL: expected 2, ran 1, passed 1, failed 0, missing 1, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Pass {
+		t.Errorf("a pass beside a MISSING name: %+v", a)
+	}
+	if b := got["b"]; b.Verdict != Fail || !strings.HasPrefix(b.First, "MISSING") {
+		t.Errorf("the MISSING name: %+v", b)
+	}
+	odd := schemaTestVerdicts([]byte("PASS a\nMISSING b: owed\nFAIL run: expected 3 instances to run, 1 ran\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := odd["a"]; a.Verdict != Fail || !strings.Contains(a.First, "expected 3 instances to run, 1 ran") {
+		t.Errorf("a pass beside a short run its MISSING names do not explain: %+v", a)
+	}
+}
+
+// TestRereadCorrectsARegistryVerdictFromItsLog: reread reads a finished
+// shard's registry logs again, rewrites the verdicts it misread, keeps
+// the results as written, leaves other units alone, and refuses a second
+// reread and a log with no exit line.
+func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
+	t.Parallel()
+	out := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(out, "logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{Run: "r", Shard: "h-1", Bench: "h", Units: []Unit{
+		{ID: "registry/x", Kind: KindRegistry, Args: []string{"a", "b"}, Names: []Name{{Name: "a"}, {Name: "b"}}},
+		{ID: "gotest/y", Kind: KindGoTest, Args: []string{"TestY"}, Names: []Name{{Name: "y"}}},
+	}}
+	mb, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"manifest.json": string(mb),
+		"logs/1.log":    "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\nFAIL b (0.10s): wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n\n# exit: exit status 1, 1.0s\n",
+		resultsFile: `{"name":"a","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
+			`{"name":"b","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
+			`{"name":"y","unit":"gotest/y","verdict":"FAIL","first":"y broke","log":"logs/2.log","seconds":1}` + "\n",
+	}
+	for p, body := range files {
+		if err := os.WriteFile(filepath.Join(out, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var log strings.Builder
+	if err := reread(out, &log); err != nil {
+		t.Fatal(err)
+	}
+	res, err := loadResults(filepath.Join(out, resultsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"a": Pass, "b": Fail, "y": Fail}
+	for _, r := range res {
+		if r.Verdict != want[r.Name] {
+			t.Errorf("%s: %+v, want %s", r.Name, r, want[r.Name])
+		}
+	}
+	if res[1].First != "FAIL: wrong bytes" || res[2].First != "y broke" || res[0].Seconds != 0.5 {
+		t.Errorf("reread results: %+v", res)
+	}
+	if !strings.Contains(log.String(), "2 registry results read again, 2 changed: 1 red to green") {
+		t.Errorf("reread said: %s", log.String())
+	}
+	if b, err := os.ReadFile(filepath.Join(out, rereadBackup)); err != nil || string(b) != files[resultsFile] {
+		t.Errorf("the results as written were not kept: %v", err)
+	}
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "already reread") {
+		t.Errorf("a second reread: %v", err)
+	}
+	cut := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cut, "logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for p, body := range map[string]string{"manifest.json": string(mb), "logs/1.log": "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\n", resultsFile: files[resultsFile]} {
+		if err := os.WriteFile(filepath.Join(cut, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := reread(cut, io.Discard); err == nil || !strings.Contains(err.Error(), "no exit line") {
+		t.Errorf("a log with no exit line: %v", err)
+	}
+}

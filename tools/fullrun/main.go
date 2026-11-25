@@ -73,6 +73,7 @@ const usage = `usage:
   fullrun items --root DIR
   fullrun shard --manifest FILE --out DIR --schema-test BIN
   fullrun shard-status --out DIR
+  fullrun reread --out DIR
 `
 
 func main() {
@@ -173,6 +174,15 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			return err
 		}
 		return coversCmd(*root, wfs, stdout)
+	case "reread":
+		out := fs.String("out", "", "")
+		if err := parse(); err != nil {
+			return err
+		}
+		if *out == "" {
+			return usageError{"reread needs --out DIR, a shard's out directory"}
+		}
+		return reread(*out, stdout)
 	case "shard-status":
 		out := fs.String("out", "", "")
 		if err := parse(); err != nil {

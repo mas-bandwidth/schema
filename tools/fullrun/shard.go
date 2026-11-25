@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -394,8 +395,13 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 	return results, nil
 }
 
-// outcomeRE is a schema-test outcome line: STATUS name, or STATUS name: reason.
-var outcomeRE = regexp.MustCompile(`^(PASS|FAIL|MISSING|UNASKED|UNREPRESENTABLE) (\S+?)(?:: (.*))?$`)
+// outcomeRE is a schema-test outcome line: STATUS name, or STATUS name:
+// reason, the name followed by how long it took when it ran (" (0.02s)").
+var outcomeRE = regexp.MustCompile(`^(PASS|FAIL|MISSING|UNASKED|UNREPRESENTABLE) (\S+?)(?: \([0-9.]+s\))?(?:: (.*))?$`)
+
+// shortRE is schema-test's run problem for instances that did not run; it
+// is the asked names' own problem when their MISSING lines account for it.
+var shortRE = regexp.MustCompile(`^FAIL run: expected ([0-9]+) instances to run, ([0-9]+) ran$`)
 
 // schemaTestVerdicts reads schema-test run's outcome lines for the asked
 // names. A name with no outcome line fails, naming the run's first problem.
@@ -407,8 +413,15 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 	got := map[string]Result{}
 	var problems []string // the run's own problems, and then its summary
 	runProblems := 0      // FAIL run: lines, a problem no name's outcome shows
+	short, shortBy, missing := "", 0, 0
 	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimRight(line, "\r")
+		if m := shortRE.FindStringSubmatch(line); m != nil && short == "" {
+			x, _ := strconv.Atoi(m[1])
+			y, _ := strconv.Atoi(m[2])
+			short, shortBy = line, x-y
+			continue
+		}
 		if strings.HasPrefix(line, "FAIL run: ") {
 			problems = append(problems[:runProblems], append([]string{line}, problems[runProblems:]...)...)
 			runProblems++
@@ -426,11 +439,20 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 			got[m[2]] = Result{Verdict: Pass}
 			continue
 		}
+		if m[1] == "MISSING" {
+			missing++
+		}
 		reason := m[1]
 		if m[3] != "" {
 			reason += ": " + m[3]
 		}
 		got[m[2]] = Result{Verdict: Fail, First: clip(reason)}
+	}
+	// instances that did not run are the run's problem unless the asked
+	// names' MISSING lines are exactly them
+	if short != "" && shortBy != missing {
+		problems = append([]string{short}, problems...)
+		runProblems++
 	}
 	// a pass beside a run that failed with nothing to show for it is not a
 	// pass: an adapter crashed, or schema-test exited non-zero after
