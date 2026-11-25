@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2151. Language-free tests: 483.
+Functional tests every language answers: 2151. Language-free tests: 492.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2606,7 +2606,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.codegen-golang.go-string-write-refuses-interior-nul-and-invalid-utf8` | `gotest` | Go test TestGoStringWriteRefusesInteriorNULAndInvalidUTF8 in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoStringWriteRefusesInteriorNULAndInvalidUTF8` | the Go test passes | `internal/codegen/golang/stringwrite_test.go:19` |
 | `none.functional.compiler.codegen-golang.go-union-then-fixed-byte-array-wire` | `gotest` | Go test TestGoUnionThenFixedByteArrayWire in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/golang/unionbytes_test.go:18` |
 
-#### `compiler` family `compiler`, 165 tests
+#### `compiler` family `compiler`, 166 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2721,6 +2721,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.issue710-list-refusal` | `gotest` | Go test TestIssue710ListRefusal in ./compiler | `package: ./compiler`<br>`test: TestIssue710ListRefusal` | the Go test passes | `compiler/issue710_test.go:345` |
 | `none.functional.compiler.compiler.issue710-table-recovery` | `gotest` | Go test TestIssue710TableRecovery in ./compiler | `package: ./compiler`<br>`test: TestIssue710TableRecovery` | the Go test passes | `compiler/issue710_test.go:127` |
 | `none.functional.compiler.compiler.issue715-base64-reader-defaults` | `gotest` | Go test TestIssue715Base64ReaderDefaults in ./compiler | `package: ./compiler`<br>`test: TestIssue715Base64ReaderDefaults` | the Go test passes | `compiler/issue715_test.go:17` |
+| `none.functional.compiler.compiler.issue746-base64-writer-int32-max-ub-san` | `gotest` | Go test TestIssue746Base64WriterInt32MaxUBSan in ./compiler | `package: ./compiler`<br>`test: TestIssue746Base64WriterInt32MaxUBSan` | the Go test passes | `compiler/issue746_test.go:71` |
 | `none.functional.compiler.compiler.issue759-packet-bool-layout-agrees-with-table` | `gotest` | Go test TestIssue759PacketBoolLayoutAgreesWithTable in ./compiler | `package: ./compiler`<br>`test: TestIssue759PacketBoolLayoutAgreesWithTable` | the Go test passes | `compiler/issue759_test.go:39` |
 | `none.functional.compiler.compiler.java-units-named-like-platform-types-compile` | `gotest` | Go test TestJavaUnitsNamedLikePlatformTypesCompile in ./compiler | `package: ./compiler`<br>`test: TestJavaUnitsNamedLikePlatformTypesCompile` | the Go test passes | `compiler/javaplatform_test.go:469` |
 | `none.functional.compiler.compiler.js-declarations-beside-type-script-type-names-type-check` | `gotest` | Go test TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck in ./compiler | `package: ./compiler`<br>`test: TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck` | the Go test passes | `compiler/jsglobals_test.go:510` |
@@ -2789,14 +2790,21 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.fixedvector.dead-bytes-vectors` | `gotest` | Go test TestDeadBytesVectors in ./internal/fixedvector | `package: ./internal/fixedvector`<br>`test: TestDeadBytesVectors` | the Go test passes | `internal/fixedvector/fixedvector_test.go:272` |
 | `none.functional.compiler.fixedvector.deprecated-field-vectors` | `gotest` | Go test TestDeprecatedFieldVectors in ./internal/fixedvector | `package: ./internal/fixedvector`<br>`test: TestDeprecatedFieldVectors` | the Go test passes | `internal/fixedvector/fixedvector_test.go:173` |
 
-#### `compiler` family `fuzz`, 5 tests
+#### `compiler` family `fuzz`, 12 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.compiler.fuzz.prop-refusal-never-silent` | `gotest` | Go test TestPropRefusalNeverSilent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRefusalNeverSilent` | the Go test passes | `internal/fuzz/rapidprops_test.go:223` |
+| `none.functional.compiler.fuzz.prop-round-trip-every-form` | `gotest` | Go test TestPropRoundTripEveryForm in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRoundTripEveryForm` | the Go test passes | `internal/fuzz/rapidprops_test.go:206` |
+| `none.functional.compiler.fuzz.prop-strict-reads-agree` | `gotest` | Go test TestPropStrictReadsAgree in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropStrictReadsAgree` | the Go test passes | `internal/fuzz/rapidprops_test.go:241` |
 | `none.functional.compiler.fuzz.random-table-bounds-pass` | `gotest` | Go test TestRandomTableBoundsPass in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableBoundsPass` | the Go test passes | `internal/fuzz/tablebounds_test.go:556` |
+| `none.functional.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:789` |
+| `none.functional.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:815` |
 | `none.functional.compiler.fuzz.random-table-gen-fixed-point` | `gotest` | Go test TestRandomTableGenFixedPoint in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPoint` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:26` |
 | `none.functional.compiler.fuzz.random-table-gen-fixed-point-plant-clamp` | `gotest` | Go test TestRandomTableGenFixedPointPlantClamp in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPointPlantClamp` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:132` |
+| `none.functional.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:845` |
 | `none.functional.compiler.fuzz.random-table-json-plants` | `gotest` | Go test TestRandomTableJsonPlants in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableJsonPlants` | the Go test passes | `internal/fuzz/tablejsonplants_test.go:461` |
+| `none.functional.compiler.fuzz.rapid-props-negative-control` | `gotest` | Go test TestRapidPropsNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRapidPropsNegativeControl` | the Go test passes | `internal/fuzz/rapidprops_test.go:352` |
 | `none.functional.compiler.fuzz.table-diff-runs-only-when-opted-in` | `gotest` | Go test TestTableDiffRunsOnlyWhenOptedIn in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestTableDiffRunsOnlyWhenOptedIn` | the Go test passes | `internal/fuzz/tablediff_classes_test.go:60` |
 
 #### `compiler` family `publicapi`, 4 tests
@@ -2862,7 +2870,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:98` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:280` |
 
-#### `tooling` family `ci`, 52 tests
+#### `tooling` family `ci`, 53 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2908,6 +2916,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-hostile-shapes` | `gotest` | Go test TestSchemaRubyResourceBoundsHostileShapes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsHostileShapes` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:810` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-planted-pattern` | `gotest` | Go test TestSchemaRubyResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:839` |
 | `none.functional.tooling.ci.schema-ruby-runs-hostile-corpus` | `gotest` | Go test TestSchemaRubyRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyRunsHostileCorpus` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:556` |
+| `none.functional.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:550` |
 | `none.functional.tooling.ci.serialize-fetch-tries-the-mirror-first` | `gotest` | Go test TestSerializeFetchTriesTheMirrorFirst in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeFetchTriesTheMirrorFirst` | the Go test passes | `internal/ci/serializefetch_test.go:34` |
 | `none.functional.tooling.ci.serialize-go-runtime-when-the-sibling-arrives-mid-run` | `gotest` | Go test TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun` | the Go test passes | `internal/ci/serializegorace_test.go:31` |
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:121` |

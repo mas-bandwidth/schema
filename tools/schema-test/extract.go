@@ -86,14 +86,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 		if len(res.Unparsed) > 0 {
 			return fmt.Errorf("--write-ledger: %d files the extract could not read, first %s: %s; a ledger written now would miscount", len(res.Unparsed), res.Unparsed[0].File, res.Unparsed[0].Reason)
 		}
-		// the unmoved lines are counted again; the skip-red lines are
-		// measurements, not counts, so they carry over as they are
 		lines := extract.Ledger(res, reg, plan(*root, reg))
-		if old, err := extract.LoadLedger(ledgerPath); err == nil {
-			lines = append(lines, extract.SkipReds(old)...)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
 		var b bytes.Buffer
 		if err := extract.WriteLedger(&b, ledgerHeader, lines); err != nil {
 			return err
@@ -121,7 +114,6 @@ func extractCmd(args []string, stdout io.Writer) error {
 			return err
 		}
 		problems = append(problems, extract.Shrinks(old, ledger)...)
-		problems = append(problems, extract.KeepsSkipReds(old, ledger, before, res)...)
 	}
 	if len(problems) > 0 {
 		var b strings.Builder
@@ -153,13 +145,7 @@ func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger
 		}
 	}
 	waiting := map[string]int{}
-	redTests, redSkips := 0, 0
 	for _, l := range ledger {
-		if l.Kind == extract.KindSkipRed {
-			redTests++
-			redSkips += l.Count
-			continue
-		}
 		waiting[l.Kind] += l.Count
 	}
 	var b strings.Builder
@@ -177,7 +163,7 @@ func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger
 	for _, k := range keys {
 		fmt.Fprintf(&b, "    %-30s %6d\n", k, gated[k])
 	}
-	fmt.Fprintf(&b, "  skips that hide a red (%s lines): %d tests, %d skip sites\n", extract.KindSkipRed, redTests, redSkips)
+
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -188,9 +174,6 @@ const ledgerHeader = `# The unmoved ledger: the tests the repository holds that 
 # gets a registry row, never a ledger line. Each line names the layer that
 # moves its tests in (docs/TEST-REGISTRY.md, "Every test is in the registry").
 # Regenerate with: go run ./tools/schema-test extract --write-ledger
-# A skip-red line is one Go test ("<package dir>:<TestName>") whose skip
-# hides a red, measured: its count is the test's Skip sites, and it stays
-# until the skip is gone. --write-ledger carries those lines over as they are.
 # kind	place	count	layer	reason
 `
 
@@ -235,12 +218,11 @@ func plan(root string, reg *testreg.Registry) func(kind, dir string, items []ext
 }
 
 // goTestLayer is the layer that moves one language-free Go test in. The
-// gotest adapter (L3) runs a test of the root module; a
-// benchmark waits for the bench adapter, a test in a Go module of its own
-// runs against the generated Go it is copied beside (go's adapter), and a
-// test that can still skip and has no row yet is one a make target drives, with the build and
-// environment its recipe provides, or on a volume a runner provides (the
-// make adapter).
+// gotest adapter (L3) runs a test of the root module, whatever it skips on
+// (under the driver a skip is a fail, so a test that still skips runs red
+// until its skip goes); a benchmark waits for the bench adapter, and a test
+// in a Go module of its own runs against the generated Go it is copied
+// beside (go's adapter).
 func goTestLayer(root string, it extract.Item) (string, string) {
 	switch {
 	case strings.HasPrefix(it.Name, "Benchmark"):
@@ -253,8 +235,6 @@ func goTestLayer(root string, it extract.Item) (string, string) {
 		return "L5", "Go tests behind a leg's build tag (schema_leg_<leg>): that language's adapter runs them"
 	case slices.ContainsFunc(it.Gates, func(g string) bool { return g == "build: windows" || g == "build: darwin" }):
 		return "L6", "Go tests built only for another platform: a runner of that platform runs them"
-	case slices.ContainsFunc(it.Gates, func(g string) bool { return strings.HasPrefix(g, "skip:") }):
-		return "L6", "Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them"
 	}
 	return "L3", "language-free Go tests: the gotest adapter runs them when their package moves in"
 }

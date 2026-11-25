@@ -300,23 +300,13 @@ Two checks hold this:
   also extracts main's tree (`--since`), so a new test without a row is red
   by its own name, not only by its place's count.
 
-A skip that hides a red is in the ledger too. A `skip-red` line names one Go
-test (`<package dir>:<TestName>`). Its count is the number of `Skip` sites the
-extract finds in that test. Its reason names the red the skip hides and the run
-that measured it. Check holds the count to the extract, so the line must
-shrink as the test's skips go, and be deleted when the last one goes. Against
-main's ledger, a `skip-red` line may not be added or grow, and it may not leave
-while its test still skips. A test renamed or moved takes its line along: set
-the place to the new name. The line may leave with its test only when no test
-reaches its skips (the same file and condition) any more. A skip that hides a
-red is therefore never a silent pass. The extract sees only the skips a test
-reaches through its own package; a skip inside another package's helper (for
-example `slowtest`) is not counted, so such a red cannot be ledgered until
-that helper's skip moves into the test.
+The ledger counts tests and nothing else: no line accounts for a skip. A test
+that still skips is a registry row like any other, and under the driver its
+skip is a fail, so it runs red by name until the skip goes.
 
 `schema-test extract --json` prints every test, one JSON line each.
-`--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
-`skip-red` line as it is. It refuses to write while any file does not parse.
+`--write-ledger` rewrites the ledger to what is unmoved now. It refuses to
+write while any file does not parse.
 Use it only when tests move in or go away.
 `--move L` gives every test on layer L's ledger lines that the driver can
 run its registry row (a language-free Go test becomes a `gotest` row, tier
@@ -480,11 +470,10 @@ ledger and into rows:
   - Go tests in modules of their own beside generated Go (L5).
   - Go tests behind a leg's build tag (L5).
   - Go tests built only for another platform (L6).
-  - The tests that still skip without a build, environment or volume a make
-    target or runner provides (L6).
 
-  There is no exemption list. A test red once its slow gate opens is an
-  ordinary row in its tier, and it runs red until it is fixed. A test heavier
+  There is no exemption list. A test red once its slow gate opens, or one
+  that still skips, is an ordinary row in its tier, and it runs red until it
+  is fixed. A test heavier
   than a shard is split into rows that fit. `TestNameBuildability` stays on
   the ledger's `tools/namebuild` line until L4 splits it into one test per
   target and gives each its row.

@@ -18,8 +18,8 @@ import (
 // registry row, appended to the registry in package and name order, and
 // returns how many it moved. Only the kinds the driver has an adapter for
 // move: a language-free Go test becomes a gotest row. A test goTestLayer
-// gives a later layer (a benchmark, a test in a module of its own, a test a
-// make target drives) stays in the ledger. Its tier is the one its gates give it
+// gives a later layer (a benchmark, a test in a module of its own) stays in
+// the ledger. Its tier is the one its gates give it
 // (functional when it opens the slow gate); a key two tests would share, a
 // family two packages would share, and a layer with nothing to move are
 // refused by name.

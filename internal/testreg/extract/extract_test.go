@@ -280,100 +280,6 @@ func TestTheLedgerOnlyShrinks(t *testing.T) {
 	}
 }
 
-// skipRedResult is a repository with one Go test holding two Skip sites, one
-// holding none, and a data case.
-func skipRedResult() *Result {
-	return &Result{Items: []Item{
-		{Kind: KindGoTest, Dir: "a", Name: "TestHides", Source: "a/x_test.go:1", Gates: []string{"slow", "skip: a/x_test.go:3 if x", "skip: a/x_test.go:9 "}},
-		{Kind: KindGoTest, Dir: "a", Name: "TestClean", Source: "a/x_test.go:20"},
-	}}
-}
-
-// TestSkipRedLinesAreHeldToTheirSkips: a skip-red line counts its test's
-// Skip sites exactly; one naming no test, a test with no skip, or the wrong
-// count is named; the exact line passes and is not an unmoved count.
-func TestSkipRedLinesAreHeldToTheirSkips(t *testing.T) {
-	t.Parallel()
-	res := skipRedResult()
-	reg := &testreg.Registry{Path: "r.jsonl"}
-	unmoved := LedgerLine{Kind: KindGoTest, Dir: "a", Count: 2}
-	red := func(place string, n int) LedgerLine {
-		return LedgerLine{Kind: KindSkipRed, Dir: place, Count: n, Layer: "L5", Reason: "measured red", Line: 9}
-	}
-	if p := Check(res, reg, []LedgerLine{unmoved, red("a:TestHides", 2)}); len(p) != 0 {
-		t.Fatalf("the exact account: %v", p)
-	}
-	for name, c := range map[string]struct {
-		line LedgerLine
-		says string
-	}{
-		"no such test":     {red("a:TestGone", 1), "skip-red a:TestGone names a Go test the repository does not hold"},
-		"the skip is gone": {red("a:TestClean", 1), "skip-red a:TestClean counts 1 skips, and the test has none: its skip is gone, so delete the line"},
-		"a wrong count":    {red("a:TestHides", 1), "skip-red a:TestHides counts 1 skips, and the test has 2: set it to 2"},
-	} {
-		p := Check(res, reg, []LedgerLine{unmoved, c.line})
-		if len(p) != 1 || !strings.Contains(p[0], c.says) {
-			t.Errorf("%s: want exactly %q, have:\n%s", name, c.says, strings.Join(p, "\n"))
-		}
-	}
-}
-
-// TestASkipRedLineStaysWhileItsSkipDoes: against main's ledger a skip-red
-// line may leave only when its test's skips are gone, or its test is gone and
-// no test reaches its skips; it may not be added or grow. A renamed test
-// takes its line along, as a carry, never as a larger count.
-func TestASkipRedLineStaysWhileItsSkipDoes(t *testing.T) {
-	t.Parallel()
-	res := skipRedResult()
-	line := LedgerLine{Kind: KindSkipRed, Dir: "a:TestHides", Count: 2, Layer: "L5", Reason: "measured red"}
-	main := []LedgerLine{line}
-	if p := KeepsSkipReds(main, main, res, res); len(p) != 0 {
-		t.Fatalf("a kept line: %v", p)
-	}
-	p := KeepsSkipReds(main, nil, res, res)
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHides left the ledger, and the test still has 2 skips") {
-		t.Fatalf("a line dropped while its skip stays: %v", p)
-	}
-	fixed := &Result{Items: []Item{{Kind: KindGoTest, Dir: "a", Name: "TestHides"}}}
-	if p := KeepsSkipReds(main, nil, res, fixed); len(p) != 0 {
-		t.Fatalf("a line dropped with its skip: %v", p)
-	}
-	if p := KeepsSkipReds(main, nil, res, &Result{}); len(p) != 0 {
-		t.Fatalf("a line dropped with its test and its skips: %v", p)
-	}
-	p = KeepsSkipReds(main, nil, nil, &Result{})
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHides left the ledger with its test, and without main's tree (--since)") {
-		t.Fatalf("a line dropped with its test, no main tree: %v", p)
-	}
-	grown := line
-	grown.Count = 3
-	p = KeepsSkipReds(main, []LedgerLine{grown, {Kind: KindSkipRed, Dir: "a:TestNew", Count: 1}}, res, res)
-	if len(p) != 2 || !strings.Contains(p[0], "skip-red a:TestHides grew from 2 to 3 skips") || !strings.Contains(p[1], "skip-red a:TestNew is a new ledger line") {
-		t.Fatalf("a growing skip-red account: %v", p)
-	}
-	if p := Shrinks(main, []LedgerLine{grown}); len(p) != 0 {
-		t.Fatalf("Shrinks leaves skip-red lines to KeepsSkipReds: %v", p)
-	}
-	// TestHides renamed to TestHidesStill, its skips moved down two lines
-	renamed := &Result{Items: []Item{
-		{Kind: KindGoTest, Dir: "a", Name: "TestHidesStill", Source: "a/x_test.go:1", Gates: []string{"slow", "skip: a/x_test.go:5 if x", "skip: a/x_test.go:11 "}},
-		{Kind: KindGoTest, Dir: "a", Name: "TestClean", Source: "a/x_test.go:20"},
-	}}
-	p = KeepsSkipReds(main, nil, res, renamed)
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHides left the ledger with its test, and its skip is still reached by a:TestHidesStill (at a/x_test.go)") {
-		t.Fatalf("a renamed test that left its line behind: %v", p)
-	}
-	carried := LedgerLine{Kind: KindSkipRed, Dir: "a:TestHidesStill", Count: 2, Layer: "L5", Reason: "measured red"}
-	if p := KeepsSkipReds(main, []LedgerLine{carried}, res, renamed); len(p) != 0 {
-		t.Fatalf("a line carried with its renamed test: %v", p)
-	}
-	carried.Count = 3
-	p = KeepsSkipReds(main, []LedgerLine{carried}, res, renamed)
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHidesStill is a new ledger line") {
-		t.Fatalf("a carry that grew: %v", p)
-	}
-}
-
 // TestANewTestWithoutARowIsNamed: against main's tree, a test main lacks and
 // no row runs is named with its place; one with a row, and one main has, are
 // not.
@@ -400,6 +306,9 @@ func TestReadLedgerRefusesABadLine(t *testing.T) {
 		{"go-test\ta\t0\tL3\twhy\n", `count "0" is not a positive number`},
 		{"go-test\ta\tx\tL3\twhy\n", `count "x" is not a positive number`},
 		{"gotest\ta\t1\tL3\twhy\n", `unknown kind "gotest"`},
+		// a skip is a fail under the driver, so no ledger line accounts
+		// for one: the skip-red kind is gone
+		{"skip-red\ta:TestX\t1\tL5\tred\n", `unknown kind "skip-red"`},
 		{"go-test\ta\t1\t\twhy\n", "names the layer that moves it and why"},
 		{"go-test\ta\t1\tL3\twhy\n# c\ngo-test\ta\t2\tL3\twhy\n", "u.tsv:3: go-test a is already counted at line 1"},
 	} {
@@ -407,8 +316,8 @@ func TestReadLedgerRefusesABadLine(t *testing.T) {
 			t.Errorf("%q: err %v, want %q", c.text, err, c.says)
 		}
 	}
-	got, err := ReadLedger(strings.NewReader("# header\ngo-test\ta\t2\tL3\twhy\nskip-red\ta:TestX\t1\tL5\tred\n"), "u.tsv")
-	if err != nil || len(got) != 2 || got[0].Count != 2 || got[0].Line != 2 || got[1].Kind != KindSkipRed || got[1].Dir != "a:TestX" {
+	got, err := ReadLedger(strings.NewReader("# header\ngo-test\ta\t2\tL3\twhy\nmake-target\tm.mk\t1\tL6\twhy\n"), "u.tsv")
+	if err != nil || len(got) != 2 || got[0].Count != 2 || got[0].Line != 2 || got[1].Kind != KindMakeTarget || got[1].Dir != "m.mk" {
 		t.Fatalf("a good ledger: %+v %v", got, err)
 	}
 }
@@ -557,55 +466,5 @@ func TestWhatGitIgnoresIsNotATest(t *testing.T) {
 	}
 	if _, err := Extract(broken); err == nil || !strings.Contains(err.Error(), "to leave out what git ignores") {
 		t.Fatalf("a .git that git cannot read: %v", err)
-	}
-}
-
-// TestACarryIsARenameAndNothingElse: a skip-red line moves only to a new
-// test, only from a test that is gone, only once, and a line of the same
-// count first; tests that share a helper's skip do not hold each other's
-// lines.
-func TestACarryIsARenameAndNothingElse(t *testing.T) {
-	t.Parallel()
-	test := func(name string, sites ...string) Item {
-		it := Item{Kind: KindGoTest, Dir: "a", Name: name, Source: "a/x_test.go:1"}
-		for _, s := range sites {
-			it.Gates = append(it.Gates, "skip: a/x_test.go:"+s)
-		}
-		return it
-	}
-	line := func(name string, n int) LedgerLine {
-		return LedgerLine{Kind: KindSkipRed, Dir: "a:" + name, Count: n, Layer: "L5", Reason: "measured red"}
-	}
-	tree := func(its ...Item) *Result { return &Result{Items: its} }
-	// two tests share a helper's skip; one is deleted with its line
-	main := tree(test("TestA", "9 if x"), test("TestB", "9 if x"))
-	if p := KeepsSkipReds([]LedgerLine{line("TestA", 1), line("TestB", 1)}, []LedgerLine{line("TestB", 1)}, main, tree(test("TestB", "9 if x"))); len(p) != 0 {
-		t.Fatalf("a deleted test whose helper another lined test shares: %v", p)
-	}
-	// a test that still exists is not a carry source
-	p := KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestC", 1)}, tree(test("TestA", "9 if x")), tree(test("TestA", "9 if x"), test("TestC", "9 if x")))
-	if len(p) != 2 || !strings.Contains(p[0], "skip-red a:TestC is a new ledger line") || !strings.Contains(p[1], "skip-red a:TestA left the ledger, and the test still has 1 skips") {
-		t.Fatalf("a carry off a test that still skips: %v", p)
-	}
-	// a line that stays is not a carry source
-	p = KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestA", 1), line("TestC", 1)}, tree(test("TestA", "9 if x")), tree(test("TestC", "9 if x")))
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestC is a new ledger line") {
-		t.Fatalf("a carry off a line that stays: %v", p)
-	}
-	// one old line is carried once
-	p = KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestC", 1), line("TestD", 1)}, tree(test("TestA", "9 if x")), tree(test("TestC", "9 if x"), test("TestD", "9 if x")))
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestD is a new ledger line") {
-		t.Fatalf("one line carried twice: %v", p)
-	}
-	// a carry goes to a new test only
-	p = KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestB", 1)}, main, tree(test("TestB", "9 if x")))
-	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestB is a new ledger line") {
-		t.Fatalf("a carry onto a test main holds: %v", p)
-	}
-	// two renamed tests sharing a skip: each line goes to its own count
-	both := tree(test("TestA", "9 if x", "12 if y"), test("TestB", "9 if x"))
-	renamed := tree(test("TestA2", "9 if x", "12 if y"), test("TestB2", "9 if x"))
-	if p := KeepsSkipReds([]LedgerLine{line("TestA", 2), line("TestB", 1)}, []LedgerLine{line("TestB2", 1), line("TestA2", 2)}, both, renamed); len(p) != 0 {
-		t.Fatalf("two renames sharing a skip: %v", p)
 	}
 }
