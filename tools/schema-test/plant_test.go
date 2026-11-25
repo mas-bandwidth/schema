@@ -320,7 +320,7 @@ func TestAnEditPlantCannotNameAMakeRowRed(t *testing.T) {
 	}
 }
 
-// TestAnEditPlantNamesAMakeRowRedOnlyByAMarkerItWrites: a make row may be
+// TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds: a make row may be
 // red in an edit plant only when the stated reason is text the edits write
 // (a marker the failing recipe's log can hold only because the sabotage
 // reached it); a reason the edits do not write, or one the anchor already
@@ -340,6 +340,50 @@ func TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds(t *testing.T) {
 		if got := plantedMarker(in); got != c.runs {
 			t.Errorf("%s: plantedMarker = %v, want %v", name, got, c.runs)
 		}
+	}
+}
+
+// TestAMarkerTheTreeHoldsRefusesThePlantBeforeItRuns: an edit plant naming
+// a make row red by a marker the unplanted tree already holds fails, naming
+// the file, before any tree is planted or row is run; an adapter with no
+// way to search the tree errors rather than run the plant unsearched.
+func TestAMarkerTheTreeHoldsRefusesThePlantBeforeItRuns(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(cliRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, `{"rec":"type","name":"harness-run","what":"a make gate"}
+{"rec":"test","key":"harness-run.makefile.gate","type":"harness-run","family":"makefile","case":"gate","tier":"functional","scope":"none","adapter":"make","checks":"make gate exits 0","inputs":{"file":"Makefile","target":"gate"},"expect":"exit 0"}
+`...)
+	reg, err := testreg.Parse("r.jsonl", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "PlantMarkerZq9Schema"
+	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "test/x/a.schema", Anchor: "type A", With: "type " + marker}}, Red: []string{"none.functional.harness-run.makefile.gate"}, Reason: marker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "none.functional.plant.fam.marker-held", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: in}}
+	planted := func(context.Context, []plantEdit, []string) (plantRun, error) {
+		t.Error("a planted tree ran")
+		return plantRun{}, nil
+	}
+	rn := &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{}, Context: testreg.WithTimeout(0)}
+	held := plantAdapter{rn: rn, tree: planted, markerHeld: func(_ context.Context, m string) (string, error) {
+		if m != marker {
+			t.Errorf("searched for %q, want %q", m, marker)
+		}
+		return "test/y/b.schema", nil
+	}}
+	res, err := held.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+	if err != nil || len(res) != 1 || res[0].Verdict != testreg.Fail || !strings.Contains(res[0].Reason, `the marker "PlantMarkerZq9Schema" is already in test/y/b.schema`) {
+		t.Fatalf("a marker the tree holds: %v %+v", err, res)
+	}
+	unsearched := plantAdapter{rn: rn, tree: planted}
+	if res, err := unsearched.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst}); err == nil || !strings.Contains(err.Error(), "needs the tree searched for the marker") {
+		t.Fatalf("an adapter with no search: %v %+v", err, res)
 	}
 }
 

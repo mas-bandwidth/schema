@@ -295,20 +295,6 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // "already runs" against the golden row. A make row that reads a file no
 // case of the extract holds names a test that does not exist, by name.
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
-	return coveredIn(res, reg, nil)
-}
-
-// IdleReads is, by row key, each directory or file read of reg that
-// credits nothing: everything it holds another claim, or an earlier read,
-// already holds. schema-test reads drops such a read rather than write it,
-// so CoveredIn's problem for an idle read is a hand-written one's.
-func IdleReads(res *Result, reg *testreg.Registry) map[string][]string {
-	idle := map[string][]string{}
-	coveredIn(res, reg, func(key, r string) { idle[key] = append(idle[key], r) })
-	return idle
-}
-
-func coveredIn(res *Result, reg *testreg.Registry, idle func(key, read string)) (map[string]string, []string) {
 	out, problems := Covered(reg)
 	problems = append(problems, perLangClaims(res, reg, out)...)
 	named := map[string]bool{}
@@ -352,7 +338,7 @@ func coveredIn(res *Result, reg *testreg.Registry, idle func(key, read string)) 
 			}
 		}
 	}
-	problems = append(problems, readCredits(res, reg, out, idle)...)
+	problems = append(problems, readCredits(res, reg, out)...)
 	return out, problems
 }
 
@@ -373,27 +359,30 @@ func IsTreeRead(r string) bool { return strings.HasSuffix(r, "/...") }
 func readDir(r string) string { return strings.TrimSuffix(strings.TrimSuffix(r, "..."), "/") }
 
 // readCredits adds to out what a row's "reads" credit beyond Covered's
-// file reads, each filling only what no claim holds already (and nothing a
-// corpus row runs: Indexed's is that row's):
+// make file reads, each filling only what no claim holds already (and
+// nothing a corpus row runs: Indexed's is that row's). A credit holds only
+// where breaking the credited file can turn the row red:
 //
-//   - a directory read (test/packet-end/rust/) credits what ReadHolds says
-//     it holds: the items in that directory itself and, when it is a
-//     driver's, the data cases below it that no nearer driver holds. Never
-//     a sibling or a subdirectory of a directory that is no driver's: a
-//     read names what its row reads, and a case added beside it is the
-//     ledger's until a row reads it by name.
-//   - a make row's directory read is held to a make file naming the
-//     directory as a whole path (NamesDir); the make adapter holds it to the
-//     recipes its own target reaches, and schema-test reads regenerates it.
-//   - a gotest or union row's read, a file (one data case), a directory, or
-//     a tree (IsTreeRead): the Go test reads it. The test source of the row's packages, or a
-//     module package they import, must name it (sourceNames).
+//   - a directory read (test/packet-end/rust/) credits the data cases and
+//     the driver in that directory itself, never one below it: a case
+//     added in a subdirectory is the ledger's until a row reads it.
+//   - a make row's directory read is held to a make file working on the
+//     bare directory (NamesBareDir: cd test/x, test/x/*.schema, test/x as
+//     an argument), comments aside; a make file that only names a file in
+//     it names that file, which a file read credits. The make adapter holds
+//     it to the recipes its own target reaches, and schema-test reads
+//     regenerates it.
+//   - a gotest or union row's read, a file, a directory, or a tree
+//     (IsTreeRead): the Go test reads it. A data case is credited by file
+//     reads only when the row reads every file of it. The source of the
+//     row's packages, or a module package they import, must name the read
+//     as a whole path (sourceNames).
 //
 // A read that credits nothing (it holds no data case and no driver, or all
 // it holds another row already runs or reads), or that its row's make files
 // or source do not name, is a problem by name: a reads list goes stale the
 // day what it names moves.
-func readCredits(res *Result, reg *testreg.Registry, out map[string]string, idle func(key, read string)) []string {
+func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []string {
 	var problems []string
 	drivers := map[string]bool{}
 	for _, it := range res.Items {
@@ -402,45 +391,53 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string, idle
 		}
 	}
 	indexed := Indexed(reg)
-	credit := func(t testreg.Test, r string) {
-		held, n := 0, 0
-		take := func(id string) {
-			held++
-			if _, ok := out[id]; ok {
-				return
-			}
-			if _, ok := indexed[id]; ok {
-				return
-			}
-			out[id] = t.Key
-			n++
+	take := func(t testreg.Test, id string, held, n *int) {
+		*held++
+		if _, ok := out[id]; ok {
+			return
 		}
-		if IsDirRead(r) {
-			d := readDir(r)
-			holds := func(dir string) bool { return ReadHolds(dir, d, drivers) }
-			if IsTreeRead(r) {
-				holds = func(dir string) bool { return TreeHolds(dir, d, drivers) }
-			}
-			for _, it := range res.Items {
-				if (it.Kind == KindDataCase || it.Kind == KindDriver) && holds(it.Dir) {
-					take(it.ID())
-				}
-			}
-		} else {
-			dir, name := path.Split(r)
-			id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
-			if slices.Contains(res.CaseFiles[id], r) {
-				take(id)
-			}
+		if _, ok := indexed[id]; ok {
+			return
 		}
+		out[id] = t.Key
+		*n++
+	}
+	verdict := func(t testreg.Test, r string, held, n int) {
 		switch {
 		case held == 0:
-			problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which holds no data case and no driver of the repository", reg.Path, t.Line, t.Key, r))
+			problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which holds no data case and no driver of the repository, or not every file of one", reg.Path, t.Line, t.Key, r))
 		case n == 0:
-			if idle != nil {
-				idle(t.Key, r)
-			}
 			problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, and another row already runs or reads everything it holds: the read credits nothing", reg.Path, t.Line, t.Key, r))
+		}
+	}
+	creditDir := func(t testreg.Test, r string) {
+		held, n := 0, 0
+		d := readDir(r)
+		holds := func(dir string) bool { return dir == d }
+		if IsTreeRead(r) {
+			holds = func(dir string) bool { return TreeHolds(dir, d, drivers) }
+		}
+		for _, it := range res.Items {
+			if (it.Kind == KindDataCase || it.Kind == KindDriver) && holds(it.Dir) {
+				take(t, it.ID(), &held, &n)
+			}
+		}
+		verdict(t, r, held, n)
+	}
+	// creditFiles credits each data case every file of which the row reads
+	creditFiles := func(t testreg.Test, files []string) {
+		read := map[string]bool{}
+		for _, f := range files {
+			read[f] = true
+		}
+		for _, f := range files {
+			dir, name := path.Split(f)
+			id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+			held, n := 0, 0
+			if cf := res.CaseFiles[id]; slices.Contains(cf, f) && !slices.ContainsFunc(cf, func(g string) bool { return !read[g] }) {
+				take(t, id, &held, &n)
+			}
+			verdict(t, f, held, n)
 		}
 	}
 	for _, t := range reg.Tests {
@@ -452,7 +449,7 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string, idle
 			}
 			for _, r := range in.Reads {
 				if !IsDirRead(r) {
-					continue // a file: Covered's, held to make's own prerequisites
+					continue // a file: Covered's, held to what make's target reaches
 				}
 				if IsTreeRead(r) {
 					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: a make row's directory read is one directory, written with one trailing /; only a Go test's read may be a tree", reg.Path, t.Line, t.Key, r))
@@ -462,11 +459,11 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string, idle
 					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: want a clean repository directory, written with one trailing /", reg.Path, t.Line, t.Key, r))
 					continue
 				}
-				if !NamesDir(res.MakeText, readDir(r)) {
-					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which no make file names as a whole path: the read is stale", reg.Path, t.Line, t.Key, r))
+				if !NamesBareDir(res.MakeText, readDir(r)) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, and no make file works on that directory itself (cd, a glob in it, or the directory as an argument): the read is stale", reg.Path, t.Line, t.Key, r))
 					continue
 				}
-				credit(t, r)
+				creditDir(t, r)
 			}
 		default:
 			// a gotest row, or a union row: the Go tests it runs read it
@@ -492,39 +489,26 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string, idle
 				continue
 			}
 			slices.Sort(pkgs)
+			var files []string
 			for _, r := range in.Reads {
 				if !cleanRead(r) {
 					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s: want a clean repository file, a directory written with one trailing /, or a tree written with a trailing /...", reg.Path, t.Line, t.Key, r))
 					continue
 				}
-				if !slices.ContainsFunc(pkgs, func(p string) bool { return sourceNames(res.GoStrings[p], readDir(r)) }) {
-					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which no string in the test source of %s names: the read is stale", reg.Path, t.Line, t.Key, r, strings.Join(pkgs, ", ")))
+				if !slices.ContainsFunc(pkgs, func(p string) bool { return sourceNames(res.GoStrings[p], p, readDir(r)) }) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which no string in the source of %s names as a whole path: the read is stale", reg.Path, t.Line, t.Key, r, strings.Join(pkgs, ", ")))
 					continue
 				}
-				credit(t, r)
+				if IsDirRead(r) {
+					creditDir(t, r)
+				} else {
+					files = append(files, r)
+				}
 			}
+			creditFiles(t, files)
 		}
 	}
 	return problems
-}
-
-// NearestDriver is the nearest directory at or above dir that holds a
-// driver, or "" when none does.
-func NearestDriver(dir string, drivers map[string]bool) string {
-	for d := dir; d != "." && d != "/" && d != ""; d = path.Dir(d) {
-		if drivers[d] {
-			return d
-		}
-	}
-	return ""
-}
-
-// ReadHolds reports whether a directory read of d holds an item in dir: dir
-// is d, or d is the nearest driver directory at or above dir (that driver's
-// build reads its tree). The extract's credit and schema-test reads' choice
-// of directory are this one rule.
-func ReadHolds(dir, d string, drivers map[string]bool) bool {
-	return dir == d || drivers[d] && NearestDriver(dir, drivers) == d
 }
 
 // TreeHolds reports whether a tree read of d holds an item in dir: dir is
@@ -542,31 +526,82 @@ func TreeHolds(dir, d string, drivers map[string]bool) bool {
 	return true
 }
 
-// NamesDir reports whether text names dir as a whole path, or a path in
-// it (test/rust/main.rs: the recipe works in the directory): not as a part
-// of a longer name (test/rust-soak or test/rust.d for test/rust), and not
-// below another directory (src/test/rust, build/test/rust). A "/" before it
-// is a boundary only after a variable or "." ($(CURDIR)/test/rust,
-// ./test/rust).
-func NamesDir(text, dir string) bool {
-	if dir == "" {
+// StripMakeComments is make text without its comment lines: a line whose
+// first word, after a recipe's tab and its @, - or + prefixes, starts with
+// #. A comment names nothing a target reads.
+func StripMakeComments(text string) string {
+	var out []string
+	for l := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(strings.TrimLeft(l, " \t@-+"), "#") {
+			continue
+		}
+		out = append(out, l)
+	}
+	return strings.Join(out, "\n")
+}
+
+// NamesPath reports whether text names p as a whole repository path: not
+// as a part of a longer name (test/rust-soak or test/rust.d for test/rust),
+// not below another directory (src/test/rust, $(BUILD)/test/rust), and not
+// only through a path below it. A "/" before it is a boundary only after
+// ./ or the checkout's own $(CURDIR)/.
+func NamesPath(text, p string) bool {
+	return namesAt(text, p, func(end int) bool { return end == len(text) || !nameByte(text[end]) && text[end] != '/' })
+}
+
+// NamesBareDir reports whether text works on directory d itself, as
+// NamesPath says, or with one trailing / (test/x/), or as a glob in it
+// (test/x/*.schema): a cd into it, a list of it, the directory as an
+// argument. A path of one file in it names that file, not d.
+func NamesBareDir(text, d string) bool {
+	return namesAt(text, d, func(end int) bool {
+		if end == len(text) || !nameByte(text[end]) && text[end] != '/' {
+			return true
+		}
+		if text[end] != '/' {
+			return false
+		}
+		end++
+		return end == len(text) || text[end] == '*' || !nameByte(text[end]) && text[end] != '/'
+	})
+}
+
+// namesAt reports whether text holds p at a whole-path start, with after
+// judging what follows it.
+func namesAt(text, p string, after func(end int) bool) bool {
+	if p == "" {
 		return false
 	}
 	for i := 0; ; {
-		j := strings.Index(text[i:], dir)
+		j := strings.Index(text[i:], p)
 		if j < 0 {
 			return false
 		}
 		at := i + j
-		end := at + len(dir)
-		before := at == 0 || !nameByte(text[at-1]) && text[at-1] != '/' ||
-			text[at-1] == '/' && at >= 2 && (text[at-2] == ')' || text[at-2] == '}' || text[at-2] == '.' && (at == 2 || !nameByte(text[at-3]) && text[at-3] != '/'))
-		after := end == len(text) || !nameByte(text[end])
-		if before && after {
+		if pathStart(text, at) && after(at+len(p)) {
 			return true
 		}
 		i = at + 1
 	}
+}
+
+// pathStart reports whether a repository path may start at text[at]: at
+// the start, after a byte no path holds, or after ./ or $(CURDIR)/ or
+// ${CURDIR}/.
+func pathStart(text string, at int) bool {
+	if at == 0 || !nameByte(text[at-1]) && text[at-1] != '/' {
+		return true
+	}
+	if text[at-1] != '/' {
+		return false
+	}
+	before := text[:at-1]
+	for _, v := range []string{"$(CURDIR)", "${CURDIR}"} {
+		if strings.HasSuffix(before, v) {
+			return true
+		}
+	}
+	return strings.HasSuffix(before, ".") && (len(before) == 1 || !nameByte(before[len(before)-2]) && before[len(before)-2] != '/')
 }
 
 // nameByte is a byte a path element may hold.
@@ -649,23 +684,22 @@ func cleanRead(r string) bool {
 	return p != "" && p == path.Clean(p) && !path.IsAbs(p) && p != ".." && !strings.HasPrefix(p, "../")
 }
 
-// sourceNames reports whether a package's string literals name p by at
-// least its last two elements: one literal that is a whole trailing part of
-// p of two elements or more ("../../testdata/x/y" and "x/y" name
-// testdata/x/y), or its last element and its parent's each a literal of
-// their own (filepath.Join("..", "..", "testdata", "x", "y")). A last
-// element alone ("unity", "required") is a common word, and names nothing.
-func sourceNames(lits map[string]bool, p string) bool {
-	last, parent := path.Base(p), path.Base(path.Dir(p))
-	if lits[last] && parent != "." && lits[parent] {
-		return true
-	}
+// sourceNames reports whether a package's string literals name p as a
+// whole path: a literal that is p from the repository root, from the
+// package directory pkg, or from a directory below the root ("../../" in
+// front of p). filepath.Join and path.Join calls of literals only are one
+// literal (gotests.go). Words that together spell p ("testdata", "x") do
+// not name it: each may be anything.
+func sourceNames(lits map[string]bool, pkg, p string) bool {
 	for l := range lits {
 		c := path.Clean(strings.ReplaceAll(l, `\`, "/"))
+		if c == p || path.Join(pkg, c) == p {
+			return true
+		}
 		for strings.HasPrefix(c, "../") {
 			c = c[3:]
 		}
-		if strings.Contains(c, "/") && (c == p || strings.HasSuffix(p, "/"+c)) {
+		if strings.Contains(c, "/") && c == p {
 			return true
 		}
 	}

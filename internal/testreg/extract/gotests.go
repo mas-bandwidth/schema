@@ -238,15 +238,62 @@ func (s *scan) goStrings(dir string, f *ast.File) {
 	}
 }
 
+// addLiterals records f's string literals, and the path each run of
+// string literals side by side in a filepath.Join or path.Join call makes,
+// as one literal: filepath.Join("..", "testdata", "x") names ../testdata/x,
+// and filepath.Join(root, "testdata", "x", name) names testdata/x.
 func addLiterals(set map[string]bool, f *ast.File) {
 	ast.Inspect(f, func(n ast.Node) bool {
-		if bl, ok := n.(*ast.BasicLit); ok && bl.Kind == token.STRING {
-			if v, err := strconv.Unquote(bl.Value); err == nil {
+		switch n := n.(type) {
+		case *ast.BasicLit:
+			if v, ok := stringLit(n); ok {
+				set[v] = true
+			}
+		case *ast.CallExpr:
+			for _, v := range literalJoins(n) {
 				set[v] = true
 			}
 		}
 		return true
 	})
+}
+
+// stringLit is a string literal's value.
+func stringLit(e ast.Expr) (string, bool) {
+	bl, ok := e.(*ast.BasicLit)
+	if !ok || bl.Kind != token.STRING {
+		return "", false
+	}
+	v, err := strconv.Unquote(bl.Value)
+	return v, err == nil
+}
+
+// literalJoins is the path each run of two or more string literals side
+// by side makes in a filepath.Join or path.Join call.
+func literalJoins(c *ast.CallExpr) []string {
+	sel, ok := c.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != "Join" {
+		return nil
+	}
+	if x, ok := sel.X.(*ast.Ident); !ok || x.Name != "filepath" && x.Name != "path" {
+		return nil
+	}
+	var out, run []string
+	flush := func() {
+		if len(run) > 1 {
+			out = append(out, path.Join(run...))
+		}
+		run = nil
+	}
+	for _, a := range c.Args {
+		if v, ok := stringLit(a); ok {
+			run = append(run, v)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return out
 }
 
 // goSourceStrings adds to each test package's strings those of its own

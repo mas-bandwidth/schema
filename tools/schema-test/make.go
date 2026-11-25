@@ -202,6 +202,9 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 		}
 	}
 	for _, r := range in.Reads {
+		if extract.IsTreeRead(r) {
+			return in, fmt.Errorf("reads %q: a make row reads one directory, written with one trailing /, never a tree", r)
+		}
 		p := strings.TrimSuffix(r, "/")
 		if p == "" || p != path.Clean(p) || path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") || strings.ContainsAny(p, " \t\n\\") {
 			return in, fmt.Errorf("reads %q: want a file of the repository by its path, or a directory written with one trailing /", r)
@@ -383,20 +386,19 @@ func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 		return fmt.Sprintf("make %s cannot be read before it runs: %v", in.Target, err), nil
 	}
 	files, text := db.reach(in.Target)
+	reach := newMakeReach(files, text)
 	var why []string
-	recipes := strings.Join(text, "\n")
 	for _, r := range in.Reads {
 		if extract.IsDirRead(r) {
-			// a directory the recipes run in or build from: a reached
-			// file at or below it, or a reached recipe or variable that
-			// names it as a path of its own
-			if !reachesDir(files, recipes, strings.TrimSuffix(r, "/")) {
-				why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes or runs is in it", in.Target, r, in.Target))
+			// a directory the recipes work on bare: cd into it, a glob
+			// in it, the directory as an argument
+			if !extract.NamesBareDir(reach.text, strings.TrimSuffix(r, "/")) {
+				why = append(why, fmt.Sprintf("the row says make %s reads %s, and no recipe make %s runs works on that directory itself", in.Target, r, in.Target))
 			}
 			continue
 		}
-		if !files[r] {
-			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it", in.Target, r, in.Target))
+		if !reach.names(r) {
+			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it or names it", in.Target, r, in.Target))
 		}
 	}
 	if line := goTestWithoutJSON(strings.Join(text, "\n")); line != "" {
@@ -476,15 +478,3 @@ func plainGoTest(lines []string) string {
 
 // Serial: a make target takes the checkout (testreg.Serial).
 func (makeAdapter) Serial() bool { return true }
-
-// reachesDir reports whether a target's reach holds dir: a file make would
-// make at or below it, or recipe text naming it as a whole path (not as a
-// part of a longer name: test/rust is not named by test/rust-soak).
-func reachesDir(files map[string]bool, recipes, dir string) bool {
-	for f := range files {
-		if f == dir || strings.HasPrefix(f, dir+"/") || strings.HasPrefix(f, "./"+dir+"/") {
-			return true
-		}
-	}
-	return extract.NamesDir(recipes, dir)
-}

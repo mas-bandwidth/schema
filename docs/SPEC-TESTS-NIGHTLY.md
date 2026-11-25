@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 625. Language-free tests: 1351.
+Nightly tests every language answers: 625. Language-free tests: 1352.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -786,20 +786,20 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz` | `make` | make schema-dart-nightly-fuzz (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`reads: ["test/dart-tables/"]`<br>`seed: DART_NIGHTLY_FUZZ_SEED`<br>`target: schema-dart-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:88` |
-| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`reads: ["testdata/wire/tables/nightly-fuzz-regressions/"]`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
+| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz` | `make` | make schema-dart-nightly-fuzz (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`seed: DART_NIGHTLY_FUZZ_SEED`<br>`target: schema-dart-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:88` |
+| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
 
 #### `fuzz` family `make-schema-lua-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-lua-nightly-fuzz.schema-lua-nightly-fuzz` | `make` | make schema-lua-nightly-fuzz (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`reads: ["testdata/conformance/text/"]`<br>`seed: LUA_FUZZ_SEED`<br>`target: schema-lua-nightly-fuzz`<br>`vars: {"LUA_FUZZ_SECONDS":"600"}` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:105` |
+| `none.nightly.fuzz.make-schema-lua-nightly-fuzz.schema-lua-nightly-fuzz` | `make` | make schema-lua-nightly-fuzz (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`reads: ["testdata/conformance/tables/","testdata/conformance/text/"]`<br>`seed: LUA_FUZZ_SEED`<br>`target: schema-lua-nightly-fuzz`<br>`vars: {"LUA_FUZZ_SECONDS":"600"}` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:105` |
 
 #### `fuzz` family `make-schema-luau-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz` | `make` | make luau-nightly-fuzz (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`seed: LUAU_FUZZ_SEED`<br>`target: luau-nightly-fuzz`<br>`vars: {"LUAU_FUZZ_TIME":"600"}` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:689` |
+| `none.nightly.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz` | `make` | make luau-nightly-fuzz (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`inputs.reads` (2455 bytes, held in the registry row's `inputs.reads`)<br>`seed: LUAU_FUZZ_SEED`<br>`target: luau-nightly-fuzz`<br>`vars: {"LUAU_FUZZ_TIME":"600"}` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:689` |
 
 #### `fuzz` family `make-schema-moo-nightly-fuzz`, 1 test
 
@@ -3804,7 +3804,7 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.python-write-refusal.conformance-negative-control-python-write-refusal-fixed` | `plant` | negative control conformance-negative-control-python-write-refusal-fixed (group python-write-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python-conformance.mk`<br>`group: python-write-refusal`<br>`make: conformance-negative-control-python-write-refusal-fixed` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3377` |
 | `none.nightly.plant.python-write-refusal.conformance-negative-control-python-write-refusal-message` | `plant` | negative control conformance-negative-control-python-write-refusal-message (group python-write-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/python-conformance.mk`<br>`group: python-write-refusal`<br>`make: conformance-negative-control-python-write-refusal-message` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3378` |
 
-#### `plant` family `read-credits`, 8 tests
+#### `plant` family `read-credits`, 9 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3814,6 +3814,7 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.read-credits.gotest-reads-name-buildability-case` | `plant` | a gotest row's directory read is a credit: one case of testdata/name-buildability broken turns compiler.check.name-buildability-corpus red, naming that case | `inputs.edits` (134 bytes, held in the registry row's `inputs.edits`)<br>`inputs.reason` (117 bytes, held in the registry row's `inputs.reason`)<br>`red: ["none.unit.compiler.check.name-buildability-corpus"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/name-buildability/ctl/Probe.schema:3` |
 | `none.nightly.plant.read-credits.make-dir-reads-generated-tree-case` | `plant` | a make row's directory read of a directory that is no driver's is a credit: the test/generated-tree compare case made to refuse turns make generated-current red, the planted line naming itself | `inputs.edits` (157 bytes, held in the registry row's `inputs.edits`)<br>`reason: PlantMarkerGeneratedTreeDirRead`<br>`red: ["none.functional.harness-run.makefile.generated-current"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `test/generated-tree/compare:27` |
 | `none.nightly.plant.read-credits.make-dir-reads-go-packet` | `plant` | a make row's directory read is a credit: the test/go driver given a name it does not declare turns make test-go-packet red, the Go compiler naming the planted name | `inputs.edits` (162 bytes, held in the registry row's `inputs.edits`)<br>`reason: PlantMarkerGoDriverDirRead`<br>`red: ["none.nightly.harness-run.make-go.test-go-packet"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `test/go/main.go:58` |
+| `none.nightly.plant.read-credits.make-dir-reads-packet-text-go` | `plant` | the widest make credit left is a credit: the test/packet-text/go driver, one of the directories make test-go of packet-arm-defaults.mk reads, given a name it does not declare turns that row red, the Go compiler naming the planted name | `inputs.edits` (168 bytes, held in the registry row's `inputs.edits`)<br>`reason: PlantMarkerPacketTextGoDirRead`<br>`red: ["none.nightly.harness-run.make-checks-packet-arm-defaults.test-go"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `test/packet-text/go/main.go:13` |
 | `none.nightly.plant.read-credits.make-file-reads-fixedform-plain` | `plant` | a make row's file read is a credit: VNEW\_arm\_removed.schema given a type no schema declares turns make tables-fixedform-plain red, the compiler naming the planted type | `inputs.edits` (166 bytes, held in the registry row's `inputs.edits`)<br>`reason: PlantMarkerFixedFormFileRead`<br>`red: ["none.nightly.harness-run.makefile.tables-fixedform-plain"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `test/tables/VNEW_arm_removed.schema:14` |
 | `none.nightly.plant.read-credits.union-reads-blob-kind-manifest` | `plant` | a union row's directory read is a credit: a vector of testdata/wire/pointer-target-type/blobkind turned from refused to read turns the Go leg of the blob-kind union row red | `inputs.edits` (151 bytes, held in the registry row's `inputs.edits`)<br>`reason: text-names-bytes: the engine answers`<br>`red: ["go.functional.load-refusal.wire-pointer-target-type.blob-kind-refused"]` | the named row runs red, for the stated reason: the credit holds because a red in the data it reads is its red | `testdata/wire/pointer-target-type/blobkind/MANIFEST.tsv:12` |
 
@@ -4438,14 +4439,14 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate-nightly` | `make` | make schema-go-generated-golangci-lint-gate-nightly (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`inputs.reads` (136 bytes, held in the registry row's `inputs.reads`)<br>`target: schema-go-generated-golangci-lint-gate-nightly` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:261` |
+| `none.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate-nightly` | `make` | make schema-go-generated-golangci-lint-gate-nightly (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`inputs.reads` (194 bytes, held in the registry row's `inputs.reads`)<br>`target: schema-go-generated-golangci-lint-gate-nightly` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:261` |
 | `none.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate-probe` | `make` | make schema-go-generated-golangci-lint-gate-probe (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`target: schema-go-generated-golangci-lint-gate-probe` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:76` |
 
 #### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.lint.make-schema-lobster-generated-strict-gate.schema-lobster-generated-strict-gate` | `make` | make schema-lobster-generated-strict-gate (make/schema-lobster-generated-strict-gate.mk) exits 0 | `file: make/schema-lobster-generated-strict-gate.mk`<br>`reads: ["testdata/conformance/tables/"]`<br>`target: schema-lobster-generated-strict-gate` | the target exits 0 with no skip in its log | `make/schema-lobster-generated-strict-gate.mk:65` |
+| `none.nightly.lint.make-schema-lobster-generated-strict-gate.schema-lobster-generated-strict-gate` | `make` | make schema-lobster-generated-strict-gate (make/schema-lobster-generated-strict-gate.mk) exits 0 | `file: make/schema-lobster-generated-strict-gate.mk`<br>`target: schema-lobster-generated-strict-gate` | the target exits 0 with no skip in its log | `make/schema-lobster-generated-strict-gate.mk:65` |
 
 #### `lint` family `make-schema-ruby-generated-strict-gate`, 1 test
 
@@ -4616,24 +4617,24 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2083` |
 | `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1581` |
-| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/c-ludicrous/","test/c/"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1616` |
+| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/c-ludicrous/","test/c/","test/conformance/c/drivers-asan.txt"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1616` |
 
 #### `harness-run` family `make-c-fixed-default-copy`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-c-fixed-default-copy.test-c` | `make` | make test-c (make/c-fixed-default-copy.mk) exits 0 | `file: make/c-fixed-default-copy.mk`<br>`inputs.reads` (98 bytes, held in the registry row's `inputs.reads`)<br>`target: test-c` | the target exits 0 with no skip in its log | `make/c-fixed-default-copy.mk:5` |
+| `none.nightly.harness-run.make-c-fixed-default-copy.test-c` | `make` | make test-c (make/c-fixed-default-copy.mk) exits 0 | `file: make/c-fixed-default-copy.mk`<br>`inputs.reads` (192 bytes, held in the registry row's `inputs.reads`)<br>`target: test-c` | the target exits 0 with no skip in its log | `make/c-fixed-default-copy.mk:5` |
 
 #### `harness-run` family `make-checks-packet-arm-defaults`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-cs` | `make` | make test-cs (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (321 bytes, held in the registry row's `inputs.reads`)<br>`target: test-cs` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:160` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-dart` | `make` | make test-dart (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (259 bytes, held in the registry row's `inputs.reads`)<br>`target: test-dart` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:162` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-go` | `make` | make test-go (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (145 bytes, held in the registry row's `inputs.reads`)<br>`target: test-go` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:158` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-java` | `make` | make test-java (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (333 bytes, held in the registry row's `inputs.reads`)<br>`target: test-java` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:161` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-js` | `make` | make test-js (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (225 bytes, held in the registry row's `inputs.reads`)<br>`target: test-js` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:163` |
-| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-rust` | `make` | make test-rust (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (286 bytes, held in the registry row's `inputs.reads`)<br>`target: test-rust` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:159` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-cs` | `make` | make test-cs (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (373 bytes, held in the registry row's `inputs.reads`)<br>`target: test-cs` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:160` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-dart` | `make` | make test-dart (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (480 bytes, held in the registry row's `inputs.reads`)<br>`target: test-dart` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:162` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-go` | `make` | make test-go (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (593 bytes, held in the registry row's `inputs.reads`)<br>`target: test-go` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:158` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-java` | `make` | make test-java (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (268 bytes, held in the registry row's `inputs.reads`)<br>`target: test-java` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:161` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-js` | `make` | make test-js (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (304 bytes, held in the registry row's `inputs.reads`)<br>`target: test-js` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:163` |
+| `none.nightly.harness-run.make-checks-packet-arm-defaults.test-rust` | `make` | make test-rust (make/checks/packet-arm-defaults.mk) exits 0 | `file: make/checks/packet-arm-defaults.mk`<br>`inputs.reads` (529 bytes, held in the registry row's `inputs.reads`)<br>`target: test-rust` | the target exits 0 with no skip in its log | `make/checks/packet-arm-defaults.mk:159` |
 
 #### `harness-run` family `make-checks-schema-shared-hostile-corpus`, 1 test
 
@@ -4645,9 +4646,9 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-conformance-continues.test-lobster` | `make` | make test-lobster (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (158 bytes, held in the registry row's `inputs.reads`)<br>`target: test-lobster` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:30` |
-| `none.nightly.harness-run.make-conformance-continues.test-moo` | `make` | make test-moo (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (266 bytes, held in the registry row's `inputs.reads`)<br>`target: test-moo` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:37` |
-| `none.nightly.harness-run.make-conformance-continues.test-squirrel` | `make` | make test-squirrel (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (232 bytes, held in the registry row's `inputs.reads`)<br>`target: test-squirrel` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:42` |
+| `none.nightly.harness-run.make-conformance-continues.test-lobster` | `make` | make test-lobster (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (336 bytes, held in the registry row's `inputs.reads`)<br>`target: test-lobster` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:30` |
+| `none.nightly.harness-run.make-conformance-continues.test-moo` | `make` | make test-moo (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (429 bytes, held in the registry row's `inputs.reads`)<br>`target: test-moo` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:37` |
+| `none.nightly.harness-run.make-conformance-continues.test-squirrel` | `make` | make test-squirrel (make/conformance-continues.mk) exits 0 | `file: make/conformance-continues.mk`<br>`inputs.reads` (273 bytes, held in the registry row's `inputs.reads`)<br>`target: test-squirrel` | the target exits 0 with no skip in its log | `make/conformance-continues.mk:42` |
 
 #### `harness-run` family `make-conformance-rows`, 1 test
 
@@ -4671,7 +4672,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-cpp-positive-features.conformance-cpp-positive-features` | `make` | make conformance-cpp-positive-features (make/cpp-positive-features.mk) exits 0 | `file: make/cpp-positive-features.mk`<br>`reads: ["test/conformance/cpp/"]`<br>`target: conformance-cpp-positive-features` | the target exits 0 with no skip in its log | `make/cpp-positive-features.mk:12` |
+| `none.nightly.harness-run.make-cpp-positive-features.conformance-cpp-positive-features` | `make` | make conformance-cpp-positive-features (make/cpp-positive-features.mk) exits 0 | `file: make/cpp-positive-features.mk`<br>`target: conformance-cpp-positive-features` | the target exits 0 with no skip in its log | `make/cpp-positive-features.mk:12` |
 
 #### `harness-run` family `make-cs`, 3 tests
 
@@ -4692,7 +4693,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-dart.cards-dart-test` | `make` | make cards-dart-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: cards-dart-test` | the target exits 0 with no skip in its log | `make/dart.mk:1630` |
-| `none.nightly.harness-run.make-dart.dart-chunk-queue-test` | `make` | make dart-chunk-queue-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`reads: ["test/conformance/","test/conformance/dart/"]`<br>`target: dart-chunk-queue-test` | the target exits 0 with no skip in its log | `make/dart.mk:1872` |
+| `none.nightly.harness-run.make-dart.dart-chunk-queue-test` | `make` | make dart-chunk-queue-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`reads: ["test/conformance/dart/chunk-queue-check"]`<br>`target: dart-chunk-queue-test` | the target exits 0 with no skip in its log | `make/dart.mk:1872` |
 | `none.nightly.harness-run.make-dart.tables-dart-fixed-form` | `make` | make tables-dart-fixed-form (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: tables-dart-fixed-form` | the target exits 0 with no skip in its log | `make/dart.mk:876` |
 | `none.nightly.harness-run.make-dart.test-dart-packet` | `make` | make test-dart-packet (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`reads: ["test/dart-ludicrous/","test/dart/"]`<br>`target: test-dart-packet` | the target exits 0 with no skip in its log | `make/dart.mk:1469` |
 
@@ -4700,17 +4701,17 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`reads: ["test/conformance/elixir/"]`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2063` |
-| `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`reads: ["test/elixir-fixedform/"]`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1408` |
+| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2063` |
+| `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1408` |
 | `none.nightly.harness-run.make-elixir.tables-elixir-paired-gate` | `make` | make tables-elixir-paired-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-paired-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1494` |
 | `none.nightly.harness-run.make-elixir.test-elixir-packet` | `make` | make test-elixir-packet (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`reads: ["test/elixir-ludicrous/","test/elixir/"]`<br>`target: test-elixir-packet` | the target exits 0 with no skip in its log | `make/elixir.mk:1118` |
-| `none.nightly.harness-run.make-elixir.test-elixir-recipe` | `make` | make test-elixir-recipe (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-recipe` | the target exits 0 with no skip in its log | `make/elixir.mk:1109` |
+| `none.nightly.harness-run.make-elixir.test-elixir-recipe` | `make` | make test-elixir-recipe (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`reads: ["test/conformance/elixir/driver"]`<br>`target: test-elixir-recipe` | the target exits 0 with no skip in its log | `make/elixir.mk:1109` |
 
 #### `harness-run` family `make-elixir-compressed-negzero`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-elixir-compressed-negzero.test-elixir` | `make` | make test-elixir (make/elixir-compressed-negzero.mk) exits 0 | `file: make/elixir-compressed-negzero.mk`<br>`inputs.reads` (454 bytes, held in the registry row's `inputs.reads`)<br>`target: test-elixir` | the target exits 0 with no skip in its log | `make/elixir-compressed-negzero.mk:24` |
+| `none.nightly.harness-run.make-elixir-compressed-negzero.test-elixir` | `make` | make test-elixir (make/elixir-compressed-negzero.mk) exits 0 | `file: make/elixir-compressed-negzero.mk`<br>`inputs.reads` (514 bytes, held in the registry row's `inputs.reads`)<br>`target: test-elixir` | the target exits 0 with no skip in its log | `make/elixir-compressed-negzero.mk:24` |
 
 #### `harness-run` family `make-go`, 4 tests
 
@@ -4719,7 +4720,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:395` |
 | `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:414` |
 | `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1188` |
-| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`reads: ["test/go-ludicrous/","test/go/"]`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:901` |
+| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`reads: ["test/go-ludicrous/"]`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:901` |
 
 #### `harness-run` family `make-goose`, 1 test
 
@@ -4731,7 +4732,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-goose-blockcook.test-goose` | `make` | make test-goose (make/goose-blockcook.mk) exits 0 | `file: make/goose-blockcook.mk`<br>`inputs.reads` (216 bytes, held in the registry row's `inputs.reads`)<br>`target: test-goose` | the target exits 0 with no skip in its log | `make/goose-blockcook.mk:84` |
+| `none.nightly.harness-run.make-goose-blockcook.test-goose` | `make` | make test-goose (make/goose-blockcook.mk) exits 0 | `file: make/goose-blockcook.mk`<br>`inputs.reads` (108 bytes, held in the registry row's `inputs.reads`)<br>`target: test-goose` | the target exits 0 with no skip in its log | `make/goose-blockcook.mk:84` |
 
 #### `harness-run` family `make-goose-message`, 1 test
 
@@ -4750,15 +4751,15 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-java.cards-java-test` | `make` | make cards-java-test (make/java.mk) exits 0 | `file: make/java.mk`<br>`target: cards-java-test` | the target exits 0 with no skip in its log | `make/java.mk:2383` |
-| `none.nightly.harness-run.make-java.tables-java-fixedform` | `make` | make tables-java-fixedform (make/java.mk) exits 0 | `file: make/java.mk`<br>`reads: ["test/java-fixedform/"]`<br>`target: tables-java-fixedform` | the target exits 0 with no skip in its log | `make/java.mk:836` |
+| `none.nightly.harness-run.make-java.tables-java-fixedform` | `make` | make tables-java-fixedform (make/java.mk) exits 0 | `file: make/java.mk`<br>`target: tables-java-fixedform` | the target exits 0 with no skip in its log | `make/java.mk:836` |
 
 #### `harness-run` family `make-js`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-js.cards-js-test` | `make` | make cards-js-test (make/js.mk) exits 0 | `file: make/js.mk`<br>`target: cards-js-test` | the target exits 0 with no skip in its log | `make/js.mk:1282` |
-| `none.nightly.harness-run.make-js.js-message-verdict-test` | `make` | make js-message-verdict-test (make/js.mk) exits 0 | `file: make/js.mk`<br>`reads: ["test/conformance/js/"]`<br>`target: js-message-verdict-test` | the target exits 0 with no skip in its log | `make/js.mk:1265` |
-| `none.nightly.harness-run.make-js.tables-js-fixed-form` | `make` | make tables-js-fixed-form (make/js.mk) exits 0 | `file: make/js.mk`<br>`reads: ["test/js-tables/"]`<br>`target: tables-js-fixed-form` | the target exits 0 with no skip in its log | `make/js.mk:612` |
+| `none.nightly.harness-run.make-js.js-message-verdict-test` | `make` | make js-message-verdict-test (make/js.mk) exits 0 | `file: make/js.mk`<br>`target: js-message-verdict-test` | the target exits 0 with no skip in its log | `make/js.mk:1265` |
+| `none.nightly.harness-run.make-js.tables-js-fixed-form` | `make` | make tables-js-fixed-form (make/js.mk) exits 0 | `file: make/js.mk`<br>`target: tables-js-fixed-form` | the target exits 0 with no skip in its log | `make/js.mk:612` |
 | `none.nightly.harness-run.make-js.test-js-packet` | `make` | make test-js-packet (make/js.mk) exits 0 | `file: make/js.mk`<br>`reads: ["test/js-ludicrous/","test/js/"]`<br>`target: test-js-packet` | the target exits 0 with no skip in its log | `make/js.mk:1364` |
 
 #### `harness-run` family `make-lobster`, 2 tests
@@ -4778,7 +4779,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-lua-compressed-negzero.test-lua` | `make` | make test-lua (make/lua-compressed-negzero.mk) exits 0 | `file: make/lua-compressed-negzero.mk`<br>`inputs.reads` (221 bytes, held in the registry row's `inputs.reads`)<br>`target: test-lua` | the target exits 0 with no skip in its log | `make/lua-compressed-negzero.mk:24` |
+| `none.nightly.harness-run.make-lua-compressed-negzero.test-lua` | `make` | make test-lua (make/lua-compressed-negzero.mk) exits 0 | `file: make/lua-compressed-negzero.mk`<br>`inputs.reads` (178 bytes, held in the registry row's `inputs.reads`)<br>`target: test-lua` | the target exits 0 with no skip in its log | `make/lua-compressed-negzero.mk:24` |
 
 #### `harness-run` family `make-luau`, 2 tests
 
@@ -4791,7 +4792,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-luau-compressed-negzero.test-luau` | `make` | make test-luau (make/luau-compressed-negzero.mk) exits 0 | `file: make/luau-compressed-negzero.mk`<br>`inputs.reads` (245 bytes, held in the registry row's `inputs.reads`)<br>`target: test-luau` | the target exits 0 with no skip in its log | `make/luau-compressed-negzero.mk:21` |
+| `none.nightly.harness-run.make-luau-compressed-negzero.test-luau` | `make` | make test-luau (make/luau-compressed-negzero.mk) exits 0 | `file: make/luau-compressed-negzero.mk`<br>`inputs.reads` (354 bytes, held in the registry row's `inputs.reads`)<br>`target: test-luau` | the target exits 0 with no skip in its log | `make/luau-compressed-negzero.mk:21` |
 
 #### `harness-run` family `make-moo`, 1 test
 
@@ -4821,14 +4822,14 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-python.python-ci-compiler` | `make` | make python-ci-compiler (make/python.mk) exits 0 | `file: make/python.mk`<br>`reads: ["test/slowgate/"]`<br>`target: python-ci-compiler` | the target exits 0 with no skip in its log | `make/python.mk:32` |
+| `none.nightly.harness-run.make-python.python-ci-compiler` | `make` | make python-ci-compiler (make/python.mk) exits 0 | `file: make/python.mk`<br>`reads: ["test/slowgate/proof"]`<br>`target: python-ci-compiler` | the target exits 0 with no skip in its log | `make/python.mk:32` |
 | `none.nightly.harness-run.make-python.python-ci-packages` | `make` | make python-ci-packages (make/python.mk) exits 0 | `file: make/python.mk`<br>`target: python-ci-packages` | the target exits 0 with no skip in its log | `make/python.mk:30` |
 
 #### `harness-run` family `make-python-array-growth`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-python-array-growth.test-python` | `make` | make test-python (make/python-array-growth.mk) exits 0 | `file: make/python-array-growth.mk`<br>`reads: ["test/conformance/python/","test/packet-finite/python/","test/table-base64/python/"]`<br>`target: test-python` | the target exits 0 with no skip in its log | `make/python-array-growth.mk:5` |
+| `none.nightly.harness-run.make-python-array-growth.test-python` | `make` | make test-python (make/python-array-growth.mk) exits 0 | `file: make/python-array-growth.mk`<br>`inputs.reads` (272 bytes, held in the registry row's `inputs.reads`)<br>`target: test-python` | the target exits 0 with no skip in its log | `make/python-array-growth.mk:5` |
 
 #### `harness-run` family `make-python-cards`, 1 test
 
@@ -4865,7 +4866,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-ruby-cards.cards-ruby-test` | `make` | make cards-ruby-test (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`target: cards-ruby-test` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:15` |
-| `none.nightly.harness-run.make-ruby-cards.test-ruby` | `make` | make test-ruby (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`reads: ["test/conformance/ruby/","test/packet-text/ruby/"]`<br>`target: test-ruby` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:48` |
+| `none.nightly.harness-run.make-ruby-cards.test-ruby` | `make` | make test-ruby (make/ruby-cards.mk) exits 0 | `file: make/ruby-cards.mk`<br>`inputs.reads` (231 bytes, held in the registry row's `inputs.reads`)<br>`target: test-ruby` | the target exits 0 with no skip in its log | `make/ruby-cards.mk:48` |
 
 #### `harness-run` family `make-ruby-serialize`, 1 test
 
@@ -4884,13 +4885,13 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-rust.cards-rust-test` | `make` | make cards-rust-test (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: cards-rust-test` | the target exits 0 with no skip in its log | `make/rust.mk:1618` |
-| `none.nightly.harness-run.make-rust.tables-rust-fixedform` | `make` | make tables-rust-fixedform (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`reads: ["test/rust-fixedform/"]`<br>`target: tables-rust-fixedform` | the target exits 0 with no skip in its log | `make/rust.mk:398` |
+| `none.nightly.harness-run.make-rust.tables-rust-fixedform` | `make` | make tables-rust-fixedform (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`reads: ["test/rust-fixedform/Cargo.toml"]`<br>`target: tables-rust-fixedform` | the target exits 0 with no skip in its log | `make/rust.mk:398` |
 
 #### `harness-run` family `make-schema-unity-runs-hostile-corpus`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-schema-unity-runs-hostile-corpus.test-unity` | `make` | make test-unity (make/schema-unity-runs-hostile-corpus.mk) exits 0 | `file: make/schema-unity-runs-hostile-corpus.mk`<br>`inputs.reads` (228 bytes, held in the registry row's `inputs.reads`)<br>`target: test-unity` | the target exits 0 with no skip in its log | `make/schema-unity-runs-hostile-corpus.mk:58` |
+| `none.nightly.harness-run.make-schema-unity-runs-hostile-corpus.test-unity` | `make` | make test-unity (make/schema-unity-runs-hostile-corpus.mk) exits 0 | `file: make/schema-unity-runs-hostile-corpus.mk`<br>`inputs.reads` (135 bytes, held in the registry row's `inputs.reads`)<br>`target: test-unity` | the target exits 0 with no skip in its log | `make/schema-unity-runs-hostile-corpus.mk:58` |
 
 #### `harness-run` family `make-squirrel-cards`, 2 tests
 
@@ -4903,7 +4904,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-squirrel-conformance.squirrel-wire-lib-test` | `make` | make squirrel-wire-lib-test (make/squirrel-conformance.mk) exits 0 | `file: make/squirrel-conformance.mk`<br>`reads: ["test/conformance/squirrel/"]`<br>`target: squirrel-wire-lib-test` | the target exits 0 with no skip in its log | `make/squirrel-conformance.mk:186` |
+| `none.nightly.harness-run.make-squirrel-conformance.squirrel-wire-lib-test` | `make` | make squirrel-wire-lib-test (make/squirrel-conformance.mk) exits 0 | `file: make/squirrel-conformance.mk`<br>`target: squirrel-wire-lib-test` | the target exits 0 with no skip in its log | `make/squirrel-conformance.mk:186` |
 
 #### `harness-run` family `make-unity-consumers`, 1 test
 
@@ -4915,9 +4916,9 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-conformance-and-driver-fuzz` | `make` | make verify-rust-conformance-and-driver-fuzz (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/packet-text/","test/packet-text/rust/","test/rust-ludicrous/","test/rust/"]`<br>`target: verify-rust-conformance-and-driver-fuzz` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:258` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-driver` | `make` | make verify-rust-fuzz-driver (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`target: verify-rust-fuzz-driver` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:251` |
-| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-wire` | `make` | make verify-rust-fuzz-wire (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/conformance/rust/"]`<br>`target: verify-rust-fuzz-wire` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:248` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-conformance-and-driver-fuzz` | `make` | make verify-rust-conformance-and-driver-fuzz (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/packet-text/Text.schema","test/rust-ludicrous/","test/rust/"]`<br>`target: verify-rust-conformance-and-driver-fuzz` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:258` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-driver` | `make` | make verify-rust-fuzz-driver (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/conformance/rust/","test/conformance/rust/Cargo.toml"]`<br>`target: verify-rust-fuzz-driver` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:251` |
+| `none.nightly.harness-run.make-verify-compiled.verify-rust-fuzz-wire` | `make` | make verify-rust-fuzz-wire (make/verify-compiled.mk) exits 0 | `file: make/verify-compiled.mk`<br>`reads: ["test/conformance/rust/wire-fuzz-all-build"]`<br>`target: verify-rust-fuzz-wire` | the target exits 0 with no skip in its log | `make/verify-compiled.mk:248` |
 
 #### `harness-run` family `make-verify-vm`, 27 tests
 
@@ -4933,7 +4934,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-verify-vm.verify-cards-ruby` | `make` | make verify-cards-ruby (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-cards-ruby` | the target exits 0 with no skip in its log | `make/verify-vm.mk:202` |
 | `none.nightly.harness-run.make-verify-vm.verify-cards-squirrel` | `make` | make verify-cards-squirrel (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-cards-squirrel` | the target exits 0 with no skip in its log | `make/verify-vm.mk:226` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-goose` | `make` | make verify-deep-goose (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-goose` | the target exits 0 with no skip in its log | `make/verify-vm.mk:238` |
-| `none.nightly.harness-run.make-verify-vm.verify-deep-js` | `make` | make verify-deep-js (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`reads: ["test/verify-vm/"]`<br>`target: verify-deep-js` | the target exits 0 with no skip in its log | `make/verify-vm.mk:183` |
+| `none.nightly.harness-run.make-verify-vm.verify-deep-js` | `make` | make verify-deep-js (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`reads: ["test/verify-vm/VerifyHostile.schema"]`<br>`target: verify-deep-js` | the target exits 0 with no skip in its log | `make/verify-vm.mk:183` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-lobster` | `make` | make verify-deep-lobster (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-lobster` | the target exits 0 with no skip in its log | `make/verify-vm.mk:245` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-lua` | `make` | make verify-deep-lua (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-lua` | the target exits 0 with no skip in its log | `make/verify-vm.mk:208` |
 | `none.nightly.harness-run.make-verify-vm.verify-deep-luau` | `make` | make verify-deep-luau (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-deep-luau` | the target exits 0 with no skip in its log | `make/verify-vm.mk:215` |
@@ -4956,29 +4957,29 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-verify-widen-18.verify-bitphase-cases` | `make` | make verify-bitphase-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:106` |
-| `none.nightly.harness-run.make-verify-widen-18.verify-canonical-cases` | `make` | make verify-canonical-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`reads: ["test/verify-canonical/"]`<br>`target: verify-canonical-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:108` |
+| `none.nightly.harness-run.make-verify-widen-18.verify-canonical-cases` | `make` | make verify-canonical-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`reads: ["test/verify-canonical/Canonical.schema"]`<br>`target: verify-canonical-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:108` |
 | `none.nightly.harness-run.make-verify-widen-18.verify-tablegen-cases` | `make` | make verify-tablegen-cases (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-tablegen-cases` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:110` |
 
 #### `harness-run` family `makefile`, 22 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.makefile.check` | `make` | make check (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/tables/"]`<br>`target: check` | the target exits 0 with no skip in its log | `Makefile:5258` |
+| `none.nightly.harness-run.makefile.check` | `make` | make check (Makefile) exits 0 | `file: Makefile`<br>`target: check` | the target exits 0 with no skip in its log | `Makefile:5258` |
 | `none.nightly.harness-run.makefile.conformance` | `make` | make conformance (Makefile) exits 0 | `file: Makefile`<br>`target: conformance` | the target exits 0 with no skip in its log | `Makefile:6792` |
-| `none.nightly.harness-run.makefile.conformance-bom-entry` | `make` | make conformance-bom-entry (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-bom-entry` | the target exits 0 with no skip in its log | `Makefile:6778` |
+| `none.nightly.harness-run.makefile.conformance-bom-entry` | `make` | make conformance-bom-entry (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/conformance/bom-entry"]`<br>`target: conformance-bom-entry` | the target exits 0 with no skip in its log | `Makefile:6778` |
 | `none.nightly.harness-run.makefile.conformance-shared` | `make` | make conformance-shared (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-shared` | the target exits 0 with no skip in its log | `Makefile:6789` |
 | `none.nightly.harness-run.makefile.tables-block-gate2-smoke` | `make` | make tables-block-gate2-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-gate2-smoke` | the target exits 0 with no skip in its log | `Makefile:2280` |
 | `none.nightly.harness-run.makefile.tables-fixedform-asan` | `make` | make tables-fixedform-asan (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-asan` | the target exits 0 with no skip in its log | `Makefile:7094` |
 | `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7480` |
-| `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (707 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7088` |
-| `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (195 bytes, held in the registry row's `inputs.reads`)<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:203` |
+| `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7088` |
+| `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (268 bytes, held in the registry row's `inputs.reads`)<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:203` |
 | `none.nightly.harness-run.makefile.test-core-tables-1` | `make` | make test-core-tables-1 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1` | the target exits 0 with no skip in its log | `Makefile:3612` |
 | `none.nightly.harness-run.makefile.test-core-tables-1a` | `make` | make test-core-tables-1a (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1a` | the target exits 0 with no skip in its log | `Makefile:3618` |
 | `none.nightly.harness-run.makefile.test-core-tables-1b` | `make` | make test-core-tables-1b (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1b` | the target exits 0 with no skip in its log | `Makefile:3640` |
-| `none.nightly.harness-run.makefile.test-core-tables-1c` | `make` | make test-core-tables-1c (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1c` | the target exits 0 with no skip in its log | `Makefile:3649` |
+| `none.nightly.harness-run.makefile.test-core-tables-1c` | `make` | make test-core-tables-1c (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/conformance/wire-fuzz-complete"]`<br>`target: test-core-tables-1c` | the target exits 0 with no skip in its log | `Makefile:3649` |
 | `none.nightly.harness-run.makefile.test-core-tables-1d` | `make` | make test-core-tables-1d (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1d` | the target exits 0 with no skip in its log | `Makefile:3664` |
-| `none.nightly.harness-run.makefile.test-core-tables-2` | `make` | make test-core-tables-2 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-2` | the target exits 0 with no skip in its log | `Makefile:3685` |
-| `none.nightly.harness-run.makefile.test-core-tables-3` | `make` | make test-core-tables-3 (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/cpp-tables/"]`<br>`target: test-core-tables-3` | the target exits 0 with no skip in its log | `Makefile:3748` |
+| `none.nightly.harness-run.makefile.test-core-tables-2` | `make` | make test-core-tables-2 (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/conformance/cpp/driver"]`<br>`target: test-core-tables-2` | the target exits 0 with no skip in its log | `Makefile:3685` |
+| `none.nightly.harness-run.makefile.test-core-tables-3` | `make` | make test-core-tables-3 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-3` | the target exits 0 with no skip in its log | `Makefile:3748` |
 | `none.nightly.harness-run.makefile.test-goose-tagged-harness-smoke` | `make` | make test-goose-tagged-harness-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-goose-tagged-harness-smoke` | the target exits 0 with no skip in its log | `Makefile:6725` |
 | `none.nightly.harness-run.makefile.test-moo-tagged-compiler` | `make` | make test-moo-tagged-compiler (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler` | the target exits 0 with no skip in its log | `Makefile:6704` |
 | `none.nightly.harness-run.makefile.test-moo-tagged-compiler-smoke` | `make` | make test-moo-tagged-compiler-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: test-moo-tagged-compiler-smoke` | the target exits 0 with no skip in its log | `Makefile:6719` |
@@ -4994,21 +4995,21 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/packet-end/","test/packet-end/c/"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2415` |
-| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/packet-write-cfloat/","test/packet-write-cfloat/c/"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2374` |
+| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/packet-end/PacketEnd.schema"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2415` |
+| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/packet-write-cfloat/PacketCFloat.schema"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2374` |
 
 #### `ci-plumbing` family `make-checks-packet-defaults`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-checks-packet-defaults.build-packet-defaults-c-test` | `make` | make build/packet-defaults/c-test (make/checks/packet-defaults.mk) exits 0 | `file: make/checks/packet-defaults.mk`<br>`reads: ["test/packet-defaults/"]`<br>`target: build/packet-defaults/c-test` | the target exits 0 with no skip in its log | `make/checks/packet-defaults.mk:95` |
+| `none.nightly.ci-plumbing.make-checks-packet-defaults.build-packet-defaults-c-test` | `make` | make build/packet-defaults/c-test (make/checks/packet-defaults.mk) exits 0 | `file: make/checks/packet-defaults.mk`<br>`reads: ["test/packet-defaults/Defaults.schema","test/packet-defaults/Plain.schema"]`<br>`target: build/packet-defaults/c-test` | the target exits 0 with no skip in its log | `make/checks/packet-defaults.mk:95` |
 
 #### `ci-plumbing` family `make-checks-packet-void`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.ci-plumbing.make-checks-packet-void.build-packet-void-c-test` | `make` | make build/packet-void/c-test (make/checks/packet-void.mk) exits 0 | `file: make/checks/packet-void.mk`<br>`target: build/packet-void/c-test` | the target exits 0 with no skip in its log | `make/checks/packet-void.mk:16` |
-| `none.nightly.ci-plumbing.make-checks-packet-void.build-packet-void-cpp-test` | `make` | make build/packet-void/cpp-test (make/checks/packet-void.mk) exits 0 | `file: make/checks/packet-void.mk`<br>`reads: ["test/packet-void/"]`<br>`target: build/packet-void/cpp-test` | the target exits 0 with no skip in its log | `make/checks/packet-void.mk:13` |
+| `none.nightly.ci-plumbing.make-checks-packet-void.build-packet-void-cpp-test` | `make` | make build/packet-void/cpp-test (make/checks/packet-void.mk) exits 0 | `file: make/checks/packet-void.mk`<br>`reads: ["test/packet-void/Void.schema"]`<br>`target: build/packet-void/cpp-test` | the target exits 0 with no skip in its log | `make/checks/packet-void.mk:13` |
 
 #### `ci-plumbing` family `make-cpp`, 1 test
 
@@ -5020,7 +5021,7 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-cs.build-conformance-cs` | `make` | make build-conformance-cs (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`reads: ["test/conformance/cs/"]`<br>`target: build-conformance-cs` | the target exits 0 with no skip in its log | `make/cs.mk:569` |
+| `none.nightly.ci-plumbing.make-cs.build-conformance-cs` | `make` | make build-conformance-cs (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: build-conformance-cs` | the target exits 0 with no skip in its log | `make/cs.mk:569` |
 | `none.nightly.ci-plumbing.make-cs.build-tables-generated-cs-stamp` | `make` | make build/tables-generated-cs/.stamp (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: build/tables-generated-cs/.stamp` | the target exits 0 with no skip in its log | `make/cs.mk:187` |
 
 #### `ci-plumbing` family `make-dart`, 1 test
@@ -5086,18 +5087,18 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 | `none.nightly.ci-plumbing.makefile.bin-schema` | `make` | make bin/schema (Makefile) exits 0 | `file: Makefile`<br>`target: bin/schema` | the target exits 0 with no skip in its log | `Makefile:160` |
 | `none.nightly.ci-plumbing.makefile.build-conformance-cpp` | `make` | make build/conformance-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-cpp` | the target exits 0 with no skip in its log | `Makefile:5427` |
 | `none.nightly.ci-plumbing.makefile.build-conformance-harness` | `make` | make build/conformance-harness (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-harness` | the target exits 0 with no skip in its log | `Makefile:5391` |
-| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/tables/fnz/"]`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7193` |
+| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7193` |
 | `none.nightly.ci-plumbing.makefile.build-hostile-values-stamp` | `make` | make build/hostile-values/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/hostile-values/.stamp` | the target exits 0 with no skip in its log | `Makefile:3380` |
 | `none.nightly.ci-plumbing.makefile.build-pack-text-stamp` | `make` | make build/pack-text/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/pack-text/.stamp` | the target exits 0 with no skip in its log | `Makefile:3347` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test` | `make` | make build/schema\_test (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test` | the target exits 0 with no skip in its log | `Makefile:229` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-bench` | `make` | make build/schema\_test\_bench (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench` | the target exits 0 with no skip in its log | `Makefile:3598` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-bench-table` | `make` | make build/schema\_test\_bench\_table (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/bench/"]`<br>`target: build/schema_test_bench_table` | the target exits 0 with no skip in its log | `Makefile:3604` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-bench-table` | `make` | make build/schema\_test\_bench\_table (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_bench_table` | the target exits 0 with no skip in its log | `Makefile:3604` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-block` | `make` | make build/schema\_test\_block (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block` | the target exits 0 with no skip in its log | `Makefile:957` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-block-asan` | `make` | make build/schema\_test\_block\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_asan` | the target exits 0 with no skip in its log | `Makefile:965` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz` | `make` | make build/schema\_test\_block\_fuzz (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz` | the target exits 0 with no skip in its log | `Makefile:1103` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-block-fuzz-asan` | `make` | make build/schema\_test\_block\_fuzz\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_block_fuzz_asan` | the target exits 0 with no skip in its log | `Makefile:1112` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-cook` | `make` | make build/schema\_test\_cook (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_cook` | the target exits 0 with no skip in its log | `Makefile:1361` |
-| `none.nightly.ci-plumbing.makefile.build-schema-test-guard` | `make` | make build/schema\_test\_guard (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/guard/"]`<br>`target: build/schema_test_guard` | the target exits 0 with no skip in its log | `Makefile:243` |
+| `none.nightly.ci-plumbing.makefile.build-schema-test-guard` | `make` | make build/schema\_test\_guard (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/guard/Alpha.schema","test/guard/Beta.schema"]`<br>`target: build/schema_test_guard` | the target exits 0 with no skip in its log | `Makefile:243` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-hostile` | `make` | make build/schema\_test\_hostile (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile` | the target exits 0 with no skip in its log | `Makefile:3391` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-hostile-asan` | `make` | make build/schema\_test\_hostile\_asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_hostile_asan` | the target exits 0 with no skip in its log | `Makefile:3395` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test-ludicrous` | `make` | make build/schema\_test\_ludicrous (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test_ludicrous` | the target exits 0 with no skip in its log | `Makefile:3553` |

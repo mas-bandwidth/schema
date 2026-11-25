@@ -14,144 +14,91 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
-// TestReachesDirNamesWholePaths: a target reaches a directory when it makes
-// a file at or below it, or its recipes name the directory as a whole path;
-// a longer name that starts with it (test/rust-soak for test/rust) is not
-// the directory.
-func TestReachesDirNamesWholePaths(t *testing.T) {
+// TestMakeReadsCreditWhatTheReachNames: a data case goes to the make row
+// whose reach names every file of it (a prerequisite, or a whole path in a
+// recipe or a variable it expands), as reads of its files, of several such
+// rows the one that makes least; a case and a driver in a directory a
+// recipe works on bare go to that row as a read of the directory. A case
+// one of whose files no row names, a case in a subdirectory of a directory
+// worked on bare, a directory only a comment or a negative control names,
+// and a package's own testdata get nothing, the first three named.
+func TestMakeReadsCreditWhatTheReachNames(t *testing.T) {
 	t.Parallel()
-	for _, c := range []struct {
-		files  []string
-		recipe string
-		dir    string
-		want   bool
-	}{
-		{nil, "cd test/rust && cargo test", "test/rust", true},
-		{nil, "cd $(CURDIR)/test/rust/ && cargo test", "test/rust", true},
-		{nil, "cd test/rust-soak && cargo test", "test/rust", false},
-		{nil, "cp xtest/rust/a b", "test/rust", false},
-		{[]string{"test/tables/VNEW_a.schema"}, "", "test/tables", true},
-		{[]string{"test/tablesx/a"}, "", "test/tables", false},
-	} {
-		files := map[string]bool{}
-		for _, f := range c.files {
-			files[f] = true
-		}
-		if got := reachesDir(files, c.recipe, c.dir); got != c.want {
-			t.Errorf("reachesDir(%v, %q, %s) = %v, want %v", c.files, c.recipe, c.dir, got, c.want)
-		}
-	}
-}
-
-// TestDirReadsCreditTheNearestNamedDirectoryToTheNarrowestRow: an item no
-// row runs or reads goes to the make row whose reach names its directory, or
-// the nearest one above it, and of several such rows the one that makes
-// least, climbing only to a driver's directory; what a row already reads,
-// what a package's own testdata holds, what only a negative control names,
-// and what no row reaches get no read, the last three named.
-func TestDirReadsCreditTheNearestNamedDirectoryToTheNarrowestRow(t *testing.T) {
-	t.Parallel()
-	drv := extract.Item{Kind: extract.KindDriver, Dir: "test/packet-end/rust", Name: "rust"}
-	deep := extract.Item{Kind: extract.KindDataCase, Dir: "test/packet-end/rust/src/cases", Name: "a"}
+	named := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables", Name: "V1"}
+	half := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables", Name: "V2"}
+	drv := extract.Item{Kind: extract.KindDriver, Dir: "test/go", Name: "go"}
+	inDrv := extract.Item{Kind: extract.KindDataCase, Dir: "test/go", Name: "Packet"}
+	below := extract.Item{Kind: extract.KindDataCase, Dir: "test/go/cases", Name: "c"}
+	remark := extract.Item{Kind: extract.KindDriver, Dir: "test/remark", Name: "remark"}
 	ride := extract.Item{Kind: extract.KindDataCase, Dir: "internal/x/testdata", Name: "r"}
-	lost := extract.Item{Kind: extract.KindDriver, Dir: "test/orphan", Name: "orphan"}
 	gotest := extract.Item{Kind: extract.KindGoTest, Dir: "internal/x", Name: "TestX"}
-	// a case under a directory a row names that is no driver's: not read
-	wide := extract.Item{Kind: extract.KindDataCase, Dir: "testdata/wire/json-x", Name: "w"}
-	res := &extract.Result{Items: []extract.Item{drv, deep, ride, lost, gotest, wide}, MakeText: "end:\n\tcd test/packet-end/rust && cargo test\nwire:\n\tpins testdata/wire\nctl:\n\tcd test/orphan\n"}
+	res := &extract.Result{
+		Items: []extract.Item{named, half, drv, inDrv, below, remark, ride, gotest},
+		CaseFiles: map[string][]string{
+			named.ID(): {"test/tables/V1.schema"},
+			half.ID():  {"test/tables/V2.schema", "test/tables/V2.bin"},
+			inDrv.ID(): {"test/go/Packet.schema"},
+			below.ID(): {"test/go/cases/c.bin"},
+			ride.ID():  {"internal/x/testdata/r.bin"},
+		},
+		MakeText: "check:\n\tschema check test/tables/V1.schema test/tables/V2.schema\ngo:\n\tcd test/go && go run .\n# cd test/remark\nctl:\n\tcd test/remark\n",
+	}
 	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
-		{Key: "harness-run.rust.all", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"all"}`)},
-		{Key: "harness-run.rust.end", Adapter: "make", Inputs: []byte(`{"file":"make/rust.mk","target":"end"}`)},
-		{Key: "harness-run.wire.pins", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"wire"}`)},
-		{Key: "plant.orphan.ctl", Type: "plant", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"ctl"}`)},
+		{Key: "harness-run.makefile.all", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"all"}`)},
+		{Key: "harness-run.makefile.check", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"check"}`)},
+		{Key: "harness-run.make-go.go", Adapter: "make", Inputs: []byte(`{"file":"make/go.mk","target":"go"}`)},
+		{Key: "plant.remark.ctl", Type: "plant", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"ctl"}`)},
 	}}
 	reach := map[string]makeReach{
-		"harness-run.rust.all":  {files: map[string]bool{"all": true, "end": true, "x": true}, text: "cd test/packet-end/rust && cargo test"},
-		"harness-run.rust.end":  {files: map[string]bool{"end": true}, text: "cd test/packet-end/rust && cargo test"},
-		"harness-run.wire.pins": {files: map[string]bool{"wire": true}, text: "pins testdata/wire"},
-		"plant.orphan.ctl":      {files: map[string]bool{"ctl": true}, text: "cd test/orphan"},
+		"harness-run.makefile.all":   newMakeReach(map[string]bool{"all": true, "check": true, "go": true, "x": true}, []string{"schema check test/tables/V1.schema test/tables/V2.schema", "cd test/go && go run .", "\t@# cd test/remark"}),
+		"harness-run.makefile.check": newMakeReach(map[string]bool{"check": true}, []string{"schema check test/tables/V1.schema test/tables/V2.schema"}),
+		"harness-run.make-go.go":     newMakeReach(map[string]bool{"go": true, "./test/go/main.go": true}, []string{"cd test/go && go run ."}),
+		"plant.remark.ctl":           newMakeReach(map[string]bool{"ctl": true}, []string{"cd test/remark"}),
 	}
-	got, none := dirReads(res, reg, reach)
-	want := map[string][]string{"harness-run.rust.end": {"test/packet-end/rust/"}}
+	got, none := makeReads(res, reg, reach)
+	want := map[string][]string{
+		"harness-run.makefile.check": {"test/tables/V1.schema"},
+		"harness-run.make-go.go":     {"test/go/"},
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("reads %v, want %v", got, want)
 	}
-	if !reflect.DeepEqual(none, []string{lost.ID(), wide.ID()}) {
-		t.Errorf("no row reaches %v, want %s (only a negative control names it) and %s (only a directory above it that is no driver's is named)", none, lost.ID(), wide.ID())
+	if !reflect.DeepEqual(none, []string{half.ID(), below.ID(), remark.ID()}) {
+		t.Errorf("no row reaches %v, want %s (one file named), %s (below a bare directory) and %s (a comment and a negative control)", none, half.ID(), below.ID(), remark.ID())
 	}
 }
 
-// TestWithDirReadsKeepsFileReadsAndOnlyChangesWhatChanged: rewriting a make
-// row's directory reads keeps its file reads, and a line whose directory
-// reads are already the ones asked for is left byte for byte.
-func TestWithDirReadsKeepsFileReadsAndOnlyChangesWhatChanged(t *testing.T) {
+// TestWithReadsReplacesAMakeRowsReads: rewriting a make row's reads
+// replaces them all; a line whose reads are already the ones asked for is
+// left byte for byte, and a negative control's line is not a make row's.
+func TestWithReadsReplacesAMakeRowsReads(t *testing.T) {
 	t.Parallel()
 	inputs := `{"file":"Makefile","target":"t","reads":["test/tables/VNEW_a.schema","test/old/"]}`
 	line := `{"rec":"test","key":"k.a","inputs":` + inputs + `,"adapter":"make"}`
 	row := testreg.Test{Key: "k.a", Adapter: "make", Inputs: []byte(inputs)}
-	got, ok, err := withDirReads(line, row, []string{"test/new/"})
+	got, ok, err := withReads(line, row, []string{"test/new/", "test/tables/VNEW_b.schema"})
 	if err != nil || !ok {
 		t.Fatal(ok, err)
 	}
-	if !strings.Contains(got, `"reads":["test/tables/VNEW_a.schema","test/new/"]`) || strings.Contains(got, "test/old/") {
+	if !strings.Contains(got, `"reads":["test/new/","test/tables/VNEW_b.schema"]`) || strings.Contains(got, "test/old/") || strings.Contains(got, "VNEW_a") {
 		t.Errorf("rewritten: %s", got)
 	}
-	same, _, err := withDirReads(line, row, []string{"test/old/"})
+	same, _, err := withReads(line, row, []string{"test/tables/VNEW_a.schema", "test/old/"})
 	if err != nil || same != line {
 		t.Errorf("an unchanged line was rewritten: %s (%v)", same, err)
 	}
-}
-
-// TestRegeneratedReadsDropAReadThatCreditsNothing: a directory read that
-// holds only what another read of the same regeneration holds already (a
-// driver's directory read holds its subdirectories) is not written, so the
-// regenerated registry gives the extract no idle read to name.
-func TestRegeneratedReadsDropAReadThatCreditsNothing(t *testing.T) {
-	t.Parallel()
-	head := `{"rec":"lang","name":"go","write":"refuse","adapter":""}
-{"rec":"tier","name":"nightly","what":"long"}
-{"rec":"type","name":"harness-run","what":"a make target","contract":"exits 0"}
-`
-	row := func(c, target string) string {
-		return `{"rec":"test","key":"harness-run.tables.` + c + `","type":"harness-run","family":"tables","case":"` + c + `","tier":"nightly","checks":"make ` + target + `","inputs":{"file":"Makefile","target":"` + target + `"},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}` + "\n"
-	}
-	src := head + row("sub", "sub")
-	drv := extract.Item{Kind: extract.KindDriver, Dir: "test/tables", Name: "tables"}
-	deep := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables/foo", Name: "a"}
-	enum := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables/enumbound", Name: "e"}
-	res := &extract.Result{
-		Items:     []extract.Item{drv, deep, enum},
-		CaseFiles: map[string][]string{deep.ID(): {"test/tables/foo/a.schema"}, enum.ID(): {"test/tables/enumbound/e.schema"}},
-		MakeText:  "sub:\n\tcd test/tables && check test/tables/enumbound/e.schema\n",
-	}
-	db := &makeDB{rules: map[string]*makeRule{
-		"sub": {target: "sub", recipe: []string{"cd test/tables && check test/tables/enumbound/e.schema"}},
-	}, vars: map[string]string{}}
-	want, _, text, err := regenerateReads(src, "r.jsonl", res, db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := want["harness-run.tables.sub"]; !reflect.DeepEqual(got, []string{"test/tables/"}) {
-		t.Errorf("reads %v, want [test/tables/]: test/tables/enumbound/ holds only what the driver's directory read holds", got)
-	}
-	if !strings.Contains(text, `"reads":["test/tables/"]`) || strings.Contains(text, "test/tables/enumbound/") {
-		t.Errorf("the regenerated registry writes an idle read:\n%s", text)
-	}
-	reg, err := testreg.Parse("r.jsonl", strings.NewReader(text))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if idle := extract.IdleReads(res, reg); len(idle) != 0 {
-		t.Errorf("idle reads after regenerating: %v", idle)
+	plant := row
+	plant.Type = "plant"
+	if l, ok, err := withReads(line, plant, nil); err != nil || ok || l != line {
+		t.Errorf("a negative control's line: %q %v %v", l, ok, err)
 	}
 }
 
 // TestTheRegistrysDirectoryReadsAreCurrent holds the registry's make rows'
-// directory reads to a regeneration from make's database and the extract,
-// as schema-test reads does: a read a make file change left stale, a read a
-// row no longer reaches, and a directory no read names that a row now
-// reaches are each a line of the registry named with what it should be. It
-// is functional: it starts make (make -p, which runs no recipe).
+// reads to a regeneration from make's database and the extract, as
+// schema-test reads does (staleReads): a read a make file change left
+// stale, or one a row no longer reaches, is named by its line. It is
+// functional: it starts make (make -p, which runs no recipe).
 func TestTheRegistrysDirectoryReadsAreCurrent(t *testing.T) {
 	t.Parallel()
 	root := testinputs.Root(t)
@@ -175,17 +122,43 @@ func TestTheRegistrysDirectoryReadsAreCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, _, regenerated, err := regenerateReads(string(src), testreg.DefaultPath, res, db)
+	want, _, _, err := regenerateReads(string(src), testreg.DefaultPath, res, db)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(want) == 0 {
-		t.Fatal("the regeneration gives no make row a directory read: the make database or the extract read nothing, and judging none proves nothing")
+		t.Fatal("the regeneration gives no make row a read: the make database or the extract read nothing, and judging none proves nothing")
 	}
-	old := strings.Split(string(src), "\n")
-	for i, l := range strings.Split(regenerated, "\n") {
-		if i < len(old) && old[i] != l {
-			t.Errorf("%s:%d: the directory reads are stale: regenerate with go run ./tools/schema-test reads --write; want\n%s", testreg.DefaultPath, i+1, l)
-		}
+	stale, _, err := staleReads(string(src), testreg.DefaultPath, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range stale {
+		t.Errorf("%s: regenerate with go run ./tools/schema-test reads --write", l)
+	}
+}
+
+// TestAReadTheRegenerationDoesNotGiveIsStale: a make row's read that the
+// regeneration does not give that row is stale, by line; a read it gives
+// that the registry does not write is unwritten, not stale; a negative
+// control's reads are its own.
+func TestAReadTheRegenerationDoesNotGiveIsStale(t *testing.T) {
+	t.Parallel()
+	src := `{"rec":"lang","name":"go","write":"refuse","adapter":""}
+{"rec":"tier","name":"nightly","what":"long"}
+{"rec":"type","name":"harness-run","what":"a make target"}
+{"rec":"type","name":"plant","what":"a control"}
+{"rec":"test","key":"harness-run.m.a","type":"harness-run","family":"m","case":"a","tier":"nightly","checks":"make a","inputs":{"file":"Makefile","target":"a","reads":["test/x/A.schema","test/gone/"]},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}
+{"rec":"test","key":"plant.m.c","type":"plant","family":"m","case":"c","tier":"nightly","checks":"make c","inputs":{"file":"Makefile","target":"c","reads":["test/own/"]},"expect":"exits 2","source":"Makefile:2","scope":"none","adapter":"make"}
+`
+	stale, unwritten, err := staleReads(src, "r.jsonl", map[string][]string{"harness-run.m.a": {"test/x/A.schema", "test/x/B.schema"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(stale, []string{"r.jsonl:5: harness-run.m.a reads test/gone/, which make's database does not give it"}) {
+		t.Errorf("stale %q", stale)
+	}
+	if !reflect.DeepEqual(unwritten, []string{"r.jsonl:5: harness-run.m.a test/x/B.schema"}) {
+		t.Errorf("unwritten %q", unwritten)
 	}
 }

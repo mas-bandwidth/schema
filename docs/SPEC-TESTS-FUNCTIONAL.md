@@ -2782,7 +2782,7 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.write-refusal.javatable.java-declared-deprecated-enum-cook` | `gotest` | Go test TestJavaDeclaredDeprecatedEnumCook in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`reads: ["testdata/conformance/feature-witnesses/declared-deprecated-enum/"]`<br>`test: TestJavaDeclaredDeprecatedEnumCook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/declared_deprecated_enum_cook_test.go:23` |
+| `none.functional.write-refusal.javatable.java-declared-deprecated-enum-cook` | `gotest` | Go test TestJavaDeclaredDeprecatedEnumCook in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaDeclaredDeprecatedEnumCook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/declared_deprecated_enum_cook_test.go:23` |
 
 #### `write-refusal` family `squirreltable`, 1 test
 
@@ -4682,7 +4682,7 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay` | `make` | make schema-lua-fuzz-replay (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`reads: ["testdata/lua-nightly-fuzz/"]`<br>`target: schema-lua-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:164` |
+| `none.functional.fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay` | `make` | make schema-lua-fuzz-replay (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`reads: ["testdata/lua-nightly-fuzz/partial-find.sh"]`<br>`target: schema-lua-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:164` |
 
 #### `fuzz` family `make-schema-luau-nightly-fuzz`, 1 test
 
@@ -4694,7 +4694,7 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-1` | `make` | make verify-goose-fuzz-part-1 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`reads: ["test/conformance/goose/"]`<br>`target: verify-goose-fuzz-part-1` | the target exits 0 with no skip in its log | `make/verify-vm.mk:576` |
+| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-1` | `make` | make verify-goose-fuzz-part-1 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-1` | the target exits 0 with no skip in its log | `make/verify-vm.mk:576` |
 | `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:581` |
 
 ### Type `plant`
@@ -4926,7 +4926,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.checked-cook-go-consumers` | `gotest` | Go test TestCheckedCookGoConsumers in ./compiler | `package: ./compiler`<br>`test: TestCheckedCookGoConsumers` | the Go test passes | `compiler/cookconsumer_go_test.go:29` |
 | `none.functional.compiler.compiler.checked-cook-go-consumers-negative-controls` | `gotest` | Go test TestCheckedCookGoConsumersNegativeControls in ./compiler | `package: ./compiler`<br>`test: TestCheckedCookGoConsumersNegativeControls` | the Go test passes | `compiler/cookconsumer_go_test.go:362` |
 | `none.functional.compiler.compiler.cook-absent-optional-payload-zero` | `gotest` | Go test TestCookAbsentOptionalPayloadZero in ./compiler | `package: ./compiler`<br>`test: TestCookAbsentOptionalPayloadZero` | the Go test passes | `compiler/cookabsentoptional_test.go:66` |
-| `none.functional.compiler.compiler.corpus-non-canonical-spellings` | `gotest` | Go test TestCorpusNonCanonicalSpellings in ./compiler | `package: ./compiler`<br>`inputs.reads` (121 bytes, held in the registry row's `inputs.reads`)<br>`test: TestCorpusNonCanonicalSpellings` | the Go test passes | `compiler/corpus_non_canonical_test.go:30` |
+| `none.functional.compiler.compiler.corpus-non-canonical-spellings` | `gotest` | Go test TestCorpusNonCanonicalSpellings in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/message-one-encoding/","testdata/wire/non-canonical/"]`<br>`test: TestCorpusNonCanonicalSpellings` | the Go test passes | `compiler/corpus_non_canonical_test.go:30` |
 | `none.functional.compiler.compiler.cpp-blob-named-twice` | `gotest` | Go test TestCPPBlobNamedTwice in ./compiler | `package: ./compiler`<br>`test: TestCPPBlobNamedTwice` | the Go test passes | `compiler/cppblobshared_test.go:270` |
 | `none.functional.compiler.compiler.cpp-collection-widening` | `gotest` | Go test TestCppCollectionWidening in ./compiler | `package: ./compiler`<br>`test: TestCppCollectionWidening` | the Go test passes | `compiler/collectionwiden_test.go:13` |
 | `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment` | `gotest` | Go test TestCppCookExtentCanonicalAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:62` |
@@ -5019,9 +5019,9 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.repeated-array-tail-defaults` | `gotest` | Go test TestRepeatedArrayTailDefaults in ./compiler | `package: ./compiler`<br>`test: TestRepeatedArrayTailDefaults` | the Go test passes | `compiler/repeatedarraytail_test.go:15` |
 | `none.functional.compiler.compiler.ruby-fixed-writer-lock` | `gotest` | Go test TestRubyFixedWriterLock in ./compiler | `package: ./compiler`<br>`test: TestRubyFixedWriterLock` | the Go test passes | `compiler/ruby_fixed_writer_test.go:13` |
 | `none.functional.compiler.compiler.ruby-fixed-writer-lock-negative-control` | `gotest` | Go test TestRubyFixedWriterLockNegativeControl in ./compiler | `package: ./compiler`<br>`test: TestRubyFixedWriterLockNegativeControl` | the Go test passes | `compiler/ruby_fixed_writer_test.go:18` |
-| `none.functional.compiler.compiler.rust-every-schema-name-is-reachable` | `gotest` | Go test TestRustEverySchemaNameIsReachable in ./compiler | `package: ./compiler`<br>`inputs.reads` (117 bytes, held in the registry row's `inputs.reads`)<br>`test: TestRustEverySchemaNameIsReachable` | the Go test passes | `compiler/rustnames_test.go:52` |
+| `none.functional.compiler.compiler.rust-every-schema-name-is-reachable` | `gotest` | Go test TestRustEverySchemaNameIsReachable in ./compiler | `package: ./compiler`<br>`test: TestRustEverySchemaNameIsReachable` | the Go test passes | `compiler/rustnames_test.go:52` |
 | `none.functional.compiler.compiler.spec-blob-target-outside-closure-refused` | `gotest` | Go test TestSpecBlobTargetOutsideClosureRefused in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/pointer-target-type/","test/pointer-target-type/blobkind/reader/"]`<br>`test: TestSpecBlobTargetOutsideClosureRefused` | the Go test passes | `compiler/spec_pointer_target_type_test.go:208` |
-| `none.functional.compiler.compiler.spec-fixed-form-edges` | `gotest` | Go test TestSpecFixedFormEdges in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/fixed-empty-batch/","test/fixed-empty-batch/"]`<br>`test: TestSpecFixedFormEdges` | the Go test passes | `compiler/spec_fixed_form_edges_test.go:33` |
+| `none.functional.compiler.compiler.spec-fixed-form-edges` | `gotest` | Go test TestSpecFixedFormEdges in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/fixed-empty-batch/"]`<br>`test: TestSpecFixedFormEdges` | the Go test passes | `compiler/spec_fixed_form_edges_test.go:33` |
 | `none.functional.compiler.compiler.spec-pointer-target-type-checked` | `gotest` | Go test TestSpecPointerTargetTypeChecked in ./compiler | `package: ./compiler`<br>`reads: ["test/pointer-target-type/reader/"]`<br>`test: TestSpecPointerTargetTypeChecked` | the Go test passes | `compiler/spec_pointer_target_type_test.go:27` |
 | `none.functional.compiler.compiler.squirrel-carries-optional-variable-closure` | `gotest` | Go test TestSquirrelCarriesOptionalVariableClosure in ./compiler | `package: ./compiler`<br>`test: TestSquirrelCarriesOptionalVariableClosure` | the Go test passes | `compiler/target_squirrel_optionalclosure_test.go:21` |
 | `none.functional.compiler.compiler.squirrel-carries-text-lists-and-array-root` | `gotest` | Go test TestSquirrelCarriesTextListsAndArrayRoot in ./compiler | `package: ./compiler`<br>`test: TestSquirrelCarriesTextListsAndArrayRoot` | the Go test passes | `compiler/target_squirrel_textlists_test.go:23` |
@@ -5395,7 +5395,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
+| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`inputs.reads` (106 bytes, held in the registry row's `inputs.reads`)<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
 
 #### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
 
@@ -5585,7 +5585,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/c-tables/","test/conformance/c/"]`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
+| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
 | `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:308` |
 
 #### `harness-run` family `make-go`, 1 test
@@ -5598,8 +5598,8 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/generated-tree/"]`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
-| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`reads: ["testdata/wire/tables/","testdata/wire/tables/framing/"]`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
+| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/generated-tree/verify"]`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
+| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8506` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8515` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8470` |
