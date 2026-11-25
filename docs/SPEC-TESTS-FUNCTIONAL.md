@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 36. Language-free tests: 1716.
+Functional tests every language answers: 36. Language-free tests: 1717.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -1843,10 +1843,11 @@ a negative control: a named test run against a deliberately broken build must co
 
 a battery run as one step (a make target over a leg or a corpus): it passes when the step exits 0 with no skip; a migration item until its cases are named rows.
 
-#### `harness-run` family `makefile`, 1 test
+#### `harness-run` family `makefile`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8270` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost` | `make` | make tables-block-zero-cost (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost` | the target exits 0 with no skip in its log | `Makefile:1862` |
 
 ## Declared unrepresentable
