@@ -17,17 +17,64 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
-func pin(m *Manifest, driversPath, work, cookDir string) error {
-	drivers, _, err := loadDrivers(driversPath)
+// pinSurfaces are the dumps `harness pin` writes, in the order it writes them.
+var pinSurfaces = []string{"cook", "block-dump"}
+
+// pinSelection reads -surfaces for pin: empty is every pin surface; otherwise a
+// comma-separated subset, each named once. A name that is not a pin surface is
+// an error, never an empty run: a writer row that selected nothing would pin
+// nothing and pass.
+func pinSelection(list string) (map[string]bool, error) {
+	selected := map[string]bool{}
+	if strings.TrimSpace(list) == "" {
+		for _, s := range pinSurfaces {
+			selected[s] = true
+		}
+		return selected, nil
+	}
+	for _, s := range strings.Split(list, ",") {
+		s = strings.TrimSpace(s)
+		known := false
+		for _, p := range pinSurfaces {
+			known = known || p == s
+		}
+		if !known {
+			return nil, fmt.Errorf("pin: -surfaces names %q, which is not a pin surface (want %s)", s, strings.Join(pinSurfaces, ", "))
+		}
+		if selected[s] {
+			return nil, fmt.Errorf("pin: -surfaces names %q twice", s)
+		}
+		selected[s] = true
+	}
+	return selected, nil
+}
+
+// pin writes the selected dumps from the reference leg: the first driver in
+// the registry, or driverCmd when it is given. A pins row passes driverCmd to
+// write from a binary that compiles only the units its pins check — the block
+// walk alone (test/conformance/cpp/block_pin.cpp), which is the header the
+// whole driver compiles too — so the row does not build the whole driver.
+func pin(m *Manifest, driversPath, driverCmd, surfaces, work, cookDir string) error {
+	selected, err := pinSelection(surfaces)
 	if err != nil {
 		return err
 	}
-	if len(drivers) == 0 {
-		return fmt.Errorf("%s: no driver to pin from", driversPath)
+	var reference driver
+	if driverCmd != "" {
+		reference = driver{lang: referenceLang, argv: strings.Fields(driverCmd)}
+	} else {
+		drivers, _, err := loadDrivers(driversPath)
+		if err != nil {
+			return err
+		}
+		if len(drivers) == 0 {
+			return fmt.Errorf("%s: no driver to pin from", driversPath)
+		}
+		reference = drivers[0]
 	}
-	reference := drivers[0]
 
 	if err := materialise(m, work); err != nil {
 		return err
@@ -58,6 +105,9 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 		return err
 	}
 	for _, p := range pins {
+		if !selected[p.surface] {
+			continue
+		}
 		out := filepath.Join(work, "pin", p.surface)
 		if err := os.RemoveAll(out); err != nil {
 			return err
@@ -88,11 +138,20 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 	// knows. The C++ driver prints the manifest lines; a human folds them into
 	// MANIFEST.txt, because a manifest that rewrites itself is a manifest
 	// nobody reviews.
-	cmd := exec.Command("build/conformance-cpp", "emit-block-forgeries")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("emitting the block forgeries: %w", err)
+	if selected["block-dump"] {
+		emitter := []string{"build/conformance-cpp"}
+		if driverCmd != "" {
+			emitter = reference.argv
+		}
+		cmd := exec.Command(emitter[0], append(append([]string{}, emitter[1:]...), "emit-block-forgeries")...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("emitting the block forgeries: %w", err)
+		}
+	}
+	if !selected["cook"] {
+		return nil
 	}
 
 	// and the COOK battery, the same way and for the same reason: its 111 rows

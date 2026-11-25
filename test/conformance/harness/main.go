@@ -55,6 +55,9 @@ func usage() {
              cook's canonical node dump, and the block forgery battery
              resolved to byte offsets. Both come from the FIRST driver in the
              registry, which is the reference leg.
+             -surfaces cook or -surfaces block-dump pins one of them, and
+             -driver names the reference command to pin from instead (make
+             pins-conformance-block pins from the block walk alone).
 
   run        materialise the fixtures, run every driver in the registry over
              every surface it lists, compare against the data, and print the
@@ -150,7 +153,7 @@ func main() {
 	only := fs.String("only", "", "run one registered language")
 	skip := fs.String("skip", "", "registered languages this run does not exercise, comma separated")
 	resultsOut := fs.String("results", "", "write every case's verdict to this JSON file, the input of tools/matrix proof (run only)")
-	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
+	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz); the leg to pin from instead of the registry's first (pin)")
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
 	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
 	maxMutants := fs.Int("max-mutants", 0, "cap total mutants while covering every seed, pinned vector, stateful valid->refused->valid reuse triad per root, and an even stride over enumerated/random passes (wire-fuzz only)")
@@ -171,7 +174,7 @@ func main() {
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", strings.Join(cardSurfaces, ","), "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
-	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run only)")
+	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run); pin only these of cook, block-dump (pin)")
 	complete := fs.Bool("complete", false, "a port's conformance run: any absence, of a surface or a case, fails the run and the success footer is not printed, because an absence is never a pass (docs/SPEC-CONFORMANCE.md §2, §5; run only)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
@@ -269,7 +272,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "pin":
-		if err := pin(m, *drivers, *work, "testdata/conformance/tables/cook"); err != nil {
+		if err := pin(m, *drivers, *driver, *onlySurfaces, *work, "testdata/conformance/tables/cook"); err != nil {
 			fatalf("%v", err)
 		}
 	case "json-fuzz":

@@ -8152,7 +8152,8 @@ tables-go-checked-cook:
 #   - pins-wire-tables:       testdata/wire/tables/ from test/tables/main.cpp
 #   - pins-wire-tables-forms: testdata/wire/tables/ (block/maps/lists/arms/retain)
 #                             plus testdata/conformance/tables/ (harness generate)
-#   - pins-conformance:       testdata/conformance/tables/cook/ and forgeries.txt
+#   - pins-conformance-cook:  testdata/conformance/tables/cook/ (the cook walk alone)
+#   - pins-conformance-block: testdata/conformance/tables/block/ (the block walk alone)
 
 define pins_generate_dirs
 	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
@@ -8349,35 +8350,45 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	./build/conformance-harness generate
 
-PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 fixedevo varevo1 varevo2 varevo3 prior cooktorture cooktorturewide shapes valuedefaults packetunions backend vocab vocab9 arms rt1 features surfaces announce4096 announce4097
-# GNU Make records unlimited -j without a number and default serial without -j.
-PINS_CONFORMANCE_WIDTH = $(patsubst -j%,%,$(or $(filter -j%,$(MAKEFLAGS)),-j1))
-# The cook binary is used by `harness pin` as well as the conformance driver.
-# Start both large translation units alongside the generated table objects,
-# with one bounded Make jobserver instead of a serial cook build and batches.
-# The sub-make reads the generated source list after the files exist.
-# Keep the old `ls` order for the collection objects when linking.
-PINS_CONFORMANCE_COLLECTION_OBJECTS = $(filter build/conformance-cpp-objs/maps/% build/conformance-cpp-objs/lists/% build/conformance-cpp-objs/widelist/%,$(CONFORMANCE_OBJECTS))
-PINS_CONFORMANCE_OBJECTS = $(sort $(PINS_CONFORMANCE_COLLECTION_OBJECTS)) $(filter-out $(PINS_CONFORMANCE_COLLECTION_OBJECTS),$(CONFORMANCE_OBJECTS))
-.PHONY: _pins-conformance-binaries
-_pins-conformance-binaries: build/schema_test_cook build/conformance-cpp-objs/_main/conformance_main.o $(PINS_CONFORMANCE_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_main.o $(PINS_CONFORMANCE_OBJECTS) -o build/conformance-cpp
+# THE CONFORMANCE PINS ARE TWO ROWS, each building only what its pins check.
+# The dumps `harness pin` writes come from two walks: the cook's node dump from
+# build/schema_test_cook (test/tables/cook_main.cpp over the pointers unit) and
+# the block row dump from the block walk (test/conformance/cpp/block_walk.h over
+# the block and cooktorture units). One row used to build the whole reference
+# driver (forty-five units and main.cpp, 225 s cold) to write ten files; now:
+#   - pins-conformance-cook:  testdata/conformance/tables/cook/*.dump
+#   - pins-conformance-block: testdata/conformance/tables/block/*.dump, from
+#     build/conformance-cpp-block, which compiles block_walk.h alone. The whole
+#     driver compiles the same header and byte-compares these pins on every
+#     conformance run, so the two cannot drift.
+# Both generate into their own directory and never touch build/tables-generated
+# or its stamp: a row that generated three units must not tell a later target
+# that all of them are current.
+PINS_CONFORMANCE_GENERATED := build/pins-conformance/generated
+PINS_CONFORMANCE_COOK_DIRS := pointers
+PINS_CONFORMANCE_BLOCK_DIRS := block cooktorture
 
+.PHONY: pins-conformance-cook
+pins-conformance-cook: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,$(PINS_CONFORMANCE_GENERATED))
+pins-conformance-cook: bin/schema build/conformance-harness test/tables/cook_main.cpp
+	@rm -rf $(PINS_CONFORMANCE_GENERATED) && mkdir -p $(PINS_CONFORMANCE_GENERATED)
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_COOK_DIRS),conformance-cook)
+	$(CXX) $(COOK_CXXFLAGS) -I$(PINS_CONFORMANCE_GENERATED)/pointers -Itest/tables test/tables/cook_main.cpp -o build/schema_test_cook
+	./build/conformance-harness pin -surfaces cook
+
+.PHONY: pins-conformance-block
+pins-conformance-block: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,$(PINS_CONFORMANCE_GENERATED))
+pins-conformance-block: bin/schema build/conformance-harness test/conformance/cpp/block_pin.cpp test/conformance/cpp/block_walk.h
+	@rm -rf $(PINS_CONFORMANCE_GENERATED) && mkdir -p $(PINS_CONFORMANCE_GENERATED)
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_BLOCK_DIRS),conformance-block)
+	$(call pins_compile_cxx,build/conformance-cpp-block,$(TABLES_CXXFLAGS) -I$(PINS_CONFORMANCE_GENERATED)/block -I$(PINS_CONFORMANCE_GENERATED)/cooktorture -I$(SERIALIZE),test/conformance/cpp/block_pin.cpp $$(ls $(PINS_CONFORMANCE_GENERATED)/block/*.cpp $(PINS_CONFORMANCE_GENERATED)/cooktorture/*.cpp),conformance-block)
+	./build/conformance-harness pin -surfaces block-dump -driver ./build/conformance-cpp-block
+
+# the maintainer's one command for both; CI runs the two rows apart
 .PHONY: pins-conformance
-pins-conformance: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
-pins-conformance: bin/schema build/conformance-harness
-	@rm -rf build/tables-generated && mkdir -p build/tables-generated
-	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_DIRS),conformance,$(PINS_CONFORMANCE_WIDTH))
-	@touch build/tables-generated/.stamp
-	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
-	@set -eu; \
-	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
-	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
-	requested="$(PINS_CONFORMANCE_WIDTH)"; \
-	jobs=; \
-	if [ -z "$$requested" ] || [ "$$requested" -gt "$$procs" ]; then jobs="-j$$procs"; fi; \
-	$(MAKE) --no-print-directory $$jobs _pins-conformance-binaries
-	./build/conformance-harness pin
+pins-conformance:
+	$(MAKE) --no-print-directory pins-conformance-cook
+	$(MAKE) --no-print-directory pins-conformance-block
 
 
 
