@@ -1064,10 +1064,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			active = append(active, sr)
 		}
 		// Run independent surfaces in parallel across up to 4 cores so co-tenant
-		// fleet runners saturate without thrashing; luau and lobster stage files
-		// into a shared driver directory and stay serial.
+		// fleet runners saturate without thrashing; luau stages files into a
+		// shared driver directory and stays serial. The lobster driver stages
+		// each unit's files by rename, only where their bytes change, so its
+		// surfaces run in parallel too (2026-11-25).
 		workers := min(runtime.GOMAXPROCS(0), 4)
-		if d.lang == "luau" || d.lang == "lobster" || workers < 1 {
+		if d.lang == "luau" || workers < 1 {
 			workers = 1
 		}
 		failFast := os.Getenv("CONFORMANCE_FAIL_FAST") == "1"
