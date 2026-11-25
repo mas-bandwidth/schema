@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2898.
+Unit tests every language answers: 2. Language-free tests: 2905.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -37,11 +37,13 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 generated source compiles and is clean.
 
-#### `codegen` family `cpptable`, 1 test
+#### `codegen` family `cpptable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.codegen.cpptable.conformance-driver-units-read-the-makefile-list` | `gotest` | Go test TestConformanceDriverUnitsReadTheMakefileList in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestConformanceDriverUnitsReadTheMakefileList` | the Go test passes | `internal/codegen/cpptable/conformance_driver_sources_test.go:127` |
 | `none.unit.codegen.cpptable.cpp-block-float-range-ends-are-held-at-the-field-width` | `gotest` | Go test TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` | the Go test passes | `internal/codegen/cpptable/block_range_limits_test.go:65` |
+| `none.unit.codegen.cpptable.cpp-conformance-driver-registers-every-family` | `gotest` | Go test TestCppConformanceDriverRegistersEveryFamily in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppConformanceDriverRegistersEveryFamily` | the Go test passes | `internal/codegen/cpptable/conformance_driver_sources_test.go:96` |
 
 #### `codegen` family `ctable`, 1 test
 
@@ -2070,6 +2072,16 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci-hostilecorpus.ran-every-reads-the-folder` | `gotest` | Go test TestRanEveryReadsTheFolder in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestRanEveryReadsTheFolder` | the Go test passes | `internal/ci/hostilecorpus/ledger_test.go:66` |
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-covers` | `gotest` | Go test TestWideBoundsCorpusCovers in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusCovers` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:32` |
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-verify` | `gotest` | Go test TestWideBoundsCorpusVerify in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusVerify` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:17` |
+
+#### `tooling` family `compilebudget`, 5 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.compilebudget.check-passes-the-recorded-shape` | `gotest` | Go test TestCheckPassesTheRecordedShape in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckPassesTheRecordedShape` | the Go test passes | `tools/compilebudget/main_test.go:85` |
+| `none.unit.tooling.compilebudget.check-reds-a-missing-timing` | `gotest` | Go test TestCheckRedsAMissingTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAMissingTiming` | the Go test passes | `tools/compilebudget/main_test.go:116` |
+| `none.unit.tooling.compilebudget.check-reds-a-unit-over-budget` | `gotest` | Go test TestCheckRedsAUnitOverBudget in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAUnitOverBudget` | the Go test passes | `tools/compilebudget/main_test.go:98` |
+| `none.unit.tooling.compilebudget.check-reds-an-unreadable-timing` | `gotest` | Go test TestCheckRedsAnUnreadableTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAnUnreadableTiming` | the Go test passes | `tools/compilebudget/main_test.go:128` |
+| `none.unit.tooling.compilebudget.the-recorded-shape-is-the-makefiles` | `gotest` | Go test TestTheRecordedShapeIsTheMakefiles in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestTheRecordedShapeIsTheMakefiles` | the Go test passes | `tools/compilebudget/main_test.go:68` |
 
 #### `tooling` family `conformancerows`, 7 tests
 
