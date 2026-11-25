@@ -46,17 +46,26 @@ func addendaCmd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	at := func(p string) string { return filepath.Join(*root, filepath.FromSlash(p)) }
+	return writeAddenda(stdout, files, stale,
+		func(p string, data []byte) error { return os.WriteFile(at(p), data, 0o644) },
+		func(p string) error { return os.Remove(at(p)) })
+}
+
+// writeAddenda removes the stale pages and writes the generated ones through
+// write and remove, saying each; the first failure stops it, naming the page.
+func writeAddenda(stdout io.Writer, files []testreg.File, stale []string, write func(string, []byte) error, remove func(string) error) error {
 	for _, p := range stale {
-		if err := os.Remove(filepath.Join(*root, filepath.FromSlash(p))); err != nil {
-			return err
+		if err := remove(p); err != nil {
+			return fmt.Errorf("removing %s: %w", p, err)
 		}
 		if _, err := fmt.Fprintf(stdout, "removed %s\n", p); err != nil {
 			return err
 		}
 	}
 	for _, f := range files {
-		if err := os.WriteFile(filepath.Join(*root, filepath.FromSlash(f.Path)), f.Data, 0o644); err != nil {
-			return err
+		if err := write(f.Path, f.Data); err != nil {
+			return fmt.Errorf("writing %s: %w", f.Path, err)
 		}
 		if _, err := fmt.Fprintf(stdout, "wrote %s\n", f.Path); err != nil {
 			return err

@@ -98,9 +98,7 @@ func AddendaDrift(reg *Registry, fsys fs.FS) error {
 		return err
 	}
 	var errs []string
-	want := map[string]bool{}
 	for _, f := range files {
-		want[f.Path] = true
 		have, err := fs.ReadFile(fsys, f.Path)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
@@ -178,21 +176,34 @@ func expected(t Test) string {
 	return cell(t.Expect)
 }
 
-// cell makes text safe in one table cell: no line breaks, no column bar, no
-// markup the page would swallow.
+// cell makes text safe in one table cell: no line breaks, no column bar, and
+// no markdown or HTML the page would read as markup instead of text.
 func cell(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
-	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "|", `\|`)
+	r := strings.NewReplacer(`\`, `\\`, "&", "&amp;", "<", "&lt;", ">", "&gt;", "|", `\|`,
+		"`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`)
 	return r.Replace(s)
 }
 
-// code is s as an inline code span inside a table cell.
+// code is s as an inline code span inside a table cell. The fence is one
+// backtick longer than the longest run of backticks in s, with a space
+// inside each fence when s holds one, so any text survives.
 func code(s string) string {
 	s = strings.ReplaceAll(s, "|", `\|`)
-	if strings.Contains(s, "`") {
-		return "`` " + s + " ``"
+	longest, run := 0, 0
+	for _, c := range s {
+		if c == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
 	}
-	return "`" + s + "`"
+	fence := strings.Repeat("`", longest+1)
+	if longest > 0 {
+		return fence + " " + s + " " + fence
+	}
+	return fence + s + fence
 }
 
 // renderInputs writes a test's inputs for a table cell: each field as
@@ -211,7 +222,7 @@ func renderInputs(raw json.RawMessage) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return inline("inputs", s), nil
+		return inline("inputs", "", s), nil
 	}
 	names := make([]string, 0, len(obj))
 	for k := range obj {
@@ -229,7 +240,7 @@ func renderInputs(raw json.RawMessage) (string, error) {
 				return "", err
 			}
 		}
-		parts = append(parts, inline("inputs."+k, k+": "+s))
+		parts = append(parts, inline("inputs."+k, k+": ", s))
 	}
 	if len(parts) == 0 {
 		return "(none)", nil
@@ -237,11 +248,13 @@ func renderInputs(raw json.RawMessage) (string, error) {
 	return strings.Join(parts, "<br>"), nil
 }
 
-func inline(where, s string) string {
-	if len(s) > maxInline {
-		return fmt.Sprintf("%s (%d bytes, held in the registry row's `%s`)", code(where), len(s), where)
+// inline is one input for a table cell, its label then its value. A value
+// longer than maxInline bytes is named by where it lives, never copied.
+func inline(where, label, value string) string {
+	if len(value) > maxInline {
+		return fmt.Sprintf("%s (%d bytes, held in the registry row's %s)", code(where), len(value), code(where))
 	}
-	return code(s)
+	return code(label + value)
 }
 
 func compact(v any) (string, error) {
@@ -465,16 +478,16 @@ An adapter is the one piece of code a language adds to run every test. It is thi
 ### How an adapter receives instances
 
 1. The driver expands the query to full names, then hands each language's instances to the adapter that language's row names, in one call per language per run. Calls for different languages run in parallel.
-2. Each instance carries its full name, its language, and its test's key, type, family, case, inputs and expect. The inputs are the registry row's ` + "`inputs`" + ` object exactly as written: the corpus file and case, the schema and root, the bytes, the golden path or the target a plant breaks. Large data is never in the row; the row names the file that holds it.
+2. Each instance carries its full name, its language, and its test's key, type, family, case, inputs and expect. The inputs are the registry row's ` + "`inputs`" + ` object exactly as written: the corpus file and case, the schema and root, the bytes, the golden path or the target a plant breaks. A corpus row names its file and case, and small bytes may be inline; these pages write a value over 96 bytes as the row field that holds it, never the value.
 3. An adapter in the driver's process implements ` + "`Answers(test) bool`" + ` (whether it has a harness for the test's family; a test it does not answer is MISSING, a failure) and ` + "`Run(ctx, lang, instances) ([]Result, error)`" + ` (` + "`internal/testreg`" + `), and is registered in ` + "`tools/schema-test/adapters.go`" + ` under the name the language row's ` + "`adapter`" + ` field gives.
-4. A harness in its own process, in the language's own toolchain, speaks the shared protocol. On its standard input it receives one JSON object per line, one per instance, with exactly the fields ` + "`instance`, `lang`, `key`, `type`, `family`, `case`, `inputs`, `expect`" + `; a line it cannot read is an error, never a line passed over.
+4. The family harnesses wired today (` + "`harnesses`" + ` in the same file) are one program per family that takes the language as ` + "`--lang`" + `: a new language either adds its leg to that program, or writes its own adapter that starts its own harness for the family. Either way, a harness in its own process speaks the shared protocol. On its standard input it receives one JSON object per line, one per instance, with exactly the fields ` + "`instance`, `lang`, `key`, `type`, `family`, `case`, `inputs`, `expect`" + `; a line it cannot read is an error, never a line passed over.
 
 ### How an adapter invokes its language's code
 
 1. It builds what the family needs (the compiler, the language's generated code for the schema the inputs name, the harness) once per process, however many instances ask.
-2. Each call works in its own folder under ` + "`build/schema-test-work`" + `, because a plant may run the same language's instances while that language's own run is going.
+2. The family harness adapter gives each call its own folder under ` + "`build/schema-test-work`" + `, and an adapter that writes files must do the same, because a plant may run the same language's instances while that language's own run is going.
 3. For each instance it runs the language's generated code on the inputs as the type's contract above says, and compares with the expected result. A refusal is compared by verdict only: whether the language refused, never its reason text and never which check refused first.
-4. It reaches every public entry point a family covers (save, load, measure, builder, retain): an entry point no family reaches is MISSING.
+4. It must reach every public entry point a family covers (save, load, measure, builder, retain), so that a missing check on any of them shows in the family's rows. The driver does not yet list which entry points each family reaches: today this is the adapter author's duty, not a check.
 5. It honours the deadline in its context; past it, the call is killed with its process group and fails as a timeout, by name.
 
 ### How an adapter returns results

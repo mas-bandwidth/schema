@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 50.
+Unit tests every language answers: 0. Language-free tests: 52.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -23,7 +23,7 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `schema-test`, 6 tests
+#### `tooling` family `schema-test`, 7 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -31,10 +31,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:169` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:86` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:188` |
+| `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:213` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-adapter-fault` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryAdapterFault in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryAdapterFault` | the Go test passes | `tools/schema-test/main_test.go:145` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-fail-rule` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryFailRule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryFailRule` | the Go test passes | `tools/schema-test/main_test.go:44` |
 
-#### `tooling` family `testreg`, 39 tests
+#### `tooling` family `testreg`, 40 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -57,7 +58,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:186` |
 | `none.unit.tooling.testreg.load-accepts-the-fixture` | `gotest` | Go test TestLoadAcceptsTheFixture in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsTheFixture` | the Go test passes | `internal/testreg/registry_test.go:54` |
-| `none.unit.tooling.testreg.load-refuses-a-contract-on-a-tier` | `gotest` | a tier row carrying an adapter contract is refused by the loader, naming the line | `package: ./internal/testreg`<br>`test: TestLoadRefusesAContractOnATier` | the Go test passes | `internal/testreg/addenda_test.go:226` |
+| `none.unit.tooling.testreg.load-refuses-a-contract-on-a-tier` | `gotest` | a tier row carrying an adapter contract is refused by the loader, naming the line | `package: ./internal/testreg`<br>`test: TestLoadRefusesAContractOnATier` | the Go test passes | `internal/testreg/addenda_test.go:233` |
 | `none.unit.tooling.testreg.load-refuses-a-duplicate-key` | `gotest` | Go test TestLoadRefusesADuplicateKey in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesADuplicateKey` | the Go test passes | `internal/testreg/registry_test.go:67` |
 | `none.unit.tooling.testreg.load-refuses-a-group-that-matches-nothing` | `gotest` | Go test TestLoadRefusesAGroupThatMatchesNothing in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAGroupThatMatchesNothing` | the Go test passes | `internal/testreg/registry_test.go:97` |
 | `none.unit.tooling.testreg.load-refuses-a-key-that-is-not-type-family-case` | `gotest` | Go test TestLoadRefusesAKeyThatIsNotTypeFamilyCase in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAKeyThatIsNotTypeFamilyCase` | the Go test passes | `internal/testreg/registry_test.go:103` |
@@ -66,13 +67,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:91` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-test-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForATestThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForATestThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:85` |
 | `none.unit.tooling.testreg.shards-cover-every-name-exactly-once` | `gotest` | Go test TestShardsCoverEveryNameExactlyOnce in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestShardsCoverEveryNameExactlyOnce` | the Go test passes | `internal/testreg/run_test.go:310` |
-| `none.unit.tooling.testreg.the-addenda-give-a-refusal-its-verdict-only` | `gotest` | a refusal's expected result in the addenda is its verdict only; reason text in the row is never written | `package: ./internal/testreg`<br>`test: TestTheAddendaGiveARefusalItsVerdictOnly` | the Go test passes | `internal/testreg/addenda_test.go:150` |
-| `none.unit.tooling.testreg.the-addenda-list-every-test-on-its-tier-page` | `gotest` | every test's full name is on its own tier's addendum and no other, every language is on the contract page, and every unrepresentable pair is listed | `package: ./internal/testreg`<br>`test: TestTheAddendaListEveryTestOnItsTierPage` | the Go test passes | `internal/testreg/addenda_test.go:190` |
-| `none.unit.tooling.testreg.the-addenda-name-large-inputs-by-where-they-live` | `gotest` | an input value too long to copy is named in the addenda by the registry field that holds it, never copied | `package: ./internal/testreg`<br>`test: TestTheAddendaNameLargeInputsByWhereTheyLive` | the Go test passes | `internal/testreg/addenda_test.go:169` |
-| `none.unit.tooling.testreg.the-addenda-refuse-a-row-the-spec-cannot-be-written-from` | `gotest` | plant: a test with no checks text, a test with no expect and a type with no adapter contract each fail generation, by name | `package: ./internal/testreg`<br>`test: TestTheAddendaRefuseARowTheSpecCannotBeWrittenFrom` | the Go test passes | `internal/testreg/addenda_test.go:123` |
+| `none.unit.tooling.testreg.the-addenda-give-a-refusal-its-verdict-only` | `gotest` | a refusal's expected result in the addenda is its verdict only; reason text in the row is never written | `package: ./internal/testreg`<br>`test: TestTheAddendaGiveARefusalItsVerdictOnly` | the Go test passes | `internal/testreg/addenda_test.go:157` |
+| `none.unit.tooling.testreg.the-addenda-keep-any-text-in-its-cell` | `gotest` | text with column bars, markup and backtick runs stays one table cell of literal text in the addenda | `package: ./internal/testreg`<br>`test: TestTheAddendaKeepAnyTextInItsCell` | the Go test passes | `internal/testreg/addenda_test.go:241` |
+| `none.unit.tooling.testreg.the-addenda-list-every-test-on-its-tier-page` | `gotest` | every test's full name is on its own tier's addendum and no other, every language is on the contract page, and every unrepresentable pair is listed | `package: ./internal/testreg`<br>`test: TestTheAddendaListEveryTestOnItsTierPage` | the Go test passes | `internal/testreg/addenda_test.go:197` |
+| `none.unit.tooling.testreg.the-addenda-name-large-inputs-by-where-they-live` | `gotest` | an input value too long to copy is named in the addenda by the registry field that holds it, never copied | `package: ./internal/testreg`<br>`test: TestTheAddendaNameLargeInputsByWhereTheyLive` | the Go test passes | `internal/testreg/addenda_test.go:176` |
+| `none.unit.tooling.testreg.the-addenda-refuse-a-row-the-spec-cannot-be-written-from` | `gotest` | plant: a test with no checks text or no expect, a type with no adapter contract, a test of an undeclared tier or type, and inputs that do not decode each fail generation, by name | `package: ./internal/testreg`<br>`test: TestTheAddendaRefuseARowTheSpecCannotBeWrittenFrom` | the Go test passes | `internal/testreg/addenda_test.go:124` |
 | `none.unit.tooling.testreg.the-driver-has-no-skips` | `gotest` | Go test TestTheDriverHasNoSkips in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestTheDriverHasNoSkips` | the Go test passes | `internal/testreg/policy_test.go:52` |
 | `none.unit.tooling.testreg.the-registry-loads` | `gotest` | Go test TestTheRegistryLoads in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestTheRegistryLoads` | the Go test passes | `internal/testreg/registry_test.go:113` |
-| `none.unit.tooling.testreg.the-spec-addenda-are-current` | `gotest` | the committed spec addenda (docs/SPEC-TESTS*.md) are exactly what the registry generates: a hand edit, a row added without regenerating, a missing page or a leftover page is red | `package: ./internal/testreg`<br>`test: TestTheSpecAddendaAreCurrent` | the Go test passes | `internal/testreg/addenda_test.go:15` |
+| `none.unit.tooling.testreg.the-spec-addenda-are-current` | `gotest` | the committed spec addenda (docs/SPEC-TESTS\*.md) are exactly what the registry generates: a hand edit, a row added without regenerating, a missing page or a leftover page is red | `package: ./internal/testreg`<br>`test: TestTheSpecAddendaAreCurrent` | the Go test passes | `internal/testreg/addenda_test.go:15` |
 | `none.unit.tooling.testreg.there-is-no-skipped-verdict` | `gotest` | Go test TestThereIsNoSkippedVerdict in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestThereIsNoSkippedVerdict` | the Go test passes | `internal/testreg/run_test.go:246` |
 | `none.unit.tooling.testreg.unknown-full-name-fails` | `gotest` | Go test TestUnknownFullNameFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnknownFullNameFails` | the Go test passes | `internal/testreg/run_test.go:81` |
 | `none.unit.tooling.testreg.unrepresentable-is-data-not-a-name` | `gotest` | Go test TestUnrepresentableIsDataNotAName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnrepresentableIsDataNotAName` | the Go test passes | `internal/testreg/run_test.go:162` |

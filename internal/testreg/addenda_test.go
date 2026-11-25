@@ -118,22 +118,29 @@ func TestAMissingOrLeftoverAddendumIsRed(t *testing.T) {
 }
 
 // TestTheAddendaRefuseARowTheSpecCannotBeWrittenFrom: a test with no
-// "checks" text, a test with no "expect" and a type with no adapter
-// contract each fail generation, by name.
+// "checks" text, a test with no "expect", a type with no adapter contract,
+// a test of an undeclared tier or type, and inputs that do not decode each
+// fail generation, by name.
 func TestTheAddendaRefuseARowTheSpecCannotBeWrittenFrom(t *testing.T) {
 	t.Parallel()
 	reg := addendaFixture(t, "")
 	reg.Tests[1].Checks = "  "
 	reg.Tests[0].Expect = ""
 	reg.Types[0].Contract = ""
+	reg.Tests[2].Tier = "weekly"
+	reg.Tests[3].Type = "vibes"
+	reg.Tests[3].Inputs = json.RawMessage(`{"n":`)
 	_, err := Addenda(reg)
 	if err == nil {
-		t.Fatal("generated pages from a test with no checks, a test with no expect and a type with no contract")
+		t.Fatal("generated pages from a registry the spec cannot be written from")
 	}
 	for _, w := range []string{
 		`test roundtrip.fam.two (registry line 10) says nothing in "checks"`,
 		`test roundtrip.fam.one (registry line 9) has no "expect"`,
 		`type roundtrip (registry line 6) has no adapter contract`,
+		`test load-refusal.fam.bad (registry line 11) is tier "weekly", which the registry does not declare`,
+		`test tooling.self.check (registry line 12) is type "vibes", which the registry does not declare`,
+		`test tooling.self.check (registry line 12): inputs:`,
 	} {
 		if !strings.Contains(err.Error(), w) {
 			t.Errorf("the refusal does not say %q:\n%v", w, err)
@@ -179,7 +186,7 @@ func TestTheAddendaNameLargeInputsByWhereTheyLive(t *testing.T) {
 	if strings.Contains(p, big) {
 		t.Error("the page copies a large input")
 	}
-	if !strings.Contains(p, "`file: x.bin`<br>`inputs.hex` (205 bytes, held in the registry row's `inputs.hex`)") {
+	if !strings.Contains(p, "`file: x.bin`<br>`inputs.hex` (200 bytes, held in the registry row's `inputs.hex`)") {
 		t.Errorf("the page does not name the large input by where it lives:\n%s", p)
 	}
 }
@@ -226,4 +233,24 @@ func TestTheAddendaListEveryTestOnItsTierPage(t *testing.T) {
 func TestLoadRefusesAContractOnATier(t *testing.T) {
 	t.Parallel()
 	refused(t, strings.Replace(fixture, `"what":"no toolchain"}`, `"what":"no toolchain","contract":"x"}`, 1), "fixture.jsonl:4", `tier unit: a tier has no "contract"`)
+}
+
+// TestTheAddendaKeepAnyTextInItsCell: text with column bars, markup and
+// backtick runs stays one cell of literal text, and a code span's fence is
+// longer than any backtick run inside it.
+func TestTheAddendaKeepAnyTextInItsCell(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"a|b":   "`a\\|b`",
+		"a`b":   "`` a`b ``",
+		"a``b`": "``` a``b` ```",
+		"plain": "`plain`",
+	} {
+		if got := code(in); got != want {
+			t.Errorf("code(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got, want := cell("x | *y* _z_ `w` <v> [u](t) \\"), `x \| \*y\* \_z\_ \`+"`"+`w\`+"`"+` &lt;v&gt; \[u\](t) \\`; got != want {
+		t.Errorf("cell = %q, want %q", got, want)
+	}
 }
