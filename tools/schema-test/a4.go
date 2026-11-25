@@ -318,9 +318,22 @@ func runOneGoGroup(ctx context.Context, r textformRunner, want map[string][]stri
 		return res, fmt.Errorf("go test %s %s: %w", r.pkg, r.test, ctx.Err())
 	}
 	if len(res) == 0 {
-		return res, fmt.Errorf("go test %s %s answered none of the %d asked (%s matched no test): %v\n%s", r.pkg, r.test, len(want), pattern, runErr, tail(strings.Join(other, "\n"), 20))
+		return res, goAnsweredNone(r, len(want), pattern, runErr, other)
 	}
 	return res, nil
+}
+
+// goAnsweredNone is the error for a go test run that answered none of the
+// wanted names. It wraps the run's own error, so a caller can read why go
+// test stopped (errors.As to an *exec.ExitError), and says so when go test
+// exited 0.
+func goAnsweredNone(r textformRunner, asked int, pattern string, runErr error, other []string) error {
+	head := fmt.Sprintf("go test %s %s answered none of the %d asked (%s matched no test)", r.pkg, r.test, asked, pattern)
+	out := tail(strings.Join(other, "\n"), 20)
+	if runErr == nil {
+		return fmt.Errorf("%s: go test exited 0\n%s", head, out)
+	}
+	return fmt.Errorf("%s: %w\n%s", head, runErr, out)
 }
 
 // goCaseResults reads go test -json events for the wanted full names

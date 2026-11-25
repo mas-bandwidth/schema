@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"strings"
@@ -143,5 +144,26 @@ func TestTextformRunnersNameTheirCases(t *testing.T) {
 		if got != tc.want || ok != tc.ok {
 			t.Errorf("runner(%s, %+v) = %+v %v, want %+v %v", tc.lang, tc.in, got, ok, tc.want, tc.ok)
 		}
+	}
+}
+
+// A go test run that answered none of the asked names keeps go test's own
+// error: the caller reads why it stopped through errors.Is or errors.As,
+// and a run that exited 0 says so instead of printing a nil error.
+func TestGoAnsweredNoneWrapsTheRunError(t *testing.T) {
+	r := textformRunner{pkg: "./internal/x", test: "TestX"}
+	runErr := errors.New("exit status 2")
+	err := goAnsweredNone(r, 3, "^TestX$", runErr, []string{"line one", "line two"})
+	if !errors.Is(err, runErr) {
+		t.Errorf("want the error to wrap go test's own error, got %v", err)
+	}
+	for _, want := range []string{"go test ./internal/x TestX answered none of the 3 asked (^TestX$ matched no test)", "exit status 2", "line two"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("want %q in the error, got %q", want, err)
+		}
+	}
+	err = goAnsweredNone(r, 3, "^TestX$", nil, nil)
+	if !strings.Contains(err.Error(), "go test exited 0") || strings.Contains(err.Error(), "nil") {
+		t.Errorf("a run that exited 0: want it said, and no nil error printed, got %q", err)
 	}
 }
