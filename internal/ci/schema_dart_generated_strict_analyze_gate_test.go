@@ -11,9 +11,9 @@ import (
 // TestSchemaDartGeneratedStrictAnalyzeGateWiring holds the card's gate to the
 // three things that make it a gate rather than a green line: the strict
 // language modes and fatal-on-infos invocation, the planted-bad-pattern
-// control, and the workflow that runs it. It is pure text over tracked files,
+// control, and its registration. It is pure text over tracked files,
 // so it rides `go test ./...` without the Dart SDK; the make target itself is
-// what runs the analyzer. At BASE the make file, workflow and control do not
+// what runs the analyzer. At BASE the make file and control do not
 // exist, so this test is red until the card lands them.
 func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 	t.Parallel()
@@ -139,93 +139,7 @@ func TestSchemaDartGeneratedStrictAnalyzeGateWiring(t *testing.T) {
 	if !nestedRegistered {
 		t.Error("the strict-analyze nested-default (object != 0) control is not registered in make/negative-controls.json")
 	}
-
-	workflowBody, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-dart-generated-strict-analyze-gate.yml"))
-	if err != nil {
-		t.Fatalf("the card's workflow is missing: %v", err)
-	}
-	wf := string(workflowBody)
-	for _, want := range []string{
-		"schema-dart-generated-strict-analyze-gate DART=dart",
-		"schema-dart-generated-strict-analyze-gate-negative-control DART=dart",
-		"schema-dart-generated-strict-analyze-gate-all DART=dart",
-		"workflow_dispatch:",
-		"schedule:",
-		"dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b",
-		"sdk: 3.13.2",
-		"if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
-	} {
-		if !strings.Contains(wf, want) {
-			t.Errorf("workflow does not carry %q", want)
-		}
-	}
-
-	// NIGHTLY AND DISPATCH ONLY (the owner, 2026-11-15: "I want everything that
-	// is not light moved to nightly test now." "no exceptions."): no push and
-	// no pull request starts this workflow.
-	for _, p := range nightlyOnlyTriggerProblems(wf) {
-		t.Errorf("schema-dart-generated-strict-analyze-gate.yml: %s", p)
-	}
-
-	// Self-hosted admission and tier assertions for fast and nightly jobs.
-	for _, ev := range []ciEvent{
-		{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema"},
-		{Name: "pull_request", Branch: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "fork/schema", Labels: []string{"full-ci"}},
-	} {
-		if ok, err := jobSelectsSelfHosted(wf, "fast", ev); err != nil || ok {
-			t.Errorf("Dart fast job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
-		}
-		if ok, err := jobSelectsSelfHosted(wf, "nightly", ev); err != nil || ok {
-			t.Errorf("Dart nightly job admitted fork PR (%+v): ok=%v err=%v", ev, ok, err)
-		}
-	}
-	// THE PR GATE IS ci-fast.yml (the owner, 2026-11-15): on a pull request the
-	// fast half runs there as lang-lint (dart), selected by path; no push and
-	// no pull request starts this workflow.
-	for _, ev := range []ciEvent{
-		{Name: "pull_request", Branch: "dev", HeadRef: "sprint/schema-dart", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
-		{Name: "pull_request", Branch: "main", HeadRef: "dev", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "dev", Repo: "mas-bandwidth/schema"},
-		{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"},
-	} {
-		for _, job := range []string{"fast", "nightly"} {
-			if ok, err := jobSelectsSelfHosted(wf, job, ev); err != nil || ok {
-				t.Errorf("Dart %s job ran on (%+v): ok=%v err=%v; the workflow is nightly and dispatch only", job, ev, ok, err)
-			}
-		}
-	}
-	fast, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"make schema-dart-generated-strict-analyze-gate DART=dart",
-		"make schema-dart-generated-strict-analyze-gate-negative-control DART=dart",
-	} {
-		if !strings.Contains(string(fast), want) {
-			t.Errorf("ci-fast.yml lang-lint does not carry %q: a Dart pull request would run no strict analyze", want)
-		}
-	}
-	for _, ev := range []ciEvent{
-		{Name: "schedule", Branch: "main", Repo: "mas-bandwidth/schema"},
-		{Name: "workflow_dispatch", Branch: "main", Repo: "mas-bandwidth/schema"},
-	} {
-		for _, job := range []string{"fast", "nightly"} {
-			if ok, err := jobSelectsSelfHosted(wf, job, ev); err != nil || !ok {
-				t.Errorf("Dart %s job did not run for allowed event (%+v): ok=%v err=%v", job, ev, ok, err)
-			}
-		}
-	}
-	// Mutation: a restored pull_request or push trigger is seen by the checks
-	// above.
-	mutated := strings.Replace(wf, "\non:\n", "\non:\n  pull_request:\n", 1)
-	if ok, err := jobSelectsSelfHosted(mutated, "fast", ciEvent{Name: "pull_request", Branch: "main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}); err != nil || !ok {
-		t.Errorf("trigger mutation control: a restored pull_request trigger was not seen: ok=%v err=%v", ok, err)
-	}
-	if len(nightlyOnlyTriggerProblems(mutated)) == 0 {
-		t.Error("nightly-only control: a restored pull_request trigger was not refused")
-	}
-	if len(nightlyOnlyTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
-		t.Error("nightly-only control: a restored push trigger was not refused")
-	}
+	// The gate, its control and its whole-corpus half run as registry rows
+	// (TestRetiredWorkflowsAreRegistryRows): the workflow that ran them is
+	// retired.
 }

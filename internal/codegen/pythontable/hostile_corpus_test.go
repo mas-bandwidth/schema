@@ -577,26 +577,13 @@ func TestPythonHostileLane(t *testing.T) {
 			t.Errorf("make/python-hostile.mk does not carry %q", want)
 		}
 	}
-	for _, wf := range []struct {
-		name string
-		want []string
-	}{
-		{"schema-python-resource-bounds.yml", []string{"cron:", "workflow_dispatch:", "make schema-python-resource-bounds\n", "make schema-python-resource-bounds-negative-control"}},
-	} {
-		data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", wf.name))
-		if err != nil {
+	// the two workflows that ran these targets are retired: the registry's
+	// rows run them, so a workflow that came back would run them twice
+	for _, name := range []string{"schema-python-runs-hostile-corpus.yml", "schema-python-resource-bounds.yml"} {
+		if _, err := os.Stat(filepath.Join(root, ".github", "workflows", name)); err == nil {
+			t.Errorf("%s is back: the registry's rows run its targets", name)
+		} else if !os.IsNotExist(err) {
 			t.Fatal(err)
-		}
-		text := string(data)
-		for _, want := range wf.want {
-			if !strings.Contains(text, want) {
-				t.Errorf("%s does not carry %q", wf.name, want)
-			}
-		}
-		for _, heavy := range []string{"\n  push:", "\n  pull_request:"} {
-			if strings.Contains(text, heavy) {
-				t.Errorf("%s has a per-commit trigger %q; the heavy lane is nightly and dispatch only", wf.name, heavy)
-			}
 		}
 	}
 }

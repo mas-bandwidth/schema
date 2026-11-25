@@ -1384,10 +1384,31 @@ REGISTRY_NA_WHY.goldens.js      := no committed table goldens; its packet golden
 # toolchain item (TOOLCHAIN_PINS_js), so toolchain-js refuses by name where it
 # is missing and this gate never silently skips.
 ESLINT ?= eslint
+JS_CLEAN_TREES := build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+# THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
+# row may set JS_CLEAN_SHARD=K/N; shard K lints the .js, .mjs and .cjs files
+# eslint would find in the trees that land in it, so N rows lint every file
+# once.
+JS_CLEAN_SHARD ?=
 .PHONY: tables-js-clean
-tables-js-clean: toolchain-js build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
-	$(ESLINT) build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+TABLES_JS_CLEAN_INPUTS := build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+# tables-js-clean-inputs builds what tables-js-clean reads and nothing else:
+# a producer job can build it once and hand the trees to every shard.
+.PHONY: tables-js-clean-inputs
+tables-js-clean-inputs: $(TABLES_JS_CLEAN_INPUTS)
+
+tables-js-clean: toolchain-js $(TABLES_JS_CLEAN_INPUTS)
+ifeq ($(JS_CLEAN_SHARD),)
+	$(ESLINT) $(JS_CLEAN_TREES)
 	@echo "tables JavaScript: eslint clean over the generated table and packet units"
+else
+	@mkdir -p build; \
+	find $(JS_CLEAN_TREES) -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) | LC_ALL=C sort > build/js-clean-all.txt || { echo "tables-js-clean: cannot list $(JS_CLEAN_TREES)"; exit 1; }; \
+	files=$$(sh make/checks/shard-filter.sh '$(JS_CLEAN_SHARD)' build/js-clean-all.txt < build/js-clean-all.txt) || exit 1; \
+	[ -n "$$files" ] || { echo "tables-js-clean: shard $(JS_CLEAN_SHARD) holds no file of $(JS_CLEAN_TREES); nothing was linted"; exit 1; }; \
+	$(ESLINT) $$files || exit 1; \
+	echo "tables JavaScript: eslint clean over $$(printf '%s\n' $$files | wc -l | tr -d ' ') files of the generated table and packet units (shard $(JS_CLEAN_SHARD))"
+endif
 
 .PHONY: tables-js-clean-negative-control
 tables-js-clean-negative-control: toolchain-js generated/js/.stamp

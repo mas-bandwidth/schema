@@ -13,8 +13,8 @@ import (
 // TestLuauNightlyFuzzContract pins the shape of the Luau port's nightly fuzz
 // (make/schema-luau-nightly-fuzz.mk): the target and its time variable exist,
 // the tool probe refuses by name, the negative control plants a reader bug in
-// a SCRATCH copy, and the workflow runs the heavy target only on the schedule
-// while a push runs the replay. A gate that loses any of these is the gate
+// a SCRATCH copy, and the heavy target and the replay run as nightly registry
+// rows. A gate that loses any of these is the gate
 // this file keeps.
 func TestLuauNightlyFuzzContract(t *testing.T) {
 	t.Parallel()
@@ -49,19 +49,9 @@ func TestLuauNightlyFuzzContract(t *testing.T) {
 			t.Errorf("make/schema-luau-nightly-fuzz.mk does not contain %q", want)
 		}
 	}
-	wf, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "schema-luau-nightly-fuzz.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := string(wf)
-	for _, want := range []string{"schedule:", "workflow_dispatch:", "luau-nightly-fuzz LUAU_FUZZ_TIME=600", "luau-nightly-fuzz-replay", "actions/upload-artifact@", "build/luau-nightly-fuzz/findings/"} {
-		if !strings.Contains(w, want) {
-			t.Errorf("the workflow does not contain %q", want)
-		}
-	}
-	if strings.Count(w, "make luau-nightly-fuzz LUAU_FUZZ_TIME=600") != 1 {
-		t.Error("the ten-minute target must appear exactly once, on the scheduled job")
-	}
+	// The replay and the ten-minute run (LUAU_FUZZ_TIME=600, seeded from the
+	// run) are nightly registry rows (TestRetiredWorkflowsAreRegistryRows):
+	// the workflow that ran them is retired.
 	host, err := os.ReadFile(filepath.Join(root, "tools", "luaufuzzhost", "main.cpp"))
 	if err != nil {
 		t.Fatal(err)

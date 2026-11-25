@@ -93,7 +93,14 @@ var derivedRows = map[string]derivedRow{
 	"cook-write": {ref: refInstance, col: 1, cases: func(f []string) []caseKey {
 		return []caseKey{{"cook-write", f[1]}, {"cook-write", f[1] + "-be"}}
 	}},
-	"forgery": {ref: refNone},
+	// a forgery is scored on the forgery surface, or cook-forgery for a cooked
+	// one, and reads the block or cook line its subject names (scope.go)
+	"forgery": {ref: refNone, cases: func(f []string) []caseKey {
+		if len(f) > 2 && f[2] == "cook" {
+			return []caseKey{{"cook-forgery", f[1]}}
+		}
+		return []caseKey{{"forgery", f[1]}}
+	}},
 }
 
 // derivedLine reads one line of a derived manifest: its fields and its kind,

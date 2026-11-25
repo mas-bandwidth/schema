@@ -44,7 +44,10 @@ import (
 //   - {"make": <target>, "group": <group>}: a negative control of
 //     make/negative-controls.json, whose recipe plants its sabotage and
 //     holds its gate red itself; it passes when the target exits 0 with no
-//     skip in its log.
+//     skip in its log. It may carry "vars", "tools" and "siblings" as a make
+//     row does: what its gate needs from the runner (DART=dart), set and
+//     checked the same way, so a control never runs on a default the runner
+//     does not have.
 type plantAdapter struct {
 	rn   *testreg.Runner
 	make makeAdapter
@@ -71,6 +74,10 @@ type plantInputs struct {
 	Make   string            `json:"make"`
 	Group  string            `json:"group"`
 	File   string            `json:"file"`
+	// Vars, Tools and Siblings are a make control's needs, as a make row's.
+	Vars     map[string]string `json:"vars"`
+	Tools    []string          `json:"tools"`
+	Siblings []string          `json:"siblings"`
 }
 
 // plantEdit is one exact replacement: anchor, in file, becomes with.
@@ -98,7 +105,7 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 	}
 	env := in.Target != "" || len(in.Env) > 0
 	edits := len(in.Edits) > 0 || len(in.Red) > 0 || len(in.Run) > 0
-	mk := in.Make != "" || in.Group != "" || in.File != ""
+	mk := in.Make != "" || in.Group != "" || in.File != "" || len(in.Vars) > 0 || len(in.Tools) > 0 || len(in.Siblings) > 0
 	if mk && in.Reason != "" {
 		return in, "", fmt.Errorf("a make control holds its own gate red: it states no reason")
 	}
@@ -124,6 +131,11 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 	case mk && !env && !edits:
 		if in.Make == "" || in.Group == "" || in.File == "" {
 			return in, "", fmt.Errorf("a make control names its target, its make file and its group")
+		}
+		// its target, file, vars, tools and siblings are a make row's, held
+		// to the make row's rules
+		if _, err := decodeMakeInputs(in.makeInputs()); err != nil {
+			return in, "", fmt.Errorf("a make control: %w", err)
 		}
 		return in, "make", nil
 	}
@@ -155,9 +167,7 @@ func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Ins
 		case "make":
 			var res []testreg.Result
 			mi := inst
-			if mi.Test.Inputs, err = json.Marshal(makeInputs{File: in.File, Target: in.Make}); err != nil {
-				return out, fmt.Errorf("%s: %w", inst.Full, err)
-			}
+			mi.Test.Inputs = in.makeInputs()
 			res, err = a.make.Run(ctx, "", []testreg.Instance{mi})
 			if len(res) == 1 {
 				r = res[0]
@@ -692,4 +702,14 @@ func (a plantAdapter) Prepare(ctx context.Context, _ string, instances []testreg
 		return nil
 	}
 	return a.rn.Prepare(ctx, rows)
+}
+
+// makeInputs is a make control as the make row the make adapter runs.
+func (in plantInputs) makeInputs() json.RawMessage {
+	b, err := json.Marshal(makeInputs{File: in.File, Target: in.Make, Vars: in.Vars, Tools: in.Tools, Siblings: in.Siblings})
+	if err != nil {
+		// a struct of strings and string maps always marshals
+		panic(err)
+	}
+	return b
 }

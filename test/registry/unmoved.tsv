@@ -68,22 +68,10 @@ go-test	test/conformance/squirrel	2	L5	per-language (squirrel) Go tests: squirre
 go-test	test/go-tables	18	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	test/packet-write-bareint/lobster	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner of that platform runs them
-make-target	Makefile	6	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/c.mk	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/cpp.mk	2	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	Makefile	4	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
 make-target	make/elixir.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/go.mk	4	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/js.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/rust.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/schema-dart-generated-strict-analyze-gate.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/schema-go-generated-golangci-lint-gate.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/schema-lua-generated-luacheck-gate.mk	2	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-make-target	make/verify-vm.mk	2	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
-negative-control	(excluded)	24	L6b, L7	the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it
-negative-control	base-c-format	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
-negative-control	go-proof-4	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
-negative-control	lua-format	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
-negative-control	schema-dart-strict-analyze	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
+make-target	make/go.mk	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+negative-control	(excluded)	19	L6b, L7	the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-fast.yml	32	L7	workflow jobs: CI is generated from the registry
@@ -99,27 +87,11 @@ workflow-job	.github/workflows/python-leg.yml	4	L7	workflow jobs: CI is generate
 workflow-job	.github/workflows/release.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/roadmap.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ruby-leg.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-dart-generated-strict-analyze-gate.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-dart-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-engine-is-the-oracle.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-go-generated-golangci-lint-gate.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-lobster-generated-strict-gate.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-lua-generated-luacheck-gate.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-lua-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-lua-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-lua-version-differential.yml	3	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-luau-generated-analyze-strict-gate.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-luau-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-luau-resource-bounds.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-moo-generated-analyze-strict-gate.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-python-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-ruby-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-ruby-resource-bounds.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-squirrel-all-port-differential.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-squirrel-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-squirrel-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-test-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/tla-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 data-case	bench/tables/moo/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

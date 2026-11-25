@@ -70,7 +70,7 @@ jobs:
           git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
       - uses: ./.github/actions/dist-pins
         with:
-          pins: lua luau goose lobster
+          pins: lua luau goose lobster squirrel
       - uses: ./.github/actions/python
       - uses: ./.github/actions/ruby
       - uses: ./.github/actions/moo

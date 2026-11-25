@@ -69,5 +69,6 @@ no shape comparison or bench to report.
 requires the deep shape to stop refusing as `malformed`; it changes to
 `kind_mismatch`, and the control is red. `make schema-python-resource-bounds`
 and `make schema-python-resource-bounds-negative-control` run the two gates;
-`.github/workflows/schema-python-resource-bounds.yml` runs the sweep and the
-control nightly and on dispatch.
+both run nightly as registry rows
+(`resource-bounds.make-python-hostile.schema-python-resource-bounds` and its
+control's plant row).

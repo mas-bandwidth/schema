@@ -42,13 +42,6 @@ hostile-rust | rust | (^|/)schema[-_]rust[-_]runs[-_]hostile|^internal/ci/hostil
 hostile-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make dist-squirrel schema-squirrel-runs-hostile-corpus
 hostile-unity | unity | (^|/)schema[-_]unity[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-unity-runs-hostile-corpus SERIALIZE_CS=../serialize.cs
 
-# the resource bounds (schema-<lang>-resource-bounds.yml)
-bounds-lua | lua | (^|/)schema[-_]lua[-_]resource[-_]bounds | make schema-lua-resource-bounds schema-lua-resource-bounds-negative-control
-bounds-luau | luau | (^|/)schema[-_]luau[-_]resource[-_]bounds | make schema-luau-resource-bounds schema-luau-resource-bounds-negative-control
-bounds-python | python | (^|/)schema[-_]python[-_]resource[-_]bounds | make schema-python-resource-bounds
-bounds-ruby | ruby | (^|/)schema[-_]ruby[-_]resource[-_]bounds | make schema-ruby-resource-bounds
-bounds-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]resource[-_]bounds | make dist-squirrel schema-squirrel-resource-bounds-fast
-
 # the generated-code strict gates not already in lang-lint
 strict-ruby | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/codegen/ruby/rubyrun/|^internal/codegen/ruby/rubocop\.yml$ | make schema-ruby-generated-strict-gate-fast RUBY_STRICT_SHARD=1/6
 strict-ruby-2 | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/codegen/ruby/rubyrun/|^internal/codegen/ruby/rubocop\.yml$ | make schema-ruby-generated-strict-gate-fast RUBY_STRICT_SHARD=2/6
@@ -56,18 +49,11 @@ strict-ruby-3 | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/code
 strict-ruby-4 | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/codegen/ruby/rubyrun/|^internal/codegen/ruby/rubocop\.yml$ | make schema-ruby-generated-strict-gate-fast RUBY_STRICT_SHARD=4/6
 strict-ruby-5 | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/codegen/ruby/rubyrun/|^internal/codegen/ruby/rubocop\.yml$ | make schema-ruby-generated-strict-gate-fast RUBY_STRICT_SHARD=5/6
 strict-ruby-6 | ruby | (^|/)schema[-_]ruby[-_]generated[-_]strict|^internal/codegen/ruby/rubyrun/|^internal/codegen/ruby/rubocop\.yml$ | make schema-ruby-generated-strict-gate-fast RUBY_STRICT_SHARD=6/6
-strict-luau | luau | (^|/)schema[-_]luau[-_]generated[-_]analyze | make schema-luau-generated-analyze-strict-gate schema-luau-generated-analyze-strict-gate-negative-control
-strict-moo | moo | (^|/)schema[-_]moo[-_]generated[-_]analyze | make schema-moo-generated-analyze-strict-gate schema-moo-generated-analyze-strict-gate-negative-control
-strict-dart-all | dart | (^|/)schema[-_]dart[-_]generated[-_]strict | make schema-dart-generated-strict-analyze-gate-all DART=dart
-strict-lobster | lobster | (^|/)schema[-_]lobster[-_]generated[-_]strict | make tables-lobster-clean schema-lobster-generated-strict-gate-negative-control
 
 # the saved fuzz vectors the nightly campaigns found, replayed
 replay-dart | dart | (^|/)schema[-_]dart[-_]nightly[-_]fuzz | make schema-dart-nightly-fuzz-replay DART=dart
-replay-lua | lua | (^|/)schema[-_]lua[-_]nightly[-_]fuzz|^testdata/lua-nightly-fuzz/ | make schema-lua-fuzz-replay
-replay-luau | luau | (^|/)schema[-_]luau[-_]nightly[-_]fuzz|^testdata/luau-nightly-fuzz/ | make luau-nightly-fuzz-replay
 
-# the differentials and the fixed-form proof
-differential-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]all[-_]port[-_]differential | make dist-squirrel schema-squirrel-all-port-differential-fast
+# the fixed-form proof
 lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobster-fixed-proof-fast
 
 # the executable standard appendix witnesses (docs/SPEC-CONFORMANCE.md)

@@ -843,6 +843,24 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 conformance-negative-control-go-key-order: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control key-order
 
+# THE WRITE ORDER's controls (docs/SPEC-TABLES.md §22.7, THE NEGATIVE
+# CONTROLS): the Go leg's writer is broken three times, each in a copy of its
+# generated code reached through a build overlay, and each run must go red on
+# the surface that owns its break and stay green where the break cannot reach.
+# A loaded region's map entries walked DESCENDING turn go / wire red on
+# edge_map_keys; a builder's map written in INSERTION ORDER turns go /
+# json-read red on edge_map_keys_unsorted while wire stays green; the
+# numbering walk taking a body's fields in REVERSE turns go / wire red on
+# edge_graph_diamond and go / rewrite red on node_diamond_chain.
+# The edge vectors run through the wire surface on the derived rewrite
+# manifest, so their reds print under go / rewrite (node_diamond_chain,
+# also a framing row that reads, under go / framing too).
+.PHONY: conformance-negative-control-write-order
+conformance-negative-control-write-order: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-order-descending
+	sh test/conformance/go/negative-control write-order-insertion
+	sh test/conformance/go/negative-control write-order-numbering
+
 # THE WRITE REFUSAL's control (docs/SPEC-TABLES.md §16.14, W0): the generated
 # Go text writer writes ill-formed UTF-8 raw and an unpaired surrogate as
 # U+FFFD instead of refusing them, and the text_refuse_illformed and
