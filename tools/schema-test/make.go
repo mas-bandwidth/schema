@@ -486,28 +486,5 @@ func reachesDir(files map[string]bool, recipes, dir string) bool {
 			return true
 		}
 	}
-	return namesDir(recipes, dir)
-}
-
-// namesDir reports whether recipe text names dir as a whole path.
-func namesDir(recipes, dir string) bool {
-	for i := 0; ; {
-		j := strings.Index(recipes[i:], dir)
-		if j < 0 {
-			return false
-		}
-		at := i + j
-		end := at + len(dir)
-		before := at == 0 || !nameByte(recipes[at-1])
-		after := end == len(recipes) || !nameByte(recipes[end])
-		if before && after {
-			return true
-		}
-		i = at + 1
-	}
-}
-
-// nameByte is a byte a path element may hold.
-func nameByte(b byte) bool {
-	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_' || b == '-' || b == '.'
+	return extract.NamesDir(recipes, dir)
 }

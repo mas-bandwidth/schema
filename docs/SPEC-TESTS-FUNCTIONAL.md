@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2256. Language-free tests: 2241.
+Functional tests every language answers: 2256. Language-free tests: 2242.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2455,7 +2455,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.wire-skipped-value.skipped-value-is-validated` | testdata/wire/skipped-value: a value the reader skips is still validated, and each bad skipped value refuses the load | `reads: ["test/skipped-value/"]`<br>`inputs.tests` (1261 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/skipped_value_json_test.go:17` |
+| `L.functional.load-refusal.wire-skipped-value.skipped-value-is-validated` | testdata/wire/skipped-value: a value the reader skips is still validated, and each bad skipped value refuses the load | `inputs.tests` (1261 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/skipped_value_json_test.go:17` |
 
 ### Type `evolution`
 
@@ -2568,7 +2568,7 @@ generated source compiles and is clean.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`reads: ["testdata/cpp-standalone/"]`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
+| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`reads: ["testdata/cpp-standalone/..."]`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
 
 ### Type `golden`
 
@@ -4599,7 +4599,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.codegen-csharp.c-sharp-packet-checked-build` | `gotest` | Go test TestCSharpPacketCheckedBuild in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpPacketCheckedBuild` | the Go test passes | `internal/codegen/csharp/checked_build_test.go:21` |
 | `none.functional.compiler.codegen-csharp.c-sharp-packet-checked-build-negative-control` | `gotest` | Go test TestCSharpPacketCheckedBuildNegativeControl in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpPacketCheckedBuildNegativeControl` | the Go test passes | `internal/codegen/csharp/checked_build_test.go:42` |
 | `none.functional.compiler.codegen-csharp.c-sharp-union-then-fixed-byte-array-wire` | `gotest` | Go test TestCSharpUnionThenFixedByteArrayWire in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/csharp/unionbytes_test.go:40` |
-| `none.functional.compiler.codegen-csharp.name-corpus-builds-cs` | `gotest` | Go test TestNameCorpusBuildsCs in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`reads: ["testdata/name-buildability-emit/"]`<br>`test: TestNameCorpusBuildsCs` | the Go test passes | `internal/codegen/csharp/name_buildability_test.go:22` |
+| `none.functional.compiler.codegen-csharp.name-corpus-builds-cs` | `gotest` | Go test TestNameCorpusBuildsCs in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`reads: ["testdata/name-buildability-emit/..."]`<br>`test: TestNameCorpusBuildsCs` | the Go test passes | `internal/codegen/csharp/name_buildability_test.go:22` |
 
 #### `compiler` family `codegen-golang`, 11 tests
 
@@ -4760,7 +4760,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.python-required-public-array-evolution` | `gotest` | Go test TestPythonRequiredPublicArrayEvolution in ./compiler | `package: ./compiler`<br>`test: TestPythonRequiredPublicArrayEvolution` | the Go test passes | `compiler/python_required_public_test.go:372` |
 | `none.functional.compiler.compiler.python-required-public-guards` | `gotest` | Go test TestPythonRequiredPublicGuards in ./compiler | `package: ./compiler`<br>`test: TestPythonRequiredPublicGuards` | the Go test passes | `compiler/python_required_public_test.go:309` |
 | `none.functional.compiler.compiler.python-required-public-nondefault` | `gotest` | Go test TestPythonRequiredPublicNondefault in ./compiler | `package: ./compiler`<br>`test: TestPythonRequiredPublicNondefault` | the Go test passes | `compiler/python_required_public_test.go:234` |
-| `none.functional.compiler.compiler.python-required-public-shapes` | `gotest` | Go test TestPythonRequiredPublicShapes in ./compiler | `package: ./compiler`<br>`reads: ["testdata/conformance/feature-witnesses/retained-replacement/fixed_union/"]`<br>`test: TestPythonRequiredPublicShapes` | the Go test passes | `compiler/python_required_public_test.go:26` |
+| `none.functional.compiler.compiler.python-required-public-shapes` | `gotest` | Go test TestPythonRequiredPublicShapes in ./compiler | `package: ./compiler`<br>`test: TestPythonRequiredPublicShapes` | the Go test passes | `compiler/python_required_public_test.go:26` |
 | `none.functional.compiler.compiler.python-scalar-node-last-helper-names` | `gotest` | Go test TestPythonScalarNodeLastHelperNames in ./compiler | `package: ./compiler`<br>`test: TestPythonScalarNodeLastHelperNames` | the Go test passes | `compiler/python_scalar_node_last_test.go:131` |
 | `none.functional.compiler.compiler.python-scalar-node-table-last-fast-guard-control` | `gotest` | Go test TestPythonScalarNodeTableLastFastGuardControl in ./compiler | `package: ./compiler`<br>`test: TestPythonScalarNodeTableLastFastGuardControl` | the Go test passes | `compiler/python_scalar_node_last_test.go:18` |
 | `none.functional.compiler.compiler.python-scalar-node-table-last-precedence-control` | `gotest` | Go test TestPythonScalarNodeTableLastPrecedenceControl in ./compiler | `package: ./compiler`<br>`test: TestPythonScalarNodeTableLastPrecedenceControl` | the Go test passes | `compiler/python_scalar_node_last_test.go:22` |
@@ -4771,7 +4771,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.ruby-fixed-writer-lock` | `gotest` | Go test TestRubyFixedWriterLock in ./compiler | `package: ./compiler`<br>`test: TestRubyFixedWriterLock` | the Go test passes | `compiler/ruby_fixed_writer_test.go:13` |
 | `none.functional.compiler.compiler.ruby-fixed-writer-lock-negative-control` | `gotest` | Go test TestRubyFixedWriterLockNegativeControl in ./compiler | `package: ./compiler`<br>`test: TestRubyFixedWriterLockNegativeControl` | the Go test passes | `compiler/ruby_fixed_writer_test.go:18` |
 | `none.functional.compiler.compiler.rust-every-schema-name-is-reachable` | `gotest` | Go test TestRustEverySchemaNameIsReachable in ./compiler | `package: ./compiler`<br>`inputs.reads` (117 bytes, held in the registry row's `inputs.reads`)<br>`test: TestRustEverySchemaNameIsReachable` | the Go test passes | `compiler/rustnames_test.go:52` |
-| `none.functional.compiler.compiler.spec-blob-target-outside-closure-refused` | `gotest` | Go test TestSpecBlobTargetOutsideClosureRefused in ./compiler | `package: ./compiler`<br>`inputs.reads` (110 bytes, held in the registry row's `inputs.reads`)<br>`test: TestSpecBlobTargetOutsideClosureRefused` | the Go test passes | `compiler/spec_pointer_target_type_test.go:208` |
+| `none.functional.compiler.compiler.spec-blob-target-outside-closure-refused` | `gotest` | Go test TestSpecBlobTargetOutsideClosureRefused in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/pointer-target-type/","test/pointer-target-type/blobkind/reader/"]`<br>`test: TestSpecBlobTargetOutsideClosureRefused` | the Go test passes | `compiler/spec_pointer_target_type_test.go:208` |
 | `none.functional.compiler.compiler.spec-fixed-form-edges` | `gotest` | Go test TestSpecFixedFormEdges in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/fixed-empty-batch/","test/fixed-empty-batch/"]`<br>`test: TestSpecFixedFormEdges` | the Go test passes | `compiler/spec_fixed_form_edges_test.go:33` |
 | `none.functional.compiler.compiler.spec-pointer-target-type-checked` | `gotest` | Go test TestSpecPointerTargetTypeChecked in ./compiler | `package: ./compiler`<br>`reads: ["test/pointer-target-type/reader/"]`<br>`test: TestSpecPointerTargetTypeChecked` | the Go test passes | `compiler/spec_pointer_target_type_test.go:27` |
 | `none.functional.compiler.compiler.squirrel-carries-optional-variable-closure` | `gotest` | Go test TestSquirrelCarriesOptionalVariableClosure in ./compiler | `package: ./compiler`<br>`test: TestSquirrelCarriesOptionalVariableClosure` | the Go test passes | `compiler/target_squirrel_optionalclosure_test.go:21` |
@@ -5079,11 +5079,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.roadmap.regeneration-keeps-the-hand-text` | `gotest` | Go test TestRegenerationKeepsTheHandText in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRegenerationKeepsTheHandText` | the Go test passes | `tools/roadmap/tally_test.go:376` |
 | `none.functional.tooling.roadmap.roadmap-is-generated-from-the-data` | `gotest` | Go test TestRoadmapIsGeneratedFromTheData in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRoadmapIsGeneratedFromTheData` | the Go test passes | `tools/roadmap/tally_test.go:289` |
 
-#### `tooling` family `schema-test`, 1 test
+#### `tooling` family `schema-test`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
+| `none.functional.tooling.schema-test.the-registrys-directory-reads-are-current` | `gotest` | Go test TestTheRegistrysDirectoryReadsAreCurrent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistrysDirectoryReadsAreCurrent` | the Go test passes | `tools/schema-test/reads_test.go:155` |
 
 #### `tooling` family `slowtest`, 1 test
 

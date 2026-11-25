@@ -363,8 +363,6 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 // A subtest's events count against its top-level test: its output joins the
 // reason, and a subtest that skips fails its parent. A parent red through
 // its subtests names them first (failedFirst), so the red of one case among
-// hundreds says which case, ahead of the other cases' lines. A parent red through
-// its subtests names them first (failedFirst), so the red of one case among
 // hundreds says which case, ahead of the other cases' lines.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
@@ -486,7 +484,11 @@ func failedFirst(failed []string, subOutput map[string][]string, own []string) s
 		if slices.ContainsFunc(failed, func(g string) bool { return strings.HasPrefix(g, f+"/") }) {
 			continue // a parent of a failed subtest: its leaf says why
 		}
-		lines = append(lines, f+": "+ownLine(subOutput[f]))
+		if l := ownLine(subOutput[f]); l != "" {
+			lines = append(lines, f+": "+l)
+		} else {
+			lines = append(lines, f)
+		}
 	}
 	if len(lines) == 0 {
 		return ""

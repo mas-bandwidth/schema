@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
@@ -94,5 +99,93 @@ func TestWithDirReadsKeepsFileReadsAndOnlyChangesWhatChanged(t *testing.T) {
 	same, _, err := withDirReads(line, row, []string{"test/old/"})
 	if err != nil || same != line {
 		t.Errorf("an unchanged line was rewritten: %s (%v)", same, err)
+	}
+}
+
+// TestRegeneratedReadsDropAReadThatCreditsNothing: a directory read that
+// holds only what another read of the same regeneration holds already (a
+// driver's directory read holds its subdirectories) is not written, so the
+// regenerated registry gives the extract no idle read to name.
+func TestRegeneratedReadsDropAReadThatCreditsNothing(t *testing.T) {
+	t.Parallel()
+	head := `{"rec":"lang","name":"go","write":"refuse","adapter":""}
+{"rec":"tier","name":"nightly","what":"long"}
+{"rec":"type","name":"harness-run","what":"a make target","contract":"exits 0"}
+`
+	row := func(c, target string) string {
+		return `{"rec":"test","key":"harness-run.tables.` + c + `","type":"harness-run","family":"tables","case":"` + c + `","tier":"nightly","checks":"make ` + target + `","inputs":{"file":"Makefile","target":"` + target + `"},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}` + "\n"
+	}
+	src := head + row("sub", "sub")
+	drv := extract.Item{Kind: extract.KindDriver, Dir: "test/tables", Name: "tables"}
+	deep := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables/foo", Name: "a"}
+	enum := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables/enumbound", Name: "e"}
+	res := &extract.Result{
+		Items:     []extract.Item{drv, deep, enum},
+		CaseFiles: map[string][]string{deep.ID(): {"test/tables/foo/a.schema"}, enum.ID(): {"test/tables/enumbound/e.schema"}},
+		MakeText:  "sub:\n\tcd test/tables && check test/tables/enumbound/e.schema\n",
+	}
+	db := &makeDB{rules: map[string]*makeRule{
+		"sub": {target: "sub", recipe: []string{"cd test/tables && check test/tables/enumbound/e.schema"}},
+	}, vars: map[string]string{}}
+	want, _, text, err := regenerateReads(src, "r.jsonl", res, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := want["harness-run.tables.sub"]; !reflect.DeepEqual(got, []string{"test/tables/"}) {
+		t.Errorf("reads %v, want [test/tables/]: test/tables/enumbound/ holds only what the driver's directory read holds", got)
+	}
+	if !strings.Contains(text, `"reads":["test/tables/"]`) || strings.Contains(text, "test/tables/enumbound/") {
+		t.Errorf("the regenerated registry writes an idle read:\n%s", text)
+	}
+	reg, err := testreg.Parse("r.jsonl", strings.NewReader(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idle := extract.IdleReads(res, reg); len(idle) != 0 {
+		t.Errorf("idle reads after regenerating: %v", idle)
+	}
+}
+
+// TestTheRegistrysDirectoryReadsAreCurrent holds the registry's make rows'
+// directory reads to a regeneration from make's database and the extract,
+// as schema-test reads does: a read a make file change left stale, a read a
+// row no longer reaches, and a directory no read names that a row now
+// reaches are each a line of the registry named with what it should be. It
+// is functional: it starts make (make -p, which runs no recipe).
+func TestTheRegistrysDirectoryReadsAreCurrent(t *testing.T) {
+	t.Parallel()
+	root := testinputs.Root(t)
+	testinputs.Make(t, "test", "testdata")
+	src, err := os.ReadFile(filepath.Join(root, testreg.DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := extract.Extract(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newMakeAdapter()
+	a.plan = func(ctx context.Context, argv []string) (string, error) {
+		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput() // make -p of the sentinel exits 2: database parses the output and judges it whole, as for execMake
+		return string(out), err
+	}
+	db, err := a.database(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _, regenerated, err := regenerateReads(string(src), testreg.DefaultPath, res, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(want) == 0 {
+		t.Fatal("the regeneration gives no make row a directory read: the make database or the extract read nothing, and judging none proves nothing")
+	}
+	old := strings.Split(string(src), "\n")
+	for i, l := range strings.Split(regenerated, "\n") {
+		if i < len(old) && old[i] != l {
+			t.Errorf("%s:%d: the directory reads are stale: regenerate with go run ./tools/schema-test reads --write; want\n%s", testreg.DefaultPath, i+1, l)
+		}
 	}
 }

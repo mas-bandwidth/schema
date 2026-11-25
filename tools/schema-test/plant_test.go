@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -324,7 +325,7 @@ func TestAnEditPlantCannotNameAMakeRowRed(t *testing.T) {
 // (a marker the failing recipe's log can hold only because the sabotage
 // reached it); a reason the edits do not write, or one the anchor already
 // holds, is refused before anything runs.
-func TestAnEditPlantNamesAMakeRowRedOnlyByAMarkerItWrites(t *testing.T) {
+func TestPlantedMarkerIsTextTheEditsWriteAndNoAnchorHolds(t *testing.T) {
 	t.Parallel()
 	for name, c := range map[string]struct {
 		edit   plantEdit
@@ -365,6 +366,35 @@ func TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker(t *testing.T) {
 	}
 	if judgePlant([]string{"mk.caught"}, marker, []string{"mk.caught"}, got) != "" || judgePlant([]string{"mk.broken"}, marker, []string{"mk.broken"}, got) == "" {
 		t.Errorf("judged: caught %q, broken %q", judgePlant([]string{"mk.caught"}, marker, []string{"mk.caught"}, got), judgePlant([]string{"mk.broken"}, marker, []string{"mk.broken"}, got))
+	}
+}
+
+// TestAMarkerTheTreeHoldsIsNamed: a make-row plant's marker already in a
+// tracked file could reach the row's log without the sabotage, so the file
+// is named; the registry and the spec addenda, which state every plant's
+// reason, are not looked in, and a file the checkout deleted is passed.
+func TestAMarkerTheTreeHoldsIsNamed(t *testing.T) {
+	t.Parallel()
+	const marker = "PlantMarkerZq9Schema"
+	files := map[string]string{
+		testreg.DefaultPath:       marker,
+		"docs/SPEC-TESTS-UNIT.md": marker,
+		"src/a.go":                "package a",
+	}
+	read := func(p string) ([]byte, error) {
+		s, ok := files[p]
+		if !ok {
+			return nil, fs.ErrNotExist
+		}
+		return []byte(s), nil
+	}
+	names := []string{testreg.DefaultPath, "docs/SPEC-TESTS-UNIT.md", "gone.txt", "src/a.go", "test/x/a.schema"}
+	if where, err := markerHeldIn(names, read, marker); err != nil || where != "" {
+		t.Errorf("a tree without the marker outside the registry: %q, %v", where, err)
+	}
+	files["test/x/a.schema"] = "type " + marker
+	if where, err := markerHeldIn(names, read, marker); err != nil || where != "test/x/a.schema" {
+		t.Errorf("a tree holding the marker: %q, %v, want test/x/a.schema", where, err)
 	}
 }
 

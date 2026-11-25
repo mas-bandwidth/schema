@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,6 +61,10 @@ type plantAdapter struct {
 	// result carries as Seconds, so the sharder weighs a plant by what it
 	// costs; nil measures nothing (a unit test hands in its own clock).
 	now func() time.Time
+	// markerHeld names a file of the unplanted tree that already holds a
+	// make-row plant's marker, or ""; a marker the tree holds could reach a
+	// log without the sabotage. A unit test hands in its own.
+	markerHeld func(ctx context.Context, marker string) (string, error)
 }
 
 // outcome is one name's status and reason, as its run reported them.
@@ -90,7 +96,7 @@ type plantEdit struct {
 func newPlantAdapter(rn *testreg.Runner) plantAdapter {
 	serial := newMakeAdapter()
 	serial.jobs = 0 // the controls ran with no -j
-	return plantAdapter{rn: rn, make: serial, tree: plantInTree, now: time.Now}
+	return plantAdapter{rn: rn, make: serial, tree: plantInTree, now: time.Now, markerHeld: markerInTree}
 }
 
 // minPlantReason is the shortest stated reason a plant may give.
@@ -264,6 +270,19 @@ func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in pl
 			// themselves write (plantedMarker), which the log can hold only
 			// because the sabotage landed, makes the red the plant's.
 			return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("the plant names the make row %s red, and a make row's red reason is its exit status, which any failure gives: plant its recipe's gate as a make control, name the rows its gate runs, or state as the reason a marker the edits write", t.Full)}, nil
+		}
+	}
+	if slices.ContainsFunc(before, func(t testreg.Instance) bool { return red[t.Full] && t.Test.Adapter == "make" }) {
+		// the marker is the sabotage's only when nothing else could write it
+		if a.markerHeld == nil {
+			return testreg.Result{}, fmt.Errorf("%s: a make row named red by a marker needs the tree searched for the marker, and this adapter has no search", inst.Full)
+		}
+		where, err := a.markerHeld(ctx, in.Reason)
+		if err != nil {
+			return testreg.Result{}, fmt.Errorf("%s: %w", inst.Full, err)
+		}
+		if where != "" {
+			return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("the marker %q is already in %s: a make row's log could hold it without the sabotage, so state a marker the tree does not hold", in.Reason, where)}, nil
 		}
 	}
 	if bad := a.greenBefore(ctx, before); bad != "" {
@@ -767,4 +786,40 @@ func (in plantInputs) makeInputs() json.RawMessage {
 		panic(err)
 	}
 	return b
+}
+
+// markerInTree is markerHeld for real: the first tracked file of the
+// checkout that holds marker, leaving out the registry and the spec
+// addenda generated from it, which state every plant's reason and edits.
+func markerInTree(ctx context.Context, marker string) (string, error) {
+	root, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	files, err := trackedFiles(ctx, root)
+	if err != nil {
+		return "", err
+	}
+	return markerHeldIn(files, func(p string) ([]byte, error) { return os.ReadFile(filepath.Join(root, filepath.FromSlash(p))) }, marker)
+}
+
+// markerHeldIn is the first of files that holds marker, or "", leaving out
+// the registry and its generated spec addenda.
+func markerHeldIn(files []string, read func(string) ([]byte, error), marker string) (string, error) {
+	for _, f := range files {
+		if f == testreg.DefaultPath || strings.HasPrefix(f, "docs/SPEC-TESTS") {
+			continue
+		}
+		data, err := read(f)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // deleted in the checkout, not yet in the index
+		}
+		if err != nil {
+			return "", err
+		}
+		if bytes.Contains(data, []byte(marker)) {
+			return f, nil
+		}
+	}
+	return "", nil
 }

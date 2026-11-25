@@ -97,7 +97,7 @@ func dirReads(res *extract.Result, reg *testreg.Registry, reach map[string]makeR
 			return k
 		}
 		pick := ""
-		if !strings.Contains(res.MakeText, dir) {
+		if !extract.NamesDir(res.MakeText, dir) {
 			// the extract holds a directory read to a make file naming it
 			// (extract.CoveredIn): one reached only through a variable's
 			// computed value is not read here
@@ -110,7 +110,7 @@ func dirReads(res *extract.Result, reg *testreg.Registry, reach map[string]makeR
 				r.dirs = reachDirs(r.files)
 				reach[k] = r
 			}
-			if (r.dirs[dir] || namesDir(r.text, dir)) && (pick == "" || len(r.files) < len(reach[pick].files)) {
+			if (r.dirs[dir] || extract.NamesDir(r.text, dir)) && (pick == "" || len(r.files) < len(reach[pick].files)) {
 				pick = k
 			}
 		}
@@ -130,15 +130,12 @@ func dirReads(res *extract.Result, reg *testreg.Registry, reach map[string]makeR
 			continue // the package's own tests read it
 		}
 		// its own directory, then the nearest driver directory holding it
-		// (that driver's build reads it), and nothing above that
+		// (that driver's build reads it), and nothing above that: what a
+		// directory read holds in the extract (extract.ReadHolds)
 		cands := []string{it.Dir}
 		if it.Kind == extract.KindDataCase && !drivers[it.Dir] {
-			for d := it.Dir; strings.Count(d, "/") >= 2; {
-				d = d[:strings.LastIndex(d, "/")]
-				if drivers[d] {
-					cands = append(cands, d)
-					break
-				}
+			if d := extract.NearestDriver(it.Dir, drivers); d != "" {
+				cands = append(cands, d)
 			}
 		}
 		found := false
@@ -298,16 +295,46 @@ func regenerateReads(src, path string, res *extract.Result, db *makeDB) (map[str
 		return nil, nil, "", err
 	}
 	want, none := dirReads(res, bare, reach)
-	out := slices.Clone(stripped)
-	for _, t := range bare.Tests {
-		if len(want[t.Key]) == 0 {
-			continue
+	write := func(want map[string][]string) (string, *testreg.Registry, error) {
+		out := slices.Clone(stripped)
+		for _, t := range bare.Tests {
+			if len(want[t.Key]) == 0 {
+				continue
+			}
+			l, _, err := withDirReads(stripped[t.Line-1], t, want[t.Key])
+			if err != nil {
+				return "", nil, err
+			}
+			out[t.Line-1] = l
 		}
-		l, _, err := withDirReads(stripped[t.Line-1], t, want[t.Key])
-		if err != nil {
+		text := strings.Join(out, "\n")
+		reg, err := testreg.Parse(path, strings.NewReader(text))
+		return text, reg, err
+	}
+	text, withReads, err := write(want)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	// a directory a row reads may hold only what a nearer or earlier read
+	// holds already (a driver's directory read holds its subdirectories):
+	// such a read credits nothing, and is dropped. Dropping one changes no
+	// credit, so one pass leaves none.
+	idle := extract.IdleReads(res, withReads)
+	dropped := false
+	for k, rs := range idle {
+		if _, ok := want[k]; !ok {
+			continue // a hand-written read: the extract names it
+		}
+		want[k] = slices.DeleteFunc(want[k], func(r string) bool { return slices.Contains(rs, r) })
+		if len(want[k]) == 0 {
+			delete(want, k)
+		}
+		dropped = true
+	}
+	if dropped {
+		if text, _, err = write(want); err != nil {
 			return nil, nil, "", err
 		}
-		out[t.Line-1] = l
 	}
-	return want, none, strings.Join(out, "\n"), nil
+	return want, none, text, nil
 }
