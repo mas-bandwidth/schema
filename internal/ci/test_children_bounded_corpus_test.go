@@ -46,21 +46,23 @@ func TestEveryTestChildIsBoundedCorpus(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cases.tsv line %d: %v", n+1, err)
 		}
-		src, err := os.ReadFile(filepath.Join(dir, fixture))
-		if err != nil {
-			t.Fatal(err)
-		}
-		// the gate's own two decisions: does it read a file at this path,
-		// and what does it see in the source
-		var at []string
-		if pkg := path.Dir(placed); slices.Contains(boundedChildDirs, pkg) && judgedFile(pkg, path.Base(placed)) {
-			if at, err = unboundedChildren(token.NewFileSet(), placed, src); err != nil {
-				t.Fatalf("%s: %v", fixture, err)
+		t.Run(fixture+" "+placed, func(t *testing.T) {
+			src, err := os.ReadFile(filepath.Join(dir, fixture))
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-		if len(at) != want {
-			t.Errorf("%s placed at %s: the gate reports %d unbounded child(ren) %v, want %d", fixture, placed, len(at), at, want)
-		}
+			// the gate's own two decisions: does it read a file at this path,
+			// and what does it see in the source
+			var at []string
+			if pkg := path.Dir(placed); slices.Contains(boundedChildDirs, pkg) && judgedFile(pkg, path.Base(placed)) {
+				if at, err = unboundedChildren(token.NewFileSet(), placed, src); err != nil {
+					t.Fatalf("%s: %v", fixture, err)
+				}
+			}
+			if len(at) != want {
+				t.Errorf("%s placed at %s: the gate reports %d unbounded child(ren) %v, want %d", fixture, placed, len(at), at, want)
+			}
+		})
 		if want > 0 {
 			reported++
 		} else {

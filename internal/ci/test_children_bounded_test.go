@@ -154,12 +154,14 @@ func TestEveryTestChildIsBoundedPolicyCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range cases {
-		at, err := unboundedChildren(token.NewFileSet(), c.Fixture, c.Src)
-		if err != nil {
-			t.Fatalf("%s: %v", c.Fixture, err)
-		}
-		if len(at) != c.Starts {
-			t.Errorf("%s (%s): the gate saw %d unbounded child(ren) %v, want %d", c.Fixture, c.Form, len(at), at, c.Starts)
-		}
+		t.Run(c.Fixture, func(t *testing.T) {
+			at, err := unboundedChildren(token.NewFileSet(), c.Fixture, c.Src)
+			if err != nil {
+				t.Fatalf("%s: %v", c.Fixture, err)
+			}
+			if len(at) != c.Starts {
+				t.Errorf("%s (%s): the gate saw %d unbounded child(ren) %v, want %d", c.Fixture, c.Form, len(at), at, c.Starts)
+			}
+		})
 	}
 }

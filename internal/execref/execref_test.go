@@ -25,13 +25,15 @@ func corpus(t *testing.T) []PolicyCase {
 func TestPolicyCorpus(t *testing.T) {
 	t.Parallel()
 	for _, c := range corpus(t) {
-		refs, err := Find(token.NewFileSet(), c.Fixture, c.Src, "os/exec", "Command", "CommandContext")
-		if err != nil {
-			t.Fatalf("%s: %v", c.Fixture, err)
-		}
-		if len(refs) != c.Starts {
-			t.Errorf("%s (%s): %d reference(s) %v, want %d", c.Fixture, c.Form, len(refs), refs, c.Starts)
-		}
+		t.Run(c.Fixture, func(t *testing.T) {
+			refs, err := Find(token.NewFileSet(), c.Fixture, c.Src, "os/exec", "Command", "CommandContext")
+			if err != nil {
+				t.Fatalf("%s: %v", c.Fixture, err)
+			}
+			if len(refs) != c.Starts {
+				t.Errorf("%s (%s): %d reference(s) %v, want %d", c.Fixture, c.Form, len(refs), refs, c.Starts)
+			}
+		})
 	}
 }
 
@@ -40,23 +42,25 @@ func TestPolicyCorpus(t *testing.T) {
 func TestFindNamesWhereAndHow(t *testing.T) {
 	t.Parallel()
 	for _, c := range corpus(t) {
-		refs, err := Find(token.NewFileSet(), c.Fixture, c.Src, "os/exec", "Command", "CommandContext")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var got []string
-		for _, r := range refs {
-			got = append(got, r.Func+":"+r.Name+":"+strconv.FormatBool(r.Call))
-		}
-		want := map[string]string{
-			"dot_import.go.txt":        "TestDotImport:Command:true TestDotImport:CommandContext:true",
-			"constructor_value.go.txt": "TestConstructorValue:Command:false TestConstructorValue:CommandContext:false",
-			"direct_call.go.txt":       "TestDirectCall:Command:true TestDirectCall:CommandContext:true",
-			"renamed_import.go.txt":    "TestRenamedImport:Command:true",
-		}[c.Fixture]
-		if strings.Join(got, " ") != want {
-			t.Errorf("%s: references %q, want %q", c.Fixture, strings.Join(got, " "), want)
-		}
+		t.Run(c.Fixture, func(t *testing.T) {
+			refs, err := Find(token.NewFileSet(), c.Fixture, c.Src, "os/exec", "Command", "CommandContext")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, r := range refs {
+				got = append(got, r.Func+":"+r.Name+":"+strconv.FormatBool(r.Call))
+			}
+			want := map[string]string{
+				"dot_import.go.txt":        "TestDotImport:Command:true TestDotImport:CommandContext:true",
+				"constructor_value.go.txt": "TestConstructorValue:Command:false TestConstructorValue:CommandContext:false",
+				"direct_call.go.txt":       "TestDirectCall:Command:true TestDirectCall:CommandContext:true",
+				"renamed_import.go.txt":    "TestRenamedImport:Command:true",
+			}[c.Fixture]
+			if strings.Join(got, " ") != want {
+				t.Errorf("%s: references %q, want %q", c.Fixture, strings.Join(got, " "), want)
+			}
+		})
 	}
 }
 

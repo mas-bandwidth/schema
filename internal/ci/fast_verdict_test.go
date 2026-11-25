@@ -125,19 +125,21 @@ func TestCIFastVerdictNeedsEveryJob(t *testing.T) {
 		t.Fatalf("the fast-verdict corpus holds %d files, want the control and five red cases", len(files))
 	}
 	for _, f := range files {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		errs := ciFastVerdictErrors(string(data))
-		if filepath.Base(f) == "control.yml" {
-			if len(errs) > 0 {
-				t.Errorf("CORPUS CONTROL FAILED: %s: %q", f, errs)
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			data, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
 			}
-			continue
-		}
-		if len(errs) == 0 {
-			t.Errorf("CORPUS CASE FAILED: %s was accepted", f)
-		}
+			errs := ciFastVerdictErrors(string(data))
+			if filepath.Base(f) == "control.yml" {
+				if len(errs) > 0 {
+					t.Errorf("CORPUS CONTROL FAILED: %s: %q", f, errs)
+				}
+				return
+			}
+			if len(errs) == 0 {
+				t.Errorf("CORPUS CASE FAILED: %s was accepted", f)
+			}
+		})
 	}
 }

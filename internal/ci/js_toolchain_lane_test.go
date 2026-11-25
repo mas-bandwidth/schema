@@ -77,12 +77,14 @@ func TestTheGoTestJobClonesSerializeJSNegativeControl(t *testing.T) {
 		"no-clone.yml": {"the go-test job does not clone serialize.js beside the checkout"},
 	}
 	for name, gaps := range want {
-		data, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := jsToolchainLaneGaps(string(data)); !slices.Equal(got, gaps) {
-			t.Errorf("%s: got %q, want %q", name, got, gaps)
-		}
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := jsToolchainLaneGaps(string(data)); !slices.Equal(got, gaps) {
+				t.Errorf("%s: got %q, want %q", name, got, gaps)
+			}
+		})
 	}
 }

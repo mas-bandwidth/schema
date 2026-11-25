@@ -171,17 +171,19 @@ func TestReleaseGoesPublicOnlyWhole(t *testing.T) {
 		{"release-public-before-assets.yml", true},
 		{"release-draft-until-assets.yml", false},
 	} {
-		data, err := os.ReadFile(filepath.Join(releaseWorkflowFixtures, c.file))
-		if err != nil {
-			t.Fatalf("the %s corpus lost %s: %v", releasePublicOnlyWhole, c.file, err)
-		}
-		errs := releaseWholeErrors(string(data))
-		switch {
-		case c.red && len(errs) == 0:
-			t.Errorf("CORPUS CASE FAILED: %s publishes before its assets and the gate accepted it", c.file)
-		case !c.red && len(errs) > 0:
-			t.Errorf("CORPUS CONTROL FAILED: %s: %q", c.file, errs)
-		}
+		t.Run(c.file, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(releaseWorkflowFixtures, c.file))
+			if err != nil {
+				t.Fatalf("the %s corpus lost %s: %v", releasePublicOnlyWhole, c.file, err)
+			}
+			errs := releaseWholeErrors(string(data))
+			switch {
+			case c.red && len(errs) == 0:
+				t.Errorf("CORPUS CASE FAILED: %s publishes before its assets and the gate accepted it", c.file)
+			case !c.red && len(errs) > 0:
+				t.Errorf("CORPUS CONTROL FAILED: %s: %q", c.file, errs)
+			}
+		})
 	}
 
 	for _, c := range []struct {

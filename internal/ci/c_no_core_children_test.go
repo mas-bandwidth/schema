@@ -104,12 +104,14 @@ func TestCConformanceChildrenWriteNoCore(t *testing.T) {
 	}
 	// the fixture pair: the valid control passes, the dumpable child is caught
 	for name, wantOK := range map[string]bool{"not-dumpable.c": true, "dumpable.c": false} {
-		b, err := os.ReadFile(filepath.Join("testdata", "c-no-core-children", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := checkChildNotDumpable(name, string(b)); (err == nil) != wantOK {
-			t.Errorf("testdata/c-no-core-children/%s: check = %v, want ok=%v", name, err, wantOK)
-		}
+		t.Run(name, func(t *testing.T) {
+			b, err := os.ReadFile(filepath.Join("testdata", "c-no-core-children", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := checkChildNotDumpable(name, string(b)); (err == nil) != wantOK {
+				t.Errorf("testdata/c-no-core-children/%s: check = %v, want ok=%v", name, err, wantOK)
+			}
+		})
 	}
 }

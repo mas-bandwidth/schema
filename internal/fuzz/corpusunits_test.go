@@ -23,29 +23,31 @@ func TestCorpusUnitsRefuseAMissingCorpus(t *testing.T) {
 		{"no-schema-primary", "holds no .schema file"},
 	}
 	for _, l := range layouts {
-		root := filepath.Join("testdata", "corpuslayout", l.name)
-		dirs := []string{filepath.Join(root, "examples"), filepath.Join(root, "examples128")}
-		units, err := corpusUnitsFrom(dirs)
-		if l.refused == "" {
-			if err != nil {
-				t.Fatalf("%s: the control was refused: %v", l.name, err)
-			}
-			if len(units) != 2 {
-				t.Fatalf("%s: read %d corpus units, want 2", l.name, len(units))
-			}
-			for _, dir := range dirs {
-				if len(units[dir]) != 1 {
-					t.Fatalf("%s: %s gave %d files, want 1", l.name, dir, len(units[dir]))
+		t.Run(l.name, func(t *testing.T) {
+			root := filepath.Join("testdata", "corpuslayout", l.name)
+			dirs := []string{filepath.Join(root, "examples"), filepath.Join(root, "examples128")}
+			units, err := corpusUnitsFrom(dirs)
+			if l.refused == "" {
+				if err != nil {
+					t.Fatalf("%s: the control was refused: %v", l.name, err)
 				}
+				if len(units) != 2 {
+					t.Fatalf("%s: read %d corpus units, want 2", l.name, len(units))
+				}
+				for _, dir := range dirs {
+					if len(units[dir]) != 1 {
+						t.Fatalf("%s: %s gave %d files, want 1", l.name, dir, len(units[dir]))
+					}
+				}
+				return
 			}
-			continue
-		}
-		if err == nil {
-			t.Fatalf("%s: read %d corpus units; a missing corpus must be refused, not skipped", l.name, len(units))
-		}
-		if !strings.Contains(err.Error(), l.refused) {
-			t.Fatalf("%s: refused with %q, want it to name %q", l.name, err, l.refused)
-		}
+			if err == nil {
+				t.Fatalf("%s: read %d corpus units; a missing corpus must be refused, not skipped", l.name, len(units))
+			}
+			if !strings.Contains(err.Error(), l.refused) {
+				t.Fatalf("%s: refused with %q, want it to name %q", l.name, err, l.refused)
+			}
+		})
 	}
 }
 
