@@ -217,7 +217,8 @@ const r14LuaMalformed = "lane false false\n" +
 // and the same law from the writer's side: a writer whose tag is 8 bytes over
 // one arm (MINE(8) as THEIRS) holds its tag in 8 bytes, which the arm COUNT
 // alone would call 1 — the writer's tag width is te.size - widest arm, and a
-// width of 0, 3 or 9 is no tag at all (an ordinal width is 1, 2, 4 or 8).
+// width of 0, 3, 5, 6, 7 or 9 is no tag at all (an ordinal width is exactly
+// 1, 2, 4 or 8, never "1..8": docs/FIXED-FORM-ALGORITHM.md, THE GUARD'S WIDTH).
 var r14LuaCases = []struct {
 	c    r14LuaCase
 	want string
@@ -228,6 +229,9 @@ var r14LuaCases = []struct {
 	{r14LuaCase{name: "writer_tag8_vs_mine8", theirTag: 8, myTag: 8}, r14LuaLawful},
 	{r14LuaCase{name: "writer_tag0_refused", theirTag: 0, myTag: 1}, r14LuaMalformed},
 	{r14LuaCase{name: "writer_tag3_refused", theirTag: 3, myTag: 1}, r14LuaMalformed},
+	{r14LuaCase{name: "writer_tag5_refused", theirTag: 5, myTag: 1}, r14LuaMalformed},
+	{r14LuaCase{name: "writer_tag6_refused", theirTag: 6, myTag: 1}, r14LuaMalformed},
+	{r14LuaCase{name: "writer_tag7_refused", theirTag: 7, myTag: 1}, r14LuaMalformed},
 	{r14LuaCase{name: "writer_tag9_refused", theirTag: 9, myTag: 1}, r14LuaMalformed},
 }
 

@@ -1,12 +1,15 @@
 """Prove the no-message roster row and a healthy fixed message root."""
 
+import contextlib
 import importlib.util
+import io
 from pathlib import Path
 import sys
 import tempfile
 
 root = Path(__file__).resolve().parent
 sys.path.insert(0, str(root / "surfaces"))
+import _common  # noqa: E402
 from _common import unit_package  # noqa: E402
 
 package = unit_package("graphdemo")
@@ -32,15 +35,18 @@ with tempfile.TemporaryDirectory() as temp:
     )
     if "--negative" in sys.argv[1:]:
         message.ROOTS = message.ROOTS | {"Scene"}
-        try:
+        # the driver answers a driver error per case (_common.answering): the
+        # case is named on stderr, gets no answer, and the surface goes red
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
             module.run(str(manifest), str(temp))
-        except RuntimeError as error:
-            assert "unexpectedly carries" in str(error)
-        else:
-            raise AssertionError("the planted message-root fault escaped")
+        if _common.DRIVER_ERRORS != ["graph_tree"] or "graph_tree: root unexpectedly carries message form" not in stderr.getvalue():
+            raise AssertionError("the planted message-root fault escaped: " + repr(_common.DRIVER_ERRORS) + " " + stderr.getvalue())
+        assert not (temp / "graph_tree").exists() and not (temp / "graph_tree.absent").exists()
         print("message applicability fault detected")
     else:
         module.run(str(manifest), str(temp))
+        assert not _common.DRIVER_ERRORS, _common.DRIVER_ERRORS
         assert (temp / "graph_tree").read_bytes() == b"refused\n"
         assert not (temp / "graph_tree.absent").exists()
         print("message applicability passed")

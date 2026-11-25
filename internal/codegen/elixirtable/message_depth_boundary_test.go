@@ -143,15 +143,17 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 	if st == nil || len(st.Fields) != 4 {
 		t.Fatalf("expected Root table with 4 fields, got %+v", st)
 	}
-	// The synthetic nested table, union and array ride the ids of the root's
-	// own fields, so under another build version the walk keeps them rather
-	// than stepping over them; only their announced shapes are the peer's.
+	// The synthetic nested table, union and array are fields this reader
+	// does not know: a known id announced under another kind refuses the
+	// whole load kind_mismatch (docs/SPEC-TABLES.md §4), so they ride ids of
+	// their own and the walk steps over them by their announced shapes, which
+	// is where the depth bound is met.
 	entries := []ir.TableVocabularyEntry{
 		ir.TableFieldEntry(st.Fields[0]),
-		{Id: ir.TableFieldEntry(st.Fields[1]).Id, Kind: ir.TableKindTable},
-		{Id: ir.TableFieldEntry(st.Fields[2]).Id, Kind: ir.TableKindUnion},
+		{Id: 0x9991, Kind: ir.TableKindTable},
+		{Id: 0x9992, Kind: ir.TableKindUnion},
 		{
-			Id:   ir.TableFieldEntry(st.Fields[3]).Id,
+			Id:   0x9993,
 			Kind: ir.TableKindArray,
 			Shape: ir.TableMessageShape{
 				Min:   1,
@@ -235,7 +237,7 @@ func runElixirDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []d
 	fmt.Fprintf(&body, "defmodule DepthProbe do\n  alias Depthprobe.TableMessage, as: M\n\n  def check_case(name, vocab, wire, true) do\n")
 	fmt.Fprintf(&body, "    case M.load_messages(vocab, wire, 2) do\n")
 	fmt.Fprintf(&body, "      {:ok, [b0, b1]} ->\n")
-	fmt.Fprintf(&body, "        if length(b0) == 2 and Enum.at(b0, 1) == {1, 42} and b1 == [{1, 99}] do\n")
+	fmt.Fprintf(&body, "        if b0 == [{1, 42}] and b1 == [{1, 99}] do\n")
 	fmt.Fprintf(&body, "          IO.puts(\"PASS \" <> name)\n")
 	fmt.Fprintf(&body, "        else\n")
 	fmt.Fprintf(&body, "          IO.puts(\"FAIL \" <> name <> \": unexpected bodies \" <> inspect({b0, b1}))\n")

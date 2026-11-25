@@ -343,6 +343,28 @@ type carriedUnit struct {
 
 var rootsRe = regexp.MustCompile(`\("([a-z0-9]+)", "([A-Za-z0-9]+)"\),`)
 
+// buildUnitRe matches one `name:schema-path` word of the unit loop in
+// test/conformance/rust/wire-fuzz-all-build.
+var buildUnitRe = regexp.MustCompile(`(?m)^(?:for unit in )?\s*([a-z0-9]+):(\S+)\s*(?:\\|; do)\s*$`)
+
+// driverBuildUnits reads the units the all-roots driver's build script lays
+// out, name to schema path.
+func driverBuildUnits(t *testing.T, repo string) map[string][]string {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join(repo, "test/conformance/rust/wire-fuzz-all-build"))
+	if err != nil {
+		t.Fatalf("the all-roots driver's build script is missing: %v", err)
+	}
+	out := map[string][]string{}
+	for _, m := range buildUnitRe.FindAllSubmatch(src, -1) {
+		out[string(m[1])] = []string{string(m[2])}
+	}
+	if len(out) == 0 {
+		t.Fatal("wire-fuzz-all-build names no unit: the driver would build against nothing")
+	}
+	return out
+}
+
 // dispatchedRoots parses ROOTS out of wire_fuzz_all.rs.
 func dispatchedRoots(t *testing.T, repo string) map[string]bool {
 	t.Helper()
@@ -411,6 +433,23 @@ func buildAllRootsDriver(t *testing.T, repo string, units map[string]*carriedUni
 	dir := t.TempDir()
 	for name, cu := range units {
 		layoutRustUnit(t, dir, name, cu.modules)
+	}
+	// THE DRIVER ALSO NAMES UNITS NO INSTANCE ROW CARRIES: a root the
+	// message-fuzz roster lists and no file seed pins (tbla1.Root) is a
+	// `mod` in wire_fuzz_all.rs all the same, and the driver does not build
+	// without it. The extra units come from the list
+	// test/conformance/rust/wire-fuzz-all-build lays out, so every `mod` the
+	// driver declares has its unit here (this build is rustc -O; the script's
+	// is a debug build, and the roster's units come from MANIFEST.txt).
+	for name, paths := range driverBuildUnits(t, repo) {
+		if _, laid := units[name]; laid {
+			continue
+		}
+		modules, err := Generate(generateUnit(t, repo, paths))
+		if err != nil {
+			t.Fatalf("%s: the all-roots driver names this unit and the Rust generator refuses it: %v", name, err)
+		}
+		layoutRustUnit(t, dir, name, modules)
 	}
 	main, err := os.ReadFile(filepath.Join(repo, "test/conformance/rust/src/wire_fuzz_all.rs"))
 	if err != nil {

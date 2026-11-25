@@ -284,10 +284,11 @@ fixed table Live
 		// live elements is never matched, so it moves no `clamped`.
 		"defp live_marks_fixed_list(_bin, 0, c, m), do: {[], c, m}",
 		"defp live_grades_fixed_list(_bin, 0, c, m), do: {[], c, m}",
-		// AND THE COUNT IT IS HANDED IS THE CLAMPED ONE, so a hostile count
-		// walks the bound and not itself.
-		"live_marks_fixed_list(b_marks, min(max(n_marks, 0), 4), c, m)",
-		"live_grades_fixed_list(b_grades, min(max(n_grades, 0), 4), c, m)",
+		// AND THE COUNT IT IS HANDED IS THE HELD ONE: a hostile count refuses
+		// count_over_bound before the walk (FIXED-FORM-ALGORITHM.md §4.5).
+		"live_marks_fixed_list(b_marks, n_marks, c, m)",
+		"live_grades_fixed_list(b_grades, n_grades, c, m)",
+		"R.held_count(c, n_marks, 0, 4)",
 		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNTER: the payload's clamp
 		// lands in a shadow counter the present flag either keeps or drops.
 		"p_note = R.flag(p_note)",

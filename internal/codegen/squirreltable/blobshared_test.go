@@ -229,18 +229,15 @@ func TestSquirrelBlobNamedTwice(t *testing.T) {
 	clean := append([]byte(nil), damaged...)
 	clean[6] ^= 0x01
 
+	// THE ORACLE REFUSES THE SHARED BLOB ON READ (docs/SPEC-TABLES.md §2.5,
+	// §6.5; docs/rulings.json strict-only-read): the read answers no value,
+	// and the leg's strict read must refuse it too (seed24_strict below)
 	m24 := tabletext.NewModel(u24)
 	root24 := m24.Lookup("Root")
 	dInst := m24.New(root24)
 	var dRep tabletext.Report
-	if ok, err := tablewire.Decode(m24, dInst, damaged, &dRep); !ok || err != nil {
-		t.Fatalf("oracle decode damaged: ok=%v err=%v", ok, err)
-	}
-	if dRep.Unknown != 1 || dRep.Refused {
-		t.Fatalf("oracle damaged report: %+v, want BlobShared=1", dRep)
-	}
-	if _, err := tablewire.Encode(m24, dInst); err == nil || !strings.Contains(err.Error(), "blob_shared") {
-		t.Fatalf("oracle encode damaged = %v, want blob_shared", err)
+	if ok, err := tablewire.Decode(m24, dInst, damaged, &dRep); ok || err == nil || !strings.Contains(err.Error(), "blob_shared") {
+		t.Fatalf("oracle decode damaged: ok=%v err=%v, want a blob_shared refusal", ok, err)
 	}
 
 	cInst := m24.New(root24)
@@ -301,13 +298,21 @@ func TestSquirrelBlobNamedTwice(t *testing.T) {
 	mAmp := tabletext.NewModel(uAmp)
 	ampInst := mAmp.New(mAmp.Lookup("Root"))
 	var ampRep tabletext.Report
-	if ok, err := tablewire.Decode(mAmp, ampInst, ampWire, &ampRep); !ok || err != nil {
-		t.Fatalf("oracle decode amplification: ok=%v err=%v", ok, err)
+	if ok, err := tablewire.Decode(mAmp, ampInst, ampWire, &ampRep); ok || err == nil || !strings.Contains(err.Error(), "blob_shared") {
+		t.Fatalf("oracle decode amplification: ok=%v err=%v, want a blob_shared refusal", ok, err)
 	}
-	if ampRep.Unknown != 4095 || ampRep.Refused {
-		t.Fatalf("oracle amplification report: %+v, want BlobShared=4095", ampRep)
+	// the oracle's writer refuses the amplification value built in memory,
+	// 4096 slots naming one blob, as the leg's builder must (amp_builder)
+	ampBuilt := mAmp.New(mAmp.Lookup("Root"))
+	ampBlob := &tabletext.Blob{Data: ampData}
+	items := &ampBuilt.Fields[0]
+	items.Count = 4096
+	for i := range 4096 {
+		it := mAmp.New(mAmp.Lookup("Item"))
+		it.Fields[0].Cell.Blob = ampBlob
+		items.Elems[i].Tab = it
 	}
-	if _, err := tablewire.Encode(mAmp, ampInst); err == nil || !strings.Contains(err.Error(), "blob_shared") {
+	if _, err := tablewire.Encode(mAmp, ampBuilt); err == nil || !strings.Contains(err.Error(), "blob_shared") {
 		t.Fatalf("oracle amplification encode = %v, want blob_shared", err)
 	}
 
@@ -352,24 +357,17 @@ local fresh = function() {
 
   local sr = {};
   local sv = R.ReadStrict(T, "Root", inputs["damaged"], sr);
-  print("seed24_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("sharedBlob" in sr) ? sr.sharedBlob : 0) + "\n");
+  print("seed24_strict|" + nn(sv) + "|" + nn(sr.reason) + "\n");
 
   local ltr = {};
   local ltv = X.LoadText(T, "Root", strOf(inputs["damaged_b64"]), ltr);
-  print("seed24_loadtext|" + nn(ltv) + "|" + nn(ltr.reason) + "|" + nn(ltr.field) + "|" + nn(("sharedBlob" in ltr) ? ltr.sharedBlob : 0) + "\n");
+  print("seed24_loadtext|" + nn(ltv) + "|" + nn(ltr.reason) + "\n");
 
+  // the walk under the strict read refuses the shared blob too: no value
+  // is recovered (docs/SPEC-TABLES.md §6.5, strict-only-read)
   local tr = fresh();
   local tv = L.loadWalk(T, "Root", inputs["damaged"], tr);
-  local sameNode = tv != null && tv.F2 != null && tv.F2.len() > 0 && tv.F2 == tv.U0.Ptr;
-  local jm = J.ToJsonMeasure(T, "Root", tv);
-  local jr = ("ToJsonReason" in J) ? J.ToJsonReason : null;
-  local jw = J.ToJson(T, "Root", tv);
-  local sm = S.measure(T, "Root", tv);
-  local sreason = ("SaveReason" in S) ? S.SaveReason : null;
-  local sw = S.save(T, "Root", tv);
-  print("seed24_tolerant|" + (tv != null) + "|" + tr.bodyDamaged + "|" + nn(("sharedBlob" in tr) ? tr.sharedBlob : 0) + "|" +
-        nn(("reason" in tr) ? tr.reason : null) + "|" + nn(("field" in tr) ? tr.field : null) + "|" + sameNode + "|" +
-        jm + "|" + nn(jr) + "|" + nn(jw) + "|" + sm + "|" + nn(sreason) + "|" + nn(sw) + "\n");
+  print("seed24_walk|" + nn(tv) + "|" + nn(("reason" in tr) ? tr.reason : null) + "\n");
 
   local cr = {};
   local cv = R.ReadStrict(T, "Root", inputs["clean"], cr);
@@ -437,29 +435,13 @@ local fresh = function() {
 
   local sr = {};
   local sv = R.ReadStrict(T, "Root", inputs["amp"], sr);
-  print("amp_strict|" + nn(sv) + "|" + nn(sr.reason) + "|" + nn(sr.field) + "|" + nn(("sharedBlob" in sr) ? sr.sharedBlob : 0) + "\n");
+  print("amp_strict|" + nn(sv) + "|" + nn(sr.reason) + "\n");
 
+  // the walk under the strict read refuses the shared blob too: no value
+  // is recovered (docs/SPEC-TABLES.md §6.5, strict-only-read)
   local tr = fresh();
   local tv = L.loadWalk(T, "Root", inputs["amp"], tr);
-  local allSame = tv != null && tv.Items.len() == 4096 && tv.Items[0].B != null && tv.Items[0].B.len() == 65536;
-  if (allSame) {
-    local first = tv.Items[0].B;
-    for (local i = 0; i < 65536; i++) {
-      if ((first[i] & 0xff) != ((i * 7) & 0xff)) { allSame = false; break; }
-    }
-    for (local i = 1; i < 4096; i++) {
-      if (tv.Items[i].B != first) { allSame = false; break; }
-    }
-  }
-  local ajm = tv == null ? 0 : J.ToJsonMeasure(T, "Root", tv);
-  local ajReason = ("ToJsonReason" in J) ? J.ToJsonReason : null;
-  local ajw = tv == null ? "non-null" : J.ToJson(T, "Root", tv);
-  local asm = tv == null ? 0 : S.measure(T, "Root", tv);
-  local asReason = ("SaveReason" in S) ? S.SaveReason : null;
-  local asw = tv == null ? "non-null" : S.save(T, "Root", tv);
-  print("amp_tolerant|" + (tv != null) + "|" + tr.bodyDamaged + "|" + nn(("sharedBlob" in tr) ? tr.sharedBlob : 0) + "|" +
-        nn(("reason" in tr) ? tr.reason : null) + "|" + nn(("field" in tr) ? tr.field : null) + "|" + allSame + "|" +
-        ajm + "|" + nn(ajReason) + "|" + nn(ajw) + "|" + asm + "|" + nn(asReason) + "|" + nn(asw) + "\n");
+  print("amp_walk|" + nn(tv) + "|" + nn(("reason" in tr) ? tr.reason : null) + "\n");
 }
 `, mod24, modAmp)
 
@@ -488,15 +470,15 @@ local fresh = function() {
 	wants := []struct {
 		key, want string
 	}{
-		{"seed24_strict", "-|blob_shared|ptr|1"},
-		{"seed24_loadtext", "-|blob_shared|ptr|1"},
-		{"seed24_tolerant", "true|false|1|blob_shared|ptr|true|-1|blob_shared|-|-1|blob_shared|-"},
+		{"seed24_strict", "-|blob_shared"},
+		{"seed24_loadtext", "-|blob_shared"},
+		{"seed24_walk", "-|blob_shared"},
 		{"seed24_clean", fmt.Sprintf("-|%d|%s", len(clean), cleanHex)},
 		{"writers_shared", "-1|blob_shared|-|-|blob_shared|-1|blob_shared|-"},
 		{"writers_two", fmt.Sprintf("%d|%s|%s|-|%s|%d|%s|%s", len(twoWire), twoHex, twoB64, twoHex, len(twoJson), twoJsonHex, twoJsonHex)},
 		{"amp_builder", "-1|blob_shared|-|-1|blob_shared"},
-		{"amp_strict", "-|blob_shared|b|4095"},
-		{"amp_tolerant", "true|false|4095|blob_shared|b|true|-1|blob_shared|-|-1|blob_shared|-"},
+		{"amp_strict", "-|blob_shared"},
+		{"amp_walk", "-|blob_shared"},
 	}
 
 	for _, w := range wants {

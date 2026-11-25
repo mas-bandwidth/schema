@@ -53,11 +53,29 @@ func luauDamageUnit(t *testing.T) (string, []string, map[string][]byte) {
 	return dir, mods, files
 }
 
+// luauDamageRead reads one damage vector through loadWalk and
+// loadRetainWalk. A sabotage takes out every place that refuses the damage:
+// the discard it names (the early return at the frame's end, or the final
+// malformed check), the walk's own refusal on a malformed report
+// (walkRefuses) and the walk's share of the strict read's framing
+// (judgeWalk; docs/SPEC-TABLES.md §6.5, docs/rulings.json
+// strict-only-read), so the control shows the gate sees a damaged value the
+// moment no refusal stands between it and the caller.
 func luauDamageRead(t *testing.T, file, sabotage string) string {
 	t.Helper()
 	dir, mods, files := luauDamageUnit(t)
 	if sabotage != "" {
 		src := string(files["schema_load.luau"])
+		const walkAnchor = "if report.malformed == true then return true end"
+		if strings.Count(src, walkAnchor) != 1 {
+			t.Fatal("walk refusal anchor not unique")
+		}
+		src = strings.Replace(src, walkAnchor, "if false then return true end", 1)
+		const wireAnchor = "if res ~= nil and judged ~= nil and wireAloneRefuses(judged, report) then"
+		if strings.Count(src, wireAnchor) != 1 {
+			t.Fatal("wire-alone refusal anchor not unique")
+		}
+		src = strings.Replace(src, wireAnchor, "if false then", 1)
 		var patched string
 		if sabotage == "final" {
 			const anchor = "\tif report.malformed then return nil end\n\treturn v\nend\n"

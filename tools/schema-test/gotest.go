@@ -133,27 +133,51 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 
 // The runner calls Prepare only on an adapter that is a Preparer.
 var _ testreg.Preparer = (*goTestAdapter)(nil)
+var _ testreg.StepPreparer = (*goTestAdapter)(nil)
 
-// Prepare makes, once each, the targets the instances' rows name in
-// "make" (testreg.Preparer). A row whose inputs do not read fails in Run,
-// by name; a target that does not make fails the group here, naming it and
-// the row that asked for it.
-func (a *goTestAdapter) Prepare(ctx context.Context, _ string, instances []testreg.Instance) error {
+// PrepareSteps is a step for each target the instances' rows name in "make"
+// and each build their Go tests read (testreg.StepPreparer): the runner runs
+// each under its own call limit, named by its target. A row whose inputs do
+// not read fails in Run, by name; a target that does not make fails the group
+// here, naming it and the row that asked for it.
+func (a *goTestAdapter) PrepareSteps(_ string, instances []testreg.Instance) []testreg.PrepareStep {
+	var steps []testreg.PrepareStep
 	seen := map[string]bool{}
+	var refs []goTestRef
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
-		if err != nil || in.Make == "" || seen[in.Make] {
+		if err != nil {
+			continue // Run fails the row, naming its inputs
+		}
+		refs = append(refs, goTestRef{in.Package, in.Test})
+		if in.Make == "" || seen[in.Make] {
 			continue
 		}
 		seen[in.Make] = true
-		if a.build == nil {
-			return fmt.Errorf("%s: needs make %s, and the gotest adapter has no builder", inst.Full, in.Make)
-		}
-		if err := a.build(ctx, []string{"make", in.Make}); err != nil {
-			return fmt.Errorf("%s: %w", inst.Full, err)
+		full, target := inst.Full, in.Make
+		steps = append(steps, testreg.PrepareStep{Name: target, Run: func(ctx context.Context) error {
+			if a.build == nil {
+				return fmt.Errorf("%s: needs make %s, and the gotest adapter has no builder", full, target)
+			}
+			if err := a.build(ctx, []string{"make", target}); err != nil {
+				return fmt.Errorf("%s: %w", full, err)
+			}
+			return nil
+		}})
+	}
+	return append(steps, a.needsSteps(refs)...)
+}
+
+// Prepare runs every step under the one ctx it is given: the steps' own
+// limits are the runner's (prepareSteps), so a direct caller holds them all to
+// its single deadline.
+func (a *goTestAdapter) Prepare(ctx context.Context, lang string, instances []testreg.Instance) error {
+	for _, step := range a.PrepareSteps(lang, instances) {
+		if err := step.Run(ctx); err != nil {
+			return err
 		}
 	}
-	return a.prepareNeeds(ctx, instances)
+	return nil
 }
 
 // declared is the set of top-level functions a package's _test.go files

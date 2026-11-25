@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1100. Language-free tests: 1484.
+Nightly tests every language answers: 1100. Language-free tests: 1485.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -1186,6 +1186,16 @@ generated or runtime code is clean under the language's strict analyser.
 
 Each runs once, as `none.nightly.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
+### Type `name-check`
+
+a schema's names are accepted or refused by the name checker.
+
+#### `name-check` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.name-check.goosetable.goose-every-package-name-refuses-end-to-end` | `gotest` | Go test TestGooseEveryPackageNameRefusesEndToEnd in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseEveryPackageNameRefusesEndToEnd` | the Go test passes | `internal/codegen/goosetable/names_test.go:269` |
+
 ### Type `evolution`
 
 one schema version reads or writes another's data.
@@ -1194,7 +1204,7 @@ one schema version reads or writes another's data.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-c.tables-c-versioning` | `make` | make tables-c-versioning (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-versioning` | the target exits 0 with no skip in its log | `make/c.mk:1625` |
+| `none.nightly.evolution.make-c.tables-c-versioning` | `make` | make tables-c-versioning (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-versioning` | the target exits 0 with no skip in its log | `make/c.mk:1624` |
 
 #### `evolution` family `make-cs`, 1 test
 
@@ -1218,7 +1228,7 @@ one schema version reads or writes another's data.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1255` |
+| `none.nightly.evolution.make-go.tables-go-versioning` | `make` | make tables-go-versioning (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-versioning` | the target exits 0 with no skip in its log | `make/go.mk:1322` |
 
 #### `evolution` family `make-java`, 1 test
 
@@ -1282,9 +1292,9 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.fuzz.make-go.fuzz-tables-diff` | `make` | make fuzz-tables-diff (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-diff` | the target exits 0 with no skip in its log | `make/go.mk:1418` |
-| `none.nightly.fuzz.make-go.fuzz-tables-go` | `make` | make fuzz-tables-go (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-go` | the target exits 0 with no skip in its log | `make/go.mk:660` |
-| `none.nightly.fuzz.make-go.fuzz-tables-props` | `make` | make fuzz-tables-props (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-props` | the target exits 0 with no skip in its log | `make/go.mk:1429` |
+| `none.nightly.fuzz.make-go.fuzz-tables-diff` | `make` | make fuzz-tables-diff (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-diff` | the target exits 0 with no skip in its log | `make/go.mk:1485` |
+| `none.nightly.fuzz.make-go.fuzz-tables-go` | `make` | make fuzz-tables-go (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-go` | the target exits 0 with no skip in its log | `make/go.mk:710` |
+| `none.nightly.fuzz.make-go.fuzz-tables-props` | `make` | make fuzz-tables-props (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: fuzz-tables-props` | the target exits 0 with no skip in its log | `make/go.mk:1496` |
 
 #### `fuzz` family `make-python-wirefuzz`, 1 test
 
@@ -3307,7 +3317,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2541` |
+| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2540` |
 
 #### `plant` family `make-checks-schema-shared-hostile-corpus`, 1 test
 
@@ -3385,7 +3395,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-elixir.tables-elixir-warning-control` | `make` | make tables-elixir-warning-control (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-warning-control` | the target exits 0 with no skip in its log | `make/elixir.mk:2157` |
+| `none.nightly.plant.make-elixir.tables-elixir-warning-control` | `make` | make tables-elixir-warning-control (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-warning-control` | the target exits 0 with no skip in its log | `make/elixir.mk:2158` |
 
 #### `plant` family `make-elixir-cook-write`, 2 tests
 
@@ -3794,21 +3804,21 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-verify-vm.verify-sabotage-fixed-negative-control` | `make` | make verify-sabotage-fixed-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-fixed-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:641` |
-| `none.nightly.plant.make-verify-vm.verify-sabotage-negative-control` | `make` | make verify-sabotage-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:712` |
-| `none.nightly.plant.make-verify-vm.verify-sabotage-packet-negative-control` | `make` | make verify-sabotage-packet-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-packet-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:630` |
-| `none.nightly.plant.make-verify-vm.verify-sabotage-retain-negative-control` | `make` | make verify-sabotage-retain-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-retain-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:694` |
-| `none.nightly.plant.make-verify-vm.verify-sabotage-variable-negative-control` | `make` | make verify-sabotage-variable-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-variable-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:675` |
+| `none.nightly.plant.make-verify-vm.verify-sabotage-fixed-negative-control` | `make` | make verify-sabotage-fixed-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-fixed-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:656` |
+| `none.nightly.plant.make-verify-vm.verify-sabotage-negative-control` | `make` | make verify-sabotage-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:727` |
+| `none.nightly.plant.make-verify-vm.verify-sabotage-packet-negative-control` | `make` | make verify-sabotage-packet-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-packet-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:645` |
+| `none.nightly.plant.make-verify-vm.verify-sabotage-retain-negative-control` | `make` | make verify-sabotage-retain-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-retain-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:709` |
+| `none.nightly.plant.make-verify-vm.verify-sabotage-variable-negative-control` | `make` | make verify-sabotage-variable-negative-control (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-sabotage-variable-negative-control` | the target exits 0 with no skip in its log | `make/verify-vm.mk:690` |
 
 #### `plant` family `make-verify-widen-18`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-verify-widen-18.verify-bitphase-align-negative-control` | `make` | make verify-bitphase-align-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-align-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:231` |
-| `none.nightly.plant.make-verify-widen-18.verify-bitphase-negative-control` | `make` | make verify-bitphase-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:189` |
-| `none.nightly.plant.make-verify-widen-18.verify-canonical-negative-control` | `make` | make verify-canonical-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-canonical-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:244` |
-| `none.nightly.plant.make-verify-widen-18.verify-message-fuzz-negative-control` | `make` | make verify-message-fuzz-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-message-fuzz-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:257` |
-| `none.nightly.plant.make-verify-widen-18.verify-tablegen-negative-control` | `make` | make verify-tablegen-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-tablegen-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:272` |
+| `none.nightly.plant.make-verify-widen-18.verify-bitphase-align-negative-control` | `make` | make verify-bitphase-align-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-align-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:236` |
+| `none.nightly.plant.make-verify-widen-18.verify-bitphase-negative-control` | `make` | make verify-bitphase-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-bitphase-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:194` |
+| `none.nightly.plant.make-verify-widen-18.verify-canonical-negative-control` | `make` | make verify-canonical-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-canonical-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:249` |
+| `none.nightly.plant.make-verify-widen-18.verify-message-fuzz-negative-control` | `make` | make verify-message-fuzz-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-message-fuzz-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:262` |
+| `none.nightly.plant.make-verify-widen-18.verify-tablegen-negative-control` | `make` | make verify-tablegen-negative-control (make/verify-widen-18.mk) exits 0 | `file: make/verify-widen-18.mk`<br>`target: verify-tablegen-negative-control` | the target exits 0 with no skip in its log | `make/verify-widen-18.mk:277` |
 
 #### `plant` family `makefile`, 1 test
 
@@ -5143,7 +5153,7 @@ performance or timing.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.make-go.tables-go-bench-gate` | `make` | make tables-go-bench-gate (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-bench-gate` | the target exits 0 with no skip in its log | `make/go.mk:1162` |
+| `none.nightly.bench.make-go.tables-go-bench-gate` | `make` | make tables-go-bench-gate (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-bench-gate` | the target exits 0 with no skip in its log | `make/go.mk:1229` |
 
 #### `bench` family `make-lobster-bench`, 1 test
 
@@ -5420,10 +5430,10 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2127` |
-| `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`inputs.reads` (151 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1600` |
-| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2597` |
-| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/conformance/c/drivers-asan.txt"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1633` |
+| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2126` |
+| `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`inputs.reads` (151 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1599` |
+| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2596` |
+| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/conformance/c/drivers-asan.txt"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1632` |
 
 #### `harness-run` family `make-c-fixed-default-copy`, 1 test
 
@@ -5495,7 +5505,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2067` |
+| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2068` |
 | `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1422` |
 | `none.nightly.harness-run.make-elixir.tables-elixir-paired-gate` | `make` | make tables-elixir-paired-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-paired-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1508` |
 | `none.nightly.harness-run.make-elixir.test-elixir-packet` | `make` | make test-elixir-packet (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-packet` | the target exits 0 with no skip in its log | `make/elixir.mk:1130` |
@@ -5511,10 +5521,10 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:420` |
-| `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:439` |
-| `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1232` |
-| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:944` |
+| `none.nightly.harness-run.make-go.cards-corpus-check` | `make` | make cards-corpus-check (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-corpus-check` | the target exits 0 with no skip in its log | `make/go.mk:470` |
+| `none.nightly.harness-run.make-go.cards-test` | `make` | make cards-test (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: cards-test` | the target exits 0 with no skip in its log | `make/go.mk:489` |
+| `none.nightly.harness-run.make-go.tables-go-fixed-form` | `make` | make tables-go-fixed-form (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: tables-go-fixed-form` | the target exits 0 with no skip in its log | `make/go.mk:1299` |
+| `none.nightly.harness-run.make-go.test-go-packet` | `make` | make test-go-packet (make/go.mk) exits 0 | `file: make/go.mk`<br>`target: test-go-packet` | the target exits 0 with no skip in its log | `make/go.mk:1011` |
 
 #### `harness-run` family `make-goose`, 1 test
 
@@ -5831,8 +5841,8 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-end-c-test`<br>`reads: ["test/packet-end/PacketEnd.schema"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2459` |
-| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-write-cfloat-c-test`<br>`reads: ["test/packet-write-cfloat/PacketCFloat.schema"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2418` |
+| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-end-c-test`<br>`reads: ["test/packet-end/PacketEnd.schema"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2458` |
+| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-write-cfloat-c-test`<br>`reads: ["test/packet-write-cfloat/PacketCFloat.schema"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2417` |
 
 #### `ci-plumbing` family `make-checks-packet-defaults`, 1 test
 

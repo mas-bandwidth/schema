@@ -44,7 +44,7 @@ func BenchmarkLuaL4VariableLoadCook(b *testing.B) {
 			luarun.WriteFiles(b, dir, files)
 			rows := make([]map[string]any, 16)
 			for i := range rows {
-				rows[i] = map[string]any{"names": []string{fmt.Sprintf("row-%d-north-sector", i), "south-sector-supply", "east-sector-patrol", "west-sector-return"}, "tag": json.Number(fmt.Sprintf("%d", i+1)), "value": i * 7}
+				rows[i] = map[string]any{"names": []string{fmt.Sprintf("row-%d-north-sector", i), "south-sector-supply", "east-sector-patrol", "west-sector-return"}, "tag": fmt.Sprintf("%d", i+1), "value": i * 7}
 			}
 			text, err := json.Marshal(map[string]any{"rows": rows})
 			if err != nil {

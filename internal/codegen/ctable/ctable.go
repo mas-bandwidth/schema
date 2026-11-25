@@ -450,7 +450,7 @@ typedef struct TableReport
        path. */
     uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
-       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_unknown carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
        operator's other answer, a layout this build served and has retired
        (§5.9 #7). Zero on every other path, refusal or read. */
@@ -459,7 +459,7 @@ typedef struct TableReport
 
 /* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
    bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
-   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   the message form's 3..6 and the fixed form's 7..20 (layout_unknown takes 22), so one report reason
    names it whichever form a unit carries. */
 enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE, SCHEMA_TABLE_NON_FINITE_FLOAT = 21 };
 

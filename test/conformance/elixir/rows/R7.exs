@@ -6,7 +6,7 @@
 # from layout bytes it holds, not for the IDENTITY LANE (step 8, where the
 # selected entry being the reader's own is an INDEX COMPARISON and never a
 # recomputation)". The refusal table (:884) pins the answer's shape: a hash in
-# no lineage entry is `:layout_newer` carrying THE FILE'S HASH, and nothing
+# no lineage entry is `:layout_unknown` carrying THE FILE'S HASH, and nothing
 # else.
 #
 # The hurt the law exists for is THIS leg (#928): it hashed its own layout
@@ -200,7 +200,7 @@ case M.root_config_fixed_load(file, plan_capacity: length(plan)) do
 end
 
 # ---- THE HASH WAS TAKEN AS GIVEN, NEVER RECOMPUTED. A header hash no
-# lineage entry holds is :layout_newer, and the report carries THE FILE'S HASH
+# lineage entry holds is :layout_unknown, and the report carries THE FILE'S HASH
 # — the value the header held, not this build's constant and not a hash of the
 # layout bytes behind it, which no runtime computes.
 
@@ -215,15 +215,15 @@ check.("the lying hash is in no lineage entry (vector soundness)",
 )
 
 case M.root_config_fixed_load(lying) do
-  {:error, :layout_newer, report} ->
+  {:error, :layout_unknown, report} ->
     check.(
-      "a header hash no lineage entry holds is :layout_newer carrying THE FILE'S HASH (0x#{Integer.to_string(given, 16)}) and nothing else: the hash is taken as given, never recomputed",
+      "a header hash no lineage entry holds is :layout_unknown carrying THE FILE'S HASH (0x#{Integer.to_string(given, 16)}) and nothing else: the hash is taken as given, never recomputed",
       report.layout_hash == given and clean?.(%{report | layout_hash: 0})
     )
 
   other ->
     check.(
-      "a header hash no lineage entry holds is :layout_newer carrying THE FILE'S HASH and nothing else — got #{inspect(other, limit: 8)}",
+      "a header hash no lineage entry holds is :layout_unknown carrying THE FILE'S HASH and nothing else — got #{inspect(other, limit: 8)}",
       false
     )
 end

@@ -1424,7 +1424,7 @@ macro_rules! fixed_read {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = $krate::TableFixedReport::default();
         let read = $krate::$load(&mut values, $data, &mut plan, &mut remap, &mut report);
-        let read = read.filter(|_| !report.refused && !report.damaged);
+        let read = read.filter(|_| !report.refused);
         let save = read.and_then(|n| {
             let mut buffer = vec![0u8; $krate::$measure(n)];
             $krate::$save(&values[..n], &mut buffer).map(|written| {
@@ -1777,7 +1777,7 @@ macro_rules! fixed_storage_value {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = $k::TableFixedReport::default();
         let count = $load(&mut values, $data, &mut plan, &mut remap, &mut report);
-        if count == Some(1) && !report.refused && !report.damaged {
+        if count == Some(1) && !report.refused {
             $value::try_from(&values[0]).ok()
         } else {
             None
@@ -3100,7 +3100,7 @@ macro_rules! wref_fixed_row {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = $krate::TableFixedReport::default();
         let read = $krate::$load(&mut values, $data, &mut plan, &mut remap, &mut report);
-        match read.filter(|_| !report.refused && !report.damaged) {
+        match read.filter(|_| !report.refused) {
             Some(1) => values[0],
             _ => fail(&format!("{}: fixed load refused {}", $case, $wire)),
         }

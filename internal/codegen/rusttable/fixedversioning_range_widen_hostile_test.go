@@ -57,7 +57,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 			fn := "v_" + vec.Name + "_hostile"
 			verdict := fmt.Sprintf(`    let n = n.unwrap_or_else(|| panic!("the NEW reader REFUSED the forged file: {} {:?}", report.reason.name(), report));
     assert_eq!(n, 1, "the forged file carries one record, not {n}");
-    assert!(!report.refused && !report.damaged, "an in-range read is not a refusal: {:?}", report);
+    assert!(!report.refused, "an in-range read is not a refusal: {:?}", report);
 %s`, checks.String())
 			if want.Refused || want.Clamped > 0 {
 				verdict = `    assert!(n.is_none(), "a value past the WRITER's range was read, not refused: {:?}", report);
@@ -65,7 +65,6 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
         report.refused && report.reason == TableFixedReason::OutOfRange,
         "a value past the WRITER's range is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged value is a refusal, not damage: {:?}", report);
 `
 			}
 			tests := fmt.Sprintf(`

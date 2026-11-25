@@ -53,8 +53,10 @@ Path('out').mkdir()
 wire.run('manifest', 'out')
 for case in ('blob_shared', 'blob_shared_string'):
     answer = Path('out', case)
+    # a no-codec absence in place of the refusal is the driver's fault, named
+    # apart from a reader that accepts
+    assert not Path('out', case + '.absent').exists(), 'driver dropped a public refusal'
     assert answer.exists() and answer.read_bytes() == b'refused\n', 'missing observed blob_shared refusal'
-    assert not Path('out', case + '.absent').exists()
 assert Path('out/blob_equal_bytes').read_bytes() == Path('blob_equal_bytes.bin').read_bytes()
 Catalog = root_class('blobdemo', 'Catalog')
 Docs = root_class('mapdemo', 'Docs')
@@ -136,7 +138,7 @@ func TestPythonWireBlobDriverNegativeControl(t *testing.T) {
 	for _, tc := range []struct{ name, path, before, after, diagnostic string }{
 		{"reader", "generated/blobdemo/blobdemo/_schema/load.py", "if blob and names[k + 1] > 1:", "if False:", "missing observed blob_shared refusal"},
 		{"writer", "generated/blobdemo/blobdemo/_schema/save.py", "if identity in ctx.blob_refs:", "if False:", "shared bytes writer accepted"},
-		{"driver", "surfaces/wire.py", "absent(outdir, case, err.reason)", "no_codec(outdir, case)", "driver dropped a public refusal"},
+		{"driver", "surfaces/wire.py", `write_bytes(outdir, case, b"refused\n")`, "no_codec(outdir, case)", "driver dropped a public refusal"},
 		{"driver-missing", "surfaces/wire.py", "        no_codec(outdir, case)\n        return", "        raise AssertionError(case)", "driver treated a missing root as a refusal or an error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

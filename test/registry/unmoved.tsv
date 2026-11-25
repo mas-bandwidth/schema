@@ -22,7 +22,7 @@ go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's a
 go-test	internal/codegen/elixirtable	273	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/goose	10	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/goosetable	151	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	internal/codegen/gotable	378	L5	per-language (go) Go tests: go's adapter runs them when their families move in
+go-test	internal/codegen/gotable	375	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/gotable/fuzzunit	35	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/java	19	L5	per-language (java) Go tests: java's adapter runs them when their families move in
 go-test	internal/codegen/javatable	224	L5	per-language (java) Go tests: java's adapter runs them when their families move in
@@ -2087,7 +2087,7 @@ tier	internal/codegen/goosetable:TestGooseDriverFormThreeDispatch	1	L5	functiona
 tier	internal/codegen/goosetable:TestGooseDriverFormThreeDispatchNegativeControl	1	L5	functional: needs the Goose toolchain (it builds and runs the conformance driver) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseDriverVerdictAndWriteBack	1	L5	functional: needs the Goose toolchain (it builds and runs the conformance driver) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseDriverVerdictAndWriteBackNegativeControl	1	L5	functional: needs the Goose toolchain (it builds and runs the conformance driver) (was slowtest.Gate)
-tier	internal/codegen/goosetable:TestGooseEveryPackageNameIsClaimed	1	L5	functional: needs no toolchain, but the whole-manifest name sweep (one generation per unit per emitted name) (was slowtest.Gate)
+tier	internal/codegen/goosetable:TestGooseEveryPackageNameIsClaimed	1	L5	functional: needs no toolchain, but the whole-manifest name scan (one generation per unit, and one more per unclaimed name and per module; the probe of every name is the nightly row name-check.goosetable.goose-every-package-name-refuses-end-to-end) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseFixedAbsentRecordOptionalIsZero	1	L5	functional: needs goose (it runs the generated reader over the fixed-form seeds) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseFixedFormAgreesWithTheByteOracle	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
 tier	internal/codegen/goosetable:TestGooseFixedFormNegativeControl	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
@@ -2204,7 +2204,6 @@ tier	internal/codegen/gotable:TestFixedDeprecatedFieldIsCarriedEnumFlagsKeyed	1	
 tier	internal/codegen/gotable:TestFixedForgedOrdinalRefusesOnBothPlans	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormAbsentOptionalSkipsStore	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormArgLaneOldEncodingControl	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
-tier	internal/codegen/gotable:TestFixedFormArgLaneTextUnderSecondArm	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormBoundsLiveCount	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormBoundsShiftFixedAndBits	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormBytesNTakesTheArrayRow	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
@@ -2217,11 +2216,9 @@ tier	internal/codegen/gotable:TestFixedFormHostileByteSweep	1	L5	functional: nee
 tier	internal/codegen/gotable:TestFixedFormHostileUnionTag	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormIdentityEqualsCompiled	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormLayoutMalformedTruncated	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
-tier	internal/codegen/gotable:TestFixedFormLayoutRules	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormNonZeroSlackRefused	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormOptionalVersusPlainNesting	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormPlanPartition	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
-tier	internal/codegen/gotable:TestFixedFormPlanPath	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormRaggedTail	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormRecordBound	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	internal/codegen/gotable:TestFixedFormRefuseIsTotal	1	L5	functional: needs the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)

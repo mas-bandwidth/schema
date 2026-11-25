@@ -238,15 +238,10 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
-    /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5). The file was written by
-    /// a build AHEAD OF THIS ONE: a fixed table reads BACKWARD and never
-    /// forward, so there is nothing to try and no layout to walk. The report
-    /// carries THE FILE'S HASH AND NOTHING ELSE (bill §12.4) — ship the reader.
-    LayoutNewer,
     /// A HASH THE LINEAGE HOLDS, BELOW THE FLOOR (§5.3 step 6). The operator
     /// RETIRED that layout, with the lock's own --retire edit, and the entry
     /// stays in the lineage forever so this answer can stay distinct from
-    /// LayoutNewer: the hash is reported here too (§5.9 #7) — upgrade the
+    /// LayoutUnknown: the hash is reported here too (§5.9 #7) — upgrade the
     /// client.
     LayoutUnsupported,
     /// bytes that are not a layout at all, and — under a KNOWN hash — a LIE
@@ -287,6 +282,27 @@ pub enum TableFixedReason {
     /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD (rulings 2026-11-22, R2):
     /// the reader cannot hold an absent value, so the lineage refuses by name.
     KindMismatch,
+    /// A HASH THE LINEAGE DOES NOT HOLD (docs/FIXED-FORM-ALGORITHM.md §5.3
+    /// step 5, SPEC-TABLES §21.3). Nothing in the lineage proves it newer: it
+    /// is a newer writer, an older layout nobody locked, another table's file
+    /// or a damaged hash byte, and step 5 cannot tell them apart. The report
+    /// carries THE FILE'S HASH AND NOTHING ELSE (§5.9 #7). LayoutNewer is
+    /// gone from the list, so every reason after its old place moved up one
+    /// ordinal; nothing casts a reason to its ordinal (the wire names it by
+    /// its name() method).
+    LayoutUnknown,
+    /// FRAMING DAMAGE (§5.3 steps 1, 2 and 9): no first byte, fewer than 20
+    /// bytes, a header and a layout with no record behind them, a record size
+    /// of 8 or less, or a ragged tail. A refusal by name like any other: this
+    /// form's report has no malformed flag.
+    Truncated,
+    /// A NONZERO RESERVED HEADER BYTE, b[1..7] (§5.3 step 2): refused rather
+    /// than ignored, so the bytes stay usable later.
+    ReservedNotZero,
+    /// DAMAGED BYTES ON THE WIRE (§3.1, §4.5, §5.3 step 11): a non-zero dead
+    /// byte, a bool or present byte other than 0 or 1 on live data, or a plan
+    /// reach past the record. The whole read refuses and nothing lands.
+    WireDamaged,
 }
 
 impl TableFixedReason {
@@ -300,7 +316,6 @@ impl TableFixedReason {
             Self::BlockMalformed => "block_malformed",
             Self::PlanTooLarge => "plan_too_large",
             Self::BatchTooLarge => "batch_too_large",
-            Self::LayoutNewer => "layout_newer",
             Self::LayoutUnsupported => "layout_unsupported",
             Self::LayoutMalformed => "layout_malformed",
             Self::LayoutCountMismatch => "layout_count_mismatch",
@@ -315,6 +330,10 @@ impl TableFixedReason {
             Self::IntegrityMismatch => "integrity_mismatch",
             Self::OutOfRange => "out_of_range",
             Self::KindMismatch => "kind_mismatch",
+            Self::LayoutUnknown => "layout_unknown",
+            Self::Truncated => "truncated",
+            Self::ReservedNotZero => "reserved_not_zero",
+            Self::WireDamaged => "wire_damaged",
         }
     }
 }
@@ -335,14 +354,18 @@ pub struct TableFixedReport {
     /// optional's present byte, which are unspecified on read and never a
     /// refusal. Zero whenever a read returns.
     pub(crate) slack: u32,
-    pub damaged: bool,
+    /// DAMAGE SEEN BY THIS RECORD'S SCATTER: a bool or present byte other
+    /// than 0 or 1 on live data. LOAD refuses the whole batch as
+    /// wire_damaged when it is non-zero; no read returns with it set. This
+    /// form's report has no malformed flag (§5.3).
+    pub(crate) wire_damage: u32,
     pub refused: bool,
     pub reason: TableFixedReason,
     /// THE FIELD A non_finite_float REFUSAL NAMES (docs/SPEC-TABLES.md §3.3),
     /// <Owner>.<field>; "" on every other read.
     pub non_finite_float: &'static str,
     /// THE FILE'S OWN HASH, on the two layout refusals that report it
-    /// (§5.3's condition table, §5.9 #7): ` + "`layout_newer`" + ` carries it and
+    /// (§5.3's condition table, §5.9 #7): ` + "`layout_unknown`" + ` carries it and
     /// nothing else, and ` + "`layout_unsupported`" + ` carries it too, because the
     /// operator choosing between "ship the reader" and "upgrade the client"
     /// needs the number in both answers.
@@ -351,13 +374,13 @@ pub struct TableFixedReport {
 
 impl TableFixedReport {
     /// A refusal BY NAME: nothing is decoded, no counter moves, and
-    /// ` + "`malformed`" + ` does not fire.
+    /// this form has no malformed flag to fire.
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
         self.unknown = 0;
         self.widened = 0;
         self.held = 0;
         self.slack = 0;
-        self.damaged = false;
+        self.wire_damage = 0;
         self.refused = true;
         self.reason = reason;
         self.layout_hash = 0;
@@ -374,7 +397,7 @@ impl TableFixedReport {
     }
 
     /// A LAYOUT REFUSAL, which reports THE FILE'S HASH beside the name: the
-    /// hash is the only thing ` + "`layout_newer`" + ` carries (bill §12.4) and
+    /// hash is the only thing ` + "`layout_unknown`" + ` carries (§5.9 #7) and
     /// ` + "`layout_unsupported`" + ` carries it too (§5.9 #7).
     pub fn refuse_layout<T>(&mut self, reason: TableFixedReason, hash: u64) -> Option<T> {
         let out = self.refuse(reason);
@@ -493,10 +516,11 @@ fn signed_kind(kind: u8) -> bool {
 // exactly the dest ranges the plan does not write; identity's list is empty.
 //
 // EVERY REACH INTO ` + "`src`" + ` IS CHECKED, because ` + "`src`" + ` is framed by a stranger's
-// block: a plan offset past the record is framing damage, and it is reported
-// as such rather than trusted.
+// block: a plan offset past the record is damage, and the run answers false
+// rather than trusting it; the load refuses the whole read as wire_damaged.
 
-/// Runs one plan over one record body, landing it in ` + "`image`" + `.
+/// Runs one plan over one record body, landing it in ` + "`image`" + `. Answers
+/// false, having stopped, when an entry reaches past the record or the image.
 pub fn table_fixed_run(
     plan: &[TableFixedEntry],
     guards: &[TableFixedGuard],
@@ -504,7 +528,7 @@ pub fn table_fixed_run(
     src: &[u8],
     image: &mut [u8],
     report: &mut TableFixedReport,
-) {
+) -> bool {
     // THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4): the
     // first split entries are UNGUARDED and run without a guard test; only
     // the guarded half from split on tests one. table_fixed_compile lays
@@ -512,7 +536,7 @@ pub fn table_fixed_run(
     let split = plan.iter().take_while(|p| p.guard_count == 0).count();
     for (i, p) in plan.iter().enumerate() {
         match table_fixed_in_absent(plan, guards, src, u64::from(p.src)) {
-            None => { report.damaged = true; return; }
+            None => return false,
             Some(true) => continue,
             Some(false) => {}
         }
@@ -538,8 +562,7 @@ pub fn table_fixed_run(
                         break;
                     }
                     None => {
-                        report.damaged = true;
-                        return;
+                        return false;
                     }
                 }
             }
@@ -555,15 +578,13 @@ pub fn table_fixed_run(
                 match (src.get(s..s + n), image.get_mut(d..d + n)) {
                     (Some(from), Some(into)) => into.copy_from_slice(from),
                     _ => {
-                        report.damaged = true;
-                        return;
+                        return false;
                     }
                 }
             }
             TableFixedOp::Count => {
                 if src.len() < s + 4 || image.len() < d + 4 {
-                    report.damaged = true;
-                    return;
+                    return false;
                 }
                 let raw = get32(src, s) as i32;
                 let held = raw.clamp(0, p.size as i32);
@@ -575,8 +596,7 @@ pub fn table_fixed_run(
             TableFixedOp::Text => {
                 let n = p.size as usize;
                 if src.len() < s + 4 + n || image.len() < d + 4 + n {
-                    report.damaged = true;
-                    return;
+                    return false;
                 }
                 let raw = get32(src, s) as i32;
                 let held = raw.clamp(0, p.aux as i32);
@@ -595,8 +615,7 @@ pub fn table_fixed_run(
                 let n = p.size as usize;
                 let w = p.dstsize as usize;
                 if src.len() < s + n || image.len() < d + w {
-                    report.damaged = true;
-                    return;
+                    return false;
                 }
                 let mut raw: u64 = 0;
                 for i in 0..n {
@@ -629,8 +648,7 @@ pub fn table_fixed_run(
                 let n = p.size as usize;
                 let w = p.dstsize as usize;
                 if src.len() < s + n || image.len() < d + w || n == 0 || n > 8 {
-                    report.damaged = true;
-                    return;
+                    return false;
                 }
                 // THE WIDENED VALUE RIDES IN 128 BITS, because the ladder's
                 // top rung stores sixteen bytes: a source no wider than eight
@@ -655,8 +673,7 @@ pub fn table_fixed_run(
             }
             TableFixedOp::WidenF => {
                 if src.len() < s + 4 || image.len() < d + 8 {
-                    report.damaged = true;
-                    return;
+                    return false;
                 }
                 // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
                 // §3.3, §4): exact for every finite f32. A NaN stays a NaN and an
@@ -676,8 +693,7 @@ pub fn table_fixed_run(
                 // value widens before it is taken apart.
                 let n = p.size as usize;
                 if image.len() < d + n || n > 8 {
-                    report.damaged = true;
-                    return;
+                    return false;
                 }
                 let v = u64::from(p.aux);
                 for i in 0..n {
@@ -697,8 +713,7 @@ pub fn table_fixed_run(
                     let tag_w = if p.sign != 0 { p.sign as usize } else { n };
                     match src.get(s..s + tag_w) {
                         None => {
-                            report.damaged = true;
-                            return;
+                            return false;
                         }
                         Some(bytes) => {
                             let mut raw: u64 = 0;
@@ -714,6 +729,7 @@ pub fn table_fixed_run(
             }
         }
     }
+    true
 }
 
 /// Complement of the unguarded dest writes. Guarded entries (union arms,

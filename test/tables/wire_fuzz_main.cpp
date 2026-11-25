@@ -535,6 +535,7 @@ static const Codec codecs[] = {
     MESSAGE5( "backenddemo", backenddemo, LoginRequest ),
     MESSAGE5( "backenddemo", backenddemo, MatchResult ),
     MESSAGE5( "backenddemo", backenddemo, StorePurchase ),
+    MESSAGE5( "backenddemo", backenddemo, Envelope ),
     MESSAGE5( "vocabdemo", vocabdemo, Wide00 ),
     MESSAGE5( "vocabdemo", vocabdemo, Wide09 ),
     MESSAGE5( "vocab9demo", vocab9demo, Wide00 ),

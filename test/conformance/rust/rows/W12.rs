@@ -9,26 +9,29 @@
 // computes the hash at all. That is the `~` this cell reconciles: the behaviour
 // is exercised, the rule was asserted by nothing.
 //
-// This case computes it. Two fixed tables of the blockdemo unit whose layouts
-// carry NO range / bits / fixed / flags fact — their definitions digest is
-// empty, so their baked hash is fnv1a64 over the layout block alone. The
+// This case computes it, over two fixed tables of the blockdemo unit. The
 // emitted `*_FIXED_BLOCK` IS the layout as written, and its own first four
 // bytes ARE its entry count, so:
 //
 //   * the block opens with its 4-byte entry count,
-//   * fnv1a64 over the block AS WRITTEN (count included) equals the baked hash,
+//   * fnv1a64 over the block AS WRITTEN (count included) equals the leg's own
+//     layout hash, `table_fixed_hash`,
 //   * dropping the 4-byte count moves the number — the count is in the input,
-//   * the two tables' hashes differ, so the case is not one lucky constant.
+//   * the two tables' hashes differ, so the case is not one lucky constant,
+//   * and the baked WIRE hash is not the layout's alone: every prospective v2
+//     root records a definitions digest with its identity prefix (§5.2), so
+//     the wire hash folds that digest in after the layout.
+//
+// Until 2026-11-25 this row assumed an empty digest and held the baked hash
+// equal to the layout-only fold, which the v2 digest retired.
 //
 // fnv1a64 is written out LONGHAND here and never borrowed from the code under
 // test (whose `table_fixed_hash` would agree with whatever it happened to do):
 // it is the oracle, not an echo.
-//
-// PaddedRow: 17 layout entries, no digest, hash 0x9683695abec5c762.
-// RenderCamera: 14 layout entries, no digest, hash 0x74ade5c3866f68d1.
 
 use blockdemo::{
-    PADDED_ROW_FIXED_BLOCK, PADDED_ROW_FIXED_HASH, RENDER_CAMERA_FIXED_BLOCK, RENDER_CAMERA_FIXED_HASH,
+    table_fixed_hash, PADDED_ROW_FIXED_BLOCK, PADDED_ROW_FIXED_HASH, RENDER_CAMERA_FIXED_BLOCK,
+    RENDER_CAMERA_FIXED_HASH,
 };
 
 fn fnv1a64(b: &[u8]) -> u64 {
@@ -82,7 +85,8 @@ fn hash_is_fnv1a64_over_the_block_count_included() {
     for c in CASES {
         let want = fnv1a64(c.block);
         assert_eq!(
-            c.hash, want,
+            table_fixed_hash(c.block),
+            want,
             "{}: the layout hash is not fnv1a64 over the {} bytes as written, the 4-byte count included",
             c.name,
             c.block.len()
@@ -95,7 +99,8 @@ fn dropping_the_4byte_count_moves_the_hash() {
     for c in CASES {
         let dropped = fnv1a64(&c.block[4..]);
         assert_ne!(
-            dropped, c.hash,
+            dropped,
+            table_fixed_hash(c.block),
             "{}: dropping the 4-byte count leaves the hash unchanged, so the count is not in the input",
             c.name
         );
@@ -108,4 +113,21 @@ fn two_layouts_do_not_share_a_hash() {
         CASES[0].hash, CASES[1].hash,
         "two distinct layouts share a hash; the case is one lucky constant"
     );
+    assert_ne!(
+        table_fixed_hash(CASES[0].block),
+        table_fixed_hash(CASES[1].block),
+        "two distinct layouts share a layout hash; the case is one lucky constant"
+    );
+}
+
+#[test]
+fn the_wire_hash_folds_the_definitions_digest_after_the_layout() {
+    for c in CASES {
+        assert_ne!(
+            c.hash,
+            fnv1a64(c.block),
+            "{}: the baked wire hash is the layout's alone, so no definitions digest was folded in (§5.2: every v2 root records one)",
+            c.name
+        );
+    }
 }

@@ -259,18 +259,27 @@ func TestElixirFixedFormHarnessStrictNegativeControl(t *testing.T) {
 		}
 	}
 
-	const anchor = "def range_check(_report, _n), do: throw({:refuse, :out_of_range})"
-	const replacement = "def range_check(report, _n), do: report"
+	// Two sabotages: the bounds pass's range refusal taken out, and the length
+	// refusal (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table: "a length past
+	// the plan's cap (§4.5) | length_over_bound") answering another name, so the
+	// harness's length cases must go red on the name they assert.
+	sabotages := [][2]string{
+		{"def range_check(_report, _n), do: throw({:refuse, :out_of_range})", "def range_check(report, _n), do: report"},
+		{"def held_len(_acc, v, cap) when v < 0 or v > cap, do: throw({:refuse, :length_over_bound})", "def held_len(_acc, v, cap) when v < 0 or v > cap, do: throw({:refuse, :out_of_range})"},
+	}
 	for _, unit := range []string{"fe1", "p1"} {
 		runtimePath := filepath.Join(base, "gen", unit, "FixedRuntime.ex")
 		src, err := os.ReadFile(runtimePath)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Contains(src, []byte(anchor)) {
-			t.Fatalf("NEGATIVE CONTROL FAILED: %s does not contain %q", runtimePath, anchor)
+		sabotaged := src
+		for _, s := range sabotages {
+			if !bytes.Contains(sabotaged, []byte(s[0])) {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s does not contain %q", runtimePath, s[0])
+			}
+			sabotaged = bytes.Replace(sabotaged, []byte(s[0]), []byte(s[1]), 1)
 		}
-		sabotaged := bytes.Replace(src, []byte(anchor), []byte(replacement), 1)
 		sabDir := t.TempDir()
 		sabFile := filepath.Join(sabDir, "FixedRuntime.ex")
 		if err := os.WriteFile(sabFile, sabotaged, 0o600); err != nil {
@@ -285,12 +294,13 @@ func TestElixirFixedFormHarnessStrictNegativeControl(t *testing.T) {
 
 	out, err := runFixedFormHarnessScript(t, root, elixirBin, otpPath, scratchEbin, corpus)
 	if err == nil {
-		t.Fatalf("NEGATIVE CONTROL FAILED: test/elixir-fixedform/main.exs stayed green with range_check refusal taken out:\n%s", out)
+		t.Fatalf("NEGATIVE CONTROL FAILED: test/elixir-fixedform/main.exs stayed green with range_check refusal taken out and held_len renamed:\n%s", out)
 	}
 	for _, want := range []string{
 		"FAIL a tag past the last arm refuses on the strict read",
 		"FAIL identity: an ordinal past the last variant refuses on the strict read",
-		"FAIL a length past the declared bound refuses on the strict read",
+		"FAIL a hostile length refuses `length_over_bound`",
+		"FAIL a length past the declared bound refuses `length_over_bound` over well-formed text too",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("NEGATIVE CONTROL FAILED: sabotaged run did not report %q:\n%s", want, out)

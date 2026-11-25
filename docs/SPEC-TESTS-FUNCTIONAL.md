@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2310.
+Functional tests every language answers: 2560. Language-free tests: 2321.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2894,6 +2894,29 @@ two implementations or two versions give the same answer.
 
 Each runs once, as `none.functional.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
+### Type `roundtrip`
+
+read bytes, write them back, same bytes.
+
+#### `roundtrip` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.goosetable.goose-required-fields-never-elide` | `gotest` | Go test TestGooseRequiredFieldsNeverElide in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseRequiredFieldsNeverElide` | the Go test passes | `internal/codegen/goosetable/required_writes_test.go:97` |
+
+#### `roundtrip` family `luatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.luatable.lua-deprecated-map-value-reads-none` | `gotest` | Go test TestLuaDeprecatedMapValueReadsNone in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaDeprecatedMapValueReadsNone` | the Go test passes | `internal/codegen/luatable/deprecatedmap_test.go:106` |
+
+#### `roundtrip` family `luautable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.luautable.luau-save-retain-born-array-later-element-matches-the-oracle` | `gotest` | Go test TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle` | the Go test passes | `internal/codegen/luautable/retain_fuzz_bounds_test.go:128` |
+| `none.functional.roundtrip.luautable.luau-save-retain-bounds-mutant-matches-the-oracle` | `gotest` | Go test TestLuauSaveRetainBoundsMutantMatchesTheOracle in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauSaveRetainBoundsMutantMatchesTheOracle` | the Go test passes | `internal/codegen/luautable/retain_fuzz_bounds_test.go:36` |
+
 ### Type `write-refusal`
 
 writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
@@ -2927,6 +2950,23 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.write-refusal.unitytable.unity-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/unitytable/declared_deprecated_enum_cook_test.go:86` |
+
+### Type `load-refusal`
+
+hostile bytes are refused in every build, with the named reason.
+
+#### `load-refusal` family `elixirtable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.load-refusal.elixirtable.fixed-form-count-over-bound-elixir` | `gotest` | Go test TestFixedFormCountOverBoundElixir in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedFormCountOverBoundElixir` | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/fixedform_l5_parity_test.go:86` |
+| `none.functional.load-refusal.elixirtable.fixed-form-refusal-names-elixir` | `gotest` | Go test TestFixedFormRefusalNamesElixir in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedFormRefusalNamesElixir` | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/fixedform_l5_parity_test.go:23` |
+
+#### `load-refusal` family `luautable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.load-refusal.luautable.luau-walk-reads-zero-a-reused-report` | `gotest` | Go test TestLuauWalkReadsZeroAReusedReport in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauWalkReadsZeroAReusedReport` | refused on load, in every build (verdict only) | `internal/codegen/luautable/walk_report_reset_test.go:23` |
 
 ### Type `codegen`
 
@@ -4790,19 +4830,21 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.gotable.fixed-unlawful-corpus` | `gotest` | Go test TestFixedUnlawfulCorpus in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/gotable/fixed_unlawful_corpus_test.go:85` |
 | `none.functional.evolution.gotable.fixed-v1-l-is-a-lawful-writer-for-v2` | `gotest` | Go test TestFixedV1LIsALawfulWriterForV2 in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedV1LIsALawfulWriterForV2` | the Go test passes | `internal/codegen/gotable/fixed_v1l_lawful_test.go:19` |
 | `none.functional.evolution.gotable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/gotable/fixedversioning_kind_moved_test.go:14` |
-| `none.functional.evolution.gotable.json-walk-generated-go-tables` | `gotest` | every unit of the generated Go tables tree (build/tables-generated-go, which the row makes first) emits one generic JSON walker matching its reference profile; a run without the tree fails naming it (Go test TestJsonWalkGeneratedGoTables in ./internal/codegen/gotable) | `make: build/tables-generated-go/.stamp`<br>`package: ./internal/codegen/gotable`<br>`test: TestJsonWalkGeneratedGoTables` | the Go test passes | `internal/codegen/gotable/jsonwalk_test.go:329` |
+| `none.functional.evolution.gotable.json-walk-generated-go-tables` | `gotest` | every unit of the generated Go tables tree (build/tables-generated-go, built first by the steps test/registry/go-needs.txt declares for it) emits one generic JSON walker matching its reference profile; a run without the tree fails naming it (Go test TestJsonWalkGeneratedGoTables in ./internal/codegen/gotable) | `package: ./internal/codegen/gotable`<br>`test: TestJsonWalkGeneratedGoTables` | the Go test passes | `internal/codegen/gotable/jsonwalk_test.go:329` |
 
-#### `evolution` family `javatable`, 2 tests
+#### `evolution` family `javatable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.javatable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/javatable/fixedversioning_kind_moved_test.go:17` |
+| `none.functional.evolution.javatable.java-fixed-none-const-forged-tag-verdict-is-out-of-range` | `gotest` | the Java None const stores None before it refuses a forged tag, and the verdict is outOfRange: forged tags 2, 0x7f and 0xff over a poisoned image on the R14 vector, and the lineage lane, under -ea and -da (Go test TestJavaFixedNoneConstForgedTagVerdictIsOutOfRange in ./internal/codegen/javatable) | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoneConstForgedTagVerdictIsOutOfRange` | the Go test passes | `internal/codegen/javatable/fixed_none_const_verdict_test.go:36` |
 | `none.functional.evolution.javatable.java-fixed-unlawful-corpus` | `gotest` | Go test TestJavaFixedUnlawfulCorpus in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/javatable/fixed_unlawful_corpus_test.go:84` |
 
-#### `evolution` family `jstable`, 2 tests
+#### `evolution` family `jstable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.evolution.jstable.js-fixed-none-const-carries-the-whole-arm-count` | `gotest` | the JavaScript None const holds a writer union of 300 arms (tag 2, read at my tag 2 and 4) to its whole arm count: meta carries 300 and width 2, arm 300 lands, tag 0 is None, forged tags 301, 0x1ff and 0xffff refuse out\_of\_range and write nothing (Go test TestJSFixedNoneConstCarriesTheWholeArmCount in ./internal/codegen/jstable) | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedNoneConstCarriesTheWholeArmCount` | the Go test passes | `internal/codegen/jstable/fixed_none_const_arms_test.go:36` |
 | `none.functional.evolution.jstable.js-fixed-unlawful-corpus` | `gotest` | Go test TestJSFixedUnlawfulCorpus in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/jstable/fixed_unlawful_corpus_test.go:113` |
 | `none.functional.evolution.jstable.js-fixed-versioning-kind-moved` | `gotest` | Go test TestJSFixedVersioningKindMoved in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedVersioningKindMoved` | the Go test passes | `internal/codegen/jstable/fixedversioning_kind_moved_test.go:20` |
 
@@ -4834,19 +4876,21 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.functional.evolution.mootable.moo-fixed-r14-grown-tag-reads-writers-tag-width` | `gotest` | Go test TestMooFixedR14GrownTagReadsWritersTagWidth in ./internal/codegen/mootable | `package: ./internal/codegen/mootable`<br>`test: TestMooFixedR14GrownTagReadsWritersTagWidth` | the Go test passes | `internal/codegen/mootable/fixed_r14_test.go:45` |
 
-#### `evolution` family `pythontable`, 2 tests
+#### `evolution` family `pythontable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.pythontable.python-fixed-r14` | `gotest` | R14 for python: the shared vector (a union tag grown 1 -&gt; 8) compiles whole through compilePythonFixedPlan, every reach inside the writer's 5-byte record, the writer's tag read at its 1-byte width; the plan run on the leg's runtime lands tag 1 in 8 bytes and the u32 whole, tag 0 as None, a forged tag 2 refuses out\_of\_range; twins tag 1 and 2 (Go test TestPythonFixedR14 in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedR14` | the Go test passes | `internal/codegen/pythontable/fixed_r14_test.go:84` |
 | `none.functional.evolution.pythontable.python-fixed-r14-lineage` | `gotest` | R14's lineage lane for python: a 1-byte-tag lock entry generated into a build whose tag grew to 8 lays a ready plan and fixed\_load reads arm 1, None and refuses a forged tag 2 out\_of\_range (Go test TestPythonFixedR14Lineage in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedR14Lineage` | the Go test passes | `internal/codegen/pythontable/fixed_r14_test.go:198` |
+| `none.functional.evolution.pythontable.python-fixed-short-record-refuses-by-name` | `gotest` | a planted Python plan that reads past a short record refuses layout\_record\_too\_large: every op kind, a guard, a dead span and a bool over a 4-byte body, and the build own file through fixed\_load and fixed\_load\_into with its lineage plan forged two bytes past the record (Go test TestPythonFixedShortRecordRefusesByName in ./internal/codegen/pythontable) | `package: ./internal/codegen/pythontable`<br>`test: TestPythonFixedShortRecordRefusesByName` | the Go test passes | `internal/codegen/pythontable/fixed_short_record_test.go:34` |
 
-#### `evolution` family `rubytable`, 2 tests
+#### `evolution` family `rubytable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.rubytable.ruby-fixed-r14` | `gotest` | R14 for ruby: the shared vector (a union tag grown 1 -&gt; 8) compiles whole through compileRubyFixedPlan, every reach inside the writer's 5-byte record, the writer's tag read at its 1-byte width; the plan run on the leg's runtime lands tag 1 in 8 bytes and the u32 whole, tag 0 as None, a forged tag 2 refuses out\_of\_range; twins tag 1 and 2 (Go test TestRubyFixedR14 in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedR14` | the Go test passes | `internal/codegen/rubytable/fixed_r14_test.go:86` |
 | `none.functional.evolution.rubytable.ruby-fixed-r14-lineage` | `gotest` | R14's lineage lane for ruby: a 1-byte-tag lock entry generated into a build whose tag grew to 8 lays a ready plan and fixed\_load reads arm 1, None and refuses a forged tag 2 out\_of\_range (Go test TestRubyFixedR14Lineage in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedR14Lineage` | the Go test passes | `internal/codegen/rubytable/fixed_r14_test.go:202` |
+| `none.functional.evolution.rubytable.ruby-fixed-short-record-refuses-by-name` | `gotest` | a planted Ruby plan that reads past a short record refuses layout\_record\_too\_large: every op kind, a guard, a dead span and a bool over a 4-byte body, and the build own file through fixed\_load and fixed\_load\_into with its lineage plan forged two bytes past the record (Go test TestRubyFixedShortRecordRefusesByName in ./internal/codegen/rubytable) | `package: ./internal/codegen/rubytable`<br>`test: TestRubyFixedShortRecordRefusesByName` | the Go test passes | `internal/codegen/rubytable/fixed_short_record_test.go:36` |
 
 #### `evolution` family `rusttable`, 2 tests
 
@@ -4895,7 +4939,7 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:581` |
+| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:596` |
 
 #### `fuzz` family `verify-goose-fuzz-part-1`, 5 tests
 
@@ -5600,10 +5644,10 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
-| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
-| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
-| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
+| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
 
 #### `lint` family `make-cpp`, 5 tests
 

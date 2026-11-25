@@ -4,8 +4,8 @@ package javatable
 // numeric-evolution and optional-values rows of docs/roadmap.sexp's node
 // `fixed-tables` (ROADMAP.md "NEW Fixed Tables"), the assertions no other
 // test of this leg makes. Law: docs/FIXED-FORM-ALGORITHM.md §4.6 (the
-// bounds pass), §5.3 (LOAD), §5.6 (what is retired), §5.9 #23 (the retirement
-// print), docs/FIXED-FORM-VERSIONING-TESTS.md ("The floor and the hash", the
+// bounds pass), §5.3 (LOAD), §5.6 (what is retired), §5.9 #23 (a retired test
+// leaves the suite), docs/FIXED-FORM-VERSIONING-TESTS.md ("The floor and the hash", the
 // divergence rows), docs/SPEC-TABLES.md §3.4, §21.2.
 //
 // A clause already held by an existing test of this leg is named by that test
@@ -168,8 +168,9 @@ func t03R32(t *testing.T) {
 // .hash(, no compile(, no parse(); the file's hash taken as given) and the
 // hash-as-given half is t02R4's; this subtest widens the ban to the WHOLE
 // emitted build — the runtime holds no recompute of the header's hash anywhere,
-// not only on the load path — and holds §5.9 #23's retirement print, which
-// names where the stranger's-walk coverage is owed.
+// not only on the load path — and holds §5.9 #23: a retired case has LEFT the
+// leg's program, so Main.java neither prints a retirement nor calls a retired
+// case.
 func t03R10(t *testing.T) {
 	u := unitFrom(t, t03Flat)
 	own, ok := FixedLineageOf(u, "T")
@@ -207,16 +208,19 @@ func t03R10(t *testing.T) {
 			}
 		}
 	}
-	// §5.9 #23: a leg whose suite has no skip prints one instead — the six
-	// families §5.6 retires, each named at the call site with where the
-	// coverage is owed. The gate runs Main (make tables-java-fixedform).
+	// §5.9 #23: a retired test LEAVES the suite (Glenn, 2026-11-25: no skip of
+	// any kind). The six families §5.6 retires are neither called nor printed
+	// as retired in Main (make tables-java-fixedform runs it).
 	mainSrc, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "java-fixedform", "src", "Main.java"))
 	if err != nil {
 		t.Fatalf("R10: read Main.java: %v", err)
 	}
+	if strings.Contains(string(mainSrc), "retired(") || strings.Contains(string(mainSrc), "RETIRED by") {
+		t.Error("R10: Main.java still prints a retirement: §5.9 #23 says a retired case leaves the program")
+	}
 	for _, name := range []string{"textUnderAnArm", "anOlderWriter", "aNewerWriter", "anOptional", "theSlide", "layoutValidation"} {
-		if !strings.Contains(string(mainSrc), "retired(\""+name+"\"") {
-			t.Errorf("R10: Main.java names no retirement for %q: §5.9 #23 wants the retired case named at the call site with where its coverage is owed", name)
+		if strings.Contains(string(mainSrc), name+"(") {
+			t.Errorf("R10: Main.java still carries the retired case %q: §5.9 #23 says it leaves the program", name)
 		}
 	}
 }

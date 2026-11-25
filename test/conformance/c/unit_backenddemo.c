@@ -6,10 +6,12 @@
 SCHEMA_CONFORMANCE_CODEC( LoginRequest, login_request )
 SCHEMA_CONFORMANCE_CODEC( MatchResult, match_result )
 SCHEMA_CONFORMANCE_CODEC( StorePurchase, store_purchase )
+SCHEMA_CONFORMANCE_CODEC( Envelope, envelope )
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( backenddemo, LoginRequest ),
     SCHEMA_CONFORMANCE_ROW( backenddemo, MatchResult ),
-    SCHEMA_CONFORMANCE_ROW( backenddemo, StorePurchase )
+    SCHEMA_CONFORMANCE_ROW( backenddemo, StorePurchase ),
+    SCHEMA_CONFORMANCE_ROW( backenddemo, Envelope )
 };
 /* Sets the one field a write-contract row names (driver.h). */
 int conformance_write_refusal_set_backenddemo( const char * root, void * value, const char * path,
