@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 0. Language-free tests: 1359.
+Nightly tests every language answers: 0. Language-free tests: 1357.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -2985,10 +2985,10 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.model-check.fault-turned-on-in-a-holding-model` | `plant` | a holding model with a fault turned on: MCCardHops.cfg given CONSTANT EditDropsUnknown = TRUE, so TLC finds NoFieldLost violated | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"CONSTANT EditDropsUnknown = TRUE"}`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red: exit 12 where its row records an exhaustive run | `tools/tlcrun/adapter.go PlantAppendEnv` |
+| `none.nightly.plant.model-check.fault-turned-on-in-a-holding-model` | `plant` | a holding model with a fault turned on: MCCardHops.cfg given CONSTANT EditDropsUnknown = TRUE, so TLC finds NoFieldLost violated | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"CONSTANT EditDropsUnknown = TRUE"}`<br>`reason: is not its RUNS.tsv run: exit 12, want 0`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red: exit 12 where its row records an exhaustive run | `tools/tlcrun/adapter.go PlantAppendEnv` |
 | `none.nightly.plant.model-check.judge-refuses-three-broken-trees` | `model-check` | tools/tlcrun -controls: the judge refuses another model's violation in a reversed witness, a config error in place of a violation, and a config with no RUNS.tsv row | `controls: true` | each of the three broken copies of tla/ is refused with its named reason | `tools/tlcrun/main.go runControls` |
-| `none.nightly.plant.model-check.no-tlc-jar-on-the-runner` | `plant` | a runner without the TLC jar: the model check fails naming the runner, never skips | `env: {"TLC_JAR":"/nonexistent/tla2tools.jar"}`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red naming the runner and the missing jar | `tools/tlcrun/adapter.go toolProblem` |
-| `none.nightly.plant.model-check.witness-checks-an-undefined-invariant` | `plant` | a reversed witness whose config checks an invariant its module does not define: TLC stops on a config error, not the recorded violation | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"INVARIANT NoSuchInvariantInThisModule"}`<br>`target: none.nightly.model.card-hops.divergent-leg` | model.card-hops.divergent-leg goes red: exit 151 where its row records 12 | `tools/tlcrun/adapter.go PlantAppendEnv` |
+| `none.nightly.plant.model-check.no-tlc-jar-on-the-runner` | `plant` | a runner without the TLC jar: the model check fails naming the runner, never skips | `env: {"TLC_JAR":"/nonexistent/tla2tools.jar"}`<br>`reason: no TLC jar at /nonexistent/tla2tools.jar`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red naming the runner and the missing jar | `tools/tlcrun/adapter.go toolProblem` |
+| `none.nightly.plant.model-check.witness-checks-an-undefined-invariant` | `plant` | a reversed witness whose config checks an invariant its module does not define: TLC stops on a config error, not the recorded violation | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"INVARIANT NoSuchInvariantInThisModule"}`<br>`reason: is not its RUNS.tsv run: exit 151, want 12`<br>`target: none.nightly.model.card-hops.divergent-leg` | model.card-hops.divergent-leg goes red: exit 151 where its row records 12 | `tools/tlcrun/adapter.go PlantAppendEnv` |
 
 #### `plant` family `moo`, 6 tests
 
@@ -3570,14 +3570,12 @@ a negative control: a named test run against a deliberately broken build must co
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `makefile`, 6 tests
+#### `tooling` family `makefile`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.tooling.makefile.docs-check` | `make` | make docs-check (Makefile) exits 0 | `file: Makefile`<br>`target: docs-check` | the target exits 0 with no skip in its log | `Makefile:5253` |
 | `none.nightly.tooling.makefile.shape-gate` | `make` | make shape-gate (Makefile) exits 0 | `file: Makefile`<br>`target: shape-gate` | the target exits 0 with no skip in its log | `Makefile:5319` |
-| `none.nightly.tooling.makefile.slow-gate-coverage-codegen` | `make` | make slow-gate-coverage-codegen (Makefile) exits 0 | `file: Makefile`<br>`target: slow-gate-coverage-codegen` | the target exits 0 with no skip in its log | `Makefile:8042` |
-| `none.nightly.tooling.makefile.slow-gate-coverage-rest` | `make` | make slow-gate-coverage-rest (Makefile) exits 0 | `file: Makefile`<br>`target: slow-gate-coverage-rest` | the target exits 0 with no skip in its log | `Makefile:8046` |
 | `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8071` |
 | `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8075` |
 
