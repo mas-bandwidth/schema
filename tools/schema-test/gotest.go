@@ -512,9 +512,10 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 
 // goTestResults reads go test -json events into one result per asked
 // top-level test. A subtest's events count against its top-level test: its
-// output joins the reason, and a subtest that skips fails its parent. A row
-// that names a subtest is mapped by goTestSubtestResults instead, so this
-// folding stays the verdict of every row that does not.
+// output joins the reason, and a subtest that skips fails its parent. A fuzz
+// target that ran no seed input fails. A row that names a subtest is mapped
+// by goTestSubtestResults instead, so this folding stays the verdict of
+// every row that does not.
 //
 // A result's seconds are what the test costs run alone, which the sharder
 // sums: its own Elapsed plus the Elapsed of every parallel subtest under it
@@ -533,6 +534,7 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	}
 	output := map[string][]string{}
 	skipped := map[string][]string{}
+	subRuns := map[string]int{}      // a top-level test's subtests that ran
 	paused := map[string]bool{}      // the subtests that paused for t.Parallel
 	parallel := map[string]float64{} // a top-level test's parallel subtests' Elapsed
 	seconds := func(top string, ev event) float64 { return ev.Elapsed + parallel[top] }
@@ -561,6 +563,10 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			continue // the package's own lines
 		}
 		switch ev.Action {
+		case "run":
+			if isSub {
+				subRuns[top]++
+			}
 		case "pause":
 			if isSub {
 				paused[ev.Test] = true
@@ -582,6 +588,12 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			}
 			if s := skipped[top]; len(s) > 0 {
 				out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: fmt.Sprintf("subtests skipped, and nothing is ever skipped: %s\n%s", strings.Join(s, ", "), tail(strings.Join(output[top], "\n"), 5))})
+				continue
+			}
+			// a fuzz target outside -fuzz runs its seed inputs, each a
+			// subtest: one that ran none passed having tested nothing
+			if strings.HasPrefix(top, "Fuzz") && subRuns[top] == 0 {
+				out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the fuzz target ran no seed input (no f.Add and no testdata/fuzz corpus), so it tested nothing"})
 				continue
 			}
 			// go test's clock reads to the hundredth: a pass it timed at
