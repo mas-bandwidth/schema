@@ -1128,7 +1128,16 @@ func lineageLane(st *ir.Struct, r *fixedRoot, e FixedLineageEntry, ownFacts bool
 			checkGuards: checkGuards,
 		}, nil
 	}
-	checks, checkGuards := compileFixedChecks(buildFixedSpecRoot(writerSt))
+	return olderWriterLane(lane, ops, guards, fills, remap, needPrefill, buildFixedSpecRoot(writerSt)), nil
+}
+
+// olderWriterLane finishes an older writer's lane from the plan compiled for
+// it and the WRITER's own declaration, whose bounds pass holds the file to the
+// writer's bounds (docs/FIXED-FORM-ALGORITHM.md §4.6, §5.2) — the writer's
+// union tag included, read at the WRITER's tag width. The union R14 row
+// (fixed_r14_grown_tag_test.go) lays its lane through it.
+func olderWriterLane(lane fixedLane, ops []fixedOp, guards []fixedGuard, fills []fixedFill, remap []uint16, needPrefill bool, writer *fixedSpec) fixedLane {
+	checks, checkGuards := compileFixedChecks(writer)
 	lane.ops = ops
 	lane.guards = guards
 	lane.fills = fills
@@ -1146,7 +1155,7 @@ func lineageLane(st *ir.Struct, r *fixedRoot, e FixedLineageEntry, ownFacts bool
 	if lane.prefill && len(fills) == 0 {
 		lane.plan++
 	}
-	return lane, nil
+	return lane
 }
 
 func byteArray(b *strings.Builder, data []byte) {
@@ -1225,6 +1234,48 @@ func ushortArray(b *strings.Builder, vals []uint16) {
 	b.WriteString("}")
 }
 
+// laneLiteral is one lane of a fixed root's lane table as C#: the
+// `new TableWire.FixedLane(...)` the generated unit holds, then tail.
+func laneLiteral(lane fixedLane, why, layout, tail string) string {
+	var sb strings.Builder
+	l := &sb
+	simple := !lane.hasGuards && len(lane.guards) == 0 && len(lane.checkGuards) == 0 && len(lane.fills) == 0 && len(lane.remap) == 0
+	if simple {
+		fmt.Fprintf(l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d,\n",
+			lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.plan)
+		l.WriteString(indent(layout + ","))
+		var ops strings.Builder
+		opArray(&ops, lane.ops)
+		l.WriteString(indent(ops.String() + ","))
+		var checks strings.Builder
+		opArray(&checks, lane.checks)
+		l.WriteString(indent(checks.String() + ")" + tail))
+	} else {
+		fmt.Fprintf(l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d, %t,\n",
+			lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.plan, lane.hasGuards)
+		l.WriteString(indent(layout + ","))
+		var ops strings.Builder
+		opArray(&ops, lane.ops)
+		l.WriteString(indent(ops.String() + ","))
+		var checks strings.Builder
+		opArray(&checks, lane.checks)
+		l.WriteString(indent(checks.String() + ","))
+		var gs strings.Builder
+		guardArray(&gs, lane.guards)
+		l.WriteString(indent(gs.String() + ","))
+		var cgs strings.Builder
+		guardArray(&cgs, lane.checkGuards)
+		l.WriteString(indent(cgs.String() + ","))
+		var fls strings.Builder
+		fillArray(&fls, lane.fills)
+		l.WriteString(indent(fls.String() + ","))
+		var rmp strings.Builder
+		ushortArray(&rmp, lane.remap)
+		l.WriteString(indent(rmp.String() + ")" + tail))
+	}
+	return sb.String()
+}
+
 func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 	st, name := r.st, r.st.Name
 	crc := st.Integrity == "crc32c"
@@ -1265,40 +1316,7 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 			note = "an older writer's"
 		}
 		fmt.Fprintf(&l, "// 0x%016x — %s\n", lane.hash, note)
-		simple := !lane.hasGuards && len(lane.guards) == 0 && len(lane.checkGuards) == 0 && len(lane.fills) == 0 && len(lane.remap) == 0
-		if simple {
-			fmt.Fprintf(&l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d,\n",
-				lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.plan)
-			l.WriteString(indent(layout + ","))
-			var ops strings.Builder
-			opArray(&ops, lane.ops)
-			l.WriteString(indent(ops.String() + ","))
-			var checks strings.Builder
-			opArray(&checks, lane.checks)
-			l.WriteString(indent(checks.String() + "),"))
-		} else {
-			fmt.Fprintf(&l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d, %t,\n",
-				lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.plan, lane.hasGuards)
-			l.WriteString(indent(layout + ","))
-			var ops strings.Builder
-			opArray(&ops, lane.ops)
-			l.WriteString(indent(ops.String() + ","))
-			var checks strings.Builder
-			opArray(&checks, lane.checks)
-			l.WriteString(indent(checks.String() + ","))
-			var gs strings.Builder
-			guardArray(&gs, lane.guards)
-			l.WriteString(indent(gs.String() + ","))
-			var cgs strings.Builder
-			guardArray(&cgs, lane.checkGuards)
-			l.WriteString(indent(cgs.String() + ","))
-			var fls strings.Builder
-			fillArray(&fls, lane.fills)
-			l.WriteString(indent(fls.String() + ","))
-			var rmp strings.Builder
-			ushortArray(&rmp, lane.remap)
-			l.WriteString(indent(rmp.String() + "),"))
-		}
+		l.WriteString(laneLiteral(lane, why, layout, ","))
 		b.WriteString(indent(l.String()))
 	}
 	b.WriteString("};\n\n")

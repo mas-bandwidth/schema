@@ -203,6 +203,28 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 	if !checkBounds(root) {
 		return nil, "layout_record_too_large"
 	}
+	// A UNION'S TAG is the entry's size less its widest arm, and only a width
+	// a union lays — 1, 2, 4 or 8 — is one the plan can read at (§1.1, §5.2
+	// EMIT kind 15); any other is malformed.
+	var checkTags func(n *fixedLayoutNode) bool
+	checkTags = func(n *fixedLayoutNode) bool {
+		if n.kind == ir.TableKindUnion {
+			switch fixedPlanTagBytes(n) {
+			case 1, 2, 4, 8:
+			default:
+				return false
+			}
+		}
+		for _, c := range n.children {
+			if !checkTags(c) {
+				return false
+			}
+		}
+		return true
+	}
+	if !checkTags(root) {
+		return nil, "layout_malformed"
+	}
 	leaves := 0
 	var countLeaves func(n *fixedLayoutNode)
 	countLeaves = func(n *fixedLayoutNode) {
@@ -219,6 +241,17 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 		return nil, "layout_record_too_large"
 	}
 	return root, ""
+}
+
+// fixedPlanTagBytes is a writer union's tag width as its layout lays it: the
+// entry's size less its widest arm (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT
+// kind 15, their_tag).
+func fixedPlanTagBytes(n *fixedLayoutNode) int64 {
+	var widest int64
+	for _, c := range n.children {
+		widest = max(widest, c.size)
+	}
+	return n.size - widest
 }
 
 func fixedValidateLayout(b []byte) string {
@@ -456,12 +489,16 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			return
 		case *ir.Union:
 			nArms := len(node.children)
-			tagW := int64(1)
-			if nArms > 65535 {
-				tagW = 4
-			} else if nArms > 255 {
-				tagW = 2
-			}
+			// THE WRITER'S TAG WIDTH IS ITS LAYOUT'S: the union entry's size
+			// less its widest arm (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind
+			// 15, their_tag := te.size - widest arm), never one derived from
+			// the arm count. A 2-byte tag over one arm is read at 2 bytes and
+			// its payload at offset 2; until 2026-11-25 the plan read it at
+			// the arm count's 1 byte, took the tag's high byte into the
+			// payload and refused a lawful record wire_damaged
+			// (TestSquirrelFixedR14GrownTagReadsWritersTagWidth). The parse
+			// holds the width to 1, 2, 4 or 8 (fixedPlanTagBytes).
+			tagW := fixedPlanTagBytes(node)
 			m.Printf("%s%s.Type = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, tagW)
 			maxArms := min(len(r.Variants), nArms)
 			// A TAG PAST THE WRITER'S ARMS is not one the writer wrote: it
