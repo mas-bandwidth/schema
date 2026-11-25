@@ -792,9 +792,25 @@ generated/bench/go/.stamp: bin/schema $(SCHEMAS_BENCH)
 
 # the serialize.go runtime is a sibling checkout the module replaces into place:
 # an edit there must rebuild the driver
-build/conformance-go: build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
+CONFORMANCE_GO_DEPS = build/tables-generated-go/.stamp cards-generate $(wildcard test/conformance/go/*.go) test/conformance/go/go.mod $(wildcard $(SERIALIZE_GO_RUNTIME)/*.go)
+build/conformance-go: $(CONFORMANCE_GO_DEPS)
 	@mkdir -p build
 	cd test/conformance/go && go build -o ../../../$@ .
+
+# THE DRIVER'S COMPILE IN FOUR STEPS. Cold, the one go build above compiles
+# the sixty-odd generated packages the driver imports and took 76 to 90 s and
+# more on two CPUs, the limit a schema-test call has. Each warm step compiles a
+# quarter of those packages (every fourth, in `go list -deps` order) into the Go
+# build cache, so the driver's own build links what is already compiled. They
+# live in the generated tree so a fetched tree carries them: a shard that fetched
+# the produced leg finds them up to date and compiles nothing. build/conformance-go
+# does not depend on them: they only move the compile into steps that each fit
+# (test/registry/go-needs.txt runs them first).
+CONFORMANCE_GO_WARM := build/tables-generated-go/.warm-1 build/tables-generated-go/.warm-2 build/tables-generated-go/.warm-3 build/tables-generated-go/.warm-4
+$(CONFORMANCE_GO_WARM): build/tables-generated-go/.warm-%: $(CONFORMANCE_GO_DEPS)
+	@mkdir -p build/tables-generated-go
+	cd test/conformance/go && pkgs=$$(go list -deps -f '{{if .DepOnly}}{{if not .Standard}}{{.ImportPath}}{{end}}{{end}}' . | awk -v n=$* 'NR % 4 == n % 4') && { [ -z "$$pkgs" ] || go build $$pkgs; }
+	@touch $@
 
 # THE GO LEG, CROSS-BUILT BIG-ENDIAN (docs/SPEC-TABLES.md §3, §19.1, §7). Go
 # cross-compiles, and the pinned emulator is already installed for the C++

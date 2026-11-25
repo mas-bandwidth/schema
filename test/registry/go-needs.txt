@@ -41,13 +41,19 @@ needs ./internal/fixedvector .* tables-fixedform-corpus
 # ("prepare <group> <target>"), so a cold checkout is built as steps that each fit
 # it and never as one step that builds the others inside it. The generated tree is
 # declared as the compiler, its four generation groups, the stamp that writes
-# the modules, then the conformance binary that compiles it.
+# the modules, the cards unit, the driver's compile in four warm steps, then the
+# conformance binary that links it.
 needs ./test/conformance/go .* bin/schema
 needs ./test/conformance/go .* build/tables-generated-go/.gen-1
 needs ./test/conformance/go .* build/tables-generated-go/.gen-2
 needs ./test/conformance/go .* build/tables-generated-go/.gen-3
 needs ./test/conformance/go .* build/tables-generated-go/.gen-4
 needs ./test/conformance/go .* build/tables-generated-go/.stamp
+needs ./test/conformance/go .* cards-generate
+needs ./test/conformance/go .* build/tables-generated-go/.warm-1
+needs ./test/conformance/go .* build/tables-generated-go/.warm-2
+needs ./test/conformance/go .* build/tables-generated-go/.warm-3
+needs ./test/conformance/go .* build/tables-generated-go/.warm-4
 needs ./test/conformance/go .* build/conformance-go
 needs ./test/conformance/go/rows .* bin/schema
 needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-1
@@ -55,6 +61,11 @@ needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-2
 needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-3
 needs ./test/conformance/go/rows .* build/tables-generated-go/.gen-4
 needs ./test/conformance/go/rows .* build/tables-generated-go/.stamp
+needs ./test/conformance/go/rows .* cards-generate
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-1
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-2
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-3
+needs ./test/conformance/go/rows .* build/tables-generated-go/.warm-4
 needs ./test/conformance/go/rows .* build/conformance-go
 needs ./test/go-tables .* bin/schema
 needs ./test/go-tables .* build/tables-generated-go/.gen-1
