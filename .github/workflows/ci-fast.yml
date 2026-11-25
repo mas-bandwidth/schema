@@ -3242,7 +3242,7 @@ jobs:
   # 55.0 s, the goose leg 9.3 s; replayed, make rebuilds nothing but the go
   # driver's own `go build` (its rule names the phony cards-generate). The
   # cpp leg, the reference driver in its translation units (Makefile,
-  # CONFORMANCE_DRIVER_TUS), CPP-LEG-COLD cold under make -j4 on 4 of
+  # CONFORMANCE_DRIVER_TUS), 72.2 s cold under make -j4 on 4 of
   # captain's cores; replayed, make rebuilds nothing. Its row also holds
   # every driver unit to the compile budget beside that list (`make
   # conformance-cpp-tu-budget`): a unit that grows back toward the old

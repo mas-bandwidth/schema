@@ -122,9 +122,9 @@ func TestCppConformanceDriverRegistersEveryFamily(t *testing.T) {
 	}
 }
 
-// TestConformanceDriverTUsReadsTheMakefileList: the list is read with its
+// TestConformanceDriverUnitsReadTheMakefileList: the list is read with its
 // continuation lines, and a Makefile without it, or with it empty, is red.
-func TestConformanceDriverTUsReadsTheMakefileList(t *testing.T) {
+func TestConformanceDriverUnitsReadTheMakefileList(t *testing.T) {
 	t.Parallel()
 	units, err := conformanceDriverTUs([]byte("X := 1\nCONFORMANCE_DRIVER_TUS := a b \\\n\tc main\nY := 2\n"))
 	if err != nil || strings.Join(units, " ") != "a b c main" {
