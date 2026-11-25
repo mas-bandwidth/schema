@@ -23,6 +23,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -376,12 +377,7 @@ func checkTest(t Test, tiers, types map[string]int) string {
 }
 
 func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, s)
 }
 
 // Lang returns the language row with the name, if there is one.

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -83,9 +84,9 @@ func TestEachRowsVerdictIsItsOwnRun(t *testing.T) {
 	var runs []string
 	reversed := func(dir string, rs []alignRow) error {
 		runs = append(runs, dir)
-		for i := len(rs) - 1; i >= 0; i-- {
-			if bad[rs[i].File] {
-				return fmt.Errorf("FAILED: bytes %s (got 1 want 2)", rs[i].File)
+		for _, r := range slices.Backward(rs) {
+			if bad[r.File] {
+				return fmt.Errorf("FAILED: bytes %s (got 1 want 2)", r.File)
 			}
 		}
 		return nil

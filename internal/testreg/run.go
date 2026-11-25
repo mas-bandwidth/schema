@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"sort"
 	"strings"
 	"sync"
@@ -125,12 +126,8 @@ type envKey struct{}
 // environment: a plant (a negative control) runs its target this way.
 func WithEnv(ctx context.Context, env map[string]string) context.Context {
 	merged := map[string]string{}
-	for k, v := range EnvFrom(ctx) {
-		merged[k] = v
-	}
-	for k, v := range env {
-		merged[k] = v
-	}
+	maps.Copy(merged, EnvFrom(ctx))
+	maps.Copy(merged, env)
 	return context.WithValue(ctx, envKey{}, merged)
 }
 
