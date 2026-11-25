@@ -25,8 +25,9 @@ type goTestCase struct {
 // runGoTestCases runs rows that name a subtest. One call is one parent
 // test's subtests, cut by callBudget, selected with -run '^Test$/^(a|b)$'.
 // The verdict is that subtest's own pass or fail, as nameBuildResults maps
-// it: a parent failure does not flip a sibling that passed, so packageVerdict
-// is not applied. Rows that do not name a subtest never reach here.
+// it. packageVerdict applies to the call: a non-zero exit whose asked
+// subtests all passed fails those rows, and a subtest that failed does not
+// flip a sibling that passed. Rows that do not name a subtest never reach here.
 func (a *goTestAdapter) runGoTestCases(ctx context.Context, rows []goTestCase) ([]testreg.Result, error) {
 	if len(rows) == 0 {
 		return nil, nil
@@ -109,7 +110,7 @@ func (a *goTestAdapter) runGoTestCaseCall(ctx context.Context, pkg, test string,
 	if len(res) == 0 {
 		return res, fmt.Errorf("go test %s answered none of the %d asked: %s matched no test\n%s", pkg, len(want), pattern, tail(strings.Join(other, "\n"), 20))
 	}
-	return res, nil
+	return packageVerdict(pkg, res, runErr, stdout.String(), stderr.String())
 }
 
 // goTestCaseResults answers each asked subtest by its own pass, fail or

@@ -186,3 +186,51 @@ func TestSubtestCallsSplitOnTheShardBudget(t *testing.T) {
 		t.Fatalf("calls %q, want one subtest each", runs)
 	}
 }
+
+// TestANonZeroExitWithEveryAskedSubtestPassingFailsThoseRows plants go test
+// exiting non-zero while every asked subtest passed. Those rows fail, with
+// go test's words. A sibling that itself failed is covered by
+// TestASubtestRowKeepsItsOwnVerdict: it stays red and does not flip a pass.
+func TestANonZeroExitWithEveryAskedSubtestPassingFailsThoseRows(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/m\n\ngo 1.26\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	row := func(full, sub string) testreg.Instance {
+		in := `{"package":"./p","test":"TestParent","subtest":"` + sub + `"}`
+		return testreg.Instance{Full: full, Lang: testreg.LangFree, Test: testreg.Test{
+			Key: full, Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(in),
+		}}
+	}
+	a := newGoTestAdapter(io.Discard, root, 1)
+	a.goTest = func(_ context.Context, _ string, _ []string, stdout, stderr io.Writer) error {
+		_, err := io.WriteString(stdout, `{"Action":"pass","Test":"TestParent/a.schema","Elapsed":0.02}`+"\n"+
+			`{"Action":"pass","Test":"TestParent/b.schema","Elapsed":0.01}`+"\n")
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(stderr, "the tree changed after the tests\n")
+		if err != nil {
+			return err
+		}
+		return errors.New("exit status 1")
+	}
+	res, err := a.Run(context.Background(), testreg.LangFree, []testreg.Instance{
+		row("a", "a.schema"), row("b", "b.schema"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("results %+v", res)
+	}
+	for _, r := range res {
+		if r.Verdict != testreg.Fail {
+			t.Errorf("%s stayed green: %+v", r.Instance, r)
+		}
+		if !strings.Contains(r.Reason, "exit status 1") || !strings.Contains(r.Reason, "every test it ran passed") || !strings.Contains(r.Reason, "the tree changed after the tests") {
+			t.Errorf("%s reason does not carry go test's words: %s", r.Instance, r.Reason)
+		}
+	}
+}

@@ -279,12 +279,17 @@ func Weight(inst Instance) float64 {
 // shards would cost each shard the writer whole. An env plant runs its target
 // row in the checkout, so its shard builds the target language's leg first
 // (Preparer): the env plants of one language are one block, measured cold, so
-// the shard that holds them is weighed with that build once.
+// the shard that holds them is weighed with that build once. Gotest rows that
+// name a subtest of one test share that test's process, so a cut keeps them
+// one block: splitting them would run the process once per shard.
 func unitOf(inst Instance) string {
 	var in struct {
-		Writer string          `json:"writer"`
-		Env    json.RawMessage `json:"env"`
-		Target string          `json:"target"`
+		Writer  string          `json:"writer"`
+		Env     json.RawMessage `json:"env"`
+		Target  string          `json:"target"`
+		Package string          `json:"package"`
+		Test    string          `json:"test"`
+		Subtest string          `json:"subtest"`
 	}
 	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
 		return ""
@@ -295,6 +300,8 @@ func unitOf(inst Instance) string {
 	case inst.Test.Adapter == "plant" && len(in.Env) > 0 && in.Target != "":
 		lang, _, _ := strings.Cut(in.Target, ".")
 		return "plant env " + lang
+	case inst.Test.Adapter == "gotest" && in.Subtest != "" && in.Package != "" && in.Test != "":
+		return "gotest " + in.Package + " " + in.Test
 	}
 	return ""
 }
