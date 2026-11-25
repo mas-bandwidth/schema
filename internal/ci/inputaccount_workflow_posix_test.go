@@ -125,6 +125,7 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 		{"C++ driver family unit", "test/conformance/cpp/driver_maps.cpp\n", "false", "true", "./test/conformance/harness"},
 		{"C++ driver header", "test/conformance/cpp/driver.h\n", "false", "true", "./test/conformance/harness"},
 		{"C++ driver manifest reader", "test/conformance/cpp/manifest.h\n", "false", "true", "./test/conformance/harness"},
+		{"C++ driver compile timing", "tools/compile-seconds.pl\n", "false", "true", ""},
 		{"Dart driver build", "make/dart.mk\n", "true", "false", ""},
 		{"Dart driver imports", "test/conformance/dart/main.dart\n", "true", "false", "./test/conformance/harness"},
 		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true", "true", ""},

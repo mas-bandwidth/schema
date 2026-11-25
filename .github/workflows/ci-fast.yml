@@ -432,7 +432,7 @@ jobs:
             # cs row above intact for TestCIFullPRSelectMatchesTheFastPlan).
             case "$f" in
               internal/codegen/ccommon/*) add_leg cpp; add_leg c ;;
-              generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|test/packet-*/cpp/*) add_leg cpp ;;
+              generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|tools/compile-seconds.pl|test/packet-*/cpp/*) add_leg cpp ;;
               generated/c-*/*|generated/bench/c/*|generated/bench/tables/c/*|generated/bench/paired/c/*|bench/c/*|bench/tables/c/*|tables/cards/c/*|test/c/*|test/c-*/*|test/conformance/c/*|test/packet-*/c/*) add_leg c ;;
               generated/cs-*/*|generated/bench/cs/*|generated/bench/tables/cs/*|generated/bench/paired/cs/*|bench/cs/*|bench/tables/cs/*|tables/cards/cs/*|test/cs/*|test/cs-*/*|test/conformance/cs/*|test/packet-*/cs/*) add_leg cs ;;
               internal/codegen/unitytable/*|internal/codegen/unity/*|generated/unity/*|generated/unity-*/*|generated/bench/unity/*|generated/bench/tables/unity/*|bench/unity/*|bench/tables/unity/*|tables/cards/unity/*|test/unity/*|test/unity-*/*|test/conformance/unity/*|test/packet-*/unity/*|make/unity.mk|make/unity-*.mk) add_leg unity ;;
@@ -959,7 +959,7 @@ jobs:
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           cpp_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "cpp")' <<<"$input_rows")
-          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver|driver_[a-z0-9_]+\.cpp|driver\.h|manifest\.h|block_walk\.h)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver|driver_[a-z0-9_]+\.cpp|driver\.h|manifest\.h|block_walk\.h)|tools/compile-seconds\.pl|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             cpp_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "cpp"))' <<<"$input_rows")

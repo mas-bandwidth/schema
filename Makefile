@@ -5488,7 +5488,10 @@ define conformance_driver_objects
 endef
 conformance_driver_objects_in = $(patsubst %,$(1)/%.o,$(CONFORMANCE_DRIVER_TUS))
 
-build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_DRIVER_HEADERS) tools/compile-seconds.pl \
+# A static pattern rule, so each object is a target of its own in make's
+# database (`make -p`), with the inputs it is built from as its prerequisites:
+# TestConformanceLegsRebuildFromTheirInputs reads the leg's inputs there.
+$(CONFORMANCE_DRIVER_OBJECTS): build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_DRIVER_HEADERS) tools/compile-seconds.pl \
 		build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	perl tools/compile-seconds.pl $(@:.o=.seconds) $(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
