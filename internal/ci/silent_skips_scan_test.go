@@ -666,9 +666,10 @@ func laneProofs(root string) ([]laneProof, error) {
 	workflows := wfText.String()
 	// THE REGISTRY'S HARNESSES ARE LANES TOO (docs/TEST-REGISTRY.md). A
 	// workflow that runs schema-test runs every make target its harnesses
-	// name (tools/schema-test, e.g. name-buildability-run for the
-	// name-buildability rows), so those sources count as workflow text when
-	// one does.
+	// pass to make (tools/schema-test, e.g. name-buildability-run for the
+	// name-buildability rows), so those targets count as workflow text when
+	// one does. Only a []string{"make", ...} literal names one: a target the
+	// sources merely mention in a comment or a message is run by nothing.
 	if regexp.MustCompile(`go run \./tools/schema-test run\b`).MatchString(workflows) {
 		srcs, err := provesran.Glob(filepath.Join(root, "tools", "schema-test", "*.go"))
 		if err != nil {
@@ -682,7 +683,11 @@ func laneProofs(root string) ([]laneProof, error) {
 			if err != nil {
 				return nil, err
 			}
-			workflows += "\n" + string(b)
+			targets, err := makeArgvTargets(src, b)
+			if err != nil {
+				return nil, err
+			}
+			workflows += "\n" + strings.Join(targets, "\n") + "\n"
 		}
 	}
 
@@ -735,6 +740,37 @@ func laneProofs(root string) ([]laneProof, error) {
 		}
 	}
 	return proofs, nil
+}
+
+// makeArgvTargets are the make targets a Go source passes to make: the
+// literal elements after the first of every []string{"make", ...} literal,
+// flags (a leading "-") and VAR=value assignments left out. An element that
+// is not a constant string (say "conformance-leg-" + lang) names no one
+// target and credits none.
+func makeArgvTargets(name string, src []byte) ([]string, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), name, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	var targets []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || len(lit.Elts) < 2 {
+			return true
+		}
+		if first, ok := stringLit(lit.Elts[0]); !ok || first != "make" {
+			return true
+		}
+		for _, e := range lit.Elts[1:] {
+			s, ok := stringLit(e)
+			if !ok || strings.HasPrefix(s, "-") || strings.Contains(s, "=") {
+				continue
+			}
+			targets = append(targets, s)
+		}
+		return true
+	})
+	return targets, nil
 }
 
 // neverCompiled are the excluded test files no lane proof compiles.

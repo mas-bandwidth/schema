@@ -369,6 +369,38 @@ func TestConstrainedTestGateNegativeControl(t *testing.T) {
 	}
 }
 
+// THE HARNESS LANE IS THE MAKE IT RUNS. A workflow runs schema-test, and
+// tools/schema-test passes make one target (lane-run) in a []string literal
+// and mentions another (lane-prose) only in a comment and a message. Both
+// targets run go test under a tag: only lane-run's package is compiled.
+func TestHarnessLaneIsTheMakeItRuns(t *testing.T) {
+	t.Parallel()
+	root := writeTree(t, map[string]string{
+		"a/on_test.go": "//go:build lane_a\n\npackage a\n",
+		"b/on_test.go": "//go:build lane_b\n\npackage b\n",
+		"Makefile":     "lane-run:\n\tgo test -tags lane_a ./a/\n\nlane-prose:\n\tgo test -tags lane_b ./b/\n",
+		"make/x.mk":    "# the make/*.mk glob still matches a file\n",
+		"tools/schema-test/h.go": "package main\n\n// lane-prose is the old lane\nvar argv = []string{\"make\", \"-s\", \"V=1\", \"lane-run\"}\n\n" +
+			"func say() string { return \" lane-prose \" }\n",
+		".github/workflows/n.yml": "jobs:\n  n:\n    runs-on: [self-hosted, Linux]\n    steps:\n      - run: go run ./tools/schema-test run --group nightly\n",
+	})
+	scan, err := scanConstrainedTests(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proofs, err := laneProofs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range neverCompiled(scan, proofs) {
+		got = append(got, c.file)
+	}
+	if strings.Join(got, " ") != "b/on_test.go" {
+		t.Errorf("never compiled: got %v, want [b/on_test.go]\nproofs: %+v", got, proofs)
+	}
+}
+
 // F-180 CORPUS: testdata/f180-lanes is a committed tree, a workflow of Windows
 // jobs and a Windows-only test package for each. Only a go test the step
 // itself runs, from the tree's root, in a job and step that are on, compiles

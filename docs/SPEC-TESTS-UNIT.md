@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 157.
+Unit tests every language answers: 0. Language-free tests: 158.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -49,12 +49,13 @@ a negative control: a named test run against a deliberately broken build must co
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `ci`, 3 tests
+#### `tooling` family `ci`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.ci.every-port-names-its-conformance-leg-build` | `gotest` | Go test TestEveryPortNamesItsConformanceLegBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPortNamesItsConformanceLegBuild` | the Go test passes | `internal/ci/conformance_leg_build_test.go:59` |
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
+| `none.unit.tooling.ci.harness-lane-is-the-make-it-runs` | `gotest` | Go test TestHarnessLaneIsTheMakeItRuns in ./internal/ci | `package: ./internal/ci`<br>`test: TestHarnessLaneIsTheMakeItRuns` | the Go test passes | `internal/ci/silent_skips_test.go:376` |
 | `none.unit.tooling.ci.rust-fuzz-halves-are-the-whole-gate` | `gotest` | Go test TestRustFuzzHalvesAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRustFuzzHalvesAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:101` |
 
 #### `tooling` family `conformancerows`, 7 tests
