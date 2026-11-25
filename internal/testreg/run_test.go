@@ -789,3 +789,28 @@ func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
 		}
 	}
 }
+
+// TestGoTestSubtestsOfOneParentShareOneShard: subtest rows of one Go test
+// share that test's process, so a cut keeps them one block, placed where
+// the first is, even when another row sits between them.
+func TestGoTestSubtestsOfOneParentShareOneShard(t *testing.T) {
+	t.Parallel()
+	sub := func(name, test string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5, Inputs: []byte(`{"package":"./compiler","test":"` + test + `","subtest":"a.schema"}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), sub("s1", "TestA"), sub("s2", "TestA"), plain("b"), sub("s3", "TestA"), sub("o1", "TestB"), plain("c"), plain("d")}
+	var got []string
+	for _, part := range Parts(all, 3) {
+		var names []string
+		for _, inst := range part {
+			names = append(names, inst.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,s1,s2,s3 | b,o1 | c,d" {
+		t.Fatalf("parts %q, want TestA's three subtests together", got)
+	}
+}
