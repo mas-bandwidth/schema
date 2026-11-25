@@ -366,7 +366,15 @@ var rePlanPrevious = regexp.MustCompile(`plan\[out\s*-\s*1\]`)
 var reGuardLinkAddress = regexp.MustCompile(`(const TableFixedGuardLink REF l = )\*?\s*\(\s*const TableFixedGuardLink\s*\*\s*\)\s*\(\s*const void\s*\*\s*\)\s*\(\s*\(\s*const uint8_t\s*\*\s*\)`)
 var reInlineLocal = regexp.MustCompile(`([{};])\s*(?:const\s+)?(?:u?int(?:8|16|32|64)_t|bool|int)\s+\w+\s*;`)
 
+// A plan row's guard-chain byte offset is `N * static_cast<int>( sizeof(
+// TableFixedGuardLink ) )` in C++ (C-style casts draw -Wold-style-cast, make/
+// cpp.mk tables-cpp-warnings) and `N * (int) sizeof( TableFixedGuardLink )`
+// in C. The cast type and the sizeof operand are carried over, so a different
+// type or a different operand is still a leftover line.
+var reStaticCastSizeof = regexp.MustCompile(`static_cast<(\w+)>\(\s*(sizeof\(\s*\w+\s*\))\s*\)`)
+
 func normalizeSyntax(s string) string {
+	s = reStaticCastSizeof.ReplaceAllString(s, "($1) $2")
 	s = reCastThenParen.ReplaceAllString(s, "($1) (")
 	s = rePlanPrevious.ReplaceAllString(s, "plan[out - 1]")
 	s = strings.ReplaceAll(s, "->", ".")

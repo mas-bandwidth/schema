@@ -18,6 +18,7 @@ import (
 // the plan, before any destination byte is written — the Go oracle's row
 // (internal/codegen/gotable/fixedversioning_writer_bound_count_two_endpoints_test.go).
 func TestFixedVersioningWriterBoundCountTwoRemotes(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_array_bounded_grow")
 	writer := cReadSchema(t, "VOLD_array_bounded_grow")

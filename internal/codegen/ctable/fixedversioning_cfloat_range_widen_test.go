@@ -28,6 +28,7 @@ import (
 // The check is spliced at @AIM@ rather than formatted in, so nothing in these C
 // bodies has to have its printf verbs escaped.
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_cfloat_range_widen")
 	older := cReadSchema(t, "VOLD_cfloat_range_widen")

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2322.
+Functional tests every language answers: 2560. Language-free tests: 2325.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5645,12 +5645,12 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
-| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
-| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
-| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1734` |
+| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1734` |
+| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1734` |
+| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1734` |
 
-#### `lint` family `make-cpp`, 5 tests
+#### `lint` family `make-cpp`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5658,7 +5658,10 @@ generated or runtime code is clean under the language's strict analyser.
 | `none.functional.lint.make-cpp.tables-cpp-format-shard-2-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=2/4 (make/cpp.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
 | `none.functional.lint.make-cpp.tables-cpp-format-shard-3-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=3/4 (make/cpp.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
 | `none.functional.lint.make-cpp.tables-cpp-format-shard-4-of-4` | `make` | make tables-cpp-format CPP\_FORMAT\_SHARD=4/4 (make/cpp.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`target: tables-cpp-format`<br>`tools: ["clang-format"]`<br>`vars: {"CPP_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:382` |
-| `none.functional.lint.make-cpp.tables-cpp-warnings` | `make` | make tables-cpp-warnings (make/cpp.mk) exits 0 | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
+| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-1-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=1/4 (make/cpp.mk) exits 0: shard 1 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
+| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-2-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=2/4 (make/cpp.mk) exits 0: shard 2 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
+| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-3-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=3/4 (make/cpp.mk) exits 0: shard 3 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
+| `none.functional.lint.make-cpp.tables-cpp-warnings-shard-4-of-4` | `make` | make tables-cpp-warnings CPP\_WARN\_SHARD=4/4 (make/cpp.mk) exits 0: shard 4 of 4 (whole directories), and the 4 shards together judge every file once | `file: make/cpp.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-cpp-warnings`<br>`vars: {"CPP_WARN_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/cpp.mk:392` |
 
 #### `lint` family `make-js`, 1 test
 
