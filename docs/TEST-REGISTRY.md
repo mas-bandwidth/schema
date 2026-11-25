@@ -22,7 +22,7 @@ Lines may come in any order.
 |---|---|---|
 | `lang` | `name`, `write` (`assert` or `refuse`), `adapter` | one supported language. `adapter` is `""` until its adapter lands. |
 | `tier` | `name`, `what` | `unit`, `functional`, `nightly` |
-| `type` | `name`, `what` | one kind of check (roundtrip, load-refusal, golden, lint, model, plant, ...) |
+| `type` | `name`, `what`, `contract` | one kind of check (roundtrip, load-refusal, golden, lint, model, plant, ...); `contract` is what an adapter does to answer a test of the type, which the spec addenda write out |
 | `test` | `key`, `type`, `family`, `case`, `tier`, `checks`, `inputs`, `expect`, `source`, and for a language-free test `scope: "none"` and `adapter` | one test |
 | `unrepresentable` | `test`, `lang`, `reason` | a language cannot express a test |
 | `group` | `name`, `what`, `query` | a stored query a workflow runs by name |
@@ -63,6 +63,7 @@ schema-test run  NAME|PATTERN... [--lang L]... [--tier T]... [--type Y]... [--fa
 schema-test run  --group G [--shard i/n]
 schema-test list (the same)
 schema-test coverage
+schema-test addenda [--check] [--root DIR]
 ```
 
 You run a test by its name or you do not. A query expands to an explicit list of
@@ -242,7 +243,32 @@ language shows it MISSING. A language that cannot express it adds an
 `unrepresentable` line with the reason. A Go test in the driver's packages needs
 its `gotest` row, or `TestEveryDriverTestIsRegistered` is red. Any other new
 test needs its row too, or `TestEveryTestIsARowOrInTheLedger` is red (see
-"Every test is in the registry").
+"Every test is in the registry"). Then regenerate the spec addenda (below) in
+the same change.
+
+## The spec addenda
+
+The registry is also part of the specification. `schema-test addenda` writes it
+out under `docs/`: [SPEC-TESTS.md](SPEC-TESTS.md), the adapter contract (how an
+adapter receives instances, invokes its language's code and returns results),
+the languages, the types with each one's contract, and the stored queries; and
+one page per tier row (`SPEC-TESTS-UNIT.md`, `SPEC-TESTS-FUNCTIONAL.md`,
+`SPEC-TESTS-NIGHTLY.md`) listing every test of that tier with its full name,
+type, what it checks (`checks`), its inputs and its expected result. Together
+they let a new language implement every test, write its adapter and run under
+this driver from the spec alone.
+
+- The pages are generated, never edited. `TestTheSpecAddendaAreCurrent`
+  regenerates them in memory in the `pr` group and fails, naming the page and
+  line, on a hand edit, on a row added without regenerating, on a missing page
+  and on a page the registry no longer generates.
+- Generation refuses, by name, a test with no `checks` or `expect` text and a
+  type with no `contract`.
+- Inputs are written as the row holds them; a value longer than 96 bytes is
+  named by the row field that holds it, never copied. Large data stays in the
+  file the row names.
+- A refusal's expected result is its verdict only (refused on load, or refused
+  on write under the language's write rule). Reason text is never written.
 
 ## Adding a language
 

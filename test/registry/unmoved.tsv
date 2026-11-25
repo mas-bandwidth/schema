@@ -1192,7 +1192,7 @@ data-case	test/testguard	3	L4	corpus data and harnesses: each language's adapter
 data-case	test/testguard/ci-policy-python-legs/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	69	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	422	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fslowtest	45	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-selectors/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	131	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/testguard/ci-policy-selectors/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	132	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity-hostile	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-bitphase	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1603,7 +1603,7 @@ data-case	testdata/conformance/tables/json-hostile/vd-fixed-omitted	1	L4	corpus 
 data-case	testdata/conformance/tables/json-hostile/vd-var-omitted	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-batch	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/read-into	14	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/read-into	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/report-values	34	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/retain-refusal	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/retain-values	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

@@ -7,9 +7,14 @@
 //	schema-test list [the same]
 //	schema-test coverage
 //	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
+//	schema-test addenda [--check] [--root DIR]
 //
 // extract finds every test the repository holds (internal/testreg/extract)
 // and holds each to the registry or the unmoved ledger.
+//
+// addenda writes the spec addenda (docs/SPEC-TESTS*.md) from the registry;
+// with --check it writes nothing and fails when they are not what the
+// registry generates.
 //
 // A NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN is one with "*"
 // in it, matching any run of characters. The query expands to its explicit
@@ -48,6 +53,7 @@ const usage = `usage:
   schema-test list [the same]
   schema-test coverage
   schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
+  schema-test addenda [--check] [--root DIR]
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group")
   --shard i/n       the i-th of n parts of the expanded list
@@ -98,6 +104,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	sub := args[0]
 	if sub == "extract" {
 		return extractCmd(args[1:], stdout)
+	}
+	if sub == "addenda" {
+		return addendaCmd(args[1:], stdout)
 	}
 	if sub != "run" && sub != "list" && sub != "coverage" {
 		return usageError{fmt.Sprintf("unknown subcommand %q", sub)}
