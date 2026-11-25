@@ -14,8 +14,8 @@ The registry and the driver are described in [TEST-REGISTRY.md](TEST-REGISTRY.md
 
 | tier | page | what the tier is | tests every language answers | language-free tests |
 |---|---|---|---|---|
-| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 0 | 125 |
-| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 36 | 1603 |
+| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 0 | 93 |
+| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 36 | 1716 |
 | `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 0 | 1312 |
 
 ## Names
@@ -68,7 +68,7 @@ Every test has one type. Each type's contract is what an adapter must do to answ
 | `name-check` | a schema's names are accepted or refused by the name checker | run the name checker on the schema the inputs name, and pass only when it accepts or refuses as the expected result says |
 | `evolution` | one schema version reads or writes another's data | write the data with one schema version and read it with the other, as the inputs name, and pass only when the result is the expected one |
 | `fuzz` | seeded mutations | run the seeded mutations the inputs give (the seed and the budget are inputs, never time) through the language's reader, and pass only when every mutated input is read or refused, with no crash, hang or out-of-bounds access |
-| `plant` | a negative control: a named test run against a deliberately broken build must come out red | run the target test the inputs name against a build broken as the inputs say (an environment, or source edits that each land exactly once, built with the flags of the leg it breaks), and pass only when the target runs and fails |
+| `plant` | a negative control: a named test run against a deliberately broken build must come out red | run the target test the inputs name against a build broken as the inputs say (an environment, or source edits that each land exactly once, built with the flags of the leg it breaks), and pass only when exactly the named targets run and fail for the reason the plant states, and every other test it runs passes |
 | `compiler` | the compiler or IR itself (parse, check, plan), with no generated language involved | run the compiler check the inputs name (parse, check or plan) and pass only when it passes; language-free |
 | `tooling` | CI policy, docs, roadmap, repo-structure and harness self-tests | run the Go test or script the inputs name, and pass only when it passes; language-free |
 | `bench` | performance or timing | measure what the inputs name, and pass only when the measurement is within the bound recorded in the inputs |

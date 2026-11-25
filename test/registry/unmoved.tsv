@@ -13,7 +13,7 @@ go-test	bench/paired	83	L3	language-free Go tests: the gotest adapter runs them 
 go-test	bench/tables/moo	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	bench/tools	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	bench/tools/realpacket-gen	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	cmd/schema	100	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	cmd/schema	101	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	compiler	615	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -110,7 +110,7 @@ go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs t
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	333	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/conformance/harness	369	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
@@ -166,7 +166,7 @@ negative-control	lua-format	1	L5, L6b	negative controls a per-PR job of another 
 negative-control	schema-dart-strict-analyze	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	30	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	29	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry
