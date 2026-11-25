@@ -298,3 +298,32 @@ func TestTheCutLeavesCasesOnTheirOwnManifestAlone(t *testing.T) {
 		t.Errorf("with no own-manifest cases named, the cut must refuse rewrite/rw1 and json-read/authored1 by name, got %v", err)
 	}
 }
+
+// TestTheFailFastProbeLeavesFramedRewritesToTheirWriteBack: with
+// CONFORMANCE_FAIL_FAST=1 the probe scores a surface as soon as it returns,
+// before the framing write-backs are copied in as the framed rewrite rows'
+// answers (answerFramedRewrites). It scores the asked rows the leg was
+// handed, and never a framed rewrite row; a framing row of the same name, on
+// its own surface, it still scores.
+func TestTheFailFastProbeLeavesFramedRewritesToTheirWriteBack(t *testing.T) {
+	framed := map[string]FramingCase{"rw_f": {Name: "rw_f"}}
+	rewrite := []expectation{{name: "rw_f"}, {name: "rw_plain"}, {name: "rw_unasked"}, {name: "rw_unsent"}}
+	scope := map[caseKey]bool{{"rewrite", "rw_f"}: true, {"rewrite", "rw_plain"}: true, {"rewrite", "rw_unsent"}: true, {"framing", "rw_f"}: true}
+	unsent := notAsked{{"rewrite", "rw_unsent"}: "opt-in"}
+	names := func(es []expectation) []string {
+		var out []string
+		for _, e := range es {
+			out = append(out, e.name)
+		}
+		return out
+	}
+	if got := names(probeCases("rewrite", rewrite, unsent, scope, framed)); !reflect.DeepEqual(got, []string{"rw_plain"}) {
+		t.Errorf("the probe scores rewrite rows %v, want [rw_plain]: a framed row has no answer yet, and the rest were not asked or not sent", got)
+	}
+	if got := names(probeCases("rewrite", rewrite, nil, nil, framed)); !reflect.DeepEqual(got, []string{"rw_plain", "rw_unasked", "rw_unsent"}) {
+		t.Errorf("unscoped, the probe scores rewrite rows %v, want every row but the framed one", got)
+	}
+	if got := names(probeCases("framing", []expectation{{name: "rw_f"}}, nil, scope, framed)); !reflect.DeepEqual(got, []string{"rw_f"}) {
+		t.Errorf("the probe scores framing rows %v, want [rw_f]: a framing row is answered on its own surface", got)
+	}
+}

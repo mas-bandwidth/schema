@@ -1172,10 +1172,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 								// Check surface answers read-only so legs that report a bad
 								// canary input as an absence or diff with exit 0 still stop early.
 								probe := &result{total: len(want[sr.surface])}
-								for _, e := range want[sr.surface] {
-									if notAsked.has(sr.surface, e.name) || (scope != nil && !scope[caseKey{sr.surface, e.name}]) {
-										continue
-									}
+								for _, e := range probeCases(sr.surface, want[sr.surface], notAsked, scope, framed) {
 									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
 								}
 								if len(probe.failures) > 0 || probe.missing > probe.named {
@@ -2288,4 +2285,23 @@ func firstNames(names []string, n int) string {
 		return strings.Join(names, ", ")
 	}
 	return strings.Join(names[:n], ", ") + fmt.Sprintf(", and %d more", len(names)-n)
+}
+
+// probeCases are the rows the fail-fast probe scores as soon as a surface's
+// run returns: the rows the leg was handed and the scope asks, but not a
+// framed rewrite row, whose answer is the leg's framing write-back, copied in
+// only once every surface has run (answerFramedRewrites). Scored before
+// then, a framed row reads as unanswered and stops the leg on a pass.
+func probeCases(surface string, want []expectation, unsent notAsked, scope map[caseKey]bool, framed map[string]FramingCase) []expectation {
+	var out []expectation
+	for _, e := range want {
+		if unsent.has(surface, e.name) || (scope != nil && !scope[caseKey{surface, e.name}]) {
+			continue
+		}
+		if _, ok := framed[e.name]; ok && surface == "rewrite" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
