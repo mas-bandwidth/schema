@@ -13,14 +13,15 @@ import (
 
 // TestLuaTextZeroByteTakesOneRuleInEveryForm pins docs/SPEC-TABLES.md §16.3
 // on the Lua JSON read: a string that decodes to U+0000 and would land in text
-// storage refuses the read as text_holds_zero naming the innermost field, so
-// no read lands a value a writer refuses (§2.13, §3). The rows are the Go
-// oracle's (internal/codegen/gotable/textzero_test.go), for every construct
-// Lua carries: string(8), *string, a map[string(8)] key, a map
-// key and a string one table down, with \u0000 at the front, middle and end.
-// A \u0001 in the same place reads clean and writes, reads and writes the same
-// text. A text list, an unbounded key and a timestamp are named and skipped:
-// the Lua JSON read does not carry them yet.
+// storage refuses the read, so no read lands a value a writer refuses (§2.13,
+// §3). The rows are the Go oracle's (internal/codegen/gotable/textzero_test.go):
+// string(8), *string, a map[string(8)] key, a string one table down, an int32
+// map key, a text list, an unbounded map key and a timestamp, with \u0000 at
+// the front, middle and end. A timestamp is not text storage: it refuses by
+// its own rule, timestamp_not_rfc3339, as the Go oracle does. Only the verdict
+// is compared (docs/rulings.json refusal-verdict-only); the reason text is
+// per-language detail. A \u0001 in the same place reads clean and writes,
+// reads and writes the same text.
 func TestLuaTextZeroByteTakesOneRuleInEveryForm(t *testing.T) {
 	t.Parallel()
 	work := t.TempDir()
@@ -59,25 +60,24 @@ table Root
 	}
 
 	forms := []struct {
-		name, template, field string
-		control               bool
+		name, template string
+		control        bool
 	}{
-		{"t", `{"t":"%s"}`, "Root.t", true},
-		{"s", `{"s":"%s"}`, "Root.s", true},
-		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true},
-		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true},
-		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false},
-		{"l", `{"l":["ok","%s"]}`, "Root.l", false},
-		{"u", `{"u":{"ok":1,"%s":2}}`, "Root.u", false},
-		{"at", `{"at":"%s"}`, "Root.at", false},
+		{"t", `{"t":"%s"}`, true},
+		{"s", `{"s":"%s"}`, true},
+		{"m", `{"m":{"ok":1,"%s":2}}`, true},
+		{"i", `{"i":{"n":"%s"}}`, true},
+		{"k", `{"k":{"7":1,"%s":2}}`, false},
+		{"l", `{"l":["ok","%s"]}`, false},
+		{"u", `{"u":{"ok":1,"%s":2}}`, false},
+		{"at", `{"at":"%s"}`, false},
 	}
 	for _, f := range forms {
 		for _, at := range []string{`\u0000ab`, `a\u0000b`, `ab\u0000`} {
 			text := fmt.Sprintf(f.template, at)
 			lines := textZeroRun(t, dir, text)
-			want := "text_holds_zero: " + f.field
-			if len(lines) < 2 || lines[0] != "refused" || lines[1] != want {
-				t.Errorf("%s %s: got %q, want refused with %q", f.name, text, lines, want)
+			if len(lines) < 1 || lines[0] != "refused" {
+				t.Errorf("%s %s: got %q, want refused", f.name, text, lines)
 				continue
 			}
 			if !f.control {
