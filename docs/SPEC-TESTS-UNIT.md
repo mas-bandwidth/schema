@@ -53,7 +53,7 @@ generated source compiles and is clean.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.codegen.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:117` |
+| `none.unit.codegen.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:125` |
 
 ### Type `fuzz`
 
@@ -88,7 +88,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.plant.javatable.java-fixed-no-malformed-flag-plants` | `gotest` | Go test TestJavaFixedNoMalformedFlagPlants in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlagPlants` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:123` |
+| `none.unit.plant.javatable.java-fixed-no-malformed-flag-plants` | `gotest` | Go test TestJavaFixedNoMalformedFlagPlants in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlagPlants` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:131` |
 
 ### Type `compiler`
 
