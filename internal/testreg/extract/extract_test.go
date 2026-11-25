@@ -779,3 +779,31 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }
+
+// TestARowNamingAJsonlFileReadsEveryLine: a .jsonl file's lines are cases
+// of their own (dataCases names each for its line), so a row naming the
+// file claims no stem for it; it reads every line, so each line case counts
+// as the row's in Check, and a line case no row's file names is unmoved.
+func TestARowNamingAJsonlFileReadsEveryLine(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line1", Source: "testdata/corpus/cases.jsonl:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line2", Source: "testdata/corpus/cases.jsonl:2"},
+		{Kind: KindDataCase, Dir: "testdata/other", Name: "cases/line1", Source: "testdata/other/cases.jsonl:1"},
+	}}
+	row := testreg.Test{Key: "roundtrip.conformance-wire.cases", Inputs: []byte(`{"surface":"wire","case":"cases","files":["testdata/corpus/cases.jsonl"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{row}}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "testdata/other", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	// the row gone, its two line cases are unmoved again
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("a dropped row: %v", p)
+	}
+	// a row no ready language answers reads nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}}, Tests: []testreg.Test{row}}
+	if p := Check(res, idle, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("an unanswered row: %v", p)
+	}
+}

@@ -221,6 +221,7 @@ The `corpus` adapter's harnesses, by family:
 | `align-arrays` | `verify-bitphase --adapter --lang L` | `make bin/schema build/verify-bitphase-bin` | the row's bytes (alignarrays.go) |
 | `conformance-<surface>` | `build/conformance-harness-vm adapter --lang L` | `make conformance-leg-L` | `surface`, `case` (the file the driver writes), `files` (the corpus files the case reads), `driver` |
 | any family whose rows' inputs carry `tests` (a union row) | `go-union`: L's own Go test, through the `gotest` adapter's calls | none (the runner provides L's toolchain, as the test's tier says) | `tests`: `{"<lang>": {"package", "test", "tags"}}` (`tags` optional) |
+| `feature-witnesses` | the family's harness in tools/schema-test: L's own Go test(s) for the corpus directory, through the `gotest` adapter's calls | none (the runner provides L's toolchain, as the test's tier says) | `dir`, `files` (every file of the directory), `answers`: `{"<lang>": ["<Go test>", ...]}` in `internal/codegen/<lang>table` |
 
 ### The tables conformance corpus
 
@@ -371,6 +372,34 @@ each run is the whole manifest (tools/schema-test/hostile.go).
 - Retired with this: the per-language schema-<lang>-runs-hostile-corpus.yml
   workflows and schema-shared-hostile-corpus.yml; each control is its own
   registry row.
+
+
+### The feature-witness corpora
+
+Every directory of the feature-witness corpus
+(testdata/conformance/feature-witnesses) is one registry test,
+`roundtrip.feature-witnesses.<dir>`, answered by every language through
+its own Go test in internal/codegen/<lang>table. The corpus stays where it
+is: a row's inputs name the directory and every file in it, and
+`schema-test extract` counts those files as the registry's (a row naming a
+`.jsonl` file reads every line case in it). The `full` directory's cases
+are the tables corpus's, and two directories take no row here
+(compressed-f32-ends and compressed-negzero-go are answered per language
+by the compressed-float union rows; their files are indexed by the Go
+engine's gotest rows for the same corpora, which name every file).
+
+- The family's harness (tools/schema-test, featurewitness.go) runs a
+  language's instance as that language's Go test(s) for the directory
+  (inputs `answers`), through the gotest adapter's `go test -json` calls. A
+  corpus answered by two tests passes only when both do.
+- A language with no Go test for a directory is red by name, naming the
+  languages that do answer it; a named test its package's source does not
+  declare is red as MISSING. These reds are the parity gaps.
+- `TestTheRegistryHoldsEveryFeatureWitnessCase` holds the rows to the
+  corpus field for field (`-update-feature-witnesses` rewrites them): a
+  corpus directory with no row, a row with no directory, a row whose files
+  are not the directory's files, and a held-elsewhere directory with no
+  answering row are each red.
 
 ## How each kind of test fits
 
