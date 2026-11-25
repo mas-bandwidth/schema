@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,22 +73,47 @@ func TestAUnionCallCarriesItsBuildTags(t *testing.T) {
 	}
 }
 
-// TestOnePackageRunsOneGoTestAtATime: the gotest and go-union harnesses
-// share a lock per package directory, so their calls on one package never
-// overlap.
-func TestOnePackageRunsOneGoTestAtATime(t *testing.T) {
+// TestAUnionCallRunsUnderItsPackageLockWithItsTags: a union instance's go
+// test call carries the build tags its row names, and runs holding its
+// package's lock, which the gotest harness's calls take too, so the two
+// never run go test on one package at once; its test's pass is its verdict.
+func TestAUnionCallRunsUnderItsPackageLockWithItsTags(t *testing.T) {
 	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "pkg")
-	unlock := lockGoTestPackage(dir)
-	m, _ := goTestPackageLocks.Load(dir)
-	if m.(*sync.Mutex).TryLock() {
-		t.Fatal("a second call takes a package another call holds")
+	root := t.TempDir()
+	for name, src := range map[string]string{
+		"go.mod":      "module x\n\ngo 1.25\n",
+		"g/a_test.go": "package g\n\nimport \"testing\"\n\nfunc TestHere(t *testing.T) {}\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	unlock()
-	other := lockGoTestPackage(filepath.Join(t.TempDir(), "other"))
-	defer other()
-	if !m.(*sync.Mutex).TryLock() {
-		t.Fatal("the package stays held after its call, or another package holds it")
+	a := newGoTestAdapter(nil, root, 1)
+	var calls [][]string
+	a.goTest = func(_ context.Context, dir string, args []string, stdout, _ io.Writer) error {
+		calls = append(calls, args)
+		m, held := goTestPackageLocks.Load(filepath.Join(dir, args[len(args)-1]))
+		if !held {
+			t.Errorf("go test %v runs with no lock for its package", args)
+		} else if mu := m.(*sync.Mutex); mu.TryLock() {
+			mu.Unlock()
+			t.Errorf("go test %v runs without holding its package's lock", args)
+		}
+		_, err := io.WriteString(stdout, `{"Action":"run","Test":"TestHere"}`+"\n"+`{"Action":"pass","Test":"TestHere","Elapsed":0}`+"\n")
+		return err
 	}
-	m.(*sync.Mutex).Unlock()
+	row := testreg.Test{Key: "roundtrip.fam.u", Family: "fam", Inputs: []byte(`{"tests":{"moo":{"package":"./g","test":"TestHere","tags":"schema_leg_moo"}}}`)}
+	res, err := a.runUnion(context.Background(), "moo", []testreg.Instance{{Full: "moo.unit.roundtrip.fam.u", Lang: "moo", Test: row}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].Verdict != testreg.Pass {
+		t.Fatalf("results %+v, want moo's instance passed", res)
+	}
+	if len(calls) != 1 || !strings.Contains(strings.Join(calls[0], " "), "-tags schema_leg_moo -run ^(TestHere)$ ./g") {
+		t.Fatalf("go test calls %q, want one call of TestHere under schema_leg_moo", calls)
+	}
 }

@@ -307,12 +307,20 @@ ruling, 2026-11-25, easy for Glenn to overrule):
 - `testreg.Load` refuses an intrinsic row:
   - naming a language the registry does not list;
   - with an empty or boilerplate reason (under four words, or fewer than three
-    words that are not filler such as "language-specific", "only", "code"),
+    distinct words that are not filler such as "language-specific", "only",
+    "code", "TODO", "placeholder"),
     so every reason says what the subject is;
   - that is language-free, or is not a union row (only a row naming the
     language's own Go test can be intrinsic);
   - whose inputs name another language's test, or not its own;
+  - whose family is not named `<lang>-<subject>` (an intrinsic family is one
+    language's), or whose case another language's intrinsic row also has (a
+    case two languages answer is one union row, and splitting it would drop
+    every other language's red);
   - with an `unrepresentable` line of its own.
+
+  A count of words cannot judge whether a reason is true: the cold reader of
+  the split does.
 
   These are `TestAnIntrinsicTestHasOneInstance` and `TestLoadRefusesABadIntrinsic`.
 - A union row takes no `unrepresentable` line: a language with no Go test

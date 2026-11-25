@@ -170,6 +170,11 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				if l.Name == testreg.LangFree {
 					continue
 				}
+				// a language declared unrepresentable has no instance, so
+				// the row runs no test of its; the test stays to be counted
+				if _, unrep := reg.Unrepresentable(t.Key, l.Name); unrep {
+					continue
+				}
 				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
 				// every case row of the family names the same test
 				if _, seen := out[id]; !seen {

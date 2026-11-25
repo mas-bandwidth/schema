@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2792.
+Unit tests every language answers: 2. Language-free tests: 2793.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2928,6 +2928,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:188` |
 | `none.unit.tooling.schema-test.a-subtest-that-skips-fails-its-parent` | `gotest` | Go test TestASubtestThatSkipsFailsItsParent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestThatSkipsFailsItsParent` | the Go test passes | `tools/schema-test/gotest_test.go:20` |
 | `none.unit.tooling.schema-test.a-union-call-carries-its-build-tags` | `gotest` | Go test TestAUnionCallCarriesItsBuildTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallCarriesItsBuildTags` | the Go test passes | `tools/schema-test/gounion_test.go:63` |
+| `none.unit.tooling.schema-test.a-union-call-runs-under-its-package-lock-with-its-tags` | `gotest` | Go test TestAUnionCallRunsUnderItsPackageLockWithItsTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallRunsUnderItsPackageLockWithItsTags` | the Go test passes | `tools/schema-test/gounion_test.go:80` |
 | `none.unit.tooling.schema-test.a-union-language-with-no-go-test-is-red` | `gotest` | Go test TestAUnionLanguageWithNoGoTestIsRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionLanguageWithNoGoTestIsRed` | the Go test passes | `tools/schema-test/gounion_test.go:18` |
 | `none.unit.tooling.schema-test.a-union-row-routes-to-the-go-union-harness` | `gotest` | Go test TestAUnionRowRoutesToTheGoUnionHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionRowRoutesToTheGoUnionHarness` | the Go test passes | `tools/schema-test/gounion_test.go:47` |
 | `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:227` |
@@ -2943,7 +2944,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.name-build-plan-selects-exactly-the-asked` | `gotest` | Go test TestNameBuildPlanSelectsExactlyTheAsked in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildPlanSelectsExactlyTheAsked` | the Go test passes | `tools/schema-test/namebuild_test.go:38` |
 | `none.unit.tooling.schema-test.name-build-results-reads-the-events` | `gotest` | Go test TestNameBuildResultsReadsTheEvents in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildResultsReadsTheEvents` | the Go test passes | `tools/schema-test/namebuild_test.go:82` |
 | `none.unit.tooling.schema-test.name-buildability-is-l4s` | `gotest` | Go test TestNameBuildabilityIsL4s in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildabilityIsL4s` | the Go test passes | `tools/schema-test/extract_test.go:178` |
-| `none.unit.tooling.schema-test.one-package-runs-one-go-test-at-a-time` | `gotest` | Go test TestOnePackageRunsOneGoTestAtATime in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestOnePackageRunsOneGoTestAtATime` | the Go test passes | `tools/schema-test/gounion_test.go:78` |
 | `none.unit.tooling.schema-test.rows-are-named-from-their-go-tests` | `gotest` | Go test TestRowsAreNamedFromTheirGoTests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRowsAreNamedFromTheirGoTests` | the Go test passes | `tools/schema-test/gotest_test.go:137` |
 | `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:170` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:261` |
@@ -3096,7 +3096,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 17 tests
+#### `tooling` family `testreg-extract`, 18 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3105,6 +3105,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-model-check-row-covers-its-config` | `gotest` | Go test TestAModelCheckRowCoversItsConfig in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAModelCheckRowCoversItsConfig` | the Go test passes | `internal/testreg/extract/extract_test.go:212` |
 | `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:312` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-its-test-for-every-language` | `gotest` | Go test TestAPerLanguageRowCoversItsTestForEveryLanguage in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversItsTestForEveryLanguage` | the Go test passes | `internal/testreg/extract/langtest_test.go:15` |
+| `none.unit.tooling.testreg-extract.a-per-language-row-covers-no-test-of-a-language-it-dropped` | `gotest` | Go test TestAPerLanguageRowCoversNoTestOfALanguageItDropped in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversNoTestOfALanguageItDropped` | the Go test passes | `internal/testreg/extract/langtest_test.go:91` |
 | `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:411` |
 | `none.unit.tooling.testreg-extract.a-test-that-skips-is-refused` | `gotest` | Go test TestATestThatSkipsIsRefused in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestATestThatSkipsIsRefused` | the Go test passes | `internal/testreg/extract/extract_test.go:298` |
 | `none.unit.tooling.testreg-extract.a-union-row-covers-each-languages-go-test` | `gotest` | Go test TestAUnionRowCoversEachLanguagesGoTest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAUnionRowCoversEachLanguagesGoTest` | the Go test passes | `internal/testreg/extract/langtest_test.go:54` |

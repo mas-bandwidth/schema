@@ -84,3 +84,30 @@ func TestAUnionRowCoversEachLanguagesGoTest(t *testing.T) {
 		t.Errorf("a Go test two union rows run: problems %v", problems)
 	}
 }
+
+// TestAPerLanguageRowCoversNoTestOfALanguageItDropped: a language declared
+// unrepresentable for a per-language row has no instance, so the row covers
+// none of its Go tests, and the test stays to be counted.
+func TestAPerLanguageRowCoversNoTestOfALanguageItDropped(t *testing.T) {
+	t.Parallel()
+	reg, err := testreg.Parse("r.jsonl", strings.NewReader(`{"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
+{"rec":"lang","name":"lua","write":"refuse","adapter":"fake"}
+{"rec":"tier","name":"unit","what":"no toolchain"}
+{"rec":"type","name":"codegen","what":"code"}
+{"rec":"test","key":"codegen.fam.a","type":"codegen","family":"fam","case":"a","tier":"unit","checks":"a","inputs":{"package":"./tools/p","test":"TestP_{lang}"},"expect":"x"}
+{"rec":"unrepresentable","test":"codegen.fam.a","lang":"lua","reason":"lua has no such thing"}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatalf("problems: %v", problems)
+	}
+	if got := out[Item{Kind: KindGoTest, Dir: "tools/p", Name: "TestP_go"}.ID()]; got != "codegen.fam.a" {
+		t.Errorf("TestP_go is covered by %q", got)
+	}
+	if got, ok := out[Item{Kind: KindGoTest, Dir: "tools/p", Name: "TestP_lua"}.ID()]; ok {
+		t.Errorf("TestP_lua, of a language the row dropped, is covered by %q", got)
+	}
+}

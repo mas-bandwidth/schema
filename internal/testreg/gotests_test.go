@@ -69,7 +69,8 @@ func TestLoadRefusesUnionInputsThatDoNotRead(t *testing.T) {
 
 // intrinsicRow is a union row whose subject exists in one language.
 func intrinsicRow(key, lang, reason, tests string) string {
-	return `{"rec":"test","key":"` + key + `","type":"roundtrip","family":"fam","case":"` + key[len("roundtrip.fam."):] + `","tier":"unit","checks":"x","inputs":{"tests":` + tests + `},"expect":"x","intrinsic":{"lang":"` + lang + `","reason":"` + reason + `"}}` + "\n"
+	part := strings.SplitN(key, ".", 3)
+	return `{"rec":"test","key":"` + key + `","type":"roundtrip","family":"` + part[1] + `","case":"` + part[2] + `","tier":"unit","checks":"x","inputs":{"tests":` + tests + `},"expect":"x","intrinsic":{"lang":"` + lang + `","reason":"` + reason + `"}}` + "\n"
 }
 
 // TestAnIntrinsicTestHasOneInstance: a test intrinsic to one language has
@@ -78,22 +79,22 @@ func intrinsicRow(key, lang, reason, tests string) string {
 // the declarations are counted.
 func TestAnIntrinsicTestHasOneInstance(t *testing.T) {
 	t.Parallel()
-	reg := load(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", `{"lua":{"package":"./l","test":"TestLuaEscape"}}`))
+	reg := load(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", "a Lua string escape", `{"lua":{"package":"./l","test":"TestLuaEscape"}}`))
 	var got []string
 	for _, inst := range reg.Instances() {
-		if inst.Test.Key == "roundtrip.fam.i" {
+		if inst.Test.Key == "roundtrip.lua-fam.i" {
 			got = append(got, inst.Full)
 		}
 	}
-	if len(got) != 1 || got[0] != "lua.unit.roundtrip.fam.i" {
+	if len(got) != 1 || got[0] != "lua.unit.roundtrip.lua-fam.i" {
 		t.Fatalf("instances %v, want only lua's", got)
 	}
-	if _, err := reg.Resolve("go.unit.roundtrip.fam.i"); err == nil || !strings.Contains(err.Error(), "intrinsic to lua: a Lua string escape") {
+	if _, err := reg.Resolve("go.unit.roundtrip.lua-fam.i"); err == nil || !strings.Contains(err.Error(), "intrinsic to lua: a Lua string escape") {
 		t.Errorf("go's instance resolves: %v", err)
 	}
 	n := 0
 	for _, u := range reg.Declared() {
-		if u.Test == "roundtrip.fam.i" {
+		if u.Test == "roundtrip.lua-fam.i" {
 			n++
 			if u.Lang == "lua" {
 				t.Errorf("the intrinsic language is declared unrepresentable")
@@ -132,17 +133,20 @@ func TestLoadRefusesAnUnrepresentableLineOnAUnionRow(t *testing.T) {
 func TestLoadRefusesABadIntrinsic(t *testing.T) {
 	t.Parallel()
 	lua := `{"lua":{"package":"./l","test":"TestLuaEscape"}}`
-	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "cobol", "a Lua string escape", lua), "fixture.jsonl:15:", `intrinsic to "cobol"`)
-	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", " ", lua), "fixture.jsonl:15:", "gives no reason")
+	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "cobol", "a Lua string escape", lua), "fixture.jsonl:15:", `intrinsic to "cobol"`)
+	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", " ", lua), "fixture.jsonl:15:", "gives no reason")
 	for _, r := range []string{"intrinsic", "Language-specific.", "no counterpart in other languages", "lua only",
-		"this is really just lua", "it is language-specific code", "Exists only in this language, nowhere else."} {
-		refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", r, lua), "fixture.jsonl:15:", "boilerplate reason")
+		"this is really just lua", "it is language-specific code", "Exists only in this language, nowhere else.",
+		"TODO fill this reason later", "placeholder reason to be written", "lua lua lua lua", "a unique Lua-only feature"} {
+		refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", r, lua), "fixture.jsonl:15:", "boilerplate reason")
 	}
-	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", `{"lua":{"package":"./l","test":"TestLuaEscape"},"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:15:", "names a Go test for go")
-	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", lua)+`{"rec":"unrepresentable","test":"roundtrip.fam.i","lang":"go","reason":"r"}`+"\n", "fixture.jsonl:16:", "already declares every other language")
-	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", `{"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:15:", "names no Go test for lua")
-	plain := `{"rec":"test","key":"roundtrip.fam.i","type":"roundtrip","family":"fam","case":"i","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
+	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", "a Lua string escape", `{"lua":{"package":"./l","test":"TestLuaEscape"},"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:15:", "names a Go test for go")
+	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", "a Lua string escape", lua)+`{"rec":"unrepresentable","test":"roundtrip.lua-fam.i","lang":"go","reason":"r"}`+"\n", "fixture.jsonl:16:", "already declares every other language")
+	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", "a Lua string escape", `{"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:15:", "names no Go test for lua")
+	plain := `{"rec":"test","key":"roundtrip.lua-fam.i","type":"roundtrip","family":"lua-fam","case":"i","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
 	refused(t, fixture+plain, "fixture.jsonl:15:", "is not a union row")
-	free := `{"rec":"test","key":"tooling.self.i","type":"tooling","family":"self","case":"i","tier":"unit","checks":"x","inputs":{"n":1},"expect":"x","scope":"none","adapter":"fake","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
+	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", lua), "fixture.jsonl:15:", "its family is named lua-<subject>")
+	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", "a Lua string escape", lua)+intrinsicRow("roundtrip.go-fam.i", "go", "a Go string escape", `{"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:16:", "a case two languages answer is one union row")
+	free := `{"rec":"test","key":"tooling.lua-self.i","type":"tooling","family":"lua-self","case":"i","tier":"unit","checks":"x","inputs":{"n":1},"expect":"x","scope":"none","adapter":"fake","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
 	refused(t, fixture+free, "fixture.jsonl:15:", "so it is a per-language row")
 }

@@ -30,6 +30,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // DefaultPath is where the registry lives, from the repository root.
@@ -98,37 +99,41 @@ type Test struct {
 }
 
 // fillerWords say nothing about a test's subject. An intrinsic reason is
-// boilerplate when it is under four words, or when fewer than three of its
-// words are not filler: "language-specific", "it is language-specific code"
-// and "this is really just lua" are each refused, "a Lua string escape" is
-// not.
+// boilerplate when it is under four words, or when fewer than three distinct
+// words of it (hyphenated parts counted apart) are not filler:
+// "language-specific", "it is language-specific code", "this is really just
+// lua", "lua lua lua lua", "TODO fill this reason later" and "a unique
+// Lua-only feature" are each refused, "a Lua string escape" is not. A count
+// of words cannot judge a reason's truth: the cold reader of the split does.
 var fillerWords = map[string]bool{}
 
 func init() {
 	for _, w := range strings.Fields(`a an the it its it's is are was be been this that these those
 		just really only so very quite simply code test tests testing tested language languages
-		language-specific language-only specific intrinsic intrinsically other others another no not
-		none nothing in on of to for and or but has have had exists exist existing counterpart
-		counterparts behaviour behavior format here there one own thing things stuff something
-		which with by as at from n/a na tbd todo fixme etc same different elsewhere every any all
-		applies apply does do lacks lack`) {
+		specific intrinsic intrinsically other others another no not none nothing in on of to for
+		and or but has have had exists exist existing counterpart counterparts behaviour behavior
+		format here there one own thing things stuff something which with by as at from n/a na
+		tbd todo fixme xxx placeholder reason reasons later fill filled write written writing
+		unique uniquely feature features semantics detail details etc same different elsewhere
+		nowhere else every any all applies apply does do lacks lack`) {
 		fillerWords[w] = true
 	}
 }
 
 func boilerplate(reason string) bool {
-	words := strings.Fields(strings.ToLower(reason))
-	if len(words) < 4 {
+	if len(strings.Fields(reason)) < 4 {
 		return true
 	}
-	content := 0
-	for _, w := range words {
+	content := map[string]bool{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(reason), func(r rune) bool {
+		return r == '-' || r == '/' || unicode.IsSpace(r)
+	}) {
 		w = strings.Trim(w, ".,:;!?()[]\"'`")
 		if w != "" && !fillerWords[w] {
-			content++
+			content[w] = true
 		}
 	}
-	return content < 3
+	return len(content) < 3
 }
 
 // Intrinsic names the one language a test's subject exists in, and why no
@@ -392,12 +397,24 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 			unionTest[id] = t.Key
 		}
 	}
+	intrinsicCase := map[string]Test{}
 	for _, t := range reg.Tests {
 		if t.Intrinsic == nil {
 			continue
 		}
 		if reg.lang[t.Intrinsic.Lang] == 0 || t.Intrinsic.Lang == LangFree {
 			fail(t.Line, "test %s is intrinsic to %q, which is not a language of the registry", t.Key, t.Intrinsic.Lang)
+		}
+		// an intrinsic family is one language's, and an intrinsic case has
+		// no counterpart: a case split into one intrinsic row per language
+		// that answers it is a union case with its reds dropped
+		if !strings.HasPrefix(t.Family, t.Intrinsic.Lang+"-") {
+			fail(t.Line, "test %s is intrinsic to %s, so its family is named %s-<subject>, not %q", t.Key, t.Intrinsic.Lang, t.Intrinsic.Lang, t.Family)
+		}
+		if prev, dup := intrinsicCase[t.Case]; dup && prev.Intrinsic.Lang != t.Intrinsic.Lang {
+			fail(t.Line, "test %s is intrinsic to %s, but %s, the same case, is intrinsic to %s: a case two languages answer is one union row", t.Key, t.Intrinsic.Lang, prev.Key, prev.Intrinsic.Lang)
+		} else if !dup {
+			intrinsicCase[t.Case] = t
 		}
 		// intrinsic is a union row of one language's own Go test, never a
 		// way for another kind of row to drop languages

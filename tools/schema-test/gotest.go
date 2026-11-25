@@ -44,6 +44,9 @@ type goTestAdapter struct {
 
 	mu    sync.Mutex
 	funcs map[string]map[string]bool // package -> the top-level test functions its source declares
+
+	// goTest runs go test; nil is execGoTest (a test stands in for it)
+	goTest func(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error
 }
 
 func newGoTestAdapter(log io.Writer, root string, jobs int) *goTestAdapter {
@@ -218,6 +221,24 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 	// never run go test on one package at once
 	unlock := lockGoTestPackage(filepath.Join(dir, rel))
 	defer unlock()
+	run := a.goTest
+	if run == nil {
+		run = execGoTest
+	}
+	var stdout, stderr bytes.Buffer
+	runErr := run(ctx, dir, args, &stdout, &stderr)
+	res, err := goTestResults(&stdout, tests)
+	if err != nil {
+		return res, fmt.Errorf("go test %s: %w", pkg, err)
+	}
+	if ctx.Err() != nil {
+		return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
+	}
+	return packageVerdict(pkg, res, runErr, stdout.String(), stderr.String())
+}
+
+// execGoTest runs go with args in dir.
+func execGoTest(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error {
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = dir
 	bound(cmd)
@@ -227,18 +248,9 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 	for k, v := range testreg.EnvFrom(ctx) {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	runErr := cmd.Run()
-	res, err := goTestResults(&stdout, tests)
-	if err != nil {
-		return res, fmt.Errorf("go test %s: %w", pkg, err)
-	}
-	if ctx.Err() != nil {
-		return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
-	}
-	return packageVerdict(pkg, res, runErr, stdout.String(), stderr.String())
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
 }
 
 // goTestArgs is the go test command line for one call: the named tests of
