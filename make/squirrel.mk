@@ -21,6 +21,16 @@ SQ ?= $(CURDIR)/$(SQUIRREL_DIR)/bin/sq
 # are processes this make spawns, so they read the pin from the environment
 export SQ
 
+# THE DRY RUN IS DRY. make -n runs any recipe line whose text names $(MAKE),
+# so it can hand -n to the sub-make. The extract line below also deletes the
+# interpreter directory and untars the pinned tarball, and naming $(MAKE) there
+# made `make -n` of anything that needs squirrel do both for real. The
+# sub-make is named through SQUIRREL_SUBMAKE instead, so make -n prints the
+# line and runs nothing (the sub-make builds a vendored interpreter into a log,
+# and needs no jobserver). TestEveryHostileTargetDryRunsWithoutWriting holds
+# every hostile target to it.
+SQUIRREL_SUBMAKE = $(MAKE)
+
 .PHONY: dist-squirrel
 dist-squirrel:
 	@mkdir -p dist
@@ -35,7 +45,7 @@ dist-squirrel:
 		exit 1; fi
 	@if [ ! -x $(SQUIRREL_DIR)/bin/sq ]; then \
 		rm -rf $(SQUIRREL_DIR) && tar -xzf dist/squirrel-$(SQUIRREL_VERSION).tar.gz -C dist && \
-		{ $(MAKE) -C $(SQUIRREL_DIR) sq64 DEFS=-DSQUSEDOUBLE > dist/squirrel-build.log 2>&1 || { cat dist/squirrel-build.log; exit 1; }; }; fi
+		{ $(SQUIRREL_SUBMAKE) -C $(SQUIRREL_DIR) sq64 DEFS=-DSQUSEDOUBLE > dist/squirrel-build.log 2>&1 || { cat dist/squirrel-build.log; exit 1; }; }; fi
 	@echo "squirrel $(SQUIRREL_VERSION) $(SQUIRREL_URL)"
 	@echo "sha256 $(SQUIRREL_SHA256)"
 	@echo "sq $(CURDIR)/$(SQUIRREL_DIR)/bin/sq"

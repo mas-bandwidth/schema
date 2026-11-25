@@ -68,11 +68,10 @@ $(CPP_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cpp-runs-hostile-c
 		internal/ci/hostilecorpus/corpus/packet/hostile.schema test/tables/ValueDefaults.schema test/tables/moodmap/MoodMap.schema
 	@rm -rf $(CPP_HOSTILE_BUILD)/generated && mkdir -p $(CPP_HOSTILE_BUILD)/generated
 	@go run ./tools/hostilecorpusexec probe-schema $(CPP_HOSTILE_BUILD)/probe.schema
-	@for unit in $(CPP_HOSTILE_UNITS); do \
-		name=$${unit%%:*}; path=$${unit#*:}; \
-		./bin/schema generate --lang cpp --out $(CPP_HOSTILE_BUILD)/generated/$$name $$path >/dev/null 2>&1 || \
-			{ ./bin/schema generate --lang cpp --out $(CPP_HOSTILE_BUILD)/generated/$$name $$path; exit 1; }; \
-	done
+	@# one generator per unit, in parallel: each writes its own directory
+	@for unit in $(CPP_HOSTILE_UNITS); do echo "$${unit%%:*} $${unit#*:}"; done | \
+	xargs -P $(CPP_HOSTILE_JOBS) -L 1 sh -c './bin/schema generate --lang cpp --out $(CPP_HOSTILE_BUILD)/generated/$$0 $$1 >/dev/null 2>&1 || \
+		{ ./bin/schema generate --lang cpp --out $(CPP_HOSTILE_BUILD)/generated/$$0 $$1; exit 1; }'
 	@touch $@
 
 # Each unit's translation units see only that unit's generated directory, so
@@ -84,9 +83,11 @@ $(CPP_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cpp-runs-hostile-c
 $(CPP_HOSTILE_BUILD)/case: $(CPP_HOSTILE_BUILD)/generated/.stamp $(wildcard test/cpp-hostile/*.cpp test/cpp-hostile/*.hpp) test/c-hostile/main.c test/c-hostile/hostile.h
 	@rm -rf $(CPP_HOSTILE_BUILD)/obj && mkdir -p $(CPP_HOSTILE_BUILD)/obj
 	@echo "cpp-hostile: compiling with $(CPP_HOSTILE_JOBS) jobs$(if $(CPP_HOSTILE_CCACHE), through ccache)"
-	@{ for unit in $(CPP_HOSTILE_UNITS); do \
+	@# the unit_*.cpp files are the longest compiles (up to 75 s against about
+	@# 2 s for a generated file), so they are queued first and start together
+	@{ for unit in $(CPP_HOSTILE_UNITS); do echo "$${unit%%:*} test/cpp-hostile/unit_$${unit%%:*}.cpp"; done; \
+	for unit in $(CPP_HOSTILE_UNITS); do \
 		name=$${unit%%:*}; \
-		echo "$$name test/cpp-hostile/unit_$$name.cpp"; \
 		for src in $(CPP_HOSTILE_BUILD)/generated/$$name/*.cpp; do if [ -f "$$src" ]; then echo "$$name $$src"; fi; done; \
 	done; } | \
 	xargs -P $(CPP_HOSTILE_JOBS) -L 1 sh -c 'out=$(CPP_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .cpp).o; \
