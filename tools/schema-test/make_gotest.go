@@ -316,7 +316,7 @@ func (a makeGoTestAdapter) verdicts(target string, rows, all []testreg.Instance,
 	// a skip the log reports that no event names (a recipe's own words,
 	// not go test's) fails every row; a skip go test reported is the
 	// skipped row's own red, by its name, below
-	if err := testreg.RefuseSkips(withoutGoTestSkips(lines, ev.skipNames)); err != nil {
+	if err := testreg.RefuseSkips(withoutGoTestSkips(lines, ev)); err != nil {
 		return failAll(rows, fmt.Sprintf("make %s: %v", target, err)), nil
 	}
 	if ev.ran == 0 {
@@ -393,15 +393,19 @@ type goTestRead struct {
 	// go test's package-level fail reports too, so that fail is not one
 	// outside the tests
 	pkgTestFailed map[string]bool
-	skipNames     map[string]bool     // every test and subtest a skip event names
-	pkgOutput     map[string][]string // a package's output that names no test
-	ran           int                 // top-level test runs
+	// skipLines: the lines go test and gotestrun print of the skips the
+	// events name (the skipped tests' output, "--- SKIP: TestB", "SKIPPED
+	// <package> <test>"), each its row's red by name
+	skipLines map[string]bool
+	skips     int                 // skip events, of tests and subtests
+	pkgOutput map[string][]string // a package's output that names no test
+	ran       int                 // top-level test runs
 }
 
 // readGoTestEvents reads go test -json events; a line that is not one is
 // an error, never a line passed over.
 func readGoTestEvents(raw []byte) (goTestRead, error) {
-	ev := goTestRead{pkgTestFailed: map[string]bool{}, skipNames: map[string]bool{}, tests: map[goTestKey]*goTestSeen{}, byPkg: map[string][]string{}, pkgFailed: map[string]bool{}, pkgOutput: map[string][]string{}}
+	ev := goTestRead{pkgTestFailed: map[string]bool{}, skipLines: map[string]bool{}, tests: map[goTestKey]*goTestSeen{}, byPkg: map[string][]string{}, pkgFailed: map[string]bool{}, pkgOutput: map[string][]string{}}
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -435,7 +439,9 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 		case "output":
 			s.output = append(s.output, strings.TrimRight(e.Output, "\n"))
 		case "skip":
-			ev.skipNames[e.Test] = true
+			ev.skips++
+			ev.skipLines["--- SKIP: "+e.Test] = true
+			ev.skipLines["SKIPPED "+e.Package+" "+e.Test] = true
 			if isSub {
 				s.skipped = append(s.skipped, sub)
 			} else {
@@ -461,19 +467,36 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 		if s.failed || s.runs > s.closes {
 			ev.pkgTestFailed[k.pkg] = true
 		}
+		if len(s.skipped) > 0 {
+			for _, o := range s.output {
+				if o = strings.TrimSpace(o); o != "" {
+					ev.skipLines[o] = true
+				}
+			}
+		}
 	}
 	return ev, nil
 }
 
-// withoutGoTestSkips is make's log without the lines in which gotestrun
-// copied go test's report of a skip an event names ("--- SKIP: TestB"):
-// that skip is its row's red, by name. Any other skip the log reports is
-// the recipe's own, and fails every row.
-func withoutGoTestSkips(lines []string, named map[string]bool) []string {
+// withoutGoTestSkips is make's log without what go test and gotestrun print
+// of the skips the events name: a skipped test's own output, its "--- SKIP:
+// TestB" line, gotestrun's "SKIPPED <package> <test>" line, and, when the
+// events hold a skip, gotestrun's own summary and refusal ("gotestrun: ran
+// 2, passed 1, skipped 1, ..."), which count those skips. Each such skip is
+// its row's red, by name. Any other skip the log reports is the recipe's
+// own, and fails every row.
+func withoutGoTestSkips(lines []string, ev goTestRead) []string {
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
-		if rest, ok := strings.CutPrefix(strings.TrimSpace(l), "--- SKIP: "); ok {
-			if name, _, _ := strings.Cut(rest, " "); named[name] {
+		t := strings.TrimSpace(l)
+		if ev.skips > 0 && strings.HasPrefix(t, "gotestrun: ") {
+			continue
+		}
+		if ev.skipLines[t] {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(t, "--- SKIP: "); ok {
+			if name, _, _ := strings.Cut(rest, " "); ev.skipLines["--- SKIP: "+name] {
 				continue
 			}
 		}

@@ -50,6 +50,9 @@ func goTestEvents(tests ...[2]string) string {
 			line("output", tc[0], "    x_test.go:9: the planted failure\n")
 			pkg = "fail"
 		}
+		if tc[1] == "skip" {
+			line("output", tc[0], "    x_test.go:9: SKIP: the planted skip\n")
+		}
 		line(tc[1], tc[0], "")
 	}
 	line(pkg, "", "")
@@ -250,6 +253,12 @@ func TestAMakeGoTestTargetWithoutGoTestIsRefused(t *testing.T) {
 // are read (TestA goes red), runs counted as booleans (TestA passes on its
 // first run), and package-level fail events passed over.
 func TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone(t *testing.T) {
+	// what go test and gotestrun print when TestB skips, as make's log
+	// holds it: every line of it names the skip, and none is the recipe's
+	const gotestrunSkipLog = "=== RUN   TestB\n    x_test.go:9: SKIP: the planted skip\n--- SKIP: TestB (0.00s)\n" +
+		"SKIPPED example.com/x TestB\n" +
+		"gotestrun: ran 2, passed 1, skipped 1, failed 0 across 1 package(s)\n" +
+		"gotestrun: REFUSED: SKIPPED: 1 test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root\n"
 	t.Parallel()
 	ev := func(lines ...string) string { return strings.Join(lines, "\n") + "\n" }
 	cases := []struct {
@@ -260,12 +269,12 @@ func TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone(t *testing.T) {
 		green             []string
 		want              string
 	}{
-		{"a go test skip in the log", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}), "=== RUN   TestB\n--- SKIP: TestB (0.00s)\n", errors.New("exit status 1"),
+		{"a go test skip in the log", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}), gotestrunSkipLog, errors.New("exit status 1"),
 			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "TestB skipped"},
 		{"a skip no event names", goTestEvents([2]string{"TestA", "pass"}), "SKIP: the recipe skipped its check\n", nil,
 			[]string{"TestA"}, "TestA", nil, "reported a skip"},
 		{"the recipe's own skip beside a go test skip", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
-			"--- SKIP: TestB (0.00s)\nSKIP: the recipe skipped its check\n", errors.New("exit status 1"),
+			gotestrunSkipLog + "SKIP: the recipe skipped its check\n", errors.New("exit status 1"),
 			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
 		{"a sibling's failure is not the package's", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "fail"}), "ok", errors.New("exit status 1"),
 			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "the planted failure"},
