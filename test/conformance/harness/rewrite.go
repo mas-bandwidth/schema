@@ -44,21 +44,50 @@ func RewriteCanonical(jsonDir, name string) string {
 	return filepath.Join(filepath.Dir(jsonDir), "rewrite", name+".bin")
 }
 
-// framedRewrite is the framing row a rewrite row of the same name reads as,
-// when there is one that reads. A FRAMED rewrite row is read the way the
-// framing surface reads it, and the leg's answer is its framing write-back
-// (`<case>.wire`), held here to the canonical bytes. The wire surface cannot
-// stand in for it: a framing input is often the VARIABLE form (form 1) of
-// a FIXED-declared root, which a leg's wire surface reads as form 3 alone and
-// refuses, while the framing surface reads them at the variable class (§22.7).
-// generateRewrites requires the framing row's save-wire to be these bytes.
-func framedRewrite(m *Manifest, name string) (FramingCase, bool) {
-	for _, fc := range m.Framings {
-		if fc.Name == name && !fc.Refused {
-			return fc, true
+// framedRewrites names the FRAMED rewrite rows, each with the framing row it
+// is read as. A rewrite row is framed when its input is the VARIABLE form
+// (form 1) of a FIXED-declared root: no read at a fixed root reads form 1
+// (docs/SPEC-TABLES.md §3.4, `previous_form`), so a leg's wire surface refuses
+// it, and the corpus reads such an input only through the root's variable
+// twin, on the framing surface (§3.4's framing battery: "`framing` reads at
+// the variable twin and reads"). The oracle writes its canonical bytes the
+// same way (rewriteOnce). A framed row's answer is the leg's framing
+// write-back (`<case>.wire`), held to the canonical bytes, and
+// generateRewrites requires the framing row's save-wire to be those bytes. A
+// framed row with no framing row that reads cannot be answered, and is an
+// error by name. Every other rewrite row, a variable root's included, stays
+// on the wire surface.
+func framedRewrites(u *units, m *Manifest) (map[string]FramingCase, error) {
+	framed := map[string]FramingCase{}
+	for _, rw := range m.Rewrites {
+		input, err := os.ReadFile(rw.Wire)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite %s: %w", rw.Name, err)
+		}
+		if len(input) == 0 || input[0] != ir.TableWireForm {
+			continue
+		}
+		unit, err := u.get(rw.Unit)
+		if err != nil {
+			return nil, fmt.Errorf("rewrite %s: %w", rw.Name, err)
+		}
+		st := unit.Tables[rw.Root]
+		if st == nil || !st.FixedDeclared {
+			continue
+		}
+		found := false
+		for _, fc := range m.Framings {
+			if fc.Name == rw.Name && !fc.Refused {
+				framed[rw.Name] = fc
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("rewrite %s: a form-1 input on the fixed root %s.%s, which no framing row of that name reads: no surface can answer it", rw.Name, rw.Unit, rw.Root)
 		}
 	}
-	return FramingCase{}, false
+	return framed, nil
 }
 
 // framingAnswer is where a leg's framing surface leaves its write-back of a
@@ -71,19 +100,16 @@ func framingAnswer(framingOut, name string) string {
 // surface's output: the leg's own framing write-back of that input. A row the
 // leg's framing surface did not write back is left unanswered, and is scored
 // so.
-func answerFramedRewrites(m *Manifest, framingOut, rewriteOut string) error {
-	for _, rw := range m.Rewrites {
-		if _, ok := framedRewrite(m, rw.Name); !ok {
-			continue
-		}
-		saved, err := os.ReadFile(framingAnswer(framingOut, rw.Name))
+func answerFramedRewrites(framed map[string]FramingCase, framingOut, rewriteOut string) error {
+	for name := range framed {
+		saved, err := os.ReadFile(framingAnswer(framingOut, name))
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(rewriteOut, rw.Name), saved, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(rewriteOut, name), saved, 0o644); err != nil {
 			return err
 		}
 	}
@@ -93,9 +119,9 @@ func answerFramedRewrites(m *Manifest, framingOut, rewriteOut string) error {
 // deriveRewriteManifest writes the manifest a leg's `wire` surface reads for
 // the rewrite rows: the units, and one instance line per rewrite row, but for
 // the rows on a unit in omit (an opt-in unit the leg does not name) and the
-// framed rows, which the leg answers on its framing surface (framedRewrite).
+// framed rows, which the leg answers on its framing surface (framedRewrites).
 // The run scores the leg's answers as the `rewrite` surface (run.go).
-func deriveRewriteManifest(m *Manifest, path string, omit map[string]bool) error {
+func deriveRewriteManifest(m *Manifest, path string, omit map[string]bool, framed map[string]FramingCase) error {
 	var b strings.Builder
 	b.WriteString("# DERIVED, by `harness run` — do not edit, do not commit.\n")
 	b.WriteString("# The rewrite rows of the committed manifest as instance lines, which a\n")
@@ -107,7 +133,7 @@ func deriveRewriteManifest(m *Manifest, path string, omit map[string]bool) error
 		if omit[rw.Unit] {
 			continue
 		}
-		if _, ok := framedRewrite(m, rw.Name); ok {
+		if _, ok := framed[rw.Name]; ok {
 			continue
 		}
 		fmt.Fprintf(&b, "instance %s %s %s %s no-text\n", rw.Name, rw.Unit, rw.Root, rw.Wire)
@@ -120,6 +146,10 @@ func deriveRewriteManifest(m *Manifest, path string, omit map[string]bool) error
 func generateRewrites(u *units, m *Manifest, jsonDir string) error {
 	if len(m.Rewrites) == 0 {
 		return nil
+	}
+	framed, err := framedRewrites(u, m)
+	if err != nil {
+		return err
 	}
 	keep := map[string]bool{}
 	dir := ""
@@ -144,7 +174,7 @@ func generateRewrites(u *units, m *Manifest, jsonDir string) error {
 		if !bytes.Equal(again, canonical) {
 			return fmt.Errorf("rewrite %s: the canonical bytes are not a fixed point: %d bytes written, %d written again", rw.Name, len(canonical), len(again))
 		}
-		if fc, ok := framedRewrite(m, rw.Name); ok {
+		if fc, ok := framed[rw.Name]; ok {
 			// a framed row is answered by the framing write-back, which the
 			// framing surface holds to the save-wire: the two must be one
 			// byte string, or the leg would owe two answers for one read

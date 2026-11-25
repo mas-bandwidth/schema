@@ -21,7 +21,7 @@ retain-refusal/<case>.before.bin  the save of the first read, retained records a
 retain-refusal/<case>.after.bin   the save after the refused read: the first value alone (generated)
 rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
-json/<json-text>.json a hand-authored text a json-text row names (authored)
+json/<authored-text>.json a hand-authored text a authored-text row names (authored)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
 cook/<case>.dump      the canonical node dump of every cook    (pinned)
@@ -52,7 +52,7 @@ retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 retain-refusal <case> <unit> <root> <first wire> <refused wire>
 report       <case> <unit> <root> <wire file>
 rewrite      <case> <unit> <root> <wire file>
-json-text    <case> <unit> <root> <wire file>
+authored-text    <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -419,7 +419,7 @@ Generated with `make conformance-generate`, and each text is proved COMPLETE
 before it lands: it is packed back to wire bytes and must equal the golden it
 came from, byte for byte. A text that lost a field cannot pass that.
 
-**A `json-text` row's text sits here too, and it is AUTHORED, not generated**
+**A `authored-text` row's text sits here too, and it is AUTHORED, not generated**
 (docs/SPEC-TABLES.md §22.7): a text whose map keys arrive OUT of canonical
 order, so a leg whose builder writes insertion order lands the wrong bytes.
 Every leg reads it on the `json-read` surface, where it is scored under its own
@@ -428,7 +428,7 @@ as an instance line appended to that surface's manifest, and no other surface
 sees it. `make conformance-generate` keeps it and checks it: the oracle's strict
 read takes it, the value writes the row's wire byte for byte, and the text is
 not already the value's canonical text (one that is tests nothing an instance
-does not). A json-text name is never also an instance's.
+does not). A authored-text name is never also an instance's.
 
 ## json-hostile/&lt;case&gt;/&lt;root&gt;.json
 

@@ -211,7 +211,11 @@ func TestRewriteDerivedManifestAndGenerateRoundTrip(t *testing.T) {
 	m, _, u := corpus(t)
 	tmp := t.TempDir()
 	derivedPath := filepath.Join(tmp, "manifest-rewrite.txt")
-	if err := deriveRewriteManifest(m, derivedPath, nil); err != nil {
+	framedSet, err := framedRewrites(u, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deriveRewriteManifest(m, derivedPath, nil, framedSet); err != nil {
 		t.Fatal(err)
 	}
 	derived, err := ReadManifest(derivedPath, filepath.Join(tmp, "json"))
@@ -220,7 +224,7 @@ func TestRewriteDerivedManifestAndGenerateRoundTrip(t *testing.T) {
 	}
 	framed := 0
 	for _, rw := range m.Rewrites {
-		if _, ok := framedRewrite(m, rw.Name); ok {
+		if _, ok := framedSet[rw.Name]; ok {
 			framed++
 			if _, err := derived.LookupInstance(rw.Name); err == nil {
 				t.Errorf("%s: a framed rewrite row is handed to the wire surface, which reads a fixed root's form-1 input as form 3 and refuses it", rw.Name)
@@ -292,7 +296,11 @@ func TestRewriteFramedRowOwesOneWriteBack(t *testing.T) {
 	if !ok {
 		t.Fatal("the corpus carries no rewrite row frame_empty_table")
 	}
-	fc, framed := framedRewrite(m, rw.Name)
+	framedSet, err := framedRewrites(u, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fc, framed := framedSet[rw.Name]
 	if !framed {
 		t.Fatal("frame_empty_table is not framed: its framing row reads")
 	}
@@ -302,8 +310,44 @@ func TestRewriteFramedRowOwesOneWriteBack(t *testing.T) {
 	}
 	fc.Save = "testdata/conformance/tables/save-wire/twin_listdemo_ints_empty.bin"
 	one.Framings = []FramingCase{fc}
-	err := generateRewrites(u, one, filepath.Join(t.TempDir(), "json"))
+	err = generateRewrites(u, one, filepath.Join(t.TempDir(), "json"))
 	if err == nil || !strings.Contains(err.Error(), "one read owes one write-back") {
 		t.Errorf("a framed row whose save-wire is another case's: got %v, want the refusal", err)
+	}
+}
+
+// ONLY A FIXED ROOT'S FORM-1 INPUT IS FRAMED (rewrite.go, framedRewrites): the
+// twenty rewrite rows the wire surface cannot read are framed, and a rewrite
+// row that is also a framing row but sits on a VARIABLE root (node_diamond_chain,
+// which §22.7's negative control holds `go / rewrite` red on) stays on the
+// wire surface, so its rewrite answer is the leg's own Load and Save and not a
+// second count of its framing answer. A fixed root's form-1 rewrite row with
+// no framing row to read it is refused by name.
+func TestRewriteFramesOnlyAFixedRootsFormOneInput(t *testing.T) {
+	m, _, u := corpus(t)
+	framed, err := framedRewrites(u, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"frame_empty_table", "union_void_arm", "sp_count_min_at", "twin_listdemo_bounded_empty"} {
+		if _, ok := framed[name]; !ok {
+			t.Errorf("%s: a form-1 input on a fixed root is not framed", name)
+		}
+	}
+	for _, name := range []string{"node_diamond_chain", "twin_listdemo_ints_empty", "edge_map_keys"} {
+		if _, ok := framed[name]; ok {
+			t.Errorf("%s: a row on a variable root (or not form 1) is framed, so its rewrite answer is its framing answer counted twice", name)
+		}
+	}
+	var keep []FramingCase
+	for _, fc := range m.Framings {
+		if fc.Name != "frame_empty_table" {
+			keep = append(keep, fc)
+		}
+	}
+	orphan := *m
+	orphan.Framings = keep
+	if _, err := framedRewrites(u, &orphan); err == nil || !strings.Contains(err.Error(), "no surface can answer it") {
+		t.Errorf("a framed row with no framing row: got %v, want the refusal by name", err)
 	}
 }

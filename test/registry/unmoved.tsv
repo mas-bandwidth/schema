@@ -68,7 +68,7 @@ go-test	test/conformance/squirrel	2	L5	per-language (squirrel) Go tests: squirre
 go-test	test/go-tables	18	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	test/packet-write-bareint/lobster	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner of that platform runs them
-make-target	Makefile	37	L6	make gates: the make adapter runs them
+make-target	Makefile	36	L6	make gates: the make adapter runs them
 make-target	make/bench-check.mk	1	L6	make gates: the make adapter runs them
 make-target	make/c-fixed-default-copy.mk	1	L6	make gates: the make adapter runs them
 make-target	make/c.mk	10	L6	make gates: the make adapter runs them

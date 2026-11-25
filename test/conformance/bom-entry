@@ -29,9 +29,17 @@ check_lang() {
 manifest=testdata/conformance/tables/bom-entry/MANIFEST.txt
 json=testdata/conformance/tables/bom-entry/json
 
+valid_lang() {
+    case "$1" in
+        ''|*[!a-z0-9]*) echo "bom-entry: $1 is not a language name" >&2; exit 2 ;;
+    esac
+    [ -x test/conformance/"$1"/driver ] || { echo "bom-entry: test/conformance/$1/driver is not a driver" >&2; exit 2; }
+}
+
 if [ "${1:-}" = --driver ]; then
     lang=$2
     shift 2
+    valid_lang "$lang"
     if [ "$2" = list ]; then
         # Never let this narrow wrapper invent an advertised reader surface.
         listed=$(test/conformance/"$lang"/driver "$1" list)
@@ -60,6 +68,7 @@ fi
 if [ "${1:-}" = --adapter ]; then
     lang=$2
     work=$3
+    valid_lang "$lang"
     mkdir -p "$work"
     printf '%s sh test/conformance/bom-entry --driver %s\n' "$lang" "$lang" > "$work/drivers.txt"
     exec ./build/conformance-harness-vm adapter --lang "$lang" --manifest "$manifest" \

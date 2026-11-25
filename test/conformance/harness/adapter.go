@@ -533,3 +533,13 @@ func adapterMain(in io.Reader, out, log io.Writer, m *Manifest, lang string, leg
 	_, err = io.WriteString(out, b.String())
 	return err
 }
+
+// rowsFamilyNamed refuses registry rows for a manifest other than the corpus's
+// with no --family: they would take the corpus's families and keys, and two
+// manifests' rows would collide.
+func rowsFamilyNamed(manifest, family string) error {
+	if family == "" && manifest != defaultManifest {
+		return fmt.Errorf("registry-rows: --manifest %s is not the corpus's, so --family names its rows' family", manifest)
+	}
+	return nil
+}

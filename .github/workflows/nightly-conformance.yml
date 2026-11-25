@@ -182,11 +182,6 @@ jobs:
       - name: the C++ reference writes the fixed form (form 3)
         run: make tables-fixedform-corpus tables-fixedform-bench-corpus
 
-      # The C++ readiness run executes the full shared harness once, including
-      # the BOM oracle and every permanent corpus/gate regression.
-      - name: the C++ leg checks the four BOM entry cases
-        run: make conformance-bom-entry CONFORMANCE_BOM_LANG=cpp CONFORMANCE_BOM_OUT=build/nightly/reference-report/bom
-
       - name: the C++ leg validates the canonical corpus
         run: |
           mkdir -p build/nightly/reference-report
@@ -445,13 +440,6 @@ jobs:
 
       - name: differential json-fuzz on the ${{ matrix.lang }} leg (N=5000)
         run: env ${{ matrix.env }} ./build/nightly-harness json-fuzz --only ${{ matrix.lang }} --seed 1 --n 5000 --failed build/nightly/report/json-fuzz-failures
-      - name: the original-nine leg checks the four BOM entry cases
-        if: contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang)
-        run: |
-          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase bom-before
-          env ${{ matrix.env }} make conformance-bom-entry CONFORMANCE_BOM_LANG=${{ matrix.lang }} \
-            CONFORMANCE_BOM_HARNESS=build/nightly-harness CONFORMANCE_BOM_OUT=build/nightly/report/bom
-          python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase bom-after
 
       # THE FIXED FORM (form 3) is read from the C++ reference's byte oracle,
       # build/fixedform-corpus, by each leg's own gate — the targets ci-fast.yml's

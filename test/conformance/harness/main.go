@@ -352,8 +352,8 @@ func main() {
 		if err != nil {
 			fatalf("%v", err)
 		}
-		if *family == "" && *manifest != defaultManifest {
-			fatalf("registry-rows: --manifest %s is not the corpus's, so --family names its rows' family", *manifest)
+		if err := rowsFamilyNamed(*manifest, *family); err != nil {
+			fatalf("%v", err)
 		}
 		if err := writeRegistryRows(os.Stdout, rows); err != nil {
 			fatalf("%v", err)

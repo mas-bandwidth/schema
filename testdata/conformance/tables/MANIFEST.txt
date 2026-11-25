@@ -1591,7 +1591,7 @@ rewrite edge_u64_keys      mapdemo          EdgeRow testdata/wire/tables/edge_u6
 # arrive out of canonical order, so a leg whose builder writes insertion order goes red on it
 # while every instance (whose text is already canonical) stays green. Its text is
 # json/edge_map_keys_unsorted.json, and it owes edge_map_keys.bin byte for byte (jsontext.go).
-json-text edge_map_keys_unsorted mapdemo Fleet testdata/wire/tables/edge_map_keys.bin
+authored-text edge_map_keys_unsorted mapdemo Fleet testdata/wire/tables/edge_map_keys.bin
 
 # THE WRITE CONTRACT (docs/SPEC.md §5.1): every writer refuses a value its
 # declaration does not admit. Each row loads the root's current-form instance,

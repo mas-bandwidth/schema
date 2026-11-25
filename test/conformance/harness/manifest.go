@@ -904,16 +904,16 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				}
 			}
 			m.Rewrites = append(m.Rewrites, RewriteCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Canonical: RewriteCanonical(jsonDir, f[1])})
-		case "json-text":
-			// json-text <case> <unit> <root> <wire>: a hand-authored text at
+		case "authored-text":
+			// authored-text <case> <unit> <root> <wire>: a hand-authored text at
 			// json/<case>.json every leg reads on json-read, held to the wire
 			// (jsontext.go, docs/SPEC-TABLES.md §22.7)
 			if len(f) != 5 {
-				return nil, fmt.Errorf("%s: json-text takes case, unit, root, wire", where)
+				return nil, fmt.Errorf("%s: authored-text takes case, unit, root, wire", where)
 			}
 			for _, jt := range m.JSONTexts {
 				if jt.Name == f[1] {
-					return nil, fmt.Errorf("%s: json-text %s is named twice", where, f[1])
+					return nil, fmt.Errorf("%s: authored-text %s is named twice", where, f[1])
 				}
 			}
 			m.JSONTexts = append(m.JSONTexts, JSONTextCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Text: filepath.Join(jsonDir, f[1]+".json")})
@@ -1114,11 +1114,11 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
 		}
 	}
-	// a json-text's text sits where an instance's would, so the two never
+	// a authored-text's text sits where an instance's would, so the two never
 	// share a name
 	for _, jt := range m.JSONTexts {
 		if _, err := m.LookupInstance(jt.Name); err == nil {
-			return nil, fmt.Errorf("%s: json-text %s is also an instance: its text would be the instance's", path, jt.Name)
+			return nil, fmt.Errorf("%s: authored-text %s is also an instance: its text would be the instance's", path, jt.Name)
 		}
 	}
 	// one name on one surface is one unit's case (optin.go)

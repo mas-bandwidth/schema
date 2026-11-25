@@ -947,6 +947,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := materialise(m, work); err != nil {
 		return false, err
 	}
+	// the framed rewrite rows (rewrite.go), the same for every leg
+	framed, err := framedRewrites(newUnits(m), m)
+	if err != nil {
+		return false, err
+	}
 	derived := filepath.Join(work, "manifest.txt")
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
@@ -1042,10 +1047,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				omit[key] = true
 			}
 		}
-		if err := deriveRewriteManifest(m, legRewrite, omit); err != nil {
+		if err := deriveRewriteManifest(m, legRewrite, omit, framed); err != nil {
 			return false, err
 		}
-		// and its json-read surface runs on its manifest plus the json-text
+		// and its json-read surface runs on its manifest plus the authored-text
 		// rows on units it is asked (jsontext.go)
 		legJSONRead := filepath.Join(work, "manifest-json-read-"+d.lang+".txt")
 		if err := deriveJSONReadManifest(legDerived, legJSONRead, m, omit); err != nil {
@@ -1096,11 +1101,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
-						if sr.surface == "rewrite" {
+						switch sr.surface {
+						case "rewrite":
 							sr.code, sr.stderr, sr.err = runDriver(d, legRewrite, "wire", sr.out)
-						} else if sr.surface == "json-read" {
+						case "json-read":
 							sr.code, sr.stderr, sr.err = runDriver(d, legJSONRead, "json-read", sr.out)
-						} else {
+						default:
 							sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
 						}
 						if failFast {
@@ -1127,10 +1133,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			wg.Wait()
 		}
 		// the framed rewrite rows are answered by the leg's own framing
-		// write-back (rewrite.go, framedRewrite)
+		// write-back (rewrite.go, framedRewrites)
 		if sr := runs["rewrite"]; sr != nil && !sr.aborted {
 			if fr := runs["framing"]; fr != nil {
-				if err := answerFramedRewrites(m, fr.out, sr.out); err != nil {
+				if err := answerFramedRewrites(framed, fr.out, sr.out); err != nil {
 					return false, err
 				}
 			}
@@ -1140,6 +1146,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				continue
 			}
 			legWant := want[s]
+			if len(legWant) == 0 && slices.Contains(harnessSurfaces, s) {
+				// a surface the HARNESS derives (rewrite) from rows this manifest
+				// does not have (the BOM entry gate's has none) is not a surface
+				// of this run: no leg lists it, and there is nothing to ask
+				continue
+			}
 			var exemptions []string
 			if s == "json-hostile" {
 				legWant, exemptions = hostileExpectations(m, d.lang)

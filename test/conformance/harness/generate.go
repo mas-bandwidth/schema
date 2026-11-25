@@ -160,7 +160,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		fmt.Printf("conformance: %-22s %7d B wire  %8d B text\n", inst.Name, len(wire), len(text))
 	}
 
-	// a json-text row's text is hand-authored and stays: the oracle checks it
+	// a authored-text row's text is hand-authored and stays: the oracle checks it
 	// reads to its wire and is not already canonical (jsontext.go)
 	for _, jt := range m.JSONTexts {
 		if err := checkJSONText(u, jt); err != nil {
@@ -170,7 +170,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		fmt.Printf("conformance: %-22s hand-authored text, reads to %s\n", jt.Name, jt.Wire)
 	}
 
-	// a text no instance or json-text names is scaffolding, and it goes now
+	// a text no instance or authored-text names is scaffolding, and it goes now
 	// rather than rotting into a golden nobody reads
 	entries, err := os.ReadDir(jsonDir)
 	if err != nil {
