@@ -201,9 +201,16 @@ func unmovedName(it extract.Item) string {
 	return "unmoved/" + it.Kind + "/" + it.Dir + "/" + it.Name
 }
 
-// unmovedUnits is every test the extract finds that is not a registry row.
+// unmovedUnits is every test the extract finds that no registry row runs or
+// reads. What a row runs or reads is extract.Runs, the measure the extract's
+// own ledger counts by: a data case a corpus row names in its "files", a
+// driver it answers through, a case a make row reads or a golden row pins,
+// is that row's, and the row's verdict in this run is its verdict. Counting
+// only what a row runs by name (Covered) would call those inputs UNRUNNABLE
+// although a row in this very run reads each one.
 func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.LedgerLine, weights map[string]float64, counts map[string]int) []Unit {
-	covered, problems := extract.Covered(reg)
+	_, problems := extract.CoveredIn(res, reg)
+	covered := extract.Runs(res, reg)
 	var units []Unit
 	// a registry row the extract cannot read against the repository is a
 	// red of every run until it is fixed

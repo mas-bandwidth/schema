@@ -976,6 +976,33 @@ func TestARegistryRowTheExtractCannotReadIsARed(t *testing.T) {
 	t.Fatalf("the unreadable row is no red: %v", names(units))
 }
 
+// TestACaseACorpusRowReadsIsNotUnrunnable: a data case a per-language row
+// names in its "files" is that row's input, run when the row's instances
+// run, so the plan holds it under the row and not as an UNRUNNABLE red; a
+// case beside it that no row reads still is one.
+func TestACaseACorpusRowReadsIsNotUnrunnable(t *testing.T) {
+	t.Parallel()
+	reg, err := testreg.Parse("registry.jsonl", strings.NewReader(testRegistry+`{"rec":"test","key":"roundtrip.fam.c1","type":"roundtrip","family":"fam","case":"c1","tier":"functional","checks":"c","inputs":{"files":["test/corpus/c1.bin"]},"expect":"e","source":"s"}`+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, err := planUnits(reg, testExtract(), testLedger(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := names(units)
+	if _, ok := got["go.functional.roundtrip.fam.c1"]; !ok {
+		t.Fatalf("the corpus row's go instance is not in the plan: %v", got)
+	}
+	u, ok := got["UNRUNNABLE unmoved.tsv:11 data-case test/corpus"]
+	if !ok {
+		t.Fatalf("c2, which no row reads, is no UNRUNNABLE red: %v", got)
+	}
+	if !reflect.DeepEqual(u.Args, []string{"c2"}) {
+		t.Errorf("the UNRUNNABLE red holds %v; want only c2: c1 is read by roundtrip.fam.c1", u.Args)
+	}
+}
+
 // TestASkippedSubBenchmarkFailsItsBenchmark: go test -json sends no
 // top-level pass for a benchmark, so a skipped sub-benchmark fails it
 // rather than leaving it to pass on its printed /op lines.
