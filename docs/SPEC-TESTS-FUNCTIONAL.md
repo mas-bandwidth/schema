@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2283.
+Functional tests every language answers: 2560. Language-free tests: 2284.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4774,6 +4774,12 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.functional.evolution.goosetable.goose-fixed-form-kind-moved-unlawful` | `gotest` | Go test TestGooseFixedFormKindMovedUnlawful in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedFormKindMovedUnlawful` | the Go test passes | `internal/codegen/goosetable/fixedevolve_test.go:198` |
 | `none.functional.evolution.goosetable.goose-fixed-unlawful-corpus` | `gotest` | Go test TestGooseFixedUnlawfulCorpus in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/goosetable/fixed_unlawful_corpus_test.go:60` |
+
+#### `evolution` family `gorows`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.gorows.row-r14-grown-tag-reads-the-writers-tag-width` | `gotest` | Go test TestRowR14GrownTagReadsTheWritersTagWidth in ./test/conformance/go/rows | `package: ./test/conformance/go/rows`<br>`test: TestRowR14GrownTagReadsTheWritersTagWidth` | the Go test passes | `test/conformance/go/rows/R14_grown_test.go:178` |
 
 #### `evolution` family `gotable`, 4 tests
 
