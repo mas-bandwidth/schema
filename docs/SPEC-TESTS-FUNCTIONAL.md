@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2242.
+Functional tests every language answers: 2468. Language-free tests: 2252.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5590,6 +5590,26 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
 | `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:308` |
+
+#### `harness-run` family `make-conformance-rows`, 8 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-c` | `make` | make conformance-rows-c (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`siblings: ["../serialize.c"]`<br>`target: conformance-rows-c`<br>`tools: ["cc"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:96` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-cpp` | `make` | make conformance-rows-cpp (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`siblings: ["../serialize"]`<br>`target: conformance-rows-cpp`<br>`tools: ["c++"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:97` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-cs` | `make` | make conformance-rows-cs (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`siblings: ["../serialize.cs"]`<br>`target: conformance-rows-cs`<br>`tools: ["dotnet"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:98` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-dart` | `make` | make conformance-rows-dart (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-dart`<br>`tools: ["dart"]`<br>`vars: {"DART":"dart"}` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:99` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-go` | `make` | make conformance-rows-go (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-go` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:109` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-java` | `make` | make conformance-rows-java (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-java`<br>`tools: ["java","javac"]`<br>`vars: {"JAVA":"java","JAVAC":"javac"}` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:100` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-js` | `make` | make conformance-rows-js (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-js`<br>`tools: ["node"]`<br>`vars: {"NODE":"node"}` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:101` |
+| `none.functional.harness-run.make-conformance-rows.conformance-rows-rust` | `make` | make conformance-rows-rust (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: conformance-rows-rust`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:102` |
+
+#### `harness-run` family `make-elixir`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-elixir.tables-elixir-accessor-descriptor-agreement-shard-2` | `make` | make tables-elixir-accessor-descriptor-agreement-shard-2 (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-accessor-descriptor-agreement-shard-2`<br>`tools: ["elixir","elixirc","mix"]` | the target exits 0 with no skip in its log | `make/elixir.mk:2367` |
+| `none.functional.harness-run.make-elixir.tables-elixir-offsets` | `make` | make tables-elixir-offsets (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-offsets`<br>`tools: ["elixir","erl"]` | the target exits 0 with no skip in its log | `make/elixir.mk:645` |
 
 #### `harness-run` family `make-go`, 1 test
 

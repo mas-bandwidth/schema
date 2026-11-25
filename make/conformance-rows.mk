@@ -88,3 +88,23 @@ appendix-go-fixed:
 appendix-python-fixed:
 	sh test/slowgate/proof $@ 'TestPythonFixedLoadCapacityWitness' \
 		-count=1 ./internal/codegen/pythontable -run '^TestPythonFixedLoadCapacityWitness$$'
+
+# Concrete targets of the foreach above (ci-fast.yml conformance-rows).
+# The define's recipe is the one make runs. These lines name the targets:
+# the registry make adapter reads rule names from this file, and a foreach
+# stem is not the leg name.
+conformance-rows-c:
+conformance-rows-cpp:
+conformance-rows-cs:
+conformance-rows-dart:
+conformance-rows-java:
+conformance-rows-js:
+conformance-rows-rust:
+
+# Go is not a foreach leg: its rows are conformance-go-rows in make/go.mk,
+# and the old conformance-rows job never selected go. The retired check is
+# still this name. The recipe fails, which is what make conformance-rows-go
+# did when this file wrote no rule for it.
+.PHONY: conformance-rows-go
+conformance-rows-go:
+	@echo "conformance-rows-go: Go is not a leg of this file." >&2; exit 2

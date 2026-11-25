@@ -2358,3 +2358,10 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
+# Shard 2 of the per-PR agreement gate (ci-fast.yml lang-clean, elixir-agreement-2).
+# The pattern tables-elixir-accessor-descriptor-agreement-shard-% is the recipe.
+# This line names the target: the registry make adapter reads rule names from
+# this file, and a pattern stem is not the shard name. Shards 1, 3 and 4 stay
+# pattern-only; a cold run of each is past a 60s pr shard.
+tables-elixir-accessor-descriptor-agreement-shard-2:
