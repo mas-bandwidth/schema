@@ -5002,7 +5002,11 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	# Cook-write snapshots carry the build version too; update both byte orders
 	# through the engine after the reference wire pins have been regenerated.
 	./build/conformance-harness generate
-	go test ./...
+	# tools/namebuild's per-target tests are the registry's nightly
+	# name-buildability rows (make name-buildability-run); the rest of the
+	# package runs here, chosen at the root by name (tools/gotestselect)
+	go test $$(go list ./... | grep -v '/tools/namebuild$$')
+	sel=$$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$$sel" ./tools/namebuild
 
 # the cross-language serialize profiling harness (bench/README.md): builds and
 # runs whichever language runners are available, Release flags, results CSV
