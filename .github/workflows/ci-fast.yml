@@ -3146,6 +3146,23 @@ jobs:
           (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
+      # EVERY TEST IS A REGISTRY ROW OR IN THE UNMOVED LEDGER, AND THE LEDGER
+      # ONLY SHRINKS (docs/TEST-REGISTRY.md). extract holds the repository,
+      # the registry and test/registry/unmoved.tsv to each other exactly, and
+      # holds the ledger to main's: a new test gets a registry row, never a
+      # ledger line. The one exception is the change that creates the
+      # ledger, when main has none to compare with.
+      - name: schema-test extract, against main's ledger
+        run: |
+          set -euo pipefail
+          git fetch --quiet --depth 1 origin main
+          if git cat-file -e FETCH_HEAD:test/registry/unmoved.tsv; then
+            git show FETCH_HEAD:test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"
+            go run ./tools/schema-test extract --shrinks-from "$RUNNER_TEMP/unmoved-main.tsv"
+          else
+            echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
+            go run ./tools/schema-test extract
+          fi
       - name: schema-test run --group pr
         run: |
           set -euo pipefail

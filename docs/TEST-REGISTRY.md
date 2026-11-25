@@ -178,13 +178,60 @@ adapter step for a named test.
 | Go tests, subtests, table rows | the test's own type | none | `tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest`, one row per top-level test, or one per subtest with `-run '^T$/^sub$'` |
 | CI-policy, docs, roadmap, release checks, workflow scripts that pass or fail | tooling | none | `tooling.ci.every-nightly-only-gate-has-a-pr-tier-form` | `gotest`, or an exec adapter wrapping the script with the protocol |
 
+## Every test is in the registry
+
+`schema-test extract` (package `internal/testreg/extract`) finds every test the
+repository holds by reading its source and data. It runs nothing and builds
+nothing. These are the kinds it finds, each exactly:
+
+| kind | what counts as one |
+|---|---|
+| `go-test` | a top-level `Test`, `Fuzz` or `Benchmark` function. Subtests and table rows are cases inside it and run with it. |
+| `make-target` | a rule named as a check (`test-`, `check-`, `verify-`, `-check`, `-test`, `-gate`, `-probe`, `-negative-control`), or a rule a workflow runs by name |
+| `negative-control` | a target of `make/negative-controls.json` |
+| `workflow-job` | a job of a workflow |
+| `data-case` | a line of a `.jsonl` file, or a data file grouped by stem, under `test/` or a `testdata` directory |
+| `driver` | a directory under `test/` holding code that is not Go: a language's harness |
+| `model` | a TLC configuration under `tla/` |
+
+For each Go test it also records the facts that decide its tier, each through
+the package's own helpers:
+- its build constraint;
+- whether it opens `slowtest.Gate` or reads `SCHEMA_SLOW`, which makes it
+  functional;
+- every `Skip` it can reach, with the condition around it.
+
+The driver has no skip verdict. So when a test moves in, each of these facts
+becomes either its tier or a tool its runner must carry.
+
+Every test the extract finds is either a registry row or counted in the unmoved
+ledger, [`test/registry/unmoved.tsv`](../test/registry/unmoved.tsv). A ledger
+line is a kind, a place, an exact count, the layer that moves those tests in,
+and the reason they wait. Two checks hold this:
+
+- `TestEveryTestIsARowOrInTheLedger` (unit tier, every pull request) holds the
+  repository, the registry and the ledger to each other exactly. It goes red on:
+  - a new test without a row;
+  - a count that is too high or too low;
+  - a stale line;
+  - a `gotest` row naming a test that does not exist;
+  - a file that does not parse.
+- The `schema-test` job of ci-fast.yml holds the ledger to main's copy, and it
+  only shrinks. A new test gets a registry row, never a ledger line.
+
+`schema-test extract --json` prints every test, one JSON line each.
+`--write-ledger` rewrites the ledger to what is unmoved now. Use it only when
+tests move in or go away.
+
 ## Adding a test
 
 Add a `test` line. A corpus row of a family a harness already runs needs nothing
 else: every ready language runs it on the next pull request, and every other
 language shows it MISSING. A language that cannot express it adds an
 `unrepresentable` line with the reason. A Go test in the driver's packages needs
-its `gotest` row, or `TestEveryDriverTestIsRegistered` is red.
+its `gotest` row, or `TestEveryDriverTestIsRegistered` is red. Any other new
+test needs its row too, or `TestEveryTestIsARowOrInTheLedger` is red (see
+"Every test is in the registry").
 
 ## Adding a language
 
@@ -235,8 +282,15 @@ load-refusal rows), through the `go` and `lua` adapters, plus a plant for each.
 
 ## Next layers
 
-1. Move today's tests in from the extraction (`raw.jsonl`), family by family.
-2. One adapter per language that routes every family to its harness.
-3. The adapters for goldens, lint, TLC and traces, benches.
-4. The repo-wide skip policy, and the policy that a workflow step only calls the
-   driver; then retire the old harness jobs.
+Each layer is one pull request, and each moves its tests out of the unmoved
+ledger and into rows:
+
+- **L3:** the language-free Go tests, through `gotest`, batched by package.
+- **L4:** one adapter per language over the conformance drivers' protocol,
+  corpus families first.
+- **L5:** the per-language Go tests, through each language's adapter.
+- **L6:** plants, make gates, goldens, lint, fuzz, benches and TLC models.
+- **L7:** CI generated from the registry.
+
+An old CI job is retired only after a run at one SHA shows the driver ran
+every test that job ran, in the same tier, with the same count.

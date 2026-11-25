@@ -13,7 +13,7 @@ import (
 
 // driverPackages are the driver's own packages, from this directory. The
 // repo-wide skip policy is a later layer (docs/TEST-REGISTRY.md).
-var driverPackages = []string{".", "../../tools/schema-test"}
+var driverPackages = []string{".", "./extract", "../../tools/schema-test"}
 
 // skipCalls returns file:line for every skip mechanism in Go source: a call
 // of Skip, SkipNow or Skipf on anything, and testing.Short().
