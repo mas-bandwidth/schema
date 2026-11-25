@@ -28,10 +28,13 @@ for need in build/conformance-harness "$host" build/conformance-luau build/luau-
 done
 
 # THE TOLERANT READ, AS THE STRICT CUT REMOVED IT: wire damage no longer
-# discards the value, and the refusing counters no longer refuse it.
-tol='s/\t\tlocal damaged = wireDamage\(b, top, fr\.ids, rep\)/\t\tlocal damaged = false/; s/\tfor _, k in REFUSING do/\tfor _, k in ({}) do/'
+# discards the value, and the refusing counters no longer refuse it. The
+# wire-alone check is one call, shared by the strict read and the walk's
+# judgement, at whatever depth it sits.
+tol='s/(\t+)local damaged = wireDamage\(b, top, fr\.ids, rep\)/$1local damaged = false/; s/\tfor _, k in REFUSING do/\tfor _, k in ({}) do/'
 # A header whose spelling crosses its L is framed by the whole body rather than
-# its own L, and the body's trailing bytes are no longer damage.
+# its own L, and the body's trailing bytes are no longer damage (frameDamaged,
+# the one spelling the strict read and the walk's judgement share).
 frame='s/\tif fr == nil or \(top ~= nil and top\.term \+ 1 ~= fr\.e\) then/\tif fr == nil then/'
 # A damaged walk returns its partial value: the malformed flag stops
 # discarding the load.

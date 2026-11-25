@@ -2588,11 +2588,6 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 	return false
 end
 
--- the variable-form half of the strict read, shared by ReadStrict (a
--- non-fixed root, or a fixed root's form-3 dispatch above it) and by
--- ReadStrictVariable (a fixed root handed form-1 bytes, for the framing
--- surface alone: docs/LAYERS/1-framing.md, test/conformance/go/fixed.go's
--- variableLoad). It assumes the report is reset and the buffer is non-empty.
 -- frameTop is the id table and the root body's field list, the framing the
 -- strict read and the walk's judgement both start from: nil, nil when the id
 -- table does not frame; top nil when the root body does not walk.
@@ -2600,6 +2595,16 @@ local function frameTop(b: buffer): (any, any)
 	local fr = frame(b)
 	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
 	return fr, top
+end
+
+-- frameDamaged: the id table does not frame, or the root body's terminator
+-- does not sit where the id table starts (docs/SPEC-TABLES.md §3). The one
+-- spelling of the check, for the strict read and the walk's judgement alike.
+local function frameDamaged(fr: any, top: any): boolean
+	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+		return true
+	end
+	return false
 end
 
 -- WIRE-ALONE DAMAGE (docs/SPEC-TABLES.md §6.5): the conditions the value
@@ -2637,7 +2642,7 @@ end
 -- file with any integrity trailer already off.
 wireAloneRefuses = function(b: buffer, rep: any): boolean
 	local fr, top = frameTop(b)
-	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+	if frameDamaged(fr, top) then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
 		return true
@@ -2645,6 +2650,11 @@ wireAloneRefuses = function(b: buffer, rep: any): boolean
 	return top ~= nil and wireDamageRefuses(b, top, fr, rep)
 end
 
+-- the variable-form half of the strict read, shared by ReadStrict (a
+-- non-fixed root, or a fixed root's form-3 dispatch above it) and by
+-- ReadStrictVariable (a fixed root handed form-1 bytes, for the framing
+-- surface alone: docs/LAYERS/1-framing.md, test/conformance/go/fixed.go's
+-- variableLoad). It assumes the report is reset and the buffer is non-empty.
 local function strictVariable(root: string, bytes: buffer, rep: any, d: any): any
 	local b = bytes
 	local form = buffer.readu8(b, 0)
@@ -2656,7 +2666,7 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 		b = body
 	end
 	local fr, top = frameTop(b)
-	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+	if frameDamaged(fr, top) then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
 		return nil
