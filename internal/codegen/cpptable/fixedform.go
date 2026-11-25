@@ -955,7 +955,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst,\n", st.Name, st.Name, st.Name)
 	g.pf("                %sFixedCover, %sFixedCoverCount,\n", st.Name, st.Name)
 	g.pf("                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );\n")
-	g.pf("            if ( made < 0 )\n            {\n                report->refused = true;\n                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;\n                return -1;\n            }\n")
+	g.pf("            if ( made < 0 )\n            {\n                report->refused = true;\n                report->reason = TableMessageReason::plan_too_large;\n                if ( made == -2 ) { report->reason = TableMessageReason::layout_record_too_large; }\n                if ( made == -3 ) { report->reason = TableMessageReason::layout_malformed; }\n                if ( made == -4 ) { report->reason = TableMessageReason::kind_mismatch; }\n                return -1;\n            }\n")
 	g.pf("            record_bytes = known.record_bytes;\n")
 	g.pf("            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;\n")
 	g.pf("            if ( cache != NULL ) { cache->compiles++; }\n")
