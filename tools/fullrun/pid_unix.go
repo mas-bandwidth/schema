@@ -92,7 +92,9 @@ func procLive(pid int) bool {
 
 // lockOut holds the shard's out directory for this process's life: a
 // second shard in it refuses to run. The lock goes with the process, so a
-// shard that died leaves it free.
+// shard that died leaves it free. Letting go unlocks before it closes: a
+// process forked in that moment holds a copy of the descriptor until it
+// execs, and a close alone would leave the lock held through that copy.
 func lockOut(dir string) (func(), error) {
 	f, err := os.OpenFile(dir+"/shard.lock", os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
@@ -102,7 +104,10 @@ func lockOut(dir string) (func(), error) {
 		_ = f.Close()
 		return nil, fmt.Errorf("another shard runs in %s (%w): one shard at a time in an out directory", dir, err)
 	}
-	return func() { _ = f.Close() }, nil
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
 }
 
 // launcherAlive reports whether pid is still the shard launcher for out:
