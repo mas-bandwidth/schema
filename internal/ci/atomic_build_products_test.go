@@ -73,9 +73,9 @@ func ruleRecipe(src, target string) (string, bool) {
 }
 
 var (
-	// a link straight onto the target: -o $@ followed by a space or the end
+	// a link straight onto the target: -o $@ followed by a space or the end.
 	linkInPlace = regexp.MustCompile(`-o \$@(\s|$)`)
-	// the shared .next or .prev directory, not one named for its build
+	// the shared .next or .prev directory, not one named for its build.
 	corpusSharedTemp = regexp.MustCompile(`build/fixedform-corpus\.(next|prev)(\s|/|;|$)`)
 )
 
@@ -91,8 +91,9 @@ func atomicWriteProblems(files map[string]string) []string {
 			bad = append(bad, b.file+": no rule with a recipe makes "+b.target)
 		case linkInPlace.MatchString(recipe):
 			bad = append(bad, b.file+": "+b.target+" is linked in place (-o $@), so a run executing it sees Text file busy")
-		case !strings.Contains(recipe, "-o $@.tmp.$$$$") || !strings.Contains(recipe, "mv -f $@.tmp.$$$$ $@"):
-			bad = append(bad, b.file+": "+b.target+" is not linked to $@.tmp.$$$$ and renamed onto $@ with mv -f")
+		case !strings.Contains(recipe, "-o $@.tmp.$$$$") || !strings.Contains(recipe, "&& mv -f $@.tmp.$$$$ $@"):
+			// && and not ;: a link that failed must never be renamed in
+			bad = append(bad, b.file+": "+b.target+" is not linked to $@.tmp.$$$$ and, only when the link succeeds (&&), renamed onto $@ with mv -f")
 		}
 	}
 	target, ok := corpusTarget(files[atomicCorpusFile])
@@ -105,10 +106,23 @@ func atomicWriteProblems(files map[string]string) []string {
 		bad = append(bad, atomicCorpusFile+": no rule with a recipe makes "+target)
 	case corpusSharedTemp.MatchString(recipe):
 		bad = append(bad, atomicCorpusFile+": "+target+" writes a shared build/fixedform-corpus.next or .prev, which another build clears under it")
-	case !strings.Contains(recipe, "next=build/fixedform-corpus.next.$$$$") || !strings.Contains(recipe, "rename($$ARGV[0], $$ARGV[1])"):
-		bad = append(bad, atomicCorpusFile+": "+target+" does not write build/fixedform-corpus.next.$$$$ and rename(2) it into place")
+	case !strings.Contains(recipe, "next=build/fixedform-corpus.next.$$$$;") || !strings.Contains(recipe, "prev=build/fixedform-corpus.prev.$$$$;"):
+		bad = append(bad, atomicCorpusFile+": "+target+" does not write build/fixedform-corpus.next.$$$$ and set the live one aside as build/fixedform-corpus.prev.$$$$")
+	case !strings.Contains(recipe, "$(CORPUS_RENAME) $$live $$prev ") || !strings.Contains(recipe, "$(CORPUS_RENAME) $$next $$live ") || !corpusRenameIsRename(files[atomicCorpusFile]) || strings.Contains(recipe, "mv $$next") || strings.Contains(recipe, "mv build/fixedform-corpus "):
+		bad = append(bad, atomicCorpusFile+": "+target+" does not swap the corpus with rename(2) (CORPUS_RENAME), never mv, which moves a directory inside one another build put in first")
 	}
 	return bad
+}
+
+// corpusRenameIsRename: the Makefile's CORPUS_RENAME is perl's rename(2) of
+// its two arguments.
+func corpusRenameIsRename(src string) bool {
+	for _, line := range strings.Split(src, "\n") {
+		if v, ok := strings.CutPrefix(line, "CORPUS_RENAME = "); ok {
+			return strings.HasPrefix(v, "perl -e ") && strings.Contains(v, "rename($$f, $$t)")
+		}
+	}
+	return false
 }
 
 func readAtomicMakeFiles(t *testing.T) map[string]string {
@@ -138,6 +152,11 @@ func TestSharedBuildProductsAreWrittenAtomically(t *testing.T) {
 		{"Makefile", `test/tables/fixedform_dump.cpp -o $@.tmp.$$$$ && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }`, `test/tables/fixedform_dump.cpp -o $@`, "build/schema_test_fixedform_dump"},
 		{filepath.Join("make", "c.mk"), `-o $@.tmp.$$$$ -lm && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }`, `-o $@ -lm`, "build/conformance-c"},
 		{"Makefile", `next=build/fixedform-corpus.next.$$$$;`, `next=build/fixedform-corpus.next;`, "fixedform-corpus/.stamp"},
+		{"Makefile", `prev=build/fixedform-corpus.prev.$$$$;`, `prev=build/fixedform-corpus.prev;`, "fixedform-corpus/.stamp"},
+		{"Makefile", `{ $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST ||`, `{ mv $$next $$live ||`, "fixedform-corpus/.stamp"},
+		{"Makefile", `exit 0 if rename($$f, $$t);`, `exit 0 if system("mv", $$f, $$t) == 0;`, "fixedform-corpus/.stamp"},
+		// a failed link renamed in all the same
+		{"Makefile", `-o $@.tmp.$$$$ ./cmd/schema && mv -f`, `-o $@.tmp.$$$$ ./cmd/schema; mv -f`, "bin/schema"},
 	}
 	for _, p := range plants {
 		planted := map[string]string{}

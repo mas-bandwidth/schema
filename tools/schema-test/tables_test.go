@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"os/exec"
@@ -147,7 +148,7 @@ func TestTablesVerdictsFollowTheCorpus(t *testing.T) {
 // TestTablesGenerationIsJudgedByTheCorpusVerdict: an accepted schema
 // that refuses and a refused schema that generates are each a failure.
 func TestTablesGenerationIsJudgedByTheCorpusVerdict(t *testing.T) {
-	boom := &exec.ExitError{} // the compiler ran and exited non-zero
+	boom := exitedNonZero(t) // the compiler ran and exited non-zero
 	for _, c := range []struct {
 		verdict string
 		err     error
@@ -181,7 +182,30 @@ func TestATablesCompilerThatDidNotRunFailsEitherVerdict(t *testing.T) {
 			t.Errorf("verdict %s with a compiler that did not run: pass = %v, reason %q; want a failure naming %q", verdict, pass, reason, syscall.ETXTBSY.Error())
 		}
 	}
-	if pass, reason := tablesVerdict(tablesAccept, &exec.ExitError{}, "schema: refused"); pass || !strings.Contains(reason, "refused a schema the corpus holds as valid") {
+	if pass, reason := tablesVerdict(tablesAccept, exitedNonZero(t), "schema: refused"); pass || !strings.Contains(reason, "refused a schema the corpus holds as valid") {
 		t.Errorf("an accept row whose compiler exited non-zero: pass = %v, reason %q", pass, reason)
 	}
+	// a compiler a signal ended (a crash, the run's deadline) has no exit
+	// status above 0: it refused nothing either
+	killed := &exec.ExitError{}
+	if killed.ExitCode() > 0 {
+		t.Fatalf("an ExitError with no process state has exit code %d", killed.ExitCode())
+	}
+	for _, verdict := range []string{tablesAccept, tablesRefuse} {
+		if pass, reason := tablesVerdict(verdict, killed, ""); pass || !strings.Contains(reason, "did not finish") {
+			t.Errorf("verdict %s with a compiler a signal ended: pass = %v, reason %q", verdict, pass, reason)
+		}
+	}
+}
+
+// exitedNonZero is the error of a process that ran and exited with status
+// 2: this test binary, handed a flag it does not have.
+func exitedNonZero(t *testing.T) error {
+	t.Helper()
+	err := exec.Command(os.Args[0], "-test.no-such-flag").Run()
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+		t.Fatalf("the test binary with a bad flag: %v, want exit status 2", err)
+	}
+	return err
 }

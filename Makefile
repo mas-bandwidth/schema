@@ -7293,27 +7293,43 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 # and swapped in whole, so a reader never sees a directory that is half
 # written. A directory cannot be renamed over a full one, so the swap is two
 # renames (the live one aside, the new one in) with nothing written between;
-# the old one is removed after. The second is rename(2) itself (perl), never
-# mv: when another build put its corpus in first, mv would move this one
-# INSIDE it, and rename refuses, so this build keeps the other's whole corpus
-# (built from the same inputs) and removes its own.
+# the old one is removed after. A reader that looks in that moment finds no
+# corpus and fails by name, never a half-written one; a run builds the
+# corpus once before its rows (a prepare step), so its rows do not rebuild
+# it. Both renames are rename(2) itself (CORPUS_RENAME), never mv: the live
+# corpus another build already moved aside is no error (ENOENT), and when
+# another build put its corpus in first, mv would move this one INSIDE it,
+# where rename refuses: this build then keeps the other's whole corpus when it
+# is newer than the dump it was to be built by, and removes its own. A
+# failure puts the live corpus back. A directory a killed build left (its
+# pid no longer running) is removed by the next build.
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
 # emitter to use. Nothing under build/ is committed; the test -s below only
 # refuses to call the corpus finished when the manifest did not arrive.
+#
+# CORPUS_RENAME FROM TO CODE ERRNO...: rename(2) FROM onto TO; a failure
+# with one of the ERRNO names exits CODE (0: no error), any other dies
+# naming both paths and the error.
+CORPUS_RENAME = perl -e 'my ($$f, $$t, $$code, @ok) = @ARGV; exit 0 if rename($$f, $$t); for my $$e (@ok) { exit $$code if $$!{$$e} } die "rename $$f -> $$t: $$!\n"'
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
-	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; \
+	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; live=build/fixedform-corpus; \
+	for d in build/fixedform-corpus.next.* build/fixedform-corpus.prev.*; do \
+	  if test -e "$$d" && ! kill -0 "$${d##*.}" 2>/dev/null; then rm -rf "$$d"; fi; \
+	done; \
 	rm -rf $$next $$prev && mkdir -p $$next && \
 	echo "./build/schema_test_fixedform_dump $$next" && \
 	./build/schema_test_fixedform_dump $$next && \
-	{ test -s $$next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; rm -rf $$next; exit 1; }; } && \
+	{ test -s $$next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; false; }; } && \
 	touch $$next/.stamp && \
-	{ if test -d build/fixedform-corpus; then mv build/fixedform-corpus $$prev; fi; } && \
-	{ perl -e 'rename($$ARGV[0], $$ARGV[1]) or exit 1' $$next build/fixedform-corpus || \
-	  { test -f build/fixedform-corpus/.stamp && rm -rf $$next; }; } && \
-	rm -rf $$prev || { rm -rf $$next; exit 1; }
+	$(CORPUS_RENAME) $$live $$prev 0 ENOENT && \
+	{ $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST || \
+	  { test $$? = 3 && { test $$live/.stamp -nt build/schema_test_fixedform_dump || \
+	    { echo "corpus: another build put in $$live, older than the dump it was to be built by" >&2; false; }; } && rm -rf $$next; }; } && \
+	rm -rf $$prev || \
+	{ rm -rf $$next; if test ! -e $$live && test -d $$prev; then mv $$prev $$live; fi; exit 1; }
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"

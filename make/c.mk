@@ -1623,11 +1623,11 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # the whole ctable package it hit go test's 10-minute limit on staging
 # (625 tests started, 358 passed, the limit firing in
 # TestFixedRoadmapCT05Evolution/c/E6); the limit is never raised. Each test
-# below is a registry row of its own, a gotest row of the functional tier run
-# on every pull request (it fits a per-PR shard), whose corpus the gotest
-# adapter builds first as a prepare step (test/registry/go-needs.txt), so a
-# test that hangs or slows is red by name. This target is what the workflows
-# and test-c run. TestFixedVersioningKindMoved has its own gotest row and is
+# below is a registry row of its own (make-gotest, read by name from this
+# run's go test -json events), of the functional tier and so run on every
+# pull request: the adapter builds the corpus first as a prepare step
+# (test/registry/go-needs.txt), and this target's call is the tests alone. A
+# test that hangs or slows is red by name. TestFixedVersioningKindMoved has its own gotest row and is
 # not run here twice. The whole package, these tests and the roadmap tests among them, still
 # runs in ci-full.yml's three unit-codegen ctable steps (^TestC, ^TestFixe and
 # the rest), which build the corpus first.

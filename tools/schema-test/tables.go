@@ -277,14 +277,19 @@ func tablesChecks(dir, name, schema, verdict string) (checks, expect string) {
 }
 
 // tablesVerdict judges one generation: pass, or fail with its reason. A
-// refusal is the compiler running and exiting non-zero; a compiler that
-// could not be run at all (missing, half written, "text file busy" while
-// another build rewrites it) refused nothing, and fails either verdict
-// naming why it did not run.
+// refusal is the compiler running and exiting with a status above 0; a
+// compiler that could not be run at all (missing, half written, "text file
+// busy" while another build rewrites it), or that a signal ended (a crash,
+// the run's deadline), refused nothing, and fails either verdict naming why.
 func tablesVerdict(verdict string, genErr error, out string) (bool, string) {
 	var exit *exec.ExitError
-	if genErr != nil && !errors.As(genErr, &exit) && (verdict == tablesAccept || verdict == tablesRefuse) {
-		return false, "the compiler did not run: " + genErr.Error()
+	if genErr != nil && (verdict == tablesAccept || verdict == tablesRefuse) {
+		switch {
+		case !errors.As(genErr, &exit):
+			return false, "the compiler did not run: " + genErr.Error()
+		case exit.ExitCode() <= 0:
+			return false, "the compiler did not finish (" + genErr.Error() + "): " + oneLine(tail(out, 5))
+		}
 	}
 	switch verdict {
 	case tablesAccept:

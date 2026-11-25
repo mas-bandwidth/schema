@@ -29,4 +29,11 @@ func TestTheCReasonRestatementIsDroppedWithLayoutUnknown(t *testing.T) {
 	if !strings.Contains(strings.Join(canonicalize(planted), "\n"), "SOMETHING_NEW") {
 		t.Fatal("an enumerator the twin map was not taught was erased with the restatement")
 	}
+	// ...and the match never runs past the restatement's own closing brace
+	// into a later enum that does end at layout_unknown = 22, erasing the
+	// code between them.
+	later := planted + "inline int TableFixedKeep( void ) { return 1; }\nenum { SCHEMA_TABLE_OTHER = 1, SCHEMA_TABLE_LAYOUT_UNKNOWN = 22 };\n"
+	if got := strings.Join(canonicalize(later), "\n"); !strings.Contains(got, "SOMETHING_NEW") || !strings.Contains(got, "TableFixedKeep") {
+		t.Fatalf("the restatement's match ran into a later enum:\n%s", got)
+	}
 }
