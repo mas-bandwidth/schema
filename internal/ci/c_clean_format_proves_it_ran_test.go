@@ -52,7 +52,7 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 		testinputs.Files(t, script)
 		cmd := exec.Command("sh", append([]string{script, "allow.txt"}, trees...)...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"))
+		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"), "FILE_SECONDS=5")
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}

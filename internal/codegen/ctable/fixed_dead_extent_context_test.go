@@ -21,7 +21,10 @@ func TestCFixedDeadExtentOwnership(t *testing.T) {
  fixed table Root { counted Counted
  wrapped Wrapped }
  `
-	header := string(generate(t, schema)["ProbeTable.h"])
+	u := unitFrom(t, schema)
+	files := generate(t, schema)
+	// the header includes ProbeTableData.h, which holds the fixed form's arrays
+	header := string(files["ProbeTable.h"]) + string(files["ProbeTableData.h"])
 	for _, tc := range []struct {
 		note string
 		want int64
@@ -29,7 +32,7 @@ func TestCFixedDeadExtentOwnership(t *testing.T) {
 		{"small count", 1}, {"large count", 8},
 		{"longer present, absent payload defaults", 8}, {"shorter present, absent payload defaults", 1},
 	} {
-		line := cDeadPlanLine(t, header, "root", tc.note)
+		line := cDeadPlanLine(t, header, u, "Root", "root", tc.note)
 		fields := strings.Split(line[strings.Index(line, "{")+1:strings.LastIndex(line, "}")], ",")
 		if len(fields) != 22 {
 			t.Fatalf("unexpected plan row field count: %d", len(fields))

@@ -30,9 +30,9 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3122 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4803 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 2433 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `unit` | 3130 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4843 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `nightly` | 2436 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
 
@@ -369,82 +369,83 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `lobster` | 16/18 | 2 | 48.4 |
 | `lobster` | 17/18 | 46 | 46.0 |
 | `lobster` | 18/18 | 46 | 46.0 |
-| `none` | 1/75 | 78 | 47.9 |
-| `none` | 2/75 | 20 | 51.4 |
-| `none` | 3/75 | 122 | 57.7 |
-| `none` | 4/75 | 3 | 55.0 |
-| `none` | 5/75 | 97 | 37.9 |
-| `none` | 6/75 | 45 | 41.8 |
-| `none` | 7/75 | 394 | 51.2 |
-| `none` | 8/75 | 66 | 29.0 |
-| `none` | 9/75 | 151 | 45.3 |
-| `none` | 10/75 | 966 | 48.3 |
-| `none` | 11/75 | 3 | 38.7 |
-| `none` | 12/75 | 27 | 51.8 |
-| `none` | 13/75 | 14 | 57.2 |
-| `none` | 14/75 | 41 | 59.1 |
-| `none` | 15/75 | 85 | 55.9 |
-| `none` | 16/75 | 3 | 59.3 |
-| `none` | 17/75 | 128 | 51.4 |
-| `none` | 18/75 | 33 | 50.8 |
-| `none` | 19/75 | 19 | 51.4 |
-| `none` | 20/75 | 26 | 51.9 |
-| `none` | 21/75 | 43 | 51.5 |
-| `none` | 22/75 | 7 | 52.3 |
-| `none` | 23/75 | 8 | 53.2 |
-| `none` | 24/75 | 31 | 51.0 |
-| `none` | 25/75 | 15 | 55.6 |
-| `none` | 26/75 | 4 | 45.2 |
-| `none` | 27/75 | 14 | 55.6 |
-| `none` | 28/75 | 19 | 54.8 |
-| `none` | 29/75 | 3 | 50.2 |
-| `none` | 30/75 | 18 | 50.8 |
-| `none` | 31/75 | 89 | 49.7 |
-| `none` | 32/75 | 27 | 52.2 |
-| `none` | 33/75 | 44 | 58.2 |
-| `none` | 34/75 | 86 | 58.7 |
-| `none` | 35/75 | 19 | 56.8 |
-| `none` | 36/75 | 15 | 51.3 |
-| `none` | 37/75 | 45 | 59.7 |
-| `none` | 38/75 | 90 | 51.1 |
-| `none` | 39/75 | 211 | 57.5 |
-| `none` | 40/75 | 197 | 59.6 |
-| `none` | 41/75 | 84 | 58.7 |
-| `none` | 42/75 | 92 | 57.2 |
-| `none` | 43/75 | 107 | 57.9 |
-| `none` | 44/75 | 51 | 49.3 |
-| `none` | 45/75 | 74 | 56.7 |
-| `none` | 46/75 | 270 | 59.4 |
-| `none` | 47/75 | 14 | 57.6 |
-| `none` | 48/75 | 34 | 48.9 |
-| `none` | 49/75 | 23 | 52.8 |
-| `none` | 50/75 | 50 | 51.8 |
-| `none` | 51/75 | 189 | 49.0 |
-| `none` | 52/75 | 247 | 59.3 |
-| `none` | 53/75 | 118 | 59.7 |
-| `none` | 54/75 | 52 | 57.2 |
-| `none` | 55/75 | 71 | 59.6 |
-| `none` | 56/75 | 96 | 48.4 |
-| `none` | 57/75 | 1 | 51.6 |
-| `none` | 58/75 | 118 | 47.3 |
-| `none` | 59/75 | 104 | 52.7 |
-| `none` | 60/75 | 35 | 59.6 |
-| `none` | 61/75 | 2 | 47.8 |
-| `none` | 62/75 | 5 | 45.1 |
-| `none` | 63/75 | 6 | 40.6 |
-| `none` | 64/75 | 1 | 38.5 |
-| `none` | 65/75 | 1 | 38.5 |
-| `none` | 66/75 | 1 | 38.5 |
-| `none` | 67/75 | 1 | 38.5 |
-| `none` | 68/75 | 1 | 38.5 |
-| `none` | 69/75 | 1 | 38.5 |
-| `none` | 70/75 | 1 | 38.5 |
-| `none` | 71/75 | 1 | 38.5 |
-| `none` | 72/75 | 25 | 59.5 |
-| `none` | 73/75 | 52 | 59.0 |
-| `none` | 74/75 | 38 | 59.7 |
-| `none` | 75/75 | 91 | 59.6 |
-| **every row** | **399 jobs** | **51479** | **20304.5** |
+| `none` | 1/76 | 78 | 47.9 |
+| `none` | 2/76 | 20 | 51.4 |
+| `none` | 3/76 | 122 | 57.7 |
+| `none` | 4/76 | 3 | 55.0 |
+| `none` | 5/76 | 118 | 58.9 |
+| `none` | 6/76 | 55 | 51.8 |
+| `none` | 7/76 | 394 | 51.2 |
+| `none` | 8/76 | 66 | 29.0 |
+| `none` | 9/76 | 151 | 45.3 |
+| `none` | 10/76 | 966 | 48.3 |
+| `none` | 11/76 | 3 | 38.7 |
+| `none` | 12/76 | 27 | 51.8 |
+| `none` | 13/76 | 15 | 57.5 |
+| `none` | 14/76 | 40 | 58.8 |
+| `none` | 15/76 | 85 | 55.9 |
+| `none` | 16/76 | 2 | 43.6 |
+| `none` | 17/76 | 4 | 41.9 |
+| `none` | 18/76 | 145 | 47.5 |
+| `none` | 19/76 | 18 | 58.4 |
+| `none` | 20/76 | 17 | 51.9 |
+| `none` | 21/76 | 62 | 52.0 |
+| `none` | 22/76 | 8 | 48.8 |
+| `none` | 23/76 | 6 | 56.8 |
+| `none` | 24/76 | 27 | 57.2 |
+| `none` | 25/76 | 22 | 58.9 |
+| `none` | 26/76 | 6 | 56.7 |
+| `none` | 27/76 | 14 | 55.6 |
+| `none` | 28/76 | 19 | 54.8 |
+| `none` | 29/76 | 3 | 50.2 |
+| `none` | 30/76 | 18 | 50.8 |
+| `none` | 31/76 | 89 | 49.7 |
+| `none` | 32/76 | 27 | 52.2 |
+| `none` | 33/76 | 44 | 58.2 |
+| `none` | 34/76 | 86 | 58.7 |
+| `none` | 35/76 | 19 | 56.8 |
+| `none` | 36/76 | 18 | 57.1 |
+| `none` | 37/76 | 42 | 53.9 |
+| `none` | 38/76 | 90 | 51.1 |
+| `none` | 39/76 | 227 | 58.1 |
+| `none` | 40/76 | 181 | 59.0 |
+| `none` | 41/76 | 84 | 58.7 |
+| `none` | 42/76 | 92 | 57.2 |
+| `none` | 43/76 | 107 | 57.9 |
+| `none` | 44/76 | 56 | 53.0 |
+| `none` | 45/76 | 70 | 59.0 |
+| `none` | 46/76 | 269 | 53.3 |
+| `none` | 47/76 | 14 | 57.6 |
+| `none` | 48/76 | 34 | 48.9 |
+| `none` | 49/76 | 23 | 52.8 |
+| `none` | 50/76 | 50 | 51.8 |
+| `none` | 51/76 | 228 | 55.0 |
+| `none` | 52/76 | 230 | 58.9 |
+| `none` | 53/76 | 124 | 58.9 |
+| `none` | 54/76 | 29 | 58.4 |
+| `none` | 55/76 | 66 | 53.5 |
+| `none` | 56/76 | 95 | 44.0 |
+| `none` | 57/76 | 2 | 56.0 |
+| `none` | 58/76 | 117 | 43.6 |
+| `none` | 59/76 | 107 | 57.0 |
+| `none` | 60/76 | 33 | 59.0 |
+| `none` | 61/76 | 2 | 47.8 |
+| `none` | 62/76 | 3 | 43.1 |
+| `none` | 63/76 | 8 | 42.6 |
+| `none` | 64/76 | 1 | 38.5 |
+| `none` | 65/76 | 1 | 38.5 |
+| `none` | 66/76 | 1 | 38.5 |
+| `none` | 67/76 | 1 | 38.5 |
+| `none` | 68/76 | 1 | 38.5 |
+| `none` | 69/76 | 1 | 38.5 |
+| `none` | 70/76 | 1 | 38.5 |
+| `none` | 71/76 | 1 | 38.5 |
+| `none` | 72/76 | 16 | 50.5 |
+| `none` | 73/76 | 42 | 51.0 |
+| `none` | 74/76 | 41 | 38.0 |
+| `none` | 75/76 | 35 | 57.7 |
+| `none` | 76/76 | 89 | 57.6 |
+| **every row** | **400 jobs** | **51527** | **20352.5** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

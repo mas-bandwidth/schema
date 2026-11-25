@@ -64,12 +64,18 @@
 // codec silently degrades to that shape. Forcing the primitives and the
 // fixed-class bodies inline is what keeps the cursor in registers and lets
 // adjacent constant framing bytes merge into one store.
+// A build may define the macro first (as plain inline, say, where forcing
+// every body inline makes a sanitizer build crawl); the default is unchanged.
+#ifndef LISTDEMO_TABLE_INLINE
 #if defined( _MSC_VER )
 #define LISTDEMO_TABLE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define LISTDEMO_TABLE_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define LISTDEMO_TABLE_INLINE inline
+#endif
 #endif
 
 namespace listdemo {
@@ -798,7 +804,8 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ )
     // Explicit little-endian stores also cover compilers that do not expose
     // byte-order macros. Native copies require positive little-endian proof.
     for ( int64_t i = 0; i <= count; i++ )
@@ -2277,9 +2284,11 @@ inline bool TableMessageQuantization( float qmin, float qmax, float qres, float 
 // would otherwise fuse into one rounding and move the wire.
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+w"( x ) )
-#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && ( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+x"( x ) )
-#else
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) \
     do \
     { \
@@ -2606,191 +2615,18 @@ static const bool kTableAnnounceTooLarge = false;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
-    0x01,
-    0x01,
-    0x09,
-    0x8d,
-    0x07,
-    0xe9,
-    0x70,
-    0x7c,
-    0x4f,
-    0x0f,
-    0x21,
-    0x02,
-    0x0e,
-    0x90,
-    0x01,
-    0x06,
-    0x8d,
-    0x01,
-    0x6f,
-    0x2c,
-    0x41,
-    0x4f,
-    0xbf,
-    0x84,
-    0x78,
-    0x3e,
-    0x0e,
-    0x00,
-    0x08,
-    0x0d,
-    0xf3,
-    0xa4,
-    0x48,
-    0x44,
-    0x19,
-    0xab,
-    0xd7,
-    0x56,
-    0x04,
-    0x00,
-    0x74,
-    0xa2,
-    0x79,
-    0x44,
-    0x8e,
-    0xe2,
-    0xe5,
-    0xb1,
-    0x04,
-    0x00,
-    0x84,
-    0x76,
-    0xbc,
-    0x2e,
-    0xef,
-    0x83,
-    0x76,
-    0x1e,
-    0x08,
-    0x00,
-    0xbf,
-    0xe9,
-    0xd1,
-    0x2f,
-    0x93,
-    0xcd,
-    0xda,
-    0xdb,
-    0x08,
-    0x00,
-    0x22,
-    0x72,
-    0x34,
-    0x7d,
-    0xf6,
-    0x0b,
-    0x72,
-    0x17,
-    0x08,
-    0x00,
-    0x07,
-    0x17,
-    0x02,
-    0x86,
-    0x4c,
-    0xf5,
-    0x63,
-    0xaf,
-    0x0a,
-    0x00,
-    0x54,
-    0x15,
-    0x02,
-    0x86,
-    0x4c,
-    0xf4,
-    0x63,
-    0xaf,
-    0x0a,
-    0x00,
-    0x3a,
-    0x70,
-    0x6e,
-    0x3e,
-    0x93,
-    0x43,
-    0xe5,
-    0x9d,
-    0x08,
-    0x00,
-    0x07,
-    0x17,
-    0x02,
-    0x86,
-    0x4c,
-    0xf5,
-    0x63,
-    0xaf,
-    0x04,
-    0x00,
-    0x54,
-    0x15,
-    0x02,
-    0x86,
-    0x4c,
-    0xf4,
-    0x63,
-    0xaf,
-    0x04,
-    0x00,
-    0x09,
-    0x06,
-    0x02,
-    0x86,
-    0x4c,
-    0xeb,
-    0x63,
-    0xaf,
-    0x04,
-    0x00,
-    0xec,
-    0x10,
-    0x5b,
-    0x36,
-    0x19,
-    0x4a,
-    0xc9,
-    0x3d,
-    0x06,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x0d,
-    0x00,
-    0xfe,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xfd,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
+    0x01, 0x01, 0x09, 0x8d, 0x07, 0xe9, 0x70, 0x7c, 0x4f, 0x0f, 0x21, 0x02, 0x0e, 0x90, 0x01, 0x06,
+    0x8d, 0x01, 0x6f, 0x2c, 0x41, 0x4f, 0xbf, 0x84, 0x78, 0x3e, 0x0e, 0x00, 0x08, 0x0d, 0xf3, 0xa4,
+    0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x04, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1,
+    0x04, 0x00, 0x84, 0x76, 0xbc, 0x2e, 0xef, 0x83, 0x76, 0x1e, 0x08, 0x00, 0xbf, 0xe9, 0xd1, 0x2f,
+    0x93, 0xcd, 0xda, 0xdb, 0x08, 0x00, 0x22, 0x72, 0x34, 0x7d, 0xf6, 0x0b, 0x72, 0x17, 0x08, 0x00,
+    0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0a, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4,
+    0x63, 0xaf, 0x0a, 0x00, 0x3a, 0x70, 0x6e, 0x3e, 0x93, 0x43, 0xe5, 0x9d, 0x08, 0x00, 0x07, 0x17,
+    0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x04, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf,
+    0x04, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x00, 0xec, 0x10, 0x5b, 0x36,
+    0x19, 0x4a, 0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0x00,
+    0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
 // an announcement carried, RESOLVED ONCE, under one numbering.
@@ -3824,9 +3660,11 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // time in the read loop, and the spelling is the compiler's.
 #if defined( _MSC_VER )
 #define TABLE_RESTRICT __restrict
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_RESTRICT __restrict__
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_RESTRICT
 #endif
 
@@ -3845,7 +3683,8 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #ifndef TABLE_CLAMP_RESTRICT
 #if defined( __clang__ )
 #define TABLE_CLAMP_RESTRICT __restrict__
-#else
+#endif
+#if !( defined( __clang__ ) )
 #define TABLE_CLAMP_RESTRICT
 #endif
 #endif
@@ -3854,9 +3693,11 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
 #define TABLE_FIXED_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_FIXED_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_FIXED_INLINE inline
 #endif
 
@@ -4022,9 +3863,11 @@ inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
 // the big-endian path so a test can hold its byte image.
 #if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
 constexpr bool TableFixedBigEndianHost = true;
-#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#endif
+#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 constexpr bool TableFixedBigEndianHost = true;
-#else
+#endif
+#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 constexpr bool TableFixedBigEndianHost = false;
 #endif
 
@@ -11466,7 +11309,8 @@ static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static const uint64_t TableCookByteOrder = 2; // big
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static const uint64_t TableCookByteOrder = 1; // little
 #endif
 
@@ -11709,6 +11553,8 @@ inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const 
 #endif // LISTDEMO_SCHEMA_TABLE_COOK_VARIABLE
 
 namespace listdemo {
+
+#include "HoldersTableData.h" // the fixed form's layout bytes, rows and plans
 
 // table Sample — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
@@ -15002,35 +14848,8 @@ constexpr int64_t SampleFixedBodyBytes = 4;
 constexpr int64_t SampleFixedRecordBytes = 8 + SampleFixedBodyBytes; // the hash and the body
 constexpr uint64_t SampleFixedHash = 0xd60cbcb26f964cd0ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
-// THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
-// PRE-ORDER walk of the closure in the writer's declared order.
-// Every byte is settled by the compiler.
-constexpr uint8_t SampleFixedLayout[] = {
-    0x02, 0x00, 0x00, 0x00, 0xa7, 0x0a, 0xc7, 0x54, 0x12, 0xd6, 0x40, 0xdc, 0x0d, 0x04, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t SampleFixedLayoutBytes = (int64_t) sizeof( SampleFixedLayout );
 
-// MY SIDE of the layout, one row per entry: the storage facts a layout
-// entry cannot carry, which is what a plan compiled from another writer's
-// layout lands values through.
-constexpr TableFixedDst SampleFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Sample
-    { 0, 0, 0, 0, 0 }, // v
-};
-
-// THE IDENTITY PLAN, coalesced out of 1 leaves by the schema compiler —
-// the one walk every backend lays down (ir/fixedform.go), so no two ports
-// can disagree about what the coalescer did; the asserts above tie every
-// destination in it to this compiler's own ABI. A bool field and a present
-// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms, then any guardless present-defaults entry that must
-// run after the guarded payload it replaces: the entries that are nearly
-// all of a plan never test a guard at all.
-constexpr TableFixedEntry SampleFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // v
-};
 constexpr int32_t SampleFixedPlanCount = 1;
 constexpr int32_t SampleFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
@@ -15066,14 +14885,6 @@ inline int32_t SampleFixedFloorLive = SampleFixedFloor;
 inline void SampleFixedSetFloorForTest( int32_t index ) { SampleFixedFloorLive = index; }
 #endif
 
-constexpr uint8_t SampleFixedKnown0Layout[] = {
-    0x02, 0x00, 0x00, 0x00, 0xa7, 0x0a, 0xc7, 0x54, 0x12, 0xd6, 0x40, 0xdc, 0x0d, 0x04, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-constexpr uint8_t SampleFixedKnown1Layout[] = {
-    0x02, 0x00, 0x00, 0x00, 0xa7, 0x0a, 0xc7, 0x54, 0x12, 0xd6, 0x40, 0xdc, 0x0d, 0x04, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x09, 0x06, 0x02, 0x86, 0x4c, 0xeb, 0x63, 0xaf, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout SampleFixedKnown[] = {
     { 0x0ee6a9f190922d63ull, SampleFixedKnown0Layout, 38, 12 }, // lock
     { 0xd60cbcb26f964cd0ull, SampleFixedKnown1Layout, 38, 12 }, // identity
@@ -15455,35 +15266,8 @@ constexpr int64_t ItemFixedBodyBytes = 4;
 constexpr int64_t ItemFixedRecordBytes = 8 + ItemFixedBodyBytes; // the hash and the body
 constexpr uint64_t ItemFixedHash = 0xdf45971e0ae36e5bull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
-// THE LAYOUT (form 1 calls this the vocabulary block): 2 entries, a
-// PRE-ORDER walk of the closure in the writer's declared order.
-// Every byte is settled by the compiler.
-constexpr uint8_t ItemFixedLayout[] = {
-    0x02, 0x00, 0x00, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x0d, 0x04, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t ItemFixedLayoutBytes = (int64_t) sizeof( ItemFixedLayout );
 
-// MY SIDE of the layout, one row per entry: the storage facts a layout
-// entry cannot carry, which is what a plan compiled from another writer's
-// layout lands values through.
-constexpr TableFixedDst ItemFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Item
-    { 0, 0, 0, 0, 0 }, // count
-};
-
-// THE IDENTITY PLAN, coalesced out of 1 leaves by the schema compiler —
-// the one walk every backend lays down (ir/fixedform.go), so no two ports
-// can disagree about what the coalescer did; the asserts above tie every
-// destination in it to this compiler's own ABI. A bool field and a present
-// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms, then any guardless present-defaults entry that must
-// run after the guarded payload it replaces: the entries that are nearly
-// all of a plan never test a guard at all.
-constexpr TableFixedEntry ItemFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // count
-};
 constexpr int32_t ItemFixedPlanCount = 1;
 constexpr int32_t ItemFixedPlanGuarded = 1;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
@@ -15519,14 +15303,6 @@ inline int32_t ItemFixedFloorLive = ItemFixedFloor;
 inline void ItemFixedSetFloorForTest( int32_t index ) { ItemFixedFloorLive = index; }
 #endif
 
-constexpr uint8_t ItemFixedKnown0Layout[] = {
-    0x02, 0x00, 0x00, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x0d, 0x04, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-constexpr uint8_t ItemFixedKnown1Layout[] = {
-    0x02, 0x00, 0x00, 0x00, 0x06, 0x68, 0x47, 0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x0d, 0x04, 0x00, 0x00,
-    0x00, 0x01, 0x00, 0x00, 0x00, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout ItemFixedKnown[] = {
     { 0xd285587ad8f0ebdcull, ItemFixedKnown0Layout, 38, 12 }, // lock
     { 0xdf45971e0ae36e5bull, ItemFixedKnown1Layout, 38, 12 }, // identity

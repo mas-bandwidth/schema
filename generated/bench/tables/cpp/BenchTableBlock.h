@@ -120,7 +120,8 @@ inline TableBlockAllocator TableBlockDefaultAllocator()
 // improvises row by row.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static const uint64_t TableBlockByteOrder = 2; // big
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static const uint64_t TableBlockByteOrder = 1; // little
 #endif
 
