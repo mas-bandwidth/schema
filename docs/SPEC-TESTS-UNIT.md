@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 182.
+Unit tests every language answers: 0. Language-free tests: 187.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -49,12 +49,14 @@ a negative control: a named test run against a deliberately broken build must co
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `ci`, 2 tests
+#### `tooling` family `ci`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
 | `none.unit.tooling.ci.rust-fuzz-halves-are-the-whole-gate` | `gotest` | Go test TestRustFuzzHalvesAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRustFuzzHalvesAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:101` |
+| `none.unit.tooling.ci.tables-suite-parts-cover-main` | `gotest` | Go test TestTablesSuitePartsCoverMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesSuitePartsCoverMain` | the Go test passes | `internal/ci/tables_suite_parts_test.go:20` |
+| `none.unit.tooling.ci.tables-suite-parts-refuse-each-gap` | `gotest` | Go test TestTablesSuitePartsRefuseEachGap in ./internal/ci | `package: ./internal/ci`<br>`test: TestTablesSuitePartsRefuseEachGap` | the Go test passes | `internal/ci/tables_suite_parts_test.go:50` |
 
 #### `tooling` family `conformancerows`, 7 tests
 
@@ -98,11 +100,19 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrows.every-ride-runs-in-its-legs-row` | `gotest` | Go test TestEveryRideRunsInItsLegsRow in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestEveryRideRunsInItsLegsRow` | the Go test passes | `tools/gotestrows/main_test.go:342` |
 | `none.unit.tooling.gotestrows.riding-test-runs-in-no-row` | `gotest` | Go test TestRidingTestRunsInNoRow in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestRidingTestRunsInNoRow` | the Go test passes | `tools/gotestrows/main_test.go:304` |
 
-#### `tooling` family `harness`, 5 tests
+#### `tooling` family `gotestrun`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.gotestrun.a-result-line-is-marked-as-read-from-json` | `gotest` | Go test TestAResultLineIsMarkedAsReadFromJSON in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestAResultLineIsMarkedAsReadFromJSON` | the Go test passes | `tools/gotestrun/main_test.go:142` |
+| `none.unit.tooling.gotestrun.red-verdict` | `gotest` | Go test TestRedVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRedVerdict` | the Go test passes | `tools/gotestrun/main_test.go:118` |
+
+#### `tooling` family `harness`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.harness.message-fuzz-dead-roots-are-red` | `gotest` | Go test TestMessageFuzzDeadRootsAreRed in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessageFuzzDeadRootsAreRed` | the Go test passes | `test/conformance/harness/messagefuzz_dead_test.go:8` |
+| `none.unit.tooling.harness.pin-selects-its-surfaces` | `gotest` | Go test TestPinSelectsItsSurfaces in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestPinSelectsItsSurfaces` | the Go test passes | `test/conformance/harness/pin_test.go:11` |
 | `none.unit.tooling.harness.plant-expectations-makes-one-case-wrong` | `gotest` | Go test TestPlantExpectationsMakesOneCaseWrong in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestPlantExpectationsMakesOneCaseWrong` | the Go test passes | `test/conformance/harness/plant_test.go:19` |
 | `none.unit.tooling.harness.plant-expectations-refuses-an-unknown-class` | `gotest` | Go test TestPlantExpectationsRefusesAnUnknownClass in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestPlantExpectationsRefusesAnUnknownClass` | the Go test passes | `test/conformance/harness/plant_test.go:60` |
 | `none.unit.tooling.harness.plant-message-answer-inverts` | `gotest` | Go test TestPlantMessageAnswerInverts in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestPlantMessageAnswerInverts` | the Go test passes | `test/conformance/harness/plant_test.go:72` |
