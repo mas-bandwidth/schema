@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1084. Language-free tests: 1437.
+Nightly tests every language answers: 1084. Language-free tests: 1438.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -1169,6 +1169,16 @@ generated or runtime code is clean under the language's strict analyser.
 ## Language-free tests
 
 Each runs once, as `none.nightly.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
+
+### Type `name-check`
+
+a schema's names are accepted or refused by the name checker.
+
+#### `name-check` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.name-check.goosetable.goose-every-package-name-refuses-end-to-end` | `gotest` | Go test TestGooseEveryPackageNameRefusesEndToEnd in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseEveryPackageNameRefusesEndToEnd` | the Go test passes | `internal/codegen/goosetable/names_test.go:269` |
 
 ### Type `evolution`
 

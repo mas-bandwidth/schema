@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3160.
+Unit tests every language answers: 2. Language-free tests: 3161.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -57,6 +57,16 @@ generated source compiles and is clean.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.codegen.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:125` |
+
+### Type `name-check`
+
+a schema's names are accepted or refused by the name checker.
+
+#### `name-check` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.name-check.goosetable.goose-table-names-meet-the-wire-parts-names` | `gotest` | Go test TestGooseTableNamesMeetTheWirePartsNames in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseTableNamesMeetTheWirePartsNames` | the Go test passes | `internal/codegen/goosetable/names_test.go:290` |
 
 ### Type `fuzz`
 

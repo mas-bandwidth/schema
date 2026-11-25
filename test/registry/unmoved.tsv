@@ -2134,7 +2134,7 @@ tier	internal/codegen/goosetable:TestGooseDriverFormThreeDispatch	1	L5	functiona
 tier	internal/codegen/goosetable:TestGooseDriverFormThreeDispatchNegativeControl	1	L5	functional: needs the Goose toolchain (it builds and runs the conformance driver) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseDriverVerdictAndWriteBack	1	L5	functional: needs the Goose toolchain (it builds and runs the conformance driver) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseDriverVerdictAndWriteBackNegativeControl	1	L5	functional: needs the Goose toolchain (it builds and runs the conformance driver) (was slowtest.Gate)
-tier	internal/codegen/goosetable:TestGooseEveryPackageNameIsClaimed	1	L5	functional: needs no toolchain, but the whole-manifest name sweep (one generation per unit per emitted name) (was slowtest.Gate)
+tier	internal/codegen/goosetable:TestGooseEveryPackageNameIsClaimed	1	L5	functional: needs no toolchain, but the whole-manifest name scan (one generation per unit, and one more per unclaimed name and per module; the probe of every name is the nightly row name-check.goosetable.goose-every-package-name-refuses-end-to-end) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseFixedAbsentRecordOptionalIsZero	1	L5	functional: needs goose (it runs the generated reader over the fixed-form seeds) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestGooseFixedFormAgreesWithTheByteOracle	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)
 tier	internal/codegen/goosetable:TestGooseFixedFormNegativeControl	1	L5	functional: needs the C++ reference fixed-form corpus (make tables-fixedform-corpus)

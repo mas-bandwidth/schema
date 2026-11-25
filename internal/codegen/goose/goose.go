@@ -131,9 +131,14 @@ func GenerateClaims(u *ir.Unit) (map[string][]byte, map[string]string, error) {
 }
 
 // DeclaredNames is every top-level name the type surface declares into the
-// unit's namespace, keyed by name, valued by the module that declares it. The
-// table surface declares into the same namespace and checks its own names
-// against these (docs/PORT-GOOSE.md, THE RUNTIME LAYOUT).
+// unit's namespace, keyed by name, valued by the module that declares it: the
+// schema's own declarations AND every registered part's (the wire part's
+// Read<T>, Write<T>, Zero<T>, <T>MaxBits and <T>MaxBytes), the same claims
+// GenerateClaims answers. The table surface declares into the same namespace
+// and checks its own names against these (docs/PORT-GOOSE.md, THE RUNTIME
+// LAYOUT), so a table-surface name equal to a part's name (table ReadFoo's
+// ReadFooDescriptor beside the reader of a type FooDescriptor) refuses the
+// unit by name instead of generating two declarations of it.
 func DeclaredNames(u *ir.Unit) (map[string]string, error) {
 	if err := CheckUnit(u, Runtime()); err != nil {
 		return nil, err
@@ -143,6 +148,11 @@ func DeclaredNames(u *ir.Unit) (map[string]string, error) {
 	for _, f := range u.Files {
 		g := NewGen(u, f, names)
 		g.emitFile(f.Base == home)
+		for _, p := range parts {
+			if err := p.fn(g); err != nil {
+				return nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
+			}
+		}
 		if g.err != nil {
 			return nil, g.err
 		}
