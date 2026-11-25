@@ -178,8 +178,13 @@ def native_skip_errors(text):
     return errors
 
 
+# go test -json actions that report progress; every other action ends a test
+# or a package, and only pass is a pass.
+TEST_PROGRESS = ("start", "run", "pause", "cont", "output", "bench")
+
+
 def native_result(text, listed, package):
-    """Require actual terminal events for every discovered test; a skip is a failure."""
+    """Require actual terminal events for every discovered test; only pass passes."""
     errors, terminal, passes, reasons = [], {}, 0, {}
     package_pass = 0
     expected_package = "github.com/mas-bandwidth/schema/v2/" + package_path(package)
@@ -201,7 +206,7 @@ def native_result(text, listed, package):
             continue
         if name:
             reasons[name] = reasons.get(name, "") + event.get("Output", "")
-            if action in ("pass", "fail", "skip"):
+            if action not in TEST_PROGRESS:
                 if name in terminal:
                     errors.append("duplicate native terminal event: " + name)
                 terminal[name] = action
@@ -211,11 +216,11 @@ def native_result(text, listed, package):
                     errors.append("failed native test: " + name)
         elif action == "pass":
             package_pass += 1
-        elif action in ("skip", "fail"):
+        elif action not in TEST_PROGRESS:
             errors.append("native package " + action)
     for name, action in terminal.items():
-        if action == "skip":
-            errors.append("native skip (a skip is a failure): " + name + ": " +
+        if action not in ("pass", "fail"):
+            errors.append("native test ended " + action + " (only pass passes): " + name + ": " +
                           reasons.get(name, "").strip()[-600:])
     for name in listed:
         if name not in terminal:
@@ -269,7 +274,7 @@ class Runner:
         self.env = dict(os.environ)
         # Never update a reference pin or accept cache/no-test overrides here.
         for key in tuple(self.env):
-            if key in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES", "SCHEMA_SKIP_LEGS") or key.startswith("SCHEMA_UPDATE_"):
+            if key in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES") or key.startswith("SCHEMA_UPDATE_"):
                 self.env.pop(key)
         self.env["GOFLAGS"] = "-p=2"
         self.env["GOMAXPROCS"] = "2"
@@ -894,8 +899,8 @@ def overlay_control(runner, name, source, test, package, expected, sabotage=None
                 return ["control did not emit native test events"]
         if not any(e.get("Test") == test and e.get("Action") == "fail" for e in events):
             return ["the exact retention test did not fail"]
-        if any(e.get("Action") == "skip" for e in events) or "[build failed]" in text:
-            return ["control skipped or failed to compile"]
+        if any(e.get("Action") not in TEST_PROGRESS + ("build-output", "pass", "fail") for e in events) or "[build failed]" in text:
+            return ["control ended neither pass nor fail, or failed to compile"]
         if expected not in text:
             return ["control failed without the intended retention assertion"]
         return []

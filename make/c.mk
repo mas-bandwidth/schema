@@ -1496,8 +1496,8 @@ test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negati
 # internal/tablepack) writes its own text from the leg's wire, byte-compared,
 # and packs the leg's text back to wire, byte-compared. The control caps the
 # emitted float32 writer at six significant digits in memory and must go red on
-# the text comparison. the rule that nothing skips makes a missing C compiler a
-# FAILURE rather than a skip.
+# the text comparison. A missing C compiler is a FAILURE that names it, never
+# a skip (docs/rulings.json no-skips).
 .PHONY: tables-c-text-differential tables-c-text-differential-negative-control
 tables-c-text-differential:
 	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
@@ -1597,11 +1597,9 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # compiles it with $(CC) against the generated header, and runs it.
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
-# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
-# a bare `go test ./...` on a tree that never built the oracle — and is exactly
-# how a §5 regression would have ridden into CI green. So the target BUILDS THE
-# ORACLE FIRST (`tables-fixedform-corpus`, the C++ reference's own dump) and then
-# sets the rule that nothing skips, which turns that skip into a FAILURE. Run the
+# harness fails by name when build/fixedform-corpus is absent (docs/rulings.json
+# no-skips), so the target BUILDS THE ORACLE FIRST (`tables-fixedform-corpus`,
+# the C++ reference's own dump) and a missing corpus can never pass. Run the
 # whole ctable package: the fixed roadmap framing tests also read this corpus,
 # and the former TestFixedVersioning filter left them outside the gate.
 .PHONY: tables-c-versioning
@@ -1660,9 +1658,8 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 # THE VERSION IS PINNED (CLANG_FORMAT_MAJOR) because formatters move between
 # majors: CI installs clang-format $(CLANG_FORMAT_PIN) and a different major
 # fails by name rather than reporting drift that is the tool's. Where no
-# clang-format is installed the gate SKIPS, except where
-# the rule that nothing skips (CI sets it): a gate that always skips is no
-# gate.
+# clang-format is installed the gate fails naming it (docs/rulings.json
+# no-skips): a gate that passes without its tool is no gate.
 #
 # THE TABLE EMITTER IS NOT CLEAN YET, and its files ride a SHRINK-ONLY RATCHET,
 # make/c-format-allow.txt: a drifting file not listed fails, and a listed file

@@ -514,12 +514,32 @@ func TestSchemaRubyHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-func TestSchemaRubyRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_ruby(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	cases := rubyHostileCorpusCases(t, corpusDir)
 	answers := rubyHostileRun(t, root, corpusDir, cases, false)
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts)
+	failed := map[string]string{}
+	var ran []string
+	for _, c := range cases {
+		a, ok := answers[c.Name]
+		switch {
+		case !ok:
+			failed[c.Name] = rubyHostileGrade(c, a, false)
+		case a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable":
+			failed[c.Name] = fmt.Sprintf("%s (%s): the Ruby port has no reader for it", c.Name, c.Carrier)
+		default:
+			ran = append(ran, c.Name)
+			if why := rubyHostileGrade(c, a, true); why != "" {
+				failed[c.Name] = why
+			}
+		}
+	}
+	if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), ran, failed); err != nil {
+		t.Fatal(err)
+	}
 	if bad := rubyHostileCompare(cases, answers); len(bad) != 0 {
 		t.Fatalf("the Ruby port disagrees with %d of %d hostile-corpus cases:\n  %s",
 			len(bad), len(cases), strings.Join(bad, "\n  "))

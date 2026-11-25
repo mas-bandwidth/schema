@@ -2,7 +2,7 @@
 # make/goose-hostile.sh — the Goose port runs the shared hostile-input corpus
 # (docs/HOSTILE-CORPUS.md; make/goose-hostile-corpus.mk says why).
 #
-#   goose-hostile.sh <goose> <schema compiler> <corpus dir> <work dir> [known findings]
+#   goose-hostile.sh <goose> <schema compiler> <corpus dir> <work dir>
 #   goose-hostile.sh --scorer <scorer-outcomes.tsv>
 #
 # Generates every schema the manifest names for goose, runs
@@ -19,9 +19,9 @@
 # batch's re-save is held the same way, by the input byte for byte or else by
 # the record's canonical text and the manifest's digest.
 # A case the port cannot read yet (a carrier, or a schema the target refuses)
-# is a named absence, counted. A disagreement the known-findings file names is
-# carried by name; one it does not name is red, and a named one gone green is
-# red too.
+# is a named absence, counted, and the ledger is red on it by name. No list
+# carries a finding (docs/rulings.json no-skips): every disagreement is red by
+# its case's name.
 set -eu -o pipefail
 
 # grade holds one answer (got_verdict, got, text; got_verdict empty when the
@@ -96,7 +96,6 @@ if [ "${1:-}" = --scorer ]; then
 fi
 
 goose=$1 schema=$2 corpus=$3 work=$4
-known=${5:-test/goose-hostile/known-findings.tsv}
 manifest=$corpus/manifest.tsv
 rm -rf "$work" && mkdir -p "$work" || exit 2
 abs_corpus=$(cd "$corpus" && pwd)
@@ -238,7 +237,7 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 	}
 done
 
-fail=0 pass=0 absent=0 carried=0
+fail=0 pass=0 absent=0
 while IFS='	' read -r name carrier schema_path table input _ verdict reason digest; do
 	case "$name" in '#'* | '') continue ;; esac
 	line=$(awk -v n="$name " 'index($0, n) == 1 { print; exit }' "$work/lines")
@@ -258,23 +257,14 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 	# row and a row with no line are cases not run.
 	echo "hostile-ledger ran $name" >>"$work/ran"
 	grade
-	row=$(awk -F'\t' -v n="$name" '$1 == n { print $2 }' "$known")
 	if [ $ok -eq 1 ]; then
-		if [ -n "$row" ]; then
-			echo "FAIL $name: green, but $known carries it ($row): remove the row"
-			fail=1
-		else
-			pass=$((pass + 1))
-		fi
-	elif [ -n "$row" ] && [ "$row" = "$why" ]; then
-		echo "CARRIED $name: $why ($(awk -F'\t' -v n="$name" '$1 == n { print $3 }' "$known"))"
-		carried=$((carried + 1))
+		pass=$((pass + 1))
 	else
 		echo "FAIL $name: $why"
 		fail=1
 	fi
 done <"$manifest"
-echo "goose hostile corpus: $pass agree with the engine, $carried carried by name, $absent absent (carriers or schemas the port does not read yet)"
+echo "goose hostile corpus: $pass agree with the engine, $absent absent (carriers or schemas the port does not read yet)"
 cat "$work/ran"
 echo "hostile-ledger end"
 if [ $pass -eq 0 ]; then

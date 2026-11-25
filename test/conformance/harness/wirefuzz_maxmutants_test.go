@@ -20,8 +20,8 @@ func TestWireFuzzMaxMutantsCoversEveryRootAndStatefulReuse(t *testing.T) {
 	const capMutants = 55
 	var got []*wireMutant
 	opts := wireFuzzOptions{seed: 24845619678, n: 100, maxMutants: capMutants}
-	if msg := emitBoundedStream(live, pool, seedRoot, opts, func(m *wireMutant) { got = append(got, m) }); msg != "" {
-		t.Fatal(msg)
+	if err := emitBoundedStream(live, pool, seedRoot, opts, func(m *wireMutant) { got = append(got, m) }); err != nil {
+		t.Fatal(err)
 	}
 	if len(got) != capMutants {
 		t.Fatalf("got %d mutants, want exact cap %d", len(got), capMutants)
@@ -72,7 +72,9 @@ func TestWireFuzzMaxMutantsCoversEveryRootAndStatefulReuse(t *testing.T) {
 
 	// Deterministic across identical invocations.
 	var got2 []*wireMutant
-	_ = emitBoundedStream(live, pool, seedRoot, opts, func(m *wireMutant) { got2 = append(got2, m) })
+	if err := emitBoundedStream(live, pool, seedRoot, opts, func(m *wireMutant) { got2 = append(got2, m) }); err != nil {
+		t.Fatal(err)
+	}
 	if len(got2) != len(got) {
 		t.Fatalf("non-deterministic length: %d vs %d", len(got2), len(got))
 	}
