@@ -186,7 +186,7 @@ func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
 	return func(kind, dir string) (string, string) {
 		switch kind {
 		case extract.KindGoTest:
-			if l := langOf(dir, langs); l != "" {
+			if l := extract.LangOf(dir, langs); l != "" {
 				return "L5", "per-language (" + l + ") Go tests: " + l + "'s adapter runs them when their families move in"
 			}
 			return "L3", "language-free Go tests: the gotest adapter runs them when their package moves in"
@@ -203,21 +203,4 @@ func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
 		}
 		panic(errors.New("unknown kind " + kind))
 	}
-}
-
-// langOf is the language a path names: a segment that is a language, or
-// one that starts with it and ends in a known suffix (ctable, gotable,
-// pythonsdk...).
-func langOf(dir string, langs map[string]bool) string {
-	for seg := range strings.SplitSeq(dir, "/") {
-		if langs[seg] {
-			return seg
-		}
-		for _, suffix := range []string{"table", "tables", "leg", "sdk", "gen", "emit", "view", "runtime"} {
-			if l, ok := strings.CutSuffix(seg, suffix); ok && langs[l] {
-				return l
-			}
-		}
-	}
-	return ""
 }

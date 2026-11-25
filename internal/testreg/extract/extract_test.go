@@ -488,3 +488,31 @@ func TestWhatGitIgnoresIsNotATest(t *testing.T) {
 		t.Fatalf("a .git that git cannot read: %v", err)
 	}
 }
+
+// TestADriverOnlyJobIsNotATest: a workflow job whose steps only check out,
+// move artifacts and call the driver runs no test of its own; a job that
+// also runs a make target (on its own line or after a shell operator),
+// uses another action, runs under another shell, or runs nothing at all is
+// still a test.
+func TestADriverOnlyJobIsNotATest(t *testing.T) {
+	t.Parallel()
+	wf := "on: [schedule]\njobs:\n" +
+		"  driver:\n    runs-on: x\n    defaults:\n      run:\n        shell: go run ./tools/pgroup -- bash -e {0}\n    steps:\n      - uses: actions/checkout@abc # v7\n      - run: |\n          set -euo pipefail\n          go run ./tools/fullrun launch --part 1/2\n      - uses: actions/upload-artifact@def\n        with:\n          path: |\n            out/REDS.tsv\n      - run: go run ./tools/schema-test run --group nightly\n" +
+		"  mixed:\n    runs-on: x\n    steps:\n      - run: |\n          go run ./tools/fullrun merge\n          make test-all\n" +
+		"  action:\n    runs-on: x\n    steps:\n      - uses: some/checker@abc\n      - run: go run ./tools/fullrun merge\n" +
+		"  shell:\n    runs-on: x\n    defaults:\n      run:\n        shell: python {0}\n    steps:\n      - run: go run ./tools/fullrun merge\n" +
+		"  chained:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group x && make verify-all\n" +
+		"  empty:\n    runs-on: x\n"
+	res, err := Extract(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", ".github/workflows/n.yml": wf}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, it := range res.Items {
+		got = append(got, it.Name)
+	}
+	sort.Strings(got)
+	if want := []string{"action", "chained", "empty", "mixed", "shell"}; !slices.Equal(got, want) {
+		t.Errorf("jobs counted as tests: %v, want %v", got, want)
+	}
+}
