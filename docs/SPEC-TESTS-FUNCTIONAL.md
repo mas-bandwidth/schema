@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2285.
+Functional tests every language answers: 2560. Language-free tests: 2286.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4831,10 +4831,11 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.rusttable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/rusttable/fixedversioning_kind_moved_test.go:16` |
 | `none.functional.evolution.rusttable.rust-fixed-unlawful-corpus` | `gotest` | Go test TestRustFixedUnlawfulCorpus in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/rusttable/fixed_unlawful_corpus_test.go:80` |
 
-#### `evolution` family `unitytable`, 2 tests
+#### `evolution` family `unitytable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.evolution.unitytable.unity-fixed-r14-grown-union-tag` | `gotest` | Go test TestUnityFixedR14GrownUnionTag in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedR14GrownUnionTag` | the Go test passes | `internal/codegen/unitytable/fixed_r14_grown_tag_test.go:34` |
 | `none.functional.evolution.unitytable.unity-fixed-unlawful-corpus` | `gotest` | Go test TestUnityFixedUnlawfulCorpus in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/unitytable/fixed_unlawful_corpus_test.go:81` |
 | `none.functional.evolution.unitytable.unity-fixed-unlawful-lineage` | `gotest` | Go test TestUnityFixedUnlawfulLineage in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedUnlawfulLineage` | the Go test passes | `internal/codegen/unitytable/fixed_unlawful_lineage_test.go:21` |
 
