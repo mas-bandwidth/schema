@@ -413,7 +413,8 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 	got := map[string]Result{}
 	var problems []string // the run's own problems, and then its summary
 	runProblems := 0      // FAIL run: lines, a problem no name's outcome shows
-	short, shortBy, missing := "", 0, 0
+	short, shortBy := "", 0
+	lines := map[string]int{} // outcome lines per asked name
 	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimRight(line, "\r")
 		if m := shortRE.FindStringSubmatch(line); m != nil && short == "" {
@@ -435,12 +436,10 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 		if m == nil || !want[m[2]] {
 			continue
 		}
+		lines[m[2]]++
 		if m[1] == "PASS" {
 			got[m[2]] = Result{Verdict: Pass}
 			continue
-		}
-		if m[1] == "MISSING" {
-			missing++
 		}
 		reason := m[1]
 		if m[3] != "" {
@@ -448,8 +447,20 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 		}
 		got[m[2]] = Result{Verdict: Fail, First: clip(reason)}
 	}
+	// a name with two outcome lines is a report this cannot trust (a
+	// reason that spans lines can print one): it is the run's problem
+	missing := 0
+	for _, a := range asked {
+		if lines[a] > 1 {
+			problems = append([]string{"FAIL run: schema-test printed " + strconv.Itoa(lines[a]) + " outcomes for " + a}, problems...)
+			runProblems++
+		}
+		if v, ok := got[a]; ok && strings.HasPrefix(v.First, "MISSING") {
+			missing++
+		}
+	}
 	// instances that did not run are the run's problem unless the asked
-	// names' MISSING lines are exactly them
+	// names that are MISSING are exactly them
 	if short != "" && shortBy != missing {
 		problems = append([]string{short}, problems...)
 		runProblems++

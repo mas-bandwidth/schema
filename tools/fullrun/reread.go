@@ -18,8 +18,9 @@ const rereadBackup = resultsFile + ".before-reread"
 // reread reads the logs of a finished shard's registry units again with
 // this build's schemaTestVerdicts and rewrites its results.jsonl, so a
 // verdict the launcher misread is corrected without running anything.
-// The results as the shard wrote them are kept in results.jsonl.before-reread;
-// a shard already reread is refused. A log that cannot be read as a whole
+// The results as the shard wrote them are kept in results.jsonl.before-reread.
+// A shard that has not finished, one a shard still holds, one already reread
+// and results with a line that is not a result are refused. A log that cannot be read as a whole
 // run (no exit line) is an error naming it, never a verdict.
 func reread(out string, log io.Writer) error {
 	mb, err := os.ReadFile(filepath.Join(out, "manifest.json"))
@@ -30,6 +31,14 @@ func reread(out string, log io.Writer) error {
 	if err := json.Unmarshal(mb, &m); err != nil {
 		return fmt.Errorf("%s: %w", filepath.Join(out, "manifest.json"), err)
 	}
+	if _, err := os.Stat(filepath.Join(out, doneFile)); err != nil {
+		return fmt.Errorf("%s: the shard has not finished (no %s): not reread", out, doneFile)
+	}
+	unlock, err := lockOut(out)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if _, err := os.Stat(filepath.Join(out, rereadBackup)); err == nil {
 		return fmt.Errorf("%s: already reread (%s is there): not read again", out, rereadBackup)
 	}
@@ -41,6 +50,15 @@ func reread(out string, log io.Writer) error {
 	res, err := loadResults(path)
 	if err != nil {
 		return err
+	}
+	rows := 0
+	for l := range strings.SplitSeq(string(orig), "\n") {
+		if strings.TrimSpace(l) != "" {
+			rows++
+		}
+	}
+	if rows != len(res) {
+		return fmt.Errorf("%s: %d of its %d lines are not results: not reread", path, rows-len(res), rows)
 	}
 	units := map[string]Unit{}
 	for _, u := range m.Units {

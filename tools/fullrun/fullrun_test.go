@@ -1073,6 +1073,7 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 	}
 	files := map[string]string{
 		"manifest.json": string(mb),
+		doneFile:        "",
 		"logs/1.log":    "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\nFAIL b (0.10s): wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n\n# exit: exit status 1, 1.0s\n",
 		resultsFile: `{"name":"a","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
 			`{"name":"b","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
@@ -1113,12 +1114,49 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(cut, "logs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for p, body := range map[string]string{"manifest.json": string(mb), "logs/1.log": "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\n", resultsFile: files[resultsFile]} {
+	for p, body := range map[string]string{"manifest.json": string(mb), doneFile: "", "logs/1.log": "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\n", resultsFile: files[resultsFile]} {
 		if err := os.WriteFile(filepath.Join(cut, p), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := reread(cut, io.Discard); err == nil || !strings.Contains(err.Error(), "no exit line") {
 		t.Errorf("a log with no exit line: %v", err)
+	}
+}
+
+// TestRereadRefusesAShardThatHasNotFinished: a shard with no DONE is still
+// running or was never finished; its logs may be cut short, so it is not
+// reread. Results with a line that is not a result are refused too.
+func TestRereadRefusesAShardThatHasNotFinished(t *testing.T) {
+	t.Parallel()
+	out := t.TempDir()
+	mb, err := json.Marshal(Manifest{Run: "r", Shard: "h-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p, body := range map[string]string{"manifest.json": string(mb), resultsFile: "{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\"}\n{\"name\":\"b\",\"unit\n"} {
+		if err := os.WriteFile(filepath.Join(out, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "has not finished") {
+		t.Errorf("a shard with no DONE: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(out, doneFile), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "are not results") {
+		t.Errorf("results with a cut line: %v", err)
+	}
+}
+
+// TestTwoOutcomesForOneNameAreTheRunsProblem: a reason that spans lines
+// can print a second outcome line for a name ("FAIL b: x" then "MISSING
+// b: y"); that report is not trusted, so the passes beside it fail.
+func TestTwoOutcomesForOneNameAreTheRunsProblem(t *testing.T) {
+	t.Parallel()
+	got := schemaTestVerdicts([]byte("PASS a\nFAIL b: x\nMISSING b: y\nFAIL run: expected 3 instances to run, 2 ran\n"), []string{"a", "b", "c"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Fail || !strings.Contains(a.First, "2 outcomes for b") {
+		t.Errorf("a pass beside a name reported twice: %+v", a)
 	}
 }
