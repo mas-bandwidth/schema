@@ -3997,7 +3997,7 @@ endef
 
 .PHONY: tables-maps-builder-cap-negative-control
 tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.stamp
-	@mkdir -p build && sed 's@if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }@if ( count > 0x7FFFFFFFull ) { return true; } // SABOTAGED@' internal/codegen/cpptable/strictwalk.go > build/map-builder-cap-strictwalk.gotext
+	@mkdir -p build && go run ./tools/sabotage -name map-builder-cap-strictwalk -out build/map-builder-cap-strictwalk.gotext internal/codegen/cpptable/strictwalk.go
 	@sed 's@fill.refused = nodes.carve->worker != NULL;@fill.refused = false;@' internal/codegen/cpptable/maps.go > build/map-builder-cap.gotext
 	@cmp -s build/map-builder-cap.gotext internal/codegen/cpptable/maps.go && { echo "NEGATIVE CONTROL FAILED: the builder-cap sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/maps.go":"%s/build/map-builder-cap.gotext","%s/internal/codegen/cpptable/strictwalk.go":"%s/build/map-builder-cap-strictwalk.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/map-builder-cap-overlay.json
