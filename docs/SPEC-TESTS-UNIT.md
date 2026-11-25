@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2953.
+Unit tests every language answers: 2. Language-free tests: 2958.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2957,10 +2957,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.retiredskips.every-skip-is-red` | `gotest` | Go test TestEverySkipIsRed in ./tools/retiredskips | `package: ./tools/retiredskips`<br>`test: TestEverySkipIsRed` | the Go test passes | `tools/retiredskips/main_test.go:27` |
 | `none.unit.tooling.retiredskips.skip-line-is-the-readiness-reading` | `gotest` | Go test TestSkipLineIsTheReadinessReading in ./tools/retiredskips | `package: ./tools/retiredskips`<br>`test: TestSkipLineIsTheReadinessReading` | the Go test passes | `tools/retiredskips/main_test.go:8` |
 
-#### `tooling` family `roadmap`, 11 tests
+#### `tooling` family `roadmap`, 12 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.roadmap.all-targets-check-requires-the-registrys-targets` | `gotest` | Go test TestAllTargetsCheckRequiresTheRegistrysTargets in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestAllTargetsCheckRequiresTheRegistrysTargets` | the Go test passes | `tools/roadmap/alltargets_test.go:55` |
 | `none.unit.tooling.roadmap.done-evidence-names-existing-tests` | `gotest` | Go test TestDoneEvidenceNamesExistingTests in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestDoneEvidenceNamesExistingTests` | the Go test passes | `tools/roadmap/doneevidence_test.go:8` |
 | `none.unit.tooling.roadmap.every-block-holds-only-a-table` | `gotest` | Go test TestEveryBlockHoldsOnlyATable in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestEveryBlockHoldsOnlyATable` | the Go test passes | `tools/roadmap/tally_test.go:332` |
 | `none.unit.tooling.roadmap.every-table-has-every-language` | `gotest` | Go test TestEveryTableHasEveryLanguage in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestEveryTableHasEveryLanguage` | the Go test passes | `tools/roadmap/tally_test.go:157` |
@@ -2988,7 +2989,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 112 tests
+#### `tooling` family `schema-test`, 116 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3054,6 +3055,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.an-uncommitted-golden-is-missing` | `gotest` | Go test TestAnUncommittedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUncommittedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:231` |
 | `none.unit.tooling.schema-test.an-unreadable-index-is-named` | `gotest` | Go test TestAnUnreadableIndexIsNamed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUnreadableIndexIsNamed` | the Go test passes | `tools/schema-test/golden_test.go:353` |
 | `none.unit.tooling.schema-test.ci-check-and-extract-hold-the-pins` | `gotest` | Go test TestCICheckAndExtractHoldThePins in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestCICheckAndExtractHoldThePins` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
+| `none.unit.tooling.schema-test.ci-prints-the-pins-base-ref-from-the-event` | `gotest` | Go test TestCIPrintsThePinsBaseRefFromTheEvent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestCIPrintsThePinsBaseRefFromTheEvent` | the Go test passes | `tools/schema-test/pinsbase_test.go:50` |
 | `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:227` |
 | `none.unit.tooling.schema-test.every-github-file-is-generated-or-pinned` | `gotest` | Go test TestEveryGitHubFileIsGeneratedOrPinned in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryGitHubFileIsGeneratedOrPinned` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.every-hostile-target-declares-its-build` | `gotest` | Go test TestEveryHostileTargetDeclaresItsBuild in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDeclaresItsBuild` | the Go test passes | `tools/schema-test/hostile_test.go:359` |
@@ -3077,6 +3079,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.name-build-results-reads-the-events` | `gotest` | Go test TestNameBuildResultsReadsTheEvents in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildResultsReadsTheEvents` | the Go test passes | `tools/schema-test/namebuild_test.go:82` |
 | `none.unit.tooling.schema-test.name-buildability-is-l4s` | `gotest` | Go test TestNameBuildabilityIsL4s in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildabilityIsL4s` | the Go test passes | `tools/schema-test/extract_test.go:178` |
 | `none.unit.tooling.schema-test.number-token-cases-are-rows-that-read-their-trees` | `gotest` | Go test TestNumberTokenCasesAreRowsThatReadTheirTrees in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNumberTokenCasesAreRowsThatReadTheirTrees` | the Go test passes | `tools/schema-test/hostile_test.go:304` |
+| `none.unit.tooling.schema-test.pins-base-ref-is-the-commit-the-change-merges-into` | `gotest` | Go test TestPinsBaseRefIsTheCommitTheChangeMergesInto in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPinsBaseRefIsTheCommitTheChangeMergesInto` | the Go test passes | `tools/schema-test/pinsbase_test.go:18` |
 | `none.unit.tooling.schema-test.plant-inputs-are-one-form` | `gotest` | Go test TestPlantInputsAreOneForm in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestPlantInputsAreOneForm` | the Go test passes | `tools/schema-test/plant_test.go:163` |
 | `none.unit.tooling.schema-test.rows-are-named-from-their-go-tests` | `gotest` | Go test TestRowsAreNamedFromTheirGoTests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRowsAreNamedFromTheirGoTests` | the Go test passes | `tools/schema-test/gotest_test.go:137` |
 | `none.unit.tooling.schema-test.run-hostile-reads-each-case-from-its-run` | `gotest` | Go test TestRunHostileReadsEachCaseFromItsRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunHostileReadsEachCaseFromItsRun` | the Go test passes | `tools/schema-test/hostile_test.go:170` |
@@ -3084,12 +3087,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.seeding-ages-the-committed-goldens` | `gotest` | Go test TestSeedingAgesTheCommittedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSeedingAgesTheCommittedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:312` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:261` |
 | `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:286` |
+| `none.unit.tooling.schema-test.the-base-leaves-out-exactly-the-generated-workflows` | `gotest` | Go test TestTheBaseLeavesOutExactlyTheGeneratedWorkflows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheBaseLeavesOutExactlyTheGeneratedWorkflows` | the Go test passes | `tools/schema-test/pinsbase_test.go:132` |
 | `none.unit.tooling.schema-test.the-checkout-adapters-run-one-after-another` | `gotest` | Go test TestTheCheckoutAdaptersRunOneAfterAnother in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCheckoutAdaptersRunOneAfterAnother` | the Go test passes | `tools/schema-test/make_test.go:534` |
 | `none.unit.tooling.schema-test.the-ci-files-are-current` | `gotest` | Go test TestTheCIFilesAreCurrent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCIFilesAreCurrent` | the Go test passes | `tools/schema-test/ci_test.go:1` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-adapter-fault` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryAdapterFault in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryAdapterFault` | the Go test passes | `tools/schema-test/main_test.go:164` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-fail-rule` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryFailRule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryFailRule` | the Go test passes | `tools/schema-test/main_test.go:51` |
 | `none.unit.tooling.schema-test.the-copy-is-the-checkout-as-it-stands` | `gotest` | Go test TestTheCopyIsTheCheckoutAsItStands in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCopyIsTheCheckoutAsItStands` | the Go test passes | `tools/schema-test/plant_test.go:398` |
 | `none.unit.tooling.schema-test.the-database-is-read-once-per-run` | `gotest` | Go test TestTheDatabaseIsReadOncePerRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheDatabaseIsReadOncePerRun` | the Go test passes | `tools/schema-test/make_test.go:510` |
+| `none.unit.tooling.schema-test.the-main-tree-action-exports-the-base-the-event-names` | `gotest` | Go test TestTheMainTreeActionExportsTheBaseTheEventNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMainTreeActionExportsTheBaseTheEventNames` | the Go test passes | `tools/schema-test/pinsbase_test.go:103` |
 | `none.unit.tooling.schema-test.the-matrix-is-the-pr-group` | `gotest` | Go test TestTheMatrixIsThePRGroup in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixIsThePRGroup` | the Go test passes | `tools/schema-test/ci_test.go:1` |
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.the-planted-copy-finds-its-siblings` | `gotest` | Go test TestThePlantedCopyFindsItsSiblings in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedCopyFindsItsSiblings` | the Go test passes | `tools/schema-test/plant_test.go:258` |

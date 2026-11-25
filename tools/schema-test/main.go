@@ -402,11 +402,14 @@ func narrowLangs(group, named []string) ([]string, error) {
 // langsCmd is "schema-test langs": the registry's languages as a JSON list,
 // with --ready only those whose adapter has landed, then "none" for the
 // language-free tests. A workflow's per-language matrix reads it, so the list
-// is never written in a workflow.
+// is never written in a workflow. --targets prints the languages alone,
+// comma-separated, for a reader that is no JSON reader (the roadmap's
+// all-targets acceptance, make roadmap-all-targets-check).
 func langsCmd(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("schema-test langs", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	ready := fs.Bool("ready", false, "")
+	targets := fs.Bool("targets", false, "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
@@ -426,6 +429,10 @@ func langsCmd(args []string, stdout io.Writer) error {
 	}
 	if len(out) == 0 {
 		return fmt.Errorf("langs: the registry has no language%s", map[bool]string{true: " whose adapter has landed", false: ""}[*ready])
+	}
+	if *targets {
+		_, err = fmt.Fprintln(stdout, strings.Join(out, ","))
+		return err
 	}
 	out = append(out, testreg.LangFree)
 	b, err := json.Marshal(out)

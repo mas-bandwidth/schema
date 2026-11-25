@@ -364,7 +364,10 @@ func baseWorkflows(base string) ([]ciPin, error) {
 	if err != nil {
 		return nil, err
 	}
-	generated := map[string]bool{fastWorkflow: true, roadmapFile: true, nightlyWorkflow: true}
+	generated := map[string]bool{}
+	for _, p := range generatedWorkflowFiles {
+		generated[p] = true
+	}
 	var out []ciPin
 	for _, e := range entries {
 		p := ".github/workflows/" + e.Name()

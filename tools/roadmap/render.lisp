@@ -596,6 +596,15 @@ sections/columns. TABLE is the validated graph after evidence overlays."
              (if comma (setf start (1+ comma)) (return)))
     (nreverse out)))
 
+(defun parse-requirement (flag value)
+  "The acceptance FLAG asks for, as (LABEL LANGUAGES): --require-original-nine
+the nine, --require-all-targets the comma-separated targets VALUE names."
+  (cond ((string= flag "--require-original-nine")
+         (list "original-nine" *original-nine-languages*))
+        ((string= flag "--require-all-targets")
+         (list "all-targets" (split-targets value)))
+        (t (error "~a is no acceptance flag" flag))))
+
 (defun target-completeness-problems (sexp table languages)
   "Every unfinished cell and leaf of LANGUAGES (every target, for the
 all-targets acceptance), plus missing required page sections and columns.
@@ -986,6 +995,17 @@ to, original-nine or all-targets, and the targets it requires."
                              "Missing required language \"ruby\" in roadmap \"fixed-tables\""
                              "Missing required language \"ruby\" in roadmap \"variable-tables\""))
               (error "A target with no column escaped: ~s" problems)))))
+
+      (test "--require-all-targets requires exactly the targets it is given"
+        (lambda ()
+          (let ((targets '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir" "lua" "ruby")))
+            (unless (equal (parse-requirement "--require-all-targets" "cpp,c,cs,go,rust,java,js,dart,elixir,lua,ruby")
+                           (list "all-targets" targets))
+              (error "The flag does not require its targets: ~s"
+                     (parse-requirement "--require-all-targets" "cpp,c,cs,go,rust,java,js,dart,elixir,lua,ruby"))))
+          (unless (equal (parse-requirement "--require-original-nine" nil)
+                         (list "original-nine" *original-nine-languages*))
+            (error "--require-original-nine misread"))))
 
       (test "all targets reads the comma-separated targets and refuses a blank one"
         (lambda ()
@@ -1508,7 +1528,7 @@ to, original-nine or all-targets, and the targets it requires."
            (when requirement
              (format *error-output* "one acceptance at a time: --require-original-nine or --require-all-targets~%")
              (sb-ext:exit :code 2))
-           (setf requirement (list "original-nine" *original-nine-languages*)))
+           (setf requirement (parse-requirement arg nil)))
           ((string= arg "--require-all-targets")
            (unless argv
              (format *error-output* "--require-all-targets needs the targets, comma-separated~%")
@@ -1516,7 +1536,11 @@ to, original-nine or all-targets, and the targets it requires."
            (when requirement
              (format *error-output* "one acceptance at a time: --require-original-nine or --require-all-targets~%")
              (sb-ext:exit :code 2))
-           (setf requirement (list "all-targets" (split-targets (pop argv)))))
+           (setf requirement
+                 (handler-case (parse-requirement arg (pop argv))
+                   (error (e)
+                     (format *error-output* "~a~%" e)
+                     (sb-ext:exit :code 2)))))
           ((string= arg "--test")
            (setf test-mode t))
           ((string= arg "--evidence")

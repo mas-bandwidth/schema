@@ -64,14 +64,16 @@ roadmap-check-negative-control:
 
 # Release/conformance acceptance: every target must be complete in all three
 # rendered sections, every required leaf done with evidence. The targets are
-# the registry's languages (test/registry, the "lang" records), so a
-# target added there is required here the same day.
-# Ordinary roadmap-check still permits honest TODOs.
-ROADMAP_TARGETS = $(shell sed -n 's/^{"rec":"lang","name":"\([a-z0-9]*\)".*/\1/p' test/registry/registry.jsonl | paste -sd, -)
+# the registry's languages, read by the registry's own reader (`schema-test
+# langs --targets`, which fails on a registry with none), so a target added
+# there is required here the same day
+# (TestAllTargetsCheckRequiresTheRegistrysTargets). Ordinary roadmap-check
+# still permits honest TODOs.
 roadmap-all-targets-check:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-all-targets-check REFUSES: sbcl is not installed"; exit 2; }
-	@test -n '$(ROADMAP_TARGETS)' || { echo "make roadmap-all-targets-check REFUSES: test/registry/registry.jsonl names no target"; exit 2; }
-	$(SBCL) --script tools/roadmap/render.lisp --check --require-all-targets '$(ROADMAP_TARGETS)' docs/roadmap.sexp ROADMAP.md
+	@targets=$$(go run ./tools/schema-test langs --targets) || { echo "make roadmap-all-targets-check REFUSES: schema-test langs --targets did not name the registry's targets"; exit 2; }; \
+	echo "$(SBCL) --script tools/roadmap/render.lisp --check --require-all-targets $$targets docs/roadmap.sexp ROADMAP.md"; \
+	$(SBCL) --script tools/roadmap/render.lisp --check --require-all-targets "$$targets" docs/roadmap.sexp ROADMAP.md
 
 roadmap-test:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-test REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }

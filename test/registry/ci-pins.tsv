@@ -15,7 +15,7 @@
 .github/actions/eslint/action.yml	11d06d12a452bdc1dcb63bfba4762171125352fd8c04f1a64de2fb948b93e08c	pinned
 .github/actions/fixed-corpus/action.yml	227de470bd4f3dc58bd3b97760b8f20c029c5d211b891491722ce9bff81cb707	pinned
 .github/actions/google-java-format/action.yml	158d8a440c6e1b9e32bf731b3585826deb9e4646b1a17aa70bb7e203b8baaf8b	pinned
-.github/actions/main-tree/action.yml	aa354e9f4aa05b7d98fa967584ba8e8e7440330c6df0a1b845612e1598b09455	pinned
+.github/actions/main-tree/action.yml	996e6fc6173733b6fd57e191788483e6a763bfc7f84ac9d1d8b806c133fcf5e4	pinned
 .github/actions/merge-main/action.yml	c17554824c0d7edd958799591e1aa625ed087866d4fb3a36a47811510b513438	pinned
 .github/actions/merge-main/merge-main.sh	60230a2b42effdd01f40b539ab6bbdd1779f5b71962e1dc94b1eb1b43c949d26	pinned
 .github/actions/moo/action.yml	9537b8c9a7fed7b18b5159fa7d1e7b4c984ef16a52506c74ead53ba514625e24	pinned

@@ -304,6 +304,44 @@ func fits(parts [][]testreg.Instance, budget float64) bool {
 	return true
 }
 
+// generatedWorkflowFiles are the workflows ciFiles writes, by repository
+// path (TestTheNotYetGeneratedListOnlyShrinks holds the two to each other).
+var generatedWorkflowFiles = []string{fastWorkflow, roadmapFile, nightlyWorkflow}
+
+// pinsBaseRef is the commit a change merges into, which `extract
+// --pins-base` holds the not-yet-generated list to, from the GitHub event
+// ci-fast.yml runs on: a pull request's target branch (main, or an
+// integration branch), a push's previous tip (the payload's before), main
+// for a dispatch. Every other event, a pull request with no target, and a
+// push with no previous tip (a new branch, or a payload without one) is an
+// error naming why: there is always a base, or the step is red.
+func pinsBaseRef(event, baseRef string, payload []byte) (string, error) {
+	switch event {
+	case "pull_request":
+		if baseRef == "" {
+			return "", fmt.Errorf("--pins-base-ref: a pull_request with no GITHUB_BASE_REF: the branch it merges into is unknown")
+		}
+		return baseRef, nil
+	case "push":
+		var p struct {
+			Before string `json:"before"`
+		}
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return "", fmt.Errorf("--pins-base-ref: the push payload does not read: %w", err)
+		}
+		if !sumRe40.MatchString(p.Before) || strings.Trim(p.Before, "0") == "" {
+			return "", fmt.Errorf("--pins-base-ref: the push names no previous tip (before %q): the branch's previous tip is the base", p.Before)
+		}
+		return p.Before, nil
+	case "workflow_dispatch":
+		return "main", nil
+	}
+	return "", fmt.Errorf("--pins-base-ref: event %q: ci-fast.yml runs on pull_request, push and workflow_dispatch, and the base of another event is not defined", event)
+}
+
+// sumRe40 is a full git commit sha.
+var sumRe40 = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
 // ciFiles are the generated files, by repository path.
 func ciFiles(reg *testreg.Registry) (map[string][]byte, error) {
 	rows, problems := ciMatrix(reg, shardBudget)
@@ -1157,6 +1195,7 @@ func ciCmd(args []string, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	check := fs.Bool("check", false, "")
 	verdictFlag := fs.Bool("verdict", false, "")
+	baseRef := fs.Bool("pins-base-ref", false, "")
 	root := fs.String("root", ".", "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	if err := fs.Parse(args); err != nil {
@@ -1164,6 +1203,21 @@ func ciCmd(args []string, stdout io.Writer) error {
 	}
 	if fs.NArg() != 0 {
 		return usageError{"ci takes no names"}
+	}
+	if *baseRef {
+		var payload []byte
+		if p := os.Getenv("GITHUB_EVENT_PATH"); p != "" {
+			var err error
+			if payload, err = os.ReadFile(p); err != nil {
+				return fmt.Errorf("--pins-base-ref: the event payload: %w", err)
+			}
+		}
+		ref, err := pinsBaseRef(os.Getenv("GITHUB_EVENT_NAME"), os.Getenv("GITHUB_BASE_REF"), payload)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(stdout, ref)
+		return err
 	}
 	reg, err := testreg.Load(filepath.Join(*root, *path))
 	if err != nil {
