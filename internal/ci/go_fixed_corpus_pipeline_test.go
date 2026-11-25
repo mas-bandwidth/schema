@@ -79,3 +79,41 @@ func TestGoFixedCorpusDependencyStates(t *testing.T) {
 		}
 	}
 }
+
+// TestThePRShardsRunOnTheProducedLegs: the produce job builds each
+// producer's tree once per run, caches it, packs it and uploads it, and the
+// schema-test-pr shards run only on trees it produced, unpacked before the
+// driver runs; a producer that failed or was skipped holds the shards back,
+// never lets them build a leg cold inside a shard.
+func TestThePRShardsRunOnTheProducedLegs(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := yamlJobs(string(data))
+	producer, shards := jobs["produce"], jobs["schema-test-pr"]
+	for _, want := range []string{"timeout-minutes: 2", "name: conformance-leg-go", "name: conformance-leg-goose", "actions/cache/restore@", "actions/cache/save@", "tools/produce.sh pack", "actions/upload-artifact@", "produce-${{ matrix.name }}-${{ github.run_id }}-${{ github.sha }}"} {
+		if !strings.Contains(producer, want) {
+			t.Errorf("produce misses %s", want)
+		}
+	}
+	for _, want := range []string{"needs: [go-fixed-corpus, produce]", "needs.produce.result == 'success'", "pattern: produce-*-${{ github.run_id }}-${{ github.sha }}", "tools/produce.sh unpack build/produce"} {
+		if !strings.Contains(shards, want) {
+			t.Errorf("schema-test-pr misses %s", want)
+		}
+	}
+	if strings.Index(shards, "tools/produce.sh unpack build/produce") > strings.Index(shards, "go run ./tools/schema-test run") {
+		t.Error("schema-test-pr runs the driver before it unpacks the produced trees")
+	}
+	event := ciEvent{Name: "pull_request", Branch: "dev", HeadRef: "stella/ci-proof", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema", PlanRows: "[]"}
+	if got, err := jobRunsInWorkflow(string(data), "produce", event); err != nil || !got {
+		t.Fatalf("produce does not run on a pull request: %v %v", got, err)
+	}
+	for _, state := range []string{"success", "skipped", "failure", "cancelled"} {
+		event.ProduceResult = state
+		got, err := jobRunsInWorkflow(string(data), "schema-test-pr", event)
+		if want := state == "success"; err != nil || got != want {
+			t.Errorf("schema-test-pr after produce %s: got %v want %v err %v", state, got, want, err)
+		}
+	}
+}

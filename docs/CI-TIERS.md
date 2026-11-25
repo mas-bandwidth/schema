@@ -148,6 +148,7 @@ next table. Every job of every other workflow is a row here.
 | `stage-compiler` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account; builds bin/schema once for build-cpp-conformance-account and checks nothing |
 | `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
 | `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | always: the schema-test-pr shards and the tables-go-fixedform row read it |
+| `produce` | `ci-fast.yml` | per-PR, main, dispatch | always: one row per producer (the go and goose conformance legs), restored from the runner's cache by the hash of their inputs, built cold on a miss inside two minutes; the schema-test-pr shards unpack them (tools/produce.sh) |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
 | `caa-self-test` | `caa-self-test.yml` | per-PR, main, dispatch | trigger paths: the CAA workflow, its script, tools/pgroup, go.mod |

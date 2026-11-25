@@ -619,6 +619,7 @@ type ciEvent struct {
 	PlanRows         string   // needs.plan.outputs.rows
 	PlanResult       string   // needs.plan.result, success when omitted
 	GoCorpusResult   string   // needs.go-fixed-corpus.result, success when omitted
+	ProduceResult    string   // needs.produce.result, success when omitted
 	PRPins           string   // needs.pr-select.outputs.pins (ci-full.yml)
 	PRCS             string   // needs.pr-select.outputs.cs (ci-full.yml)
 	// PlanOutputs, when set, answers needs.plan.outputs.<name> for every
@@ -1035,6 +1036,11 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 	case "needs.go-fixed-corpus.result":
 		if ev.GoCorpusResult != "" {
 			return ev.GoCorpusResult, nil
+		}
+		return "success", nil
+	case "needs.produce.result":
+		if ev.ProduceResult != "" {
+			return ev.ProduceResult, nil
 		}
 		return "success", nil
 	case "needs.plan.outputs.rows":
@@ -1471,6 +1477,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:nightly-fast",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:produce",
 		"ci-fast.yml:schema-test",
 		"ci-fast.yml:schema-test-pr",
 		"ci-fast.yml:stage-compiler",
