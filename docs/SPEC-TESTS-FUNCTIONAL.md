@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2310.
+Functional tests every language answers: 2560. Language-free tests: 2312.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2904,6 +2904,12 @@ read bytes, write them back, same bytes.
 |---|---|---|---|---|---|
 | `none.functional.roundtrip.goosetable.goose-required-fields-never-elide` | `gotest` | Go test TestGooseRequiredFieldsNeverElide in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseRequiredFieldsNeverElide` | the Go test passes | `internal/codegen/goosetable/required_writes_test.go:97` |
 
+#### `roundtrip` family `luautable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.luautable.luau-save-retain-born-array-later-element-matches-the-oracle` | `gotest` | Go test TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle` | the Go test passes | `internal/codegen/luautable/retain_fuzz_bounds_test.go:128` |
+
 ### Type `write-refusal`
 
 writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
@@ -2937,6 +2943,16 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.write-refusal.unitytable.unity-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/unitytable/declared_deprecated_enum_cook_test.go:86` |
+
+### Type `load-refusal`
+
+hostile bytes are refused in every build, with the named reason.
+
+#### `load-refusal` family `luautable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.load-refusal.luautable.luau-walk-reads-zero-a-reused-report` | `gotest` | Go test TestLuauWalkReadsZeroAReusedReport in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauWalkReadsZeroAReusedReport` | refused on load, in every build (verdict only) | `internal/codegen/luautable/walk_report_reset_test.go:23` |
 
 ### Type `codegen`
 
