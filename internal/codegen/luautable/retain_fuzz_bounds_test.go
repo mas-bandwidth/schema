@@ -104,3 +104,88 @@ hex(out)
 		}
 	}
 }
+
+// A born counted array of more than one element, its retained field in an
+// element that is not the first: recs is [3..5]Rec, so its birth is three
+// default Recs, which the plain save elides. The newer build writes an extra
+// field this build cannot name in one element; the value read by this build
+// holds recs at its birth, and A BODY THAT CARRIES A RETAINED FIELD DOES NOT
+// ELIDE (docs/SPEC-TABLES.md §6.6), so the retaining save must materialize all
+// three born elements and put the field back in the element it came from,
+// the last born one included. The expected bytes are the oracle's
+// DecodeRegionRetain then EncodeRetain.
+const bornOldSchema = `package probe
+table Rec { n int32 }
+table Root { recs [3..5]Rec }
+`
+
+const bornNewSchema = `package probe
+table Rec { n int32
+ extra string(32) }
+table Root { recs [3..5]Rec }
+`
+
+func TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle(t *testing.T) {
+	t.Parallel()
+	oldUnit := saveRetainCompile(t, bornOldSchema)
+	newUnit := saveRetainCompile(t, bornNewSchema)
+	m := tabletext.NewModel(oldUnit)
+	const capacity = 1 << 20
+
+	for _, tc := range []struct {
+		name string
+		json string
+	}{
+		{"the middle born element", `{"recs":[{},{"extra":"kept"},{}]}`},
+		{"the last born element", `{"recs":[{},{},{"extra":"kept"}]}`},
+	} {
+		wire := saveRetainWire(t, newUnit, tc.json)
+		inst := m.New(m.Lookup("Root"))
+		keep := &tablewire.Retain{Capacity: capacity, IdCapacity: capacity / 8}
+		var report tabletext.Report
+		ok, err := tablewire.DecodeRegionRetain(m, inst, wire, keep, &report)
+		if !ok || err != nil || report.Refused {
+			t.Fatalf("%s: the oracle refused the newer wire: %v %v %+v", tc.name, ok, err, report)
+		}
+		var saved tabletext.Report
+		want, err := tablewire.EncodeRetain(m, inst, keep, &saved)
+		if err != nil {
+			t.Fatalf("%s: the oracle save failed: %v", tc.name, err)
+		}
+		plain, err := tablewire.Encode(m, inst)
+		if err != nil {
+			t.Fatalf("%s: the oracle's plain save failed: %v", tc.name, err)
+		}
+		if report.Retained != 1 || saved.RetainLost != 0 || len(want) <= len(plain) {
+			t.Fatalf("%s: the case is not the one it pins: the oracle retained %d fields, lost %d on the save, and its retaining save is %d bytes beside a plain save of %d",
+				tc.name, report.Retained, saved.RetainLost, len(want), len(plain))
+		}
+
+		g := generateFiles(t, map[string]string{"Probe.schema": bornOldSchema})
+		probe := luaurun.HexProbe + fmt.Sprintf(`local retain = require("./schema_retain")
+local inputs = require("./inputs")
+require("./ProbeTable")
+local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0, retained = 0, retainLost = 0 }
+local v, store = retain.LoadRetain("Root", inputs.wire, report, %d, %d)
+if v == nil then print("LOADNIL") return end
+local out = retain.SaveRetain("Root", v, store, report)
+if out == nil then print("SAVENIL") return end
+hex(out)
+`, capacity, capacity/8)
+		if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(probe), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"wire": wire}))), "\n")
+		last := lines[len(lines)-1]
+		if last == "LOADNIL" || last == "SAVENIL" {
+			t.Fatalf("%s: the leg did not round-trip the wire the oracle reads: %s", tc.name, last)
+		}
+		got, err := hex.DecodeString(last)
+		if err != nil {
+			t.Fatalf("%s: the probe did not print hex: %v (%q)", tc.name, err, last)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("%s: SaveRetain wrote %d bytes %x\nthe oracle wrote %d bytes %x", tc.name, len(got), got, len(want), want)
+		}
+	}
+}

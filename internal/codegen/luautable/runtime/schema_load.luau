@@ -2045,7 +2045,14 @@ end
 L.walkUnjudged = walkUnjudged
 L.judgeWalk = judgeWalk
 
+-- EVERY READ ZEROES A SUPPLIED REPORT IN FULL as its first act
+-- (docs/SPEC-TABLES.md §6.5), as ReadStrict does: walkRefuses and judgeWalk
+-- read the counters this report holds, so a report left dirty by an earlier
+-- refused read would refuse a whole wire. The retaining walk
+-- (schema_retain.luau) resets its report itself and calls walkUnjudged, so
+-- the retained and retainLost it sets are not wiped here.
 function L.loadWalk(root: string, bytes: buffer, report: any, outNodes: { any }?): any
+	L.resetReport(report)
 	local res, judged = walkUnjudged(root, bytes, report, outNodes)
 	return judgeWalk(res, judged, report, outNodes)
 end
