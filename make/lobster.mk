@@ -65,7 +65,7 @@ toolchain-lobster:
 .PHONY: test-lobster test-lobster-packages update-goldens-lobster
 test-lobster: toolchain-lobster build/fixedform-corpus/.stamp test-lobster-packages
 test-lobster-packages: toolchain-lobster build/fixedform-corpus/.stamp
-	go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
 # build/conformance-lobster is the manifest's units generated for lobster, one
@@ -179,7 +179,7 @@ GOLDENS_LEGS      += update-goldens-lobster
 # test-lobster already includes these tests through its package-wide command.
 .PHONY: tables-lobster-view
 tables-lobster-view: toolchain-lobster
-	go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
 
 # THE PULL-REQUEST FORM of lobster-fixed-proof-qualification.yml (docs/CI-TIERS.md;
 # ci-fast.yml nightly-fast row lobster-fixed-proof): the four fixed-proof

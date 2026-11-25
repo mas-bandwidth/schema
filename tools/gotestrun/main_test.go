@@ -2,8 +2,15 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
 const noMatch = `{"Action":"start","Package":"p/a"}
@@ -86,10 +93,122 @@ func TestReadPassesTextThrough(t *testing.T) {
 }
 
 func TestRunRefusesNoArgumentsAndForeignFlags(t *testing.T) {
-	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-v", "./x"}, {"-list", "X", "./x"}} {
+	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-c", "./x"}, {"-exec", "x", "./x"}} {
 		var out, errb bytes.Buffer
 		if code := run(args, &out, &errb); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)
+		}
+	}
+}
+
+// Under -red a refusal is exit 0, NOT RED: a control reads any non-zero
+// exit as its sabotage caught, and a wrapper that refused caught nothing.
+func TestARefusalUnderRedIsNotRed(t *testing.T) {
+	for _, args := range [][]string{{"-red"}, {"-red", "-json", "./x"}, {"-red", "-c", "./x"}, {"-red", "-exec", "x", "./x"}} {
+		var out, errb bytes.Buffer
+		if code := run(args, &out, &errb); code != 0 {
+			t.Errorf("run(%q) = %d, want 0 (NOT RED)", args, code)
+		}
+		if !strings.Contains(errb.String(), "NOT RED: gotestrun could not run") {
+			t.Errorf("run(%q) wrote %q, want it to say NOT RED", args, errb.String())
+		}
+	}
+}
+
+// failingReader yields a stream's start and then an error.
+type failingReader struct{ head *strings.Reader }
+
+func (r failingReader) Read(p []byte) (int, error) {
+	if r.head.Len() > 0 {
+		return r.head.Read(p)
+	}
+	return 0, errors.New("the pipe broke")
+}
+
+func TestReadReportsAStreamItCouldNotFinish(t *testing.T) {
+	tl := read(failingReader{strings.NewReader(onePass)}, &bytes.Buffer{})
+	if tl.readErr == nil || !strings.Contains(tl.readErr.Error(), "the pipe broke") {
+		t.Fatalf("readErr = %v, want the pipe's error", tl.readErr)
+	}
+}
+
+// fakeGo is a go command for the wrapper's test: "go build ... -o OUT ..."
+// writes OUT as a program that exits $FAKE_RC, or fails when
+// $FAKE_BUILD_FAILS is set.
+const fakeGo = `#!/bin/sh
+[ -n "${FAKE_BUILD_FAILS:-}" ] && { echo "fake go: build failed" >&2; exit 1; }
+out=
+while [ $# -gt 0 ]; do
+	[ "$1" = -o ] && out=$2
+	shift
+done
+printf '#!/bin/sh\nexit %s\n' "$FAKE_RC" > "$out"
+chmod +x "$out"
+`
+
+// The wrapper keeps gotestrun's exit status; under -red only 1 is a red, and
+// a gotestrun that did not build or died is exit 0, NOT RED.
+func TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed(t *testing.T) {
+	bin := t.TempDir()
+	for _, tool := range []string{"bash", "sh", "dirname", "mktemp", "rm", "chmod"} {
+		p, err := exec.LookPath(tool)
+		if err != nil {
+			t.Fatalf("the wrapper's test needs %s on PATH: %v", tool, err)
+		}
+		if err := os.Symlink(p, filepath.Join(bin, tool)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte(fakeGo), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wrapper, err := filepath.Abs("gotest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		red        bool
+		rc         string
+		buildFails bool
+		want       int
+		notRed     bool
+	}{
+		{red: false, rc: "0", want: 0},
+		{red: false, rc: "1", want: 1},
+		{red: false, rc: "2", want: 2},
+		{red: false, buildFails: true, want: 2},
+		{red: true, rc: "1", want: 1},
+		{red: true, rc: "0", want: 0},
+		{red: true, rc: "2", want: 0, notRed: true},
+		{red: true, rc: "137", want: 0, notRed: true},
+		{red: true, buildFails: true, want: 0, notRed: true},
+	} {
+		args := []string{wrapper}
+		if c.red {
+			args = append(args, "-red")
+		}
+		args = append(args, "-run", "^TestX$", "./x")
+		cmd := exec.Command(filepath.Join(bin, "bash"), args...)
+		cmd.Dir = t.TempDir()
+		cmd.Env = []string{"PATH=" + bin, "FAKE_RC=" + c.rc, "TMPDIR=" + t.TempDir()}
+		if c.buildFails {
+			cmd.Env = append(cmd.Env, "FAKE_BUILD_FAILS=1")
+		}
+		var errb bytes.Buffer
+		cmd.Stderr = &errb
+		got := 0
+		if err := cmd.Run(); err != nil {
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) {
+				t.Fatalf("%+v: %v", c, err)
+			}
+			got = ee.ExitCode()
+		}
+		if got != c.want {
+			t.Errorf("%+v: exit %d, want %d (stderr %q)", c, got, c.want, errb.String())
+		}
+		if c.notRed != strings.Contains(errb.String(), "NOT RED") {
+			t.Errorf("%+v: stderr %q, NOT RED wanted %v", c, errb.String(), c.notRed)
 		}
 	}
 }
@@ -98,5 +217,92 @@ func TestReadNamesEverySkip(t *testing.T) {
 	tl := read(strings.NewReader(passAndReasonSkip+passAndToolSkip), &bytes.Buffer{})
 	if len(tl.skippedTests) != 2 || tl.skippedTests[0] != "p/a TestDriver" || tl.skippedTests[1] != "p/a TestCargo" {
 		t.Errorf("skippedTests = %q, want [\"p/a TestDriver\" \"p/a TestCargo\"]", tl.skippedTests)
+	}
+}
+
+// a negative control's run that went red as it should: a test failed.
+const oneFail = `{"Action":"run","Package":"p/a","Test":"TestX"}
+{"Action":"output","Package":"p/a","Test":"TestX","Output":"--- FAIL: TestX\n"}
+{"Action":"fail","Package":"p/a","Test":"TestX"}
+{"Action":"output","Package":"p/a","Output":"FAIL\tp/a\t0.010s\n"}
+{"Action":"fail","Package":"p/a"}
+`
+
+// failWith is a stream in which TestX fails, printing line.
+func failWith(line string) string {
+	out, err := json.Marshal(line + "\n")
+	if err != nil {
+		panic(err)
+	}
+	return `{"Action":"start","Package":"p/a"}
+{"Action":"run","Package":"p/a","Test":"TestX"}
+{"Action":"output","Package":"p/a","Test":"TestX","Output":` + string(out) + `}
+{"Action":"fail","Package":"p/a","Test":"TestX"}
+{"Action":"fail","Package":"p/a"}
+`
+}
+
+// TestRedVerdict: a negative control's go test is red only when a test
+// failed, none skipped and none lacked its toolchain; a pass, a skip beside
+// the failure, a run with no test (a build that broke) or a failure for a
+// missing toolchain is green, so the control that wanted red fails loudly.
+func TestRedVerdict(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		exit   int
+		stream string
+		code   int
+		say    string
+	}{
+		{"a test failed", 1, oneFail, 1, ""},
+		{"every test passed", 0, onePass, 0, "NOT RED: no test failed"},
+		{"a test skipped beside the failure", 1, oneFail + passAndToolSkip, 0, "NOT RED: 1 test(s) skipped"},
+		{"the build broke: no test ran", 1, "# p/a\nx.go:1: syntax error\n", 0, "NOT RED: no test ran"},
+		{"the test lacked its toolchain (slowtest.Missing)", 1, failWith("missing what this test needs (its tier is functional or nightly, so its runner must carry it): no node toolchain"), 0, "NOT RED: a test lacked what it runs"},
+		{"the test lacked its pin (pyrun)", 1, failWith("the pinned PYTHON does not resolve: /x/dist/python-3.15.2/bin/python3.15 is absent and PYTHON is unset; run make dist-python"), 0, "NOT RED: a test lacked what it runs"},
+		{"the test lacked its interpreter (luarun)", 1, failWith("the Lua interpreter does not resolve: /x/dist/lua/bin/lua is absent and LUA is unset"), 0, "NOT RED: a test lacked what it runs"},
+		{"a failure that only mentions a tool", 1, failWith("node printed 3, want 4"), 1, ""},
+	} {
+		tl := read(strings.NewReader(c.stream), &bytes.Buffer{})
+		code, why := redVerdict(c.exit, tl)
+		if code != c.code || !strings.Contains(why, c.say) {
+			t.Errorf("%s: redVerdict = %d %q, want %d containing %q", c.name, code, why, c.code, c.say)
+		}
+	}
+}
+
+// TestAResultLineIsMarkedAsReadFromJSON: a package's result line carries
+// the mark, so a log of bare go test output is told from this one; a test's
+// own output is written unchanged.
+func TestAResultLineIsMarkedAsReadFromJSON(t *testing.T) {
+	var text bytes.Buffer
+	read(strings.NewReader(onePass+oneFail), &text)
+	for _, want := range []string{
+		"--- PASS: TestX\n",
+		"?   \tp/b\t[no test files] (go test -json, read by gotestrun)\n",
+		"FAIL\tp/a\t0.010s (go test -json, read by gotestrun)\n",
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("text %q holds no %q", text.String(), want)
+		}
+	}
+}
+
+// TestTheSummaryReportsASkipOnlyWhenOneHappened: the harnesses that read a
+// recipe's log refuse any line that reports a skip (testreg.RefuseSkips). The
+// summary of a run with no skip must pass that check, or every green recipe
+// reads as a skip; the summary of a run with one must still be refused.
+func TestTheSummaryReportsASkipOnlyWhenOneHappened(t *testing.T) {
+	t.Parallel()
+	clean := summary(tally{ran: 2, passed: 2, perPackage: map[string]int{"p/a": 2}})
+	if err := testreg.RefuseSkips([]string{clean}); err != nil {
+		t.Errorf("a run with no skip reads as a skip: %v", err)
+	}
+	skipped := summary(tally{ran: 3, passed: 2, skipped: 1, perPackage: map[string]int{"p/a": 2}})
+	if !strings.Contains(skipped, "skipped 1") {
+		t.Errorf("summary %q does not count its skip", skipped)
+	}
+	if err := testreg.RefuseSkips([]string{skipped}); err == nil {
+		t.Errorf("a run with a skip is not refused: %q", skipped)
 	}
 }

@@ -571,7 +571,6 @@ func TestPythonHostileLane(t *testing.T) {
 		want []string
 	}{
 		{"schema-python-runs-hostile-corpus.yml", []string{"cron:", "workflow_dispatch:", "make schema-python-runs-hostile-corpus\n", "make schema-python-runs-hostile-corpus-negative-control"}},
-		{"schema-python-resource-bounds.yml", []string{"cron:", "workflow_dispatch:", "make schema-python-resource-bounds\n", "make schema-python-resource-bounds-negative-control"}},
 	} {
 		data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", wf.name))
 		if err != nil {

@@ -37,7 +37,7 @@ name-buildability: $(NAME_BUILDABILITY_DEPS)
 	@rm -f $(NAME_BUILDABILITY_SUMMARY)
 	@status=0; \
 	$(NAME_BUILDABILITY_ENV) NAMEBUILD_SUMMARY="$(abspath $(NAME_BUILDABILITY_SUMMARY))" \
-	go test -count=1 -timeout=0 -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability_' ./tools/namebuild || status=$$?; \
+	$(GO_TEST) -count=1 -timeout=0 -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability_' ./tools/namebuild || status=$$?; \
 	if [ -f $(NAME_BUILDABILITY_SUMMARY) ]; then cat $(NAME_BUILDABILITY_SUMMARY); \
 	else echo "NAME-BUILDABILITY FAILED: no summary at $(NAME_BUILDABILITY_SUMMARY) (the run stopped before its last line)"; status=1; fi; \
 	exit $$status

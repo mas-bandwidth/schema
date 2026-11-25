@@ -8,8 +8,8 @@ import (
 )
 
 // TestLuaGeneratedLuacheckWiring keeps the functional Linux gate connected to
-// CI without running generation or an external checker from a unit test. The
-// workflow itself executes the checker and its planted negative control.
+// its make file without running generation or an external checker from a unit
+// test. Registry rows run the checker and its planted negative control.
 func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -45,16 +45,7 @@ func TestLuaGeneratedLuacheckWiring(t *testing.T) {
 			t.Errorf("makefile carries %q: the luacheck gate admits no allowance (fix the generator)", banned)
 		}
 	}
-
-	workflow := read(".github", "workflows", "schema-lua-generated-luacheck-gate.yml")
-	for _, want := range []string{
-		"run: make tables-lua-luacheck",
-		"run: make tables-lua-luacheck-negative-control",
-		"run: make tables-lua-format",
-		"run: make tables-lua-format-negative-control",
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Errorf("workflow missing %q", want)
-		}
-	}
+	// The four targets run as functional registry rows of the pr group
+	// (TestRetiredWorkflowsAreRegistryRows): the workflow that ran them is
+	// retired.
 }

@@ -278,3 +278,19 @@ func TestMoveCarriesTheTierAndDropsItsLine(t *testing.T) {
 		t.Fatalf("a tier line beside its test's row passed (err %v):\n%s", err, out.String())
 	}
 }
+
+// TestALanguagePackagesBenchmarksWaitForTheBenchAdapter: the Go tests of a
+// language package wait for that language (L5), but when all that is left of
+// it is benchmarks, they wait for the bench adapter (L6) like any other.
+func TestALanguagePackagesBenchmarksWaitForTheBenchAdapter(t *testing.T) {
+	t.Parallel()
+	p := plan(t.TempDir(), &testreg.Registry{Langs: []testreg.Lang{{Name: "lua"}}})
+	bench := extract.Item{Kind: extract.KindGoTest, Dir: "internal/codegen/lua", Name: "BenchmarkLuaBlock"}
+	test := extract.Item{Kind: extract.KindGoTest, Dir: "internal/codegen/lua", Name: "TestLuaBlock"}
+	if layer, reason := p(extract.KindGoTest, bench.Dir, []extract.Item{bench}); layer != "L6" || !strings.Contains(reason, "bench adapter") {
+		t.Errorf("benchmarks only: %s %q, want L6, the bench adapter", layer, reason)
+	}
+	if layer, reason := p(extract.KindGoTest, bench.Dir, []extract.Item{bench, test}); layer != "L5" || !strings.Contains(reason, "per-language (lua)") {
+		t.Errorf("a test and a benchmark: %s %q, want L5 per-language", layer, reason)
+	}
+}

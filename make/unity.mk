@@ -190,7 +190,7 @@ REGISTRY_NA_WHY.goldens.unity      := no committed goldens of any kind: its gene
 # serialize.cs beside the tree (make deps).
 .PHONY: unity-tables
 unity-tables: toolchain-unity
-	go test -count=1 -run '^TestUnityTable' ./compiler/
+	$(GO_TEST) -count=1 -run '^TestUnityTable' ./compiler/
 
 test-unity: unity-tables
 
@@ -203,7 +203,7 @@ test-unity: unity-tables
 # reference and build/fixedform-corpus, each with its planted negative control.
 .PHONY: unity-fixed
 unity-fixed: toolchain-unity build/fixedform-corpus/.stamp
-	go test -count=1 -run '^TestUnityFixed' ./compiler/ ./internal/codegen/unitytable/
+	$(GO_TEST) -count=1 -run '^TestUnityFixed' ./compiler/ ./internal/codegen/unitytable/
 
 test-unity: unity-fixed
 
@@ -211,7 +211,7 @@ test-unity: unity-fixed
 
 .PHONY: unity-vt
 unity-vt: toolchain-unity
-	go test -count=1 -run '^TestUnityVT' ./internal/codegen/unitytable/
+	$(GO_TEST) -count=1 -run '^TestUnityVT' ./internal/codegen/unitytable/
 
 test-unity: unity-vt
 

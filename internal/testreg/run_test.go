@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -450,6 +452,232 @@ func TestAHeavyTestLeavesNoPartEmpty(t *testing.T) {
 	}
 }
 
+// TestAGoldenWritersRowsShareOneShard: a golden writer runs once for all the
+// rows a shard holds of it, so its rows are one block no cut splits, placed
+// where its first row is, even when another row sits between them; rows of
+// other adapters, and goldens of another writer, are cut as before.
+func TestAGoldenWritersRowsShareOneShard(t *testing.T) {
+	t.Parallel()
+	golden := func(name, writer string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "golden", Seconds: 5, Inputs: []byte(`{"writer":"` + writer + `","files":["x"]}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), golden("w1", "pins-x"), golden("w2", "pins-x"), plain("b"), golden("w3", "pins-x"), golden("v1", "pins-y"), plain("c"), plain("d")}
+	parts := Parts(all, 3)
+	var got []string
+	for _, p := range parts {
+		var names []string
+		for _, i := range p {
+			names = append(names, i.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,w1,w2,w3 | b,v1 | c,d" {
+		t.Fatalf("parts %q, want pins-x's three rows together, and the rest cut by seconds", got)
+	}
+}
+
+// TestAnEnvPlantsRowsShareOneShardByLanguage: the env plants of one
+// language run their target in the checkout after its leg is built, so they
+// are one block, as a golden writer's rows are.
+func TestAnEnvPlantsRowsShareOneShardByLanguage(t *testing.T) {
+	t.Parallel()
+	plant := func(name, target string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "plant", Seconds: 5, Inputs: []byte(`{"env":{"X":"y"},"target":"` + target + `","reason":"r"}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), plant("p1", "go.functional.roundtrip.f.one"), plant("p2", "go.functional.roundtrip.f.two"), plain("b"),
+		plant("p3", "go.functional.roundtrip.f.three"), plant("q1", "lua.functional.roundtrip.f.one"), plain("c"), plain("d")}
+	var got []string
+	for _, p := range Parts(all, 3) {
+		var names []string
+		for _, i := range p {
+			names = append(names, i.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,p1,p2,p3 | b,q1 | c,d" {
+		t.Fatalf("parts %q, want go's three env plants together, and the rest cut by seconds", got)
+	}
+}
+
+// eventLog is what the staged adapters below did, in order.
+type eventLog struct {
+	mu sync.Mutex
+	ev []string
+}
+
+func (l *eventLog) add(s string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.ev = append(l.ev, s)
+}
+
+func (l *eventLog) at(s string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Index(l.ev, s)
+}
+
+func (l *eventLog) has(s string) bool { return l.at(s) >= 0 }
+
+// staged is an adapter that prepares (Preparer), may be Serial, and logs
+// each step; during, when set, runs inside its call.
+type staged struct {
+	name    string
+	serial  bool
+	prepErr error
+	prepCtx bool               // Prepare returns its context's error, as a build cut off does
+	timed   map[string]float64 // rows the adapter times itself, and their seconds
+	log     *eventLog
+	during  func()
+}
+
+func (a staged) Answers(Test) bool { return true }
+func (a staged) Serial() bool      { return a.serial }
+
+func (a staged) Prepare(ctx context.Context, _ string, _ []Instance) error {
+	a.log.add(fmt.Sprintf("prepare %s live=%t", a.name, ctx.Err() == nil))
+	if a.prepCtx {
+		return ctx.Err()
+	}
+	return a.prepErr
+}
+
+func (a staged) Run(_ context.Context, _ string, instances []Instance) ([]Result, error) {
+	a.log.add("start " + a.name)
+	if a.during != nil {
+		a.during()
+	}
+	a.log.add("end " + a.name)
+	out := passAll(instances)
+	for i := range out {
+		out[i].Seconds = a.timed[out[i].Instance]
+	}
+	return out, nil
+}
+
+func freeInstance(adapter string) Instance {
+	return Instance{Full: "none.unit.tooling." + adapter + ".one", Lang: LangFree,
+		Test: Test{Key: "tooling." + adapter + ".one", Scope: LangFree, Adapter: adapter, Family: adapter}}
+}
+
+// stagedRunner runs the staged adapters; each call's context is made by
+// deadline, which logs it.
+func stagedRunner(t *testing.T, log *eventLog, deadline func(parent context.Context) (context.Context, context.CancelFunc), ads ...staged) *Runner {
+	m := map[string]Adapter{}
+	for _, a := range ads {
+		m[a.name] = a
+	}
+	return &Runner{Reg: load(t, fixture), Adapters: m, Context: func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		return deadline(parent)
+	}}
+}
+
+// TestPrepareRunsBeforeAnyCallOutsideItsDeadline: a cold build happens
+// once, before the first call, under a deadline of its own: a call whose
+// deadline has already passed still had its adapter prepared live, and each
+// prepare's deadline was made for it, not borrowed from a call.
+func TestPrepareRunsBeforeAnyCallOutsideItsDeadline(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", serial: true, log: log}, staged{name: "b", log: log})
+	rn.Context = func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		if strings.HasPrefix(group, "prepare ") {
+			return context.WithCancel(parent)
+		}
+		return context.WithDeadline(parent, time.Unix(0, 0))
+	}
+	rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	for _, name := range []string{"a", "b"} {
+		if !log.has("prepare " + name + " live=true") {
+			t.Fatalf("adapter %s was not prepared under a live context: %q", name, log.ev)
+		}
+		if log.at("deadline prepare none/"+name) > log.at("prepare "+name+" live=true") {
+			t.Fatalf("adapter %s was prepared before its own deadline was made: %q", name, log.ev)
+		}
+		for _, other := range []string{"a", "b"} {
+			if log.at("prepare "+name+" live=true") > log.at("deadline none/"+other) {
+				t.Fatalf("adapter %s was prepared after none/%s's call began: %q", name, other, log.ev)
+			}
+		}
+	}
+}
+
+// TestAPrepareThatOutlastsItsDeadlineFailsByName: a build is held to the
+// limit a call has; one cut off fails its group naming the timeout, and the
+// group's call never runs. That prepare's deadline has already passed.
+func TestAPrepareThatOutlastsItsDeadlineFailsByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", log: log, prepCtx: true}, staged{name: "b", log: log})
+	rn.Context = func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		if group == "prepare none/a" {
+			return context.WithDeadline(parent, time.Unix(0, 0))
+		}
+		return context.WithCancel(parent)
+	}
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "timed out preparing none/a", "deadline exceeded")
+	if log.has("start a") {
+		t.Fatalf("adapter a's call ran after its prepare timed out: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Fatalf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
+	}
+}
+
+// TestAFailedPrepareFailsItsGroupByName: a build that fails fails every
+// row that needed it, saying so, and its call never runs.
+func TestAFailedPrepareFailsItsGroupByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel,
+		staged{name: "a", log: log, prepErr: errors.New("the leg would not build")}, staged{name: "b", log: log})
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "could not prepare none/a", "the leg would not build")
+	if log.has("start a") {
+		t.Fatalf("adapter a's call ran after its prepare failed: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Fatalf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
+	}
+}
+
+// TestSerialAdaptersRunOneAfterAnother: two Serial groups never overlap,
+// and the second's deadline starts only when the first's call is over, so
+// waiting behind it costs the second nothing. The first call yields while
+// it runs, so a second call started beside it would be seen.
+func TestSerialAdaptersRunOneAfterAnother(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	overlap := false
+	during := func() {
+		for range 10000 {
+			if log.has("start b") || log.has("deadline none/b") {
+				overlap = true
+				return
+			}
+			runtime.Gosched()
+		}
+	}
+	live := context.WithCancel
+	rn := stagedRunner(t, log, live, staged{name: "a", serial: true, log: log, during: during}, staged{name: "b", serial: true, log: log})
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	if overlap || log.at("end a") > log.at("deadline none/b") {
+		t.Fatalf("none/b's call began while none/a's ran: %q", log.ev)
+	}
+}
+
 // TestCoverageShowsEveryCell: answered, unrepresentable and MISSING.
 func TestCoverageShowsEveryCell(t *testing.T) {
 	t.Parallel()
@@ -460,5 +688,105 @@ func TestCoverageShowsEveryCell(t *testing.T) {
 	}
 	if c.Missing() != 3 {
 		t.Fatalf("%d MISSING, want 3 (c has no adapter)", c.Missing())
+	}
+}
+
+// stepClock is a clock that moves on by step each time it is read.
+type stepClock struct {
+	mu   sync.Mutex
+	t    time.Time
+	step time.Duration
+}
+
+func (c *stepClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(c.step)
+	return c.t
+}
+
+// TestEachWriterAndPlantIsACallOfItsOwn: a golden writer's rows are one
+// call, and each plant and each make row is one, each under its own deadline, never the whole
+// shard's writers or plants under one.
+func TestEachWriterAndPlantIsACallOfItsOwn(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	calls := map[string][]string{}
+	counting := func(name string) fake {
+		return fake{run: func(_ context.Context, instances []Instance) ([]Result, error) {
+			var names []string
+			for _, inst := range instances {
+				names = append(names, inst.Full)
+			}
+			mu.Lock()
+			calls[name] = append(calls[name], strings.Join(names, ","))
+			mu.Unlock()
+			return passAll(instances), nil
+		}}
+	}
+	row := func(full, adapter, inputs string) Instance {
+		return Instance{Full: full, Lang: LangFree, Test: Test{Key: full, Scope: LangFree, Adapter: adapter, Family: "f", Inputs: []byte(inputs)}}
+	}
+	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{"golden": counting("golden"), "plant": counting("plant"), "make": counting("make")}, Context: WithTimeout(0)}
+	rep := rn.Run(context.Background(), []Instance{
+		row("w1", "golden", `{"writer":"pins-x","files":["a"]}`), row("v1", "golden", `{"writer":"pins-y","files":["b"]}`),
+		row("w2", "golden", `{"writer":"pins-x","files":["c"]}`), row("p1", "plant", `{"edits":[]}`), row("p2", "plant", `{"edits":[]}`),
+		row("m1", "make", `{"file":"Makefile","target":"a"}`), row("m2", "make", `{"file":"Makefile","target":"b"}`),
+	})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	slices.Sort(calls["golden"])
+	slices.Sort(calls["plant"])
+	slices.Sort(calls["make"])
+	g, p, m := strings.Join(calls["golden"], " | "), strings.Join(calls["plant"], " | "), strings.Join(calls["make"], " | ")
+	if g != "v1 | w1,w2" || p != "p1 | p2" || m != "m1 | m2" {
+		t.Fatalf("golden calls %q, plant calls %q, make calls %q; want one per writer, one per plant and one per make row", g, p, m)
+	}
+}
+
+// TestARowsSecondsAreItsCallsShareAndItsPrepares: a row its adapter gives
+// no seconds for is weighed at its share of the call's time plus its share
+// of its group's Prepare, so a cold build is in the weight the sharder cuts
+// by. The clock moves 6 s a read: Prepare 6 s and the call 6 s, over three
+// rows, are 4 s a row.
+func TestARowsSecondsAreItsCallsShareAndItsPrepares(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", log: log})
+	rn.Now = (&stepClock{step: 6 * time.Second}).now
+	one, two, three := freeInstance("a"), freeInstance("a"), freeInstance("a")
+	two.Full, three.Full = "none.unit.tooling.a.two", "none.unit.tooling.a.three"
+	rep := rn.Run(context.Background(), []Instance{one, two, three})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	for _, o := range rep.Outcomes {
+		if o.Seconds != 4 {
+			t.Errorf("%s weighs %.2f s, want 4 (6 s of call and 6 s of Prepare over 3 rows)", o.Full, o.Seconds)
+		}
+	}
+}
+
+// TestARowsShareIsWhatTheCallTookBeyondTheTimedRows: in a call where the
+// adapter timed one row itself (3 s of the call's 6 s), the rows it did not
+// time share only the other 3 s, so no second is counted twice; every row
+// still carries its third of the 6 s Prepare.
+func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", log: log, timed: map[string]float64{"none.unit.tooling.a.one": 3}})
+	rn.Now = (&stepClock{step: 6 * time.Second}).now
+	one, two, three := freeInstance("a"), freeInstance("a"), freeInstance("a")
+	two.Full, three.Full = "none.unit.tooling.a.two", "none.unit.tooling.a.three"
+	rep := rn.Run(context.Background(), []Instance{one, two, three})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	want := map[string]float64{"none.unit.tooling.a.one": 5, "none.unit.tooling.a.two": 3.5, "none.unit.tooling.a.three": 3.5}
+	for _, o := range rep.Outcomes {
+		if o.Seconds != want[o.Full] {
+			t.Errorf("%s weighs %.2f s, want %.2f (its own or a half of the call's untimed 3 s, plus 2 s of Prepare)", o.Full, o.Seconds, want[o.Full])
+		}
 	}
 }

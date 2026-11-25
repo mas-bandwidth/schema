@@ -152,8 +152,9 @@ func TestSelfHostedBoundsNegativeControls(t *testing.T) {
 	t.Parallel()
 	wfs := workflows(t, repoRoot(t))
 	// release.yml is dispatch-only and outside the nightly, so it keeps its
-	// bound; the nightly squirrel fuzz carries none and keeps the shell rule.
-	const bounded, nightly = "release.yml", "schema-squirrel-nightly-fuzz.yml"
+	// bound; the nightly Lobster fixed-proof qualification carries none and
+	// keeps the shell rule.
+	const bounded, nightly = "release.yml", "lobster-fixed-proof-qualification.yml"
 	if nightlyWorkflow(bounded) || !nightlyWorkflow(nightly) {
 		t.Fatalf("the controls need %s outside the nightly and %s in it", bounded, nightly)
 	}
@@ -163,8 +164,8 @@ func TestSelfHostedBoundsNegativeControls(t *testing.T) {
 		{bounded, "timeout removed", "    timeout-minutes: 20\n", "", "release.yml:release has no timeout-minutes"},
 		{bounded, "timeout from an expression", "    timeout-minutes: 20\n", "    timeout-minutes: ${{ inputs.minutes }}\n", "is not a literal number of minutes"},
 		{bounded, "timeout past the cap", "    timeout-minutes: 20\n", "    timeout-minutes: 600\n", "timeout-minutes 600 is outside"},
-		{nightly, "default shell removed", "  fuzz:\n    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n    defaults:\n      run:\n        shell: " + pgroupShell + "\n", "  fuzz:\n    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n", "schema-squirrel-nightly-fuzz.yml:fuzz runs its steps under \"\""},
-		{nightly, "a step opts out after checkout", "      - run: make schema-squirrel-nightly-fuzz\n", "      - run: make schema-squirrel-nightly-fuzz\n        shell: bash\n", "names shell \"bash\" after the checkout"},
+		{nightly, "default shell removed", "  native:\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n    defaults:\n      run:\n        shell: " + pgroupShell + "\n", "  native:\n    runs-on: [self-hosted, Linux, X64, fleet, schema]\n", "lobster-fixed-proof-qualification.yml:native runs its steps under \"\""},
+		{nightly, "a step opts out after checkout", "        run: make -j4 tables-fixedform-corpus\n", "        run: make -j4 tables-fixedform-corpus\n        shell: bash\n", "names shell \"bash\" after the checkout"},
 	}
 	for _, c := range cases {
 		wf := c.wf
