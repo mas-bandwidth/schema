@@ -57,6 +57,9 @@ func TestLoadRefusesUnionInputsThatDoNotRead(t *testing.T) {
 		`{"go":{"package":"./g","test":"TestU","sub":"x"}}`: "unknown field",
 		`{"go":{"package":"g","test":"TestU"}}`:             "want a ./package",
 		`{"go":{"package":"./g","test":"Helper"}}`:          "want a ./package",
+		`{"go":{"package":"./g/","test":"TestU"}}`:          "want it written ./g",
+		`{"go":{"package":"./a/../g","test":"TestU"}}`:      "want it written ./g",
+		`{"go":{"package":"./../g","test":"TestU"}}`:        "want it written",
 	} {
 		refused(t, fixture+unionRow("roundtrip.fam.u", tests), "fixture.jsonl:15:", words)
 	}
@@ -100,6 +103,26 @@ func TestAnIntrinsicTestHasOneInstance(t *testing.T) {
 	if n != len(reg.Langs)-1 {
 		t.Errorf("%d declared pairs, want %d", n, len(reg.Langs)-1)
 	}
+	without, err := load(t, fixture).Select(Query{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	with, err := reg.Select(Query{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if with.Unrep-without.Unrep != len(reg.Langs)-1 {
+		t.Errorf("a selection counts %d unrepresentable pairs for the intrinsic test, want %d", with.Unrep-without.Unrep, len(reg.Langs)-1)
+	}
+}
+
+// TestLoadRefusesAnUnrepresentableLineOnAUnionRow: a union row's language
+// with no Go test is red, so no line can declare it unrepresentable (and
+// drop its instance while the ledger credits its test).
+func TestLoadRefusesAnUnrepresentableLineOnAUnionRow(t *testing.T) {
+	t.Parallel()
+	refused(t, fixture+unionRow("roundtrip.fam.u", `{"go":{"package":"./g","test":"TestGoU"},"lua":{"package":"./l","test":"TestLuaU"}}`)+
+		`{"rec":"unrepresentable","test":"roundtrip.fam.u","lang":"lua","reason":"r"}`+"\n", "fixture.jsonl:16:", "is a union row")
 }
 
 // TestLoadRefusesABadIntrinsic: an intrinsic test names a language of the
@@ -111,11 +134,15 @@ func TestLoadRefusesABadIntrinsic(t *testing.T) {
 	lua := `{"lua":{"package":"./l","test":"TestLuaEscape"}}`
 	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "cobol", "a Lua string escape", lua), "fixture.jsonl:15:", `intrinsic to "cobol"`)
 	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", " ", lua), "fixture.jsonl:15:", "gives no reason")
-	for _, r := range []string{"intrinsic", "Language-specific.", "no counterpart in other languages", "lua only"} {
+	for _, r := range []string{"intrinsic", "Language-specific.", "no counterpart in other languages", "lua only",
+		"this is really just lua", "it is language-specific code", "Exists only in this language, nowhere else."} {
 		refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", r, lua), "fixture.jsonl:15:", "boilerplate reason")
 	}
 	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", `{"lua":{"package":"./l","test":"TestLuaEscape"},"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:15:", "names a Go test for go")
 	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", lua)+`{"rec":"unrepresentable","test":"roundtrip.fam.i","lang":"go","reason":"r"}`+"\n", "fixture.jsonl:16:", "already declares every other language")
+	refused(t, fixture+intrinsicRow("roundtrip.fam.i", "lua", "a Lua string escape", `{"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:15:", "names no Go test for lua")
+	plain := `{"rec":"test","key":"roundtrip.fam.i","type":"roundtrip","family":"fam","case":"i","tier":"unit","checks":"x","inputs":{"n":9},"expect":"x","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
+	refused(t, fixture+plain, "fixture.jsonl:15:", "is not a union row")
 	free := `{"rec":"test","key":"tooling.self.i","type":"tooling","family":"self","case":"i","tier":"unit","checks":"x","inputs":{"n":1},"expect":"x","scope":"none","adapter":"fake","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
 	refused(t, fixture+free, "fixture.jsonl:15:", "so it is a per-language row")
 }

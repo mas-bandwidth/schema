@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2789.
+Unit tests every language answers: 2. Language-free tests: 2792.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2915,7 +2915,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 33 tests
+#### `tooling` family `schema-test`, 35 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2927,6 +2927,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-row-whose-go-test-is-gone-is-missing` | `gotest` | Go test TestARowWhoseGoTestIsGoneIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARowWhoseGoTestIsGoneIsMissing` | the Go test passes | `tools/schema-test/gotest_test.go:56` |
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:188` |
 | `none.unit.tooling.schema-test.a-subtest-that-skips-fails-its-parent` | `gotest` | Go test TestASubtestThatSkipsFailsItsParent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestThatSkipsFailsItsParent` | the Go test passes | `tools/schema-test/gotest_test.go:20` |
+| `none.unit.tooling.schema-test.a-union-call-carries-its-build-tags` | `gotest` | Go test TestAUnionCallCarriesItsBuildTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallCarriesItsBuildTags` | the Go test passes | `tools/schema-test/gounion_test.go:63` |
 | `none.unit.tooling.schema-test.a-union-language-with-no-go-test-is-red` | `gotest` | Go test TestAUnionLanguageWithNoGoTestIsRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionLanguageWithNoGoTestIsRed` | the Go test passes | `tools/schema-test/gounion_test.go:18` |
 | `none.unit.tooling.schema-test.a-union-row-routes-to-the-go-union-harness` | `gotest` | Go test TestAUnionRowRoutesToTheGoUnionHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionRowRoutesToTheGoUnionHarness` | the Go test passes | `tools/schema-test/gounion_test.go:47` |
 | `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:227` |
@@ -2942,6 +2943,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.name-build-plan-selects-exactly-the-asked` | `gotest` | Go test TestNameBuildPlanSelectsExactlyTheAsked in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildPlanSelectsExactlyTheAsked` | the Go test passes | `tools/schema-test/namebuild_test.go:38` |
 | `none.unit.tooling.schema-test.name-build-results-reads-the-events` | `gotest` | Go test TestNameBuildResultsReadsTheEvents in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildResultsReadsTheEvents` | the Go test passes | `tools/schema-test/namebuild_test.go:82` |
 | `none.unit.tooling.schema-test.name-buildability-is-l4s` | `gotest` | Go test TestNameBuildabilityIsL4s in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildabilityIsL4s` | the Go test passes | `tools/schema-test/extract_test.go:178` |
+| `none.unit.tooling.schema-test.one-package-runs-one-go-test-at-a-time` | `gotest` | Go test TestOnePackageRunsOneGoTestAtATime in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestOnePackageRunsOneGoTestAtATime` | the Go test passes | `tools/schema-test/gounion_test.go:78` |
 | `none.unit.tooling.schema-test.rows-are-named-from-their-go-tests` | `gotest` | Go test TestRowsAreNamedFromTheirGoTests in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRowsAreNamedFromTheirGoTests` | the Go test passes | `tools/schema-test/gotest_test.go:137` |
 | `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:170` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:261` |
@@ -3033,7 +3035,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 55 tests
+#### `tooling` family `testreg`, 56 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3069,6 +3071,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.load-refuses-an-owed-record` | `gotest` | Go test TestLoadRefusesAnOwedRecord in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnOwedRecord` | the Go test passes | `internal/testreg/owed_test.go:8` |
 | `none.unit.tooling.testreg.load-refuses-an-unknown-tier` | `gotest` | Go test TestLoadRefusesAnUnknownTier in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnknownTier` | the Go test passes | `internal/testreg/registry_test.go:81` |
 | `none.unit.tooling.testreg.load-refuses-an-unknown-type` | `gotest` | Go test TestLoadRefusesAnUnknownType in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnknownType` | the Go test passes | `internal/testreg/registry_test.go:75` |
+| `none.unit.tooling.testreg.load-refuses-an-unrepresentable-line-on-a-union-row` | `gotest` | Go test TestLoadRefusesAnUnrepresentableLineOnAUnionRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnrepresentableLineOnAUnionRow` | the Go test passes | `internal/testreg/gotests_test.go:122` |
 | `none.unit.tooling.testreg.load-refuses-negative-seconds` | `gotest` | Go test TestLoadRefusesNegativeSeconds in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesNegativeSeconds` | the Go test passes | `internal/testreg/registry_test.go:111` |
 | `none.unit.tooling.testreg.load-refuses-union-inputs-that-do-not-read` | `gotest` | Go test TestLoadRefusesUnionInputsThatDoNotRead in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnionInputsThatDoNotRead` | the Go test passes | `internal/testreg/gotests_test.go:50` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:93` |

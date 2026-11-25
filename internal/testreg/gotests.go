@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -49,6 +50,11 @@ func GoTestsOf(t Test) (tests map[string]GoTest, ok bool, err error) {
 	for lang, g := range in.Tests {
 		if !strings.HasPrefix(g.Package, "./") || !goTestFuncName.MatchString(g.Test) {
 			return nil, true, fmt.Errorf("%s: union inputs for %s want a ./package and a Go test name, got %q %q", t.Key, lang, g.Package, g.Test)
+		}
+		// one spelling per package, so the loader sees a Go test two rows
+		// name however they write it
+		if rest := strings.TrimPrefix(g.Package, "./"); path.Clean(rest) != rest || rest == ".." || strings.HasPrefix(rest, "../") {
+			return nil, true, fmt.Errorf("%s: union inputs for %s name the package %q, want it written ./%s", t.Key, lang, g.Package, path.Clean(rest))
 		}
 	}
 	return in.Tests, true, nil

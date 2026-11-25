@@ -212,16 +212,12 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 	if err != nil {
 		return nil, err
 	}
-	names := make([]string, 0, len(tests))
-	for n := range tests {
-		names = append(names, n)
-	}
-	slices.Sort(names)
-	args := []string{"test", "-count=1", "-json", "-timeout", goTestTimeout(ctx, time.Now())}
-	if p.tags != "" {
-		args = append(args, "-tags", p.tags)
-	}
-	args = append(args, "-run", "^("+strings.Join(names, "|")+")$", rel)
+	args := goTestArgs(p, rel, tests, goTestTimeout(ctx, time.Now()))
+	// a package's tests were written to run in one process at a time (some
+	// write fixed paths under build/), so the gotest and go-union harnesses
+	// never run go test on one package at once
+	unlock := lockGoTestPackage(filepath.Join(dir, rel))
+	defer unlock()
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = dir
 	bound(cmd)
@@ -243,6 +239,31 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 		return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
 	}
 	return packageVerdict(pkg, res, runErr, stdout.String(), stderr.String())
+}
+
+// goTestArgs is the go test command line for one call: the named tests of
+// one package, under the package's build tags.
+func goTestArgs(p goTestPackage, rel string, tests map[string]string, timeout string) []string {
+	names := make([]string, 0, len(tests))
+	for n := range tests {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	args := []string{"test", "-count=1", "-json", "-timeout", timeout}
+	if p.tags != "" {
+		args = append(args, "-tags", p.tags)
+	}
+	return append(args, "-run", "^("+strings.Join(names, "|")+")$", rel)
+}
+
+var goTestPackageLocks sync.Map // package directory -> *sync.Mutex
+
+// lockGoTestPackage holds one package directory for one go test call.
+func lockGoTestPackage(dir string) (unlock func()) {
+	m, _ := goTestPackageLocks.LoadOrStore(dir, new(sync.Mutex))
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // packageVerdict holds a call's results to how go test exited. A failing

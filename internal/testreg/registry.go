@@ -97,25 +97,38 @@ type Test struct {
 	Line      int        `json:"-"`
 }
 
-// boilerplateReasons say nothing about a test's subject: an intrinsic
-// reason that is one of them, or under four words, is refused.
-var boilerplateReasons = []string{
-	"intrinsic", "language-specific", "language specific", "format behaviour",
-	"format behavior", "n/a", "tbd", "todo", "none", "exists in this language only",
-	"only in this language", "no counterpart in other languages", "language intrinsic",
+// fillerWords say nothing about a test's subject. An intrinsic reason is
+// boilerplate when it is under four words, or when fewer than three of its
+// words are not filler: "language-specific", "it is language-specific code"
+// and "this is really just lua" are each refused, "a Lua string escape" is
+// not.
+var fillerWords = map[string]bool{}
+
+func init() {
+	for _, w := range strings.Fields(`a an the it its it's is are was be been this that these those
+		just really only so very quite simply code test tests testing tested language languages
+		language-specific language-only specific intrinsic intrinsically other others another no not
+		none nothing in on of to for and or but has have had exists exist existing counterpart
+		counterparts behaviour behavior format here there one own thing things stuff something
+		which with by as at from n/a na tbd todo fixme etc same different elsewhere every any all
+		applies apply does do lacks lack`) {
+		fillerWords[w] = true
+	}
 }
 
 func boilerplate(reason string) bool {
-	r := strings.ToLower(strings.Trim(strings.TrimSpace(reason), ".:;- "))
-	if len(strings.Fields(r)) < 4 {
+	words := strings.Fields(strings.ToLower(reason))
+	if len(words) < 4 {
 		return true
 	}
-	for _, b := range boilerplateReasons {
-		if r == b || strings.TrimPrefix(r, "it ") == b {
-			return true
+	content := 0
+	for _, w := range words {
+		w = strings.Trim(w, ".,:;!?()[]\"'`")
+		if w != "" && !fillerWords[w] {
+			content++
 		}
 	}
-	return false
+	return content < 3
 }
 
 // Intrinsic names the one language a test's subject exists in, and why no
@@ -386,11 +399,22 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 		if reg.lang[t.Intrinsic.Lang] == 0 || t.Intrinsic.Lang == LangFree {
 			fail(t.Line, "test %s is intrinsic to %q, which is not a language of the registry", t.Key, t.Intrinsic.Lang)
 		}
-		if tests, ok, err := GoTestsOf(t); ok && err == nil {
-			for lang := range tests {
-				if lang != t.Intrinsic.Lang {
-					fail(t.Line, "test %s is intrinsic to %s but names a Go test for %s", t.Key, t.Intrinsic.Lang, lang)
-				}
+		// intrinsic is a union row of one language's own Go test, never a
+		// way for another kind of row to drop languages
+		tests, ok, err := GoTestsOf(t)
+		if !ok {
+			fail(t.Line, "test %s is intrinsic to %s but is not a union row: only a row naming that language's own Go test (inputs.tests) can be intrinsic", t.Key, t.Intrinsic.Lang)
+			continue
+		}
+		if err != nil {
+			continue // refused above
+		}
+		if _, named := tests[t.Intrinsic.Lang]; !named {
+			fail(t.Line, "test %s is intrinsic to %s but names no Go test for %s", t.Key, t.Intrinsic.Lang, t.Intrinsic.Lang)
+		}
+		for lang := range tests {
+			if lang != t.Intrinsic.Lang {
+				fail(t.Line, "test %s is intrinsic to %s but names a Go test for %s", t.Key, t.Intrinsic.Lang, lang)
 			}
 		}
 	}
@@ -399,6 +423,12 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 		if i := reg.test[u.Test]; i != 0 && reg.Tests[i-1].Intrinsic != nil {
 			fail(u.Line, "unrepresentable %s for %s: the test is intrinsic to %s, which already declares every other language", u.Test, u.Lang, reg.Tests[i-1].Intrinsic.Lang)
 			continue
+		}
+		if i := reg.test[u.Test]; i != 0 {
+			if _, union, _ := GoTestsOf(reg.Tests[i-1]); union {
+				fail(u.Line, "unrepresentable %s for %s: the test is a union row, where a language with no Go test for the case is red, never left out", u.Test, u.Lang)
+				continue
+			}
 		}
 		switch {
 		case reg.test[u.Test] == 0:

@@ -306,13 +306,18 @@ ruling, 2026-11-25, easy for Glenn to overrule):
 - When in doubt, a test is format behaviour. A cold reader checks the split.
 - `testreg.Load` refuses an intrinsic row:
   - naming a language the registry does not list;
-  - with an empty or boilerplate reason (under four words, or a stock phrase
-    such as "language-specific"), so every reason says what the subject is;
-  - that is language-free;
-  - whose inputs name another language's test;
+  - with an empty or boilerplate reason (under four words, or fewer than three
+    words that are not filler such as "language-specific", "only", "code"),
+    so every reason says what the subject is;
+  - that is language-free, or is not a union row (only a row naming the
+    language's own Go test can be intrinsic);
+  - whose inputs name another language's test, or not its own;
   - with an `unrepresentable` line of its own.
 
   These are `TestAnIntrinsicTestHasOneInstance` and `TestLoadRefusesABadIntrinsic`.
+- A union row takes no `unrepresentable` line: a language with no Go test
+  for the case is red, never left out
+  (`TestLoadRefusesAnUnrepresentableLineOnAUnionRow`).
 
 ## How each kind of test fits
 
