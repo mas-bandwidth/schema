@@ -186,7 +186,7 @@ func (a *harnessAdapter) Answers(t testreg.Test) bool {
 func (a *harnessAdapter) Prepare(ctx context.Context, lang string, instances []testreg.Instance) error {
 	seen := map[string]bool{}
 	for _, inst := range instances {
-		h, ok := harnessFor(inst.Test.Family)
+		h, ok := harnessFor(inst.Test)
 		if !ok || seen[h.Name] {
 			continue // Run fails a family with no harness, naming it
 		}
