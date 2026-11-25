@@ -96,10 +96,14 @@ func subjectKeys(f []string) []string {
 // up). A case of the scope that no kept line carries, and a kept forgery
 // whose subject no line answers to, are refused by name: the leg would never
 // be sent the one, nor be able to read the other.
-func scopeLines(text string, scope map[caseKey]bool) (string, error) {
-	running := map[string]bool{}
-	for key := range scope {
-		running[key.surface] = true
+//
+// running is the surfaces the run runs; nil is the scope's own surfaces.
+func scopeLines(text string, scope map[caseKey]bool, running map[string]bool) (string, error) {
+	if running == nil {
+		running = map[string]bool{}
+		for key := range scope {
+			running[key.surface] = true
+		}
 	}
 	keep := func(f []string, row derivedRow) bool {
 		if row.cases == nil {
@@ -135,7 +139,7 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 		if f != nil && f[0] == "forgery" && len(f) > 3 && keep(f, row) && running[row.cases(f)[0].surface] {
 			subjects[f[2]+" "+f[3]] = append(subjects[f[2]+" "+f[3]], f[1])
 		}
-		if f != nil && f[0] == "write-refusal-message" && len(f) > 4 && keep(f, row) {
+		if f != nil && f[0] == "write-refusal-message" && len(f) > 4 && keep(f, row) && running[f[0]] {
 			batches[f[2]+" "+f[4]] = true
 		}
 	}
@@ -192,7 +196,7 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 // returns its path. A case of the scope the corpus does not have (a stale
 // registry row) is no row to keep: the adapter answers it as stale; nor is
 // a case on an opt-in unit the leg did not name (optin.go), scored absent.
-func scopeManifest(legDerived, lang string, scope map[caseKey]bool, legWants map[string][]expectation, unsent notAsked) (string, error) {
+func scopeManifest(legDerived, lang string, scope map[caseKey]bool, running map[string]bool, legWants map[string][]expectation, unsent notAsked) (string, error) {
 	text, err := os.ReadFile(legDerived)
 	if err != nil {
 		return "", err
@@ -205,7 +209,7 @@ func scopeManifest(legDerived, lang string, scope map[caseKey]bool, legWants map
 			}
 		}
 	}
-	kept, err := scopeLines(string(text), known)
+	kept, err := scopeLines(string(text), known, running)
 	if err != nil {
 		return "", fmt.Errorf("the scoped manifest for %s: %w", lang, err)
 	}

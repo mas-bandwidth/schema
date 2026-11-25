@@ -1062,7 +1062,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					only[key.surface] = true
 				}
 			}
-			if legDerived, err = scopeManifest(legDerived, d.lang, scope, legWants, notAsked); err != nil {
+			if legDerived, err = scopeManifest(legDerived, d.lang, scope, only, legWants, notAsked); err != nil {
 				return false, fmt.Errorf("%s: %w", d.lang, err)
 			}
 		}

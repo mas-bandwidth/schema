@@ -55,6 +55,7 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 		"write-refusal wr1 U Root",
 		"message msg1 C Root m1.bin m1.batch",
 		"message msg2 C Root m2.bin m2.batch",
+		"message msg3 C Root m3.bin m3.batch",
 		"write-refusal-message wrm1 C Root m1.bin field kind text",
 		"block x U x.blk",
 		"block y U y.blk",
@@ -69,7 +70,7 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 	}, "\n")
 	cut := func(scope map[caseKey]bool) string {
 		t.Helper()
-		kept, err := scopeLines(text, scope)
+		kept, err := scopeLines(text, scope, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -99,25 +100,35 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 		[]string{"cook-write inst1 ", "instance inst1 ", "instance inst2 "},
 		[]string{"cook-write inst2 "})
 	// the asked rows on json-read, cook-write and message, and the cut of
-	// each surface's unasked rows (inst1 is read by no kept row); a
-	// write-refusal-message row on a surface that does not run keeps its
-	// batch, msg1, there too
+	// each surface's unasked rows (inst1 is read by no kept row); the
+	// write-refusal-message surface does not run, so its row reads no batch
 	has("the scope of msg2 and inst2", cut(map[caseKey]bool{{"message", "msg2"}: true, {"json-read", "inst2"}: true, {"cook-write", "inst2"}: true}),
-		[]string{"message msg2 ", "instance inst2 ", "cook-write inst2 ", "connection C ", "message msg1 ", "write-refusal-message wrm1 "},
-		[]string{"instance inst1 ", "cook-write inst1 "})
+		[]string{"message msg2 ", "instance inst2 ", "cook-write inst2 ", "connection C ", "write-refusal-message wrm1 "},
+		[]string{"instance inst1 ", "cook-write inst1 ", "message msg1 "})
 	// a write-refusal-message row asked keeps the message row whose batch it
 	// writes against, even when the message surface runs without it
 	has("the scope of wrm1 and msg2", cut(map[caseKey]bool{{"write-refusal-message", "wrm1"}: true, {"message", "msg2"}: true}),
-		[]string{"write-refusal-message wrm1 ", "message msg1 ", "message msg2 "}, nil)
+		[]string{"write-refusal-message wrm1 ", "message msg1 ", "message msg2 "},
+		[]string{"message msg3 "})
+	// with no write-refusal-message row asked, no batch is read: the message
+	// surface's unasked rows are cut, msg1 with them
+	has("the scope of msg2", cut(map[caseKey]bool{{"message", "msg2"}: true}),
+		[]string{"message msg2 ", "write-refusal-message wrm1 "},
+		[]string{"message msg1 ", "message msg3 "})
 	// a forgery goes with the image it forges, by case or by cooked root,
 	// and the forgery surface's other rows are cut
-	has("the scope of forged1, forged3 and forged4", cut(map[caseKey]bool{{"forgery", "forged1"}: true, {"cook-forgery", "forged3"}: true, {"cook-forgery", "forged4"}: true}),
-		[]string{"forgery forged1 ", "block x U", "forgery forged3 ", "cook ck U", "forgery forged4 ", "cook cv U Scene"},
+	// with the block and cook surfaces running on other rows, the subjects
+	// stay only because the asked forgeries are made from them
+	has("the scope of forged1, forged3, forged4, block y and cook cj", cut(map[caseKey]bool{
+		{"forgery", "forged1"}: true, {"cook-forgery", "forged3"}: true, {"cook-forgery", "forged4"}: true,
+		{"block", "y"}: true, {"cook", "cj"}: true,
+	}),
+		[]string{"forgery forged1 ", "block x U", "forgery forged3 ", "cook ck U", "forgery forged4 ", "cook cv U Scene", "block y U", "cook cj U"},
 		[]string{"forgery forged2 ", "forgery forged5 "})
-	if _, err := scopeLines(text, map[caseKey]bool{{"wire", "gone"}: true}); err == nil || !strings.Contains(err.Error(), "wire/gone") {
+	if _, err := scopeLines(text, map[caseKey]bool{{"wire", "gone"}: true}, nil); err == nil || !strings.Contains(err.Error(), "wire/gone") {
 		t.Errorf("a scope case no row carries: err %v, want a refusal naming wire/gone", err)
 	}
-	if _, err := scopeLines(text, map[caseKey]bool{{"forgery", "forged5"}: true}); err == nil || !strings.Contains(err.Error(), "block nowhere") || !strings.Contains(err.Error(), "forged5") {
+	if _, err := scopeLines(text, map[caseKey]bool{{"forgery", "forged5"}: true}, nil); err == nil || !strings.Contains(err.Error(), "block nowhere") || !strings.Contains(err.Error(), "forged5") {
 		t.Errorf("a forgery made from no line: err %v, want a refusal naming block nowhere and forged5", err)
 	}
 }
@@ -185,7 +196,7 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 			}
 		}
 		// the first case asked alone cuts a manifest whose references hold
-		if _, err := scopeLines(string(data), map[caseKey]bool{{s, names[0]}: true}); err != nil {
+		if _, err := scopeLines(string(data), map[caseKey]bool{{s, names[0]}: true}, nil); err != nil {
 			t.Errorf("%s/%s asked alone: %v", s, names[0], err)
 		}
 	}
@@ -193,7 +204,7 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 		t.Fatal("the corpus gave no case to check")
 	}
 	// every case asked at once: every forgery's subject answers to a line
-	if _, err := scopeLines(string(data), all); err != nil {
+	if _, err := scopeLines(string(data), all, nil); err != nil {
 		t.Errorf("the whole corpus asked at once: %v", err)
 	}
 }
