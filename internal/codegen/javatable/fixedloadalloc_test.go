@@ -68,8 +68,8 @@ public final class Main {
         final byte[] image = allocprobe.CountedFixed.image();
 
         int n = allocprobe.CountedFixed.load(values, values.length, wire, plan, remap, image, report);
-        if (n != 1 || report.refused || report.damaged || report.unknown != 0 || report.widened != 0) {
-            fail("first load n=" + n + " refused=" + report.refused + " damaged=" + report.damaged);
+        if (n != 1 || report.refused || report.unknown != 0 || report.widened != 0) {
+            fail("first load n=" + n + " refused=" + report.refused + " reason=" + report.reason);
         }
         if (values[0].id != 41 || values[0].weight != -7) {
             fail("first load value");

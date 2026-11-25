@@ -80,8 +80,8 @@ public final class Untouched {
         final PairFixed.Value[] good = sentinels();
         final TableFixed.Report gr = new TableFixed.Report();
         final int gn = load(good, file, gr);
-        if (gn != 2 || gr.refused || gr.damaged || good[0].seq != 1 || good[1].seq != 2) {
-            System.out.println("FAILED control n=" + gn + " refused=" + gr.refused + " damaged=" + gr.damaged);
+        if (gn != 2 || gr.refused || good[0].seq != 1 || good[1].seq != 2) {
+            System.out.println("FAILED control n=" + gn + " refused=" + gr.refused + " reason=" + gr.reason);
             return;
         }
 
@@ -100,7 +100,7 @@ public final class Untouched {
         final PairFixed.Value[] v = sentinels();
         final TableFixed.Report r = new TableFixed.Report();
         final int n = load(v, file, r);
-        System.out.println("CASE " + what + " n=" + n + " refused=" + (r.refused || r.damaged) + " widened=" + r.widened + " defaulted=" + defaulted(v));
+        System.out.println("CASE " + what + " n=" + n + " refused=" + r.refused + " widened=" + r.widened + " defaulted=" + defaulted(v));
     }
 }
 `
