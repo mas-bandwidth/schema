@@ -20,22 +20,22 @@ func main() {
 		os.Exit(2)
 	}
 	cPath, cppPath := os.Args[1], os.Args[2]
-	cSrc, err := os.ReadFile(cPath)
+	cSrc, err := readHeader(cPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
 		os.Exit(1)
 	}
-	cppSrc, err := os.ReadFile(cppPath)
+	cppSrc, err := readHeader(cppPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
 		os.Exit(1)
 	}
-	cPlain, err := dequalifyC(string(cSrc), ".")
+	cPlain, err := dequalifyC(cSrc, ".")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
 		os.Exit(1)
 	}
-	leftover, err := compareHeaders(cPlain, string(cppSrc))
+	leftover, err := compareHeaders(cPlain, cppSrc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fixedtwin: %v\n", err)
 		os.Exit(1)

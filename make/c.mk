@@ -1368,7 +1368,7 @@ test-c: tables-c-finite-float
 update-goldens-c: build/tables-generated-c/.stamp
 	@for d in examples block pointers; do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+		cp build/tables-generated-c/$$d/*Table.h $$(find build/tables-generated-c/$$d -maxdepth 1 -name '*TableData.h') build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
 
 # The same registry listing oracle as the reference, through the C surface.
@@ -1678,6 +1678,24 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 # the list is working/schema-fix-briefs/CTABLE-FORMAT.md's, layer by layer.
 CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
+# THE PER-FILE LIMIT. clang-format gets CLANG_FORMAT_FILE_SECONDS of CPU for
+# any one generated C or C++ file (`ulimit -t` in make/checks/c-clean-format.sh
+# and cpp-clean-format.sh, both gates), and a file it cannot finish inside
+# that is red by name (SLOW). clang-format lays a file out once per branch
+# combination of its #if/#elif/#else chains, so a table header's big constant
+# arrays were read five or six times over. The emitters now write the fixed
+# form's arrays into <Base>TableData.h with no name on a row (a trailing
+# comment per row tripled the data header's time: 3.2 s alone, 7.6 s at
+# 4-way), pack byte arrays 16 to a line, and
+# rewrite every chain into single-branch conditionals
+# (ccommon.SinglePassConditionals), so each file is laid out once.
+# Measured 2026-11-25 on amd-1 (clang-format 23.1.3, user+sys CPU, load
+# 2.2-9.8): ann/announce4097/AnnounceTable.h went from 29.3 s to 0.72 s alone
+# (81 s at 4-way) in C and from 16.3 s to 0.70 s in C++; the slowest file now
+# is 1.50 s in C and 1.69 s in C++; the whole C tree from 402 s to 47 s of CPU
+# and the C++ tree from 349 s to 94 s. A file over the limit is cured in the
+# emitter's shape, never in this number.
+CLANG_FORMAT_FILE_SECONDS := 5
 C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
 # THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
 # row may set C_FORMAT_SHARD=K/N, so N rows judge every file once.
@@ -1697,7 +1715,7 @@ tables-c-clean: $(TABLES_C_CLEAN_INPUTS)
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-c-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
+	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build FILE_SECONDS=$(CLANG_FORMAT_FILE_SECONDS) sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
 
 # ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET
@@ -1717,7 +1735,7 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	@rm -rf $(C_CLEAN_CONTROL) && mkdir -p $(C_CLEAN_CONTROL) && : > $(C_CLEAN_CONTROL)/empty.txt
 	./bin/schema generate --lang c --out $(C_CLEAN_CONTROL)/clean-all examples
 	@mkdir -p $(C_CLEAN_CONTROL)/clean && cp $(C_CLEAN_CONTROL)/clean-all/Types.h $(C_CLEAN_CONTROL)/clean/
-	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
+	@CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/guard FILE_SECONDS=$(CLANG_FORMAT_FILE_SECONDS) sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/clean > $(C_CLEAN_CONTROL)/guard.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged C packet emitter's output is not format-clean, so this control would watch a tree that was red anyway"; cat $(C_CLEAN_CONTROL)/guard.out; exit 1; }
 	go run ./tools/sabotage -name c-clean-format-drift -out $(C_CLEAN_CONTROL)/c.gotext internal/codegen/c/c.go
 	@printf '{"Replace":{"%s/internal/codegen/c/c.go":"%s/$(C_CLEAN_CONTROL)/c.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(C_CLEAN_CONTROL)/overlay.json
@@ -1726,7 +1744,7 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	@mkdir -p $(C_CLEAN_CONTROL)/sabotaged && cp $(C_CLEAN_CONTROL)/sabotaged-all/Types.h $(C_CLEAN_CONTROL)/sabotaged/
 	@grep -q '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
-	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
+	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red FILE_SECONDS=$(CLANG_FORMAT_FILE_SECONDS) sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a K&R struct brace in the emitted C left the format gate green"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; \
 	fi
 	@grep -q 'clang-format drift in .*/sabotaged/Types\.h' $(C_CLEAN_CONTROL)/red.out || \

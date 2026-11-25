@@ -1909,7 +1909,7 @@ tables-block-zero-cost-negative-control: build/tables-generated/.stamp
 		>> build/zero-cost-leak/pointers/GraphTable.h
 	@grep -q "PLANTED: a block spelling" build/zero-cost-leak/pointers/GraphTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the plant did not apply"; exit 1; }
-	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*Table.cpp',100); then \
+	@if $(call tables_byte_identical,cpp,build/tables-generated,build/zero-cost-leak,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100); then \
 		echo "NEGATIVE CONTROL FAILED: a planted block symbol left the byte comparison green"; exit 1; \
 	fi
 	@echo "negative control: a moved Table source turns the block-less comparison RED"
@@ -5039,7 +5039,7 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_retain
 	@for d in examples pointers block blockhome messages stream blobs scalars maps lists arms; do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 	# every leg's committed table goldens (make/<lang>.mk, GOLDENS_LEGS)
 	@set -e; for leg in $(GOLDENS_LEGS); do $(MAKE) $$leg; done
@@ -8191,7 +8191,7 @@ pins-source-cpp: bin/schema
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
 	@for d in $(PINS_SOURCE_CPP_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d; \
-		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
+		for f in build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*TableData.h build/tables-generated/$$d/*Table.cpp; do [ ! -e "$$f" ] || cp "$$f" testdata/golden/tables/$$d/ || exit 1; done; \
 	done
 
 .PHONY: pins-source-c
@@ -8201,7 +8201,7 @@ pins-source-c: bin/schema
 	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
 	@for d in $(PINS_SOURCE_C_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-c; \
-		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
+		cp build/tables-generated-c/$$d/*Table.h $$(find build/tables-generated-c/$$d -maxdepth 1 -name '*TableData.h') build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
 
 .PHONY: pins-source-cs
@@ -8516,7 +8516,7 @@ tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
 	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
-	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.cpp',100)
 
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKFUL = $(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
 tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKLESS = $(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
@@ -8549,14 +8549,14 @@ tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
 	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',2)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',2)
 
 tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
 	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,rest)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
-	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*TableData.h' -o -name '*Table.c',60)
 
 # Serial on purpose: each row deletes the whole C tree, so neither may
 # overlap the other in one workspace, and neither judges what the other left

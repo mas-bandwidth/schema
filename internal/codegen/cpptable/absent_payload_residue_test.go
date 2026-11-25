@@ -464,7 +464,8 @@ func TestCppAbsentPayloadResidueNotCopiedOrderingNegativeControl(t *testing.T) {
 	undermine := func(files map[string][]byte) {
 		found := false
 		for name, data := range files {
-			if !strings.HasSuffix(name, "Table.h") {
+			// the plan rows live in <Base>TableData.h, which <Base>Table.h includes
+			if !strings.HasSuffix(name, "TableData.h") {
 				continue
 			}
 			lines := strings.Split(string(data), "\n")
