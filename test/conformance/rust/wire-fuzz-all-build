@@ -29,6 +29,7 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	scalars:tables/scalars \
 	streamdemo:tables/stream \
 	tabledemo:tables/examples \
+	tbla1:test/tables/A1.schema \
 	tbla2:test/tables/A2.schema \
 	tblg1:test/tables/G1.schema \
 	tblk1:test/tables/K1.schema \

@@ -61,6 +61,7 @@ mod shapes;
 mod tblsurf;
 mod packetunions;
 mod tblvaluedefaults;
+mod tbla1;
 
 use std::io::{self, Read, Write};
 
@@ -257,7 +258,7 @@ const MESSAGE_ROOTS: &[(&str, &str)] = &[
 
 const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "LoginRequest"), ("backenddemo", "MatchResult"),
-    ("backenddemo", "StorePurchase"),
+    ("backenddemo", "StorePurchase"), ("backenddemo", "Envelope"),
     ("vocabdemo", "Wide00"), ("vocabdemo", "Wide09"),
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
     ("messagedemo", "ToolMessage"),
@@ -266,6 +267,7 @@ const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
     ("tabledemo", "RootConfig"), ("tabledemo", "ProfileConfig"), ("tabledemo", "KeyedConfig"),
     ("tblv1", "Cfg"), ("tblv2", "Cfg"),
     ("tblm1", "Msg"), ("tblm2", "Msg"),
+    ("tbla1", "Root"),
     ("tbla2", "Root"),
     ("tblk1", "Root"), ("tblk2", "Root"),
     ("scalars", "SimState"), ("tblscalars2", "SimState"),
@@ -276,6 +278,7 @@ fn drive_message_framed(unit: &str, root: &str, frame: &[u8]) -> Option<Reply> {
         ("backenddemo", "LoginRequest") => message_framed_arm!(backenddemo, login_request_message_default, login_request_load_messages, login_request_measure_messages, login_request_save_messages, frame),
         ("backenddemo", "MatchResult") => message_framed_arm!(backenddemo, match_result_message_default, match_result_load_messages, match_result_measure_messages, match_result_save_messages, frame),
         ("backenddemo", "StorePurchase") => message_framed_arm!(backenddemo, store_purchase_message_default, store_purchase_load_messages, store_purchase_measure_messages, store_purchase_save_messages, frame),
+        ("backenddemo", "Envelope") => message_framed_arm!(backenddemo, envelope_message_default, envelope_load_messages, envelope_measure_messages, envelope_save_messages, frame),
         ("vocabdemo", "Wide00") => message_framed_arm!(vocabdemo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, frame),
         ("vocabdemo", "Wide09") => message_framed_arm!(vocabdemo, wide09_message_default, wide09_load_messages, wide09_measure_messages, wide09_save_messages, frame),
         ("vocab9demo", "Wide00") => message_framed_arm!(vocab9demo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, frame),
@@ -292,6 +295,7 @@ fn drive_message_framed(unit: &str, root: &str, frame: &[u8]) -> Option<Reply> {
         ("tblv2", "Cfg") => message_framed_arm!(tblv2, cfg_message_default, cfg_load_messages, cfg_measure_messages, cfg_save_messages, frame),
         ("tblm1", "Msg") => message_framed_arm!(tblm1, msg_message_default, msg_load_messages, msg_measure_messages, msg_save_messages, frame),
         ("tblm2", "Msg") => message_framed_arm!(tblm2, msg_message_default, msg_load_messages, msg_measure_messages, msg_save_messages, frame),
+        ("tbla1", "Root") => message_framed_arm!(tbla1, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
         ("tbla2", "Root") => message_framed_arm!(tbla2, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
         ("tblk1", "Root") => message_framed_arm!(tblk1, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
         ("tblk2", "Root") => message_framed_arm!(tblk2, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
