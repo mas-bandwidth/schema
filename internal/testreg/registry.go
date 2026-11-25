@@ -22,9 +22,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -519,4 +521,51 @@ func (r *Registry) HasType(name string) bool {
 		}
 	}
 	return false
+}
+
+// secondsField is a test line's measured seconds, as WriteSeconds writes it.
+// It is the line's last field, so a "seconds" key inside a row's inputs is
+// never taken for it.
+var secondsField = regexp.MustCompile(`,"seconds":[0-9.e+-]+\}$`)
+
+// WriteSeconds records measured run times in the registry file at path: for
+// each test key in seconds, its line's "seconds" is set to the value,
+// rounded up to the hundredth. Every other byte of the file is kept. A key
+// that is no test line of the file is an error, and nothing is written.
+func WriteSeconds(path string, seconds map[string]float64) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	done := map[string]bool{}
+	for i, line := range lines {
+		var head struct{ Rec, Key string }
+		if json.Unmarshal([]byte(line), &head) != nil || head.Rec != "test" {
+			continue
+		}
+		s, ok := seconds[head.Key]
+		if !ok {
+			continue
+		}
+		v := fmt.Sprintf(`,"seconds":%s`, strconv.FormatFloat(math.Ceil(max(s, minSeconds)*100)/100, 'f', -1, 64))
+		body, nl := strings.TrimSuffix(line, "\n"), line[len(strings.TrimSuffix(line, "\n")):]
+		body = secondsField.ReplaceAllString(body, "}")
+		if !strings.HasSuffix(body, "}") {
+			return 0, fmt.Errorf("%s:%d: a test line ends in }", path, i+1)
+		}
+		lines[i] = body[:len(body)-1] + v + "}" + nl
+		done[head.Key] = true
+	}
+	var missing []string
+	for k := range seconds {
+		if !done[k] {
+			missing = append(missing, k)
+		}
+	}
+	if len(missing) > 0 {
+		slices.Sort(missing)
+		return 0, fmt.Errorf("%s has no test line for %s", path, strings.Join(missing, ", "))
+	}
+	return len(done), os.WriteFile(path, []byte(strings.Join(lines, "")), 0o644)
 }

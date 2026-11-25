@@ -8612,7 +8612,7 @@ wire-fuzz-roster-negative-control:
 	python3 test/conformance/wire_fuzz_complete_test.py
 
 # The python tooling tests, one second together: every *_test.py outside the
-# vendored trees runs here per pull request (ci-fast ci-policy, `rest`), so a
+# vendored trees runs here per pull request (ci-fast ci-policy), so a
 # red nightly-readiness contract is seen on the change that reddens it.
 .PHONY: python-tooling-tests
 python-tooling-tests:

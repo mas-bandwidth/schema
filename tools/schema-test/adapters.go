@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -85,7 +86,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// to its harness for any language, and what a language does not
 		// answer yet is an owed line of the registry, MISSING by name
 		"corpus":      &harnessAdapter{build: b, log: log},
-		"gotest":      goTestAdapter{log: log},
+		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
@@ -101,6 +102,10 @@ func withRunner(ads map[string]testreg.Adapter, rn *testreg.Runner) {
 		ads["golden"] = g
 	}
 }
+
+// goTestJobs is how many Go packages the gotest adapter runs at once: half
+// the machine, since each package's own tests run in parallel too.
+func goTestJobs() int { return min(8, max(1, runtime.NumCPU()/2)) }
 
 // builder runs each build step once per process, however many languages ask.
 type builder struct {

@@ -198,7 +198,12 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 }
 
 // workflowJobs emits every job of every workflow: the keys two spaces in
-// under the top-level jobs: key.
+// under the top-level jobs: key. A job whose steps run the driver
+// (`go run ./tools/schema-test run|coverage|extract`) is the registry
+// running, not a test of its own: its tests are the rows it selects and the
+// registry it holds, and it is not emitted. A job that only names the
+// driver's directory, or runs another of its commands (langs, addenda), is a
+// job like any other.
 func (s *scan) workflowJobs(files []string) {
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(s.root, rel))
@@ -206,7 +211,13 @@ func (s *scan) workflowJobs(files []string) {
 			s.fail(rel, "read: %v", err)
 			continue
 		}
-		in, found := false, 0
+		type job struct {
+			name       string
+			line       int
+			runsDriver bool
+		}
+		var jobs []job
+		in := false
 		for i, line := range strings.Split(string(data), "\n") {
 			switch {
 			case line == "jobs:":
@@ -215,25 +226,43 @@ func (s *scan) workflowJobs(files []string) {
 			case in && line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#"):
 				in = false
 			}
-			if !in || len(line) < 3 || line[:2] != "  " || line[2] == ' ' || line[2] == '#' {
+			if !in {
+				continue
+			}
+			if len(jobs) > 0 && !strings.HasPrefix(strings.TrimSpace(line), "#") && driverRun.MatchString(line) {
+				jobs[len(jobs)-1].runsDriver = true
+			}
+			if len(line) < 3 || line[:2] != "  " || line[2] == ' ' || line[2] == '#' {
 				continue
 			}
 			name, _, ok := strings.Cut(strings.TrimSpace(line), ":")
 			if !ok {
 				continue
 			}
-			found++
-			tier := "functional"
-			if !strings.Contains(string(data), "pull_request") {
-				tier = "nightly"
-			}
-			s.add(Item{Kind: KindWorkflowJob, Dir: rel, Name: name, Source: rel + ":" + strconv.Itoa(i+1), Tier: tier})
+			jobs = append(jobs, job{name: name, line: i + 1})
 		}
-		if found == 0 {
+		if len(jobs) == 0 {
 			s.fail(rel, "no jobs: key with jobs under it")
+		}
+		tier := "functional"
+		if !strings.Contains(string(data), "pull_request") {
+			tier = "nightly"
+		}
+		for _, j := range jobs {
+			if j.runsDriver {
+				continue
+			}
+			s.add(Item{Kind: KindWorkflowJob, Dir: rel, Name: j.name, Source: rel + ":" + strconv.Itoa(j.line), Tier: tier})
 		}
 	}
 }
+
+// driverRun is the command a workflow job runs the registry with: one of
+// the driver's verbs that runs or holds the registry's tests, spelled the
+// one way the workflows spell it (`go run ./tools/schema-test <verb>`, the
+// verb first); a job that runs the driver any other way is counted as a
+// job of its own, so the miscount is loud, never silent.
+var driverRun = regexp.MustCompile(`go run \./tools/schema-test/? (run|coverage|extract)\b`)
 
 // dataCases emits each line of a .jsonl file and each other data file,
 // files that share a stem in one directory (case.in, case.out) being one

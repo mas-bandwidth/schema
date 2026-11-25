@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {}
 	"Makefile":                                    "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nquoted:\n\ttrue\n\nnc-one:\n\ttrue\n\nrow-only:\n\ttrue\n\nlib-check: ; true\n",
 	"test/registry/registry.jsonl":                `{"rec":"test","key":"harness-run.makefile.row-only","adapter":"make","inputs":{"file":"Makefile","target":"row-only"}}` + "\n",
 	"make/negative-controls.json":                 `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
-	".github/workflows/ci.yml":                    "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n      - run: make -j\"$(nproc)\" quoted\n  # a comment\n  build:\n    runs-on: x\n",
+	".github/workflows/ci.yml":                    "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n      - run: make -j\"$(nproc)\" quoted\n  # a comment\n  build:\n    runs-on: x\n  rows:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group pr --shard 1/2\n  plan:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test langs --ready\n      - run: add_reader ./tools/schema-test ;;\n",
 	"testdata/corpus/cases.jsonl":                 "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
 	"testdata/corpus/x.in":                        "in",
 	"testdata/corpus/x.out":                       "out",
@@ -65,6 +65,8 @@ func TestMain(m *testing.M) {}
 	"test/testguard/rest.tsv":                     "pkg\tTestPlain\n",
 	"test/conformance/zz/Directory.Build.targets": "<Project/>",
 	"working/x_test.go":                           "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
+	"test/u/obj/Debug/gen.cs":        "// a dotnet build output file, never a test\n",
+	"test/u/bin/Debug/x/u.deps.json": "{}\n",
 }
 
 func writeFixture(t *testing.T, files map[string]string) string {
@@ -84,10 +86,11 @@ func writeFixture(t *testing.T, files map[string]string) string {
 
 // TestExtractFindsEveryKind: the fixture's tests, each of its kind, with
 // the gates that decide its tier; fixtures under testdata, scratch under
-// working/, TestMain and a lower-case Testhelper are not tests, nor is a
-// testguard record of a Go test (its shard's .tsv is a case) or the
-// MSBuild configuration a driver directory imports. A rule only
-// a registry make row runs (row-only) is run by name all the same.
+// working/, build output under obj/, TestMain and a lower-case Testhelper
+// are not tests, nor is a testguard record of a Go test (its shard's .tsv
+// is a case), the MSBuild configuration a driver directory imports, or a
+// workflow job that runs the driver (its tests are the rows it runs). A
+// rule only a registry make row runs (row-only) is run by name all the same.
 func TestExtractFindsEveryKind(t *testing.T) {
 	t.Parallel()
 	res, err := Extract(writeFixture(t, fixture))
@@ -118,6 +121,7 @@ func TestExtractFindsEveryKind(t *testing.T) {
 		"negative-control g1 nc-one [functional] ",
 		"workflow-job .github/workflows/ci.yml build [functional] ",
 		"workflow-job .github/workflows/ci.yml lint [functional] ",
+		"workflow-job .github/workflows/ci.yml plan [functional] ",
 		"data-case pkg/testdata fixture_test [functional] ",
 		"data-case test/testguard rest [functional] ",
 		"data-case testdata/corpus cases/line4 [functional] ",
@@ -530,6 +534,9 @@ func TestReadLedgerRefusesABadLine(t *testing.T) {
 		{"go-test\ta\t0\tL3\twhy\n", `count "0" is not a positive number`},
 		{"go-test\ta\tx\tL3\twhy\n", `count "x" is not a positive number`},
 		{"gotest\ta\t1\tL3\twhy\n", `unknown kind "gotest"`},
+		// a skip is a fail under the driver, so no ledger line accounts
+		// for one: the skip-red kind is gone
+		{"skip-red\ta:TestX\t1\tL5\tred\n", `unknown kind "skip-red"`},
 		{"go-test\ta\t1\t\twhy\n", "names the layer that moves it and why"},
 		{"go-test\ta\t1\tL3\twhy\n# c\ngo-test\ta\t2\tL3\twhy\n", "u.tsv:3: go-test a is already counted at line 1"},
 	} {
@@ -552,7 +559,7 @@ func TestLedgerCountsWhatIsUnmoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := &testreg.Registry{Tests: []testreg.Test{gotestRow("tooling.pkg.plain", "./pkg", "TestPlain")}}
-	lines := Ledger(res, reg, func(kind, dir string) (string, string) { return "L9", "fixture" })
+	lines := Ledger(res, reg, func(kind, dir string, _ []Item) (string, string) { return "L9", "fixture" })
 	var b strings.Builder
 	if err := WriteLedger(&b, "# h\n", lines); err != nil {
 		t.Fatal(err)

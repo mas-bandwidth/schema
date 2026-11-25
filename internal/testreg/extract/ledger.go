@@ -538,26 +538,27 @@ func Shrinks(old, now []LedgerLine) []string {
 }
 
 // Ledger is the ledger that counts exactly what res holds and reg does not
-// run, each line's layer and reason given by plan(kind, place).
-func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string) (layer, reason string)) []LedgerLine {
+// run, each line's layer and reason given by plan(kind, place, the unmoved
+// tests).
+func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string, items []Item) (layer, reason string)) []LedgerLine {
 	covered := Runs(res, reg)
-	count := map[string]int{}
+	names := map[string][]Item{}
 	var order []string
 	for _, it := range res.Items {
 		if _, ok := covered[it.ID()]; ok {
 			continue
 		}
 		k := it.Kind + "\t" + it.Dir
-		if count[k] == 0 {
+		if len(names[k]) == 0 {
 			order = append(order, k)
 		}
-		count[k]++
+		names[k] = append(names[k], it)
 	}
 	out := make([]LedgerLine, 0, len(order))
 	for _, k := range order {
 		kind, dir, _ := strings.Cut(k, "\t")
-		layer, reason := plan(kind, dir)
-		out = append(out, LedgerLine{Kind: kind, Dir: dir, Count: count[k], Layer: layer, Reason: reason})
+		layer, reason := plan(kind, dir, names[k])
+		out = append(out, LedgerLine{Kind: kind, Dir: dir, Count: len(names[k]), Layer: layer, Reason: reason})
 	}
 	return out
 }

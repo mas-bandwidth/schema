@@ -49,7 +49,7 @@ func checkElixirGCTraceMeter(rel, src string) error {
 // TestElixirGCTraceMetersFlushTraceDelivered guards all BEAM :garbage_collection
 // trace meters against the cross-scheduler race where send(tracer, {:reclaimed, me})
 // overtakes the closing :gc_major_end trace message unless synchronized with
-// :erlang.trace_delivered(me). Runs in <1s in ci-policy on every PR.
+// :erlang.trace_delivered(me). Runs in <1s on every PR, as a registry row of the pr group.
 func TestElixirGCTraceMetersFlushTraceDelivered(t *testing.T) {
 	root := repoRoot(t)
 	expected := map[string]bool{
