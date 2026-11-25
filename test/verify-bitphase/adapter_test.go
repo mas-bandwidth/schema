@@ -42,7 +42,8 @@ func TestTheRegistryHoldsTheAlignArraysRows(t *testing.T) {
 			continue
 		case seen[in.File]:
 			t.Errorf("%s names %s, which another test names too", tt.Key, in.File)
-		case in.Schema != AlignArraysSchema || in.Root != r.Type || in.Kind != r.Kind || in.Hex != hex.EncodeToString(r.data):
+		case in.Schema != AlignArraysSchema || in.Root != r.Type || in.Kind != r.Kind || in.Hex != hex.EncodeToString(r.data) ||
+			len(in.Files) != 1 || in.Files[0] != AlignArraysSchema:
 			t.Errorf("%s: inputs %+v, the row is %s %s %x", tt.Key, in, r.Type, r.Kind, r.data)
 		case (r.Kind == "valid") != (tt.Type == "roundtrip") || (r.Kind == "refuse") != (tt.Type == "load-refusal"):
 			t.Errorf("%s: a %s row is type %s", tt.Key, r.Kind, tt.Type)
@@ -137,7 +138,7 @@ func TestThePlantTurnsAValidRowAround(t *testing.T) {
 func TestARequestThatDisagreesWithItsRowIsRefused(t *testing.T) {
 	t.Parallel()
 	r := alignArraysRows()[0]
-	in := alignInputs{Schema: AlignArraysSchema, Root: r.Type, Kind: r.Kind, File: r.File, Hex: hex.EncodeToString(r.data)}
+	in := alignInputs{Schema: AlignArraysSchema, Root: r.Type, Kind: r.Kind, File: r.File, Hex: hex.EncodeToString(r.data), Files: []string{AlignArraysSchema}}
 	ok, _ := json.Marshal(in)
 	in.Hex = "00" + in.Hex
 	bad, _ := json.Marshal(in)

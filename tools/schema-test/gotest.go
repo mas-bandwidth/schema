@@ -53,6 +53,10 @@ func newGoTestAdapter(log io.Writer, root string, jobs int) *goTestAdapter {
 type goTestInputs struct {
 	Package string `json:"package"`
 	Test    string `json:"test"`
+	// Files are the committed data files the test reads (a case folder it
+	// replays): the registry indexes them where they are
+	// (internal/testreg/extract, Indexed).
+	Files []string `json:"files,omitempty"`
 }
 
 var goTestName = regexp.MustCompile(`^(Test|Fuzz)[A-Za-z0-9_]*$`)
@@ -134,10 +138,15 @@ func (a *goTestAdapter) moduleOf(pkg string) (string, string, error) {
 func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
 	byPkg := map[string][]goTestCall{} // package -> its calls, cut by weight
 	var pkgs []string
+	var absent []testreg.Result // rows naming a data file the tree does not hold
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", inst.Full, err)
+		}
+		if why := missingFiles(a.root, in.Files); why != "" {
+			absent = append(absent, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+			continue
 		}
 		if byPkg[in.Package] == nil {
 			pkgs = append(pkgs, in.Package)
@@ -170,7 +179,7 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 		})
 	}
 	wg.Wait()
-	var out []testreg.Result
+	out := absent
 	var errs []error
 	for _, r := range runs {
 		out = append(out, r.res...)
@@ -284,7 +293,11 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 				out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: fmt.Sprintf("subtests skipped, and nothing is ever skipped: %s\n%s", strings.Join(s, ", "), tail(strings.Join(output[top], "\n"), 5))})
 				continue
 			}
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: ev.Elapsed})
+			// go test's clock reads to the hundredth: a pass it timed at
+			// 0.00 s was measured, at under goTestTick, and is recorded so
+			// (`--write-seconds`, `schema-test seconds`), never left to
+			// weigh DefaultSeconds as if it had never run
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(ev.Elapsed, goTestTick)})
 		case "fail":
 			if isSub {
 				continue
@@ -341,3 +354,23 @@ func addToCall(calls []goTestCall, name string, inst testreg.Instance, budget fl
 	}
 	return append(calls, goTestCall{tests: map[string]string{name: inst.Full}, seconds: w})
 }
+
+// missingFiles names the files a row's inputs name that root does not hold
+// as regular files, or is "" when it holds them all: a row whose data is
+// gone fails by name and its test does not run.
+func missingFiles(root string, files []string) string {
+	var gone []string
+	for _, f := range files {
+		st, err := os.Stat(filepath.Join(root, filepath.FromSlash(f)))
+		if err != nil || !st.Mode().IsRegular() {
+			gone = append(gone, f)
+		}
+	}
+	if len(gone) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the row names data the tree does not hold: %s", strings.Join(gone, ", "))
+}
+
+// goTestTick is go test's clock resolution: Elapsed is in hundredths.
+const goTestTick = 0.01

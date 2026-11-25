@@ -59,16 +59,38 @@ var conformance = harness{
 	},
 }
 
+// wireFuzzHarness is the wire fuzz's (make/wire-fuzz-rows.mk): make
+// wire-fuzz-deps-<lang> builds the leg's wire-fuzz driver, and make
+// wire-fuzz-adapter-<lang> answers the families wire-fuzz-vector (every
+// pinned vector, replayed exactly) and wire-fuzz (every arm at every seed)
+// in every configuration of the leg (test/conformance/harness/wirefuzz_registry.go).
+var wireFuzzHarness = harness{
+	Name:  "wire-fuzz",
+	Build: func(lang string) [][]string { return [][]string{{"make", "wire-fuzz-deps-" + lang}} },
+	Cmd: func(lang, work string) []string {
+		return []string{"make", "-s", "wire-fuzz-adapter-" + lang, "WFZ_WORK=" + work}
+	},
+}
+
+// wireFuzzFamilies are the families the wire-fuzz harness answers.
+var wireFuzzFamilies = map[string]bool{"wire-fuzz": true, "wire-fuzz-vector": true}
+
+// bitPhaseFamily is verify-bitphase's main sweep (test/verify-bitphase,
+// bitphase_rows.go), which the same --adapter answers.
+const bitPhaseFamily = "bit-phase"
+
 // harnessFor is the harness that runs a family, if one does. Which languages
 // answer a family is the registry's (its owed lines), never the harness's.
 func harnessFor(family string) (harness, bool) {
 	switch {
-	case family == alignArrays.Name:
+	case family == alignArrays.Name || family == bitPhaseFamily:
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
 	case family == nameBuild.Name:
 		return nameBuild, true
+	case wireFuzzFamilies[family]:
+		return wireFuzzHarness, true
 	}
 	return harness{}, false
 }

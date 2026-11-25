@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -92,6 +93,12 @@ func usage() {
              fixed and variable roots, run the compiler engine as oracle, and
              verify FromJson verdict, canonical ToJson, Save wire, and
              Load(wire) -> ToJson across matching drivers in two batched calls.
+  wire-fuzz-rows
+             print every pinned wire-fuzz vector and every random-pass arm
+             and seed as a test registry row (wirefuzz_registry.go)
+  wire-fuzz-adapter
+             answer the registry's wire-fuzz requests on standard input in
+             every --config NAME=COMMAND of one leg, --jobs runs at once
   registry-rows
              print every case of every surface as a test registry row
              (adapter.go); test/registry/registry.jsonl holds exactly
@@ -183,6 +190,9 @@ func main() {
 	in := fs.String("in", "", "where the coverage rows are (coverage only)")
 	requireNine := fs.Bool("require-original-nine", false, "require original-nine completion (coverage only)")
 	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
+	var configs configFlag
+	fs.Var(&configs, "config", "NAME=COMMAND: one configuration of the leg and its wire-fuzz driver, repeatable (wire-fuzz-adapter only)")
+	jobs := fs.Int("jobs", 4, "runs at once (wire-fuzz-adapter only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -341,6 +351,21 @@ func main() {
 		}
 		if !ok {
 			os.Exit(1)
+		}
+	case "wire-fuzz-rows":
+		rows, err := wireFuzzRows(*vectors, mooPinnedList)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeWireFuzzRows(os.Stdout, rows); err != nil {
+			fatalf("%v", err)
+		}
+	case "wire-fuzz-adapter":
+		if err := os.MkdirAll(*work, 0o755); err != nil {
+			fatalf("%v", err)
+		}
+		if err := wireFuzzAdapter(context.Background(), os.Stdin, os.Stdout, os.Stderr, configs, *work, *jobs, os.Getenv(wireSeedEnv), childWireFuzz); err != nil {
+			fatalf("%v", err)
 		}
 	case "registry-rows":
 		reps, err := readReports(*reports)

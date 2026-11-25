@@ -99,7 +99,9 @@ func requireToken(out string, err error, lang string) error {
 	if familyRun {
 		return checkNoMainOnlyOutput(lang, out)
 	}
-	return errors.Join(checkCfDecode(lang, out), checkF32Lit(lang, out))
+	cf, fl := checkCfDecode(lang, out), checkF32Lit(lang, out)
+	lastMainSteps = map[string]error{bitPhaseCfDecodeCase: cf, bitPhaseF32LitCase: fl}
+	return errors.Join(cf, fl)
 }
 
 func ensureCorpus(repoRoot, schemaBin, corpusDir, oracleBin string) ([]manifestCase, map[string][]byte, error) {
@@ -299,8 +301,16 @@ func main() {
 	rosterCasesFlag := flag.String("roster-cases", "", "replay this committed folder of manifest cases and exit (testdata/roster-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only build oracle and generate corpus")
 	familyFlag := flag.String("family", "", "run a case family instead of the main corpus: "+AlignArraysFamily+" (alignarrays.go)")
-	adapterFlag := flag.Bool("adapter", false, "run the "+AlignArraysFamily+" instances tools/schema-test hands in on stdin for --lang, one result line each on stdout (adapter.go)")
+	adapterFlag := flag.Bool("adapter", false, "run the "+AlignArraysFamily+" and "+BitPhaseFamily+" instances tools/schema-test hands in on stdin for --lang, one result line each on stdout (adapter.go)")
+	bitPhaseRowsFlag := flag.Bool("bit-phase-rows", false, "print the "+BitPhaseFamily+" family's registry rows and exit (bitphase_rows.go)")
 	flag.Parse()
+	if *bitPhaseRowsFlag {
+		if err := writeBitPhaseRows(os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *rosterCasesFlag != "" {
 		scratch, err := os.MkdirTemp("", "bitphase-roster-cases-")
 		if err == nil {
