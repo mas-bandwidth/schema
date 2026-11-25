@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3141.
+Unit tests every language answers: 2. Language-free tests: 3145.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1929,7 +1929,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 256 tests
+#### `tooling` family `ci`, 259 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2070,6 +2070,9 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.per-commit-step-wall` | `gotest` | Go test TestPerCommitStepWall in ./internal/ci | `package: ./internal/ci`<br>`test: TestPerCommitStepWall` | the Go test passes | `internal/ci/stepguard_test.go:99` |
 | `none.unit.tooling.ci.per-commit-step-wall-negative-controls` | `gotest` | Go test TestPerCommitStepWallNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestPerCommitStepWallNegativeControls` | the Go test passes | `internal/ci/stepguard_test.go:113` |
 | `none.unit.tooling.ci.port-registry-defined-once` | `gotest` | Go test TestPortRegistryDefinedOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestPortRegistryDefinedOnce` | the Go test passes | `internal/ci/portregistry_test.go:22` |
+| `none.unit.tooling.ci.pre-push-hook-existing-branch-skips-commits-on-any-remote` | `gotest` | Go test TestPrePushHookExistingBranchSkipsCommitsOnAnyRemote in ./internal/ci | `package: ./internal/ci`<br>`test: TestPrePushHookExistingBranchSkipsCommitsOnAnyRemote` | the Go test passes | `internal/ci/pre_push_pushed_commits_test.go:23` |
+| `none.unit.tooling.ci.pre-push-hook-git-log-failure-refuses` | `gotest` | Go test TestPrePushHookGitLogFailureRefuses in ./internal/ci | `package: ./internal/ci`<br>`test: TestPrePushHookGitLogFailureRefuses` | the Go test passes | `internal/ci/pre_push_pushed_commits_test.go:207` |
+| `none.unit.tooling.ci.pre-push-hook-missing-remote-tip-checks-unpushed-commits` | `gotest` | Go test TestPrePushHookMissingRemoteTipChecksUnpushedCommits in ./internal/ci | `package: ./internal/ci`<br>`test: TestPrePushHookMissingRemoteTipChecksUnpushedCommits` | the Go test passes | `internal/ci/pre_push_pushed_commits_test.go:187` |
 | `none.unit.tooling.ci.pre-push-hook-new-branch-checks-only-unpushed-commits` | `gotest` | Go test TestPrePushHookNewBranchChecksOnlyUnpushedCommits in ./internal/ci | `package: ./internal/ci`<br>`test: TestPrePushHookNewBranchChecksOnlyUnpushedCommits` | the Go test passes | `internal/ci/pre_push_new_branch_test.go:22` |
 | `none.unit.tooling.ci.pre-push-hook-skips-commits-already-on-main` | `gotest` | Go test TestPrePushHookSkipsCommitsAlreadyOnMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestPrePushHookSkipsCommitsAlreadyOnMain` | the Go test passes | `internal/ci/pre_push_hook_test.go:21` |
 | `none.unit.tooling.ci.python-case-budget-coverage` | `gotest` | Go test TestPythonCaseBudgetCoverage in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCaseBudgetCoverage` | the Go test passes | `internal/ci/python_case_budget_test.go:224` |
@@ -3710,6 +3713,12 @@ performance or timing.
 ### Type `resource-bounds`
 
 memory, allocation and depth limits are held.
+
+#### `resource-bounds` family `jstable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.resource-bounds.jstable.js-message-slots-indexed-once-per-module` | `gotest` | Go test TestMessageSlotsIndexedOncePerModule in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestMessageSlotsIndexedOncePerModule` | the Go test passes | `internal/codegen/jstable/messageslot_builds_test.go:23` |
 
 #### `resource-bounds` family `tabletext`, 1 test
 
