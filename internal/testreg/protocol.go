@@ -85,7 +85,11 @@ func FormatResult(r Result) string {
 //     semicolon or closing bracket ("x: skipped (no lua)", "lua not found,
 //     skipping", "[c] skipped");
 //   - a recognised summary with a non-zero skipped count ("3 skipped",
-//     "skipped: 2", "skips=1").
+//     "skipped: 2", "skips=1");
+//   - other runners' words for a test not run: a non-zero count of ignored
+//     (cargo), excluded (ExUnit), pending or todo, or not run ("1 ignored",
+//     "excluded: 2"), cargo's "test x ... ignored", and the dart reporter's
+//     skip count ("+3 ~1:").
 var skipVerdicts = []*regexp.Regexp{
 	regexp.MustCompile(`"Action"\s*:\s*"skip"`),
 	regexp.MustCompile(`(^|[^\w./-])SKIP(PED)?([^\w./-]|$)`),
@@ -94,6 +98,10 @@ var skipVerdicts = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)[:,;\])]\s*(skip|skipped|skipping)([^\w./-]|\.?\s*$)`),
 	regexp.MustCompile(`(?i)(^|[^\w./-])0*[1-9][0-9]*\s+(tests?\s+)?skip(s|ped)?([^\w./-]|$)`),
 	regexp.MustCompile(`(?i)(^|[^\w./-])skip(s|ped)?\s*[:=]\s*0*[1-9]`),
+	regexp.MustCompile(`(?i)(^|[^\w./-])0*[1-9][0-9]*\s+(tests?\s+)?(ignored|excluded|pending|todo|not\s+run)([^\w./-]|$)`),
+	regexp.MustCompile(`(?i)(^|[^\w./-])(ignored|excluded|pending|todo|not\s+run)\s*[:=]\s*0*[1-9]`),
+	regexp.MustCompile(`(?i)^\s*test\s+\S+\s+\.\.\.\s+ignored\b`),
+	regexp.MustCompile(`(^|\s)\+\d+\s+~0*[1-9][0-9]*(\s+-\d+)?:`),
 }
 
 // reportsASkip says whether one log line reports a skip verdict.

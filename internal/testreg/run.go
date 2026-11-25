@@ -346,11 +346,15 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 			default:
 				got[res.Instance] = true
 				rep.Ran++
-				switch res.Verdict {
-				case Pass:
+				switch {
+				case res.Verdict == Pass && RefuseSkips(strings.Split(res.Reason, "\n")) != nil:
+					// a pass whose reason says it skipped did not run what it
+					// passes for
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: "a pass whose reason reports a skip, and nothing is ever skipped: " + res.Reason, Seconds: secondsOf(res)}
+				case res.Verdict == Pass:
 					// a pass keeps its reason: a fuzz row's names its seed
 					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Reason: res.Reason, Seconds: secondsOf(res)}
-				case Fail:
+				case res.Verdict == Fail:
 					reason := res.Reason
 					if strings.TrimSpace(reason) == "" {
 						reason = "the adapter gave no reason"

@@ -366,7 +366,8 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 
 // goTestResults reads go test -json events into one result per asked test.
 // A subtest's events count against its top-level test: its output joins the
-// reason, and a subtest that skips fails its parent.
+// reason, and a subtest that skips fails its parent. A fuzz target that ran
+// no seed input fails.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
 	type event struct {
 		Action, Test, Output string
@@ -374,6 +375,7 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	}
 	output := map[string][]string{}
 	skipped := map[string][]string{}
+	subRuns := map[string]int{} // a top-level test's subtests that ran
 	var out []testreg.Result
 	dec := json.NewDecoder(r)
 	for {
@@ -389,6 +391,10 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			continue // the package's own lines
 		}
 		switch ev.Action {
+		case "run":
+			if isSub {
+				subRuns[top]++
+			}
 		case "output":
 			output[top] = append(output[top], strings.TrimRight(ev.Output, "\n"))
 		case "skip":
@@ -403,6 +409,12 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			}
 			if s := skipped[top]; len(s) > 0 {
 				out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: fmt.Sprintf("subtests skipped, and nothing is ever skipped: %s\n%s", strings.Join(s, ", "), tail(strings.Join(output[top], "\n"), 5))})
+				continue
+			}
+			// a fuzz target outside -fuzz runs its seed inputs, each a
+			// subtest: one that ran none passed having tested nothing
+			if strings.HasPrefix(top, "Fuzz") && subRuns[top] == 0 {
+				out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the fuzz target ran no seed input (no f.Add and no testdata/fuzz corpus), so it tested nothing"})
 				continue
 			}
 			// go test's clock reads to the hundredth: a pass it timed at

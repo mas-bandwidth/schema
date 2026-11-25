@@ -388,18 +388,19 @@ func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
 }
 
 // TestAPlantedGoSkipIsRedThroughTheAdapter: the gotest adapter runs a real
-// go test over a planted module, and a test that calls t.Skip and a test
-// whose subtest skips each fail by name. go test itself reports the first
-// as skipped and the second as passed, so with the adapter's skip handling
-// planted out the first would be no verdict and the second a pass; a test
-// beside them that runs passes. It runs the Go toolchain, so it is
+// go test over a planted module, and a test that calls t.Skip, a test whose
+// subtest skips and a fuzz target with no seed input each fail by name. go
+// test itself reports the first as skipped and the others as passed, so
+// with the adapter's checks planted out the first would be no verdict and
+// the others passes; a test and a seeded fuzz target beside them pass. It
+// runs the Go toolchain, so it is
 // functional (docs/rulings.json no-skips: the run-time gate).
 func TestAPlantedGoSkipIsRedThroughTheAdapter(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	for f, body := range map[string]string{
 		"go.mod":      "module plant\n\ngo 1.21\n",
-		"p/p_test.go": "package p\n\nimport \"testing\"\n\nfunc TestSkips(t *testing.T) { t.Skip(\"no cc on PATH\") }\n\nfunc TestSubSkips(t *testing.T) {\n\tt.Run(\"needs_cc\", func(t *testing.T) { t.Skip(\"no cc on PATH\") })\n\tt.Run(\"runs\", func(t *testing.T) {})\n}\n\nfunc TestRuns(t *testing.T) {}\n",
+		"p/p_test.go": "package p\n\nimport \"testing\"\n\nfunc TestSkips(t *testing.T) { t.Skip(\"no cc on PATH\") }\n\nfunc TestSubSkips(t *testing.T) {\n\tt.Run(\"needs_cc\", func(t *testing.T) { t.Skip(\"no cc on PATH\") })\n\tt.Run(\"runs\", func(t *testing.T) {})\n}\n\nfunc TestRuns(t *testing.T) {}\n\nfunc FuzzNoSeeds(f *testing.F) { f.Fuzz(func(t *testing.T, b []byte) {}) }\n\nfunc FuzzSeeded(f *testing.F) {\n\tf.Add([]byte(\"x\"))\n\tf.Fuzz(func(t *testing.T, b []byte) {})\n}\n",
 	} {
 		path := filepath.Join(root, filepath.FromSlash(f))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -415,7 +416,7 @@ func TestAPlantedGoSkipIsRedThroughTheAdapter(t *testing.T) {
 			Key: key, Scope: testreg.LangFree, Adapter: "gotest", Tier: "functional",
 			Inputs: []byte(`{"package":"./p","test":"` + test + `"}`)}}
 	}
-	insts := []testreg.Instance{inst("TestSkips"), inst("TestSubSkips"), inst("TestRuns")}
+	insts := []testreg.Instance{inst("TestSkips"), inst("TestSubSkips"), inst("TestRuns"), inst("FuzzNoSeeds"), inst("FuzzSeeded")}
 	res, err := newGoTestAdapter(nil, root, 1).Run(context.Background(), "", insts)
 	if err != nil {
 		t.Fatal(err)
@@ -433,7 +434,13 @@ func TestAPlantedGoSkipIsRedThroughTheAdapter(t *testing.T) {
 	if r := got[insts[2].Full]; r.Verdict != testreg.Pass {
 		t.Errorf("a test that runs: %+v", r)
 	}
-	if len(res) != 3 {
+	if r := got[insts[3].Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "ran no seed input") {
+		t.Errorf("a planted fuzz target with no seed: %+v", r)
+	}
+	if r := got[insts[4].Full]; r.Verdict != testreg.Pass {
+		t.Errorf("a fuzz target with a seed: %+v", r)
+	}
+	if len(res) != len(insts) {
 		t.Errorf("want one result per row, got %+v", res)
 	}
 }

@@ -5334,7 +5334,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.schema-test.a-planted-go-skip-is-red-through-the-adapter` | `gotest` | a real go test over a planted module: a test that calls t.Skip and a test whose subtest skips each fail by name through the gotest adapter, and a test that runs passes (Go test TestAPlantedGoSkipIsRedThroughTheAdapter in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestAPlantedGoSkipIsRedThroughTheAdapter` | the Go test passes | `tools/schema-test/gotest_test.go:397` |
+| `none.functional.tooling.schema-test.a-planted-go-skip-is-red-through-the-adapter` | `gotest` | a real go test over a planted module: a test that calls t.Skip, a test whose subtest skips and a fuzz target with no seed each fail by name through the gotest adapter, and a test and a seeded fuzz target that run pass (Go test TestAPlantedGoSkipIsRedThroughTheAdapter in ./tools/schema-test) | `package: ./tools/schema-test`<br>`test: TestAPlantedGoSkipIsRedThroughTheAdapter` | the Go test passes | `tools/schema-test/gotest_test.go:398` |
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
 
 #### `tooling` family `slowtest`, 1 test
