@@ -101,4 +101,4 @@ needs ./test/go-tables .* build/tables-generated-go/.stamp
 # the legs, harness and toolchain the all-port differential's own make of its
 # answer tree builds from: shared with the run's other makes, so built first,
 # under the driver's hold on the checkout
-needs ./internal/ci TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs
+needs ./internal/ci/squirreldiff TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs

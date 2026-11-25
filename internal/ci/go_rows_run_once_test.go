@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -45,7 +47,7 @@ func TestEveryGoConformanceRowRunsExactlyOnce(t *testing.T) {
 	testinputs.Make(t, "test/conformance/go/rows", "test/registry/registry.jsonl")
 	root := repoRoot(t)
 
-	files, err := filepath.Glob(filepath.Join(root, "test", "conformance", "go", "rows", "*_test.go"))
+	files, err := provesran.Glob(filepath.Join(root, "test", "conformance", "go", "rows", "*_test.go"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no row file under test/conformance/go/rows: %v", err)
 	}

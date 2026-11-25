@@ -30,9 +30,9 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3190 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4881 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 2585 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `unit` | 3199 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4882 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `nightly` | 2586 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
 
@@ -419,10 +419,10 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 10/110 | 151 | 37.8 |
 | `none` | 11/110 | 966 | 29.0 |
 | `none` | 12/110 | 3 | 42.8 |
-| `none` | 13/110 | 27 | 30.1 |
+| `none` | 13/110 | 35 | 30.8 |
 | `none` | 14/110 | 1 | 51.6 |
 | `none` | 15/110 | 6 | 32.2 |
-| `none` | 16/110 | 12 | 25.7 |
+| `none` | 16/110 | 13 | 25.7 |
 | `none` | 17/110 | 1 | 35.8 |
 | `none` | 18/110 | 4 | 41.2 |
 | `none` | 19/110 | 16 | 32.1 |
@@ -513,11 +513,11 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 104/110 | 5 | 30.6 |
 | `none` | 105/110 | 1 | 40.1 |
 | `none` | 106/110 | 22 | 24.5 |
-| `none` | 107/110 | 83 | 28.1 |
+| `none` | 107/110 | 84 | 28.1 |
 | `none` | 108/110 | 19 | 28.4 |
 | `none` | 109/110 | 47 | 28.5 |
 | `none` | 110/110 | 37 | 29.0 |
-| **every row** | **470 jobs** | **51625** | **20120.1** |
+| **every row** | **470 jobs** | **51635** | **20120.8** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or
