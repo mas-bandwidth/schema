@@ -2913,7 +2913,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8640` |
+| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8643` |
 
 #### `plant` family `message-form-count`, 1 test
 

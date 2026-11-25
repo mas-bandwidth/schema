@@ -1847,7 +1847,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8270` |
+| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost` | `make` | make tables-block-zero-cost (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost` | the target exits 0 with no skip in its log | `Makefile:1862` |
 
 ## Declared unrepresentable
