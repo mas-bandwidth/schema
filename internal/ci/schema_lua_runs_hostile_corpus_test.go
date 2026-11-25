@@ -335,7 +335,9 @@ local function caseResult(c)
         return "refuse", announced.reason ~= "" and announced.reason or "damaged", nil
       end
     end
-    local values = M.loadMessages(T, c[4], vocab, payload, r, true)
+    -- the batch is read into the caller's storage of one value, as every
+    -- port's runner reads it: a batch of more is batch_too_large
+    local values = M.loadMessages(T, c[4], vocab, payload, r, true, { T["New" .. c[4]]() })
     if r.nonFiniteFloat ~= nil then return "refuse", "non_finite_float", nil end
     -- A MESSAGE READ'S REFUSAL is the verdict, never the reason
     -- (docs/rulings.json refusal-verdict-only; docs/SPEC-TABLES.md §6.5):
