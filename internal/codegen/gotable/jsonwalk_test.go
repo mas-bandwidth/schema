@@ -97,6 +97,15 @@ fixed table ProbeFixed { x int32 }
 `,
 		},
 		{
+			name: "fixed-only-timestamp",
+			schema: `package walkprobe0
+fixed table ProbeFixed {
+	x int32
+	ts timestamp
+}
+`,
+		},
+		{
 			name: "variable-only",
 			schema: `package walkprobe0
 table ProbeNode { x int32 }
@@ -108,6 +117,16 @@ table ProbeVar { p *ProbeNode }
 			schema: `package walkprobe0
 fixed table ProbeFixed { x int32 }
 table ProbeVar { p *ProbeFixed }
+`,
+		},
+		{
+			name: "fixed-and-variable-required",
+			schema: `package walkprobe0
+fixed table ProbeFixed { x int32 }
+table ProbeVar {
+	p *ProbeFixed
+	req int32 | required
+}
 `,
 		},
 		{
