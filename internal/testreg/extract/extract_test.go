@@ -488,6 +488,41 @@ func TestAnUnreadableRegistryIsNamed(t *testing.T) {
 	t.Fatalf("an unreadable registry was not named: %+v", res.Unparsed)
 }
 
+// TestAPerLanguageRowRunsEachLanguagesTarget: a per-language row whose
+// target holds {lang} runs that target for every language the registry
+// lists, so each language's rule is a make target as a make row's would be;
+// a language with no such rule adds nothing, a row scoped to no language
+// expands nothing, and a target with no {lang} is not a make row's.
+func TestAPerLanguageRowRunsEachLanguagesTarget(t *testing.T) {
+	t.Parallel()
+	files := maps.Clone(fixture)
+	files["Makefile"] += "\nruns-aa-corpus:\n\ttrue\n\nruns-bb-corpus:\n\ttrue\n\nruns-cc-corpus:\n\ttrue\n\nloose-zz:\n\ttrue\n"
+	files[testreg.DefaultPath] += `{"rec":"lang","name":"aa","adapter":"corpus"}` + "\n" +
+		`{"rec":"lang","name":"bb","adapter":"corpus"}` + "\n" +
+		`{"rec":"lang","name":"dd","adapter":"corpus"}` + "\n" +
+		`{"rec":"test","key":"decode.c.one","type":"decode","family":"c","case":"one","inputs":{"target":"runs-{lang}-corpus"}}` + "\n" +
+		`{"rec":"test","key":"decode.c.free","type":"decode","family":"c","case":"free","scope":"none","adapter":"gotest","inputs":{"target":"runs-{lang}-x"}}` + "\n" +
+		`{"rec":"test","key":"decode.c.loose","type":"decode","family":"c","case":"loose","inputs":{"target":"loose-zz"}}` + "\n"
+	res, err := Extract(writeFixture(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Unparsed) != 0 {
+		t.Fatalf("unparsed: %+v", res.Unparsed)
+	}
+	got := map[string]bool{}
+	for _, it := range res.Items {
+		if it.Kind == KindMakeTarget {
+			got[it.Name] = true
+		}
+	}
+	for name, want := range map[string]bool{"runs-aa-corpus": true, "runs-bb-corpus": true, "runs-cc-corpus": false, "loose-zz": false, "row-only": true} {
+		if got[name] != want {
+			t.Errorf("make target %s counted %v, want %v", name, got[name], want)
+		}
+	}
+}
+
 // TestAMalformedMakeRowIsNamed: a make row of the registry that is not JSON
 // is named, never read as no row at all.
 func TestAMalformedMakeRowIsNamed(t *testing.T) {
