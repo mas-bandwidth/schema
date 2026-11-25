@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 622. Language-free tests: 1343.
+Nightly tests every language answers: 625. Language-free tests: 1343.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -665,6 +665,18 @@ generated source compiles and is clean.
 | `L.nightly.codegen.name-buildability.tb-fleet` | name-buildability tb\_fleet: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: tb_fleet`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/tb\_fleet passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:317` |
 | `L.nightly.codegen.name-buildability.tb-max-items` | name-buildability tb\_max\_items: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: tb_max_items`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/tb\_max\_items passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:318` |
 | `L.nightly.codegen.name-buildability.u-pick` | name-buildability u\_pick: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: u_pick`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/u\_pick passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:316` |
+
+### Type `fuzz`
+
+seeded mutations.
+
+#### `fuzz` family `wire-fuzz`, 3 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.wire-fuzz.mixed` | wire fuzz, mixed arm (the mutable builder oracle on the variable file roots): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: mixed`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+| `L.nightly.fuzz.wire-fuzz.plain` | wire fuzz, plain arm (the plain read and write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: plain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
+| `L.nightly.fuzz.wire-fuzz.retain` | wire fuzz, retain arm (the retaining read's canonical write-back): every corpus root's enumerated mutants and 500000 random ones at the run's seed | `arm: retain`<br>`n: 500000` | no divergence from the oracle, at least one mutant, and no corpus root the leg has no codec for, in every configuration of the leg; the verdict names the seed | `test/conformance/harness/wirefuzz_registry.go` |
 
 ### Type `lint`
 

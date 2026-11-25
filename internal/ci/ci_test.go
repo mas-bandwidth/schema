@@ -1365,7 +1365,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-full.yml:go-test",
 		"ci-full.yml:leg-tagged",
 		"ci-full.yml:pins",
-		"schema-python-nightly-fuzz.yml:nightly",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1524,8 +1523,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-nightly-fuzz.yml:wiring",
 		"schema-nightly.yml:part",
 		"schema-nightly.yml:verdict",
-		"schema-python-nightly-fuzz.yml:nightly",
-		"schema-ruby-nightly-fuzz.yml:nightly",
 		"schema-test-nightly.yml:nightly",
 		"tla-nightly.yml:tlc",
 	}
@@ -1587,18 +1584,18 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "ci-fast.yml:lang-lint admits fork PR",
 		},
 		{
-			name:      "restore a pull_request trigger on the Python nightly fuzz",
-			workflow:  "schema-python-nightly-fuzz.yml",
+			name:      "restore a pull_request trigger on the registry nightly",
+			workflow:  "schema-test-nightly.yml",
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  pull_request:\n    branches: [ main, dev, fixed-table-form, 'sprint/**' ]\n",
-			wantErr:   "schema-python-nightly-fuzz.yml triggers on pull_request",
+			wantErr:   "schema-test-nightly.yml triggers on pull_request",
 		},
 		{
-			name:      "restore a push to main on the Ruby nightly fuzz",
-			workflow:  "schema-ruby-nightly-fuzz.yml",
+			name:      "restore a push to main on the TLA+ nightly",
+			workflow:  "tla-nightly.yml",
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  push:\n    branches: [ main ]\n",
-			wantErr:   "schema-ruby-nightly-fuzz.yml triggers on push",
+			wantErr:   "tla-nightly.yml triggers on push",
 		},
 		// pr-select is skipped on a nightly or a dispatch: pins and cs-tables
 		// without always() && !cancelled() would be skipped with it.

@@ -90,8 +90,6 @@ workflow-job	.github/workflows/ruby-leg.yml	2	L7	workflow jobs: CI is generated 
 workflow-job	.github/workflows/schema-dart-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-engine-is-the-oracle.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-python-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-ruby-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-test-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/tla-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 data-case	bench/tables/moo/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -394,8 +392,7 @@ data-case	test/conformance/lobster/vectors	1	L4	corpus data and harnesses: each 
 data-case	test/conformance/lua	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/luau	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/luau/vectors	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/moo	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/moo/wire-fuzz-pinned	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/moo	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/constant-defaults/hexadecimal-addition	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/constant-defaults/unsigned-subtraction	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/drivers/c	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -516,9 +513,6 @@ data-case	test/tables/valuedefaults/vd_fixed_values	1	L4	corpus data and harness
 data-case	test/tables/valuedefaults/vd_var_defaults	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/valuedefaults/vd_var_values	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/verify-bitphase	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/verify-bitphase/align-arrays	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/verify-bitphase/testdata/roster-cases	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-canonical	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-canonical/testdata/corpus-cases	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-reuse	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -599,16 +593,6 @@ data-case	testdata/lua-nightly-fuzz/replay-controls/unreadable-beside-good	2	L4	
 data-case	testdata/lua-nightly-fuzz/replay-controls/unregistered-table	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/lua-nightly-fuzz/replay-controls/unsupported-kind	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/luau-nightly-fuzz	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/good	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/good/pins	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/listed-not-saved	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/listed-not-saved/pins	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/names-nothing	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/names-nothing/pins	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/no-final-newline	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/no-final-newline/pins	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/unlisted-saved	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/moo-wire-fuzz-pinned-controls/unlisted-saved/pins	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit/enum_kind	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1074,9 +1058,8 @@ data-case	testdata/wire/packet-end	3	L4	corpus data and harnesses: each language
 data-case	testdata/wire/pointer-target-type	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/pointer-target-type/blobkind	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/skipped-value	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/tables	22	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/wire/tables	18	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/framing	19	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/tables/fuzz-vectors	125	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/nightly-fuzz-regressions	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/prior	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/storage-cap	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1303,7 +1286,6 @@ data-case	tools/testguard/testdata/probes2/write-in-ci-hides-unlisted/bl/s	1	L4	
 data-case	tools/testguard/testdata/probes2/yaml-plan	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/testguard/testdata/probes2/yaml-plan/bl/s	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/vuln/testdata	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	tools/wirefuzzrelease/testdata/gate-cases	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/bench	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/c	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1503,7 +1485,6 @@ driver	test/unity	1	L4	corpus data and harnesses: each language's adapter answer
 driver	test/unity-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity-hostile/units	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity/serialize	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-driver	test/verify-bitphase/cpp	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 tier	bench/tables/moo:TestMooFixedHotPathBench	1	L5	nightly: SCHEMA_MOO_FIXED_BENCH gate removed: timed bench on a quiet host
 tier	compiler:TestMooGeneratesTheConstructsItCarries	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooModuleKeyScanGoesRed	1	L3	functional: built with -tags schema_leg_moo
