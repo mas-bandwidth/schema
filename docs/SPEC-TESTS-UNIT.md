@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2936.
+Unit tests every language answers: 2. Language-free tests: 2939.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2983,7 +2983,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 97 tests
+#### `tooling` family `schema-test`, 100 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3042,6 +3042,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.an-edit-plant-is-judged-on-its-trees-run` | `gotest` | Go test TestAnEditPlantIsJudgedOnItsTreesRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnEditPlantIsJudgedOnItsTreesRun` | the Go test passes | `tools/schema-test/plant_test.go:120` |
 | `none.unit.tooling.schema-test.an-uncommitted-golden-is-missing` | `gotest` | Go test TestAnUncommittedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUncommittedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:231` |
 | `none.unit.tooling.schema-test.an-unreadable-index-is-named` | `gotest` | Go test TestAnUnreadableIndexIsNamed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUnreadableIndexIsNamed` | the Go test passes | `tools/schema-test/golden_test.go:353` |
+| `none.unit.tooling.schema-test.cs-rows-verdicts-read-per-row` | `gotest` | Go test TestCsRowsVerdictsReadPerRow in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestCsRowsVerdictsReadPerRow` | the Go test passes | `tools/schema-test/a4_test.go:111` |
 | `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:227` |
 | `none.unit.tooling.schema-test.every-make-in-the-checkout-holds-it` | `gotest` | Go test TestEveryMakeInTheCheckoutHoldsIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryMakeInTheCheckoutHoldsIt` | the Go test passes | `tools/schema-test/make_test.go:278` |
 | `none.unit.tooling.schema-test.extract-holds-the-ledger-to-the-tree` | `gotest` | Go test TestExtractHoldsTheLedgerToTheTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsTheLedgerToTheTree` | the Go test passes | `tools/schema-test/extract_test.go:117` |
@@ -3066,6 +3067,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.run-hostile-reads-each-case-from-its-run` | `gotest` | Go test TestRunHostileReadsEachCaseFromItsRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunHostileReadsEachCaseFromItsRun` | the Go test passes | `tools/schema-test/hostile_test.go:170` |
 | `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:170` |
 | `none.unit.tooling.schema-test.seeding-ages-the-committed-goldens` | `gotest` | Go test TestSeedingAgesTheCommittedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSeedingAgesTheCommittedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:312` |
+| `none.unit.tooling.schema-test.textform-runners-name-their-cases` | `gotest` | Go test TestTextformRunnersNameTheirCases in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTextformRunnersNameTheirCases` | the Go test passes | `tools/schema-test/a4_test.go:128` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:261` |
 | `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:286` |
 | `none.unit.tooling.schema-test.the-checkout-adapters-run-one-after-another` | `gotest` | Go test TestTheCheckoutAdaptersRunOneAfterAnother in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCheckoutAdaptersRunOneAfterAnother` | the Go test passes | `tools/schema-test/make_test.go:534` |
@@ -3077,6 +3079,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |
 | `none.unit.tooling.schema-test.the-pr-jobs-split-the-group-by-language` | `gotest` | Go test TestThePRJobsSplitTheGroupByLanguage in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRJobsSplitTheGroupByLanguage` | the Go test passes | `tools/schema-test/shards_test.go:183` |
 | `none.unit.tooling.schema-test.the-pr-shards-fit-their-jobs` | `gotest` | Go test TestThePRShardsFitTheirJobs in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRShardsFitTheirJobs` | the Go test passes | `tools/schema-test/shards_test.go:80` |
+| `none.unit.tooling.schema-test.the-registry-holds-every-a4-case` | `gotest` | Go test TestTheRegistryHoldsEveryA4Case in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryA4Case` | the Go test passes | `tools/schema-test/a4_test.go:59` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:45` |
 | `none.unit.tooling.schema-test.the-runs-seed-is-printed-and-handed-to-every-adapter` | `gotest` | Go test TestTheRunsSeedIsPrintedAndHandedToEveryAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRunsSeedIsPrintedAndHandedToEveryAdapter` | the Go test passes | `tools/schema-test/seed_cli_test.go:32` |
 | `none.unit.tooling.schema-test.the-writer-writes-every-golden-afresh` | `gotest` | Go test TestTheWriterWritesEveryGoldenAfresh in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheWriterWritesEveryGoldenAfresh` | the Go test passes | `tools/schema-test/golden_test.go:188` |
