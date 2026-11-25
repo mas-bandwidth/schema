@@ -520,12 +520,15 @@ func TestSchemaSquirrelAllPortDifferential(t *testing.T) {
 		// make schema-squirrel-all-port-differential, which hands its own tree
 		// in by env and runs this test after it.
 		testinputs.Build(t, "test/conformance", "testdata/conformance")
-		build := exec.Command("make", "schema-squirrel-all-port-differential-tree")
+		// the tree is named on the make command line, which wins over an
+		// environment SQUIRREL_DIFFERENTIAL_WORK, so the tree built is the
+		// tree compared
+		work = filepath.Join(root, "build", "conformance-differential")
+		build := exec.Command("make", "schema-squirrel-all-port-differential-tree", "SQUIRREL_DIFFERENTIAL_WORK="+work)
 		build.Dir = root
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("%s is unset and make schema-squirrel-all-port-differential-tree failed: %v\n%s", differentialWorkEnv, err, out)
 		}
-		work = filepath.Join(root, "build", "conformance-differential")
 	} else if !filepath.IsAbs(work) {
 		work = filepath.Join(root, work)
 	}
