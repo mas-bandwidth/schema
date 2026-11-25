@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2966.
+Unit tests every language answers: 2. Language-free tests: 2967.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3010,7 +3010,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 104 tests
+#### `tooling` family `schema-test`, 105 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3099,6 +3099,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.run-hostile-reads-each-case-from-its-run` | `gotest` | Go test TestRunHostileReadsEachCaseFromItsRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunHostileReadsEachCaseFromItsRun` | the Go test passes | `tools/schema-test/hostile_test.go:170` |
 | `none.unit.tooling.schema-test.seconds-are-read-from-a-runs-log` | `gotest` | Go test TestSecondsAreReadFromARunsLog in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSecondsAreReadFromARunsLog` | the Go test passes | `tools/schema-test/gotest_test.go:170` |
 | `none.unit.tooling.schema-test.seeding-ages-the-committed-goldens` | `gotest` | Go test TestSeedingAgesTheCommittedGoldens in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestSeedingAgesTheCommittedGoldens` | the Go test passes | `tools/schema-test/golden_test.go:312` |
+| `none.unit.tooling.schema-test.state-diff-names-every-write` | `gotest` | Go test TestStateDiffNamesEveryWrite in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestStateDiffNamesEveryWrite` | the Go test passes | `tools/schema-test/hostile_test.go:600` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:261` |
 | `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:286` |
 | `none.unit.tooling.schema-test.the-checkout-adapters-run-one-after-another` | `gotest` | Go test TestTheCheckoutAdaptersRunOneAfterAnother in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCheckoutAdaptersRunOneAfterAnother` | the Go test passes | `tools/schema-test/make_test.go:534` |

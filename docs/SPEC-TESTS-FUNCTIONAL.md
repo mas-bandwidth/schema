@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2244.
+Functional tests every language answers: 2468. Language-free tests: 2245.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5328,10 +5328,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.roadmap.regeneration-keeps-the-hand-text` | `gotest` | Go test TestRegenerationKeepsTheHandText in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRegenerationKeepsTheHandText` | the Go test passes | `tools/roadmap/tally_test.go:376` |
 | `none.functional.tooling.roadmap.roadmap-is-generated-from-the-data` | `gotest` | Go test TestRoadmapIsGeneratedFromTheData in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRoadmapIsGeneratedFromTheData` | the Go test passes | `tools/roadmap/tally_test.go:289` |
 
-#### `tooling` family `schema-test`, 1 test
+#### `tooling` family `schema-test`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.tooling.schema-test.every-hostile-target-dry-runs-without-writing` | `gotest` | Go test TestEveryHostileTargetDryRunsWithoutWriting in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDryRunsWithoutWriting` | the Go test passes | `tools/schema-test/hostile_test.go:421` |
 | `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
 
 #### `tooling` family `slowtest`, 1 test
