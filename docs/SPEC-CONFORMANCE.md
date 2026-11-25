@@ -1021,3 +1021,28 @@ held to the same rows by the leg's own test.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC.md §5.1 rows 1 to 8 and 10: the whole-file save of a fixed root refuses what the fixed writer refuses | Go unit test `TestSquirrelFixedRootSaveRefusesOffContract` (`internal/codegen/squirreltable`, slow tier): every row of `TestSquirrelFixedSaveRefusesOffContract` through `RecSave`; no shared case, because the conformance driver writes a fixed root through `<Root>FixedSave` | red before its fix on Squirrel: `saveFixed` in runtime/save.nut walked the body itself with no range, count-minimum, width, text or type check, so `RecSave` wrote 18 off-contract rows and raised on 7 wrong-typed ones; it now delegates to `<Root>FixedSave` |
+
+### Every generated C++ table header compiles standalone
+
+A C++ table header carries the `schema_assert` hook whenever it calls
+`schema_assert` for any reason ([SPEC-TABLES §13.9](SPEC-TABLES.md), the hooks
+table; SPEC.md §5.1): a generated header is the first and only include of a
+translation unit and must compile there. A variable table with a ranged
+`fixed(48, 16)` field and no fixed form, list or storage check once emitted the
+write-contract call without the hook.
+
+```schema
+package rangedfixed
+table Root
+{
+    f fixed(48, 16) | min = -10, max = 10
+    n int64
+}
+```
+
+A new C++ implementation holds the same rule for its own generated table
+headers: every unit the shared corpus names, the manifest `unit` rows and the
+one-check units in `testdata/cpp-standalone`, generates headers that compile
+with `-std=c++17 -fsyntax-only` when included alone.
+`TestEveryGeneratedTableHeaderCompilesStandalone` sweeps that corpus and is red
+on the old generator for all four one-check units (`ranged_fixed`, `ranged_int`, `ranged_bits`, `ranged_float`).
