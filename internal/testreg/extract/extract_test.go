@@ -65,8 +65,8 @@ func TestMain(m *testing.M) {}
 	"test/testguard/rest.tsv":                     "pkg\tTestPlain\n",
 	"test/conformance/zz/Directory.Build.targets": "<Project/>",
 	"working/x_test.go":                           "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
-	"test/u/obj/Debug/gen.cs":        "// a dotnet build output file, never a test\n",
-	"test/u/bin/Debug/x/u.deps.json": "{}\n",
+	"test/u/obj/Debug/gen.cs":                     "// a dotnet build output file, never a test\n",
+	"test/u/bin/Debug/x/u.deps.json":              "{}\n",
 }
 
 func writeFixture(t *testing.T, files map[string]string) string {
