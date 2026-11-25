@@ -143,8 +143,17 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
+# SHARED BUILD PRODUCTS ARE WRITTEN ATOMICALLY: bin/schema,
+# build/schema_test_fixedform_dump, build/fixedform-corpus and
+# build/conformance-c are built under a name of the build's own (the shell's
+# pid) and renamed into place. Two runs in one checkout that both make one
+# (schema-test runs side by side, say) then never write a binary another is
+# executing ("Text file busy") and never hand a reader a half-written file:
+# rename replaces the name whole, and a process already running the old
+# binary keeps its inode. TestSharedBuildProductsAreWrittenAtomically
+# (internal/ci) holds these recipes to it.
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
-	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+	go build -ldflags "$(LDFLAGS)" -o $@.tmp.$$$$ ./cmd/schema && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }
 
 # tools/mustrun is the wrapper a language harness runs under: it fails on a
 # non-zero exit, on a harness that printed no "ran N, failed M" line, on zero
@@ -7277,26 +7286,34 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
-	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
+	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@.tmp.$$$$ && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }
 
-# The corpus is written beside the live one and swapped in whole, so a reader
-# never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
-	@rm -rf build/fixedform-corpus.next
-	@mkdir -p build/fixedform-corpus.next
-	./build/schema_test_fixedform_dump build/fixedform-corpus.next
+# The corpus is written beside the live one, under a name of this build's own
+# (the shell's pid: two builds side by side never write into one directory),
+# and swapped in whole, so a reader never sees a directory that is half
+# written. A directory cannot be renamed over a full one, so the swap is two
+# renames (the live one aside, the new one in) with nothing written between;
+# the old one is removed after. The second is rename(2) itself (perl), never
+# mv: when another build put its corpus in first, mv would move this one
+# INSIDE it, and rename refuses, so this build keeps the other's whole corpus
+# (built from the same inputs) and removes its own.
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
-# emitter to use. Nothing under build/ is committed; the line below only refuses
-# to call the corpus finished when the manifest did not arrive.
-	@test -s build/fixedform-corpus.next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
-	@touch build/fixedform-corpus.next/.stamp
-	@rm -rf build/fixedform-corpus.prev
-	@if test -d build/fixedform-corpus; then mv build/fixedform-corpus build/fixedform-corpus.prev; fi
-	@mv build/fixedform-corpus.next build/fixedform-corpus
-	@rm -rf build/fixedform-corpus.prev
+# emitter to use. Nothing under build/ is committed; the test -s below only
+# refuses to call the corpus finished when the manifest did not arrive.
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
+	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; \
+	rm -rf $$next $$prev && mkdir -p $$next && \
+	echo "./build/schema_test_fixedform_dump $$next" && \
+	./build/schema_test_fixedform_dump $$next && \
+	{ test -s $$next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; rm -rf $$next; exit 1; }; } && \
+	touch $$next/.stamp && \
+	{ if test -d build/fixedform-corpus; then mv build/fixedform-corpus $$prev; fi; } && \
+	{ perl -e 'rename($$ARGV[0], $$ARGV[1]) or exit 1' $$next build/fixedform-corpus || \
+	  { test -f build/fixedform-corpus/.stamp && rm -rf $$next; }; } && \
+	rm -rf $$prev || { rm -rf $$next; exit 1; }
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"

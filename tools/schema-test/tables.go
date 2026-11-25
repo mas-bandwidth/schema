@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -275,12 +276,20 @@ func tablesChecks(dir, name, schema, verdict string) (checks, expect string) {
 	}
 }
 
-// tablesVerdict judges one generation: pass, or fail with its reason.
+// tablesVerdict judges one generation: pass, or fail with its reason. A
+// refusal is the compiler running and exiting non-zero; a compiler that
+// could not be run at all (missing, half written, "text file busy" while
+// another build rewrites it) refused nothing, and fails either verdict
+// naming why it did not run.
 func tablesVerdict(verdict string, genErr error, out string) (bool, string) {
+	var exit *exec.ExitError
+	if genErr != nil && !errors.As(genErr, &exit) && (verdict == tablesAccept || verdict == tablesRefuse) {
+		return false, "the compiler did not run: " + genErr.Error()
+	}
 	switch verdict {
 	case tablesAccept:
 		if genErr != nil {
-			return false, "generate refused a schema the corpus holds as valid: " + oneLine(tail(out, 5))
+			return false, "generate refused a schema the corpus holds as valid (" + genErr.Error() + "): " + oneLine(tail(out, 5))
 		}
 		return true, ""
 	case tablesRefuse:

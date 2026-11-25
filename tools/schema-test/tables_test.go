@@ -3,10 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"flag"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -146,7 +147,7 @@ func TestTablesVerdictsFollowTheCorpus(t *testing.T) {
 // TestTablesGenerationIsJudgedByTheCorpusVerdict: an accepted schema
 // that refuses and a refused schema that generates are each a failure.
 func TestTablesGenerationIsJudgedByTheCorpusVerdict(t *testing.T) {
-	boom := errors.New("exit status 1")
+	boom := &exec.ExitError{} // the compiler ran and exited non-zero
 	for _, c := range []struct {
 		verdict string
 		err     error
@@ -165,5 +166,22 @@ func TestTablesGenerationIsJudgedByTheCorpusVerdict(t *testing.T) {
 		if !pass && reason == "" {
 			t.Errorf("verdict %s with err %v: a failure with no reason", c.verdict, c.err)
 		}
+	}
+}
+
+// TestATablesCompilerThatDidNotRunFailsEitherVerdict: a compiler that could
+// not be started (another build rewriting bin/schema: text file busy, or the
+// file gone) refused nothing. A refuse row fails rather than passing on it,
+// and both verdicts name why it did not run.
+func TestATablesCompilerThatDidNotRunFailsEitherVerdict(t *testing.T) {
+	notRun := &os.PathError{Op: "fork/exec", Path: "./bin/schema", Err: syscall.ETXTBSY}
+	for _, verdict := range []string{tablesAccept, tablesRefuse} {
+		pass, reason := tablesVerdict(verdict, notRun, "")
+		if pass || !strings.Contains(reason, "did not run") || !strings.Contains(reason, syscall.ETXTBSY.Error()) {
+			t.Errorf("verdict %s with a compiler that did not run: pass = %v, reason %q; want a failure naming %q", verdict, pass, reason, syscall.ETXTBSY.Error())
+		}
+	}
+	if pass, reason := tablesVerdict(tablesAccept, &exec.ExitError{}, "schema: refused"); pass || !strings.Contains(reason, "refused a schema the corpus holds as valid") {
+		t.Errorf("an accept row whose compiler exited non-zero: pass = %v, reason %q", pass, reason)
 	}
 }

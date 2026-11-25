@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3198.
+Unit tests every language answers: 2. Language-free tests: 3201.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1954,7 +1954,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 270 tests
+#### `tooling` family `ci`, 271 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2188,6 +2188,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.setup-beam-exemption-is-step-scoped` | `gotest` | Go test TestSetupBeamExemptionIsStepScoped in ./internal/ci | `package: ./internal/ci`<br>`test: TestSetupBeamExemptionIsStepScoped` | the Go test passes | `internal/ci/setup_beam_hosted_only_test.go:168` |
 | `none.unit.tooling.ci.setup-beam-hosted-gate-negative-controls` | `gotest` | Go test TestSetupBeamHostedGateNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestSetupBeamHostedGateNegativeControls` | the Go test passes | `internal/ci/setup_beam_hosted_only_test.go:185` |
 | `none.unit.tooling.ci.setup-java-is-pinned-to-v630` | `gotest` | Go test TestSetupJavaIsPinnedToV630 in ./internal/ci | `package: ./internal/ci`<br>`test: TestSetupJavaIsPinnedToV630` | the Go test passes | `internal/ci/setup_java_test.go:18` |
+| `none.unit.tooling.ci.shared-build-products-are-written-atomically` | `gotest` | Go test TestSharedBuildProductsAreWrittenAtomically in ./internal/ci | `package: ./internal/ci`<br>`test: TestSharedBuildProductsAreWrittenAtomically` | the Go test passes | `internal/ci/atomic_build_products_test.go:108` |
 | `none.unit.tooling.ci.sibling-gate-unselected-leg-needs-no-sibling` | `gotest` | Go test TestSiblingGateUnselectedLegNeedsNoSibling in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingGateUnselectedLegNeedsNoSibling` | the Go test passes | `internal/ci/siblinggate_test.go:59` |
 | `none.unit.tooling.ci.siblings-file-matches-make-pins` | `gotest` | Go test TestSiblingsFileMatchesMakePins in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsFileMatchesMakePins` | the Go test passes | `internal/ci/siblings_test.go:54` |
 | `none.unit.tooling.ci.skip-gate-negative-control` | `gotest` | Go test TestSkipGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestSkipGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:89` |
@@ -3180,7 +3181,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 164 tests
+#### `tooling` family `schema-test`, 166 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3206,6 +3207,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-killed-make-go-test-names-the-tests-running` | `gotest` | Go test TestAKilledMakeGoTestNamesTheTestsRunning in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAKilledMakeGoTestNamesTheTestsRunning` | the Go test passes | `tools/schema-test/make_gotest_test.go:305` |
 | `none.unit.tooling.schema-test.a-make-control-carries-its-needs` | `gotest` | Go test TestAMakeControlCarriesItsNeeds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeControlCarriesItsNeeds` | the Go test passes | `tools/schema-test/plant_make_test.go:19` |
 | `none.unit.tooling.schema-test.a-make-go-test-reads-what-the-events-say-not-the-log-alone` | `gotest` | Go test TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone` | the Go test passes | `tools/schema-test/make_gotest_test.go:239` |
+| `none.unit.tooling.schema-test.a-make-go-test-row-builds-what-its-test-reads-in-prepare` | `gotest` | Go test TestAMakeGoTestRowBuildsWhatItsTestReadsInPrepare in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestRowBuildsWhatItsTestReadsInPrepare` | the Go test passes | `tools/schema-test/make_gotest_needs_test.go:20` |
 | `none.unit.tooling.schema-test.a-make-go-test-row-is-read-by-its-exact-name` | `gotest` | Go test TestAMakeGoTestRowIsReadByItsExactName in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestRowIsReadByItsExactName` | the Go test passes | `tools/schema-test/make_gotest_test.go:139` |
 | `none.unit.tooling.schema-test.a-make-go-test-target-running-go-test-another-way-is-refused` | `gotest` | Go test TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused` | the Go test passes | `tools/schema-test/make_gotest_test.go:283` |
 | `none.unit.tooling.schema-test.a-make-go-test-target-without-go-test-is-refused` | `gotest` | Go test TestAMakeGoTestTargetWithoutGoTestIsRefused in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestTargetWithoutGoTestIsRefused` | the Go test passes | `tools/schema-test/make_gotest_test.go:216` |
@@ -3252,6 +3254,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-subtest-row-keeps-its-own-verdict` | `gotest` | Go test TestASubtestRowKeepsItsOwnVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestRowKeepsItsOwnVerdict` | the Go test passes | `tools/schema-test/gotest_case_test.go:15` |
 | `none.unit.tooling.schema-test.a-subtest-row-takes-that-subtests-verdict` | `gotest` | Go test TestASubtestRowTakesThatSubtestsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestRowTakesThatSubtestsVerdict` | the Go test passes | `tools/schema-test/gotest_test.go:399` |
 | `none.unit.tooling.schema-test.a-subtest-that-skips-fails-its-parent` | `gotest` | Go test TestASubtestThatSkipsFailsItsParent in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestASubtestThatSkipsFailsItsParent` | the Go test passes | `tools/schema-test/gotest_test.go:20` |
+| `none.unit.tooling.schema-test.a-tables-compiler-that-did-not-run-fails-either-verdict` | `gotest` | Go test TestATablesCompilerThatDidNotRunFailsEitherVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATablesCompilerThatDidNotRunFailsEitherVerdict` | the Go test passes | `tools/schema-test/tables_test.go:176` |
 | `none.unit.tooling.schema-test.a-target-specific-variable-is-not-a-rule` | `gotest` | Go test TestATargetSpecificVariableIsNotARule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestATargetSpecificVariableIsNotARule` | the Go test passes | `tools/schema-test/make_test.go:265` |
 | `none.unit.tooling.schema-test.a-union-call-carries-its-build-tags` | `gotest` | Go test TestAUnionCallCarriesItsBuildTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallCarriesItsBuildTags` | the Go test passes | `tools/schema-test/gounion_test.go:63` |
 | `none.unit.tooling.schema-test.a-union-call-runs-under-its-package-lock-with-its-tags` | `gotest` | Go test TestAUnionCallRunsUnderItsPackageLockWithItsTags in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAUnionCallRunsUnderItsPackageLockWithItsTags` | the Go test passes | `tools/schema-test/gounion_test.go:80` |
