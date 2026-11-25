@@ -141,12 +141,10 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # engine's own encode, and otherwise by its canonical text's digest and the
 # engine's encode of that text (make/goose-hostile.sh). The runner reads the
 # `wire`, `message` and `packet` carriers today; the text, announcement and
-# message_novocab carriers are absences held by name in
-# test/goose-hostile/absent-carriers.tsv until the runner dispatches them (the
-# port has their readers; docs/roadmap.sexp goose/hostile-runner-carriers), a
-# wire or packet case the port cannot read is held by name in
-# test/goose-hostile/absent-cases.tsv, and tools/hostileledger holds the run to
-# the corpus folder: every other registered case ran, or the gate is red.
+# message_novocab carriers do not run until the runner dispatches them (the
+# port has their readers; docs/roadmap.sexp goose/hostile-runner-carriers),
+# and no list holds them back: tools/hostileledger holds the run to the corpus
+# folder, and every registered case ran or the gate is red by its name.
 # test/goose-hostile/known-findings.tsv carries each disagreement by name with
 # the card that owes it.
 GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus

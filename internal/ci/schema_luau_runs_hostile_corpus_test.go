@@ -600,7 +600,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Luau
 	// probe printed a verdict for against the cases the folder registers.
-	summary, err := hostilecorpus.RanEvery(corpusDir, ran, nil)
+	summary, err := hostilecorpus.RanEvery(corpusDir, ran)
 	if err != nil {
 		t.Fatal(err)
 	}

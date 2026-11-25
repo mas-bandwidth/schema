@@ -1,3 +1,5 @@
+//go:build linux
+
 package goosetable_test
 
 // A GOOSE DRIVER DIES WITH ITS PARENT (internal/codegen/goose/gooserun).

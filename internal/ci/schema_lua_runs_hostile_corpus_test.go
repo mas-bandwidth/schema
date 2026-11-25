@@ -561,7 +561,7 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Lua
 	// reader answered against the cases the folder registers, per carrier.
-	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)), nil)
+	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)))
 	if err != nil {
 		t.Fatal(err)
 	}

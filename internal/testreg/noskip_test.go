@@ -53,10 +53,10 @@ import (
 // Not scanned, each for its reason: version control and dependency and build
 // output (never source); third_party/ (vendored sibling code, owned by its
 // own repository); working/ (scratch); docs (prose about the rule, and
-// history); and any testdata/ directory (data a checker reads: Go never runs
-// a test under testdata, and the checkers that read planted skips there,
-// such as tools/gotestreport, refuse them). Inside this file, the plants are
-// strings.
+// history); and the files noSkipsExempt names, each with its reason. A
+// testdata/ directory is scanned like any other, since driver sources live
+// under some of them; a planted fixture there is named in noSkipsExempt.
+// Inside this file, the plants are strings.
 func noSkips(root string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -89,7 +89,7 @@ func noSkips(root string) ([]string, error) {
 // tests, or data only (the reasons are on noSkips).
 func noSkipsSkipsDir(rel, name string) bool {
 	switch name {
-	case ".git", "node_modules", "_build", "deps", "target", ".dart_tool", "__pycache__", ".venv", "testdata", ".gradle", "obj":
+	case ".git", "node_modules", "_build", "deps", "target", ".dart_tool", "__pycache__", ".venv", ".gradle", "obj":
 		return true
 	}
 	switch rel {
@@ -483,6 +483,8 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	{".github/workflows/ck.yml", "jobs:\n  a:\n    if: startsWith(github.head_ref, 'sprint/') == false\n", "branch-skip"},
 	{"test/conformance/lua/driver.lua", "if not ok then\n  print(\"SKIP: row \" .. name)\nend\n", "skip-verdict"},
 	{"test/hostile/known-skips.tsv", "row-1\twaits\n", "skip-ledger"},
+	// a driver under a testdata/ directory is scanned like any other source
+	{"test/conformance/packet/testdata/drivers/run.sh", "#!/bin/sh\n./driver \"$@\" || true\n", "or-true"},
 }
 
 // TestNoSkipMechanismIsPlanted plants one skip of each kind in a scratch tree
@@ -501,16 +503,15 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 		}
 	}
 	// what no rule may refuse: a wire reader's Skip, a value knob, a tool
-	// lookup that fails, docs, testdata, an if on the platform that fails
+	// lookup that fails, docs, an if on the platform that fails
 	clean := map[string]string{
-		"q/wire.go":            "package q\n\ntype R struct{}\n\nfunc (r *R) Skip(n int) {}\n\nfunc use(r *R) { r.Skip(3) }\n",
-		"q/k_test.go":          "package q\n\nimport (\n\t\"os\"\n\t\"os/exec\"\n\t\"testing\"\n)\n\nfunc TestK(t *testing.T) {\n\tseed := os.Getenv(\"SCHEMA_SEED\")\n\t_ = seed\n\tif _, err := exec.LookPath(\"cc\"); err != nil {\n\t\tt.Fatalf(\"no cc on PATH\")\n\t}\n}\n",
-		"q/l_test.go":          "//go:build linux\n\npackage q\n\nimport \"testing\"\n\nfunc TestL(t *testing.T) {}\n",
-		"q/m_test.go":          "//go:build schema_leg_moo\n\npackage q\n\nimport \"testing\"\n\nfunc TestM(t *testing.T) {}\n",
-		"docs/RULES.md":        "a test never skips: no t.Skip, no || true\n",
-		"q/testdata/x_test.go": "package x\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) { t.Skip(\"a planted record for a checker\") }\n",
-		"make/z.mk":            "# a comment may say || true and SCHEMA_SLOW to explain the rule\nz-test:\n\tgo test ./q\n",
-		"test/c/rows.c":        "/* skip unknown fields on the wire */\nstatic void skip_field(void) {}\n",
+		"q/wire.go":     "package q\n\ntype R struct{}\n\nfunc (r *R) Skip(n int) {}\n\nfunc use(r *R) { r.Skip(3) }\n",
+		"q/k_test.go":   "package q\n\nimport (\n\t\"os\"\n\t\"os/exec\"\n\t\"testing\"\n)\n\nfunc TestK(t *testing.T) {\n\tseed := os.Getenv(\"SCHEMA_SEED\")\n\t_ = seed\n\tif _, err := exec.LookPath(\"cc\"); err != nil {\n\t\tt.Fatalf(\"no cc on PATH\")\n\t}\n}\n",
+		"q/l_test.go":   "//go:build linux\n\npackage q\n\nimport \"testing\"\n\nfunc TestL(t *testing.T) {}\n",
+		"q/m_test.go":   "//go:build schema_leg_moo\n\npackage q\n\nimport \"testing\"\n\nfunc TestM(t *testing.T) {}\n",
+		"docs/RULES.md": "a test never skips: no t.Skip, no || true\n",
+		"make/z.mk":     "# a comment may say || true and SCHEMA_SLOW to explain the rule\nz-test:\n\tgo test ./q\n",
+		"test/c/rows.c": "/* skip unknown fields on the wire */\nstatic void skip_field(void) {}\n",
 	}
 	for f, body := range clean {
 		path := filepath.Join(root, f)
@@ -585,6 +586,14 @@ var noSkipsExempt = map[string]string{
 	// actions and skip variables are the plants it requires the checker to
 	// refuse or strip
 	"test/conformance/nightly_readiness_test.py": "plants for a checker that refuses skips",
+	// tools/gotestreport's record corpus: the real `go test -json` run of a
+	// test that skips once is what gotestreport must refuse (F-175)
+	"tools/gotestreport/testdata/recordgen/ledgertest/ledger_test.go": "a planted skip record gotestreport refuses",
+	// internal/recipescan's planted recipes: a lock cleanup and a fixture
+	// driver the scanner reads as text, never run
+	"internal/recipescan/testdata/stamp-correct.mk":                     "a planted recipe the recipe scanner reads, never run",
+	"internal/recipescan/testdata/stamp-touch-lost.mk":                  "a planted recipe the recipe scanner reads, never run",
+	"internal/recipescan/testdata/tree/test/conformance/fixture/driver": "a planted driver the recipe scanner reads, never run",
 }
 
 // TestNoSkipExemptionsAreCurrent: every exempt file exists, so an exemption
