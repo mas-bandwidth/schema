@@ -53,7 +53,7 @@ glue() {
 		cmp -s "$main" "$1/main.goose" && cmp -s "$text" "$1/unit.goose"; then
 		_fresh=1
 		for _f in "$1"/*.goose test/conformance/goose/driver; do
-			case "$(basename "$_f")" in main.goose|conformance_unit.goose|unit.goose) continue ;; esac
+			case "${_f##*/}" in main.goose|conformance_unit.goose|unit.goose) continue ;; esac
 			if [ "$_f" -nt "$1/conformance_unit.goose" ]; then _fresh=0; break; fi
 		done
 		[ "$_fresh" -eq 1 ] && return 0
@@ -1273,11 +1273,202 @@ main_units() {
 	retain | retain-save) awk '$1 == "retain" { print $3 }' "$1" ;;
 	retain-refusal) awk '$1 == "retain-refusal" { print $3 }' "$1" ;;
 	json-hostile) awk '$1 == "json-hostile" { print $3 }' "$1" ;;
-	write-refusal | write-refusal-fixed | write-refusal-json | write-refusal-cook | write-refusal-block | announce | read-into | json-write-into) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
+	write-refusal | write-refusal-fixed | write-refusal-json | write-refusal-cook | write-refusal-block | write-refusal-shape | announce | read-into | json-write-into) awk -v s="$2" '$1 == s { print $3 }' "$1" ;;
 	write-refusal-message) awk '$1 == "connection" { u[$2] = $3 } $1 == "write-refusal-message" && ($3 in u) { print u[$3] }' "$1" ;;
 	*) awk '$1 == "unit" { print $2 }' "$1" ;;
 	esac | sort -u
 }
+# THE BATCH (2026-11-25). `goose run` compiles the whole unit on every call,
+# about a second for most units and twenty-four for the 4096-entry
+# announcement units, and the leg used to compile each unit once per surface:
+# 191 s for the leg on four cores. Now the first call warms a cache: for every
+# unit, main.goose's `batch` runs every batch surface that unit serves in one
+# compile, and accel.goose's `batch` the accelerator surfaces, the largest
+# units first, nproc at a time; each surface then answers from its own
+# section. The cache directory is keyed by the checksum of the manifest, this
+# driver, main.goose and accel.goose together, so a change to any of them is a
+# new cache; a unit whose sources are newer than its cache is filled again. A
+# section counts only when its "#done" line is there: a surface the batch died
+# in, or never reached, is answered by its own single run exactly as before,
+# so a failure reads the same, and the fallback is named on the unit's
+# stderr. json-write-into reads SCHEMA_COMMA_LOCALE from its environment and
+# is never batched.
+batch_surfaces="wire message message-prior report framing retain retain-save retain-refusal json-read json-write json-hostile write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into"
+# batch_map <manifest> <dir>: <dir>/main.map and <dir>/accel.map, one line per
+# unit naming the batch surfaces it serves, written once per cache (a lookup
+# per unit and surface made thousands of short processes)
+batch_map() {
+	_t=$(mktemp "$2/map.XXXXXX") || return 1
+	for _s in $batch_surfaces; do
+		main_units "$1" "$_s" | sed "s/\$/ $_s/"
+	done | awk '{ m[$1] = m[$1] " " $2 } END { for (u in m) print u m[u] }' >"$_t" &&
+		mv "$_t" "$2/main.map" || return 1
+	_t=$(mktemp "$2/map.XXXXXX") || return 1
+	for _s in $accel_batch_surfaces; do
+		accel_units "$1" "$_s" | sed "s/\$/ $_s/"
+	done | awk '{ m[$1] = m[$1] " " $2 } END { for (u in m) print u m[u] }' >"$_t" &&
+		mv "$_t" "$2/accel.map"
+}
+# batch_of <map> <unit>: the batch surfaces the map gives <unit>
+batch_of() {
+	awk -v u="$2" '$1 == u { $1 = ""; print substr($0, 2) }' "$1"
+}
+# batch_fresh <cache> <unit dir>: the cache is newer than every unit source
+batch_fresh() {
+	[ -f "$1" ] || return 1
+	for _f in "$2"/*.goose; do
+		[ "$_f" -nt "$1" ] && return 1
+	done
+	return 0
+}
+# batch_lock <dir>: mkdir is the lock; a holder that died is stolen from
+batch_lock() {
+	while ! mkdir "$1" 2>/dev/null; do
+		_p=$(cat "$1/pid" 2>/dev/null)
+		if [ -n "$_p" ] && ! kill -0 "$_p" 2>/dev/null; then
+			rm -rf "$1"
+			continue
+		fi
+		sleep 0.05
+	done
+	echo $$ >"$1/pid"
+}
+# batch_dir <manifest>: the cache directory on stdout. The call that creates
+# it writes the maps, warms every unit (batch_warm) and then writes
+# warm.done; every other call waits for warm.done, looking twice a second,
+# and takes the warm over when its owner has died.
+batch_dir() {
+	_d="$base/batch/$(cat "$1" "$0" "$main" "$accel" | cksum | cut -d" " -f1)"
+	mkdir -p "$_d" || return 1
+	while [ ! -f "$_d/warm.done" ]; do
+		if mkdir "$_d/warm.lock" 2>/dev/null; then
+			echo $$ >"$_d/warm.lock/pid"
+			# a warm that finished between the look and the lock is done
+			if [ -f "$_d/warm.done" ]; then
+				rm -rf "$_d/warm.lock"
+				break
+			fi
+			if ! batch_map "$1" "$_d"; then
+				echo "goose driver: no batch map in $_d" >&2
+				rm -rf "$_d/warm.lock"
+				return 1
+			fi
+			batch_warm "$1" "$_d" >&2
+			: >"$_d/warm.done"
+			rm -rf "$_d/warm.lock"
+			break
+		fi
+		_p=
+		[ -f "$_d/warm.lock/pid" ] && read -r _p <"$_d/warm.lock/pid"
+		if [ -n "$_p" ] && ! kill -0 "$_p" 2>/dev/null; then
+			rm -rf "$_d/warm.lock"
+			continue
+		fi
+		sleep 0.5
+	done
+	echo "$_d"
+}
+# batch_warm <manifest> <dir>: every unit's batches, the largest unit first,
+# nproc at a time; a unit whose fill fails is answered by its single runs
+batch_warm() {
+	for _k in $(awk '$1 == "unit" { print $2 }' "$1"); do
+		[ -d "$units/$_k" ] && printf '%s %s\n' "$(du -sk "$units/$_k" | cut -f1)" "$_k"
+	done | sort -rn | cut -d" " -f2 | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill
+}
+# batch_fill <manifest> <unit>: the unit's main-program batch cache under
+# $batch_d, made under the unit's lock when it is missing or stale (a fresh
+# cache is read without the lock: it is only ever replaced whole, by a
+# rename; a unit no batch surface names gets an empty cache)
+batch_fill() {
+	batch_fresh "$batch_d/$2.out" "$units/$2" && return 0
+	batch_lock "$batch_d/$2.lock"
+	if ! batch_fresh "$batch_d/$2.out" "$units/$2"; then
+		_fs=$(batch_of "$batch_d/main.map" "$2")
+		if [ -n "$_fs" ]; then
+			glue "$units/$2"
+			# shellcheck disable=SC2086 # the surface list is words by design
+			"$goose" run -O0 "$units/$2/main.goose" -- batch "$1" "$2" $_fs >"$batch_d/$2.out.tmp" 2>"$batch_d/$2.err"
+		else
+			: >"$batch_d/$2.out.tmp"
+		fi
+		mv "$batch_d/$2.out.tmp" "$batch_d/$2.out"
+	fi
+	rm -rf "$batch_d/$2.lock"
+}
+# batch_answer <manifest> <surface> <unit>: the surface's answer lines for one
+# unit on stdout, and its exit status. A surface missing from the batch says
+# so on stderr, naming the batch's own stderr, before its single run.
+batch_answer() {
+	case " $batch_surfaces " in *" $2 "*) ;; *)
+		glue "$units/$3"
+		"$goose" run -O0 "$units/$3/main.goose" -- "$2" "$1" "$3"
+		return $?
+		;;
+	esac
+	_c="$batch_d/$3.out"
+	batch_fill "$1" "$3"
+	if grep -qx "#done $2" "$_c" 2>/dev/null; then
+		awk -v s="$2" '$0 == "#surface " s { on = 1; next } $0 == "#done " s { on = 0; next } on' "$_c"
+		return 0
+	fi
+	echo "goose driver: batch has no \"#done $2\" for unit $3 (its stderr: $batch_d/$3.err); single run" >&2
+	glue "$units/$3"
+	"$goose" run -O0 "$units/$3/main.goose" -- "$2" "$1" "$3"
+}
+# THE ACCELERATOR BATCH: the same for accel.goose's surfaces, whose program
+# runs from a copy of the unit (accel_prep), made under the lock only when the
+# cache is stale; block-lead is a gate whose exit status is its verdict, and
+# is never batched.
+accel_batch_surfaces="block block-foreign cook cook-foreign block-dump forgery block-reason cook-forgery cook-reason cook-write"
+# accel_fill <manifest> <unit>: the unit's accelerator batch cache, as
+# batch_fill's
+accel_fill() {
+	batch_fresh "$batch_d/$2.accel.out" "$units/$2" && return 0
+	batch_lock "$batch_d/$2.accel.lock"
+	if ! batch_fresh "$batch_d/$2.accel.out" "$units/$2"; then
+		_fs=$(batch_of "$batch_d/accel.map" "$2")
+		if [ -z "$_fs" ]; then
+			: >"$batch_d/$2.accel.out.tmp"
+			mv "$batch_d/$2.accel.out.tmp" "$batch_d/$2.accel.out"
+		elif _fa=$(accel_prep "$units/$2" "$2"); then
+			# shellcheck disable=SC2086 # the surface list is words by design
+			"$goose" run -O0 "$_fa/accel.goose" -- batch "$1" "$2" $_fs >"$batch_d/$2.accel.out.tmp" 2>"$batch_d/$2.accel.err"
+			mv "$batch_d/$2.accel.out.tmp" "$batch_d/$2.accel.out"
+		fi
+	fi
+	rm -rf "$batch_d/$2.accel.lock"
+}
+# accel_answer <manifest> <surface> <unit>
+accel_answer() {
+	case " $accel_batch_surfaces " in *" $2 "*) ;; *)
+		_a=$(accel_prep "$units/$3" "$3") || return 1
+		"$goose" run -O0 "$_a/accel.goose" -- "$2" "$1" "$3"
+		return $?
+		;;
+	esac
+	_c="$batch_d/$3.accel.out"
+	accel_fill "$1" "$3"
+	if grep -qx "#done $2" "$_c" 2>/dev/null; then
+		awk -v s="$2" '$0 == "#surface " s { on = 1; next } $0 == "#done " s { on = 0; next } on' "$_c"
+		return 0
+	fi
+	# the single run holds the unit's lock: it makes the unit's copy again
+	echo "goose driver: accelerator batch has no \"#done $2\" for unit $3 (its stderr: $batch_d/$3.accel.err); single run" >&2
+	batch_lock "$batch_d/$3.accel.lock"
+	_a=$(accel_prep "$units/$3" "$3") || { rm -rf "$batch_d/$3.accel.lock"; return 1; }
+	"$goose" run -O0 "$_a/accel.goose" -- "$2" "$1" "$3"
+	_s=$?
+	rm -rf "$batch_d/$3.accel.lock"
+	return $_s
+}
+maxjobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
+# one unit's fills, for batch_warm's xargs ($batch_d comes from its
+# environment)
+if [ "$2" = __batch-fill ]; then
+	batch_fill "$1" "$3"
+	accel_fill "$1" "$3"
+	exit 0
+fi
 # THE FORGERY FUZZER (docs/PORTING.md I3): accel.goose's block-fuzz and
 # cook-fuzz over every unit the manifest's block or cook lines name. The cook
 # half reads the Go reference's cooks from <fixtures dir> (the harness
@@ -1339,6 +1530,10 @@ if [ "$prog" = accel ]; then
 else
 	active_units=$(main_units "$1" "$2")
 fi
+# the manifest's batch cache directory, once for this call (it warms the
+# cache when this call is the first)
+batch_d=
+case " $batch_surfaces $accel_batch_surfaces " in *" $2 "*) batch_d=$(batch_dir "$1") || exit 1 ;; esac
 running=0
 pids=""
 jobfailed=0
@@ -1357,8 +1552,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			continue
 		fi
 		(
-			a=$(accel_prep "$u" "$key") || { echo 1 >"$dir/$2.$key.rc"; exit 1; }
-			"$goose" run -O0 "$a/accel.goose" -- "$2" "$1" "$key" >"$dir/$2.$key.out" 2>"$dir/$2.$key.err"
+			accel_answer "$1" "$2" "$key" >"$dir/$2.$key.out" 2>"$dir/$2.$key.err"
 			echo $? >"$dir/$2.$key.rc"
 		) &
 	else
@@ -1387,14 +1581,12 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			continue
 		fi
 		(
-			glue "$u"
-			"$goose" run -O0 "$u/main.goose" -- "$2" "$1" "$key" >"$dir/$2.$key.out" 2>"$dir/$2.$key.err"
+			batch_answer "$1" "$2" "$key" >"$dir/$2.$key.out" 2>"$dir/$2.$key.err"
 			echo $? >"$dir/$2.$key.rc"
 		) &
 	fi
 	pids="$pids $!"
 	running=$((running + 1))
-	maxjobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
 	if [ "$running" -ge "$maxjobs" ]; then
 		for p in $pids; do
 			wait "$p" || jobfailed=1

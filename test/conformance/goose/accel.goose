@@ -843,6 +843,22 @@ fn fuzz_cook(lines: const u8[:][:], unit: const u8[:], seed: i64, n: i64, fixtur
     if cases == 0 { write_stdout(str("cook-fuzz: unit ", unit, " has no cook\n")); exit(1); }
 }
 
+// run_accel answers one of the batchable surfaces for one unit; false for any
+// other (block-lead and the fuzzers are main's alone).
+fn run_accel(surface: const u8[:], lines: const u8[:][:], unit: const u8[:]) -> bool {
+    if surface == "block" { surface_open(lines, unit, "block", false); return true; }
+    if surface == "block-foreign" { surface_open(lines, unit, "block", true); return true; }
+    if surface == "cook" { surface_open(lines, unit, "cook", false); return true; }
+    if surface == "cook-foreign" { surface_open(lines, unit, "cook", true); return true; }
+    if surface == "block-dump" { surface_block_dump(lines, unit); return true; }
+    if surface == "forgery" { surface_forgery(lines, unit, "block", false); return true; }
+    if surface == "block-reason" { surface_forgery(lines, unit, "block", true); return true; }
+    if surface == "cook-forgery" { surface_forgery(lines, unit, "cook", false); return true; }
+    if surface == "cook-reason" { surface_forgery(lines, unit, "cook", true); return true; }
+    if surface == "cook-write" { surface_cook_write(lines, unit); return true; }
+    return false;
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -861,16 +877,18 @@ fn main() {
     let text = slurp(argv[2]);
     let lines = split(text, '\n');
     let unit = argv[3];
-    if surface == "block" { surface_open(lines, unit, "block", false); return; }
-    if surface == "block-foreign" { surface_open(lines, unit, "block", true); return; }
-    if surface == "cook" { surface_open(lines, unit, "cook", false); return; }
-    if surface == "cook-foreign" { surface_open(lines, unit, "cook", true); return; }
-    if surface == "block-dump" { surface_block_dump(lines, unit); return; }
-    if surface == "forgery" { surface_forgery(lines, unit, "block", false); return; }
-    if surface == "block-reason" { surface_forgery(lines, unit, "block", true); return; }
-    if surface == "cook-forgery" { surface_forgery(lines, unit, "cook", false); return; }
-    if surface == "cook-reason" { surface_forgery(lines, unit, "cook", true); return; }
-    if surface == "cook-write" { surface_cook_write(lines, unit); return; }
+    // THE BATCH (test/conformance/goose/driver, "THE BATCH"), as main.goose's
+    if surface == "batch" {
+        var k: i64 = 4;
+        while k < argv.len {
+            write_stdout(str("#surface ", argv[k], "\n"));
+            if !run_accel(argv[k], lines, unit) { exit(2); }
+            write_stdout(str("#done ", argv[k], "\n"));
+            k += 1;
+        }
+        return;
+    }
+    if run_accel(surface, lines, unit) { return; }
     if surface == "block-lead" { surface_block_lead(lines, unit); return; }
     if surface == "block-fuzz" && argv.len == 6 { fuzz_block(lines, unit, number(argv[4]), number(argv[5])); return; }
     if surface == "cook-fuzz" && argv.len == 7 { fuzz_cook(lines, unit, number(argv[4]), number(argv[5]), argv[6]); return; }
