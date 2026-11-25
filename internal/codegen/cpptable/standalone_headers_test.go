@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -28,10 +27,9 @@ import (
 // Every header of every unit is compiled, Block and View headers too. The sweep
 // has its own ci-full row (unit-codegen-cpp-4).
 //
-// Functional (a C++ compiler): run with SCHEMA_SLOW=1.
+// Functional (a C++ compiler): its registry tier carries that condition.
 func TestEveryGeneratedTableHeaderCompilesStandalone(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (every manifest unit header compiled on its own)")
 	repo := filepath.Join("..", "..", "..")
 	data, err := os.ReadFile(filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {
