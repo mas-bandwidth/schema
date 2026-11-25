@@ -40,6 +40,25 @@ type Preparer interface {
 	Prepare(ctx context.Context, lang string, instances []Instance) error
 }
 
+// PrepareStep is one build of a StepPreparer's preparation: a make target, a
+// harness build. Name is what the run names it by.
+type PrepareStep struct {
+	Name string
+	Run  func(ctx context.Context) error
+}
+
+// StepPreparer is a Preparer whose preparation is declared as steps (a row's
+// make target, each build its Go test reads). The runner runs each step, one
+// after another, under a call limit of its own (Runner.Context, group
+// "prepare <group> <step>"), so a cold checkout is built as steps that each
+// fit the limit a call has, and a step that outlasts it fails by its own name,
+// never the group's. The limit is the call limit, unchanged: a step is held to
+// it exactly as a call is, and a step that cannot fit must get faster or be
+// split into steps that do. A step that fails stops its group's preparation.
+type StepPreparer interface {
+	PrepareSteps(lang string, instances []Instance) []PrepareStep
+}
+
 // Serial is an adapter whose calls take the checkout (make, a writer, a
 // plant's runs): its calls would only wait for each other, so the runner runs
 // every Serial group one after another, each call's deadline starting when
@@ -412,6 +431,10 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 	out := make([]error, len(groups))
 	seconds := make([]float64, len(groups))
 	for gi, g := range groups {
+		if sp, ok := rn.Adapters[g.adapter].(StepPreparer); ok {
+			out[gi], seconds[gi] = rn.prepareSteps(parent, g, sp)
+			continue
+		}
 		p, ok := rn.Adapters[g.adapter].(Preparer)
 		if !ok {
 			continue
@@ -430,6 +453,29 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 		}
 	}
 	return out, seconds
+}
+
+// prepareSteps runs a group's steps, each under a deadline of its own named
+// "prepare <group> <step>", and returns the group's error (the first step's
+// that failed or timed out, naming it) and the seconds all the steps took.
+func (rn *Runner) prepareSteps(parent context.Context, g group, sp StepPreparer) (error, float64) {
+	var total float64
+	for _, step := range sp.PrepareSteps(g.lang, g.instances) {
+		name := "prepare " + g.name + " " + step.Name
+		ctx, cancel := rn.Context(parent, name)
+		start := rn.clock()
+		err := step.Run(ctx)
+		total += rn.clock().Sub(start).Seconds()
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
+		cancel()
+		switch {
+		case err != nil && timedOut:
+			return fmt.Errorf("adapter %s timed out in %s: %w", g.adapter, name, err), total
+		case err != nil:
+			return fmt.Errorf("adapter %s could not %s: %w", g.adapter, name, err), total
+		}
+	}
+	return nil, total
 }
 
 // Prepare builds what the instances' calls need (Preparer), as Run does

@@ -85,24 +85,33 @@ func (a *goTestAdapter) needsFailure(failed map[string]error, r goTestRef) strin
 	return ""
 }
 
-// prepareNeeds builds what the rows' Go tests read, for Prepare
-// (testreg.Preparer). A build that fails is not Prepare's error: Run fails
-// the rows that read it, by name, and the rest of the group runs.
-func (a *goTestAdapter) prepareNeeds(ctx context.Context, instances []testreg.Instance) error {
-	var refs []goTestRef
-	for _, inst := range instances {
-		in, err := goTestInputsOf(inst.Test)
-		if err != nil {
-			continue // Run fails the row, naming its inputs
+// needsSteps is one prepare step for each target the rows' Go tests read, in
+// the order the needs table declares them (testreg.GoNeedsOf), each target
+// once. A build that fails is not the step's error: Run fails the rows that
+// read it, by name, and the rest of the group runs. A build its deadline cut
+// short is the deadline's, named as such by the run, never a build failure
+// answered from the builder's record.
+func (a *goTestAdapter) needsSteps(refs []goTestRef) []testreg.PrepareStep {
+	needs, err := a.needs()
+	if err != nil {
+		return []testreg.PrepareStep{{Name: testreg.GoNeedsPath, Run: func(context.Context) error { return err }}}
+	}
+	run := a.builder()
+	var steps []testreg.PrepareStep
+	seen := map[string]bool{}
+	for _, r := range refs {
+		for _, target := range testreg.GoNeedsOf(needs, r.pkg, r.test) {
+			if seen[target] {
+				continue
+			}
+			seen[target] = true
+			steps = append(steps, testreg.PrepareStep{Name: target, Run: func(ctx context.Context) error {
+				_ = run(ctx, needsStep(target)) // a failure is recorded by the builder, Run names the rows
+				return ctx.Err()
+			}})
 		}
-		refs = append(refs, goTestRef{in.Package, in.Test})
 	}
-	if _, err := a.buildNeeds(ctx, refs); err != nil {
-		return err
-	}
-	// a build its deadline cut short is the deadline's, named as such by the
-	// run, never a build failure answered from the builder's record
-	return ctx.Err()
+	return steps
 }
 
 // unionRefs is the Go tests a language's union instances run.

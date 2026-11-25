@@ -170,7 +170,7 @@ func TestGoNeedsSelectByPackageAndWholeTestName(t *testing.T) {
 		{"./internal/x", "TestA", "corpus"},
 		{"./internal/x", "TestAB", ""},
 		{"./internal/x", "TestB", ""},
-		{"./internal/y", "TestA", "corpus,other"},
+		{"./internal/y", "TestA", "other,corpus"},
 		{"./internal/z", "TestA", ""},
 	} {
 		if got := strings.Join(GoNeedsOf(needs, c.pkg, c.test), ","); got != c.want {

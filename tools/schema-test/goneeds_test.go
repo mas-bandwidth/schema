@@ -284,3 +284,35 @@ func TestTheUnionHarnessPrepareBuildsWhatItsRowsRead(t *testing.T) {
 		t.Fatalf("a union Prepare its deadline cut short: %v, want the context's error", err)
 	}
 }
+
+// TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared: the gotest
+// adapter's prepare steps are each build its rows name or their Go tests
+// read, once each, in the order the needs table declares them, each named by
+// its target, so the runner gives each its own limit. Planted: sorted, the
+// step that builds the others (b-all) would come first.
+func TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared(t *testing.T) {
+	t.Parallel()
+	root := needsRoot(t)
+	if err := os.WriteFile(filepath.Join(root, testreg.GoNeedsPath), []byte("needs ./g TestReads z-first\nneeds ./g TestReads m-second\nneeds ./g .* z-first\nneeds ./g TestReads b-all\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var ran []string
+	a := newGoTestAdapterBuilding(io.Discard, root, 1, func(_ context.Context, argv []string) error {
+		ran = append(ran, argv[len(argv)-1])
+		return nil
+	})
+	row := func(test string) testreg.Instance {
+		return testreg.Instance{Full: "none.unit.g." + test, Test: testreg.Test{Seconds: 10, Inputs: []byte(`{"package":"./g","test":"` + test + `","make":"made-by-the-row"}`)}}
+	}
+	var names []string
+	for _, s := range a.PrepareSteps("", []testreg.Instance{row("TestReads"), row("TestFree")}) {
+		names = append(names, s.Name)
+		if err := s.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "made-by-the-row,z-first,m-second,b-all"
+	if strings.Join(names, ",") != want || strings.Join(ran, ",") != want {
+		t.Fatalf("steps %v, built %v; want %s", names, ran, want)
+	}
+}

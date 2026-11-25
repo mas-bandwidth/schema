@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3137.
+Unit tests every language answers: 2. Language-free tests: 3139.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3136,7 +3136,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 139 tests
+#### `tooling` family `schema-test`, 140 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3264,6 +3264,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.the-planted-copy-finds-its-siblings` | `gotest` | Go test TestThePlantedCopyFindsItsSiblings in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedCopyFindsItsSiblings` | the Go test passes | `tools/schema-test/plant_test.go:258` |
 | `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |
+| `none.unit.tooling.schema-test.the-prepare-steps-are-the-targets-in-the-order-they-are-declared` | `gotest` | Go test TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePrepareStepsAreTheTargetsInTheOrderTheyAreDeclared` | the Go test passes | `tools/schema-test/goneeds_test.go:293` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-a4-case` | `gotest` | Go test TestTheRegistryHoldsEveryA4Case in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryA4Case` | the Go test passes | `tools/schema-test/a4_test.go:59` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-feature-witness-case` | `gotest` | Go test TestTheRegistryHoldsEveryFeatureWitnessCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryFeatureWitnessCase` | the Go test passes | `tools/schema-test/featurewitness_test.go:24` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:45` |
@@ -3360,7 +3361,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 74 tests
+#### `tooling` family `testreg`, 75 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3391,6 +3392,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-instance-with-no-answer-and-no-declaration-fails` | `gotest` | Go test TestAnInstanceWithNoAnswerAndNoDeclarationFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnInstanceWithNoAnswerAndNoDeclarationFails` | the Go test passes | `internal/testreg/run_test.go:157` |
 | `none.unit.tooling.testreg.an-intrinsic-test-has-one-instance` | `gotest` | Go test TestAnIntrinsicTestHasOneInstance in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnIntrinsicTestHasOneInstance` | the Go test passes | `internal/testreg/gotests_test.go:76` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:727` |
+| `none.unit.tooling.testreg.each-prepare-step-has-its-own-limit-and-a-step-that-outlasts-it-fails-by-name` | `gotest` | Go test TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName` | the Go test passes | `internal/testreg/run_test.go:896` |
 | `none.unit.tooling.testreg.each-writer-and-plant-is-a-call-of-its-own` | `gotest` | Go test TestEachWriterAndPlantIsACallOfItsOwn in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEachWriterAndPlantIsACallOfItsOwn` | the Go test passes | `internal/testreg/run_test.go:756` |
 | `none.unit.tooling.testreg.env-plants-of-one-language-are-cut-like-any-row` | `gotest` | Go test TestEnvPlantsOfOneLanguageAreCutLikeAnyRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEnvPlantsOfOneLanguageAreCutLikeAnyRow` | the Go test passes | `internal/testreg/run_test.go:532` |
 | `none.unit.tooling.testreg.every-built-read-is-declared` | `gotest` | Go test TestEveryBuiltReadIsDeclared in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryBuiltReadIsDeclared` | the Go test passes | `internal/testreg/goneeds_test.go:31` |
