@@ -209,7 +209,7 @@ Built today:
 | adapter | for | how |
 |---|---|---|
 | `corpus` | every language row: each per-language family a harness exists for, routed by family | below |
-| `gotest` | language-free Go tests; inputs `{"package", "test", "make"}` (`make` optional: a make target, such as a generated tree's stamp, that Prepare makes once before any call) | `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, cut into calls of at most `testreg.ShardBudget` measured seconds, run one after another within a package and several packages at once, each given the driver's remaining deadline less a 10 s margin as `-timeout`; a row a call never reports fails by name, and a call that exits non-zero with every test passed (a `TestMain` check) fails its rows, every event mapped to its row by full name (a test's tier says what it needs; nothing in a test decides whether it runs). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module |
+| `gotest` | language-free Go tests; inputs `{"package", "test", "subtest", "files", "make"}` (`make` optional: a make target, such as a generated tree's stamp, that Prepare makes once before any call) | `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, cut into calls of at most `testreg.ShardBudget` measured seconds, run one after another within a package and several packages at once, each given the driver's remaining deadline less a 10 s margin as `-timeout`; a row a call never reports fails by name, and a call that exits non-zero with every test passed (a `TestMain` check) fails its rows, every event mapped to its row by full name. A row that names subtest runs `-run '^Test$/^(sub)$'` and takes that subtest's own pass or fail; the parent row still claims the top-level test. That call uses the same non-zero-exit rule: when every asked subtest passed, those rows fail with go test's words, and a subtest that failed does not flip a sibling that passed (a test's tier says what it needs; nothing in a test decides whether it runs). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module. A file in `files` that the tree does not hold fails that row by name before go test runs. A row that does not name a subtest is still the top-level test, subtest events included |
 | `plant` | negative controls; inputs `{"target", "env", "reason"}`, `{"edits", "red", "run", "reason"}` or `{"make", "file", "group"}` | env form: runs the target with `env` set; edit form: applies each edit (its anchor exactly once, every copy reached) to a copy of the tracked tree and runs the named tests there, so each builds with its own leg's flags. Passes only when every named row passes on the tree as it is, and then under the sabotage exactly the named targets fail with a reason whose first line holds `reason` (16 characters or more), every other name passes and the run has no run-level problem: a red for another cause (a missing tool, a broken build), or a row red already, fails the plant. The edit form's copy is a git worktree of HEAD with the checkout's files over it and the checkouts beside the checkout (`../serialize.go`) linked beside it, its run is that tree's own schema-test, and its verdict is read from that run's `--report` JSON. A make row cannot be named red (its reason is its exit status, which any failure gives); a copy of an anchor in a file of the same source family (C and C++ sources and headers are one) that no edit names fails the plant. Make form: a control of `make/negative-controls.json`, whose recipe holds its own gate red |
 | `make` | make gates; inputs `{"file", "target"}` plus optional `"vars"` (make variables on the command line), `"tools"` (programs that must be on PATH) and `"siblings"` (checkouts such as `../serialize.go`) and `"reads"` (the data cases the target runs, which the extract counts covered beside any golden row of the same case) | the target must be a rule its file writes, else FAIL; a missing tool or sibling FAILS naming the runner before make runs; the target's dry run (`make -n -B`) must name every file of `reads` and run no `go test` without `-json` (plain go test output prints nothing for a skipped test), else FAIL before it runs; `make -jN target VAR=value...` passes on exit 0 with no skip in the log and no line of go test's plain output |
 | `golden` | goldens and pins; inputs `{"writer", "files"}` | the `pins-*` writer runs once per run in a copy of the tracked tree, with every file its rows name aged first so a file it leaves untouched shows it was not written; each file is compared byte for byte; a file it no longer writes, or wrote differently, FAILS; a pin it writes that no row names FAILS every row of the writer; a row whose file is not committed is MISSING; a writer that fails FAILS its own rows with its error, and the other writers' rows are judged as usual; `run --update <names>` re-pins only those rows. A copy a killed run left beside the checkout (named with its process id) is removed by the next run |
@@ -222,6 +222,8 @@ The `corpus` adapter's harnesses, by family:
 | `align-arrays` | `verify-bitphase --adapter --lang L` | `make bin/schema build/verify-bitphase-bin` | the row's bytes (alignarrays.go) |
 | `conformance-<surface>` | `build/conformance-harness-vm adapter --lang L` | `make conformance-leg-L` | `surface`, `case` (the file the driver writes), `files` (the corpus files the case reads), `driver` |
 | any family whose rows' inputs carry `tests` (a union row) | `go-union`: L's own Go test, through the `gotest` adapter's calls | none (the runner provides L's toolchain, as the test's tier says) | `tests`: `{"<lang>": {"package", "test", "tags"}}` (`tags` optional) |
+| `tables` | the driver's own generation step (tools/schema-test, tables.go): `bin/schema generate --lang L` for the case's schema (moo through a `schema_leg_moo` build) | `make bin/schema` | `schema`, `files` (the corpus files the case reads), `driver`, `verdict` (the corpus's accept, refuse or present) |
+| `feature-witnesses` | the family's harness in tools/schema-test: L's own Go test(s) for the corpus directory, through the `gotest` adapter's calls | none (the runner provides L's toolchain, as the test's tier says) | `dir`, `files` (every file of the directory), `answers`: `{"<lang>": ["<Go test>", ...]}` in `internal/codegen/<lang>table` |
 
 ### The tables conformance corpus
 
@@ -260,6 +262,23 @@ files and the drivers as the registry's, not the ledger's.
   `_verify-<lang>-conformance` (make/verify-compiled.mk, make/verify-vm.mk),
   which ran exactly these cases, leg by leg. The rest of those targets (packet
   wire, defaults, UTF-8) stays in verify-leg until its own family moves in.
+
+### The test/tables corpus
+
+Every data case of `test/tables` and the places under it that the ledger
+counted on layer L4 (the enum-bound shapes, the fnz vectors, `inner`, the
+r14 and r17 documents and the value-default documents) is one registry
+test, `codegen.tables.<case>`, answered by every language. A case's
+answer is its schema generated for the language: a schema the corpus
+holds as valid must generate, and one the enum-bound corpus holds as
+refused must refuse at check, for the reason `internal/check` holds.
+A case that is not itself a schema names the schema it belongs to and
+is answered by that generation with its own file present; the view and
+control sources are answered by their presence, as the file each
+language's own view test reads. `TestTheRegistryHoldsEveryTablesCase`
+holds the registry to the corpus field for field. A language whose
+emitter refuses a valid schema, or accepts a refused one, is red by
+name in the nightly tier.
 
 ### Union rows: the per-language Go tests
 
@@ -371,6 +390,78 @@ each run is the whole manifest (tools/schema-test/hostile.go).
 - Retired with this: the per-language schema-<lang>-runs-hostile-corpus.yml
   workflows and schema-shared-hostile-corpus.yml; each control is its own
   registry row.
+
+
+### The feature-witness corpora
+
+Every directory of the feature-witness corpus
+(testdata/conformance/feature-witnesses) is one registry test,
+`roundtrip.feature-witnesses.<dir>`, answered by every language through
+its own Go test in internal/codegen/<lang>table. The corpus stays where it
+is: a row's inputs name the directory and every file in it, and
+`schema-test extract` counts those files as the registry's (a row naming a
+`.jsonl` file reads every line case in it). The `full` directory's cases
+are the tables corpus's, and two directories take no row here
+(compressed-f32-ends and compressed-negzero-go are answered per language
+by the compressed-float union rows; their files are indexed by the Go
+engine's gotest rows for the same corpora, which name every file).
+
+- The family's harness (tools/schema-test, featurewitness.go) runs a
+  language's instance as that language's Go test(s) for the directory
+  (inputs `answers`), through the gotest adapter's `go test -json` calls. A
+  corpus answered by two tests passes only when both do.
+- A language with no Go test for a directory is red by name, naming the
+  languages that do answer it; a named test its package's source does not
+  declare is red as MISSING. These reds are the parity gaps.
+- `TestTheRegistryHoldsEveryFeatureWitnessCase` holds the rows to the
+  corpus field for field (`-update-feature-witnesses` rewrites them): a
+  corpus directory with no row, a row with no directory, a row whose files
+  are not the directory's files, and a held-elsewhere directory with no
+  answering row are each red.
+
+### The JSONTestSuite corpus
+
+Every file of the vendored JSONTestSuite corpus
+(testdata/jsontestsuite/test_parsing, docs/SPEC-TABLES.md section 16.12)
+is one registry test per language: `<type>.jsontestsuite.<case>`. The
+type is decode for a file the JSON layer accepts and load-refusal for
+one it refuses: a y_ file accepts, an n_ file refuses, and an i_ file
+takes the verdict its section 16.12 row declares. The rows are nightly:
+each run is the whole corpus (tools/schema-test/jsontest.go).
+
+- A language's instances are answered by one run of its whole-corpus
+  Go test, which runs every file once: go by
+  internal/codegen/gotable's TestJSONTestSuiteGenerated, python by
+  internal/codegen/pythontable's TestPythonJsonScanPolicy, moo by
+  internal/codegen/mootable's TestMooJSONTestSuite and luau by
+  internal/codegen/luautable's TestLuauJSONTestSuite. Each instance's
+  verdict is the case's line in that run: a case passes when the run
+  names no disagreement for it, and a mismatch line and a pending line
+  each fail it, since the registry allows no pending list. A run that
+  never reports its test, or that fails with no case failing by name,
+  fails every asked case with what the run said.
+- A language with no whole-corpus test yet gives each case no
+  verdict, and each instance fails by name (no JSONTestSuite runner
+  for the language). Those reds are the per-language work list: the
+  case is unanswered there until its test is written.
+- A case is its file name without .json, lower case, each underscore
+  a separator and each hyphen, dot, plus and hash named (dash, dot,
+  plus, hash), so two files never share a case by folding alone;
+  jsontestKeys refuses any two that still meet, naming both. A row's
+  inputs name its one corpus file in files, and schema-test extract
+  indexes that file where it stands.
+- TestTheRegistryHoldsEveryJSONTestSuiteCase holds the rows to the
+  corpus field for field (-update-jsontest rewrites them, keeping
+  each row's measured seconds). The loader checks every byte against
+  SHA256SUMS, so a removed case file is refused by name there and by
+  the held test's row with no case.
+- Plants: SCHEMA_TEST_PLANT_JSONTEST_<LANG> as flip:<file> turns
+  that case's answer around and as absent:<file> drops it; the
+  driver must turn exactly that instance red, by its own reason.
+- Retired with this: nothing. The whole-corpus Go tests are the
+  runners this harness runs, and the make gate that also runs one
+  (make/luau.mk's tables-luau-jsontestsuite) stays until L5 counts
+  its run against the driver's.
 
 ## How each kind of test fits
 
