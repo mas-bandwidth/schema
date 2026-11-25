@@ -257,14 +257,50 @@ func TestThereIsNoSkippedVerdict(t *testing.T) {
 	wantRed(t, rep, `verdict "skip" is not pass or fail`)
 }
 
-// TestAHarnessSkipLineFails: a harness that logs a skip fails the call.
+// TestAHarnessSkipLineFails: a harness that logs a skip verdict fails the
+// call, and a line that only names the word in a case or vector does not.
 func TestAHarnessSkipLineFails(t *testing.T) {
 	t.Parallel()
 	out := FormatResult(Result{Instance: "go.unit.x.y.z", Verdict: Pass}) + "\nSKIP: lua not found\n"
 	if _, _, err := ParseResults(strings.NewReader(out)); err == nil || !strings.Contains(err.Error(), "reported a skip") {
 		t.Fatalf("a skip line passed: %v", err)
 	}
-	clean := FormatResult(Result{Instance: "go.unit.x.y.z", Verdict: Pass}) + "\nBITPHASE_OK go 1\n"
+	// Every planted skip verdict is red; every line that only names the word
+	// (a case, a vector, a file) or counts zero skips is green.
+	for _, l := range []string{
+		`{"Time":"2026-11-25T00:00:00Z","Action":"skip","Package":"p","Test":"TestX"}`,
+		"--- SKIP: TestX (0.00s)",
+		"SKIP: lua not found",
+		"[SKIP] conformance-blob",
+		"ok 3 - blob # SKIP no lua",
+		"skipping the lua leg: no interpreter",
+		"skipped: no toolchain",
+		"go.unit.x.y.z: skipped",
+		"10 passed, 3 skipped, 0 failed",
+		"Tests: 4 passed, 1 skipped",
+		"skipped: 2",
+		"skips=1",
+	} {
+		if !reportsASkip(l) {
+			t.Errorf("a planted skip verdict passed: %q", l)
+		}
+	}
+	for _, l := range []string{
+		"wire-fuzz-adapter: go.functional.fuzz.wire-fuzz-vector.message-skip-depth-at-limit [default]: pass",
+		"conformance-blob-label-in-skipped-value: pass",
+		"c.functional.hostile.case.conformance-blob-label-in-skipped-value pass",
+		"10 passed, 0 skipped, 0 failed",
+		"Tests: 4 passed, 0 skipped",
+		"skipped: 0",
+		"reading testdata/skip_depth.bin",
+		"the unknown-skip walk refused depth 65",
+		"BITPHASE_OK go 1",
+	} {
+		if reportsASkip(l) {
+			t.Errorf("a line that reports no skip was refused: %q", l)
+		}
+	}
+	clean := FormatResult(Result{Instance: "go.unit.x.y.z", Verdict: Pass}) + "\nBITPHASE_OK go 1\nwire-fuzz-adapter: go.functional.fuzz.wire-fuzz-vector.message-skip-depth-at-limit [default]: pass\n10 passed, 0 skipped\n"
 	res, _, err := ParseResults(strings.NewReader(clean))
 	if err != nil || len(res) != 1 {
 		t.Fatalf("a clean output: %v, %d results", err, len(res))
