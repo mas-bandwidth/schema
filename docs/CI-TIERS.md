@@ -30,7 +30,7 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3131 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `unit` | 3132 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
 | `functional` | 4843 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
 | `nightly` | 2436 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
@@ -381,7 +381,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 10/76 | 966 | 48.3 |
 | `none` | 11/76 | 3 | 38.7 |
 | `none` | 12/76 | 27 | 51.8 |
-| `none` | 13/76 | 15 | 57.5 |
+| `none` | 13/76 | 16 | 58.5 |
 | `none` | 14/76 | 40 | 58.8 |
 | `none` | 15/76 | 85 | 55.9 |
 | `none` | 16/76 | 2 | 43.6 |
@@ -445,7 +445,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 74/76 | 41 | 38.0 |
 | `none` | 75/76 | 35 | 57.7 |
 | `none` | 76/76 | 89 | 57.6 |
-| **every row** | **400 jobs** | **51528** | **20352.7** |
+| **every row** | **400 jobs** | **51529** | **20353.7** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or
