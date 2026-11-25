@@ -922,12 +922,16 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 // codec silently degrades to that shape. Forcing the primitives and the
 // fixed-class bodies inline is what keeps the cursor in registers and lets
 // adjacent constant framing bytes merge into one store.
+// A build may define the macro first (as plain inline, say, where forcing
+// every body inline makes a sanitizer build crawl); the default is unchanged.
+#ifndef ` + forceInline + `
 #if defined( _MSC_VER )
 #define ` + forceInline + ` __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
 #define ` + forceInline + ` inline __attribute__( ( always_inline ) )
 #else
 #define ` + forceInline + ` inline
+#endif
 #endif
 
 namespace ` + pkg + ` {
