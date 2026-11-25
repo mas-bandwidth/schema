@@ -167,7 +167,6 @@ make-target	make/cpp-packet-write-text.mk	1	L6	make gates: the make adapter runs
 make-target	make/cpp-positive-features.mk	1	L6	make gates: the make adapter runs them
 make-target	make/cpp-tool-message.mk	1	L6	make gates: the make adapter runs them
 make-target	make/cpp.mk	4	L6	make gates: the make adapter runs them
-make-target	make/cs-block-compile.mk	1	L6	make gates: the make adapter runs them
 make-target	make/cs-cook-write.mk	1	L6	make gates: the make adapter runs them
 make-target	make/cs-packet-write-refusal.mk	1	L6	make gates: the make adapter runs them
 make-target	make/cs-packet-write-text.mk	1	L6	make gates: the make adapter runs them
@@ -347,9 +346,8 @@ make-target	make/squirrel-packet-write-text.mk	1	L6	make gates: the make adapter
 make-target	make/squirrel.mk	1	L6	make gates: the make adapter runs them
 make-target	make/unity-consumers.mk	7	L6	make gates: the make adapter runs them
 make-target	make/unity.mk	4	L6	make gates: the make adapter runs them
-make-target	make/verify-compiled.mk	3	L6	make gates: the make adapter runs them
 make-target	make/verify-reuse.mk	1	L6	make gates: the make adapter runs them
-make-target	make/verify-vm.mk	45	L6	make gates: the make adapter runs them
+make-target	make/verify-vm.mk	43	L6	make gates: the make adapter runs them
 make-target	make/verify-widen-18.mk	8	L6	make gates: the make adapter runs them
 negative-control	(excluded)	26	L6	negative controls: the plant adapter runs them
 negative-control	base-1	10	L6	negative controls: the plant adapter runs them
@@ -372,7 +370,7 @@ negative-control	base-c-conformance-retain	1	L6	negative controls: the plant ada
 negative-control	base-c-discard	3	L6	negative controls: the plant adapter runs them
 negative-control	base-c-finite	1	L6	negative controls: the plant adapter runs them
 negative-control	base-c-foreign	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-format	2	L6	negative controls: the plant adapter runs them
+negative-control	base-c-format	1	L6	negative controls: the plant adapter runs them
 negative-control	base-c-framing	1	L6	negative controls: the plant adapter runs them
 negative-control	base-c-hostile-corpus	1	L6	negative controls: the plant adapter runs them
 negative-control	base-c-le-trailer	1	L6	negative controls: the plant adapter runs them
@@ -518,14 +516,6 @@ negative-control	elixir-packets	4	L6	negative controls: the plant adapter runs t
 negative-control	elixir-pins	4	L6	negative controls: the plant adapter runs them
 negative-control	elixir-versioning	1	L6	negative controls: the plant adapter runs them
 negative-control	elixir-wire-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-bitphase	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-canonical	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-message-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-sabotage-fixed	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-sabotage-packet	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-sabotage-retain	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-sabotage-variable	1	L6	negative controls: the plant adapter runs them
-negative-control	gate-controls-tablegen	1	L6	negative controls: the plant adapter runs them
 negative-control	go-containers-1-a	1	L6	negative controls: the plant adapter runs them
 negative-control	go-containers-1-b	1	L6	negative controls: the plant adapter runs them
 negative-control	go-containers-2	3	L6	negative controls: the plant adapter runs them
@@ -701,11 +691,10 @@ negative-control	write-refusal-storage-debug-cs	1	L6	negative controls: the plan
 negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the plant adapter runs them
 negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-fast.yml	31	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/lobster-fixed-proof-qualification.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/nightly-conformance.yml	4	L7	workflow jobs: CI is generated from the registry
@@ -1049,7 +1038,6 @@ data-case	test/conformance/case-outcomes	3	L4	corpus data and harnesses: each la
 data-case	test/conformance/case-outcomes/continues	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cpp	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/cs/rows	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs/rows/E5	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs/storage-debug	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/dart	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1174,12 +1162,10 @@ data-case	test/skipped-value/writer	1	L4	corpus data and harnesses: each languag
 data-case	test/slowgate	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/table-base64	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/table-base64/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/tables	126	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/tables	110	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/enumbound	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/fnz	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/inner	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/tables/lawful/fx1l	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/tables/lawful/v1l	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14/AtInt64	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/r14/ChildValue	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1193,10 +1179,10 @@ data-case	test/tables/valuedefaults/vd_var_defaults	1	L4	corpus data and harness
 data-case	test/tables/valuedefaults/vd_var_values	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/widenbound	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/testguard	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-python-legs/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	70	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	427	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/testguard/ci-policy-python-legs/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	69	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	422	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fslowtest	45	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-selectors/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	139	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/testguard/ci-policy-selectors/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	132	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity-hostile	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-bitphase	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1291,10 +1277,6 @@ data-case	testdata/conformance/tables/shapes-loose	1	L4	corpus data and harnesse
 data-case	testdata/conformance/tables/wire	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/write-refusal-int	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_bits	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_fixed	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_float	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/cpp-standalone/ranged_int	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/packet	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

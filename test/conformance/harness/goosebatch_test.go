@@ -105,13 +105,69 @@ func TestGooseDriverRefusesAnUnreadableBatchKey(t *testing.T) {
 	}
 }
 
+// TestGooseDriverAnswersAnAnnounceOnlyUnitAlone: a unit whose only rows are
+// announce writes is answered by announce.goose. It sits beside a
+// conformance_announce.goose that imports the one module holding the
+// announcement and writes it through announce_write_glue, never through
+// main.goose's glue of the whole unit. The stand-in goose answers only that
+// program and refuses main.goose, so a driver that compiled the whole unit
+// goes red here.
+func TestGooseDriverAnswersAnAnnounceOnlyUnitAlone(t *testing.T) {
+	t.Parallel()
+	dir, manifest, out := gooseBatchTree(t)
+	if err := os.WriteFile(manifest, []byte("unit tblannx x.schema\n"+
+		"announce ann_x_write tblannx - write - wrote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	unit := filepath.Join(dir, "units", "tblannx")
+	if err := os.MkdirAll(unit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{
+		"AnnxTable.goose":    "namespace annx;\nimport .annx_message;\n",
+		"annx_message.goose": "namespace annx;\nlet MessageAnnouncement: const u8[:] = \"\\x01\\x02\";\n",
+	} {
+		if err := os.WriteFile(filepath.Join(unit, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// run -O0 <program> -- batch <manifest> <unit> announce
+	goose := standIn(t, dir, "goose", `case "$3" in
+*/announce.goose) ;;
+*) echo "stand-in: compiled $3, not announce.goose" >&2; exit 1 ;;
+esac
+[ "$5 $7 $8" = "batch tblannx announce" ] || { echo "stand-in: asked $*" >&2; exit 1; }
+g="$(dirname "$3")/conformance_announce.goose"
+grep -qx 'import .annx_message;' "$g" || { echo "stand-in: $g imports what?" >&2; cat "$g" >&2; exit 1; }
+grep -q 'out.append(annx::MessageAnnouncement);' "$g" || { echo "stand-in: $g writes what?" >&2; cat "$g" >&2; exit 1; }
+[ "$(grep -c '^import' "$g")" = 1 ] || { echo "stand-in: $g imports more than the announcement" >&2; exit 1; }
+printf '#surface announce\nann_x_write 0102\n#done announce\n'
+`)
+	// testinputs:none — runs the copy of the goose driver that gooseBatchTree read through os, which go test records
+	cmd := exec.Command("sh", filepath.Join("test", "conformance", "goose", "driver"), manifest, "announce", out)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOOSE="+goose, "SCHEMA_GOOSE_GENERATED=units")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if b, err := cmd.Output(); err != nil {
+		t.Fatalf("the goose driver failed on the announce surface: %v\nstdout: %s\nstderr: %s", err, b, stderr.String())
+	}
+	got, err := os.ReadFile(filepath.Join(out, "ann_x_write"))
+	if err != nil || string(got) != "\x01\x02" {
+		t.Errorf("ann_x_write holds %x (%v), want 0102", got, err)
+	}
+	if stderr.Len() > 0 {
+		t.Errorf("the announce-only batch was whole, and the driver said:\n%s", stderr.String())
+	}
+}
+
 // gooseBatchTree is a scratch repository root like priorTree's (with no
 // skip: sh, awk and perl missing fail the driver by name) holding everything
 // the goose batch reads: the programs, the accelerators and every unit's text glue, and the
 // one unit tblprior the prior lines name.
 func gooseBatchTree(t *testing.T) (dir, manifest, out string) {
 	t.Helper()
-	extra := []string{"main.goose", "unit.goose", "accel.goose", "accel_lib.goose", filepath.Join("..", "answer-lines.pl")}
+	extra := []string{"main.goose", "unit.goose", "accel.goose", "accel_lib.goose", "announce.goose", filepath.Join("..", "answer-lines.pl")}
 	texts, err := filepath.Glob(filepath.Join("..", "goose", "units", "*.goose"))
 	if err != nil {
 		t.Fatal(err)
