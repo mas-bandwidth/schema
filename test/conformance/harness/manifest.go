@@ -41,6 +41,11 @@ type Instance struct {
 	// WireRefused marks an instance whose wire file is refused on the wire
 	// surface in every language (e.g. shared blob identity, §2.5).
 	WireRefused bool
+	// WrittenBy is the unit directory whose writer made the wire, when no
+	// unit the corpus reads can (`written-by=<dir>`): an image a declared
+	// bound refuses to write. The harness's tests hold the wire to it
+	// (shapesloose_test.go), and the case's registry rows name its files.
+	WrittenBy string
 }
 
 // WireRefusal answers the wire refusal lang owes for this instance, or ""
@@ -440,12 +445,15 @@ type Manifest struct {
 	Reports       []ReportCase
 	Framings      []FramingCase
 	Rewrites      []RewriteCase
-	Hostiles      []Hostile
-	Retains       []RetainCase
-	Cooks         []Cook
-	CookWrites    []CookWrite
-	Blocks        []Block
-	Forgeries     []Forgery
+	// JSONTexts are the hand-authored texts the json-read surface reads
+	// (jsontext.go, docs/SPEC-TABLES.md §22.7).
+	JSONTexts  []JSONTextCase
+	Hostiles   []Hostile
+	Retains    []RetainCase
+	Cooks      []Cook
+	CookWrites []CookWrite
+	Blocks     []Block
+	Forgeries  []Forgery
 	// JSONWriteRefusals are the json-write rows whose answer is the writer's
 	// refusal (docs/SPEC-TABLES.md §16.14, W0).
 	JSONWriteRefusals []JSONWriteRefusal
@@ -693,6 +701,11 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 						return nil, fmt.Errorf("%s: unsupported Go wire refusal %q", where, reason)
 					}
 					inst.WireRefused = true
+				case strings.HasPrefix(marker, "written-by=") && inst.WrittenBy == "":
+					inst.WrittenBy = strings.TrimPrefix(marker, "written-by=")
+					if inst.WrittenBy == "" {
+						return nil, fmt.Errorf("%s: written-by names no directory", where)
+					}
 				case strings.HasPrefix(marker, "refused-by=") && !hasRefusedBy:
 					ports := strings.Split(strings.TrimPrefix(marker, "refused-by="), ",")
 					if slices.Contains(ports, "") || slices.Contains(ports, "go") {
@@ -891,6 +904,19 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				}
 			}
 			m.Rewrites = append(m.Rewrites, RewriteCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Canonical: RewriteCanonical(jsonDir, f[1])})
+		case "json-text":
+			// json-text <case> <unit> <root> <wire>: a hand-authored text at
+			// json/<case>.json every leg reads on json-read, held to the wire
+			// (jsontext.go, docs/SPEC-TABLES.md §22.7)
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: json-text takes case, unit, root, wire", where)
+			}
+			for _, jt := range m.JSONTexts {
+				if jt.Name == f[1] {
+					return nil, fmt.Errorf("%s: json-text %s is named twice", where, f[1])
+				}
+			}
+			m.JSONTexts = append(m.JSONTexts, JSONTextCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Text: filepath.Join(jsonDir, f[1]+".json")})
 		case "framing":
 			// framing <case> <unit> <root> <wire> <read|refused> <value|->
 			if len(f) != 7 {
@@ -1086,6 +1112,13 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 	for _, cw := range m.CookWrites {
 		if _, err := m.LookupInstance(cw.Instance); err != nil {
 			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
+		}
+	}
+	// a json-text's text sits where an instance's would, so the two never
+	// share a name
+	for _, jt := range m.JSONTexts {
+		if _, err := m.LookupInstance(jt.Name); err == nil {
+			return nil, fmt.Errorf("%s: json-text %s is also an instance: its text would be the instance's", path, jt.Name)
 		}
 	}
 	// one name on one surface is one unit's case (optin.go)

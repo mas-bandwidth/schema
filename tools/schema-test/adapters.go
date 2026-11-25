@@ -59,6 +59,21 @@ var conformance = harness{
 	},
 }
 
+// bomEntry is the BOM entry gate's adapter (test/conformance/bom-entry
+// --adapter): the harness's adapter mode over
+// testdata/conformance/tables/bom-entry/MANIFEST.txt, the leg listing its
+// json-hostile surface alone. Its rows are the bom-entry family
+// (test/conformance/harness/adapter.go, bomFamily).
+var bomEntry = harness{
+	Name: "bom-entry",
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "conformance-leg-" + lang}}
+	},
+	Cmd: func(lang, work string) []string {
+		return []string{"sh", "test/conformance/bom-entry", "--adapter", lang, work}
+	},
+}
+
 // harnessFor is the harness that runs a family, if one does. Which languages
 // answer a family is the registry's (its owed lines), never the harness's.
 func harnessFor(family string) (harness, bool) {
@@ -67,6 +82,8 @@ func harnessFor(family string) (harness, bool) {
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
+	case family == bomEntry.Name:
+		return bomEntry, true
 	case family == nameBuild.Name:
 		return nameBuild, true
 	}

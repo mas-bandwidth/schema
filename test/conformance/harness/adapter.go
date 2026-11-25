@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -154,6 +155,25 @@ func caseSlug(name string) string {
 // corpusRows is every case of every surface the harness scores, as registry
 // rows, sorted by key.
 func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpusRow, error) {
+	return corpusRowsAs(m, reports, jsonDir, "", defaultManifest)
+}
+
+// THE BOM ENTRY GATE (testdata/conformance/tables/bom-entry/MANIFEST.txt,
+// docs/SPEC-TABLES.md §16.3) is a manifest of its own, four json-hostile rows
+// on the whole-text entry, run by test/conformance/bom-entry. Its rows are one
+// family, bom-entry, so they never share a key with the corpus's own
+// json-hostile rows; their inputs are the same {surface, case}, which the
+// harness's adapter mode answers from a run over that manifest.
+const (
+	bomFamily   = "bom-entry"
+	bomManifest = "testdata/conformance/tables/bom-entry/MANIFEST.txt"
+	bomJSONDir  = "testdata/conformance/tables/bom-entry/json"
+)
+
+// corpusRowsAs is corpusRows for any manifest: family, when set, is every
+// row's family (and so its key's middle), and source is the manifest the rows
+// come from.
+func corpusRowsAs(m *Manifest, reports map[string]string, jsonDir, family, source string) ([]corpusRow, error) {
 	files, err := caseFiles(m)
 	if err != nil {
 		return nil, err
@@ -194,18 +214,21 @@ func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpu
 				return nil, fmt.Errorf("surface %s: cases %q and %q are both the registry case %q", s, prev, name, slug)
 			}
 			seen[slug] = name
-			family := corpusFamilyPrefix + s
+			rowFamily := corpusFamilyPrefix + s
+			if family != "" {
+				rowFamily = family
+			}
 			out = append(out, corpusRow{
 				Rec:    "test",
-				Key:    typ + "." + family + "." + slug,
+				Key:    typ + "." + rowFamily + "." + slug,
 				Type:   typ,
-				Family: family,
+				Family: rowFamily,
 				Case:   slug,
 				Tier:   "functional",
 				Checks: "conformance " + s + " " + name + ": " + checks,
-				Inputs: corpusInputs{Surface: s, Case: name, Files: filesOf(files, name), Driver: corpusDriver},
+				Inputs: corpusInputs{Surface: s, Case: name, Files: rowFiles(filesOf(files, name), source, s), Driver: corpusDriver},
 				Expect: "the leg's answer equals the corpus's expectation (test/conformance/README.md)",
-				Source: defaultManifest,
+				Source: source,
 			})
 		}
 	}
@@ -360,6 +383,18 @@ var caseGoldens = []string{"Golden", "Before", "After", "Wire"}
 // filesOf is the files of the line a case answers: json-write's case is the
 // instance's name with ".json", and cook-write's big-endian case is the
 // instance's with "-be".
+// rowFiles is what a row reads beyond its case's own files: the manifest
+// that names it, every row; and the pinned read reports (reports.txt) for a
+// report row, whose verdict lives there. Sorted, as caseFiles's are.
+func rowFiles(own []string, source, surface string) []string {
+	out := append([]string{source}, own...)
+	if surface == "report" {
+		out = append(out, defaultReports)
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
+}
+
 func filesOf(files map[string][]string, name string) []string {
 	for _, n := range []string{name, strings.TrimSuffix(name, ".json"), strings.TrimSuffix(name, "-be")} {
 		if f, ok := files[n]; ok {

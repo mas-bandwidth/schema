@@ -153,6 +153,7 @@ func main() {
 	reports := fs.String("reports", defaultReports, "the generated report expectations")
 	drivers := fs.String("drivers", defaultDrivers, "the driver registry")
 	work := fs.String("work", defaultWork, "scratch directory")
+	family := fs.String("family", "", "every row's registry family, for a manifest other than the corpus's (registry-rows only; the BOM entry gate's is bom-entry)")
 	only := fs.String("only", "", "run one registered language")
 	resultsOut := fs.String("results", "", "write every case's verdict to this JSON file, the input of tools/matrix proof (run only)")
 	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
@@ -347,9 +348,12 @@ func main() {
 		if err != nil {
 			fatalf("%v", err)
 		}
-		rows, err := corpusRows(m, reps, *jsonDir)
+		rows, err := corpusRowsAs(m, reps, *jsonDir, *family, *manifest)
 		if err != nil {
 			fatalf("%v", err)
+		}
+		if *family == "" && *manifest != defaultManifest {
+			fatalf("registry-rows: --manifest %s is not the corpus's, so --family names its rows' family", *manifest)
 		}
 		if err := writeRegistryRows(os.Stdout, rows); err != nil {
 			fatalf("%v", err)

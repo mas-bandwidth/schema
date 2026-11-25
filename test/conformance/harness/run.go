@@ -510,6 +510,16 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: i.Name, want: want})
 		}
+		if surface == "json-read" {
+			// the hand-authored texts (jsontext.go): each owes its wire
+			for _, jt := range m.JSONTexts {
+				want, err := os.ReadFile(jt.Wire)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, expectation{name: jt.Name, want: want})
+			}
+		}
 	case "message":
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
 		// against the connection's announced table and write it back. The
@@ -999,8 +1009,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
 		// the rewrite surface is the wire surface over the rewrite rows
-		// (rewrite.go): a leg that lists wire is asked it
-		listed["rewrite"] = listed["wire"]
+		// (rewrite.go): a leg that lists wire is asked it, when the manifest
+		// has rewrite rows (a manifest with none, such as the BOM entry
+		// gate's, asks no rewrite surface rather than a surface of 0 rows)
+		listed["rewrite"] = listed["wire"] && len(m.Rewrites) > 0
 		// rows on an opt-in unit the leg does not name are not asked (optin.go)
 		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
 		if err != nil {
@@ -1031,6 +1043,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			}
 		}
 		if err := deriveRewriteManifest(m, legRewrite, omit); err != nil {
+			return false, err
+		}
+		// and its json-read surface runs on its manifest plus the json-text
+		// rows on units it is asked (jsontext.go)
+		legJSONRead := filepath.Join(work, "manifest-json-read-"+d.lang+".txt")
+		if err := deriveJSONReadManifest(legDerived, legJSONRead, m, omit); err != nil {
 			return false, err
 		}
 		runs := map[string]*surfaceRun{}
@@ -1080,6 +1098,8 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 						}
 						if sr.surface == "rewrite" {
 							sr.code, sr.stderr, sr.err = runDriver(d, legRewrite, "wire", sr.out)
+						} else if sr.surface == "json-read" {
+							sr.code, sr.stderr, sr.err = runDriver(d, legJSONRead, "json-read", sr.out)
 						} else {
 							sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
 						}
@@ -1105,6 +1125,15 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				})
 			}
 			wg.Wait()
+		}
+		// the framed rewrite rows are answered by the leg's own framing
+		// write-back (rewrite.go, framedRewrite)
+		if sr := runs["rewrite"]; sr != nil && !sr.aborted {
+			if fr := runs["framing"]; fr != nil {
+				if err := answerFramedRewrites(m, fr.out, sr.out); err != nil {
+					return false, err
+				}
+			}
 		}
 		for _, s := range surfaces {
 			if opts.only != nil && !opts.only[s] {

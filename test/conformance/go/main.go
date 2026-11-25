@@ -192,13 +192,15 @@ func noText(f line) bool { return len(f) > 5 && f[5] == "no-text" }
 
 var scratch []byte
 
-// plantEnv is the test registry's plant hook into this leg's wire surface
+// plantEnv is the test registry's plant hook into this leg's answers
 // (docs/TEST-REGISTRY.md, "Plants"): "wrong-byte:<case>" flips the first byte
-// of that case's written-back wire, a reader that read one byte wrong, and
-// "absent:<case>" answers the case absent, a case dropped from the leg's
-// answers. Each must turn exactly the registry instance
-// go.functional.roundtrip.conformance-wire.<case> red. Unset, it does
-// nothing.
+// of every wire this leg writes back under that case's name, a reader that
+// read one byte wrong: on the wire surface (and so the rewrite rows it
+// answers), on the json-read surface (and so the json-text rows), and on the
+// write-back a framing, report or hostile read leaves (and so the framed
+// rewrite rows); "absent:<case>" answers the case absent on the wire surface,
+// a case dropped from the leg's answers. Each must turn the registry instances
+// that score that answer red. Unset, it does nothing.
 const plantEnv = "SCHEMA_TEST_PLANT_CONFORMANCE_GO"
 
 func planted(mode, name string) bool { return os.Getenv(plantEnv) == mode+":"+name }
@@ -322,6 +324,9 @@ func spillSave(c *codec, value any, out, name string) error {
 	if c.save(value, buffer) != size {
 		return fmt.Errorf("%s: save did not write measure's answer", name)
 	}
+	if planted("wrong-byte", name) && len(buffer) > 0 {
+		buffer[0] ^= 1
+	}
 	return spill(out, name+".wire", buffer)
 }
 
@@ -440,6 +445,9 @@ func surfaceJsonRead(lines []line, out string) error {
 		buffer := make([]byte, size)
 		if c.save(value, buffer) != size {
 			return fmt.Errorf("%s: save did not write measure's answer", f[1])
+		}
+		if planted("wrong-byte", f[1]) && len(buffer) > 0 {
+			buffer[0] ^= 1
 		}
 		if err := spill(out, f[1], buffer); err != nil {
 			return err

@@ -1165,13 +1165,7 @@ data-case	testdata/conformance/r19/new	2	L4	corpus data and harnesses: each lang
 data-case	testdata/conformance/r19/old	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/table-write-bounds	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/table-write-bounds/expected	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/bom-entry	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/bom-entry/cut-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/bom-entry/double-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/bom-entry/leading-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/bom-entry/save-wire	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/bom-entry/space-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/fixed-at-bound	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/fixed-integral-token	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/fixed-nested-type	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1186,8 +1180,6 @@ data-case	testdata/conformance/tables/json-hostile-number-token/uint128-max	1	L4
 data-case	testdata/conformance/tables/json-hostile-number-token/uint128-negative	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/uint128-over	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/rewrite	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/shapes-loose	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/wire	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/write-refusal-int	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

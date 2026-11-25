@@ -1,6 +1,22 @@
 #!/bin/sh
-# One original-nine reader over the four shared BOM entry fixtures.
-# Use the existing harness scorer and driver protocol; no corpus generation.
+# The four shared BOM entry fixtures (testdata/conformance/tables/bom-entry,
+# docs/SPEC-TABLES.md §16.3), read by a leg's json-hostile surface and scored
+# by the harness. Three modes:
+#
+#   bom-entry <lang> [harness] [out]   the original nine's make gate
+#                                      (make conformance-bom-entry)
+#   bom-entry --adapter <lang> <work>  the test registry's bom-entry family
+#                                      (tools/schema-test/adapters.go): any
+#                                      leg, through the harness's adapter mode,
+#                                      instances on standard input
+#   bom-entry --driver <lang> ...      the driver the two modes register: the
+#                                      leg's own driver, listing json-hostile
+#                                      alone
+#
+# SCHEMA_TEST_PLANT_BOM_ENTRY=wrong:<case> is the registry's plant hook: the
+# driver mode replaces that case's answer with one no reader gives, which
+# must turn <lang>.functional.load-refusal.bom-entry.<case> red. Unset, it
+# does nothing.
 set -eu
 
 check_lang() {
@@ -10,10 +26,12 @@ check_lang() {
     esac
 }
 
+manifest=testdata/conformance/tables/bom-entry/MANIFEST.txt
+json=testdata/conformance/tables/bom-entry/json
+
 if [ "${1:-}" = --driver ]; then
     lang=$2
     shift 2
-    check_lang "$lang"
     if [ "$2" = list ]; then
         # Never let this narrow wrapper invent an advertised reader surface.
         listed=$(test/conformance/"$lang"/driver "$1" list)
@@ -24,7 +42,28 @@ if [ "${1:-}" = --driver ]; then
         printf '%s\n' json-hostile
         exit 0
     fi
-    exec test/conformance/"$lang"/driver "$@"
+    plant=${SCHEMA_TEST_PLANT_BOM_ENTRY:-}
+    if [ -z "$plant" ]; then
+        exec test/conformance/"$lang"/driver "$@"
+    fi
+    case "$plant" in
+        wrong:?*) ;;
+        *) echo "SCHEMA_TEST_PLANT_BOM_ENTRY=$plant is not wrong:<case>" >&2; exit 1 ;;
+    esac
+    test/conformance/"$lang"/driver "$@"
+    case=${plant#wrong:}
+    [ -f "$3/$case" ] || { echo "the plant names $case, which $lang did not answer in $3" >&2; exit 1; }
+    printf 'planted\n' > "$3/$case"
+    exit 0
+fi
+
+if [ "${1:-}" = --adapter ]; then
+    lang=$2
+    work=$3
+    mkdir -p "$work"
+    printf '%s sh test/conformance/bom-entry --driver %s\n' "$lang" "$lang" > "$work/drivers.txt"
+    exec ./build/conformance-harness-vm adapter --lang "$lang" --manifest "$manifest" \
+        --json "$json" --drivers "$work/drivers.txt" --work "$work/work"
 fi
 
 lang=${1:-}
@@ -34,8 +73,8 @@ out=${3:-build/conformance-bom-entry/$lang}
 mkdir -p "$out"
 printf '%s sh test/conformance/bom-entry --driver %s\n' "$lang" "$lang" > "$out/drivers.txt"
 status=0
-"$harness" run --manifest testdata/conformance/tables/bom-entry/MANIFEST.txt \
-    --json testdata/conformance/tables/bom-entry/json \
+"$harness" run --manifest "$manifest" \
+    --json "$json" \
     --drivers "$out/drivers.txt" --work "$out/work" \
     --results "$out/bom-results.json" > "$out/log" 2>&1 || status=$?
 cat "$out/log"

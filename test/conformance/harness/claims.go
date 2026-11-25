@@ -232,6 +232,11 @@ func walkCases(m *Manifest, add func(surface, name, unit, root string) error) er
 			return err
 		}
 	}
+	for _, jt := range m.JSONTexts {
+		if err := add("json-read", jt.Name, jt.Unit, jt.Root); err != nil {
+			return err
+		}
+	}
 	for _, msg := range m.Messages {
 		conn, err := m.LookupConnection(msg.Connection)
 		if err != nil {
