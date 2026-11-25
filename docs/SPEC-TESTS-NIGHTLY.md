@@ -229,7 +229,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.nightly.lint.luau-strict-analyze.at-id-cap` | the generated Luau modules of a unit announcing exactly 4096 vocabulary entries (the most a reader takes) pass luau-analyze --mode=strict; the 4097-entry unit is refused at run time and not analysed | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauStrictAnalyzeAtIdCap"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/announce_cap_test.go:34` |
+| `L.nightly.lint.luau-strict-analyze.at-id-cap` | the generated Luau modules of a unit announcing exactly 4096 vocabulary entries (the most a reader takes) pass luau-analyze --mode=strict; the 4097-entry unit is refused at run time and not analysed | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauStrictAnalyzeAtIdCap"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/announce_cap_test.go:35` |
 
 ## Language-free tests
 
