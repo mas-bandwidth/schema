@@ -137,6 +137,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 		q.Names = append(q.Names, fs.Arg(0))
 		rest = fs.Args()[1:]
 	}
+	if *update && sub != "run" {
+		return usageError{"--update is a run that re-pins goldens"}
+	}
 	reg, err := testreg.Load(*path)
 	if err != nil {
 		return err
@@ -198,9 +201,6 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 		return err
 	}
 	if *update {
-		if sub != "run" {
-			return usageError{"--update is a run that re-pins goldens"}
-		}
 		if err := goldenOnly(instances); err != nil {
 			return err
 		}

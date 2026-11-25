@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -267,5 +268,36 @@ func TestATargetSpecificVariableIsNotARule(t *testing.T) {
 	}
 	if rules["only-var"] || rules["other-var"] || !rules["inline"] {
 		t.Errorf("rules %v, want inline only", rules)
+	}
+}
+
+// TestEveryMakeInTheCheckoutHoldsIt: a make row's make and a harness's
+// build step each hold the checkout while they run, so the runner's groups,
+// which run side by side, never build one build/ at once. (Not parallel:
+// it reads a count every make in the checkout adds to.)
+func TestEveryMakeInTheCheckoutHoldsIt(t *testing.T) {
+	before := checkoutHolds.Load()
+	if _, err := execMake(context.Background(), []string{"true"}); err != nil {
+		t.Fatal(err)
+	}
+	b := &builder{log: io.Discard, done: map[string]error{}}
+	if err := b.run(context.Background(), []string{"true"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkoutHolds.Load() - before; got != 2 {
+		t.Fatalf("%d holds of the checkout, want one for the make row and one for the build step", got)
+	}
+}
+
+// TestAMakeVariableCannotTurnTheGateOff: SHELL, MAKEFLAGS and make's other
+// own variables would let a row pass without its recipe checking anything;
+// a row may not set them.
+func TestAMakeVariableCannotTurnTheGateOff(t *testing.T) {
+	t.Parallel()
+	for _, v := range []string{"SHELL", "MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKE", "MAKEFILES", "MAKELEVEL", "MAKECMDGOALS", "MAKEOVERRIDES", "VPATH", "SUFFIXES"} {
+		in := `{"file":"make/x.mk","target":"a","vars":{"` + v + `":"true"}}`
+		if (makeAdapter{}).Answers(testreg.Test{Scope: testreg.LangFree, Inputs: json.RawMessage(in)}) {
+			t.Errorf("%s answered as a make row", in)
+		}
 	}
 }

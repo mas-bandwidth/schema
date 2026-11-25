@@ -67,6 +67,7 @@ func TestTheCommandExitsNonZeroOnEveryFailRule(t *testing.T) {
 		{[]string{"run", "c.functional.roundtrip.fam.one", "go.functional.roundtrip.fam.one", "--ready"}, 1, "the filters exclude the full names c.functional.roundtrip.fam.one"},
 		{[]string{"list", "c.functional.roundtrip.fam.one", "--lang", "go"}, 1, "the filters exclude the full names c.functional.roundtrip.fam.one"},
 		{[]string{"list", "*"}, 0, "3 names"},
+		{[]string{"list", "*", "--update"}, 2, "--update is a run that re-pins goldens"},
 	} {
 		code, out := cli(t, envFake{}, c.args...)
 		if code != c.code || !strings.Contains(out, c.says) {

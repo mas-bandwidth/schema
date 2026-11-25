@@ -139,11 +139,15 @@ func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Ins
 		case "make":
 			var res []testreg.Result
 			mi := inst
-			mi.Test.Inputs, _ = json.Marshal(makeInputs{File: in.File, Target: in.Make})
+			if mi.Test.Inputs, err = json.Marshal(makeInputs{File: in.File, Target: in.Make}); err != nil {
+				return out, fmt.Errorf("%s: %w", inst.Full, err)
+			}
 			res, err = a.make.Run(ctx, "", []testreg.Instance{mi})
 			if len(res) == 1 {
 				r = res[0]
-				if r.Verdict == testreg.Fail {
+				// a control whose recipe ran and failed did not hold its gate
+				// red; a control that never ran (its rule gone) says so itself
+				if r.Verdict == testreg.Fail && strings.HasPrefix(r.Reason, "make "+in.Make) {
 					r.Reason = "the control did not hold its gate red: " + r.Reason
 				}
 			}
@@ -231,7 +235,9 @@ func (a plantAdapter) plantNames(inst testreg.Instance, in plantInputs) ([]strin
 }
 
 // judgePlant is the plant's verdict over the outcomes its run reported:
-// every red name FAIL with a reason that holds the stated reason, every
+// every red name FAIL with a reason whose first line holds the stated
+// reason (the line the harness writes, never a log tail a broken build
+// echoes the planted source into), every
 // other name PASS. A red for another reason is not the plant's red: a
 // missing tool or a broken build reddens a row without the sabotage having
 // been caught. It returns what is wrong, or "".
@@ -248,7 +254,7 @@ func judgePlant(red []string, reason string, names []string, status map[string]o
 			bad = append(bad, fmt.Sprintf("%s did not report", n))
 		case want[n] && got.status != testreg.StatusFail:
 			bad = append(bad, fmt.Sprintf("%s was %s, and the plant names it red", n, got.status))
-		case want[n] && (reason == "" || !strings.Contains(got.reason, reason)):
+		case want[n] && (reason == "" || !strings.Contains(firstLine(got.reason), reason)):
 			bad = append(bad, fmt.Sprintf("%s was red for another reason than the plant states (%q): %s", n, reason, firstLine(got.reason)))
 		case !want[n] && got.status != testreg.StatusPass:
 			bad = append(bad, fmt.Sprintf("%s was %s, and the plant does not name it: a sabotage reddens only the rows it names", n, got.status))
@@ -273,13 +279,13 @@ func asEditError(err error, pe *plantEditError) bool {
 // applyEdits applies the edits to files (by repository path) and returns
 // the edited contents. Each anchor must be in its file exactly once, after
 // the edits before it; and an anchor written in another file of sources (a
-// file of the same extension, not a test, that no edit names) is a copy the
-// plant does not reach.
+// file of the same extension, not a test, where no edit sabotages that same
+// anchor) is a copy the plant does not reach.
 func applyEdits(edits []plantEdit, read func(string) ([]byte, error), sources []string) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	named := map[string]bool{}
+	reached := map[string]bool{}
 	for _, e := range edits {
-		named[e.File] = true
+		reached[e.File+"\x00"+e.Anchor] = true
 	}
 	for i, e := range edits {
 		data, ok := out[e.File]
@@ -301,8 +307,8 @@ func applyEdits(edits []plantEdit, read func(string) ([]byte, error), sources []
 	for i, e := range edits {
 		ext := filepath.Ext(e.File)
 		for _, src := range sources {
-			if named[src] || filepath.Ext(src) != ext || isTestSource(src) {
-				continue
+			if src == e.File || reached[src+"\x00"+e.Anchor] || filepath.Ext(src) != ext || isTestSource(src) {
+				continue // its own file, or a copy another edit sabotages too
 			}
 			data, err := read(src)
 			if err != nil {
@@ -327,8 +333,9 @@ func firstLine(s string) string {
 
 // plantInTree is the edit form for real: the tracked tree is copied beside
 // the checkout (so ../serialize and the other siblings resolve as they do
-// for the checkout), the edits are applied to the copy, and this same
-// program runs the names there. The copy is removed afterwards.
+// for the checkout), the edits are applied to the copy, and the copy's own
+// schema-test, built from the sabotaged tree, runs the names there: a plant
+// of the runner itself reaches the runner. The copy is removed afterwards.
 func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[string]outcome, string, error) {
 	root, err := os.Getwd()
 	if err != nil {
@@ -357,9 +364,12 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[st
 			return nil, "", err
 		}
 	}
-	self, err := os.Executable()
-	if err != nil {
-		return nil, "", err
+	self := filepath.Join(work, ".schema-test-planted")
+	build := exec.CommandContext(ctx, "go", "build", "-o", self, "./tools/schema-test")
+	bound(build)
+	build.Dir = work
+	if log, err := build.CombinedOutput(); err != nil {
+		return nil, string(log), fmt.Errorf("building schema-test in the planted tree: %w", err)
 	}
 	cmd := exec.CommandContext(ctx, self, append([]string{"run", "--timeout", "0"}, names...)...)
 	bound(cmd)
@@ -368,7 +378,10 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[st
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	runErr := cmd.Run()
-	status := parseOutcomes(out.String())
+	status, err := parseOutcomes(out.String())
+	if err != nil {
+		return nil, out.String(), err
+	}
 	if len(status) == 0 {
 		return nil, out.String(), fmt.Errorf("the planted run reported no outcome: %w", runErr)
 	}
@@ -377,9 +390,9 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[st
 
 // parseOutcomes reads a run's printed outcomes ("PASS <name>", "FAIL
 // <name>: <reason>", ...) into each name's status and reason. A reason runs
-// on over the lines after its outcome line, up to the next outcome line or
-// the run's closing count.
-func parseOutcomes(log string) map[string]outcome {
+// on over the lines after its outcome line, up to the next outcome line, a
+// run-level line ("FAIL run: ...") or the run's closing count.
+func parseOutcomes(log string) (map[string]outcome, error) {
 	out := map[string]outcome{}
 	last := ""
 	sc := bufio.NewScanner(strings.NewReader(log))
@@ -394,7 +407,7 @@ func parseOutcomes(log string) map[string]outcome {
 		}
 		name, reason, _ := strings.Cut(rest, ": ")
 		if !ok || name == "run" || strings.Count(name, ".") < 4 || strings.ContainsAny(name, " :") {
-			if ok || strings.HasPrefix(line, "schema-test ") {
+			if ok && name == "run" || strings.HasPrefix(line, "schema-test ") {
 				last = "" // the run's own lines close the reason before them
 			}
 			if last != "" {
@@ -407,7 +420,10 @@ func parseOutcomes(log string) map[string]outcome {
 		out[name] = outcome{status, reason}
 		last = name
 	}
-	return out
+	if err := sc.Err(); err != nil {
+		return nil, fmt.Errorf("reading the planted run's outcomes: %w", err)
+	}
+	return out, nil
 }
 
 func trackedFiles(ctx context.Context, root string) ([]string, error) {

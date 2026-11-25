@@ -106,6 +106,7 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	// a data case several golden rows share: one row per pinned file, and
 	// a case is its files (a .cpp and its .h; a .bin and its .bits)
 	goldenCase := map[string]bool{}
+	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()
 		if prev, dup := out[id]; dup {
@@ -151,6 +152,11 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				continue
 			}
 			for _, f := range in.Files {
+				if prev, dup := goldenFile[f]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s pins %s, which golden row %s already pins: one golden row per pinned file", reg.Path, t.Line, t.Key, f, prev))
+					continue
+				}
+				goldenFile[f] = t.Key
 				if !isDataPath(f) {
 					continue // a pin outside the data paths is no data case: the row checks it all the same
 				}

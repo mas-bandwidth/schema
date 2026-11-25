@@ -212,3 +212,39 @@ func TestTheWriterWritesEveryGoldenAfresh(t *testing.T) {
 		t.Errorf("verdicts %+v", got)
 	}
 }
+
+// TestAGoldenStillHoldingTheMarkerWasNotWritten: a writer that re-pins only
+// the goldens that are there leaves a golden it no longer writes holding
+// the marker its copy was seeded with: that row fails, named.
+func TestAGoldenStillHoldingTheMarkerWasNotWritten(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	a := goldenFake(memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": "BBBB"}, memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": goldenUnwritten}, &calls)
+	got := goldenVerdicts(t, a, context.Background(), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"), goldenInst(t, "b", "pins-x", "testdata/g/b.bin"))
+	if got["a"].Verdict != testreg.Pass || got["b"].Verdict != testreg.Fail || !strings.Contains(got["b"].Reason, "no longer writes it") {
+		t.Fatalf("verdicts %+v", got)
+	}
+}
+
+// TestAnUncommittedGoldenIsMissing: a golden in the checkout that is not
+// committed (not tracked) is not answered, so the run shows it MISSING.
+func TestAnUncommittedGoldenIsMissing(t *testing.T) {
+	t.Parallel()
+	a := goldenAdapter{checkout: memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N"}, tracked: func(p string) bool { return p == "testdata/g/a.bin" }}
+	if !a.Answers(goldenInst(t, "a", "pins-x", "testdata/g/a.bin").Test) || a.Answers(goldenInst(t, "n", "pins-x", "testdata/g/new.bin").Test) {
+		t.Fatal("a tracked golden is answered, an untracked one is MISSING")
+	}
+}
+
+// TestUpdateWithAStrayPinRepinsNothing: while the writer also writes a pin
+// no row names, --update writes nothing and the rows fail, naming it.
+func TestUpdateWithAStrayPinRepinsNothing(t *testing.T) {
+	t.Parallel()
+	checkout := memTree{"testdata/g/a.bin": "old"}
+	calls := 0
+	a := goldenFake(checkout, memTree{"testdata/g/a.bin": "new", "testdata/g/stray.bin": "S"}, &calls)
+	got := goldenVerdicts(t, a, withUpdate(context.Background()), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"))
+	if got["a"].Verdict != testreg.Fail || !strings.Contains(got["a"].Reason, "testdata/g/stray.bin") || checkout["testdata/g/a.bin"] != "old" {
+		t.Fatalf("update with a stray pin: %+v, checkout %v", got, checkout)
+	}
+}

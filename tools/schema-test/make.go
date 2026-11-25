@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -77,7 +79,26 @@ func newMakeAdapter() makeAdapter {
 	}
 }
 
+// checkoutMake is held by every make that builds in the checkout (a make
+// row, a negative control, a harness's build steps): they share build/ and
+// bin/schema, and the runner runs adapter groups side by side, so two
+// recipes would otherwise write one stamp at once. A golden's writer runs in
+// its own copy and holds nothing.
+var checkoutMake sync.Mutex
+
+// checkoutHolds counts the holds of checkoutMake, so a unit test sees each
+// make in the checkout take it.
+var checkoutHolds atomic.Int64
+
+// holdCheckout takes checkoutMake and returns its release.
+func holdCheckout() func() {
+	checkoutMake.Lock()
+	checkoutHolds.Add(1)
+	return checkoutMake.Unlock
+}
+
 func execMake(ctx context.Context, argv []string) (string, error) {
+	defer holdCheckout()()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	bound(cmd)
 	if env := testreg.EnvFrom(ctx); len(env) > 0 {
@@ -117,6 +138,9 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 	for k, v := range in.Vars {
 		if !makeVarName.MatchString(k) || strings.ContainsAny(v, "\n\x00") {
 			return in, fmt.Errorf("make variable %q=%q: want an upper-case name and a one-line value", k, v)
+		}
+		if makeOwnVar(k) {
+			return in, fmt.Errorf("make variable %s is make's own: set on a row it could turn the gate off", k)
 		}
 	}
 	for _, tool := range in.Tools {
@@ -198,6 +222,17 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 
 // makeVarName is a make variable a row may set: DART, CLANG_FORMAT.
 var makeVarName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+
+// makeOwnVar is a variable make itself reads (SHELL runs every recipe,
+// MAKEFLAGS takes -i or -n): a row that set one could pass without its
+// recipe checking anything.
+func makeOwnVar(k string) bool {
+	switch k {
+	case "SHELL", "MFLAGS", "GNUMAKEFLAGS", "VPATH", "SUFFIXES":
+		return true
+	}
+	return strings.HasPrefix(k, "MAKE")
+}
 
 // needs is what the row needs from the runner and the runner lacks, named
 // with the runner, or "".

@@ -73,7 +73,7 @@ next table. Every job of every other workflow is a row here.
 | `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
 | `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr`; the pr group holds the goldens (once the `pins` job), the block zero-cost gate (once `block-gate`) and the new-leg fixture (once `newleg-scaffold`) |
+| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr`; the pr group holds the goldens (once the `pins` job) and the block zero-cost gate (once `block-gate`) |
 | `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
 | `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
 | `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
@@ -89,6 +89,7 @@ next table. Every job of every other workflow is a row here.
 | `input-family-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
 | `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
 | `stage-compiler` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account; builds bin/schema once for build-cpp-conformance-account and checks nothing |
+| `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
 | `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |

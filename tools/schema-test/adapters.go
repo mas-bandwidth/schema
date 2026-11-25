@@ -79,6 +79,7 @@ type builder struct {
 func (b *builder) run(ctx context.Context, argv []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	defer holdCheckout()()
 	key := strings.Join(argv, "\x00")
 	if err, ok := b.done[key]; ok {
 		return err

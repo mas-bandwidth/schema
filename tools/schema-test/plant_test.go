@@ -199,9 +199,56 @@ func TestPlantInputsAreOneForm(t *testing.T) {
 // names.
 func TestParseOutcomesReadsTheRunsLines(t *testing.T) {
 	t.Parallel()
-	log := "schema-test run a.b.c.d.e: 2 names\n  none.unit.tooling.f.a\nPASS none.unit.tooling.f.a\nFAIL none.unit.tooling.f.b: boom: at x\n  want 3\nFAIL run: expected 2\nschema-test FAIL: expected 2, ran 2\n"
-	got := parseOutcomes(log)
-	if len(got) != 2 || got["none.unit.tooling.f.a"].status != "PASS" || got["none.unit.tooling.f.b"] != (outcome{"FAIL", "boom: at x\n  want 3"}) {
-		t.Fatalf("%v", got)
+	log := "schema-test run a.b.c.d.e: 2 names\n  none.unit.tooling.f.a\nPASS none.unit.tooling.f.a\nFAIL none.unit.tooling.f.b: boom: at x\n  want 3\nPASS some text a harness printed\nFAIL run: expected 2\n  not a reason\nschema-test FAIL: expected 2, ran 2\n"
+	got, err := parseOutcomes(log)
+	if err != nil || len(got) != 2 || got["none.unit.tooling.f.a"].status != "PASS" || got["none.unit.tooling.f.b"] != (outcome{"FAIL", "boom: at x\n  want 3\nPASS some text a harness printed"}) {
+		t.Fatalf("%v %v", err, got)
+	}
+	// a line past the reader's bound is an error, never an outcome dropped
+	if _, err := parseOutcomes("FAIL none.unit.tooling.f.b: " + strings.Repeat("x", 1<<24) + "\n"); err == nil {
+		t.Fatal("a line past the bound was read as a complete run")
+	}
+}
+
+// TestAReasonEchoedByABrokenBuildIsNotThePlants: the stated reason is read
+// off the first line of a red row's reason, the line its harness writes; a
+// broken build that echoes the planted source into the log tail below it
+// is a red for another cause.
+func TestAReasonEchoedByABrokenBuildIsNotThePlants(t *testing.T) {
+	t.Parallel()
+	names := []string{"none.unit.tooling.f.a"}
+	broken := map[string]outcome{names[0]: {"FAIL", "make build/x: exit status 2\nx.c:12:3: error: implicit declaration of function 'fail'\n   12 |   fail(\"PLANTED overflow\");"}}
+	if got := judgePlant(names, "PLANTED overflow", names, broken); !strings.Contains(got, "red for another reason") {
+		t.Fatalf("a broken build echoing the plant passed: %q", got)
+	}
+	caught := map[string]outcome{names[0]: {"FAIL", "PLANTED overflow: row 3 wrote 9 bytes\nlog tail"}}
+	if got := judgePlant(names, "PLANTED overflow", names, caught); got != "" {
+		t.Fatalf("the harness's own line: %q", got)
+	}
+}
+
+// TestAPlantReachesACopyInAnotherEditedFile: an edited file is no excuse for
+// a copy of another edit's anchor in it; a copy another edit sabotages too
+// is reached.
+func TestAPlantReachesACopyInAnotherEditedFile(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{
+		"internal/a/a.go": "x := 1\ny := 2\n",
+		"internal/b/b.go": "y := 2\n",
+	}
+	all := []string{"internal/a/a.go", "internal/b/b.go"}
+	_, err := applyEdits([]plantEdit{
+		{File: "internal/a/a.go", Anchor: "x := 1", With: "x := 9"},
+		{File: "internal/b/b.go", Anchor: "y := 2", With: "y := 9"},
+	}, memRead(files), all)
+	var pe plantEditError
+	if !asEditError(err, &pe) || !strings.Contains(pe.msg, "edit 2") || !strings.Contains(pe.msg, "internal/a/a.go") {
+		t.Fatalf("the copy of edit 2's anchor in a.go: %v", err)
+	}
+	if _, err := applyEdits([]plantEdit{
+		{File: "internal/a/a.go", Anchor: "y := 2", With: "y := 9"},
+		{File: "internal/b/b.go", Anchor: "y := 2", With: "y := 9"},
+	}, memRead(files), all); err != nil {
+		t.Fatalf("both copies sabotaged: %v", err)
 	}
 }
