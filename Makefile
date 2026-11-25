@@ -2351,16 +2351,17 @@ tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_pre
 .PHONY: conformance-negative-control-absent
 conformance-negative-control-absent: build/conformance-harness build/tables-generated/.stamp build/conformance-go
 	@mkdir -p build
-	@perl -0pe 's|(static int surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
-		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
-	@st=0; cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp || st=$$?; \
+	@perl -0pe 's|(\nint surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
+		test/conformance/cpp/driver_codec.cpp > build/conformance-cpp-absent.cpp
+	@st=0; cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/driver_codec.cpp || st=$$?; \
 	case $$st in \
 		0) echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1 ;; \
 		1) ;; \
 		*) echo "NEGATIVE CONTROL FAILED: cmp could not compare the sabotaged driver (exit $$st)"; exit 1 ;; \
 	esac
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-cpp-absent.cpp \
-		$(CONFORMANCE_SOURCES) -o build/conformance-cpp
+	@$(MAKE) --no-print-directory $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -Itest/conformance/cpp build/conformance-cpp-absent.cpp \
+		$(filter-out build/conformance-cpp-objs/driver/driver_codec.o,$(CONFORMANCE_DRIVER_OBJECTS)) $(CONFORMANCE_OBJECTS) -o build/conformance-cpp
 	@rm -rf build/conformance-absent-work
 	@if ./build/conformance-harness run --only cpp --work build/conformance-absent-work > build/conformance-absent.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the REFERENCE leg answered ABSENT and the harness stayed green"; \
@@ -5414,11 +5415,50 @@ build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-genera
 conformance-cpp-objects: build/tables-generated/.stamp
 	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
+# THE DRIVER'S OWN TRANSLATION UNITS (test/conformance/cpp/driver.h). main.cpp
+# was one unit that included every generated table header: 71 s at -O0 on
+# captain, compiled after the table objects and alone, inside a build the
+# produce job (ci-fast.yml) has two minutes for. It is now the dispatch alone,
+# and each surface group and each family of generated units is a unit of its
+# own, compiled under the same make -j as the table objects (the driver's units
+# first: they are the longest). The flags are the table objects' own.
+#
+# EVERY UNIT'S COMPILE IS TIMED: tools/compile-seconds.pl writes the CPU
+# seconds beside the object, and `make conformance-cpp-tu-budget` (the produce
+# job's cpp row) fails naming a unit past CONFORMANCE_DRIVER_TU_BUDGET, or a
+# unit with no timing at all (tools/compilebudget). The budget is a ceiling on
+# ONE unit, so a family that grows back toward the old single unit goes red by
+# name before the leg stops fitting its job.
+#
+# Measured on captain (2026-11-25, -O0, CPU seconds per unit, the leg cold
+# under make -j4 on 4 cores):
+#   MEASURED-TU-SECONDS
+# The budget is the slowest unit with room for compiler and machine variance
+# beside it (BUDGET-MARGIN), and well under the 15 s a unit may take before
+# the leg's cold build stops fitting the produce job's two minutes.
+CONFORMANCE_DRIVER_TUS := main driver_codec driver_blocks driver_wref driver_examples driver_maps \
+	driver_lists driver_cooktorture driver_messages driver_varevo12 driver_varevo3 driver_tblsurf \
+	driver_pointers driver_backend driver_evolution_a driver_evolution_b
+CONFORMANCE_DRIVER_TU_BUDGET := BUDGET-SECONDS
+CONFORMANCE_DRIVER_SOURCES := $(patsubst %,test/conformance/cpp/%.cpp,$(CONFORMANCE_DRIVER_TUS))
+CONFORMANCE_DRIVER_HEADERS := test/conformance/cpp/driver.h test/conformance/cpp/manifest.h test/conformance/cpp/block_walk.h
+CONFORMANCE_DRIVER_OBJECTS := $(patsubst %,build/conformance-cpp-objs/driver/%.o,$(CONFORMANCE_DRIVER_TUS))
+
+build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_DRIVER_HEADERS) tools/compile-seconds.pl \
+		build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	perl tools/compile-seconds.pl $(@:.o=.seconds) $(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/conformance-cpp: build/tables-generated/.stamp $(CONFORMANCE_DRIVER_SOURCES) $(CONFORMANCE_DRIVER_HEADERS)
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
-		$(CONFORMANCE_OBJECTS) -o $@
+	@$(MAKE) --no-print-directory $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS) -o $@
+
+# THE BUDGET ON ONE UNIT (above): every unit's recorded CPU seconds, each held
+# to CONFORMANCE_DRIVER_TU_BUDGET; a missing or unreadable timing file is red.
+.PHONY: conformance-cpp-tu-budget
+conformance-cpp-tu-budget:
+	go run ./tools/compilebudget -budget $(CONFORMANCE_DRIVER_TU_BUDGET) -dir build/conformance-cpp-objs/driver $(CONFORMANCE_DRIVER_TUS)
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
 #
@@ -6494,11 +6534,13 @@ conformance-pin: build/conformance-harness build/conformance-cpp build/schema_te
 conformance-negative-control: build/conformance-harness build/conformance-cpp
 	@rm -rf build/conformance-negative && mkdir -p build/conformance-negative
 	@sed 's|if ( !spill( out, f\[1\] + ".json", text.data(), (size_t) size ) ) return 1;|text[0] = (char) ( text[0] ^ 1 ); if ( !spill( out, f[1] + ".json", text.data(), (size_t) size ) ) return 1; // SABOTAGED|' \
-		test/conformance/cpp/main.cpp > build/conformance-negative/main.cpp
-	@cmp -s build/conformance-negative/main.cpp test/conformance/cpp/main.cpp && \
+		test/conformance/cpp/driver_codec.cpp > build/conformance-negative/driver_codec.cpp
+	@cmp -s build/conformance-negative/driver_codec.cpp test/conformance/cpp/driver_codec.cpp && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-negative/main.cpp \
-		$(CONFORMANCE_SOURCES) -o build/conformance-negative/driver-bin
+	@$(MAKE) --no-print-directory $(CONFORMANCE_DRIVER_OBJECTS) $(CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -Itest/conformance/cpp build/conformance-negative/driver_codec.cpp \
+		$(filter-out build/conformance-cpp-objs/driver/driver_codec.o,$(CONFORMANCE_DRIVER_OBJECTS)) $(CONFORMANCE_OBJECTS) \
+		-o build/conformance-negative/driver-bin
 	@printf '#!/bin/sh\nexec build/conformance-negative/driver-bin "$$@"\n' > build/conformance-negative/driver
 	@chmod +x build/conformance-negative/driver
 	@printf 'cpp build/conformance-negative/driver\n' > build/conformance-negative/drivers.txt
@@ -6541,7 +6583,7 @@ conformance-negative-control-cpp: build/conformance-harness
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
 	$(CXX) $(TABLES_CXXFLAGS) \
 		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES))) \
-		test/conformance/cpp/main.cpp \
+		$(CONFORMANCE_DRIVER_SOURCES) \
 		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o $(CONFORMANCE_NEGATIVE_CPP)/driver-bin
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/driver
@@ -8302,7 +8344,7 @@ pins-conformance-cook: bin/schema build/conformance-harness test/tables/cook_mai
 
 .PHONY: pins-conformance-block
 pins-conformance-block: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,$(PINS_CONFORMANCE_GENERATED))
-pins-conformance-block: bin/schema build/conformance-harness test/conformance/cpp/block_pin.cpp test/conformance/cpp/block_walk.h
+pins-conformance-block: bin/schema build/conformance-harness test/conformance/cpp/block_pin.cpp test/conformance/cpp/block_walk.h test/conformance/cpp/manifest.h
 	@rm -rf $(PINS_CONFORMANCE_GENERATED) && mkdir -p $(PINS_CONFORMANCE_GENERATED)
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_BLOCK_DIRS),conformance-block)
 	$(call pins_compile_cxx,build/conformance-cpp-block,$(TABLES_CXXFLAGS) -I$(PINS_CONFORMANCE_GENERATED)/block -I$(PINS_CONFORMANCE_GENERATED)/cooktorture -I$(SERIALIZE),test/conformance/cpp/block_pin.cpp $$(ls $(PINS_CONFORMANCE_GENERATED)/block/*.cpp $(PINS_CONFORMANCE_GENERATED)/cooktorture/*.cpp),conformance-block)

@@ -48,7 +48,7 @@ conformance-cpp-cook-write-negative-control: build/tables-generated/.stamp build
 		$(CPP_COOK_WRITE_NC_GEN)/examples/TablesTable.h | grep 'i < value.weapons_count' >/dev/null || \
 		{ echo "NEGATIVE CONTROL FAILED: the generated cook writer still stops at the count"; exit 1; }
 	@$(MAKE) --no-print-directory $(CPP_COOK_WRITE_NC_OBJECTS)
-	$(CXX) $(TABLES_CXXFLAGS) $(CPP_COOK_WRITE_NC_INCLUDES) test/conformance/cpp/main.cpp \
+	$(CXX) $(TABLES_CXXFLAGS) $(CPP_COOK_WRITE_NC_INCLUDES) $(CONFORMANCE_DRIVER_SOURCES) \
 		$(CPP_COOK_WRITE_NC_OBJECTS) -o $(CPP_COOK_WRITE_NC)/conformance-cpp
 	@printf '#!/bin/sh\nif [ "$$2" = "list" ]; then\n    echo cook-write\n    exit 0\nfi\nexec %s/conformance-cpp "$$@"\n' \
 		"$(CURDIR)/$(CPP_COOK_WRITE_NC)" > $(CPP_COOK_WRITE_NC)/driver

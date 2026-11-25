@@ -528,7 +528,7 @@ define conformance-negative-control-cpp-wref
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
 	$(CXX) $(TABLES_CXXFLAGS) \
 		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CURDIR)/build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_INCLUDES))) \
-		test/conformance/cpp/main.cpp \
+		$(CONFORMANCE_DRIVER_SOURCES) \
 		$(subst build/tables-generated/,$(CURDIR)/build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o build/conformance-negative-cpp-$(1)/driver-bin
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/build/conformance-negative-cpp-$(1)" > build/conformance-negative-cpp-$(1)/driver
