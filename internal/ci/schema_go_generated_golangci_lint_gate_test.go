@@ -139,28 +139,3 @@ func TestSchemaGoGeneratedGolangciGateRatchetPins(t *testing.T) {
 		t.Errorf("ratchet pins nothing for the example corpus")
 	}
 }
-
-// The workflow must run on the fleet only and probe the fleet-pinned checker.
-func TestSchemaGoGeneratedGolangciGateWorkflowIsFleetOnly(t *testing.T) {
-	t.Parallel()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "schema-go-generated-golangci-lint-gate.yml"))
-	if err != nil {
-		t.Fatalf("read workflow: %v", err)
-	}
-	text := string(data)
-	for _, want := range []string{
-		`runs-on: ["self-hosted", "Linux", "X64", "fleet", "schema"]`,
-		"github.event.pull_request.head.repo.full_name == github.repository",
-		"TOOL-MISSING: golangci-lint 2.12.2",
-		"~/sdk/bin/golangci-lint",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("workflow missing %q", want)
-		}
-	}
-	for _, forbidden := range []string{"ubuntu-latest", "setup-go", "go install golangci-lint", "golangci-lint@", "curl "} {
-		if strings.Contains(text, forbidden) {
-			t.Errorf("workflow still carries %q", forbidden)
-		}
-	}
-}

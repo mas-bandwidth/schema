@@ -7,7 +7,9 @@
 # longer generated) fails until its line is deleted.
 #
 # usage: c-clean-format.sh <ratchet-file> <tree>...
-# env:   CLANG_FORMAT, OUT (scratch dir)
+# env:   CLANG_FORMAT, OUT (scratch dir), SHARD (K/N: judge only the files
+#        make/checks/shard-filter.sh puts in shard K of N, and only their
+#        ratchet lines; empty: every file)
 set -eu -o pipefail
 allow=$1
 [ -r "$allow" ] || { echo "tables-c-clean: the ratchet $allow cannot be read" >&2; exit 1; }
@@ -15,6 +17,9 @@ shift
 CLANG_FORMAT=${CLANG_FORMAT:-clang-format}
 OUT=${OUT:-build}
 mkdir -p "$OUT"
+here=$(cd "$(dirname "$0")" && pwd)
+shard=${SHARD-}
+held=$OUT/c-format-held.txt
 seen=$OUT/c-format-seen.txt
 : > "$seen"
 style="file:$(pwd)/.clang-format"
@@ -35,7 +40,11 @@ if ! find "$@" \( -name '*.h' -o -name '*.c' \) > "$OUT/c-format-found.txt"; the
 	echo "tables-c-clean: cannot list $*" >&2
 	exit 1
 fi
-sort "$OUT/c-format-found.txt" > "$OUT/c-format-files.txt"
+# the whole gate's files are the universe every shard assigns from, and
+# the ratchet lines this run holds are its shard's (all of them, whole)
+sort "$OUT/c-format-found.txt" > "$OUT/c-format-all.txt"
+sh "$here/shard-filter.sh" "$shard" "$OUT/c-format-all.txt" < "$OUT/c-format-all.txt" > "$OUT/c-format-files.txt"
+sed -e '/^#/d' -e '/^$/d' "$allow" | sh "$here/shard-filter.sh" "$shard" "$OUT/c-format-all.txt" > "$held"
 rm -f "$OUT/c-format-found.txt"
 if [ ! -s "$OUT/c-format-files.txt" ]; then
 	echo "tables-c-clean: no .h or .c file under $*; nothing was held to clang-format" >&2
@@ -72,10 +81,10 @@ fi
 if [ -s "$OUT/c-format-results.txt" ]; then
 	while IFS="$(printf '\t')" read -r verdict f; do
 		if [ "$verdict" = "CLEAN" ]; then
-			if grep -Fxq "$f" "$allow"; then echo "tables-c-clean: $f is clean now — remove its line from $allow"; bad=1; fi
+			if grep -Fxq "$f" "$held"; then echo "tables-c-clean: $f is clean now — remove its line from $allow"; bad=1; fi
 		else
 			echo "$f" >> "$seen"
-			grep -Fxq "$f" "$allow" || { echo "tables-c-clean: clang-format drift in $f, which $allow does not list (the list only shrinks)"; bad=1; }
+			grep -Fxq "$f" "$held" || { echo "tables-c-clean: clang-format drift in $f, which $allow does not list (the list only shrinks)"; bad=1; }
 		fi
 	done < "$OUT/c-format-results.txt"
 fi
@@ -87,7 +96,7 @@ if [ "$judged" -ne "$checked" ]; then
 	echo "tables-c-clean: $judged verdicts for $checked files; the format check did not finish" >&2
 	bad=1
 fi
-for f in $(sed -e '/^#/d' -e '/^$/d' "$allow"); do
+for f in $(cat "$held"); do
 	if [ ! -f "$f" ]; then
 		echo "tables-c-clean: $f is listed in $allow but no longer generated — remove its line"; bad=1
 	elif ! grep -Fxq "$f" "$OUT/c-format-files.txt"; then
@@ -96,6 +105,6 @@ for f in $(sed -e '/^#/d' -e '/^$/d' "$allow"); do
 		echo "tables-c-clean: $f is listed in $allow but is under none of the trees this gate scans ($*) — remove its line, or scan its tree"; bad=1
 	fi
 done
-rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt"
+rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt" "$OUT/c-format-all.txt" "$held"
 [ $bad -eq 0 ] || exit 1
-echo "C: clang-format clean over $*: $checked files checked, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
+echo "C: clang-format clean over $*${shard:+ (shard $shard)}: $checked files checked, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"

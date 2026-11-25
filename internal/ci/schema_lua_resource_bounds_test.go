@@ -267,11 +267,11 @@ func TestLuaResourceBoundsPlantedPattern(t *testing.T) {
 	t.Logf("planted-bad-pattern control: guarded REFUSED text_limit, planted %s %s", planted.verdict, planted.reason)
 }
 
-// TestLuaResourceBoundsLane pins the make target and the workflow that run the
+// TestLuaResourceBoundsLane pins the make targets, nightly registry rows, that run the
 // tests above: the lane is nightly and dispatch only (the owner, 2026-11-15: "I
 // want everything that is not light moved to nightly test now." "no
-// exceptions."), the heavy sweep on the schedule and the planted control on
-// dispatch; a lane with no blade is not a gate.
+// exceptions."), the heavy sweep and the planted control; a lane with no
+// blade is not a gate.
 func TestLuaResourceBoundsLane(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -295,21 +295,7 @@ func TestLuaResourceBoundsLane(t *testing.T) {
 			t.Errorf("make/schema-lua-resource-bounds.mk does not carry %q", pin)
 		}
 	}
-	wf := readCI(t, root, ".github/workflows/schema-lua-resource-bounds.yml")
-	for _, want := range []string{
-		"cron:", "workflow_dispatch:",
-		"make schema-lua-resource-bounds-negative-control",
-		"make schema-lua-resource-bounds",
-		"github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
-	} {
-		if !strings.Contains(wf, want) {
-			t.Errorf("the lua resource-bounds workflow does not carry %q", want)
-		}
-	}
-	for _, p := range luaHeavyLaneTriggerProblems(wf) {
-		t.Errorf("schema-lua-resource-bounds.yml: %s", p)
-	}
-	if len(luaHeavyLaneTriggerProblems(strings.Replace(wf, "\non:\n", "\non:\n  push:\n", 1))) == 0 {
-		t.Error("nightly-only control: a restored push trigger was not refused")
-	}
+	// The sweep and its control are nightly registry rows
+	// (TestRetiredWorkflowsAreRegistryRows): the workflow that ran them is
+	// retired.
 }

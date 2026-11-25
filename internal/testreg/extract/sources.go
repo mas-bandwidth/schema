@@ -4,12 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
 // NegativeControlsFile lists the negative-control make targets by group.
@@ -80,8 +84,10 @@ var checkTarget = regexp.MustCompile(`^(test|check|verify)(-|$)|-(check|test|tes
 var makeRule = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9_./%-]*)\s*:([^=]|$)`)
 
 // makeCall is a make invocation in a workflow's run text: the words after
-// "make" and its flags, up to a shell operator.
-var makeCall = regexp.MustCompile(`(?:^|[\s;&|(])make((?:\s+-[A-Za-z]+(?:\s+[0-9]+)?)*)((?:\s+[A-Za-z0-9$][^\s;&|)]*)+)`)
+// "make" and its flags, up to a shell operator. A flag may carry its value
+// joined, quoted or substituted (-j4, -j"$(nproc)", -j$(nproc)) or as the
+// next word (-j 4).
+var makeCall = regexp.MustCompile(`(?:^|[\s;&|(])make((?:\s+-[A-Za-z]+(?:"[^"]*"|\$\([^)]*\)|[0-9]+)?(?:\s+[0-9]+)?)*)((?:\s+[A-Za-z0-9$][^\s;&|)]*)+)`)
 
 // workflowMakeTargets are the targets a workflow runs by name: whatever CI
 // runs is a test or the setup of one, and is counted either way.
@@ -104,6 +110,68 @@ func (s *scan) workflowMakeTargets(workflows []string) map[string]bool {
 					out[w] = true
 				}
 			}
+		}
+	}
+	for t := range s.registryMakeTargets() {
+		out[t] = true
+	}
+	return out
+}
+
+// registryMakeTargets are the targets the registry's make rows run: CI
+// runs them through schema-test, so they are run by name as surely as a
+// workflow's own make line. A per-language row (no scope) whose target
+// holds {lang} runs that target once for each language the registry lists,
+// as perLangClaims claims it, so each language's target counts the same. A
+// row only names a target; the target is counted only where a make file
+// writes its rule, so a row whose target is gone still fails Check by name.
+func (s *scan) registryMakeTargets() map[string]bool {
+	out := map[string]bool{}
+	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(testreg.DefaultPath)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return out // a tree with no registry runs no make rows
+	}
+	if err != nil {
+		s.fail(testreg.DefaultPath, "read: %v", err)
+		return out
+	}
+	var langs, perLang []string
+	for line := range strings.SplitSeq(string(data), "\n") {
+		isMake := strings.Contains(line, `"adapter":"make"`)
+		isLang := strings.Contains(line, `"rec":"lang"`)
+		if !isMake && !isLang && !strings.Contains(line, testreg.LangPlaceholder) {
+			continue
+		}
+		var row struct {
+			Rec     string `json:"rec"`
+			Name    string `json:"name"`
+			Adapter string `json:"adapter"`
+			Scope   string `json:"scope"`
+			Inputs  struct {
+				Target string `json:"target"`
+			} `json:"inputs"`
+		}
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			if isMake {
+				s.fail(testreg.DefaultPath, "a make row: %v", err)
+			} else {
+				s.fail(testreg.DefaultPath, "a row naming a language: %v", err)
+			}
+			continue
+		}
+		switch {
+		case row.Rec == "lang" && row.Name != "" && row.Name != testreg.LangFree:
+			langs = append(langs, row.Name)
+		case row.Rec != "test" || row.Inputs.Target == "":
+		case row.Scope == "" && strings.Contains(row.Inputs.Target, testreg.LangPlaceholder):
+			perLang = append(perLang, row.Inputs.Target)
+		case row.Adapter == "make":
+			out[row.Inputs.Target] = true
+		}
+	}
+	for _, target := range perLang {
+		for _, l := range langs {
+			out[strings.ReplaceAll(target, testreg.LangPlaceholder, l)] = true
 		}
 	}
 	return out
@@ -134,6 +202,10 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 			// "a b c: deps" names three rules
 			names, _, _ := strings.Cut(sc.Text(), ":")
 			for name := range strings.FieldsSeq(names) {
+				if s.res.Rules == nil {
+					s.res.Rules = map[string]bool{}
+				}
+				s.res.Rules[RuleID(rel, name)] = true
 				if name == ".PHONY" || strings.HasPrefix(name, ".") || nc[name] || seen[name] || !checkTarget.MatchString(name) && !ci[name] {
 					continue
 				}
@@ -319,6 +391,9 @@ func (s *scan) dataCases(files []string) {
 	type group struct{ dir, stem, first string }
 	var groups []group
 	seen := map[string]bool{}
+	if s.res.CaseFiles == nil {
+		s.res.CaseFiles = map[string][]string{}
+	}
 	for _, rel := range files {
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		name := filepath.Base(rel)
@@ -326,10 +401,9 @@ func (s *scan) dataCases(files []string) {
 			s.jsonlCases(rel, dir)
 			continue
 		}
-		stem := name
-		if i := strings.Index(name[1:], "."); i >= 0 {
-			stem = name[:i+1]
-		}
+		stem := DataStem(name)
+		id := Item{Kind: KindDataCase, Dir: dir, Name: stem}.ID()
+		s.res.CaseFiles[id] = append(s.res.CaseFiles[id], filepath.ToSlash(rel))
 		if k := dir + "\x00" + stem; !seen[k] {
 			seen[k] = true
 			groups = append(groups, group{dir, stem, rel})
@@ -369,4 +443,14 @@ func (s *scan) jsonlCases(rel, dir string) {
 		}
 		s.add(Item{Kind: KindDataCase, Dir: dir, Name: base + "/" + name, Source: rel + ":" + strconv.Itoa(i+1), Tier: "functional"})
 	}
+}
+
+// DataStem is the case a data file belongs to: its name up to the first dot
+// after the first character, so case.in and case.out are one case and a
+// dotfile keeps its name.
+func DataStem(name string) string {
+	if i := strings.Index(name[1:], "."); i >= 0 {
+		return name[:i+1]
+	}
+	return name
 }

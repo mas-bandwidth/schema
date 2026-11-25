@@ -5,8 +5,8 @@
 # the rows; TestElixirCompressedNegZeroCorpus generates its Probe.schema for
 # Elixir, loads each row's base, sets -0 in the native value, and holds the
 # variable and fixed saves to the corpus's bytes and the text, cook, retaining
-# and message writers to the +0 twin. the rule that nothing skips makes a missing
-# toolchain a failure here, never a skip. Its fast twin,
+# and message writers to the +0 twin. A missing toolchain is a failure here
+# that names it, never a skip (docs/rulings.json no-skips). Its fast twin,
 # TestElixirCompressedFloatStoresAreGuarded, runs in every go test.
 #
 # The same lane runs the COMPRESSED-FLOAT RANGE WRITE corpus

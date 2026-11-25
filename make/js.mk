@@ -622,14 +622,12 @@ tables-js-fixed-form: build/retiredskips build/mustrun build/js-fixed/.stamp bui
 # OLD-REFUSES-NEW answers layout_newer before any record, on the file's hash alone
 # (§5.3).
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
-# harness SKIPS itself when build/fixedform-corpus is absent, which is right for a
-# bare `go test ./...` on a tree that never built the oracle — and is exactly how a
-# §5 regression would ride into CI green. Under this target the corpus is built
-# first and the rule that nothing skips makes the skip a FAILURE.
+# THE CORPUS IS BUILT FIRST: the suite's harness fails by name when
+# build/fixedform-corpus is absent (docs/rulings.json no-skips), so a §5
+# regression can never ride into CI green on a tree that never built it.
 .PHONY: tables-js-versioning
 tables-js-versioning: build/fixedform-corpus/.stamp
-	NODE=$(NODE) go test -count=1 ./internal/codegen/jstable/ -run 'TestJSFixedVersioning|TestJSFixedLineageLockBugFailsTheBuild'
+	NODE=$(NODE) $(GO_TEST) -count=1 ./internal/codegen/jstable/ -run 'TestJSFixedVersioning|TestJSFixedLineageLockBugFailsTheBuild'
 	@echo 'tables JS versioning: every row of §5.7 over the reference own bytes, both columns'
 
 test-js: tables-js-versioning
@@ -645,12 +643,11 @@ test-js: tables-js-versioning
 # the counts written, and a count past its declared maximum is refused with the
 # extent untouched.
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the test takes
-# node through jsNode, so a bare `go test` skips it by name, and the rule that nothing skips
-# makes a missing node a FAILURE rather than a skip.
+# The test takes node through jsNode, and a missing node is a FAILURE that
+# names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-block-build
 tables-js-block-build:
-	NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^TestBlockBuildAndCookWriteJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -v ./internal/codegen/jstable/ -run '^TestBlockBuildAndCookWriteJavaScript$$'
 	@echo 'tables JS block build: the built extent is the Go builder own bytes, and this leg reader opens it'
 
 test-js: tables-js-block-build
@@ -665,7 +662,7 @@ test-js: tables-js-block-build
 tables-js-deprecated-write:
 	@mkdir -p build/js-deprecated
 	@NODE=$(NODE) \
-		go test ./internal/codegen/jstable/ -count=1 -timeout 600s -v -run '^TestJsDeprecatedVariantNeverWritten$$' \
+		$(GO_TEST) ./internal/codegen/jstable/ -count=1 -timeout 600s -v -run '^TestJsDeprecatedVariantNeverWritten$$' \
 		> build/js-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/js-deprecated/log | head -40; exit 1; }
 	@if grep -q -- '--- SKIP' build/js-deprecated/log; then \
 		echo "tables-js-deprecated-write: a test SKIPPED"; grep -- '--- SKIP' build/js-deprecated/log; exit 1; \
@@ -678,7 +675,7 @@ test-js: tables-js-deprecated-write
 
 .PHONY: tables-js-cook-write-rows
 tables-js-cook-write-rows:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestCookWriteAnswersEveryCookWriteRowJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestCookWriteAnswersEveryCookWriteRowJavaScript$$'
 	@echo 'tables JS cook-write rows: every cook-write row in MANIFEST.txt matches the golden bytes in both byte orders'
 
 test-js: tables-js-cook-write-rows
@@ -690,7 +687,7 @@ test-js: tables-js-cook-write-rows
 # found by <F>Find). The rows' bytes themselves are tables-js-cook-write-rows.
 .PHONY: tables-js-cook-map
 tables-js-cook-map:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
 	@echo 'tables JS cook map: a Map built out of key order cooks the reference bytes, and a cooked map is found in place'
 
 test-js: tables-js-cook-map
@@ -725,10 +722,10 @@ test-js: tables-js-cook-map-extent-start-negative-control tables-js-cook-map-nod
 # Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
 # the oracle writes) by TestVariableClassBeyondCardConstructsJavaScript, and every
 # construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-variable-class
 tables-js-variable-class:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
 	@echo 'tables JS variable class: the class beyond the card constructs round-trips the oracle bytes and the rest is refused by name'
 
 test-js: tables-js-variable-class
@@ -748,10 +745,10 @@ test-js: tables-js-variable-class
 # sort: a Map built out of key order saves, measures and writes text in
 # ascending key order, with a reversed witness that drops the sort
 # (TestMapWriterSortJavaScript, docs/PORTING.md M19).
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
 	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
@@ -763,10 +760,10 @@ test-js: tables-js-variable-arms
 # fixed(W, F) / ufixed(W, F), nested `type`, `flags` and `was` renames on tables,
 # variants, arms and type fields, byte for byte against the Go oracle
 # (TestFixedClassOnTableWireJavaScript).
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-variable-fixed-class
 tables-js-variable-fixed-class:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestFixedClassOnTableWireJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestFixedClassOnTableWireJavaScript$$'
 	@echo 'tables JS variable fixed class: fixed-class tables, defaults, nested types, flags and renames round-trip the oracle bytes'
 
 test-js: tables-js-variable-fixed-class
@@ -779,13 +776,13 @@ test-js: tables-js-variable-fixed-class
 # and packs the leg's text back to wire, byte-compared
 # (TestTextDifferentialJavaScript). The control caps the emitted float32 text at
 # six significant digits in memory and must go red on the text comparison.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-text-differential tables-js-text-differential-negative-control
 tables-js-text-differential:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialJavaScript$$'
 	@echo 'tables JS text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-js-text-differential-negative-control:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialNegativeControlJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialNegativeControlJavaScript$$'
 	@echo 'tables JS text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 test-js: tables-js-text-differential
@@ -799,9 +796,9 @@ test-js: tables-js-text-differential
 # raw-bits test off in turn and the probe must red on exactly that read's rows.
 .PHONY: tables-js-finite-float tables-js-finite-float-negative-control
 tables-js-finite-float:
-	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFloat32CellsAreBitTransparent$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFloat32CellsAreBitTransparent$$'
 tables-js-finite-float-negative-control:
-	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFiniteFloatNegativeControl$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFiniteFloatNegativeControl$$'
 test-js: tables-js-finite-float
 
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
@@ -810,8 +807,8 @@ test-js: tables-js-finite-float
 # builds a valid file for the held layout and two copies — one whose layout bytes
 # differ under the same hash, one whose held layout length differs — and proves
 # both are refused layout_malformed before any record lands. It rides the
-# versioning target's pattern and the rule that nothing skips keeps a missing node a
-# FAILURE rather than a skip, but it needs no C++ oracle: its files are built in
+# versioning target's pattern (a missing node is a FAILURE that names it), but
+# it needs no C++ oracle: its files are built in
 # memory, so it does not take build/fixedform-corpus/.stamp (whose C++ serialize
 # sibling is absent on this bench).
 #
@@ -822,7 +819,7 @@ test-js: tables-js-finite-float
 # in-memory shape (no C++ oracle), so it joins the t13 name in the one -run list.
 .PHONY: tables-js-fixed-roadmap
 tables-js-fixed-roadmap:
-	NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT12GuardsWideText|TestFixedRoadmapJsT13LayoutHashCollision)$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT12GuardsWideText|TestFixedRoadmapJsT13LayoutHashCollision)$$'
 	@echo 'tables JS fixed roadmap: a second layout under a held hash is layout_malformed (js/F12)'
 
 test-js: tables-js-fixed-roadmap
@@ -832,19 +829,17 @@ test-js: tables-js-fixed-roadmap
 # TestMessageFormConformanceJavaScript (docs/SPEC-TABLES.md §3.2, §3.3 and the
 # conformance driver's message rows) and the three small regressions beside them
 # (the third, TestJsMessageInnerBoundRefused, runs the corpus's inner-message
-# rows: a bound one record down refuses the batch) take node through jsNode, which SKIPS a test when no node is on PATH — the
-# exact failure tables-js-versioning's comment above describes: `go test ./...`
-# asserts nothing there, so a regression rides into CI green. Under this target
-# the rule that nothing skips makes a missing node a FAILURE, and the target ALSO
-# fails if the -v output holds a SKIP line (a subtest skipped for any other
-# reason is a test that did not run). internal/codegen/jstable/gatecoverage_test.go
+# rows: a bound one record down refuses the batch) take node through jsNode,
+# which fails a test by name when no node is on PATH (docs/rulings.json
+# no-skips), and the target ALSO fails if the -v output holds a SKIP line (a
+# test that did not run). internal/codegen/jstable/gatecoverage_test.go
 # refuses a roadmap or message-form test no -run pattern in this file names.
 .PHONY: tables-js-message-form
 tables-js-message-form:
 	@mkdir -p build
-	@rc=0; NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMessageFormAnnounceJavaScript|TestMessageFormBatchJavaScript|TestMessageFormConformanceJavaScript|TestJsMessageSkipOfZeroWidthElementsIsBounded|TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization|TestJsMessageInnerBoundRefused)$$' > build/js-message-form.log 2>&1 || rc=$$?; \
+	@rc=0; NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestMessageFormAnnounceJavaScript|TestMessageFormBatchJavaScript|TestMessageFormConformanceJavaScript|TestJsMessageSkipOfZeroWidthElementsIsBounded|TestJsAnnounceKeepsTwoDeclaredShapesThatDeriveOneQuantization|TestJsMessageInnerBoundRefused)$$' > build/js-message-form.log 2>&1 || rc=$$?; \
 		cat build/js-message-form.log; \
-		if [ $$rc -ne 0 ]; then echo "tables-js-message-form: go test exited $$rc"; exit $$rc; fi; \
+		if [ $$rc -ne 0 ]; then echo "tables-js-message-form: the tests exited $$rc"; exit $$rc; fi; \
 		if grep -Eq '^ *--- SKIP' build/js-message-form.log; then \
 			echo "tables-js-message-form: a test SKIPPED:"; grep -E '^ *--- SKIP' build/js-message-form.log; exit 1; \
 		fi
@@ -863,9 +858,9 @@ test-js: tables-js-message-form
 .PHONY: tables-js-fixed-roadmap-all
 tables-js-fixed-roadmap-all: build/fixedform-corpus/.stamp
 	@mkdir -p build
-	@rc=0; NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
+	@rc=0; NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapT01Framing|TestFixedRoadmapT02Plans|TestFixedRoadmapJsT03PlansVersions|TestFixedRoadmapJsT04Versions|TestFixedRoadmapJsT05Evolution|TestFixedRoadmapJsT06Bounds|TestFixedRoadmapJsT07Writes|TestFixedRoadmapJsT08ConformanceComposites|TestFixedRoadmapJsT09UnionsOptionals|TestFixedRoadmapJsT15GuardChain)$$' > build/js-fixed-roadmap-all.log 2>&1 || rc=$$?; \
 		cat build/js-fixed-roadmap-all.log; \
-		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: go test exited $$rc"; exit $$rc; fi; \
+		if [ $$rc -ne 0 ]; then echo "tables-js-fixed-roadmap-all: the tests exited $$rc"; exit $$rc; fi; \
 		if grep -Eq '^ *--- SKIP' build/js-fixed-roadmap-all.log; then \
 			echo "tables-js-fixed-roadmap-all: a test SKIPPED:"; grep -E '^ *--- SKIP' build/js-fixed-roadmap-all.log; exit 1; \
 		fi
@@ -888,7 +883,7 @@ tables-js-message-form-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/js-message-form-sabotage/messagebatch.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-message-form-sabotage/overlay.json
-	@if NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
+	@if NODE=$(NODE) $(GO_TEST_RED) -overlay=build/js-message-form-sabotage/overlay.json \
 			-count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestMessageFormBatchJavaScript$$' \
 			> build/js-message-form-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the batch writer padded wrongly and the gate stayed green"; \
@@ -922,13 +917,13 @@ tables-js-fixed-roadmap-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both layout compares"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-roadmap-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-roadmap-sabotage/overlay.json
-	@if NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
+	@if NODE=$(NODE) $(GO_TEST_RED) -overlay=build/js-roadmap-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$' \
 			> build/js-roadmap-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the second layout read as the held one and the gate stayed green"; \
 		cat build/js-roadmap-sabotage/log; exit 1; \
 	fi
-	@grep -q "TestFixedRoadmapJsT13LayoutHashCollision" build/js-roadmap-sabotage/log || \
+	@grep -q -- "--- FAIL: TestFixedRoadmapJsT13LayoutHashCollision" build/js-roadmap-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the roadmap gate went red for another reason"; \
 		  cat build/js-roadmap-sabotage/log; exit 1; }
 	@echo 'tables JS fixed roadmap negative control: the second layout under a held hash reds without the byte comparison'
@@ -949,7 +944,7 @@ tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-versioning-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-versioning-sabotage/overlay.json
-	@if NODE=$(NODE) go test -overlay=build/js-versioning-sabotage/overlay.json \
+	@if NODE=$(NODE) $(GO_TEST_RED) -overlay=build/js-versioning-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
 			> build/js-versioning-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a file outside the lineage refused under the wrong name and the gate stayed green"; \
@@ -1064,7 +1059,7 @@ tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the guard-chain write moved or changed shape (plant applied zero times)"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
-	@if NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
+	@if NODE=$(NODE) $(GO_TEST_RED) -overlay=build/js-armtext-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
 			> build/js-armtext-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the versioning gate green"; \
@@ -1384,10 +1379,31 @@ REGISTRY_NA_WHY.goldens.js      := no committed table goldens; its packet golden
 # toolchain item (TOOLCHAIN_PINS_js), so toolchain-js refuses by name where it
 # is missing and this gate never silently skips.
 ESLINT ?= eslint
+JS_CLEAN_TREES := build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+# THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
+# row may set JS_CLEAN_SHARD=K/N; shard K lints the .js, .mjs and .cjs files
+# eslint would find in the trees that land in it, so N rows lint every file
+# once.
+JS_CLEAN_SHARD ?=
 .PHONY: tables-js-clean
-tables-js-clean: toolchain-js build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
-	$(ESLINT) build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+TABLES_JS_CLEAN_INPUTS := build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
+# tables-js-clean-inputs builds what tables-js-clean reads and nothing else:
+# a producer job can build it once and hand the trees to every shard.
+.PHONY: tables-js-clean-inputs
+tables-js-clean-inputs: $(TABLES_JS_CLEAN_INPUTS)
+
+tables-js-clean: toolchain-js $(TABLES_JS_CLEAN_INPUTS)
+ifeq ($(JS_CLEAN_SHARD),)
+	$(ESLINT) $(JS_CLEAN_TREES)
 	@echo "tables JavaScript: eslint clean over the generated table and packet units"
+else
+	@mkdir -p build; \
+	find $(JS_CLEAN_TREES) -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) | LC_ALL=C sort > build/js-clean-all.txt || { echo "tables-js-clean: cannot list $(JS_CLEAN_TREES)"; exit 1; }; \
+	files=$$(sh make/checks/shard-filter.sh '$(JS_CLEAN_SHARD)' build/js-clean-all.txt < build/js-clean-all.txt) || exit 1; \
+	[ -n "$$files" ] || { echo "tables-js-clean: shard $(JS_CLEAN_SHARD) holds no file of $(JS_CLEAN_TREES); nothing was linted"; exit 1; }; \
+	$(ESLINT) $$files || exit 1; \
+	echo "tables JavaScript: eslint clean over $$(printf '%s\n' $$files | wc -l | tr -d ' ') files of the generated table and packet units (shard $(JS_CLEAN_SHARD))"
+endif
 
 .PHONY: tables-js-clean-negative-control
 tables-js-clean-negative-control: toolchain-js generated/js/.stamp
@@ -1452,16 +1468,16 @@ tables-js-view: bin/schema test/js-view/view_main.mjs
 		./bin/schema generate --lang js --out build/js-view/$$dir $$source; \
 		$(NODE) test/js-view/view_main.mjs build/js-view/$$dir/*View.js > build/js-view/$$pkg.listing; \
 	done; \
-	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/js-view" SCHEMA_VIEW_LISTING_UNITS= go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR -v; \
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/js-view" SCHEMA_VIEW_LISTING_UNITS= $(GO_TEST) -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR -v; \
 	echo "JavaScript unit registry: $(words $(VIEW_CORPUS)) of $(words $(VIEW_CORPUS)) units match the independent listing"
 
 # THE VIEW'S DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.2): offsets, element
 # sizes, the vocabulary, docs and tags of the generated view, run under node
 # and held to the IR by TestUnitViewDescriptorsJavaScript.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-view-descriptors
 tables-js-view-descriptors:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestUnitViewDescriptorsJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestUnitViewDescriptorsJavaScript$$'
 	@echo 'tables JS view: every table and type described at the record layout, with its vocabulary, docs and tags'
 
 # THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16) rides the conformance
@@ -1597,10 +1613,10 @@ test-js: tables-js-json-walk tables-js-json-walk-negative-control
 # are frozen as they are made. TestJavaScriptDescriptorsAreConstants walks
 # every descriptor reachable from them and requires each frozen, and a write
 # into one to throw; its reversed witness drops the freeze and must find one
-# open. the rule that nothing skips makes a missing node a FAILURE, not a skip.
+# open. A missing node is a FAILURE that names it (docs/rulings.json no-skips).
 .PHONY: tables-js-descriptors
 tables-js-descriptors:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestJavaScriptDescriptorsAreConstants$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestJavaScriptDescriptorsAreConstants$$'
 	@echo 'tables JS descriptors: every variable descriptor is frozen after the link (M13)'
 
 test-js: tables-js-descriptors
@@ -1612,10 +1628,10 @@ test-js: tables-js-descriptors
 # None and a key past E.Max in every build. TestKeyedArrayAccessorsJavaScript
 # holds all three forms and plants the None-only guard, the Max-only guard and
 # the missing shift back, each of which must turn it red.
-# the rule that nothing skips makes a missing node a FAILURE rather than a skip.
+# A missing node is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-js-keyed
 tables-js-keyed:
-	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestKeyedArrayAccessorsJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestKeyedArrayAccessorsJavaScript$$'
 	@echo 'tables JS keyed: a keyed array indexes by key and refuses None and a key past Max on every form (M5)'
 
 test-js: tables-js-keyed
@@ -1635,7 +1651,7 @@ define js_jstable_control
 	@rm -rf build/$@ && mkdir -p build/$@
 	@go run ./tools/sabotage -name $(1) -out build/$@/source.gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
-	@if NODE=$(NODE) go test -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
+	@if NODE=$(NODE) $(GO_TEST_RED) -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
 			> build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left $(3) green"; cat build/$@/log; exit 1; \
 	fi
@@ -1822,7 +1838,7 @@ test-js: conformance-negative-control-js-absent
 # hash zero with None, and requires the real native round-trip test to catch it.
 .PHONY: tables-js-retain-hashzero tables-js-retain-hashzero-negative-control
 tables-js-retain-hashzero:
-	NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJavaScriptRetainNestedHashZero$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJavaScriptRetainNestedHashZero$$'
 
 tables-js-retain-hashzero-negative-control: tables-js-retain-hashzero
 	$(call js_jstable_control,js-retain-hashzero-none,internal/codegen/jstable/retain.go,^TestJavaScriptRetainNestedHashZero$$,./internal/codegen/jstable/,FAIL: save 0-0.bin)
@@ -1838,7 +1854,7 @@ test-js: tables-js-retain-hashzero-negative-control
 # TestMessageFormBatchJavaScript/damage, where a damaged batch delivers no body.
 .PHONY: tables-js-discard
 tables-js-discard:
-	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
 	@echo 'tables JS discard: damaged input hands back no value on every load (§4)'
 
 test-js: tables-js-discard
@@ -1863,7 +1879,7 @@ test-js: tables-js-discard-negative-control tables-js-batch-discard-negative-con
 # copy reached by a Go overlay, and requires the gate red on a cyclic wire.
 .PHONY: tables-js-cycle tables-js-cycle-negative-control
 tables-js-cycle:
-	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
 	@echo 'tables JS cycle: a cyclic wire is damage, a shared node is not (§3.1)'
 
 tables-js-cycle-negative-control:
@@ -1994,7 +2010,7 @@ test-js: packet-write-cfloat-js packet-write-cfloat-js-negative-control
 # depth 129; a private emitter copy lowered to 127 must lose the 128 witness.
 .PHONY: tables-js-retain-depth tables-js-retain-depth-negative-control
 tables-js-retain-depth:
-	NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJsRetainKeepsDepth128$$'
+	NODE=$(NODE) $(GO_TEST) -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJsRetainKeepsDepth128$$'
 
 tables-js-retain-depth-negative-control: tables-js-retain-depth
 	$(call js_jstable_control,js-retain-depth-127,internal/codegen/jstable/retain.go,^TestJsRetainKeepsDepth128$$,./internal/codegen/jstable/,depth_keyed_scalar_128: retaining save refused or lost retention)

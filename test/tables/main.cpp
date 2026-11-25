@@ -52,6 +52,31 @@
 #include "floatnan.h"
 #include "wirebuilder.h"
 
+// THE SUITE IN PARTS (make pins-wire-tables). Built as it always was, this file
+// is ONE translation unit that runs every test: every TABLES_IN_PART block is
+// compiled. Built with -DTABLES_PART=<n>, it compiles only part <n>: the RUN
+// lines of main()'s block <n> and the definitions of the tests they run, each
+// of which sits inside `#if TABLES_IN_PART( <n> )` ... `#endif //
+// TABLES_IN_PART`. (GCC at -O0 generates an unused static function anyway, so
+// a test outside its part has to be left out, not just left uncalled.) Code
+// generation is most of this file's compile, so each part carries about its
+// share and the parts compile side by side. The pin row runs the parts one
+// after another in block order, which is the order main() runs them in.
+// -Wunused-function and -Wunused-variable are off in a part and only in a part:
+// there the helpers of the other parts' tests are unused by construction, while
+// the one-unit builds (schema_test_tables and every twin of it) keep both, so a
+// test main() does not list is still refused there. A test whose guard names
+// another part than its RUN line does not compile in either part.
+// internal/ci's TestTablesSuitePartsCoverMain holds the rest: the blocks are
+// 1..TABLES_PARTS, every RUN is inside one, and every RUN'd test is guarded.
+#ifdef TABLES_PART
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#define TABLES_IN_PART( n ) ( TABLES_PART == ( n ) )
+#else
+#define TABLES_IN_PART( n ) 1
+#endif
+
 static int failures = 0;
 
 // ---- THE STEADY READ-PATH ALLOCATION AUDIT (docs/SPEC-TABLES.md "What
@@ -148,6 +173,7 @@ static void check_exact_capacity( const T & value,
 
 // ---- round trip: the corpus root, every kind populated ----
 
+#if TABLES_IN_PART( 1 )
 static void test_round_trip()
 {
     tabledemo::RootConfig root;
@@ -239,9 +265,11 @@ static void test_round_trip()
     // the exact-capacity guarantee holds for the fully-populated root
     check_exact_capacity( root, tabledemo::RootConfigMeasure, tabledemo::RootConfigSave );
 }
+#endif // TABLES_IN_PART
 
 // ---- exact capacity: measure's answer IS the buffer size, corpus-wide ----
 
+#if TABLES_IN_PART( 1 )
 static void test_exact_capacity()
 {
     // the reviewer's repro shape: non-default fields around an ALL-DEFAULT
@@ -295,6 +323,7 @@ static void test_exact_capacity()
     v2.inner.gain = 2.0f;
     check_exact_capacity( v2, tblv2::CfgMeasure, tblv2::CfgSave );
 }
+#endif // TABLES_IN_PART
 
 // ---- storage invariants: a count or length past its storage is the caller's
 // ---- bug, caught by the debug assert and by nothing in a release build
@@ -326,6 +355,7 @@ template <typename Write> static void expect_storage_assert( const char * what, 
 }
 #endif
 
+#if TABLES_IN_PART( 1 )
 static void test_storage_invariants()
 {
     static uint8_t buffer[4096];
@@ -367,10 +397,12 @@ static void test_storage_invariants()
     CHECK( tabledemo::WeaponConfigMeasure( weapon ) == -1 );
     CHECK( tabledemo::WeaponConfigSave( weapon, buffer, sizeof( buffer ) ) == -1 );
 }
+#endif // TABLES_IN_PART
 
 // ---- bounded elements: a count the body length cannot cover never reads
 // ---- the following fields' bytes (docs/SPEC-TABLES.md: skipped, NEVER misdecoded)
 
+#if TABLES_IN_PART( 1 )
 static void test_bounded_elements()
 {
     const tblv1::TableFieldInfo * items = v1_field( tblv1::CfgTableType(), "items" );
@@ -419,9 +451,11 @@ static void test_bounded_elements()
     CHECK( !tblv1::CfgLoad( out2, wire, n, &report2 ) );
     CHECK( report2.damaged );
 }
+#endif // TABLES_IN_PART
 
 // ---- all-default: everything elides, decode restores every default ----
 
+#if TABLES_IN_PART( 1 )
 static void test_all_default()
 {
     tabledemo::WeaponConfig weapon;
@@ -437,6 +471,7 @@ static void test_all_default()
     CHECK( out.damage == 21.0f && out.speed == 500.0f && out.penetration == 1 );
     CHECK( !report.damaged && report.unknown == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- guarded fields stay off the wire when the guard says so ----
 
@@ -449,6 +484,7 @@ static void test_all_default()
 // by pointer, a builder on the way in — which is the surface every guarded
 // table in this corpus now has, and the point of keeping one here.
 
+#if TABLES_IN_PART( 1 )
 static void test_guard()
 {
     tabledemo::Patrol p;
@@ -470,9 +506,11 @@ static void test_guard()
     CHECK( back->has_target == false );
     CHECK( back->note_length == 0 ); // the taken side was default, so it elided too
 }
+#endif // TABLES_IN_PART
 
 // ---- evolution, both directions (docs/SPEC-TABLES.md: any reader x any data) ----
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_old_reader_new_data()
 {
     tblv2::Cfg v2;
@@ -515,7 +553,9 @@ static void test_evolution_old_reader_new_data()
     CHECK( out.inner.factor == 9.5f );
     CHECK( out.items_count == 1 && out.items[0] == 10 );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_new_reader_old_data()
 {
     tblv1::Cfg v1;
@@ -551,11 +591,13 @@ static void test_evolution_new_reader_old_data()
     CHECK( out.inner.factor == 1.25f );
     CHECK( out.inner.gain == 1.0f );    // nested added field defaults
 }
+#endif // TABLES_IN_PART
 
 // ---- a variant inserted IN THE MIDDLE: identity is the NAME, not the ordinal
 // ---- (docs/SPEC-TABLES.md §5). V2 inserts Silver between Bronze and Gold, so Gold
 // ---- slides from ordinal 2 to 3 — and every stored Gold still reads as Gold.
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_enum_insert_old_data()
 {
     tblv1::Cfg v1;
@@ -599,7 +641,9 @@ static void test_evolution_enum_insert_old_data()
     CHECK( out2.podium[1] == tblv2::Grade::Gold );
     CHECK( out2.podium[2] == tblv2::Grade::None );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_enum_insert_new_data()
 {
     tblv2::Cfg v2;
@@ -640,7 +684,9 @@ static void test_evolution_enum_insert_new_data()
     CHECK( out3.grades[0] == tblv1::Grade::Gold );
     CHECK( out3.grades[1] == tblv1::Grade::None );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_union_insert_old_data()
 {
     tblv1::Cfg v1;
@@ -664,7 +710,9 @@ static void test_evolution_union_insert_old_data()
     CHECK( out.effect.type == tblv2::EffectType::Ward ); // NOT hex, which holds tag 2 in V2
     CHECK( out.effect.ward.charge == 7.5f );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_union_insert_new_data()
 {
     tblv2::Cfg v2;
@@ -695,10 +743,12 @@ static void test_evolution_union_insert_new_data()
     CHECK( !report2.damaged && report2.unknown == 0 );
     CHECK( out2.effect.type == tblv1::EffectType::Ward && out2.effect.ward.charge == -2.0f );
 }
+#endif // TABLES_IN_PART
 
 // Repeated fields refuse even when the second value names an unknown arm or
 // variant. A separate single occurrence checks lawful unknown-value evolution.
 
+#if TABLES_IN_PART( 1 )
 static void test_repeated_id_unnameable_variant()
 {
     const tblv1::TableFieldInfo * effect = v1_field( tblv1::CfgTableType(), "effect" );
@@ -752,12 +802,14 @@ static void test_repeated_id_unnameable_variant()
     CHECK( out.effect.type == tblv1::EffectType::None );
     CHECK( out.grade == tblv1::Grade::None );
 }
+#endif // TABLES_IN_PART
 
 // ---- an array's BOUND is not wire identity (docs/SPEC-TABLES.md §4). V2 shrinks
 // ---- MaxSlots 6 -> 3, and tally is sized [Grade.Max + 1], which GROWS 3 -> 4
 // ---- when Grade gains a variant. The storage struct changes size; the table
 // ---- on the wire does not, because identity is the field name hash and kind.
 
+#if TABLES_IN_PART( 1 )
 static void test_evolution_array_bounds()
 {
     // WRITER'S BOUND LARGER: the count exceeds the reader's, so the strict
@@ -820,10 +872,12 @@ static void test_evolution_array_bounds()
     CHECK( out2.slots[0] == 200 && out2.slots[2] == 202 );
     CHECK( out2.slots[3] == 0 && out2.slots[5] == 0 ); // the unwritten tail
 }
+#endif // TABLES_IN_PART
 
 // a value no variant names has no wire identity: measure and save refuse it,
 // exactly as they refuse an out-of-range union tag — in a scalar field, and in
 // EITHER array shape, where the check runs per element
+#if TABLES_IN_PART( 1 )
 static void test_unnameable_enum_refused()
 {
     uint8_t buffer[256];
@@ -849,9 +903,11 @@ static void test_unnameable_enum_refused()
     CHECK( tblv1::CfgMeasure( fixed ) == -1 );
     CHECK( tblv1::CfgSave( fixed, buffer, sizeof( buffer ) ) == -1 );
 }
+#endif // TABLES_IN_PART
 
 // the READ side of an enum array: an element id this build cannot name lands
 // on None and counts, and its neighbours decode normally
+#if TABLES_IN_PART( 1 )
 static void test_unnameable_enum_element_read()
 {
     const tblv1::TableFieldInfo * grades = v1_field( tblv1::CfgTableType(), "grades" );
@@ -882,11 +938,13 @@ static void test_unnameable_enum_element_read()
     CHECK( out.grades[1] == tblv1::Grade::None );   // never a neighbour's variant
     CHECK( out.grades[2] == tblv1::Grade::Bronze ); // and the element after it decodes
 }
+#endif // TABLES_IN_PART
 
 // ---- FLAGS STAY POSITIONAL: a mask is a set of bits, and a bit has no cheap
 // ---- name-identified form. It rides as its raw uint64 storage, so variants
 // ---- are APPENDED AT THE END only (docs/SPEC-TABLES.md §4, §5).
 
+#if TABLES_IN_PART( 1 )
 static void test_flags_are_positional()
 {
     const tabledemo::TableFieldInfo * perks = demo_field( tabledemo::LoadoutConfigTableType(), "perks" );
@@ -935,9 +993,11 @@ static void test_flags_are_positional()
     }
     CHECK( found );
 }
+#endif // TABLES_IN_PART
 
 // ---- extents past 65535: u32 lengths and u32 counts (docs/SPEC-TABLES.md §3) ----
 
+#if TABLES_IN_PART( 1 )
 static void test_wide_extents()
 {
     static tabledemo::WideBlob blob;
@@ -994,10 +1054,12 @@ static void test_wide_extents()
 
     free( buffer );
 }
+#endif // TABLES_IN_PART
 
 // ---- out of range: a hostile or stale numeric past its bound refuses the
 // ---- whole load (docs/SPEC-TABLES.md §4); it is never clamped and kept ----
 
+#if TABLES_IN_PART( 1 )
 static void test_clamping()
 {
     // a wider writer sent a = 2000; v1's a is [0, 1000] — crafted from the
@@ -1056,6 +1118,7 @@ static void test_clamping()
     CHECK( !tblv1::CfgLoad( out4, wire4, n, &report4 ) );
     CHECK( report4.refuse_reason == tblv1::out_of_range && out4.name_length == 0 && out4.name[0] == 0 );
 }
+#endif // TABLES_IN_PART
 
 // A LENGTH IS A 64-BIT NUMBER (docs/SPEC-TABLES.md §3), and the clamp takes it
 // as one: the caller turns the answer straight back into the size of the
@@ -1064,6 +1127,7 @@ static void test_clamping()
 // holding. Read as a signed count, 0xFFFFFFFFFFFFFFFF is -1, -1 is under every
 // bound, and the copy runs at SIZE_MAX.
 
+#if TABLES_IN_PART( 1 )
 static void test_text_clamp_is_bounded()
 {
     // The forged-length clamp reads text[32] to choose the UTF-8 boundary.
@@ -1082,9 +1146,11 @@ static void test_text_clamp_is_bounded()
     if ( keep > 32 ) { keep = (uint64_t) tabledemo::TableUtf8Clamp( text, forged, 32 ); }
     CHECK( keep <= 32 );
 }
+#endif // TABLES_IN_PART
 
 // ---- malformed framing: decode stops, partial result kept, flag raised ----
 
+#if TABLES_IN_PART( 1 )
 static void test_malformed()
 {
     tblv1::TableReport report;
@@ -1149,9 +1215,11 @@ static void test_malformed()
     CHECK( !tblv1::CfgLoad( out3, cut, cut_bytes, &report3 ) );
     CHECK( report3.damaged );
 }
+#endif // TABLES_IN_PART
 
 // ---- reflection: walk, identify, and read fields with no schema files ----
 
+#if TABLES_IN_PART( 1 )
 static void test_reflection()
 {
     const tabledemo::TableTypeInfo * weapon = tabledemo::WeaponConfigTableType();
@@ -1294,9 +1362,11 @@ static void test_reflection()
     memcpy( (void *) &read_back, (const uint8_t *) &p + exp->offset, sizeof( read_back ) );
     CHECK( read_back == 777 );
 }
+#endif // TABLES_IN_PART
 
 // ---- cross-file nesting: ArchiveConfig (Nested.schema) holds RootConfig ----
 
+#if TABLES_IN_PART( 1 )
 static void test_cross_file()
 {
     static tabledemo::ArchiveConfig archive; // static: the value is large
@@ -1316,9 +1386,11 @@ static void test_cross_file()
     CHECK( out.root.weapons_count == 1 && out.root.weapons[0].homing );
     CHECK( out.count == 5 );
 }
+#endif // TABLES_IN_PART
 
 // ---- parallel generation: measure subtables, prefix-sum, scatter-write ----
 
+#if TABLES_IN_PART( 1 )
 static void test_parallel_shape()
 {
     // the go-wide pattern from docs/USAGE.md, single-threaded here for
@@ -1355,6 +1427,7 @@ static void test_parallel_shape()
         offset += sizes[i];
     }
 }
+#endif // TABLES_IN_PART
 
 
 // ============================================================================
@@ -1460,6 +1533,7 @@ static void check_scene( const graphdemo::Scene * scene )
 
 // ---- the lifecycle: build -> Lock -> the region; wire out and back ----
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_lifecycle()
 {
     graphdemo::SceneBuilder builder;
@@ -1537,9 +1611,11 @@ static void test_pointer_lifecycle()
 
     free( region );
 }
+#endif // TABLES_IN_PART
 
 // ---- Lock's byte layout is deterministic: same input, same region ----
 
+#if TABLES_IN_PART( 1 )
 static void test_lock_layout_stable()
 {
     graphdemo::SceneBuilder first;
@@ -1553,6 +1629,7 @@ static void test_lock_layout_stable()
     CHECK( first.RegionBytes() == second.RegionBytes() );
     CHECK( memcmp( first.Region(), second.Region(), (size_t) first.RegionBytes() ) == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- a SHARED node is packed ONCE, and identity survives Lock ----
 //
@@ -1569,6 +1646,7 @@ static int64_t scene_bytes() { return graphdemo::TableAlignUp64( (int64_t) sizeo
 static int64_t list_node_bytes() { return graphdemo::TableAlignUp64( (int64_t) sizeof( graphdemo::ListNode ) ); }
 static int64_t tree_node_bytes() { return graphdemo::TableAlignUp64( (int64_t) sizeof( graphdemo::TreeNode ) ); }
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_shared_node()
 {
     // TWO REFERENCES, ONE NODE — the second reference is read from the root
@@ -1700,6 +1778,7 @@ static void test_pointer_shared_node()
         free( region );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- a data cycle is an ERROR, never a hang ----
 //
@@ -1708,6 +1787,7 @@ static void test_pointer_shared_node()
 // cycle. The map is what makes a shared node one node, and the same one bit
 // is what tells a shared node apart from a cycle.
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_cycle_refused()
 {
     // a node pointing at itself
@@ -1744,6 +1824,7 @@ static void test_pointer_cycle_refused()
         CHECK( builder.AsConst() == NULL ); // nothing partial is published
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- A CHAIN'S LENGTH IS NOT A DEPTH (docs/SPEC-TABLES.md §3.1) ----
 //
@@ -1753,6 +1834,7 @@ static void test_pointer_cycle_refused()
 // case that could not be saved at all under the nested form, where 129 links
 // were already too many.
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_long_chain()
 {
     const int count = 260;
@@ -1804,9 +1886,11 @@ static void test_pointer_long_chain()
     free( region );
     free( wire );
 }
+#endif // TABLES_IN_PART
 
 // ---- the arena grows without invalidating anything ----
 
+#if TABLES_IN_PART( 1 )
 static void test_builder_grow()
 {
     graphdemo::SceneBuilder builder;
@@ -1834,9 +1918,11 @@ static void test_builder_grow()
     root->head = first;
     CHECK( graphdemo::SceneMeasure( builder ) > 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- many workers, one arena: allocation is lock-free by ownership ----
 
+#if TABLES_IN_PART( 1 )
 static void test_builder_workers()
 {
     // deterministic first: four workers, interleaved, single-threaded
@@ -1903,9 +1989,11 @@ static void test_builder_workers()
         CHECK( node != NULL && node->value == t );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- evolution across a pointer field, both directions ----
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_evolution_old_reader_new_data()
 {
     // P2 writes a chain of two Links through a POINTER field
@@ -1936,7 +2024,9 @@ static void test_pointer_evolution_old_reader_new_data()
     CHECK( out.link.value == 0 );      // the declared default: nothing was decoded
     CHECK( out.link.tag_length == 0 );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_evolution_new_reader_old_data()
 {
     // P1 writes a by-value nesting
@@ -1976,9 +2066,11 @@ static void test_pointer_evolution_new_reader_old_data()
     CHECK( builder.Lock() );
     CHECK( tblp2::LinkAt( builder.AsConst()->link )->value == 88 );
 }
+#endif // TABLES_IN_PART
 
 // ---- a null pointer elides; a non-null one rides even when all-default ----
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_null_and_empty()
 {
     graphdemo::SceneBuilder empty;
@@ -2008,9 +2100,11 @@ static void test_pointer_null_and_empty()
     CHECK( graphdemo::ListNodeAt( loaded->head )->value == 0 );
     free( region );
 }
+#endif // TABLES_IN_PART
 
 // ---- reflection: the derived mode and the pointer kind are visible ----
 
+#if TABLES_IN_PART( 1 )
 static void test_pointer_reflection()
 {
     const graphdemo::TableTypeInfo * scene = graphdemo::SceneTableType();
@@ -2062,6 +2156,7 @@ static void test_pointer_reflection()
     // compiler emitted — the pointer field's offset is what a cook writes at
     CHECK( offsetof( graphdemo::Layer, head ) % 8 == 0 );
 }
+#endif // TABLES_IN_PART
 
 
 // ============================================================================
@@ -2087,6 +2182,7 @@ static void dirty_the_heap( int pattern )
     for ( int i = 0; i < 6; i++ ) { free( blocks[i] ); }
 }
 
+#if TABLES_IN_PART( 1 )
 static void test_lock_deterministic_on_dirty_heap()
 {
     dirty_the_heap( 0xA5 );
@@ -2114,6 +2210,7 @@ static void test_lock_deterministic_on_dirty_heap()
     }
     free( saved );
 }
+#endif // TABLES_IN_PART
 
 // ---- C1: the four walks agree about what depth costs ----
 //
@@ -2122,6 +2219,7 @@ static void test_lock_deterministic_on_dirty_heap()
 // nesting and pack did not, and a structure reachable through Scene::ground was
 // lockable but unsaveable.
 
+#if TABLES_IN_PART( 1 )
 static void test_depth_agrees_through_by_value_nesting()
 {
     graphdemo::SceneBuilder builder;
@@ -2162,10 +2260,12 @@ static void test_depth_agrees_through_by_value_nesting()
     free( wire );
     free( region );
 }
+#endif // TABLES_IN_PART
 
 
 // ---- C3: the reflection surface is immutable constant data ----
 
+#if TABLES_IN_PART( 1 )
 static void test_descriptors_are_constant()
 {
     // no lazy link, so a self-referential target is already resolved on the
@@ -2187,6 +2287,7 @@ static void test_descriptors_are_constant()
     }
     for ( auto & reader : readers ) { reader.join(); }
 }
+#endif // TABLES_IN_PART
 
 
 // ---- R1: a multi-file pointered unit, across every kind of member ----
@@ -2199,6 +2300,7 @@ static void test_descriptors_are_constant()
 // not compile. Colour is native-mapped as well, so the walk is reached through
 // a derived-to-base conversion.
 
+#if TABLES_IN_PART( 1 )
 static void test_cross_file_pointer_unit()
 {
     graphdemo::AlbumBuilder builder;
@@ -2267,10 +2369,12 @@ static void test_cross_file_pointer_unit()
     CHECK( graphdemo::TallyAt( graphdemo::MarkerAt( loaded->pin )->note )->hits == 9 );
     free( region );
 }
+#endif // TABLES_IN_PART
 
 // ---- optional fields: `?T` (docs/SPEC-TABLES.md §2.3) ----
 // ---- PRESENCE decides whether the field rides, never content. ----
 
+#if TABLES_IN_PART( 1 )
 static void test_optional_round_trip()
 {
     uint8_t wire[1024];
@@ -2337,6 +2441,7 @@ static void test_optional_round_trip()
     check_exact_capacity( empty_present, tblv1::CfgMeasure, tblv1::CfgSave );
     check_exact_capacity( set, tblv1::CfgMeasure, tblv1::CfgSave );
 }
+#endif // TABLES_IN_PART
 
 // ---- T and ?T are ONE framing; *T is its OWN (docs/SPEC-TABLES.md §2.3,
 // ---- §3.1). P1 nests by value, P3 marks optional, and those two are wire
@@ -2346,6 +2451,7 @@ static void test_optional_round_trip()
 // ---- reader reports a kind mismatch; the legacy fixed-class entry can reject
 // ---- whole-file framing first, as the separate assertion below records.
 
+#if TABLES_IN_PART( 1 )
 static void test_optional_three_way_evolution()
 {
     uint8_t wire[512];
@@ -2473,9 +2579,11 @@ static void test_optional_three_way_evolution()
     CHECK( r6.refuse_reason == tblp2::kind_mismatch );
     free( region );
 }
+#endif // TABLES_IN_PART
 
 // ---- enum-keyed arrays: `[E]T` (docs/SPEC-TABLES.md §2.4, §3.2) ----
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_round_trip()
 {
     tabledemo::KeyedConfig cfg;
@@ -2529,6 +2637,7 @@ static void test_keyed_round_trip()
     tabledemo::KeyedConfig empty;
     CHECK( tabledemo::KeyedConfigMeasure( empty ) == empty_wire_bytes );
 }
+#endif // TABLES_IN_PART
 
 // ---- iteration over the VALID slots (docs/SPEC-TABLES.md §2.4) ----
 //
@@ -2559,6 +2668,7 @@ static int32_t iterate_and_check_keys( const Keyed & keyed )
     return seen;
 }
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_iteration()
 {
     tabledemo::KeyedConfig cfg;
@@ -2663,6 +2773,7 @@ static void test_keyed_iteration()
         CHECK( config.spawn_count == 9 + (int32_t) team );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- operator[] REFUSES None, and in every build (docs/SPEC-TABLES.md §2.4) ----
 //
@@ -2673,6 +2784,7 @@ static void test_keyed_iteration()
 // from an assert: `make tables-keyed-none-refusal-ndebug` is the half that
 // can, and its own negative control proves that gate has teeth.
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_none_index_refused()
 {
     fflush( stdout );
@@ -2698,6 +2810,7 @@ static void test_keyed_none_index_refused()
         failures++;
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- and operator[] REFUSES A KEY PAST Max, the same way (docs/SPEC-TABLES.md §2.4) ----
 //
@@ -2707,6 +2820,7 @@ static void test_keyed_none_index_refused()
 // `make tables-keyed-max-refusal-ndebug` is the half that proves NDEBUG does
 // not remove it, and its own negative control proves that gate has teeth.
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_past_max_index_refused()
 {
     fflush( stdout );
@@ -2733,11 +2847,13 @@ static void test_keyed_past_max_index_refused()
         failures++;
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the edit that breaks a positional slot array: V2 REMOVES Gamma and
 // ---- INSERTS Omega in the middle, so Beta slides from ordinal 2 to 3. Every
 // ---- surviving slot lands by NAME, in both directions.
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_evolution_old_data()
 {
     tblv1::Cfg v1;
@@ -2776,7 +2892,9 @@ static void test_keyed_evolution_old_data()
     CHECK( out.ranks[tblv2::Slot::Beta] == tblv2::Grade::Gold );
     CHECK( out.ranks[tblv2::Slot::Omega] == tblv2::Grade::None );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_evolution_new_data()
 {
     tblv2::Cfg v2;
@@ -2803,6 +2921,7 @@ static void test_keyed_evolution_new_data()
     CHECK( out.bank[tblv1::Slot::Delta].power == 4 );
     CHECK( out.tokens[tblv1::Slot::Beta] == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- a POSITIONAL array and a KEYED one are different KINDS, so the edit
 // ---- between them is reported, never misdecoded. V1 spells `ledger` as
@@ -2810,6 +2929,7 @@ static void test_keyed_evolution_new_data()
 // ---- incompatible bodies under one field id, and the kind byte is what keeps
 // ---- them apart (docs/SPEC-TABLES.md §3.2).
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_versus_positional_is_a_kind_mismatch()
 {
     uint8_t wire[1024];
@@ -2851,10 +2971,12 @@ static void test_keyed_versus_positional_is_a_kind_mismatch()
         CHECK( positional_out.ledger[i] == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- a stored key of 0 is DAMAGE, not an unknown name: None is the null key
 // ---- and it keys no slot (docs/SPEC-TABLES.md §3.2).
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_none_key_is_malformed()
 {
     const tblv1::TableFieldInfo * tokens = v1_field( tblv1::CfgTableType(), "tokens" );
@@ -2889,10 +3011,12 @@ static void test_keyed_none_key_is_malformed()
     CHECK( !tblv1::CfgLoad( out, wire, n, &report ) );
     CHECK( report.damaged );
 }
+#endif // TABLES_IN_PART
 
 // A repeated enum-array field refuses. A separate single occurrence checks
 // that unknown elements replace the caller's previous stored variants.
 
+#if TABLES_IN_PART( 1 )
 static void test_repeated_id_unnameable_enum_element()
 {
     const tblv1::TableFieldInfo * grades = v1_field( tblv1::CfgTableType(), "grades" );
@@ -2948,11 +3072,13 @@ static void test_repeated_id_unnameable_enum_element()
     CHECK( out.grades[0] == tblv1::Grade::None );
     CHECK( out.grades[1] == tblv1::Grade::None );
 }
+#endif // TABLES_IN_PART
 
 // ---- the two constructs in the VARIABLE class: a keyed array of variable
 // ---- tables, and an optional beside them. Every pointer-era walk — the
 // ---- region pre-pass, Pack — has to know both framings.
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_and_optional_in_a_variable_table()
 {
     graphdemo::DepotBuilder builder;
@@ -3009,6 +3135,7 @@ static void test_keyed_and_optional_in_a_variable_table()
 
     free( region );
 }
+#endif // TABLES_IN_PART
 
 // ---- the same ground, RANDOMISED. One pinned shape proves the walks agree
 // ---- on one shape; this sweeps which slots ride, how long each slot's chain
@@ -3026,6 +3153,7 @@ static uint32_t oracle_rand( uint32_t & state )
     return state;
 }
 
+#if TABLES_IN_PART( 1 )
 static void test_keyed_variable_oracle()
 {
     static uint8_t wire[16384];
@@ -3116,9 +3244,11 @@ static void test_keyed_variable_oracle()
         if ( failures > before ) return; // one shape is enough to name; do not print 30000
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- reflection: an optional's presence companion, and a keyed array's key
 
+#if TABLES_IN_PART( 1 )
 static void test_optional_and_keyed_reflection()
 {
     const tblv1::TableTypeInfo * cfg = tblv1::CfgTableType();
@@ -3165,6 +3295,7 @@ static void test_optional_and_keyed_reflection()
     CHECK( tally != NULL && tally->is_array );
     CHECK( tally->key_type_name == NULL && tally->key_name == NULL && tally->key_id == NULL );
 }
+#endif // TABLES_IN_PART
 
 // ---- the SHARED GOLDEN WIRE (docs/SPEC-TABLES.md §3, the cross-language gate) ----
 //
@@ -3309,6 +3440,7 @@ static void reload_pointer_golden( const char * name )
 // Every file in testdata/wire/tables, read by the type that wrote it. T and ?T
 // are ONE FRAMING, so the by-value and optional goldens read each other; *T is
 // its own, so the two pointer goldens read through their own reader (§3.1).
+#if TABLES_IN_PART( 1 )
 static void test_golden_reload()
 {
     reload_table_golden( "root_full", tabledemo::RootConfigLoad, tabledemo::RootConfigSave );
@@ -3333,6 +3465,7 @@ static void test_golden_reload()
     reload_table_golden( "chain_optional_empty", tblp3::ChainLoad, tblp3::ChainSave );
     reload_pointer_golden( "chain_pointer_empty" );
 }
+#endif // TABLES_IN_PART
 
 // The pinned instances, built here and mirrored VALUE FOR VALUE by every port
 // (test/cs-tables/src/Program.cs is the C# twin). Keep the two in step: a
@@ -3507,6 +3640,7 @@ static void build_golden_v2( tblv2::Cfg & cfg )
     cfg.effect.hex.level = 6;
 }
 
+#if TABLES_IN_PART( 1 )
 static void test_golden_wire()
 {
     static uint8_t buffer[1u << 20];
@@ -3606,6 +3740,7 @@ static void test_golden_wire()
         CHECK( tblf1::FloatsSave( f, buffer, sizeof( buffer ) ) == -1 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the TEXT form (docs/SPEC-TABLES.md §16) ------------------------------------
 //
@@ -3729,6 +3864,7 @@ static tabledemo::RootConfig json_corpus_root()
 // ---- every table in tables/examples round-trips ToJson -> FromJson -> Save,
 // ---- byte-identical to the Save of the instance that went out
 
+#if TABLES_IN_PART( 2 )
 static void test_json_corpus_round_trip()
 {
     tabledemo::RootConfig root = json_corpus_root();
@@ -3791,9 +3927,11 @@ static void test_json_corpus_round_trip()
         CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the dialect: what the walk accepts, and what it will not guess at ----
 
+#if TABLES_IN_PART( 2 )
 static void test_json_dialect()
 {
     tabledemo::Attachment value;
@@ -3947,9 +4085,11 @@ static void test_json_dialect()
     CHECK( tabledemo::ProfileConfigFromJson( profile, escapes, (int64_t) strlen( escapes ), &report ) );
     CHECK( strcmp( profile.name, "a\"b\\c\nd\xc3\xa9""e\xf0\x9f\x98\x80" ) == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- hostile: the wrong JSON type at every kind, and every width overflowed
 
+#if TABLES_IN_PART( 2 )
 static void test_json_hostile_kinds()
 {
     // a key present with the WRONG JSON TYPE is a kind mismatch, never
@@ -4017,7 +4157,9 @@ static void test_json_hostile_kinds()
         CHECK( report.refuse_reason == tabledemo::kind_mismatch && !report.damaged );
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_hostile_overflow()
 {
     // every integer width, over its ceiling and under its floor: REFUSED as
@@ -4136,7 +4278,9 @@ static void test_json_hostile_overflow()
         CHECK( value.slot == tabledemo::Attachment().slot && report.refuse_reason == tabledemo::out_of_range );
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_hostile_extents()
 {
     // a string longer than the field REFUSES the whole read: the storage
@@ -4213,7 +4357,9 @@ static void test_json_hostile_extents()
         CHECK( value.icon_length == 0 && report.refuse_reason == tabledemo::out_of_range );
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_hostile_unions()
 {
     tabledemo::WeaponConfig value;
@@ -4250,7 +4396,9 @@ static void test_json_hostile_unions()
     CHECK( value.effect.type == tabledemo::EffectType::None );
     CHECK( repeat.refuse_reason == tabledemo::malformed );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_hostile_framing()
 {
     tabledemo::Attachment value;
@@ -4317,10 +4465,12 @@ static void test_json_hostile_framing()
     // does not
     CHECK( !tabledemo::AttachmentFromJson( value, "{", 1, NULL ) );
 }
+#endif // TABLES_IN_PART
 
 // ---- the writer refuses what the text cannot name, exactly as measure and
 // ---- save refuse what the wire cannot name (docs/SPEC-TABLES.md §5)
 
+#if TABLES_IN_PART( 2 )
 static void test_json_writer_refusals()
 {
     {
@@ -4348,12 +4498,14 @@ static void test_json_writer_refusals()
         CHECK( tabledemo::WeaponConfigToJsonMeasure( value ) == -1 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- guards: the wire's elision, carried into the text (docs/SPEC-TABLES.md §16.2)
 
 // Again on `Patrol`: the guarded corpus is the VARIABLE class's, because a
 // guard disqualifies a `fixed table` (§2.2, §3.4).
 
+#if TABLES_IN_PART( 2 )
 static void test_json_guards()
 {
     tabledemo::Patrol off;
@@ -4396,9 +4548,11 @@ static void test_json_guards()
     tabledemo::Patrol fresh;
     CHECK( wrote == tabledemo::PatrolMeasure( &fresh ) ); // the empty body
 }
+#endif // TABLES_IN_PART
 
 // ---- the json = "key" attribute: the text's vocabulary, not the wire's ----
 
+#if TABLES_IN_PART( 2 )
 static void test_json_key_attribute()
 {
     const tabledemo::TableFieldInfo * f = demo_field( tabledemo::WeaponConfigTableType(), "damage" );
@@ -4440,10 +4594,12 @@ static void test_json_key_attribute()
     int64_t nb = jsonkeys::ShipSave( back, b, sizeof( b ) );
     CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- the tokenizer under a mutation fuzz: no input, however malformed,
 // ---- may crash, hang, or read past the text it was handed
 
+#if TABLES_IN_PART( 4 )
 static void test_json_fuzz_tokenizer()
 {
     // one seed corpus, mutated deterministically: the point is not coverage
@@ -4510,6 +4666,7 @@ static void test_json_fuzz_tokenizer()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the PINNED TEXT: what ToJson actually spells ------------------------
 //
@@ -4522,6 +4679,7 @@ static void test_json_fuzz_tokenizer()
 // and the pretty-printed shape — is pinned to the page rather than to the
 // code's own opinion of itself.
 
+#if TABLES_IN_PART( 2 )
 static void test_json_pinned_text()
 {
     tabledemo::LoadoutConfig loadout;
@@ -4670,10 +4828,12 @@ static void test_json_pinned_text()
         CHECK( !report.damaged );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- numbers: JSON has ONE number type, and no value the field cannot hold
 // ---- ever reaches storage (docs/SPEC-TABLES.md §16.2)
 
+#if TABLES_IN_PART( 2 )
 static void test_json_number_grammar()
 {
     // JSON's number production, and nothing else. A typo in an authoring file
@@ -4731,7 +4891,9 @@ static void test_json_number_grammar()
         }
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_integral_spellings()
 {
     // Integers use canonical decimal digits (§16.2); mathematical equality
@@ -4809,7 +4971,9 @@ static void test_json_integral_spellings()
         CHECK( value.epoch == fresh.epoch && report.refuse_reason == tabledemo::out_of_range );
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_no_infinity_reaches_storage()
 {
     // A magnitude the field's format cannot hold never lands: storing the
@@ -4868,7 +5032,9 @@ static void test_json_no_infinity_reaches_storage()
         CHECK( tabledemo::ProfileConfigToJsonMeasure( value ) > 0 );
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_duplicate_arrays_refuse()
 {
     // A REPEATED KEY REFUSES THE WHOLE READ (docs/SPEC-TABLES.md §16.2), an
@@ -4923,7 +5089,9 @@ static void test_json_duplicate_arrays_refuse()
         CHECK( report.refuse_reason == tabledemo::malformed );
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_null_is_a_kind_mismatch()
 {
     // null is a JSON value with no field kind to land in — there is no
@@ -4963,6 +5131,7 @@ static void test_json_null_is_a_kind_mismatch()
         CHECK( value.perks == 0 && report.refuse_reason == tabledemo::kind_mismatch );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- composed guards: nested and negated branches ------------------------
 //
@@ -4970,6 +5139,7 @@ static void test_json_null_is_a_kind_mismatch()
 // TableJsonGuardHolds actually has to parse — "active && !has_target" — was
 // never reached by this suite. Patrol reaches all four states.
 
+#if TABLES_IN_PART( 2 )
 static void test_json_nested_guards()
 {
     struct { bool active; bool has_target; } states[] = {
@@ -5074,6 +5244,7 @@ static void test_json_nested_guards()
         CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the two constructs #265 added, in the text form --------------------
 //
@@ -5097,6 +5268,7 @@ static tabledemo::KeyedConfig json_keyed_instance()
     return cfg;
 }
 
+#if TABLES_IN_PART( 2 )
 static void test_json_keyed_and_optional_round_trip()
 {
     tabledemo::KeyedConfig cfg = json_keyed_instance();
@@ -5119,7 +5291,9 @@ static void test_json_keyed_and_optional_round_trip()
     tabledemo::KeyedConfig empty;
     JSON_ROUND_TRIP( tabledemo, KeyedConfig, empty );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_optional_presence()
 {
     // an absent optional writes NO KEY: nothing else would read back absent
@@ -5204,7 +5378,9 @@ static void test_json_optional_presence()
         CHECK( na != nb ); // presence is the payload, not content
     }
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 2 )
 static void test_json_keyed_arrays()
 {
     // an absent key keeps that slot's defaults; the others still land
@@ -5303,9 +5479,11 @@ static void test_json_keyed_arrays()
         CHECK( report.refuse_reason == tabledemo::out_of_range );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the pinned texts for both constructs -------------------------------
 
+#if TABLES_IN_PART( 2 )
 static void test_json_pinned_keyed_and_optional()
 {
     // an optional PRESENT, and the object it writes
@@ -5381,6 +5559,7 @@ static void test_json_pinned_keyed_and_optional()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the SEAM instances: `?T` (§2.3) and `[E]T` (§2.4) ----
 //
@@ -5472,6 +5651,7 @@ static void build_golden_chain_value( tblp1::Chain & chain )
     set_string( chain.link.tag, chain.link.tag_length, "tip" );
 }
 
+#if TABLES_IN_PART( 1 )
 static void test_golden_seams()
 {
     static uint8_t buffer[1u << 20];
@@ -5607,6 +5787,7 @@ static void test_golden_seams()
         pin_table_golden( "chain_pointer_empty", pointered, w_ptr );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE VARIABLE CLASS's conformance instances (docs/SPEC-TABLES.md §3.1) ----
 //
@@ -5708,6 +5889,7 @@ static void build_graph_deep( graphdemo::SceneBuilder & builder )
     }
 }
 
+#if TABLES_IN_PART( 1 )
 static void pin_graph_goldens()
 {
     {
@@ -5732,6 +5914,7 @@ static void pin_graph_goldens()
         pin_graph_golden( "graph_deep", builder );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE VARIABLE CLASS's TEXT FORM (docs/SPEC-TABLES.md §16.7) --------------
 //
@@ -5799,6 +5982,7 @@ static void check_graph_text_round_trip( const char * what, void ( *build )( gra
     }
 }
 
+#if TABLES_IN_PART( 2 )
 static void test_json_variable_class()
 {
     check_graph_text_round_trip( "graph_tree", build_graph_tree );
@@ -6004,6 +6188,7 @@ static void test_json_variable_class()
         CHECK( graphdemo::ListNodeAt( builder.arena, root->head )->value == 7 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- a keyed object's keys ARE keys (docs/SPEC-TABLES.md §16.2) ---------------
 //
@@ -6012,6 +6197,7 @@ static void test_json_variable_class()
 // a slot and no ledger to count it in. It took the pack engine's two-sided
 // gate to find the old uncounted repeat; the strict read makes it loud.
 
+#if TABLES_IN_PART( 2 )
 static void test_json_keyed_duplicate_keys()
 {
     // one variant named twice refuses, and nothing of either lands
@@ -6114,6 +6300,7 @@ static void test_json_keyed_duplicate_keys()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE GENERAL ARMS, AT THE THREE DEPTHS (docs/SPEC-TABLES.md §2.6) ----
 //
@@ -6253,6 +6440,7 @@ static void pin_fixed_golden( const char * name, const T & value,
 // pins one wire per arm and the manifest reads them under A2
 static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType arm );
 
+#if TABLES_IN_PART( 2 )
 static void test_message_golden_wire()
 {
     {
@@ -6352,6 +6540,7 @@ static void test_message_golden_wire()
         pin_table_golden( "stream_header", buffer, wrote );
     }
 }
+#endif // TABLES_IN_PART
 
 static void reload_stream_golden( const char * name )
 {
@@ -6379,6 +6568,7 @@ static void reload_stream_golden( const char * name )
     free( region );
 }
 
+#if TABLES_IN_PART( 2 )
 static void test_message_golden_reload()
 {
     reload_table_golden( "message_open", messagedemo::ToolMessageLoad, messagedemo::ToolMessageSave );
@@ -6398,6 +6588,7 @@ static void test_message_golden_reload()
     reload_stream_golden( "stream_parts" );
     reload_stream_golden( "stream_arm_first" );
 }
+#endif // TABLES_IN_PART
 
 // ---- THE ARM CONTROLS (docs/SPEC-TABLES.md §2.6, §3, §4.1) ----
 //
@@ -6428,6 +6619,7 @@ static int64_t save_a1_arm( uint8_t * buffer, int64_t capacity, tbla1::ValueType
     return tbla1::RootSave( value, buffer, capacity );
 }
 
+#if TABLES_IN_PART( 3 )
 static void test_arm_retype_controls()
 {
     uint8_t buffer[256];
@@ -6502,10 +6694,12 @@ static void test_arm_retype_controls()
         CHECK( back == wrote && memcmp( again, buffer, (size_t) wrote ) == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // A SET ARM ALWAYS RIDES, whatever it holds (docs/SPEC-TABLES.md §2.6): a zero
 // scalar arm rides as its four zero bytes and an empty string arm as L = 0,
 // because selection is presence and only the None tag elides.
+#if TABLES_IN_PART( 3 )
 static void test_arm_empty_payloads()
 {
     uint8_t buffer[256];
@@ -6553,6 +6747,7 @@ static void test_arm_empty_payloads()
     const int64_t backAgain = messagedemo::ToolMessageSave( backNone, again, sizeof( again ) );
     CHECK( backAgain == wroteNone && memcmp( again, buffer, (size_t) wroteNone ) == 0 );
 }
+#endif // TABLES_IN_PART
 
 // a cook is written for the build that opens it (§7): the host's own order,
 // so the round trip below holds on the big-endian leg too
@@ -6565,6 +6760,7 @@ static Order host_byte_order( Order little, Order big )
 
 // the three depths, through the wire, the text and the cook: what goes in at
 // every depth comes back at every depth, in every form
+#if TABLES_IN_PART( 3 )
 static void test_message_three_depths()
 {
     messagedemo::ToolMessage m;
@@ -6618,8 +6814,10 @@ static void test_message_three_depths()
     }
     free( cook );
 }
+#endif // TABLES_IN_PART
 
 // the evolution pair, both directions, one fresh report per read
+#if TABLES_IN_PART( 3 )
 static void test_message_evolution()
 {
     static uint8_t wire[1024];
@@ -6678,9 +6876,11 @@ static void test_message_evolution()
         CHECK( out.body.type == tblm1::BodyType::Open && strcmp( out.body.open.path, "d.md" ) == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // the descriptors: a table arm's column points at the TABLE's descriptor, the
 // same column a type arm gets
+#if TABLES_IN_PART( 3 )
 static void test_message_reflection()
 {
     const messagedemo::TableTypeInfo * type = messagedemo::ToolMessageTableType();
@@ -6703,8 +6903,10 @@ static void test_message_reflection()
     CHECK( arms->arms[1].offset == offsetof( messagedemo::ToolBody, open ) );
     CHECK( arms->tag_offset == offsetof( messagedemo::ToolBody, type ) );
 }
+#endif // TABLES_IN_PART
 
 // the text form's refusals over a table arm: the union rules, unchanged
+#if TABLES_IN_PART( 3 )
 static void test_message_json_hostile()
 {
     messagedemo::ToolMessage value;
@@ -6739,9 +6941,11 @@ static void test_message_json_hostile()
     CHECK( value.body.transact.edits[0].body.insert.origin.type == messagedemo::OriginType::None );
     CHECK( strcmp( value.body.transact.edits[0].body.insert.text, "t" ) == 0 );
 }
+#endif // TABLES_IN_PART
 
 // a VARIABLE arm: the mode runs through the union (§2.2), so Feed is a
 // builder and a region, and the set arm is a by-value edge every walk descends
+#if TABLES_IN_PART( 3 )
 static void test_message_variable_arm()
 {
     static uint8_t wire[4096];
@@ -6817,6 +7021,7 @@ static void test_message_variable_arm()
     CHECK( streamdemo::FeedMeasure( cyclic ) < 0 );
     CHECK( !cyclic.Lock() );
 }
+#endif // TABLES_IN_PART
 
 // ---- ARRAYS OF POINTERS: `[..N]*T` and `[N]*T` (docs/SPEC-TABLES.md §2.1, §3.1) ----
 //
@@ -6875,6 +7080,7 @@ static void check_stream_parts( const streamdemo::Feed * feed )
     }
 }
 
+#if TABLES_IN_PART( 3 )
 static void test_pointer_arrays()
 {
     static uint8_t wire[4096];
@@ -6948,6 +7154,7 @@ static void test_pointer_arrays()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE PAYLOAD-FREE ARM (SPEC §4.8, docs/SPEC-TABLES.md §2.6) ----
 //
@@ -6955,6 +7162,7 @@ static void test_pointer_arrays()
 // the wire, `{ "ack": null }` in the text, and the tag value with no accessor
 // in C++. It rides like any other selected arm — selection is presence — and
 // the eight bytes it costs are the field header, the arm id and the length.
+#if TABLES_IN_PART( 3 )
 static void test_payload_free_arm()
 {
     uint8_t buffer[256];
@@ -6991,6 +7199,7 @@ static void test_payload_free_arm()
     CHECK( shapeReport.refuse_reason == messagedemo::kind_mismatch && !shapeReport.damaged );
     CHECK( shaped.body.type == messagedemo::ToolBodyType::None && shaped.sequence == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- THE GENERAL ARM'S REFLECTION ROW (docs/SPEC-TABLES.md §8.1) ----
 //
@@ -6998,6 +7207,7 @@ static void test_payload_free_arm()
 // of its type would carry, its offsets taken inside the union's storage, and
 // its payload descriptor is NULL. Exactly one of the two is set on a set arm;
 // a payload-free arm has neither.
+#if TABLES_IN_PART( 3 )
 static void test_general_arm_reflection()
 {
     const messagedemo::TableTypeInfo * info = messagedemo::ToolMessageTableType();
@@ -7036,6 +7246,7 @@ static void test_general_arm_reflection()
     const messagedemo::TableUnionArmInfo & ack = arms->arms[8];
     CHECK( ack.table == NULL && ack.field == NULL && ack.size == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- THE WALK ORDER (docs/SPEC-TABLES.md §3.1, §6.3): one declaration-order walk ----
 //
@@ -7117,6 +7328,7 @@ static void check_stream_arm_first_layout( const streamdemo::Feed * feed )
     CHECK( at_a > 0 && at_a < at_b && at_b < at_c );
 }
 
+#if TABLES_IN_PART( 3 )
 static void test_pointer_walk_order()
 {
     static uint8_t wire[4096];
@@ -7163,6 +7375,7 @@ static void test_pointer_walk_order()
     }
     free( cook );
 }
+#endif // TABLES_IN_PART
 
 // ---- A POINTER ARM IS THE EDGE ITSELF (docs/SPEC-TABLES.md §2.6, §3.1) ----
 //
@@ -7205,6 +7418,7 @@ static void check_stream_arm_pointer( const streamdemo::Feed * feed )
     CHECK( feed->parts_count == 2 );
 }
 
+#if TABLES_IN_PART( 3 )
 static void test_pointer_arm_shares_a_node()
 {
     static uint8_t wire[4096];
@@ -7244,11 +7458,13 @@ static void test_pointer_arm_shares_a_node()
     }
     free( cook );
 }
+#endif // TABLES_IN_PART
 
 // the elision rules at the empty end (§3.1): an empty counted array and an
 // all-null fixed array write nothing, so a Feed with neither is byte-identical
 // to one declared before the arrays existed; a counted array of null slots is
 // content and rides
+#if TABLES_IN_PART( 3 )
 static void test_pointer_arrays_elision()
 {
     static uint8_t wire[4096];
@@ -7277,6 +7493,7 @@ static void test_pointer_arrays_elision()
         CHECK( streamdemo::ChunkAt( streamdemo::TableRegionCtx{}, loaded->parts[1] ) == NULL );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE FORM BYTE, AND THE REFUSAL ABOVE IT (docs/SPEC-TABLES.md §3) ------
 //
@@ -7290,6 +7507,7 @@ static void test_pointer_arrays_elision()
 // The form byte is read FIRST, before the trailer and before any body, so a
 // file that is both a newer form and damaged is a refusal and never damage.
 // These three rows are pinned as shared report rows every leg reads.
+#if TABLES_IN_PART( 3 )
 static void test_form_byte_refusals()
 {
     tblv1::Cfg src;
@@ -7362,6 +7580,7 @@ static void test_form_byte_refusals()
         CHECK( reason == graphdemo::unknown_form );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- A FIELD THE WRITER DOES NOT WRITE IS NOT AN EDGE (§3.1, schema#440) --
 //
@@ -7379,6 +7598,7 @@ static void test_form_byte_refusals()
 // variable-length, `Guarded.optional` is `?Wrapped`, and the numbering, the
 // pack measure and the pack gate on the presence companion, so an absent
 // optional's table is not descended (schema#526, test_absent_optional_is_not_descended).
+#if TABLES_IN_PART( 3 )
 static void test_unwritten_fields_are_not_edges()
 {
     static uint8_t wire[512];
@@ -7438,6 +7658,7 @@ static void test_unwritten_fields_are_not_edges()
     // numbering visited and no others, so its size moves with them
     CHECK( control_need > need );
 }
+#endif // TABLES_IN_PART
 
 // ---- AN ABSENT OPTIONAL'S TABLE IS NOT DESCENDED (§3.1, schema#440, #526) --
 //
@@ -7451,6 +7672,7 @@ static void test_unwritten_fields_are_not_edges()
 // The control is the same value with the optional PRESENT: two records where
 // the absent one writes a single record, and the byte counts say which walk
 // ran. The pins are the tool's, so a plain conformance run holds the rule.
+#if TABLES_IN_PART( 3 )
 static void test_absent_optional_is_not_descended()
 {
     static uint8_t wire[512];
@@ -7510,6 +7732,7 @@ static void test_absent_optional_is_not_descended()
     }
     CHECK( control_need > need );
 }
+#endif // TABLES_IN_PART
 
 // ---- THE ENUM KIND AGAINST THE RAW INTEGER (docs/SPEC-TABLES.md §3, §4) ---
 //
@@ -7520,6 +7743,7 @@ static void test_absent_optional_is_not_descended()
 // kind 7, and kind 7 where it declares kind 30. Both fields stay at their
 // declared defaults, and no raw value is ever read as a variant name: the read refuses whole as kind_mismatch. The wire is pinned as a
 // shared report row every leg reads.
+#if TABLES_IN_PART( 3 )
 static void test_enum_kind_against_the_raw_integer()
 {
     tblk1::Root src;
@@ -7551,6 +7775,7 @@ static void test_enum_kind_against_the_raw_integer()
     CHECK( out2.grade == tblk1::Grade::None );
     CHECK( out2.raw == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- KIND 31 AND KIND 32, AT EVERY POSITION (docs/SPEC-TABLES.md §3) ------
 //
@@ -7560,6 +7785,7 @@ static void test_enum_kind_against_the_raw_integer()
 // element kind, the whole load refuses wire_damaged, exactly as it refuses 33
 // and 34. Kind 32 where a declaration says otherwise is an ordinary kind
 // mismatch. Each row is pinned so every leg answers the same bytes.
+#if TABLES_IN_PART( 3 )
 static void test_held_kind31_and_payload_free_kinds()
 {
     // (1) AT A FIELD THE READER CANNOT NAME: damage, the whole load refuses
@@ -7746,6 +7972,7 @@ static void test_held_kind31_and_payload_free_kinds()
         CHECK( out.sequence == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE ARM'S KIND BYTE, at the four pins §3 names ------------------------
 //
@@ -7754,6 +7981,7 @@ static void test_held_kind31_and_payload_free_kinds()
 // a kind mismatch, which refuses the whole load, siblings included.
 // The fourth is the LENGTH pin — a reference-shaped arm whose L is not the
 // byte count of the reference it frames is that arm's own framing damage.
+#if TABLES_IN_PART( 3 )
 static void test_arm_kind_pins()
 {
     struct Row { const char * name; const char * arm; uint8_t kind; };
@@ -7842,10 +8070,12 @@ static void test_arm_kind_pins()
     }
 
 }
+#endif // TABLES_IN_PART
 
 // the element-kind separation (§3, §3.1): `parts` arriving as an array of
 // uint32 — element kind 8 where this reader declares 17 — is a kind mismatch
 // that refuses the whole load; nothing reads a number as an index
+#if TABLES_IN_PART( 3 )
 static void test_pointer_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -7869,10 +8099,12 @@ static void test_pointer_arrays_element_kind_mismatch()
     CHECK( loaded == NULL && !report.damaged );
     CHECK( report.refuse_reason == streamdemo::kind_mismatch );
 }
+#endif // TABLES_IN_PART
 
 // a count past the READER's bound is out of range and refuses the whole load
 // (§4): five slots against a bound of four, never a kept prefix. The wire is
 // pinned as a shared report row every leg reads.
+#if TABLES_IN_PART( 3 )
 static void test_pointer_arrays_count_past_bound()
 {
     uint8_t wire[64];
@@ -7896,9 +8128,11 @@ static void test_pointer_arrays_count_past_bound()
     CHECK( loaded == NULL && !report.damaged );
     CHECK( report.refuse_reason == streamdemo::out_of_range );
 }
+#endif // TABLES_IN_PART
 
 // AN INDEX OUT OF RANGE is malformed and refuses the whole load (§3.1, §4):
 // index 7 where no node exists. The wire stays pinned for cross-language checks.
+#if TABLES_IN_PART( 3 )
 static void test_pointer_arrays_index_out_of_range()
 {
     uint8_t wire[64];
@@ -7924,6 +8158,7 @@ static void test_pointer_arrays_index_out_of_range()
     CHECK( loaded == NULL );
     CHECK( report.damaged );
 }
+#endif // TABLES_IN_PART
 
 // ---- ARRAYS OF UNIONS (docs/SPEC-TABLES.md §2.6, §3) -----------------------
 //
@@ -7984,6 +8219,7 @@ static void check_message_batch( const messagedemo::ToolMessage & m )
 
 // the three depths through the wire, the text and the cook, pinned as the
 // shared instance the harness reads
+#if TABLES_IN_PART( 3 )
 static void test_union_arrays()
 {
     messagedemo::ToolMessage m;
@@ -8051,12 +8287,14 @@ static void test_union_arrays()
         CHECK( arms->tag_offset == offsetof( messagedemo::ToolBody, type ) );
     }
 }
+#endif // TABLES_IN_PART
 
 // the elision rules at the empty end (§3): an empty counted array and an
 // all-None fixed array write nothing — a message that sets neither is
 // byte-identical to the pinned message_transaction, which is the wire from
 // before the arrays were declared — and a counted array of live None
 // elements is content and rides
+#if TABLES_IN_PART( 3 )
 static void test_union_arrays_elision()
 {
     static uint8_t wire[4096];
@@ -8080,11 +8318,13 @@ static void test_union_arrays_elision()
     CHECK( back.history[0].type == messagedemo::ToolBodyType::None );
     CHECK( back.history[1].type == messagedemo::ToolBodyType::None );
 }
+#endif // TABLES_IN_PART
 
 // the element-kind separation (§3): `history` arriving as an array of TABLES —
 // element kind 13 where this reader declares 15 — is a kind mismatch that
 // refuses the load; `[N]Body` ⇄ `[N]Table` is refused by name. The
 // wire is pinned as a shared report row every leg reads.
+#if TABLES_IN_PART( 4 )
 static void test_union_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -8108,10 +8348,12 @@ static void test_union_arrays_element_kind_mismatch()
     CHECK( !report.damaged && report.refuse_reason == messagedemo::kind_mismatch );
     CHECK( out.history_count == 0 );
 }
+#endif // TABLES_IN_PART
 
 // an arm this reader cannot name, inside an element (§4): the element reads
 // None, the body skips by its length, unknown counts — and the slot is LIVE,
 // so the count keeps it. The wire is pinned as a shared report row.
+#if TABLES_IN_PART( 4 )
 static void test_union_arrays_unknown_arm()
 {
     uint8_t wire[64];
@@ -8138,8 +8380,10 @@ static void test_union_arrays_unknown_arm()
     CHECK( out.history_count == 1 );
     CHECK( out.history[0].type == messagedemo::ToolBodyType::None );
 }
+#endif // TABLES_IN_PART
 
 // the text refusals over an element: the union row's rules, per element
+#if TABLES_IN_PART( 4 )
 static void test_union_arrays_json_hostile()
 {
     messagedemo::ToolMessage value;
@@ -8163,6 +8407,7 @@ static void test_union_arrays_json_hostile()
     CHECK( unknown_arm.unknown == 1 && !unknown_arm.damaged );
     CHECK( value.history_count == 1 && value.history[0].type == messagedemo::ToolBodyType::None );
 }
+#endif // TABLES_IN_PART
 
 // ---- optional arrays (docs/SPEC-TABLES.md §2.3): ?[..N]T and ?[N]T ----------
 
@@ -8229,6 +8474,7 @@ static void check_message_trace( const messagedemo::ToolMessage & m )
 
 // the three depths through the wire, the text and the cook, pinned as the
 // shared instance the harness reads
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays()
 {
     messagedemo::ToolMessage m;
@@ -8304,12 +8550,14 @@ static void test_optional_arrays()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // the elision rules at the empty end (§2.3): an ABSENT optional array writes
 // nothing — a message that sets none of the five is byte-identical to the
 // pinned message_transaction, the wire from before the fields were declared —
 // and a PRESENT one always rides: the fixed spelling whole at all defaults,
 // the counted spelling as its live count, zero included
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays_elision()
 {
     static uint8_t wire[4096];
@@ -8368,10 +8616,12 @@ static void test_optional_arrays_elision()
     CHECK( back.marks[0] == messagedemo::Mode::None && back.marks[1] == messagedemo::Mode::None );
     CHECK( !back.body.transact.snapshots_present );
 }
+#endif // TABLES_IN_PART
 
 // the element-kind separation under `?` (§2.3, §3): `trace` arriving with
 // element kind 8 where this reader declares 13 is a kind mismatch that
 // refuses the load, the field left ABSENT — its declared default. The wire is pinned as a shared report row every leg reads.
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays_element_kind_mismatch()
 {
     uint8_t wire[64];
@@ -8394,10 +8644,12 @@ static void test_optional_arrays_element_kind_mismatch()
     CHECK( !report.damaged && report.refuse_reason == messagedemo::kind_mismatch );
     CHECK( !out.trace_present && out.trace_count == 0 );
 }
+#endif // TABLES_IN_PART
 
 // a count past the bound under `?` (§4) is out of range and refuses the whole
 // load: no prefix is kept and the field is not left present. The wire is
 // pinned as a shared report row every leg reads.
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays_count_past_bound()
 {
     uint8_t wire[96];
@@ -8424,11 +8676,13 @@ static void test_optional_arrays_count_past_bound()
     CHECK( !report.damaged && report.refuse_reason == messagedemo::out_of_range );
     CHECK( !out.trace_present && out.trace_count == 0 );
 }
+#endif // TABLES_IN_PART
 
 // an id no variant names, in a FIXED optional enum array (§5): the slot takes
 // None, the read counts it unknown, and the field is PRESENT — it rode with
 // its own element kind, and a fixed array has no count to clamp. The wire is
 // pinned as a shared report row every leg reads.
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays_enum_unknown_variant()
 {
     uint8_t wire[64];
@@ -8453,12 +8707,14 @@ static void test_optional_arrays_enum_unknown_variant()
     CHECK( out.marks_present );
     CHECK( out.marks[0] == messagedemo::Mode::Write && out.marks[1] == messagedemo::Mode::None );
 }
+#endif // TABLES_IN_PART
 
 // the WRITE side of the same rule (§5): a fixed optional enum array is checked
 // element by element before it rides, so a slot holding a value no variant
 // names has no wire identity and the measure refuses the whole value rather
 // than writing a hash it cannot make. Presence is what puts the slots in
 // reach: the same value with the field absent measures fine.
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays_enum_element_unnameable()
 {
     static uint8_t wire[4096];
@@ -8473,10 +8729,12 @@ static void test_optional_arrays_enum_element_unnameable()
     CHECK( messagedemo::ToolMessageMeasure( m ) > 0 );
     CHECK( messagedemo::ToolMessageSave( m, wire, sizeof( wire ) ) == messagedemo::ToolMessageMeasure( m ) );
 }
+#endif // TABLES_IN_PART
 
 // the text form's three hostile shapes (§16.2): `null` is the absence, and a
 // wrong shape under the key or in an element is a kind mismatch that refuses
 // the whole read
+#if TABLES_IN_PART( 4 )
 static void test_optional_arrays_json_hostile()
 {
     // the wrong shape under the key refuses, and leaves the field absent
@@ -8502,6 +8760,7 @@ static void test_optional_arrays_json_hostile()
     CHECK( elem.refuse_reason == messagedemo::kind_mismatch && !elem.damaged );
     CHECK( !value.trace_present && value.trace_count == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- the BYTE BUFFER corpus (docs/SPEC-TABLES.md §2.5): tables/blobs ----------
 //
@@ -8579,6 +8838,7 @@ static void check_blob_catalog_arena( blobdemo::CatalogBuilder & builder )
     CHECK( note.data != NULL && strcmp( note.data, "hello blobs" ) == 0 );
 }
 
+#if TABLES_IN_PART( 4 )
 static void test_blob_lifecycle()
 {
     blobdemo::CatalogBuilder builder;
@@ -8633,10 +8893,12 @@ static void test_blob_lifecycle()
     CHECK( short_report.damaged );
     free( region );
 }
+#endif // TABLES_IN_PART
 
 // ONE BLOB RECORD NAMED FROM TWO SLOTS is blob_shared (docs/SPEC-TABLES.md
 // §2.5, §16.7): every writer refuses the graph by name, and every read refuses
 // the corpus's pinned shared wire, a hand-built input, by the same name.
+#if TABLES_IN_PART( 4 )
 static void test_blob_shared_node()
 {
     blobdemo::CatalogBuilder shared;
@@ -8672,9 +8934,11 @@ static void test_blob_shared_node()
         CHECK( blobdemo::CatalogReadStrict( golden_pinned, pinned, &why ) == NULL && why == blobdemo::blob_shared );
     }
 }
+#endif // TABLES_IN_PART
 
 // null and empty are TWO VALUES (§2.5): a null reference elides, a present
 // blob of length zero rides, and the views tell them apart
+#if TABLES_IN_PART( 4 )
 static void test_blob_null_and_empty()
 {
     blobdemo::CatalogBuilder null_builder;
@@ -8709,9 +8973,11 @@ static void test_blob_null_and_empty()
         CHECK( blobdemo::TableBytesAt( loaded->alias ).data == NULL ); // null stays null
     }
 }
+#endif // TABLES_IN_PART
 
 // a blob past one 64 KiB slab takes a span of the arena's own (§6.5's
 // authoring path), and the bytes survive the wire and the cook intact
+#if TABLES_IN_PART( 4 )
 static void test_blob_past_slab()
 {
     const int64_t big = 66000; // past kTableSlabBytes = 64 KiB
@@ -8761,6 +9027,7 @@ static void test_blob_past_slab()
     }
     free( cook );
 }
+#endif // TABLES_IN_PART
 
 // a blob record whose length runs ONE BYTE past its field is §3.1's
 // node-table damage: malformed, every pointer null, the root's own
@@ -8774,6 +9041,7 @@ static void test_blob_past_slab()
 //
 // Red where the cap is not checked: the storage comes back as a size a caller
 // would then try to allocate.
+#if TABLES_IN_PART( 4 )
 static void test_blob_over_size_cap()
 {
     blobdemo::TableRefuseReason reason = blobdemo::ok;
@@ -8791,7 +9059,9 @@ static void test_blob_over_size_cap()
     CHECK( blobdemo::CatalogNodeStorage( blobdemo::kTableStringTypeId, 0x100000000ll, reason ) == blobdemo::kTableNodeRefused );
     CHECK( reason == blobdemo::blob_over_size_cap );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 4 )
 static void test_blob_record_length_off_by_one()
 {
     blobdemo::CatalogBuilder builder;
@@ -8847,11 +9117,13 @@ static void test_blob_record_length_off_by_one()
     }
     // a pre-pass that refuses outright is the same verdict one step earlier
 }
+#endif // TABLES_IN_PART
 
 // the type-id check both ways (§2.5, §3.1): a *string blob under a *bytes
 // slot is a wrong-type pointer target, which is damage, and a `bytes(N)` array
 // under a `*bytes` slot is kind 14 against kind 17 — a mismatch in both
 // directions, nothing misdecodes
+#if TABLES_IN_PART( 4 )
 static void test_blob_kind_mismatch()
 {
     // a Catalog whose note (a *string blob) is named by thumb (*bytes):
@@ -8901,9 +9173,11 @@ static void test_blob_kind_mismatch()
     CHECK( mixed == NULL && !report2.damaged );
     CHECK( report2.refuse_reason == blobdemo::kind_mismatch );
 }
+#endif // TABLES_IN_PART
 
 // the cook (§7): every blob laid out header-plus-bytes in the region, views
 // one add from the slot, and the round trip back to the wire byte-identical
+#if TABLES_IN_PART( 4 )
 static void test_blob_cook()
 {
     blobdemo::CatalogBuilder builder;
@@ -8928,10 +9202,12 @@ static void test_blob_cook()
     }
     free( cook );
 }
+#endif // TABLES_IN_PART
 
 // the text form (§16.2, §2.5): a *bytes is inline base64, a *string is a
 // string, null and "" are two texts, and a SHARED blob has no spelling —
 // the writer refuses the graph
+#if TABLES_IN_PART( 4 )
 static void test_blob_json()
 {
     blobdemo::CatalogBuilder builder;
@@ -9053,9 +9329,11 @@ static void test_blob_json()
         CHECK( bytes.data != NULL && bytes.length == 1 );
     }
 }
+#endif // TABLES_IN_PART
 
 // reflection: a blob field is kind 17 with NO target table — the pair of
 // facts a generic walk tells a byte buffer from a pointer to a table by
+#if TABLES_IN_PART( 4 )
 static void test_blob_reflection()
 {
     const blobdemo::TableTypeInfo * type = blobdemo::CatalogTableType();
@@ -9076,6 +9354,7 @@ static void test_blob_reflection()
     }
     CHECK( checked_fields == 4 );
 }
+#endif // TABLES_IN_PART
 
 // THE TERMINATOR IS THE NODE'S OWN (§6.3), at the two lengths that can see it.
 // A *string node carries one zero byte after its data and its extent is
@@ -9122,6 +9401,7 @@ static void check_blob_terminated( const blobdemo::Catalog * root, int64_t lengt
 // the same string at 8 and at 16, read back off the LOCKED region and off a
 // region a wire load sized and filled: the node pays for its own terminator on
 // both paths, or the byte after the data belongs to the next node
+#if TABLES_IN_PART( 4 )
 static void test_blob_string_terminator()
 {
     const int64_t lengths[2] = { 8, 16 };
@@ -9146,8 +9426,10 @@ static void test_blob_string_terminator()
         check_blob_terminated( loaded, length, "loaded region" );
     }
 }
+#endif // TABLES_IN_PART
 
 // the pinned wires the conformance harness reads (testdata/wire/tables)
+#if TABLES_IN_PART( 4 )
 static void test_blob_golden_wire()
 {
     static uint8_t buffer[1 << 17];
@@ -9198,6 +9480,7 @@ static void test_blob_golden_wire()
         pin_table_golden( "blob_str16", buffer, wrote );
     }
 }
+#endif // TABLES_IN_PART
 
 static void reload_blob_golden( const char * name )
 {
@@ -9223,6 +9506,7 @@ static void reload_blob_golden( const char * name )
     }
 }
 
+#if TABLES_IN_PART( 4 )
 static void test_blob_golden_reload()
 {
     reload_blob_golden( "blob_small" );
@@ -9233,6 +9517,7 @@ static void test_blob_golden_reload()
     reload_blob_golden( "blob_str8" );
     reload_blob_golden( "blob_str16" );
 }
+#endif // TABLES_IN_PART
 
 #include "message_form.h"
 
@@ -9282,6 +9567,7 @@ struct was_w1 { using Fleet = tblw1::Fleet; using Vessel = tblw1::Vessel; using 
 struct was_w2 { using Fleet = tblw2::Fleet; using Vessel = tblw2::Ship; using FleetBuilder = tblw2::FleetBuilder;
     static int64_t FleetSave( const tblw2::FleetBuilder & b, uint8_t * buf, int64_t n ) { return tblw2::FleetSave( b, buf, n ); } };
 
+#if TABLES_IN_PART( 1 )
 static void test_was_rows()
 {
     static uint8_t w1[4096], w2[4096], w1_default[4096];
@@ -9371,6 +9657,7 @@ static void test_was_rows()
         free( region );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the `was` rows, second half: a variant, an arm and a type's field renamed under was ----
 //
@@ -9415,6 +9702,7 @@ struct wasrows_r2 { using Cfg = tblr2::Cfg;
     static float & buff_multiplier( Cfg & c ) { return c.buff.mult; }
     static int64_t CfgSave( const Cfg & c, uint8_t * buf, int64_t n ) { return tblr2::CfgSave( c, buf, n ); } };
 
+#if TABLES_IN_PART( 1 )
 static void test_wasrows_vocabulary()
 {
     static uint8_t r1[1024], r2[1024], r1_ping[1024];
@@ -9462,9 +9750,11 @@ static void test_wasrows_vocabulary()
         CHECK( report.unknown == 0 && out.effect.type == tblr2::EffectType::Pong );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- the steady read path allocates nothing (docs/PORTING.md I1) ----
 
+#if TABLES_IN_PART( 1 )
 static void test_allocation_audit()
 {
     static tabledemo::RootConfig root;
@@ -9487,9 +9777,11 @@ static void test_allocation_audit()
     CHECK( moved == 0 ); // not one allocation across Load, the reads, Measure and Save
     printf( "tables allocation audit: %lld allocation(s) over the steady read path\n", moved );
 }
+#endif // TABLES_IN_PART
 
 // The control: the counting operator new must SEE an allocation. Without this
 // the audit above could read zero because it is measuring nothing.
+#if TABLES_IN_PART( 1 )
 static void test_allocation_audit_can_go_red()
 {
     static void * volatile planted = NULL;
@@ -9499,6 +9791,7 @@ static void test_allocation_audit_can_go_red()
     delete (int *) planted;
     planted = NULL;
 }
+#endif // TABLES_IN_PART
 
 // one counted unit per test function: main prints "ran N, failed M" and
 // build/mustrun holds N to the count the recipe registers. A test function
@@ -9517,6 +9810,7 @@ static int tests_failed = 0;
 
 int main()
 {
+#if TABLES_IN_PART( 1 )
     RUN( test_golden_wire );
     RUN( test_golden_seams );
     RUN( pin_graph_goldens );
@@ -9580,7 +9874,9 @@ int main()
     RUN( test_depth_agrees_through_by_value_nesting );
     RUN( test_descriptors_are_constant );
     RUN( test_cross_file_pointer_unit );
+#endif
 
+#if TABLES_IN_PART( 2 )
     RUN( test_json_corpus_round_trip );
     RUN( test_json_dialect );
     RUN( test_json_hostile_kinds );
@@ -9606,6 +9902,8 @@ int main()
     RUN( test_json_variable_class );
     RUN( test_message_golden_wire );
     RUN( test_message_golden_reload );
+#endif
+#if TABLES_IN_PART( 3 )
     RUN( test_message_three_depths );
     RUN( test_arm_retype_controls );
     RUN( test_arm_empty_payloads );
@@ -9630,6 +9928,8 @@ int main()
     RUN( test_pointer_arm_shares_a_node );
     RUN( test_union_arrays );
     RUN( test_union_arrays_elision );
+#endif
+#if TABLES_IN_PART( 4 )
     RUN( test_union_arrays_element_kind_mismatch );
     RUN( test_union_arrays_unknown_arm );
     RUN( test_union_arrays_json_hostile );
@@ -9675,6 +9975,7 @@ int main()
     RUN( test_message_form_refused_first );
     RUN( test_message_form_findings );
     RUN( test_message_form_cold_read );
+#endif
 
     if ( failures > 0 )
     {

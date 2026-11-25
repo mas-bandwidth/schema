@@ -15,10 +15,8 @@
 # The runtime tier imports the pinned serialize.js sibling checkout
 # (../serialize.js, SERIALIZE_JS_TAG in the workflows), as every JS test leg does.
 #
-# A disagreement the port already owes is carried, by name, in
-# test/js-hostile/known-findings.tsv and printed as a FIX-CARD. A disagreement no
-# FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
-# too, so the list cannot rot into silence.
+# A disagreement is never excused by name: every one is a FAIL line naming its
+# case.
 #
 # The negative control plants a changed verdict in a scratch copy of the
 # manifest (wire-valid's accept turned into a refusal) and requires the runner
@@ -27,7 +25,6 @@
 
 JS_HOSTILE_CORPUS    ?= internal/ci/hostilecorpus/corpus
 JS_HOSTILE_BUILD     := build/js-hostile
-JS_HOSTILE_FINDINGS  ?= test/js-hostile/known-findings.tsv
 JS_HOSTILE_SERIALIZE ?= ../serialize.js
 
 .PHONY: schema-js-hostile-generate
@@ -48,8 +45,7 @@ JS_HOSTILE_ROWS ?= $(shell awk -F'\t' '/^\#/ {next} {n++; if ($$2 == "packet") n
 .PHONY: schema-js-runs-hostile-corpus
 schema-js-runs-hostile-corpus: build/mustrun schema-js-hostile-generate
 	$(NODE) test/js-hostile/runner.mjs scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-js-runs-hostile-corpus -count $(JS_HOSTILE_ROWS) -- $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
-	sh make/checks/hostile-carry-controls.sh js findings $(JS_HOSTILE_BUILD)/carry '$(NODE) test/js-hostile/runner.mjs run "$$CARRY_CORPUS" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)" "$$CARRY_FINDINGS"'
+	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-js-runs-hostile-corpus -count $(JS_HOSTILE_ROWS) -- $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
 
 test-js: schema-js-runs-hostile-corpus
 
@@ -62,7 +58,7 @@ schema-js-runs-hostile-corpus-negative-control: schema-js-runs-hostile-corpus
 	@if cmp -s "$(JS_HOSTILE_CORPUS)/manifest.tsv" $(JS_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
 	@if $(NODE) test/js-hostile/runner.mjs run $(JS_HOSTILE_BUILD)/plant/corpus $(JS_HOSTILE_BUILD)/generated \
-			"$(JS_HOSTILE_SERIALIZE)" "$(JS_HOSTILE_FINDINGS)" > $(JS_HOSTILE_BUILD)/plant/log 2>&1; then \
+			"$(JS_HOSTILE_SERIALIZE)" > $(JS_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a changed verdict left the corpus green'; \
 		cat $(JS_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@grep -q '^FAIL wire-valid ' $(JS_HOSTILE_BUILD)/plant/log || \

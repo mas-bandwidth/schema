@@ -529,20 +529,27 @@ func wireVerdict(_ *wireRoot, reply legReply, ans oracleAnswer, _ int) string {
 // mutation; keeping it out also keeps the sequence a function of the corpus
 // and the seed alone, so pinning a vector never moves a red already there.
 //
-// An empty pool is a NAMED SKIP and not a panic: a leg (or a skip list) can
-// leave only pinned-vector roots live, and there is then nothing to mutate.
-// It answers the one line the run prints to stderr; no mutant is drawn.
-func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wireMutant)) string {
+// An empty pool is a failure that names it, never a panic and never a pass:
+// a leg can leave only pinned-vector roots live, and a random pass asked for
+// then has nothing to mutate. No mutant is drawn and the run is red
+// (docs/rulings.json no-skips).
+func randomPass(pool []*wireSeed, pinned int, seed uint64, n int, draw func(*wireMutant)) error {
 	return randomPassShard(pool, pinned, seed, n, 0, 1, draw)
 }
 
+// errNoLiveSeed is the random pass asked for over a pool with no manifest
+// seed in it.
+func errNoLiveSeed(pinned int) error {
+	return fmt.Errorf("wire-fuzz: the random pass has no live manifest seed to draw from (%d pinned vectors only): a random pass that draws nothing fails", pinned)
+}
+
 // Shards select original random indices; they do not restart or reseed the pass.
-func randomPassShard(pool []*wireSeed, pinned int, seed uint64, n, shard, shards int, draw func(*wireMutant)) string {
+func randomPassShard(pool []*wireSeed, pinned int, seed uint64, n, shard, shards int, draw func(*wireMutant)) error {
 	if n <= 0 {
-		return ""
+		return nil
 	}
 	if len(pool) == 0 {
-		return fmt.Sprintf("wire-fuzz: random pass skipped: no manifest seed is live (%d pinned vectors only)", pinned)
+		return errNoLiveSeed(pinned)
 	}
 	for i := range n {
 		if i%shards != shard {
@@ -552,7 +559,7 @@ func randomPassShard(pool []*wireSeed, pinned int, seed uint64, n, shard, shards
 			draw(mut)
 		}
 	}
-	return ""
+	return nil
 }
 
 // Every enumerated or pinned mutant has one stable global ordinal. Each shard
@@ -607,7 +614,7 @@ func seedMorePopulated(a, b *wireSeed) bool {
 //     or cursors left behind by refused/truncated reads.
 //  4. Uniform rational-stride sampling across all remaining enumerated and
 //     random mutants so every root receives coverage within the budget.
-func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts wireFuzzOptions, draw func(*wireMutant)) string {
+func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts wireFuzzOptions, draw func(*wireMutant)) error {
 	emitted := 0
 	emit := func(m *wireMutant) bool {
 		if emitted >= opts.maxMutants {
@@ -621,7 +628,7 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 	for _, s := range live {
 		if s.vector {
 			if !emit(&wireMutant{seed: s, pass: "vector", data: s.wire}) {
-				return ""
+				return nil
 			}
 		}
 	}
@@ -634,7 +641,7 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 			continue
 		}
 		if !emit(&wireMutant{seed: s, pass: "seed", index: 0, data: s.wire}) {
-			return ""
+			return nil
 		}
 		if s.reportSeed || s.wireRefused || len(s.wire) == 0 {
 			continue
@@ -668,14 +675,14 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 		}
 		for idx, payload := range seq {
 			if !emit(&wireMutant{seed: smallSeed, pass: "stateful-reuse", index: idx, data: payload}) {
-				return ""
+				return nil
 			}
 		}
 	}
 
 	rem := opts.maxMutants - emitted
 	if rem <= 0 {
-		return ""
+		return nil
 	}
 
 	enumAvail := 0
@@ -690,17 +697,15 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 		})
 	}
 	randAvail := 0
-	var randNotice string
 	if opts.n > 0 {
 		if len(pool) == 0 {
-			randNotice = fmt.Sprintf("wire-fuzz: random pass skipped: no manifest seed is live (%d pinned vectors only)", len(live)-len(pool))
-		} else {
-			randAvail = opts.n
+			return errNoLiveSeed(len(live) - len(pool))
 		}
+		randAvail = opts.n
 	}
 	avail := enumAvail + randAvail
 	if avail == 0 {
-		return randNotice
+		return nil
 	}
 	target := min(rem, avail)
 	k := 0
@@ -732,7 +737,7 @@ func emitBoundedStream(live, pool []*wireSeed, seedRoot map[*wireSeed]int, opts 
 			}
 		}
 	}
-	return randNotice
+	return nil
 }
 
 // buildWireFuzzRoster builds the wire-fuzz roster: every seed and every root
@@ -948,31 +953,37 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		}
 	}
 
+	// a random pass asked for with no manifest seed live fails before a
+	// mutant is sent: it would draw nothing and pass
+	if opts.replay == "" && opts.n > 0 && len(pool) == 0 {
+		leg.kill()
+		return errNoLiveSeed(len(live))
+	}
+
 	// the stream: a producer that both the writer and the comparator follow,
 	// so a mutant is generated once and never held past its comparison
 	type item struct {
 		m *wireMutant
 	}
 	produced := make(chan item, 256)
+	// produceErr is written before produced closes, so it is settled once
+	// the writer below has sent on writeErr
+	var produceErr error
 	go func() {
 		switch {
 		case opts.replay != "":
 			produced <- item{m: &wireMutant{seed: live[0], pass: "replay", data: live[0].wire}}
 		case opts.maxMutants > 0:
-			if line := emitBoundedStream(live, pool, seedRoot, opts, func(mut *wireMutant) {
+			produceErr = emitBoundedStream(live, pool, seedRoot, opts, func(mut *wireMutant) {
 				produced <- item{m: mut}
-			}); line != "" {
-				fmt.Fprintln(os.Stderr, line)
-			}
+			})
 		default:
 			enumeratedShard(live, opts.shard, opts.shards, func(mut *wireMutant) {
 				produced <- item{m: mut}
 			})
-			if line := randomPassShard(pool, len(live)-len(pool), opts.seed, opts.n, opts.shard, opts.shards, func(mut *wireMutant) {
+			produceErr = randomPassShard(pool, len(live)-len(pool), opts.seed, opts.n, opts.shard, opts.shards, func(mut *wireMutant) {
 				produced <- item{m: mut}
-			}); line != "" {
-				fmt.Fprintln(os.Stderr, line)
-			}
+			})
 		}
 		close(produced)
 	}()
@@ -1039,6 +1050,10 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			return fmt.Errorf("wire-fuzz timed out after %v", opts.timeout)
 		}
 		return fmt.Errorf("FAILED: the leg closed its input mid-stream: %w\n%s", err, stderr)
+	}
+	if produceErr != nil {
+		leg.kill()
+		return produceErr
 	}
 	if timedOut.Load() {
 		leg.kill()

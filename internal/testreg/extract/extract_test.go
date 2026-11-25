@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,21 +48,25 @@ func Testhelper(t *testing.T) {}
 
 func TestMain(m *testing.M) {}
 `,
-	"pkg/b_test.go":                  "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
-	"pkg/testdata/fixture_test.go":   "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
-	"Makefile":                       "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nnc-one:\n\ttrue\n\nlib-check: ; true\n",
-	"make/negative-controls.json":    `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
-	".github/workflows/ci.yml":       "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n  # a comment\n  build:\n    runs-on: x\n  rows:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group pr --shard 1/2\n  plan:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test langs --ready\n      - run: add_reader ./tools/schema-test ;;\n",
-	"testdata/corpus/cases.jsonl":    "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
-	"testdata/corpus/x.in":           "in",
-	"testdata/corpus/x.out":          "out",
-	"testdata/corpus/README.md":      "doc",
-	"test/conformance/zz/driver.py":  "print()",
-	"test/conformance/zz/src/a.py":   "print()",
-	"tla/m/MCSpec.cfg":               "INIT Init",
-	"working/x_test.go":              "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
-	"test/u/obj/Debug/gen.cs":        "// a dotnet build output file, never a test\n",
-	"test/u/bin/Debug/x/u.deps.json": "{}\n",
+	"pkg/b_test.go":                               "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
+	"pkg/testdata/fixture_test.go":                "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
+	"Makefile":                                    "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nquoted:\n\ttrue\n\nnc-one:\n\ttrue\n\nrow-only:\n\ttrue\n\nlib-check: ; true\n",
+	"test/registry/registry.jsonl":                `{"rec":"test","key":"harness-run.makefile.row-only","adapter":"make","inputs":{"file":"Makefile","target":"row-only"}}` + "\n",
+	"make/negative-controls.json":                 `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
+	".github/workflows/ci.yml":                    "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n      - run: make -j\"$(nproc)\" quoted\n  # a comment\n  build:\n    runs-on: x\n  rows:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group pr --shard 1/2\n  plan:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test langs --ready\n      - run: add_reader ./tools/schema-test ;;\n",
+	"testdata/corpus/cases.jsonl":                 "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
+	"testdata/corpus/x.in":                        "in",
+	"testdata/corpus/x.out":                       "out",
+	"testdata/corpus/README.md":                   "doc",
+	"test/conformance/zz/driver.py":               "print()",
+	"test/conformance/zz/src/a.py":                "print()",
+	"tla/m/MCSpec.cfg":                            "INIT Init",
+	"test/testguard/rest/pkg/TestPlain":           "",
+	"test/testguard/rest.tsv":                     "pkg\tTestPlain\n",
+	"test/conformance/zz/Directory.Build.targets": "<Project/>",
+	"working/x_test.go":                           "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
+	"test/u/obj/Debug/gen.cs":                     "// a dotnet build output file, never a test\n",
+	"test/u/bin/Debug/x/u.deps.json":              "{}\n",
 }
 
 func writeFixture(t *testing.T, files map[string]string) string {
@@ -82,8 +87,10 @@ func writeFixture(t *testing.T, files map[string]string) string {
 // TestExtractFindsEveryKind: the fixture's tests, each of its kind, with
 // the gates that decide its tier; fixtures under testdata, scratch under
 // working/, build output under obj/, TestMain and a lower-case Testhelper
-// are not tests, and nor is
-// a workflow job that runs the driver (its tests are the rows it runs).
+// are not tests, nor is a testguard record of a Go test (its shard's .tsv
+// is a case), the MSBuild configuration a driver directory imports, or a
+// workflow job that runs the driver (its tests are the rows it runs). A
+// rule only a registry make row runs (row-only) is run by name all the same.
 func TestExtractFindsEveryKind(t *testing.T) {
 	t.Parallel()
 	res, err := Extract(writeFixture(t, fixture))
@@ -107,6 +114,8 @@ func TestExtractFindsEveryKind(t *testing.T) {
 		"go-test pkg TestSlow [unit] ",
 		"make-target Makefile lib-check [functional] ",
 		"make-target Makefile prep [functional] ",
+		"make-target Makefile quoted [functional] ",
+		"make-target Makefile row-only [functional] ",
 		"make-target Makefile test-all [functional] ",
 		"negative-control (excluded) nc-two [nightly] ",
 		"negative-control g1 nc-one [functional] ",
@@ -114,6 +123,7 @@ func TestExtractFindsEveryKind(t *testing.T) {
 		"workflow-job .github/workflows/ci.yml lint [functional] ",
 		"workflow-job .github/workflows/ci.yml plan [functional] ",
 		"data-case pkg/testdata fixture_test [functional] ",
+		"data-case test/testguard rest [functional] ",
 		"data-case testdata/corpus cases/line4 [functional] ",
 		"data-case testdata/corpus cases/one [functional] ",
 		"data-case testdata/corpus cases/two [functional] ",
@@ -200,6 +210,51 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 	}
 }
 
+// TestMakePlantAndGoldenRowsCoverTheirTests: a make row covers its make
+// target, a plant row its negative control, a golden row the data case its
+// files are; each row naming a test the repository does not hold is named.
+func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "prep", Source: "Makefile:1"},
+		{Kind: KindNegativeControl, Dir: "g1", Name: "nc-one", Source: "make/negative-controls.json:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "x", Source: "testdata/corpus/x.in:1"},
+	}}
+	row := func(key, adapter, inputs string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: adapter, Inputs: []byte(inputs)}
+	}
+	good := []testreg.Test{
+		row("harness-run.makefile.prep", "make", `{"file":"Makefile","target":"prep"}`),
+		row("plant.g1.nc-one", "plant", `{"make":"nc-one","file":"Makefile","group":"g1"}`),
+		// one golden row per pinned file: the rows of one case share it
+		row("golden.x.x-in", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.in"]}`),
+		row("golden.x.x-out", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.out"]}`),
+		row("golden.x.x-bench", "golden", `{"writer":"pins-x","files":["bench/x.bin"]}`),
+		row("plant.f.env", "plant", `{"target":"go.functional.roundtrip.f.c","env":{"B":"1"}}`),
+	}
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: good}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		extra testreg.Test
+		says  string
+	}{
+		"a renamed make target":   {row("harness-run.makefile.gone", "make", `{"file":"Makefile","target":"gone"}`), "registry row harness-run.makefile.gone runs make-target Makefile gone, which the repository does not hold"},
+		"a control in no group":   {row("plant.g1.x", "plant", `{"make":"nc-two","file":"Makefile"}`), "names no group"},
+		"a control twice":         {row("plant.g1.again", "plant", `{"make":"nc-one","file":"Makefile","group":"g1"}`), "plant.g1.again runs negative control nc-one, which plant.g1.nc-one already runs"},
+		"a deleted golden":        {row("golden.x.gone", "golden", `{"writer":"pins-x","files":["testdata/corpus/gone.bin"]}`), "registry row golden.x.gone runs data-case testdata/corpus gone, which the repository does not hold"},
+		"a golden twice":          {row("golden.x.again", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.out"]}`), "golden.x.again pins testdata/corpus/x.out, which golden row golden.x.x-out already pins"},
+		"a golden with no files":  {row("golden.x.none", "golden", `{"writer":"pins-x"}`), "golden.x.none is a golden row without files"},
+		"a golden of a directory": {row("golden.x.dir", "golden", `{"writer":"pins-x","files":["testdata/corpus/"]}`), "golden.x.dir pins testdata/corpus/, which is not a file"},
+		"a make row with no file": {row("harness-run.makefile.nofile", "make", `{"target":"prep"}`), "is a make row without a file and a target"},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(good), c.extra)}, nil)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
 func modelRow(key, inputs string) testreg.Test {
 	return testreg.Test{Key: key, Adapter: "model-check", Inputs: []byte(inputs)}
 }
@@ -231,6 +286,90 @@ func TestAModelCheckRowCoversItsConfig(t *testing.T) {
 		"the covered config left in the ledger": {rows[1:], "model tla counts 1 unmoved tests, and there are 2"},
 	} {
 		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: c.rows}, exact)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
+// TestAGoldenCoversACaseOnlyWhenItPinsEveryFile: a case whose expectation is
+// pinned beside an input the languages still run stays in the ledger; a case
+// every file of which is pinned is covered.
+func TestAGoldenCoversACaseOnlyWhenItPinsEveryFile(t *testing.T) {
+	t.Parallel()
+	conf := Item{Kind: KindDataCase, Dir: "testdata/conformance", Name: "c", Source: "testdata/conformance/c.json:1"}
+	pin := Item{Kind: KindDataCase, Dir: "testdata/pins", Name: "p", Source: "testdata/pins/p.h:1"}
+	res := &Result{Items: []Item{conf, pin}, CaseFiles: map[string][]string{
+		conf.ID(): {"testdata/conformance/c.json", "testdata/conformance/c.expect"},
+		pin.ID():  {"testdata/pins/p.h", "testdata/pins/p.cpp"},
+	}}
+	row := func(key, file string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "golden", Inputs: []byte(`{"writer":"pins-x","files":["` + file + `"]}`)}
+	}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
+		row("golden.c.expect", "testdata/conformance/c.expect"),
+		row("golden.p.h", "testdata/pins/p.h"),
+		row("golden.p.cpp", "testdata/pins/p.cpp"),
+	}}
+	covered, p := CoveredIn(res, reg)
+	if len(p) != 0 {
+		t.Fatalf("problems: %v", p)
+	}
+	if _, ok := covered[conf.ID()]; ok {
+		t.Errorf("a case with an unpinned input is covered by %s", covered[conf.ID()])
+	}
+	if covered[pin.ID()] == "" {
+		t.Errorf("a case every file of which is pinned is not covered")
+	}
+	ledger := Ledger(res, reg, func(string, string, []Item) (string, string) { return "L4", "the languages run it" })
+	if len(ledger) != 1 || ledger[0].Dir != "testdata/conformance" || ledger[0].Count != 1 {
+		t.Errorf("the ledger: %+v", ledger)
+	}
+}
+
+// TestAMakeRowsReadsCoverTheCasesItRuns: a make row covers the data cases
+// its reads name, every file of each; a case a golden row pins and a make
+// row reads is claimed by both with no problem (two checks of one case),
+// and stays the golden row's; a read of a file no case holds, a read
+// outside the data paths and a case only partly read are each named or
+// left in the ledger.
+func TestAMakeRowsReadsCoverTheCasesItRuns(t *testing.T) {
+	t.Parallel()
+	vnew := Item{Kind: KindDataCase, Dir: "test/tables", Name: "VNEW_a", Source: "test/tables/VNEW_a.schema:1"}
+	pin := Item{Kind: KindDataCase, Dir: "testdata/pins", Name: "p", Source: "testdata/pins/p.h:1"}
+	pair := Item{Kind: KindDataCase, Dir: "test/tables", Name: "pair", Source: "test/tables/pair.in:1"}
+	gate := Item{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate", Source: "Makefile:1"}
+	res := &Result{Items: []Item{gate, vnew, pin, pair}, CaseFiles: map[string][]string{
+		vnew.ID(): {"test/tables/VNEW_a.schema"},
+		pin.ID():  {"testdata/pins/p.h"},
+		pair.ID(): {"test/tables/pair.in", "test/tables/pair.out"},
+	}}
+	mk := func(reads string) testreg.Test {
+		return testreg.Test{Key: "harness-run.makefile.gate", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"gate","reads":[` + reads + `]}`)}
+	}
+	golden := testreg.Test{Key: "golden.p.h", Adapter: "golden", Inputs: []byte(`{"writer":"pins-x","files":["testdata/pins/p.h"]}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{golden, mk(`"test/tables/VNEW_a.schema","testdata/pins/p.h","test/tables/pair.in"`)}}
+	covered, p := CoveredIn(res, reg)
+	if len(p) != 0 {
+		t.Fatalf("a golden row and a make row on one case: %v", p)
+	}
+	if covered[vnew.ID()] != "harness-run.makefile.gate" || covered[pin.ID()] != "golden.p.h" {
+		t.Errorf("covered %v: the read case is the make row's, the pinned one the golden row's", covered)
+	}
+	if _, ok := covered[pair.ID()]; ok {
+		t.Errorf("a case read in part is covered by %s", covered[pair.ID()])
+	}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "test/tables", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Errorf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		reads, says string
+	}{
+		"a file no case holds":   {`"test/tables/VNEW_gone.schema"`, "harness-run.makefile.gate reads test/tables/VNEW_gone.schema, which the repository does not hold"},
+		"a file of no data path": {`"internal/x/a.go"`, "harness-run.makefile.gate reads internal/x/a.go, which is no data case's file"},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{golden, mk(c.reads)}}, nil)
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
 			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
 		}
@@ -307,8 +446,9 @@ func TestATestThatSkipsIsRefused(t *testing.T) {
 }
 
 // TestANewTestWithoutARowIsNamed: against main's tree, a test main lacks and
-// no row runs is named with its place; one with a row, and one main has, are
-// not.
+// no row runs or reads is named with its place; one with a row, a data case a
+// per-language row reads (Indexed, as the ledger counts it), and one main
+// has, are not.
 func TestANewTestWithoutARowIsNamed(t *testing.T) {
 	t.Parallel()
 	before := &Result{Items: []Item{{Kind: KindGoTest, Dir: "a", Name: "TestOld", Source: "a/x_test.go:1"}}}
@@ -316,11 +456,110 @@ func TestANewTestWithoutARowIsNamed(t *testing.T) {
 		{Kind: KindGoTest, Dir: "a", Name: "TestOld", Source: "a/x_test.go:1"},
 		{Kind: KindGoTest, Dir: "a", Name: "TestRow", Source: "a/x_test.go:5"},
 		{Kind: KindGoTest, Dir: "a", Name: "TestPlanted", Source: "a/y_test.go:3"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "x", Source: "testdata/corpus/x.in:1"},
 	}}
-	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{gotestRow("tooling.a.row", "./a", "TestRow")}}
+	perLang := testreg.Test{Key: "roundtrip.conformance-wire.x", Inputs: []byte(`{"surface":"wire","case":"x","files":["testdata/corpus/x.in"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{gotestRow("tooling.a.row", "./a", "TestRow"), perLang}}
 	p := NewWithoutRows(before, now, reg)
 	if len(p) != 1 || !strings.Contains(p[0], "go-test a TestPlanted at a/y_test.go:3 is a new test with no registry row") {
 		t.Fatalf("want exactly TestPlanted named: %v", p)
+	}
+}
+
+// TestAnUnreadableRegistryIsNamed: a registry the scan cannot read is an
+// unparsed file, named, never a tree with no make rows.
+func TestAnUnreadableRegistryIsNamed(t *testing.T) {
+	t.Parallel()
+	files := maps.Clone(fixture)
+	delete(files, testreg.DefaultPath)
+	root := writeFixture(t, files)
+	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(testreg.DefaultPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Extract(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range res.Unparsed {
+		if u.File == testreg.DefaultPath && strings.Contains(u.Reason, "read") {
+			return
+		}
+	}
+	t.Fatalf("an unreadable registry was not named: %+v", res.Unparsed)
+}
+
+// TestAPerLanguageRowRunsEachLanguagesTarget: a per-language row whose
+// target holds {lang} runs that target for every language the registry
+// lists, so each language's rule is a make target as a make row's would be;
+// a language with no such rule adds nothing, a row scoped to no language
+// expands nothing, the language-free scope "none" is no language even when
+// a lang record names it, and a target with no {lang} is not a make row's.
+func TestAPerLanguageRowRunsEachLanguagesTarget(t *testing.T) {
+	t.Parallel()
+	files := maps.Clone(fixture)
+	files["Makefile"] += "\nruns-aa-corpus:\n\ttrue\n\nruns-bb-corpus:\n\ttrue\n\nruns-cc-corpus:\n\ttrue\n\nloose-zz:\n\ttrue\n\nruns-aa-x:\n\ttrue\n\nruns-none-corpus:\n\ttrue\n"
+	files[testreg.DefaultPath] += `{"rec":"lang","name":"aa","adapter":"corpus"}` + "\n" +
+		`{"rec":"lang","name":"bb","adapter":"corpus"}` + "\n" +
+		`{"rec":"lang","name":"dd","adapter":"corpus"}` + "\n" +
+		`{"rec":"lang","name":"none","adapter":"corpus"}` + "\n" +
+		`{"rec":"test","key":"decode.c.one","type":"decode","family":"c","case":"one","inputs":{"target":"runs-{lang}-corpus"}}` + "\n" +
+		`{"rec":"test","key":"decode.c.free","type":"decode","family":"c","case":"free","scope":"none","adapter":"gotest","inputs":{"target":"runs-{lang}-x"}}` + "\n" +
+		`{"rec":"test","key":"decode.c.loose","type":"decode","family":"c","case":"loose","inputs":{"target":"loose-zz"}}` + "\n"
+	res, err := Extract(writeFixture(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Unparsed) != 0 {
+		t.Fatalf("unparsed: %+v", res.Unparsed)
+	}
+	got := map[string]bool{}
+	for _, it := range res.Items {
+		if it.Kind == KindMakeTarget {
+			got[it.Name] = true
+		}
+	}
+	for name, want := range map[string]bool{"runs-aa-corpus": true, "runs-bb-corpus": true, "runs-cc-corpus": false, "loose-zz": false, "runs-aa-x": false, "runs-none-corpus": false, "row-only": true} {
+		if got[name] != want {
+			t.Errorf("make target %s counted %v, want %v", name, got[name], want)
+		}
+	}
+}
+
+// TestAMalformedMakeRowIsNamed: a make row of the registry that is not JSON
+// is named, never read as no row at all.
+func TestAMalformedMakeRowIsNamed(t *testing.T) {
+	t.Parallel()
+	files := maps.Clone(fixture)
+	files[testreg.DefaultPath] = `{"rec":"test","adapter":"make","inputs":{` + "\n"
+	res, err := Extract(writeFixture(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range res.Unparsed {
+		if u.File == testreg.DefaultPath && strings.Contains(u.Reason, "a make row") {
+			return
+		}
+	}
+	t.Fatalf("a malformed make row was not named: %+v", res.Unparsed)
+}
+
+// TestAMakeTargetThatStopsBeingATestIsNamed: a make target main counts as a
+// test that this tree does not, while its rule stands (its row deleted), is
+// named; one whose rule went with it, and one still counted, are not.
+func TestAMakeTargetThatStopsBeingATestIsNamed(t *testing.T) {
+	t.Parallel()
+	before := &Result{Items: []Item{
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-kept"},
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-unrowed"},
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-removed"},
+	}}
+	now := &Result{
+		Items: []Item{{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-kept"}},
+		Rules: map[string]bool{RuleID("Makefile", "gate-kept"): true, RuleID("Makefile", "gate-unrowed"): true},
+	}
+	p := DroppedMakeTargets(before, now)
+	if len(p) != 1 || !strings.Contains(p[0], "make target gate-unrowed (Makefile) is a test on main and no longer one here") {
+		t.Fatalf("want exactly gate-unrowed named: %v", p)
 	}
 }
 

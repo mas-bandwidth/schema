@@ -619,6 +619,7 @@ type ciEvent struct {
 	PlanRows         string   // needs.plan.outputs.rows
 	PlanResult       string   // needs.plan.result, success when omitted
 	GoCorpusResult   string   // needs.go-fixed-corpus.result, success when omitted
+	ProduceResult    string   // needs.produce.result, success when omitted
 	PRPins           string   // needs.pr-select.outputs.pins (ci-full.yml)
 	PRCS             string   // needs.pr-select.outputs.cs (ci-full.yml)
 	// PlanOutputs, when set, answers needs.plan.outputs.<name> for every
@@ -1037,6 +1038,11 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return ev.GoCorpusResult, nil
 		}
 		return "success", nil
+	case "needs.produce.result":
+		if ev.ProduceResult != "" {
+			return ev.ProduceResult, nil
+		}
+		return "success", nil
 	case "needs.plan.outputs.rows":
 		if ev.PlanRows != "" {
 			return ev.PlanRows, nil
@@ -1066,7 +1072,7 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return "yes", nil
 		}
 		return "no", nil
-	case "needs.plan.outputs.codegen_touched", "needs.plan.outputs.pins":
+	case "needs.plan.outputs.codegen_touched":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
 				return "yes", nil
@@ -1289,7 +1295,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1322,7 +1328,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1359,24 +1365,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		"ci-full.yml:go-test",
 		"ci-full.yml:leg-tagged",
 		"ci-full.yml:pins",
-		"schema-cs-runs-hostile-corpus.yml:corpus",
-		"schema-cs-runs-hostile-corpus.yml:negative-control",
-		"schema-dart-generated-strict-analyze-gate.yml:fast",
-		"schema-dart-generated-strict-analyze-gate.yml:nightly",
-		"schema-elixir-runs-hostile-corpus.yml:corpus",
-		"schema-elixir-runs-hostile-corpus.yml:negative-control",
-		"schema-go-generated-golangci-lint-gate.yml:gate",
-		"schema-java-runs-hostile-corpus.yml:corpus",
-		"schema-java-runs-hostile-corpus.yml:negative-control",
-		"schema-luau-nightly-fuzz.yml:nightly",
-		"schema-luau-resource-bounds.yml:luau-resource-bounds",
-		"schema-luau-runs-hostile-corpus.yml:corpus",
-		"schema-luau-runs-hostile-corpus.yml:negative-control",
 		"schema-python-nightly-fuzz.yml:nightly",
-		"schema-python-resource-bounds.yml:nightly",
-		"schema-python-runs-hostile-corpus.yml:nightly",
-		"schema-rust-runs-hostile-corpus.yml:corpus",
-		"schema-rust-runs-hostile-corpus.yml:negative-control",
 	} {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, schedEv); err != nil || !ok {
@@ -1452,7 +1441,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:verdict",
 		"certify.yml:vuln",
-		"ci-fast.yml:block-gate",
 		"ci-fast.yml:build-cpp-conformance-account",
 		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:conformance-rows",
@@ -1471,10 +1459,11 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:nightly-fast",
-		"ci-fast.yml:pins",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:produce",
 		"ci-fast.yml:schema-test",
 		"ci-fast.yml:schema-test-pr",
+		"ci-fast.yml:stage-compiler",
 		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-cpp-conformance",
 		"ci-fast.yml:verify-dart-conformance",
@@ -1528,73 +1517,16 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"roadmap.yml:page",
 		"roadmap.yml:roadmap",
 		"ruby-leg.yml:test",
-		"schema-c-runs-hostile-corpus.yml:corpus",
-		"schema-c-runs-hostile-corpus.yml:negative-control",
-		"schema-cpp-runs-hostile-corpus.yml:corpus",
-		"schema-cpp-runs-hostile-corpus.yml:negative-control",
-		"schema-cs-runs-hostile-corpus.yml:corpus",
-		"schema-cs-runs-hostile-corpus.yml:negative-control",
-		"schema-dart-generated-strict-analyze-gate.yml:fast",
-		"schema-dart-generated-strict-analyze-gate.yml:nightly",
 		"schema-dart-nightly-fuzz.yml:nightly",
 		"schema-dart-nightly-fuzz.yml:replay",
-		"schema-dart-runs-hostile-corpus.yml:corpus",
-		"schema-dart-runs-hostile-corpus.yml:negative-control",
-		"schema-elixir-runs-hostile-corpus.yml:corpus",
-		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-engine-is-the-oracle.yml:oracle-independence",
-		"schema-go-generated-golangci-lint-gate.yml:gate",
-		"schema-java-runs-hostile-corpus.yml:corpus",
-		"schema-java-runs-hostile-corpus.yml:negative-control",
-		"schema-js-runs-hostile-corpus.yml:corpus",
-		"schema-js-runs-hostile-corpus.yml:negative-control",
-		"schema-lobster-generated-strict-gate.yml:strict",
-		"schema-lua-generated-luacheck-gate.yml:luacheck",
-		"schema-lua-nightly-fuzz.yml:fast",
-		"schema-lua-nightly-fuzz.yml:nightly",
-		"schema-lua-resource-bounds.yml:fast",
-		"schema-lua-resource-bounds.yml:nightly",
-		"schema-lua-runs-hostile-corpus.yml:fast",
-		"schema-lua-runs-hostile-corpus.yml:nightly",
-		"schema-lua-version-differential.yml:differential",
-		"schema-lua-version-differential.yml:negative-control",
-		"schema-lua-version-differential.yml:static",
-		"schema-luau-generated-analyze-strict-gate.yml:luau-analyze-strict",
-		"schema-luau-nightly-fuzz.yml:nightly",
-		"schema-luau-nightly-fuzz.yml:replay",
-		"schema-luau-resource-bounds.yml:luau-resource-bounds",
-		"schema-luau-runs-hostile-corpus.yml:corpus",
-		"schema-luau-runs-hostile-corpus.yml:negative-control",
-		"schema-moo-generated-analyze-strict-gate.yml:gate",
 		"schema-moo-nightly-fuzz.yml:nightly",
 		"schema-moo-nightly-fuzz.yml:wiring",
-		"schema-moo-runs-hostile-corpus.yml:corpus",
-		"schema-moo-runs-hostile-corpus.yml:negative-control",
 		"schema-nightly.yml:part",
 		"schema-nightly.yml:verdict",
 		"schema-python-nightly-fuzz.yml:nightly",
-		"schema-python-resource-bounds.yml:fast",
-		"schema-python-resource-bounds.yml:nightly",
-		"schema-python-runs-hostile-corpus.yml:fast",
-		"schema-python-runs-hostile-corpus.yml:nightly",
 		"schema-ruby-nightly-fuzz.yml:nightly",
-		"schema-ruby-resource-bounds.yml:nightly",
-		"schema-ruby-runs-hostile-corpus.yml:nightly",
-		"schema-rust-runs-hostile-corpus.yml:corpus",
-		"schema-rust-runs-hostile-corpus.yml:negative-control",
-		"schema-shared-hostile-corpus.yml:drift",
-		"schema-shared-hostile-corpus.yml:negative-control",
-		"schema-squirrel-all-port-differential.yml:fast",
-		"schema-squirrel-all-port-differential.yml:nightly",
-		"schema-squirrel-nightly-fuzz.yml:fuzz",
-		"schema-squirrel-nightly-fuzz.yml:harness",
-		"schema-squirrel-resource-bounds.yml:fast",
-		"schema-squirrel-resource-bounds.yml:nightly",
-		"schema-squirrel-runs-hostile-corpus.yml:fast",
-		"schema-squirrel-runs-hostile-corpus.yml:nightly",
 		"schema-test-nightly.yml:nightly",
-		"schema-unity-runs-hostile-corpus.yml:corpus",
-		"schema-unity-runs-hostile-corpus.yml:negative-control",
 		"tla-nightly.yml:tlc",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
@@ -1655,25 +1587,18 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "ci-fast.yml:lang-lint admits fork PR",
 		},
 		{
-			name:      "restore a pull_request trigger on the Dart strict analyze lens",
-			workflow:  "schema-dart-generated-strict-analyze-gate.yml",
-			oldSubstr: "\non:\n",
-			newSubstr: "\non:\n  pull_request:\n",
-			wantErr:   "schema-dart-generated-strict-analyze-gate.yml triggers on pull_request",
-		},
-		{
-			name:      "restore a pull_request trigger on the Elixir hostile corpus",
-			workflow:  "schema-elixir-runs-hostile-corpus.yml",
+			name:      "restore a pull_request trigger on the Python nightly fuzz",
+			workflow:  "schema-python-nightly-fuzz.yml",
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  pull_request:\n    branches: [ main, dev, fixed-table-form, 'sprint/**' ]\n",
-			wantErr:   "schema-elixir-runs-hostile-corpus.yml triggers on pull_request",
+			wantErr:   "schema-python-nightly-fuzz.yml triggers on pull_request",
 		},
 		{
-			name:      "restore a push to main on the Java hostile corpus",
-			workflow:  "schema-java-runs-hostile-corpus.yml",
+			name:      "restore a push to main on the Ruby nightly fuzz",
+			workflow:  "schema-ruby-nightly-fuzz.yml",
 			oldSubstr: "\non:\n",
 			newSubstr: "\non:\n  push:\n    branches: [ main ]\n",
-			wantErr:   "schema-java-runs-hostile-corpus.yml triggers on push",
+			wantErr:   "schema-ruby-nightly-fuzz.yml triggers on push",
 		},
 		// pr-select is skipped on a nightly or a dispatch: pins and cs-tables
 		// without always() && !cancelled() would be skipped with it.

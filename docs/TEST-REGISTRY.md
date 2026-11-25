@@ -127,6 +127,13 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | an adapter omits an instance it was asked for, or reports one twice | `TestExpectedNotRanFails`, `TestAResultReportedTwiceFails` |
 | an adapter crashes | `TestAnAdapterCrashFails` |
 | an adapter times out (the deadline is an argument; the test hands in one already past) | `TestAnAdapterTimeoutFails` |
+| a build a call needs (a leg, a harness) runs before any call, outside every call's deadline and under one of its own, the limit a call has (`testreg.Preparer`); a plant prepares the rows it runs; a step already built answers without waiting for the checkout | `TestPrepareRunsBeforeAnyCallOutsideItsDeadline`, `TestABuildStepRunsInPrepare`, `TestAPlantPreparesTheRowsItRunsInTheCheckout`, `TestABuildStepAlreadyRunNeverWaitsForTheCheckout` |
+| a build that outlasts its deadline fails every row that needed it, naming the timeout | `TestAPrepareThatOutlastsItsDeadlineFailsByName` |
+| a build that fails fails every row that needed it, by name, and its call never runs | `TestAFailedPrepareFailsItsGroupByName` |
+| the adapters that take the checkout (make, golden, plant, model-check, corpus) run one after another, each deadline starting with its own call (`testreg.Serial`) | `TestSerialAdaptersRunOneAfterAnother`, `TestTheCheckoutAdaptersRunOneAfterAnother` |
+| the env plants of one language are one block of a shard, as a golden writer's rows are | `TestAnEnvPlantsRowsShareOneShardByLanguage` |
+| each golden writer, each language's env plants, every other plant and every make row is an adapter call of its own, under its own deadline | `TestEachWriterAndPlantIsACallOfItsOwn` |
+| a row is weighed by what it cost: its adapter's seconds, else its share of what its call took beyond the rows the adapter timed, plus its share of its group's Prepare; a plant by its baseline and sabotaged run | `TestARowsSecondsAreItsCallsShareAndItsPrepares`, `TestARowsShareIsWhatTheCallTookBeyondTheTimedRows`, `TestAPlantResultCarriesItsMeasuredSeconds` |
 | a verdict other than pass or fail: there is no skipped verdict | `TestThereIsNoSkippedVerdict` |
 | a harness that logs a skip | `TestAHarnessSkipLineFails` |
 | a Go test that skips | `TestGoTestEventsGiveOneVerdictEach` |
@@ -201,8 +208,10 @@ Built today:
 | adapter | for | how |
 |---|---|---|
 | `corpus` | every language row: each per-language family a harness exists for, routed by family | below |
-| `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, cut into calls of at most `testreg.ShardBudget` measured seconds, run one after another within a package and several packages at once, each given the driver's remaining deadline less a 10 s margin as `-timeout`; a row a call never reports fails by name, and a call that exits non-zero with every test passed (a `TestMain` check) fails its rows, every event mapped to its row by full name (a test's tier says what it needs; nothing in a test decides whether it runs). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module |
-| `plant` | negative controls; inputs `{"target", "env", "reason"}` (`reason` optional) | runs the target by name with `env` set, which breaks what the target checks; passes only when the target runs and fails, and, when `reason` is given, its fail reason holds it |
+| `gotest` | language-free Go tests; inputs `{"package", "test", "make"}` (`make` optional: a make target, such as a generated tree's stamp, that Prepare makes once before any call) | `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, cut into calls of at most `testreg.ShardBudget` measured seconds, run one after another within a package and several packages at once, each given the driver's remaining deadline less a 10 s margin as `-timeout`; a row a call never reports fails by name, and a call that exits non-zero with every test passed (a `TestMain` check) fails its rows, every event mapped to its row by full name (a test's tier says what it needs; nothing in a test decides whether it runs). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module |
+| `plant` | negative controls; inputs `{"target", "env", "reason"}`, `{"edits", "red", "run", "reason"}` or `{"make", "file", "group"}` | env form: runs the target with `env` set; edit form: applies each edit (its anchor exactly once, every copy reached) to a copy of the tracked tree and runs the named tests there, so each builds with its own leg's flags. Passes only when every named row passes on the tree as it is, and then under the sabotage exactly the named targets fail with a reason whose first line holds `reason` (16 characters or more), every other name passes and the run has no run-level problem: a red for another cause (a missing tool, a broken build), or a row red already, fails the plant. The edit form's copy is a git worktree of HEAD with the checkout's files over it and the checkouts beside the checkout (`../serialize.go`) linked beside it, its run is that tree's own schema-test, and its verdict is read from that run's `--report` JSON. A make row cannot be named red (its reason is its exit status, which any failure gives); a copy of an anchor in a file of the same source family (C and C++ sources and headers are one) that no edit names fails the plant. Make form: a control of `make/negative-controls.json`, whose recipe holds its own gate red |
+| `make` | make gates; inputs `{"file", "target"}` plus optional `"vars"` (make variables on the command line), `"tools"` (programs that must be on PATH) and `"siblings"` (checkouts such as `../serialize.go`) and `"reads"` (the data cases the target runs, which the extract counts covered beside any golden row of the same case) | the target must be a rule its file writes, else FAIL; a missing tool or sibling FAILS naming the runner before make runs; the target's dry run (`make -n -B`) must name every file of `reads` and run no `go test` without `-json` (plain go test output prints nothing for a skipped test), else FAIL before it runs; `make -jN target VAR=value...` passes on exit 0 with no skip in the log and no line of go test's plain output |
+| `golden` | goldens and pins; inputs `{"writer", "files"}` | the `pins-*` writer runs once per run in a copy of the tracked tree, with every file its rows name aged first so a file it leaves untouched shows it was not written; each file is compared byte for byte; a file it no longer writes, or wrote differently, FAILS; a pin it writes that no row names FAILS every row of the writer; a row whose file is not committed is MISSING; a writer that fails FAILS its own rows with its error, and the other writers' rows are judged as usual; `run --update <names>` re-pins only those rows. A copy a killed run left beside the checkout (named with its process id) is removed by the next run |
 | `model-check` | TLA+ model checks (type `model`); inputs `{"config", "workers"}`, or `{"controls": true}` | `go build ./tools/tlcrun`, then `tlcrun -adapter`: TLC over `tla/<config>`, judged against its `tla/RUNS.tsv` row (an exhaustive run explores the recorded distinct states with no error; a reversed witness violates exactly the invariant its row names). The controls row runs the judge's three broken-tree controls. No TLC jar or no java fails every instance naming the runner. `SCHEMA_TEST_TLC_PLANT_APPEND` is the plant hook: its text is appended to the config in a scratch copy of `tla/` |
 
 The `corpus` adapter's harnesses, by family:
@@ -327,6 +336,42 @@ ruling, 2026-11-25, easy for Glenn to overrule):
   for the case is red, never left out
   (`TestLoadRefusesAnUnrepresentableLineOnAUnionRow`).
 
+### The hostile corpus
+
+Every case of the shared hostile corpus (internal/ci/hostilecorpus/corpus,
+docs/HOSTILE-CORPUS.md) is one registry test per language:
+`<type>.hostile.<case>` for manifest.tsv, and
+`<type>.hostile-number-token.<case>` for number-token.tsv (the wide integers
+written as bare number tokens, which each port reads once its own reader
+refuses them). The type is load-refusal for a refuse verdict and decode for
+an accept. The rows are nightly: each needs the language's toolchain, and
+each run is the whole manifest (tools/schema-test/hostile.go).
+
+- A language's instances of a family are answered by one run of the family's
+  make target for that language (`make schema-<lang>-runs-hostile-corpus`,
+  `make schema-<lang>-runs-hostile-number-token`), which runs every case once.
+  The run prints a block of verdict lines (`FAIL <case> ...`,
+  `hostile-ledger ran <case>`, `hostile-ledger end`); a runner written as a Go
+  test writes the same lines to the file `$SCHEMA_HOSTILE_VERDICTS` names
+  (hostilecorpus.WriteVerdicts). A case passes when the block says it ran and
+  no FAIL line names it. Lines after the last `end` are the target's own
+  controls, never the corpus run's.
+- A case no line names fails ("gave the case no verdict"). A run with no
+  block (a target that does not exist yet, a build that broke) or with a line
+  in its block that is no case's verdict (a FIX-CARD line, a ledger that
+  did not close) fails every asked case with what the run said. A target that
+  exits non-zero with no case failing by name is the run's error.
+- No case runs twice: the per-case rows are the make target's only rows, and
+  their inputs name the Go test a Go-written target runs (`go_tests`), so
+  `schema-test extract` counts the target and the test as the rows'.
+- `TestTheRegistryHoldsEveryHostileCase` holds the rows to the manifests field
+  for field (`-update-hostile` rewrites them). A number-token row names the
+  conformance tree its case copies (`files`), so the tree is a data case the
+  registry reads.
+- Retired with this: the per-language schema-<lang>-runs-hostile-corpus.yml
+  workflows and schema-shared-hostile-corpus.yml; each control is its own
+  registry row.
+
 ## How each kind of test fits
 
 Every test of every kind is a registry row run by this driver; a kind that fits
@@ -342,7 +387,7 @@ adapter step for a named test.
 | lint and strict-analyse gates | lint | per language | `lint.generated.packet-corpus` | run the analyser over the named tree; any finding fails |
 | fuzz, soak, resource bounds | fuzz, soak, resource-bounds | per language | `fuzz.wire.seed-1` | seeded and bounded by inputs; the seed and budget are inputs, never time |
 | differential | differential | per language or none | `differential.squirrel.all-port` | run both sides, compare |
-| negative control | plant | none | `plant.align-arrays.go-valid-row-run-as-refuse` | `plant`: target name plus the env that breaks it; passes only on the target's red |
+| negative control | plant | none | `plant.align-arrays.go-valid-row-run-as-refuse` | `plant`: target name plus the env that breaks it and the reason it fails for; passes only on the target's red for that reason |
 | TLA model check, trace check | model | none | `model.card-hops.divergent-leg` | `model-check`: TLC on the named config, held to its `tla/RUNS.tsv` row (family: the module; case: the config's variant, `holds` for the exhaustive one); a trace check feeds a code trace to TLC. Nightly: the configs together take minutes, past a two-minute job |
 | benchmarks and timing gates | bench | per language or none | `bench.packet.write-ns` | measure, compare with the recorded bound in inputs |
 | compiler and IR | compiler | none | `compiler.check.reserved-words` | `gotest` |

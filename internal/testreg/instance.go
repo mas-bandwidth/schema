@@ -1,6 +1,7 @@
 package testreg
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -271,13 +272,78 @@ func Weight(inst Instance) float64 {
 	return DefaultSeconds
 }
 
+// unitOf is the key of the rows one adapter call answers together, which a
+// cut must not split, or "" for a row that stands alone. A golden row's
+// writer runs once for all the rows a shard holds of it, and each row's
+// seconds are its share of that run: rows of one writer cut across two
+// shards would cost each shard the writer whole. An env plant runs its target
+// row in the checkout, so its shard builds the target language's leg first
+// (Preparer): the env plants of one language are one block, measured cold, so
+// the shard that holds them is weighed with that build once.
+func unitOf(inst Instance) string {
+	var in struct {
+		Writer string          `json:"writer"`
+		Env    json.RawMessage `json:"env"`
+		Target string          `json:"target"`
+	}
+	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
+		return ""
+	}
+	switch {
+	case inst.Test.Adapter == "golden" && in.Writer != "":
+		return "golden " + in.Writer
+	case inst.Test.Adapter == "plant" && len(in.Env) > 0 && in.Target != "":
+		lang, _, _ := strings.Cut(in.Target, ".")
+		return "plant env " + lang
+	}
+	return ""
+}
+
+// callUnit is what one adapter call answers, or "" for the adapter's whole
+// group: a unit (unitOf) is a call of its own, so each golden writer and
+// each language's env plants have their own deadline, and so is every other
+// plant, a baseline and a sabotaged run that no other plant shares, and every
+// make row, a gate no other row shares. A call
+// that answered every writer or plant of a shard at once would need the
+// shard's whole time under one deadline.
+func callUnit(inst Instance) string {
+	if u := unitOf(inst); u != "" {
+		return u
+	}
+	if inst.Test.Adapter == "plant" || inst.Test.Adapter == "make" {
+		return inst.Test.Adapter + " " + inst.Full
+	}
+	return ""
+}
+
+// blocks is a name list as the units a cut keeps whole (unitOf), in the order
+// each unit's first name has in the list.
+func blocks(instances []Instance) [][]Instance {
+	var out [][]Instance
+	at := map[string]int{}
+	for _, inst := range instances {
+		u := unitOf(inst)
+		if i, ok := at[u]; ok && u != "" {
+			out[i] = append(out[i], inst)
+			continue
+		}
+		if u != "" {
+			at[u] = len(out)
+		}
+		out = append(out, []Instance{inst})
+	}
+	return out
+}
+
 // Parts cuts a name list, in its order, into n contiguous parts, the
 // heaviest as light as a contiguous cut allows, weighed by Weight, and the
 // rest as even as that allows: a part ends near its share of what is left,
 // so one heavy test does not leave the parts after it empty. The list is
 // registry order, so the tests of one Go package stay together and each part
-// builds few packages. Every name is in exactly one part; when there are
-// more parts than names, the parts past the last name are empty.
+// builds few packages. The rows of one unit (unitOf: a golden writer's) are
+// one block, placed where the first of them is, and never cut. Every name is
+// in exactly one part; when there are more parts than blocks, the parts past
+// the last block are empty.
 func Parts(instances []Instance, n int) [][]Instance {
 	if n < 1 {
 		return nil
@@ -286,14 +352,17 @@ func Parts(instances []Instance, n int) [][]Instance {
 	if len(instances) == 0 {
 		return parts
 	}
-	weights := make([]float64, len(instances))
-	after := make([]float64, len(instances)+1) // after[k]: the weight from k on
+	units := blocks(instances)
+	weights := make([]float64, len(units))
+	after := make([]float64, len(units)+1) // after[k]: the weight from k on
 	heaviest := 0.0
-	for k, inst := range instances {
-		weights[k] = Weight(inst)
+	for k, unit := range units {
+		for _, inst := range unit {
+			weights[k] += Weight(inst)
+		}
 		heaviest = max(heaviest, weights[k])
 	}
-	for k := len(instances) - 1; k >= 0; k-- {
+	for k := len(units) - 1; k >= 0; k-- {
 		after[k] = after[k+1] + weights[k]
 	}
 	// fits: the names from k on fill at most m parts of capacity c, greedily
@@ -321,7 +390,7 @@ func Parts(instances []Instance, n int) [][]Instance {
 	p, load := 0, 0.0
 	for k, w := range weights {
 		if len(parts[p]) > 0 && p < n-1 {
-			left, partsLeft := len(instances)-k, n-p-1
+			left, partsLeft := len(units)-k, n-p-1
 			share := (load + after[k]) / float64(n-p)
 			switch {
 			case load+w > hi || left <= partsLeft:
@@ -332,7 +401,7 @@ func Parts(instances []Instance, n int) [][]Instance {
 				p, load = p+1, 0
 			}
 		}
-		parts[p] = append(parts[p], instances[k])
+		parts[p] = append(parts[p], units[k]...)
 		load += w
 	}
 	return parts

@@ -13,4 +13,4 @@
 # missing one is a failure.
 .PHONY: test-moo-tagged
 test-moo-tagged: toolchain-moo build/fixedform-corpus/.stamp
-	go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/ ./internal/codegen/mootable/ ./test/conformance/harness/
+	$(GO_TEST) -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/ ./internal/codegen/mootable/ ./test/conformance/harness/

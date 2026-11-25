@@ -306,8 +306,8 @@ func CheckLog(cases []Case, log string, runs int, rows map[string][]string) (str
 			for _, id := range ids {
 				got += ran[id]
 			}
-			switch {
-			case got == 0:
+			switch got {
+			case 0:
 				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is registered and was not run", i+1, c.Name, c.Carrier))
 			default:
 				whole := true

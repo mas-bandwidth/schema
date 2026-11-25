@@ -21,8 +21,8 @@
 # which certify.yml runs nightly), as every port's tables-<lang>-wire-fuzz is;
 # its enumerated pass is about 155 000 mutants, past the CI-full split's
 # per-job cap on a hosted runner. On every merge, ci-full's unit-codegen row
-# runs the in-package differential under the rule that nothing skips
-# (TestLuauWireFuzzAgreesWithTheGoEngine and its negative control), and the
+# runs the in-package differential, which fails by name without the pinned
+# interpreter (TestLuauWireFuzzAgreesWithTheGoEngine and its negative control), and the
 # negative-controls row of the luau group runs
 # tables-luau-wire-fuzz-negative-control, which drives this same pipe.
 

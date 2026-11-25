@@ -39,13 +39,13 @@ func TestCppConformanceProducerReusesTheVerifiedBlockCompiler(t *testing.T) {
 	t.Parallel()
 	wf := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
 	jobs := yamlJobs(wf)
-	block, producer := jobs["block-gate"], jobs["build-cpp-conformance-account"]
-	for _, want := range []string{"tables-block-zero-cost", "needs.plan.outputs.cpp_corpus_account", "git rev-parse HEAD^{tree}", "sha256sum bin/schema", "name: schema-compiler-${{ github.run_id }}"} {
+	block, producer := jobs["stage-compiler"], jobs["build-cpp-conformance-account"]
+	for _, want := range []string{"make -j\"$(nproc)\" bin/schema", "needs.plan.outputs.cpp_corpus_account", "git rev-parse HEAD^{tree}", "sha256sum bin/schema", "name: schema-compiler-${{ github.run_id }}"} {
 		if !strings.Contains(block, want) {
-			t.Errorf("block-gate compiler artifact lacks %q", want)
+			t.Errorf("stage-compiler compiler artifact lacks %q", want)
 		}
 	}
-	for _, want := range []string{"needs: [plan, block-gate]", "name: schema-compiler-${{ github.run_id }}", "sha256sum -c SHA256SUMS", "git rev-parse HEAD^{tree}", "--leg cpp --prebuilt-compiler"} {
+	for _, want := range []string{"needs: [plan, stage-compiler]", "name: schema-compiler-${{ github.run_id }}", "sha256sum -c SHA256SUMS", "git rev-parse HEAD^{tree}", "--leg cpp --prebuilt-compiler"} {
 		if !strings.Contains(producer, want) {
 			t.Errorf("C++ conformance producer restore lacks %q", want)
 		}

@@ -99,7 +99,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 		lines := extract.Ledger(res, reg, plan(*root, reg))
 		if old, err := extract.LoadLedger(ledgerPath); err == nil {
 			rowed := map[string]bool{}
-			runs := extract.Runs(reg)
+			runs := extract.Runs(res, reg)
 			for _, it := range res.Items {
 				if _, ok := runs[it.ID()]; ok && it.Kind == extract.KindGoTest {
 					rowed[extract.TierPlace(it.Dir, it.Name)] = true
@@ -133,6 +133,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 			return fmt.Errorf("--since %s: %w", *since, err)
 		}
 		problems = append(problems, extract.NewWithoutRows(before, res, reg)...)
+		problems = append(problems, extract.DroppedMakeTargets(before, res)...)
 	}
 	if *shrinks != "" {
 		old, err := extract.LoadLedger(*shrinks)
@@ -158,7 +159,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 // printCounts is the extract's account: tests by kind, how many are rows
 // and how many wait, and the gates that decide tiers.
 func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger []extract.LedgerLine) error {
-	covered := extract.Runs(reg)
+	covered := extract.Runs(res, reg)
 	total, rows, gated := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, it := range res.Items {
 		total[it.Kind]++
@@ -241,9 +242,12 @@ func plan(root string, reg *testreg.Registry) func(kind, dir string, items []ext
 		case extract.KindDataCase, extract.KindDriver:
 			return "L4", "corpus data and harnesses: each language's adapter answers them when their family moves in"
 		case extract.KindNegativeControl:
-			return "L6", "negative controls: the plant adapter runs them"
+			if dir == "(excluded)" {
+				return "L6b, L7", "the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it"
+			}
+			return "L5, L6b", "negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job"
 		case extract.KindMakeTarget:
-			return "L6", "make gates: the make adapter runs them"
+			return "L3, L5, L6b, L7", "make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job"
 		case extract.KindModel:
 			return "L6", "TLC models: the model-check adapter runs them"
 		case extract.KindWorkflowJob:

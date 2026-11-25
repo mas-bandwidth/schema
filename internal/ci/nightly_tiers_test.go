@@ -270,7 +270,7 @@ func TestNightlyFastRunsTheRubyStrictFormOnARubyDiff(t *testing.T) {
 	for _, r := range nightlyrows.Select(rows, []string{"internal/codegen/ruby/emit.go"}, []string{"ruby"}, false) {
 		got = append(got, r.Name)
 	}
-	for _, want := range []string{"strict-ruby", "hostile-ruby", "bounds-ruby"} {
+	for _, want := range []string{"strict-ruby", "hostile-ruby"} {
 		if !slices.Contains(got, want) {
 			t.Errorf("a Ruby emitter diff selects %v, without %s", got, want)
 		}
