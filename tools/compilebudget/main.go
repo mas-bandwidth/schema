@@ -29,10 +29,12 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.DirFS, os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+// run is the command over open, which opens -dir (os.DirFS; a test hands in
+// a file system of its own).
+func run(args []string, open func(dir string) fs.FS, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("compilebudget", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	budget := flags.Float64("budget", 0, "the most CPU seconds one unit may take to compile")
@@ -44,7 +46,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		say(stderr, "usage: compilebudget -budget SECONDS -dir DIR UNIT...\n")
 		return 2
 	}
-	report, err := check(os.DirFS(*dir), *dir, *budget, flags.Args())
+	report, err := check(open(*dir), *dir, *budget, flags.Args())
 	if !say(stdout, report) {
 		return 1
 	}
