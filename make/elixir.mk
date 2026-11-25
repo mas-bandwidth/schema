@@ -432,7 +432,7 @@ ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and val
 # $(call ELIXIR_WREF_CONTROL,dir,file,sedvar,surface,rows,green,what)
 define ELIXIR_WREF_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
-	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+	@# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
 		--work $(1)/work > $(1)/log 2>&1; echo "exited $$? (the verdict is read from $(1)/log below)"
 	@got=$$(sed -n 's|^  elixir / $(4): \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \

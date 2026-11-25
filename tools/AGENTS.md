@@ -10,9 +10,10 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `errdiscard/` | refuses an error dropped in cmd/ or tools/ with no reason | `go test ./internal/errdiscard` | `make errdiscard` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
 | `gatecontrol/` | one shared gate on one leg with its oracle planted wrong | `go test ./tools/gatecontrol` | `go run ./tools/gatecontrol -leg LEG -plant PLANT -target TARGET -want RE` |
-| `gotestreport/` | go test -json row report and skip ledger | `go test ./tools/gotestreport` | `go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json` |
+| `gotestreport/` | go test -json row report; every skip is red | `go test ./tools/gotestreport` | `go run ./tools/gotestreport build/go-test-json` |
 | `gotestrows/` | ci-fast go-test matrix rows | `go test ./tools/gotestrows` | `go run ./tools/gotestrows ./...` |
 | `gotestrun/` | go test wrapper: refuses a run in which no test ran or passed | `go test ./tools/gotestrun` | `make test-run PKG=./pkg RUN='^TestX$'` |
+| `gotestselect/` | prints the -run pattern naming a selection by test name; fails when it names none | `go test ./internal/testselect` | `go run ./tools/gotestselect -not X ./pkg` |
 | `hostilecorpus/` | shared hostile-input corpus generator | `make schema-shared-hostile-corpus` | `make schema-shared-hostile-corpus-generate` |
 | `hostilecorpusexec/` | native-port hostile-corpus driver | `make schema-c-runs-hostile-corpus` | `make schema-c-runs-hostile-corpus` |
 | `hostileledger/` | hostile-corpus runner ledger check | `go test ./tools/hostileledger` | `go run ./tools/hostileledger` |

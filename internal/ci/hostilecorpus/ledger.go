@@ -6,7 +6,7 @@
 // the corpus FOLDER registers (the manifest's rows, checked against the files
 // in inputs/), against the cases the port's reader actually gave a verdict
 // for, carrier by carrier. Every registered case RAN; anything else is red,
-// and so is a run of nothing. No list holds a case back (Glenn, 2026-11-25:
+// and so is a run of nothing. No list holds a case back (docs/rulings.json no-skips, 2026-11-25:
 // "NO SKIPS"): a case a port cannot answer yet is red until it can.
 //
 // The comparison is by IDENTITY, never by count: the set of case names run

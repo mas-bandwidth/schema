@@ -10296,7 +10296,7 @@
       "row": "porting I4",
       "lang": "c",
       "status": "proven",
-      "gate": "TestPortAbsenceStaysAllowed",
+      "gate": "TestPortAbsenceIsRed",
       "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
       "control": "conformance-negative-control-c-absent (Certify / negative controls, nightly (base-c-absent))"
     },

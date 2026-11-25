@@ -4502,7 +4502,7 @@ tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
 	@rm -rf build/tables-list-preorder/cooks && mkdir -p build/tables-list-preorder/cooks
-# loud-ok: the sabotaged writer is meant to fail; cook-check below must refuse the cook it laid, by name, and a run that laid no cook fails that check too
+# the sabotaged writer is meant to fail; cook-check below must refuse the cook it laid, by name, and a run that laid no cook fails that check too
 	@SCHEMA_LIST_COOK_DIR=build/tables-list-preorder/cooks ./build/schema_test_lists_preorder > /dev/null 2>&1; echo "the sabotaged writer exited $$? (cook-check below is the verdict)"
 	@if ./bin/schema cook-check --root Army build/tables-list-preorder/cooks/army.cook tables/lists > build/list-preorder-check.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cook-check accepted the cook the sabotaged writer laid"; exit 1; \
@@ -7824,7 +7824,7 @@ proof-negative-control: build/conformance-harness build/conformance-go table-bas
 		{ echo "proof-negative-control: the clean Go leg failed"; cat $(PROOF_CONTROL)/clean.out; exit 1; }
 	@go run ./tools/matrix proof -results $(PROOF_CONTROL)/clean.json -cell 'surface wire/go' || \
 		{ echo "NEGATIVE CONTROL FAILED: the clean Go leg's surface wire cell is not proven"; exit 1; }
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/sabotaged.txt --work $(PROOF_CONTROL)/sabotaged-work --results $(PROOF_CONTROL)/sabotaged.json > $(PROOF_CONTROL)/sabotaged.out 2>&1; echo "exited $$? (the verdict is read from $(PROOF_CONTROL)/sabotaged.out below)"
 	@if go run ./tools/matrix proof -results $(PROOF_CONTROL)/sabotaged.json -cell 'surface wire/go' > $(PROOF_CONTROL)/cell.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: with go's wire/root_full answer deleted, the cell stayed proven"; cat $(PROOF_CONTROL)/cell.out; exit 1; fi

@@ -11,7 +11,7 @@ JAVA_TEXT_FIXED_ROOTS := build/conformance-java-text-fixed-roots
 .PHONY: conformance-java-text-fixed-roots conformance-java-text-fixed-roots-negative-control
 conformance-java-text-fixed-roots: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_TEXT_FIXED_ROOTS) && mkdir -p $(JAVA_TEXT_FIXED_ROOTS)
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	JAVA=$(JAVA) ./build/conformance-harness run --only java --work $(JAVA_TEXT_FIXED_ROOTS)/work > $(JAVA_TEXT_FIXED_ROOTS)/log 2>&1; echo "exited $$? (the verdict is read from $(JAVA_TEXT_FIXED_ROOTS)/log below)"
 	@grep -E '^json-(read|write) ' $(JAVA_TEXT_FIXED_ROOTS)/log || \
 		{ cat $(JAVA_TEXT_FIXED_ROOTS)/log; echo "conformance-java-text-fixed-roots: the run printed no json-read or json-write line"; exit 1; }
@@ -38,7 +38,7 @@ conformance-java-text-fixed-roots-negative-control: build/conformance-harness bu
 	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)" "$(CURDIR)" > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/driver
 	@chmod +x $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)" > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/drivers.txt
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --drivers $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/drivers.txt \
 		--work $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/work > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log 2>&1; echo "exited $$? (the verdict is read from $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log below)"
 	@if grep -qE '^json-write +pass ([0-9]+)/\1 *$$' $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/log; then \

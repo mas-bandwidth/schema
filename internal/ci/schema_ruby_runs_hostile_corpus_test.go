@@ -430,7 +430,7 @@ func rubyHostileGrade(c rubyHostileCase, a rubyHostileAnswer, answered bool) str
 // equals cases the manifest registers. `reader_unavailable` used to pass
 // unprinted and uncounted, so a generator that refused every schema left the
 // corpus green having read nothing; now a case the port does not run is red
-// by name, and no list holds one back (Glenn, 2026-11-25: "NO SKIPS").
+// by name, and no list holds one back (docs/rulings.json no-skips, 2026-11-25: "NO SKIPS").
 func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileAnswer) []string {
 	var bad []string
 	registered := make([]hostilecorpus.Case, 0, len(cases))

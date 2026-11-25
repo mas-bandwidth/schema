@@ -756,7 +756,7 @@ define dart-cookwrite-nc-leg
 	@# built as build/conformance-dart is, asserts on: Dart answers the write-refusal rows by debug assert, and a copy without them turns every refusal row red, not only this plant's cook-write rows
 	$(DART) compile exe --enable-asserts -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
-	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+	@# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
 			--work $(DART_COOKWRITE_NC)/$(1)/clean-work > $(DART_COOKWRITE_NC)/$(1)/clean-log 2>&1; echo "exited $$? (the verdict is read from $(DART_COOKWRITE_NC)/$(1)/clean-log below)"
 	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \

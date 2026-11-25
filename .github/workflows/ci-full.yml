@@ -846,7 +846,7 @@ jobs:
         if: matrix.group == 'unit-codegen-lobster-3'
         run: |
           set -euo pipefail
-          # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+          # make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
           all=$( { make -pq test-lobster 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && sub(/^test-lobster: /, "") {print; done=1}')
           [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
           targets=()
