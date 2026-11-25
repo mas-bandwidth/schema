@@ -602,7 +602,8 @@ func cT08GuardChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cppHeader := string(cpp["ProbeTable.h"])
+	// the header includes <Base>TableData.h, which holds the fixed form's arrays
+	cppHeader := string(cpp["ProbeTable.h"]) + string(cpp["ProbeTableData.h"])
 	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
 		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
 		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
@@ -898,7 +899,8 @@ func cT08LayoutHashEqualsReference(t *testing.T) {
 		}
 		var cpp string
 		for name, data := range ref {
-			if strings.HasSuffix(name, "Table.h") {
+			if strings.HasSuffix(name, "Table.h") || strings.HasSuffix(name, "TableData.h") {
+				// the header includes <Base>TableData.h, which holds the fixed form's arrays
 				cpp += string(data)
 			}
 		}

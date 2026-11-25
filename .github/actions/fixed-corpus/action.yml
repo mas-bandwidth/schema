@@ -1,0 +1,47 @@
+name: the fixed corpus
+description: >
+  The complete fixed corpus the language-free Go tests read,
+  built once per run and shared. "produce" builds it
+  against the pinned C++ reference runtime (tools/go-ci-corpus.sh produce)
+  and uploads it; "fetch" downloads it and holds it to this checkout's source
+  tree and runtime pin (tools/go-ci-corpus.sh verify), so a corpus built from
+  other source is refused by name. Runs no test.
+inputs:
+  mode:
+    description: produce or fetch
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: the pinned C++ reference runtime
+      if: inputs.mode == 'produce'
+      shell: bash
+      run: |
+        set -euo pipefail
+        read -r path url tag commit < <(grep '^\.\./serialize ' SIBLINGS)
+        rm -rf "$path"
+        git clone --quiet --depth 1 --branch "$tag" "$url" "$path"
+    - name: produce the complete fixed corpus
+      if: inputs.mode == 'produce'
+      shell: bash
+      run: sh tools/go-ci-corpus.sh produce
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: inputs.mode == 'produce'
+      with:
+        name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
+        path: |
+          build/fixedform-corpus/
+          build/go-fixed-corpus.revision
+          build/go-fixed-corpus.runtime
+          build/go-fixed-corpus.sha256
+        if-no-files-found: error
+        retention-days: 1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      if: inputs.mode == 'fetch'
+      with:
+        name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
+        path: build
+    - name: the fixed corpus belongs to this checkout
+      if: inputs.mode == 'fetch'
+      shell: bash
+      run: sh tools/go-ci-corpus.sh verify

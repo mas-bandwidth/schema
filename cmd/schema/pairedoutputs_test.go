@@ -16,6 +16,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testvolume"
 )
 
 // the two paired commands, by their own flag names. A paired command publishes
@@ -235,14 +237,14 @@ func TestPairedOutputsSideFailureKeepsThePayload(t *testing.T) {
 // test runs where it does and fails, named, where it does not.
 func TestPairedOutputsRefuseNormalizationAlias(t *testing.T) {
 	const composed, decomposed = "café.bin", "café.bin"
-	probe := t.TempDir()
+	probe := testvolume.Folding(t)
 	writeTestFile(t, filepath.Join(probe, composed), "probe")
 	if _, err := os.Lstat(filepath.Join(probe, decomposed)); err != nil {
 		t.Fatalf("this file system keeps %q and %q apart, so they are two files here: %v", composed, decomposed, err)
 	}
 	for _, cmd := range pairedCommands {
 		t.Run(cmd.verb+"/existing", func(t *testing.T) {
-			dir := t.TempDir()
+			dir := testvolume.Folding(t)
 			payload := filepath.Join(dir, composed)
 			writeTestFile(t, payload, oldPayload)
 			side := filepath.Join(dir, decomposed)
@@ -254,7 +256,7 @@ func TestPairedOutputsRefuseNormalizationAlias(t *testing.T) {
 			wantEntries(t, dir, composed)
 		})
 		t.Run(cmd.verb+"/fresh", func(t *testing.T) {
-			dir := t.TempDir()
+			dir := testvolume.Folding(t)
 			err := publishPairReading(cmd.verb, cmd.side, filepath.Join(dir, decomposed), cmd.payload, filepath.Join(dir, composed), nil)
 			wantAliasRefused(t, err, cmd.side, cmd.payload)
 			wantEntries(t, dir)

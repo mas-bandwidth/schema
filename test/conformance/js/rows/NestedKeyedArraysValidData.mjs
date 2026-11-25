@@ -58,10 +58,14 @@ function makeTurret(damage, cooldown, gunnerPresent, reaction, tracking) {
   InitTurretConfig(t);
   t.damage = damage;
   t.cooldown = cooldown;
-  t.gunnerPresent = gunnerPresent ? 1 : 0;
+  // A bool is a JS boolean in the generated value (the constructor's `false`,
+  // the decode's `!== 0`), and the save REFUSES anything else
+  // (GunnerConfigFixedCheckBody: `typeof value.tracking !== "boolean"`): this
+  // row once stored 1/0 here, and every save answered -1.
+  t.gunnerPresent = Boolean(gunnerPresent);
   if (gunnerPresent) {
     t.gunner.reaction = reaction;
-    t.gunner.tracking = tracking ? 1 : 0;
+    t.gunner.tracking = Boolean(tracking);
   }
   return t;
 }
@@ -172,7 +176,7 @@ const report = new TableFixedReport();
 
 const n = KeyedConfigFixedLoad(back, 2, bytes, written, plan, report);
 assert(n === 2, "KeyedConfigFixedLoad returned " + n + " records, expected 2");
-assert(!report.damaged, "read is not malformed");
+assert(!("damaged" in report), "read is not malformed");
 assert(report.refused === 0, "read is not refused (refused=" + report.refused + ")");
 assert(report.unknown === 0, "unknown=" + report.unknown);
 assert(report.mismatch === 0, "kindMismatch=" + report.mismatch);

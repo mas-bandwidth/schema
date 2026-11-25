@@ -100,7 +100,7 @@ function buildCellFile() {
   assert(result === -1, "plan_too_large (null plan): result = -1");
   assert(report.refused === TableFixedRefusal.PlanTooLarge,
     "plan_too_large (null plan): report.refused = PlanTooLarge, got " + TableFixedRefusalName(report.refused));
-  assert(!report.damaged, "plan_too_large (null plan): report.damaged = false");
+  assert(!("damaged" in report), "plan_too_large (null plan): the fixed form's report has no malformed flag");
   const fresh = new tbl.Cell();
   tbl.InitCell(fresh);
   assert(values[0].power === fresh.power && values[0].labelLength === fresh.labelLength &&

@@ -94,7 +94,7 @@ assert(dv.getInt32(body + 14, true) === 15, "the length 15 lands on the wire as 
   const n = PaddedRowFixedLoad(back, 1, lawful, lawful.length, PaddedRowFixedNewPlan(), report);
   let live = true;
   for (let i = 0; i < 15; i++) { if (back[0].label[i] !== 0x41 + i) { live = false; } }
-  assert(n === 1 && report.refused === 0 && !report.damaged && back[0].labelLength === 15 && live && back[0].slots[3] === 4,
+  assert(n === 1 && report.refused === 0 && !("damaged" in report) && back[0].labelLength === 15 && live && back[0].slots[3] === 4,
     `the lawful record reads back whole (n=${n}, length ${back[0].labelLength})`);
 }
 
@@ -108,7 +108,7 @@ assert(dv.getInt32(body + 14, true) === 15, "the length 15 lands on the wire as 
   back[0].labelLength = 7; back[0].id = 1; back[0].label.fill(POISON);
   const report = new TableFixedReport();
   const n = PaddedRowFixedLoad(back, 1, forged, forged.length, PaddedRowFixedNewPlan(), report);
-  assert(n === -1 && report.refused === TableFixedRefusal.LengthOverBound && !report.damaged,
+  assert(n === -1 && report.refused === TableFixedRefusal.LengthOverBound && !("damaged" in report),
     `the read side refuses a wire length of 20 against string(15) length_over_bound, never a clamp (n=${n}, refused=${TableFixedRefusalName(report.refused)})`);
   assert(report.oor === 0 && report.widened === 0, "the read-side refusal counts nothing");
   const fresh = new PaddedRow();

@@ -67,12 +67,18 @@
 // codec silently degrades to that shape. Forcing the primitives and the
 // fixed-class bodies inline is what keeps the cursor in registers and lets
 // adjacent constant framing bytes merge into one store.
+// A build may define the macro first (as plain inline, say, where forcing
+// every body inline makes a sanitizer build crawl); the default is unchanged.
+#ifndef GRAPHDEMO_TABLE_INLINE
 #if defined( _MSC_VER )
 #define GRAPHDEMO_TABLE_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define GRAPHDEMO_TABLE_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define GRAPHDEMO_TABLE_INLINE inline
+#endif
 #endif
 
 namespace graphdemo {
@@ -792,7 +798,8 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ )
     // Explicit little-endian stores also cover compilers that do not expose
     // byte-order macros. Native copies require positive little-endian proof.
     for ( int64_t i = 0; i <= count; i++ )
@@ -2212,9 +2219,11 @@ inline bool TableMessageQuantization( float qmin, float qmax, float qres, float 
 // would otherwise fuse into one rounding and move the wire.
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+w"( x ) )
-#elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && ( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+x"( x ) )
-#else
+#endif
+#if !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) ) ) && !( ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) ) )
 #define TABLE_FLOAT_FORCE_ROUND( x ) \
     do \
     { \
@@ -2541,116 +2550,13 @@ static const bool kTableAnnounceTooLarge = false;
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
 inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
-    0x01,
-    0x01,
-    0x09,
-    0xae,
-    0xf1,
-    0xbf,
-    0xc2,
-    0xd1,
-    0xc8,
-    0x0d,
-    0x2e,
-    0x02,
-    0x0e,
-    0x46,
-    0x06,
-    0x44,
-    0x03,
-    0x0b,
-    0xc7,
-    0x98,
-    0xe2,
-    0x17,
-    0x25,
-    0x80,
-    0x04,
-    0x01,
-    0x0a,
-    0x00,
-    0xf3,
-    0xa4,
-    0x48,
-    0x44,
-    0x19,
-    0xab,
-    0xd7,
-    0x56,
-    0x0c,
-    0x08,
-    0x66,
-    0xfe,
-    0x00,
-    0x64,
-    0x91,
-    0x60,
-    0x80,
-    0x7a,
-    0x04,
-    0x01,
-    0x03,
-    0x00,
-    0x3d,
-    0x62,
-    0xcb,
-    0x8f,
-    0xec,
-    0xfc,
-    0xf7,
-    0x39,
-    0x0c,
-    0x10,
-    0x3c,
-    0x13,
-    0xe2,
-    0x5c,
-    0x19,
-    0x8a,
-    0x3b,
-    0x82,
-    0x04,
-    0x01,
-    0x0a,
-    0x00,
-    0xbb,
-    0xf0,
-    0x0c,
-    0x9b,
-    0xcc,
-    0xfb,
-    0x2d,
-    0x73,
-    0x04,
-    0x01,
-    0x0e,
-    0x00,
-    0x00,
-    0xfe,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xfd,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x02,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-    0x00,
-};
+    0x01, 0x01, 0x09, 0xae, 0xf1, 0xbf, 0xc2, 0xd1, 0xc8, 0x0d, 0x2e, 0x02, 0x0e, 0x46, 0x06, 0x44,
+    0x03, 0x0b, 0xc7, 0x98, 0xe2, 0x17, 0x25, 0x80, 0x04, 0x01, 0x0a, 0x00, 0xf3, 0xa4, 0x48, 0x44,
+    0x19, 0xab, 0xd7, 0x56, 0x0c, 0x08, 0x66, 0xfe, 0x00, 0x64, 0x91, 0x60, 0x80, 0x7a, 0x04, 0x01,
+    0x03, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x10, 0x3c, 0x13, 0xe2, 0x5c,
+    0x19, 0x8a, 0x3b, 0x82, 0x04, 0x01, 0x0a, 0x00, 0xbb, 0xf0, 0x0c, 0x9b, 0xcc, 0xfb, 0x2d, 0x73,
+    0x04, 0x01, 0x0e, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
 // an announcement carried, RESOLVED ONCE, under one numbering.
@@ -3742,8 +3648,8 @@ inline uint64_t TableStoredFloatBits( double d )
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
-// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
-// "malformed" set BESIDE it. They are the one vocabulary's own values
+// -1 of <T>FixedLoad carries one with refused set, a framing-damage return
+// included: there is no malformed flag on this form's report. They are the one vocabulary's own values
 // (TableRefuseReason, §6.5), named here as well so the fixed form's callers
 // keep the spelling they already read.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
@@ -3810,9 +3716,11 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // time in the read loop, and the spelling is the compiler's.
 #if defined( _MSC_VER )
 #define TABLE_RESTRICT __restrict
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_RESTRICT __restrict__
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_RESTRICT
 #endif
 
@@ -3831,7 +3739,8 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #ifndef TABLE_CLAMP_RESTRICT
 #if defined( __clang__ )
 #define TABLE_CLAMP_RESTRICT __restrict__
-#else
+#endif
+#if !( defined( __clang__ ) )
 #define TABLE_CLAMP_RESTRICT
 #endif
 #endif
@@ -3840,9 +3749,11 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 // halves of the loop below, and a call there is the whole cost of the form.
 #if defined( _MSC_VER )
 #define TABLE_FIXED_INLINE __forceinline
-#elif defined( __GNUC__ ) || defined( __clang__ )
+#endif
+#if !( defined( _MSC_VER ) ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_FIXED_INLINE inline __attribute__( ( always_inline ) )
-#else
+#endif
+#if !( defined( _MSC_VER ) ) && !( defined( __GNUC__ ) || defined( __clang__ ) )
 #define TABLE_FIXED_INLINE inline
 #endif
 
@@ -4008,9 +3919,11 @@ inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size )
 // the big-endian path so a test can hold its byte image.
 #if defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN )
 constexpr bool TableFixedBigEndianHost = true;
-#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#endif
+#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 constexpr bool TableFixedBigEndianHost = true;
-#else
+#endif
+#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) ) && !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 constexpr bool TableFixedBigEndianHost = false;
 #endif
 
@@ -9672,7 +9585,8 @@ static const uint64_t TableCookMagic = 0x4b4f4f434d484353ull;
 // two builds of one schema for two orders emit the same id.
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
 static const uint64_t TableCookByteOrder = 2; // big
-#else
+#endif
+#if !( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ )
 static const uint64_t TableCookByteOrder = 1; // little
 #endif
 
@@ -9915,6 +9829,8 @@ inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const 
 #endif // GRAPHDEMO_SCHEMA_TABLE_COOK_VARIABLE
 
 namespace graphdemo {
+
+#include "GraphTableData.h" // the fixed form's layout bytes, rows and plans
 
 // table Meta — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
@@ -14305,38 +14221,8 @@ constexpr int64_t MetaFixedBodyBytes = 16;
 constexpr int64_t MetaFixedRecordBytes = 8 + MetaFixedBodyBytes; // the hash and the body
 constexpr uint64_t MetaFixedHash = 0x20036da1d607e22eull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
-// THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
-// PRE-ORDER walk of the closure in the writer's declared order.
-// Every byte is settled by the compiler.
-constexpr uint8_t MetaFixedLayout[] = {
-    0x03, 0x00, 0x00, 0x00, 0x18, 0x6d, 0x9d, 0xe4, 0xae, 0xea, 0xad, 0x6d, 0x0d, 0x10, 0x00, 0x00,
-    0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x0b, 0xc7, 0x98, 0xe2, 0x17, 0x25, 0x80, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t MetaFixedLayoutBytes = (int64_t) sizeof( MetaFixedLayout );
 
-// MY SIDE of the layout, one row per entry: the storage facts a layout
-// entry cannot carry, which is what a plan compiled from another writer's
-// layout lands values through.
-constexpr TableFixedDst MetaFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Meta
-    { 0, 0, 0, 0, 0 }, // build
-    { 16, 0, 4, 0, 1 }, // tag
-};
-
-// THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
-// the one walk every backend lays down (ir/fixedform.go), so no two ports
-// can disagree about what the coalescer did; the asserts above tie every
-// destination in it to this compiler's own ABI. A bool field and a present
-// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms, then any guardless present-defaults entry that must
-// run after the guarded payload it replaces: the entries that are nearly
-// all of a plan never test a guard at all.
-constexpr TableFixedEntry MetaFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // build
-    { 4u, 16u, 8u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // tag
-};
 constexpr int32_t MetaFixedPlanCount = 2;
 constexpr int32_t MetaFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
@@ -14373,16 +14259,6 @@ inline int32_t MetaFixedFloorLive = MetaFixedFloor;
 inline void MetaFixedSetFloorForTest( int32_t index ) { MetaFixedFloorLive = index; }
 #endif
 
-constexpr uint8_t MetaFixedKnown0Layout[] = {
-    0x03, 0x00, 0x00, 0x00, 0x18, 0x6d, 0x9d, 0xe4, 0xae, 0xea, 0xad, 0x6d, 0x0d, 0x10, 0x00, 0x00,
-    0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x0b, 0xc7, 0x98, 0xe2, 0x17, 0x25, 0x80, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-constexpr uint8_t MetaFixedKnown1Layout[] = {
-    0x03, 0x00, 0x00, 0x00, 0x18, 0x6d, 0x9d, 0xe4, 0xae, 0xea, 0xad, 0x6d, 0x0d, 0x10, 0x00, 0x00,
-    0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x0b, 0xc7, 0x98, 0xe2, 0x17, 0x25, 0x80, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x0c, 0x0c,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout MetaFixedKnown[] = {
     { 0x13e3bd2aacd08c75ull, MetaFixedKnown0Layout, 55, 24 }, // lock
     { 0x20036da1d607e22eull, MetaFixedKnown1Layout, 55, 24 }, // identity
@@ -14467,11 +14343,12 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
     TableReport local;
     if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
-    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
-    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): framing
+    // damage refuses by name like every other refusal, and "there is no
+    // malformed flag on this form's report": damaged is never set here.
     if ( data == NULL || bytes < 1 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
@@ -14485,18 +14362,18 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // one refuses TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
         if ( data[i] != 0 )
         {
-            report->damaged = true;
+            report->refused = true;
             report->reason = TableFixedReason::reserved_not_zero;
             return -1;
         }
@@ -14641,7 +14518,7 @@ inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uin
     }
     if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
@@ -14810,38 +14687,8 @@ constexpr int64_t SettingsFixedBodyBytes = 24;
 constexpr int64_t SettingsFixedRecordBytes = 8 + SettingsFixedBodyBytes; // the hash and the body
 constexpr uint64_t SettingsFixedHash = 0x174a30e0555adcf0ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
-// THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
-// PRE-ORDER walk of the closure in the writer's declared order.
-// Every byte is settled by the compiler.
-constexpr uint8_t SettingsFixedLayout[] = {
-    0x03, 0x00, 0x00, 0x00, 0xc8, 0xc2, 0x04, 0xb4, 0xa2, 0x8a, 0x8b, 0x9d, 0x0d, 0x18, 0x00, 0x00,
-    0x00, 0x02, 0x00, 0x00, 0x00, 0x66, 0xfe, 0x00, 0x64, 0x91, 0x60, 0x80, 0x7a, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x14,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t SettingsFixedLayoutBytes = (int64_t) sizeof( SettingsFixedLayout );
 
-// MY SIDE of the layout, one row per entry: the storage facts a layout
-// entry cannot carry, which is what a plan compiled from another writer's
-// layout lands values through.
-constexpr TableFixedDst SettingsFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // Settings
-    { 0, 0, 0, 0, 0 }, // quality
-    { 24, 0, 4, 0, 1 }, // label
-};
-
-// THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
-// the one walk every backend lays down (ir/fixedform.go), so no two ports
-// can disagree about what the coalescer did; the asserts above tie every
-// destination in it to this compiler's own ABI. A bool field and a present
-// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms, then any guardless present-defaults entry that must
-// run after the guarded payload it replaces: the entries that are nearly
-// all of a plan never test a guard at all.
-constexpr TableFixedEntry SettingsFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // quality
-    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // label
-};
 constexpr int32_t SettingsFixedPlanCount = 2;
 constexpr int32_t SettingsFixedPlanGuarded = 2;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
@@ -14878,16 +14725,6 @@ inline int32_t SettingsFixedFloorLive = SettingsFixedFloor;
 inline void SettingsFixedSetFloorForTest( int32_t index ) { SettingsFixedFloorLive = index; }
 #endif
 
-constexpr uint8_t SettingsFixedKnown0Layout[] = {
-    0x03, 0x00, 0x00, 0x00, 0xc8, 0xc2, 0x04, 0xb4, 0xa2, 0x8a, 0x8b, 0x9d, 0x0d, 0x18, 0x00, 0x00,
-    0x00, 0x02, 0x00, 0x00, 0x00, 0x66, 0xfe, 0x00, 0x64, 0x91, 0x60, 0x80, 0x7a, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x14,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-constexpr uint8_t SettingsFixedKnown1Layout[] = {
-    0x03, 0x00, 0x00, 0x00, 0xc8, 0xc2, 0x04, 0xb4, 0xa2, 0x8a, 0x8b, 0x9d, 0x0d, 0x18, 0x00, 0x00,
-    0x00, 0x02, 0x00, 0x00, 0x00, 0x66, 0xfe, 0x00, 0x64, 0x91, 0x60, 0x80, 0x7a, 0x04, 0x04, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x14,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout SettingsFixedKnown[] = {
     { 0xbf8a406d152d5cbdull, SettingsFixedKnown0Layout, 55, 32 }, // lock
     { 0x174a30e0555adcf0ull, SettingsFixedKnown1Layout, 55, 32 }, // identity
@@ -14972,11 +14809,12 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
     TableReport local;
     if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
-    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
-    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): framing
+    // damage refuses by name like every other refusal, and "there is no
+    // malformed flag on this form's report": damaged is never set here.
     if ( data == NULL || bytes < 1 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
@@ -14990,18 +14828,18 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // one refuses TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
         if ( data[i] != 0 )
         {
-            report->damaged = true;
+            report->refused = true;
             report->reason = TableFixedReason::reserved_not_zero;
             return -1;
         }
@@ -15146,7 +14984,7 @@ inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, c
     }
     if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }

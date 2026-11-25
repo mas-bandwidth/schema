@@ -207,7 +207,9 @@ func Extract(root string) (*Result, error) {
 		switch {
 		case strings.HasSuffix(name, "_test.go") && !strings.Contains("/"+rel, "/testdata/"):
 			goFiles = append(goFiles, rel)
-		case (rel == "Makefile" || strings.HasPrefix(rel, "make/") && ext == ".mk"):
+		case (rel == "Makefile" || (strings.HasPrefix(rel, "make/") || strings.HasPrefix(rel, "tools/") && strings.Count(rel, "/") == 2) && ext == ".mk"):
+			// a tool's own make file (tools/roadmap/roadmap.mk) is included
+			// by the Makefile; its testdata is data, never a rule
 			makeFiles = append(makeFiles, rel)
 		case strings.HasPrefix(rel, ".github/workflows/") && (ext == ".yml" || ext == ".yaml"):
 			workflows = append(workflows, rel)

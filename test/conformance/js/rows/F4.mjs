@@ -54,8 +54,8 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
   const back = [new home.WeaponConfig()];
   const rep = new home.TableFixedReport();
   const n = tables.WeaponConfigFixedLoad(back, back.length, file, file.length, tables.WeaponConfigFixedNewPlan(), rep);
-  check(n === 1 && rep.refused === 0 && !rep.damaged,
-    "positive: the whole file reads clean (n=" + n + ", refused=" + rep.refused + ", malformed=" + rep.damaged + ")");
+  check(n === 1 && rep.refused === 0 && !("damaged" in rep),
+    "positive: the whole file reads clean (n=" + n + ", refused=" + rep.refused + ")");
 }
 
 // THE TRUNCATED LAYOUT: cut the file one byte into the layout, so 20 + L > bytes.
@@ -64,8 +64,8 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
   const back = [new home.WeaponConfig()];
   const rep = new home.TableFixedReport();
   const n = tables.WeaponConfigFixedLoad(back, back.length, cut, cut.length, tables.WeaponConfigFixedNewPlan(), rep);
-  check(n === -1 && rep.refused === home.TableFixedRefusal.LayoutMalformed && !rep.damaged,
-    "F4: a layout cut to 20+L-1 bytes is layout_malformed, the NAME not the flag (n=" + n + ", refused=" + rep.refused + ", malformed=" + rep.damaged + ")");
+  check(n === -1 && rep.refused === home.TableFixedRefusal.LayoutMalformed && !("damaged" in rep),
+    "F4: a layout cut to 20+L-1 bytes is layout_malformed, the NAME not the flag (n=" + n + ", refused=" + rep.refused + ")");
 }
 
 // THE SAME NAME FOR ANY OVER-RUN LENGTH, using a minimal vector from the law:
@@ -78,7 +78,7 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
   const back = [new home.WeaponConfig()];
   const rep = new home.TableFixedReport();
   const n = tables.WeaponConfigFixedLoad(back, back.length, v, v.length, tables.WeaponConfigFixedNewPlan(), rep);
-  check(n === -1 && rep.refused === home.TableFixedRefusal.LayoutMalformed && !rep.damaged,
+  check(n === -1 && rep.refused === home.TableFixedRefusal.LayoutMalformed && !("damaged" in rep),
     "F4: a 20-byte header claiming L=1 is layout_malformed before the hash select (refused=" + rep.refused + ")");
 }
 
@@ -88,9 +88,9 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
 // step 9 (docs/FIXED-FORM-ALGORITHM.md §5.3, line ~1201): "if rest == 0 ...
 // REFUSE truncated — A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD". This row
 // once read that file as zero records and no refusal; the at-least-one-record
-// rule (§5.3 step 9, SPEC-TABLES §22.6) made it the `truncated` residue, which
-// this leg reports as the malformed FLAG (report.damaged), never the
-// layout_malformed NAME. The boundary this row pins is the step-3 guard, so
+// rule (§5.3 step 9, SPEC-TABLES §22.6) made it a refusal named `truncated`
+// (§5.3's refusal table; "There is no `malformed` flag on this form's
+// report"), never the layout_malformed NAME. The boundary this row pins is the step-3 guard, so
 // the assertion that bites is "not layout_malformed".
 {
   const exact = file.subarray(0, LAYOUT_AT + L);
@@ -99,8 +99,8 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
   const n = tables.WeaponConfigFixedLoad(back, back.length, exact, exact.length, tables.WeaponConfigFixedNewPlan(), rep);
   check(n === -1 && rep.refused !== home.TableFixedRefusal.LayoutMalformed,
     "F4 boundary: exactly 20+L bytes passes step 3 — never layout_malformed (n=" + n + ", refused=" + rep.refused + ")");
-  check(rep.damaged && rep.refused === 0,
-    "F4 boundary: a header and a layout with no record behind it is step 9's truncated FLAG — a fixed-form file holds at least one record (malformed=" + rep.damaged + ", refused=" + rep.refused + ")");
+  check(rep.refused === home.TableFixedRefusal.Truncated && !("damaged" in rep),
+    "F4 boundary: a header and a layout with no record behind it refuses truncated — a fixed-form file holds at least one record (refused=" + rep.refused + ")");
 }
 
 // PROOF THE READER GOT PAST STEP 3 ON THE BOUNDARY: the same exact cut under a
@@ -124,16 +124,16 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
     "F4 boundary: the lawful file is exactly 20 + L + one " + tables.WeaponConfigFixedRecordBytes + "-byte record");
 }
 
-// THE DISTINCTION FROM F7: a file UNDER the 20-byte header is the malformed
-// FLAG, never the layout_malformed NAME. The guard this row pins is the NAME,
+// THE DISTINCTION FROM F7: a file UNDER the 20-byte header refuses `truncated`,
+// never the layout_malformed NAME. The guard this row pins is the NAME,
 // so a short header must NOT come back refused=LayoutMalformed.
 {
   const short = file.subarray(0, 19);
   const back = [new home.WeaponConfig()];
   const rep = new home.TableFixedReport();
   const n = tables.WeaponConfigFixedLoad(back, back.length, short, short.length, tables.WeaponConfigFixedNewPlan(), rep);
-  check(n === -1 && rep.damaged && rep.refused === 0,
-    "F4 vs F7: a 19-byte file is the malformed FLAG, not layout_malformed (refused=" + rep.refused + ")");
+  check(n === -1 && rep.refused === home.TableFixedRefusal.Truncated && !("damaged" in rep),
+    "F4 vs F7: a 19-byte file refuses truncated, not layout_malformed (refused=" + rep.refused + ")");
 }
 
 if (failed) {

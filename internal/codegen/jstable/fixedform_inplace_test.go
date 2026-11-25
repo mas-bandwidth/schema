@@ -211,7 +211,7 @@ function show(v) {
 // refusal-verdict-only): a record can be dead-byte damage and out of range at
 // once, and the first condition each path meets names it.
 function rep(r) {
-  return [r.damaged, r.unknown, r.mismatch, r.oor, r.widened, r.repeated, r.layoutHash].map(String).join(",");
+  return [("damaged" in r), r.unknown, r.mismatch, r.oor, r.widened, r.repeated, r.layoutHash].map(String).join(",");
 }
 function same(a, b) { if (a.length !== b.length) return false; for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) return false; } return true; }
 // a seeded xorshift32: the same files on every run

@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -484,44 +485,46 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_record_bytes = 8 + %d; /* the hash and the body */\n", n, body)
 	g.pf("static SCHEMA_UNUSED const uint64_t %s_fixed_hash = 0x%016xull; /* fnv1a64 over the layout and the definitions digest (bill §13) */\n\n", n, hash)
 
-	g.pf("/* THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
-	g.pf("   PRE-ORDER walk of the closure in the writer's declared order.\n")
-	g.pf("   Every byte is settled by the schema compiler. */\n")
-	g.pf("static SCHEMA_UNUSED const uint8_t %s_fixed_layout[] = {\n", n)
+	g.df("/* THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
+	g.df("   PRE-ORDER walk of the closure in the writer's declared order.\n")
+	g.df("   Every byte is settled by the schema compiler. */\n")
+	g.df("static SCHEMA_UNUSED const uint8_t %s_fixed_layout[] = {\n", n)
 	g.emitFixedByteArray(layout)
-	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_layout_bytes = (int64_t) sizeof( %s_fixed_layout );\n\n", n, n)
 
-	g.pf("/* MY SIDE of the layout, one row per entry: the storage facts a layout\n")
-	g.pf("   entry cannot carry, which is what a plan compiled from another writer's\n")
-	g.pf("   layout lands values through. */\n")
-	g.pf("static SCHEMA_UNUSED const TableFixedDst %s_fixed_dst[] = {\n", n)
+	g.df("/* MY SIDE of the layout, one row per entry: the storage facts a layout\n")
+	g.df("   entry cannot carry, which is what a plan compiled from another writer's\n")
+	g.df("   layout lands values through. */\n")
+	g.df("static SCHEMA_UNUSED const TableFixedDst %s_fixed_dst[] = {\n", n)
+	// NO NAME ON A ROW: a trailing comment on each of thousands of rows is
+	// what made clang-format take 41-50 s on one header (tables-c-clean); the
+	// runtime reads no name here, and the layout walk names every entry.
 	for _, e := range entries {
-		g.pf("    %s, /* %s */\n", g.fixedDstRow(e), e.Note)
+		g.df("    %s,\n", g.fixedDstRow(e))
 	}
-	g.pf("};\n\n")
+	g.df("};\n\n")
 
 	plan, guarded, pool := ir.TableFixedBuildPlanPresentDefaultsWithPool(g.unit, st)
-	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
-	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
-	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("   destination in it to this compiler's own ABI. A bool field and a present\n")
-	g.pf("   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and\n")
-	g.pf("   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).\n")
-	g.pf("   An optional's present flag lands through kTableFixedPresentDefaults,\n")
-	g.pf("   after its payload: the same byte rule, and when the flag is 0 the\n")
-	g.pf("   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).\n")
-	g.pf("   UNGUARDED ENTRIES\n")
-	g.pf("   FIRST, then the arms, then any guardless present-defaults entry that must\n")
-	g.pf("   run after the guarded payload it replaces: the entries that are nearly\n")
-	g.pf("   all of a plan never test a guard at all. */\n")
+	g.df("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
+	g.df("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
+	g.df("   can disagree about what the coalescer did; the header's asserts tie every\n")
+	g.df("   destination in it to this compiler's own ABI. A bool field and a present\n")
+	g.df("   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and\n")
+	g.df("   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).\n")
+	g.df("   An optional's present flag lands through kTableFixedPresentDefaults,\n")
+	g.df("   after its payload: the same byte rule, and when the flag is 0 the\n")
+	g.df("   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).\n")
+	g.df("   UNGUARDED ENTRIES\n")
+	g.df("   FIRST, then the arms, then any guardless present-defaults entry that must\n")
+	g.df("   run after the guarded payload it replaces: the entries that are nearly\n")
+	g.df("   all of a plan never test a guard at all. */\n")
 	// Preserve union tags as validation boundaries before splitting mixed-width
 	// copies for host byte order. Both splits retain the copy destinations and
 	// recount the guarded partition.
 	dead := fixedDeadMetaOf(g.unit, st)
 	plan, guarded = dead.splitUnionTags(plan, guarded)
 	split := ir.TableFixedSplitByWidth(entries, plan, guarded)
-	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
+	g.df("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for i, e := range split.Plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
 		if e.Guard != ir.TableFixedNoGuard {
@@ -587,11 +590,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if at := dead.presentOf(e.Src, e.GuardLinks); at >= 0 {
 			present = at + 1
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d, %du }, /* %s */\n",
+		// no name on a plan row either, for the reason given at the dst rows
+		g.df("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d, %du, %du, %du, %d, %du },\n",
 			e.Src, e.Dst, e.Size, aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, split.Elems[i], deadBytes, armBytes, armCount, tagWidth, present, e.Note)
+			e.GuardCount, guardIndex, split.Elems[i], deadBytes, armBytes, armCount, tagWidth, present)
 	}
-	g.pf("};\n")
+	g.df("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(split.Plan))
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, split.Guarded)
 	// THE GUARD POOL: the (guard, arg, argw) links every chain above points
@@ -636,14 +640,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.Wire == hash {
 			continue
 		}
-		g.pf("/* lineage entry %d: the layout bytes THE LOCK recorded, verbatim", i)
+		g.df("/* lineage entry %d: the layout bytes THE LOCK recorded, verbatim", i)
 		if e.Retired {
-			g.pf(" — RETIRED: %s", e.Reason)
+			g.df(" — RETIRED: %s", e.Reason)
 		}
-		g.pf(" */\n")
-		g.pf("static SCHEMA_UNUSED const uint8_t %s_fixed_known_%d[] = {\n", n, i)
+		g.df(" */\n")
+		g.df("static SCHEMA_UNUSED const uint8_t %s_fixed_known_%d[] = {\n", n, i)
 		g.emitFixedByteArray(e.Layout)
-		g.pf("};\n")
 	}
 	g.pf("/* THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). THE ONLY FACT\n")
 	g.pf("   A FILE IS MATCHED ON IS THE HASH; the layout bytes are what a known hash\n")
@@ -1168,16 +1171,11 @@ func (g *tableGen) structNamed(name string) *ir.Struct {
 	return g.unit.Structs[name]
 }
 
+// emitFixedByteArray writes a byte array's items and its closing brace into
+// the data header (df), packed (ccommon.PackedInitializer): 16 to a line, no
+// comma after the last.
 func (g *tableGen) emitFixedByteArray(b []byte) {
-	for i := 0; i < len(b); i += 16 {
-		end := min(i+16, len(b))
-		var sb strings.Builder
-		sb.WriteString("   ")
-		for _, v := range b[i:end] {
-			fmt.Fprintf(&sb, " 0x%02x,", v)
-		}
-		g.pf("%s\n", sb.String())
-	}
+	g.df("%s", ccommon.PackedBytes(b))
 }
 
 /* ---- the read-side bounds --------------------------------------------------

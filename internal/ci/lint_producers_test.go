@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,10 +24,8 @@ type lintProducer struct {
 	producer string   // the produce matrix row
 }
 
-// tables-c-clean is not here: building its tree rewrites committed
-// generated files, and produce.sh refuses to pack a dirty tree, so the
-// gate builds its tree itself.
 var lintProducers = []lintProducer{
+	{[]string{"tables-c-clean"}, "make/c.mk", "TABLES_C_CLEAN_INPUTS", "tables-c-clean-inputs", "lint-c"},
 	{[]string{"tables-cpp-format", "tables-cpp-warnings"}, "make/cpp.mk", "CPP_CLEAN_STAMPS", "tables-cpp-clean-inputs", "lint-cpp"},
 	{[]string{"tables-js-clean"}, "make/js.mk", "TABLES_JS_CLEAN_INPUTS", "tables-js-clean-inputs", "lint-js"},
 	{[]string{"tables-rust-clippy"}, "make/rust.mk", "TABLES_RUST_CLIPPY_INPUTS", "tables-rust-clippy-inputs", "lint-rust"},
@@ -39,35 +38,31 @@ type produceRow struct {
 	paths  []string
 }
 
-// produceRows reads the produce job's matrix: each row's target and the
-// paths it packs.
+// produceRows reads the produce job's matrix, the one JSON `include:` line
+// schema-test ci writes: each row's target and the paths it packs. A matrix
+// that does not read is no rows, so every gate names its row as missing.
 func produceRows(job string) map[string]produceRow {
 	out := map[string]produceRow{}
-	blocks := strings.Split(job, "\n          - name: ")
-	for _, b := range blocks[1:] {
-		name, rest, _ := strings.Cut(b, "\n")
-		var row produceRow
-		for _, line := range strings.Split(rest, "\n") {
-			if !strings.HasPrefix(line, "            ") || strings.HasPrefix(line, "             ") {
-				break
-			}
-			k, v, _ := strings.Cut(strings.TrimSpace(line), ": ")
-			switch k {
-			case "target":
-				row.target = v
-			case "paths":
-				row.paths = strings.Fields(v)
-			}
+	for _, line := range strings.Split(job, "\n") {
+		text, ok := strings.CutPrefix(strings.TrimSpace(line), "include: ")
+		if !ok {
+			continue
 		}
-		out[strings.TrimSpace(name)] = row
+		var rows []struct{ Name, Target, Paths string }
+		if json.Unmarshal([]byte(text), &rows) != nil {
+			return out
+		}
+		for _, r := range rows {
+			out[r.Name] = produceRow{target: r.Target, paths: strings.Fields(r.Paths)}
+		}
 	}
 	return out
 }
 
 var (
-	makeVarDef  = regexp.MustCompile(`(?m)^([A-Za-z_][A-Za-z0-9_]*)[ \t]*[:?]?=[ \t]*(.*)$`)
-	makeVarRef  = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)`)
-	makeRuleOrd = regexp.MustCompile(`(?m)^([^\t#:=\n][^:=\n]*):([^=\n]*)\|([^=\n]*)$`)
+	makeVarDef = regexp.MustCompile(`(?m)^([A-Za-z_][A-Za-z0-9_]*)[ \t]*[:?]?=[ \t]*(.*)$`)
+	makeVarRef = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)`)
+	makeRule   = regexp.MustCompile(`(?m)^([^\t#:=\n][^:=\n]*):([^=\n]*)$`)
 )
 
 // makeVars reads every one-line variable definition in the make files; a
@@ -113,22 +108,33 @@ func expandMake(s string, vars map[string]string, depth int) (string, error) {
 
 // producedFiles is what a gate reading $(inputs) needs on disk: each word of
 // the expansion, and, closed over, each order-only prerequisite of a rule
-// for one of them (a stamp that names its tree's other half that way).
-func producedFiles(inputs string, vars map[string]string, orderOnly map[string][]string) ([]string, error) {
+// for one of them (a stamp that names its tree's other half that way). A
+// phony word is no file: it stands for the prerequisites of its rules.
+func producedFiles(inputs string, vars map[string]string, g makeRuleText) ([]string, error) {
 	words, err := expandMake("$("+inputs+")", vars, 0)
 	if err != nil {
 		return nil, err
 	}
 	need := map[string]bool{}
+	seen := map[string]bool{}
 	queue := strings.Fields(words)
 	for len(queue) > 0 {
 		w := queue[0]
 		queue = queue[1:]
-		if need[w] {
+		if seen[w] {
+			continue
+		}
+		seen[w] = true
+		if g.phony[w] {
+			if len(g.prereqs[w]) == 0 {
+				return nil, fmt.Errorf("phony %s has no rule naming what it builds", w)
+			}
+			queue = append(queue, g.prereqs[w]...)
+			queue = append(queue, g.orderOnly[w]...)
 			continue
 		}
 		need[w] = true
-		queue = append(queue, orderOnly[w]...)
+		queue = append(queue, g.orderOnly[w]...)
 	}
 	var out []string
 	for w := range need {
@@ -138,23 +144,40 @@ func producedFiles(inputs string, vars map[string]string, orderOnly map[string][
 	return out, nil
 }
 
-// orderOnlyPrereqs maps each target to the order-only prerequisites its
-// rules name, read across every make file.
-func orderOnlyPrereqs(mk map[string]string, vars map[string]string) map[string][]string {
-	orderOnly := map[string][]string{}
+// makeRuleText is what the make files' text says about targets: which are
+// phony, and each target's prerequisites and order-only prerequisites.
+type makeRuleText struct {
+	phony     map[string]bool
+	prereqs   map[string][]string
+	orderOnly map[string][]string
+}
+
+// readMakeGraph reads every rule line and .PHONY declaration across the make
+// files.
+func readMakeGraph(mk map[string]string, vars map[string]string) makeRuleText {
+	g := makeRuleText{phony: map[string]bool{}, prereqs: map[string][]string{}, orderOnly: map[string][]string{}}
 	for _, text := range mk {
-		for _, m := range makeRuleOrd.FindAllStringSubmatch(text, -1) {
+		for _, m := range makeRule.FindAllStringSubmatch(text, -1) {
 			targets, e1 := expandMake(m[1], vars, 0)
-			after, e2 := expandMake(m[3], vars, 0)
-			if e1 != nil || e2 != nil {
+			normal, after, _ := strings.Cut(m[2], "|")
+			before, e2 := expandMake(normal, vars, 0)
+			order, e3 := expandMake(after, vars, 0)
+			if e1 != nil || e2 != nil || e3 != nil {
 				continue // its names have no single expansion to match an input against
 			}
 			for _, t := range strings.Fields(targets) {
-				orderOnly[t] = append(orderOnly[t], strings.Fields(after)...)
+				if t == ".PHONY" {
+					for _, p := range strings.Fields(before) {
+						g.phony[p] = true
+					}
+					continue
+				}
+				g.prereqs[t] = append(g.prereqs[t], strings.Fields(before)...)
+				g.orderOnly[t] = append(g.orderOnly[t], strings.Fields(order)...)
 			}
 		}
 	}
-	return orderOnly
+	return g
 }
 
 // packedBy reports whether a needed file is in one of the packed paths. A
@@ -180,14 +203,14 @@ func lintProducerProblems(workflow string, mk map[string]string) []string {
 	var problems []string
 	rows := produceRows(yamlJobs(workflow)["produce"])
 	vars := makeVars(mk)
-	orderOnly := orderOnlyPrereqs(mk, vars)
+	graph := readMakeGraph(mk, vars)
 	for _, p := range lintProducers {
 		row, ok := rows[p.producer]
 		if !ok || row.target != p.target {
 			problems = append(problems, fmt.Sprintf("ci-fast.yml's produce matrix has no row %s building %s (it builds %q)", p.producer, p.target, row.target))
 		}
 		if ok {
-			files, err := producedFiles(p.inputs, vars, orderOnly)
+			files, err := producedFiles(p.inputs, vars, graph)
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("%s: $(%s) cannot be read: %v", p.file, p.inputs, err))
 			}
@@ -218,11 +241,13 @@ func lintProducerProblems(workflow string, mk map[string]string) []string {
 // TestEveryLintGateReadsAProducedTree: each lint gate's generated tree is
 // built by a phony inputs target, ci-fast.yml's produce job has a row that
 // runs it, and the row packs every directory the gate reads (with the
-// order-only halves of its stamps), so the shards unpack the tree instead of
-// generating it. The plants are a produce row gone, a row building another
-// target, a row packing less than its gate reads, a gate that stops reading
-// its inputs, and tables-lua-format no longer reading the corpus: each is
-// red by name.
+// order-only halves of its stamps, and what its phony inputs stand for), so
+// the shards unpack the tree instead of generating it. The plants are a
+// produce row gone, a row building another target, a row packing less than
+// its gate reads, a phony input standing for a tree the row does not pack, a
+// phony input whose rule names nothing it builds, a gate that stops reading
+// its inputs, tables-lua-format no longer reading the corpus, and a matrix
+// that no longer reads as JSON: each is red by name.
 func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -259,9 +284,12 @@ func TestEveryLintGateReadsAProducedTree(t *testing.T) {
 	plants := []struct {
 		name, file, old, new, want string
 	}{
-		{"producer row gone", "", "          - name: lint-rust\n            target: tables-rust-clippy-inputs\n", "", "no row lint-rust building tables-rust-clippy-inputs"},
-		{"producer builds the gate", "", "          - name: lint-js\n            target: tables-js-clean-inputs\n", "          - name: lint-js\n            target: tables-js-clean\n", "no row lint-js building tables-js-clean-inputs"},
-		{"row packs less than its gate reads", "", "            paths: bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses\n", "            paths: bin/schema build/tables-generated-rust\n", "produce row lint-rust does not pack build/tables-generated-rust-witnesses/.stamp, which tables-rust-clippy reads"},
+		{"producer row gone", "", `{"name":"lint-rust","target":"tables-rust-clippy-inputs","paths":"bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},`, "", "no row lint-rust building tables-rust-clippy-inputs"},
+		{"producer builds the gate", "", `"name":"lint-js","target":"tables-js-clean-inputs"`, `"name":"lint-js","target":"tables-js-clean"`, "no row lint-js building tables-js-clean-inputs"},
+		{"row packs less than its gate reads", "", `"paths":"bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"`, `"paths":"bin/schema build/tables-generated-rust"`, "produce row lint-rust does not pack build/tables-generated-rust-witnesses/.stamp, which tables-rust-clippy reads"},
+		{"a phony input names a tree the row does not pack", "make/c.mk", "CARDS_C_STAMP := build/tables-generated-c/cards/.stamp\n", "CARDS_C_STAMP := build/cards-c/.stamp\n", "produce row lint-c does not pack build/cards-c/.stamp, which tables-c-clean reads"},
+		{"a phony input names nothing it builds", "make/c.mk", "cards-c-generate: $(CARDS_C_STAMP)\n", "cards-c-generate:\n", "phony cards-c-generate has no rule naming what it builds"},
+		{"the matrix does not read", "", `"name":"lint-js"`, `"name":lint-js"`, "no row lint-cpp building tables-cpp-clean-inputs"},
 		{"gate stops reading its inputs", "make/js.mk", "tables-js-clean: toolchain-js $(TABLES_JS_CLEAN_INPUTS)", "tables-js-clean: toolchain-js build/tables-generated-js/.stamp", "tables-js-clean does not read $(TABLES_JS_CLEAN_INPUTS)"},
 		{"lua format stops reading the corpus", "make/schema-lua-generated-luacheck-gate.mk", "tables-lua-format: dist-stylua $(LUA_LUACHECK_CORPUS)/.stamp\n", "tables-lua-format: dist-stylua\n", "tables-lua-format does not read $(LUA_LUACHECK_CORPUS)/.stamp"},
 	}

@@ -23,7 +23,14 @@
 # (docs/rulings.json no-skips); both targets run through test/slowgate/proof,
 # which refuses a SKIP in the log and requires each named --- PASS, so a run
 # that tested nothing can never pass as green.
-schema-moo-runs-hostile-corpus: toolchain-moo
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-moo-runs-hostile-corpus-build
+schema-moo-runs-hostile-corpus-build: toolchain-moo
+
+schema-moo-runs-hostile-corpus: schema-moo-runs-hostile-corpus-build
 	sh test/slowgate/proof schema-moo-runs-hostile-corpus \
 		'TestHostileCorpus_moo TestSchemaMooHostileScorerOutcomes' \
 		./internal/ci -run '^(TestHostileCorpus_moo|TestSchemaMooHostileScorerOutcomes)$$' -count=1 -timeout 600s

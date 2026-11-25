@@ -208,7 +208,7 @@ value.x=7;
 const wire=new Uint8Array(TMeasure(1));
 if(TSave([value],1,wire)!==wire.length){fail("declared fixed table lost its fixed writer");}
 const back=[new T()];InitT(back[0]);const report=new TableFixedReport();
-if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].x!==7 || report.damaged || report.refused!==0){fail("declared fixed table roundtrip");}
+if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].x!==7 || ("damaged" in report) || report.refused!==0){fail("declared fixed table roundtrip");}
 `
 	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "Other", probe); err != nil {
 		t.Fatalf("required fixed: %v\n%s", err, out)

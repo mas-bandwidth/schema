@@ -398,7 +398,6 @@ export function FixedTableFixedSave(values, count, bytes) {
 // CHECK refuses before LAND touches any caller record (§5.3).
 function FixedTableFixedRefuseBatch(stage, report) {
   report.refused = stage.refused;
-  report.damaged = stage.damaged;
   return -1;
 }
 
@@ -412,22 +411,22 @@ function FixedTableFixedRefuseBatch(stage, report) {
 // test. Answers the records read, or -1 with the reason named in the report.
 function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
-  if (bytes === null || byteLength < 1) { report.damaged = true; return -1; }
+  if (bytes === null || byteLength < 1) { report.refused = TableFixedRefusal.Truncated; return -1; }
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
   // the registry is ordered, so a byte this reader does not carry is named
   // by where it sits relative to this form and never by one word for both.
   // AND IT IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed form-1 file
   // is TEN bytes and a form-2 batch THREE, so a reader that measured first
-  // would answer `damaged` for every real file of the two forms it names.
+  // would answer `truncated` for every real file of the two forms it names.
   if (bytes[0] !== TableFixedForm) {
     report.refused = bytes[0] === TableFixedVariableForm ? TableFixedRefusal.PreviousForm
                    : bytes[0] === TableFixedMessageForm ? TableFixedRefusal.MessageFormAsFile
                    : TableFixedRefusal.NewerForm;
     return -1;
   }
-  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.damaged = true; return -1; }
+  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.refused = TableFixedRefusal.Truncated; return -1; }
   // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
-  for (let i = 1; i < TableFixedHashAt; i++) { if (bytes[i] !== 0) { report.damaged = true; return -1; } }
+  for (let i = 1; i < TableFixedHashAt; i++) { if (bytes[i] !== 0) { report.refused = TableFixedRefusal.ReservedNotZero; return -1; } }
   const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
   const layoutBytes = (bytes[TableFixedHeaderBytes] | (bytes[TableFixedHeaderBytes + 1] << 8) |
                        (bytes[TableFixedHeaderBytes + 2] << 16) | (bytes[TableFixedHeaderBytes + 3] << 24)) >>> 0;
@@ -471,9 +470,9 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
   const rest = byteLength - layoutAt - layoutBytes;
   // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6): a
   // header and a layout with no record behind them is refused, never read
-  // as a batch of none. BYTES LEFT OVER ARE damaged, which is §3's rule for
+  // as a batch of none. BYTES LEFT OVER ARE truncated, which is §3's rule for
   // the same reason: the two ends of the file have met.
-  if (rest === 0 || recordBytes <= 8 || rest % recordBytes !== 0) { report.damaged = true; return -1; }
+  if (rest === 0 || recordBytes <= 8 || rest % recordBytes !== 0) { report.refused = TableFixedRefusal.Truncated; return -1; }
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;

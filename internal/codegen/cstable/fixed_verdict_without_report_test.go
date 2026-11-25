@@ -102,10 +102,18 @@ func runFixedVerdictProbe(t *testing.T, edit func(map[string][]byte)) (string, e
 	if edit != nil {
 		edit(files)
 	}
+	return runCSharpProbe(t, files, fixedVerdictProbe, "verdictprobe")
+}
+
+// runCSharpProbe compiles a generated unit's files and one probe program with
+// csc against the SDK's reference assemblies, runs it, and answers what it
+// printed and how it exited.
+func runCSharpProbe(t *testing.T, files map[string][]byte, probe, name string) (string, error) {
+	t.Helper()
 	dir := t.TempDir()
 	var sources []string
-	for name, data := range files {
-		path := filepath.Join(dir, filepath.FromSlash(name))
+	for rel, data := range files {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -115,14 +123,14 @@ func runFixedVerdictProbe(t *testing.T, edit func(map[string][]byte)) (string, e
 		sources = append(sources, path)
 	}
 	probePath := filepath.Join(dir, "Program.cs")
-	if err := os.WriteFile(probePath, []byte(fixedVerdictProbe), 0o600); err != nil {
+	if err := os.WriteFile(probePath, []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	sources = append(sources, probePath)
 
 	csc, refs, runtime := csDotnetToolchain(t)
 	dotnet := csDotnet()
-	app := filepath.Join(dir, "verdictprobe.dll")
+	app := filepath.Join(dir, name+".dll")
 	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:exe", "-optimize+", "-unsafe",
 		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + app}
 	for _, ref := range refs {
@@ -136,7 +144,7 @@ func runFixedVerdictProbe(t *testing.T, edit func(map[string][]byte)) (string, e
 	}
 
 	cfg := fmt.Sprintf(`{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":%q}}}`+"\n", runtime)
-	if err := os.WriteFile(filepath.Join(dir, "verdictprobe.runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name+".runtimeconfig.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	run := testproc.Command(t, dotnet, "exec", app)

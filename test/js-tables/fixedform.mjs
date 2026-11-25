@@ -15,15 +15,13 @@
 //      so the reference states the values too, and every field of every record
 //      is compared against them.
 //
-//   3. THE VERSIONING CONFORMANCE, which is the invariant §3.4 states before
-//      any wire: the form is positional BY PLAN, and the positions are the
-//      WRITER's block, never the reader's own layout. The FX1/FX2 pair is the
-//      C++ leg's own (test/tables/fixedform_main.cpp) and this is its twin —
-//      a widened field, a renamed one, an unknown field, an unknown nested
-//      TYPE, and a missing field taking its declared default, every one of
-//      them through THE SAME LOOP over a plan compiled from the other side's
-//      block. Beside them the NEGATIVE CONTROLS: a wrong plan must come out
-//      wrong, and every refusal must be by name and never damage.
+//   3. THE STRICT READ OF THIS BUILD'S OWN LAYOUT: the form header, the
+//      per-record hash, the live counts and the hostile bytes, each refused by
+//      name and never damage. The VERSIONING conformance is not here: a fixed
+//      table reads backward and never forward (docs/FIXED-FORM-ALGORITHM.md
+//      §5), and its rows live on the lineage harness
+//      (internal/codegen/jstable/fixedversioning_test.go and siblings), where
+//      the older layout is handed to the reader as its locked entry.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -60,55 +58,28 @@ const LAYOUT_AT = 20;
 //
 // Run from the repository root, which is where the Makefile runs it.
 
-// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. A case not run is
-// never a pass, and a case is left out only at the root, so a retired case is A
-// FAILURE AT THE CALL SITE naming the function, §5.6 and where the coverage is
-// owed, plus a count at the end — and
-// the function STAYS IN THE TREE and stays compiling (§5.9 #23). A deleted test
-// is a coverage claim nobody can audit.
-//
-// Every one of them reads a file written under ANOTHER schema's layout WITHOUT
-// that layout being in the reader's lineage, and asserts the RUN-TIME WALK of a
-// stranger's layout — the seven §1.1 names fired at read time, a plan compiled
-// from a file's bytes, a cache keyed by hash, a forward read. §5.6 retires
-// exactly that: under §5 every one of those files comes back layout_unknown, which
-// is the new law and not a regression. The coverage is owed on the lineage
-// harness, internal/codegen/jstable/fixedversioning_test.go, where the peer's
-// entry is handed to the reader as its lock — and §1.1's seven rules are owed as
-// the LOCK's validation of what it records.
-//
-// THREE OF THESE FUNCTIONS WERE MIXED and the retirement over-reached: bytesArrayConvention,
-// holePrefill and referenceOracle each assert an IDENTITY half that §5 does not
-// touch beside a COMPILED half that it retires, and a retirement of the whole
-// function took the identity half down with it — including the two assertions
-// NOTHING ELSE ON THIS LEG MAKES: the reference's own fx1.bin read back byte for
-// byte, and §3.4's "the slack is zero" over CONSTRUCTED storage. THE THREE ARE
-// NOW SPLIT, one function per half: `referenceOracleIdentity`, `holePrefillIdentity`
-// and `bytesArrayConventionIdentity` RUN, and `referenceOracleCompiled`,
-// `holePrefillCompiled` and `bytesArrayConventionCompiled` are retired BY NAME
-// beside the rest. The compiled halves were not un-retired to do it: §5 retires
-// exactly the walk of a stranger's layout and nothing less.
-let retiredCount = 0;
-function retired(check, name, why) {
-  retiredCount++;
-  check(false, "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6), not run: " + name + " — " + why);
-}
-
+// WHAT §5.6 RETIRED IS NOT HERE. Every case that read a file written under
+// ANOTHER schema's layout without that layout in the reader's lineage — a plan
+// compiled from a file's bytes, the seven §1.1 names fired at read time, a cache
+// keyed by hash, a forward read — is gone from this driver: under §5 every one of
+// those files comes back layout_unknown, and a test that does not run must not
+// exist (docs/rulings.json, no-skips). Their coverage is held where §5 puts it:
+// the lineage harness (internal/codegen/jstable/fixedversioning_test.go,
+// fixedversioning_retired_controls_test.go, fixedroadmap_t01_test.go), where the
+// peer's entry is handed to the reader as its lock, and §1.1's seven rules as the
+// LOCK's validation of what it records (internal/lockfile/layout_test.go). The
+// IDENTITY halves of the three mixed functions — referenceOracleIdentity,
+// holePrefillIdentity and bytesArrayConventionIdentity — run here, because §5
+// does not touch this build's own layout.
 export async function checkFixedForm(check, generated, corpusDir, optionalDir, oracleDir) {
   const load = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
   const bench = await load("bench/BenchTable.js");
   const fixed = await load("bench/FixedTableTable.js");
   const fx1 = await load("fx1/FX1Table.js");
-  const fx2 = await load("fx2/FX2Table.js");
   const fx1home = await load("fx1/Tblfx1Table.js");
-  const fx2home = await load("fx2/Tblfx2Table.js");
   const ut1 = await load("ut1/UT1Table.js");
-  const ut2 = await load("ut2/UT2Table.js");
   const ut1home = await load("ut1/Tblut1Table.js");
-  const ut2home = await load("ut2/Tblut2Table.js");
-  const ut1types = await load("ut1/UT1.js");
-  const ut2types = await load("ut2/UT2.js");
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
@@ -119,19 +90,12 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   guardComparedAtArgW(check, fx1home);
   planPartition(check, ut1, ut1home, fx1, fx1home);
   ordinalWidth8ReadWhole(check, fx1home);
-  retired(check, "versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
-  retired(check, "bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
   liveCountSlack(check, fx1, fx1home);
   hostileByteSweep(check, fx1, fx1home);
   holePrefillIdentity(check, fx1, fx1home);
-  retired(check, "holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
-  retired(check, "negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
-  retired(check, "layoutValidation", "§1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records");
-  retired(check, "unionArmText", "the guard and flavour lanes across two generations with no lineage; HELD on the lineage harness, TestJSFixedVersioningUnionArmText");
   if (oracleDir) {
     referenceOracleIdentity(check, fx1, fx1home, oracleDir);
-    retired(check, "referenceOracleCompiled", "it reads the reference's FX2 file with no lineage entry; owed on the lineage harness");
   }
 
   if (optionalDir) {
@@ -139,12 +103,9 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
       p1: await load("p1/P1Table.js"), p1home: await load("p1/Tblp1Table.js"),
       p3: await load("p3/P3Table.js"), p3home: await load("p3/Tblp3Table.js"),
       fo1: await load("fo1/FO1Table.js"), fo1home: await load("fo1/Tblfo1Table.js"),
-      fo2: await load("fo2/FO2Table.js"), fo2home: await load("fo2/Tblfo2Table.js"),
     };
     optionalBytes(check, o, optionalDir);
     rangedScalarClamp(check, o);
-    retired(check, "optionalVersioning", "P1/P3 read each other with no lineage; owed on the lineage harness");
-    retired(check, "optionalControls", "every control is a COMPILED read of a stranger's layout; owed on the lineage harness");
   }
 }
 
@@ -263,7 +224,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
   // refusal that fired on every record would read as a pass below.
   {
     const r = read(oneRecord());
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: an untouched record of the reference's corpus reads clean (n=${r.n} refused=${r.report.refused})`);
     // and the record is NOT its defaults, so the reset checks below are not vacuous
     check(deepDiff(r.whole, new bench.FixedTable()) !== null,
@@ -303,7 +264,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const bytes = oneRecord();
     new DataView(bytes.buffer).setInt32(BODY + AT_ENTITIES, 8, true);
     const r = read(bytes);
-    check(r.n === 1 && r.v.entitiesCount === 8 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.v.entitiesCount === 8 && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: a count AT the bound reads and moves no counter (n=${r.n} refused=${r.report.refused})`);
   }
   {
@@ -311,7 +272,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     new DataView(bytes.buffer).setInt32(BODY + AT_NAME, 15, true);
     bytes.fill(0x61, BODY + AT_NAME + 4, BODY + AT_NAME + 4 + 15);
     const r = read(bytes);
-    check(r.n === 1 && r.v.playerNameLength === 15 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.v.playerNameLength === 15 && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: a player_name length AT the bound reads and moves no counter (n=${r.n} refused=${r.report.refused})`);
   }
 
@@ -326,7 +287,7 @@ function forgedCounts(check, bench, fixed, corpusDir) {
     const bytes = oneRecord();
     bytes[BODY + AT_HAS_EXTRA] = 1;
     const r = read(bytes);
-    check(r.n === 1 && r.v.hasExtra === true && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.v.hasExtra === true && r.report.refused === 0 && r.report.oor === 0,
       `IDENTITY REFUSE: a bool byte of 1 reads true and moves no counter (n=${r.n} refused=${r.report.refused})`);
   }
 }
@@ -365,7 +326,7 @@ export function duplicateNeverRaised(check, bench, fixed) {
   // THE CLEAN READ: the form's own writer, read back, raises no repeated.
   {
     const r = read(out);
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.repeated === 0,
+    check(r.n === 1 && r.report.refused === 0 && r.report.repeated === 0,
       `E9 repeated: a clean fixed read raises no repeated (n ${r.n}, repeated ${r.report.repeated})`);
   }
 
@@ -423,7 +384,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
   };
   const reads = (what, bytes, get, want) => {
     const r = read(bytes);
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0 && get(r.v) === want,
+    check(r.n === 1 && r.report.refused === 0 && r.report.oor === 0 && get(r.v) === want,
       `${what} reads ${want} and moves no counter (n ${r.n}, refused ${r.report.refused}, got ${get(r.v)})`);
   };
   const refuses = (what, bytes) => {
@@ -439,7 +400,7 @@ export function fixedPointShiftBits(check, bench, fixed) {
   // THE POSITIVE CONTROL FIRST: untouched storage is in range and reads.
   {
     const r = read(oneRecord());
-    check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && r.report.oor === 0,
+    check(r.n === 1 && r.report.refused === 0 && r.report.oor === 0,
       `C8 F-SHIFT: an untouched record reads clean (n ${r.n}, refused ${r.report.refused})`);
   }
 
@@ -538,7 +499,7 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
   const report = new bench.TableFixedReport();
   const n = fixed.FixedTableFixedLoad(values, Count, corpus, corpus.length, plan, report);
   check(n === Count, `fixed form: ${Count} records read (got ${n})`);
-  check(!report.damaged && report.refused === 0, "fixed form: the reference's own file is not refused");
+  check(report.refused === 0, "fixed form: the reference's own file is not refused");
   check(report.unknown === 0 && report.mismatch === 0 && report.oor === 0 && report.widened === 0,
     "fixed form: a same-schema read moves no counter");
 
@@ -836,115 +797,12 @@ export function ordinalWidth8ReadWhole(check, home) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. THE VERSIONING CONFORMANCE — the twin of test/tables/fixedform_main.cpp
-// ---------------------------------------------------------------------------
-
-function versioning(check, fx1, fx2, fx1home, fx2home) {
-  // an FX1 record, every field off its default so nothing passes by accident
-  const one = new fx1home.FxRoot();
-  one.keep = 4242;
-  one.narrow = 40000;      // a uint16 value the widened read must reproduce
-  one.renamed = 321;
-  one.gone = 654;
-  one.nested.a = 111;
-  one.nested.b = 222;
-
-  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
-  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length, "FX1 save");
-
-  // 1. SAME SCHEMA — the identity plan
-  {
-    const back = [new fx1home.FxRoot()];
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(back, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 1, "same schema: one record");
-    check(back[0].keep === 4242 && back[0].narrow === 40000 && back[0].renamed === 321 && back[0].gone === 654,
-      "same schema: the scalars");
-    check(back[0].nested.a === 111 && back[0].nested.b === 222, "same schema: the nesting");
-    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && !r.malformed && r.refused === 0,
-      "same schema: a clean read moves no counter");
-  }
-
-  // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's block
-  {
-    const back = [new fx2home.FxRoot()];
-    const r = new fx2home.TableFixedReport();
-    const n = fx2.FxRootFixedLoad(back, 1, w1, w1.length, fx2.FxRootFixedNewPlan(), r);
-    check(n === 1, "older writer: one record");
-    check(back[0].keep === 4242, "older writer: an unmoved field");
-    check(back[0].narrow === 40000, "WIDENED: uint16 into uint32, exactly");
-    check(r.widened === 1, `WIDENED: one widened counts (got ${r.widened})`);
-    check(back[0].renamedTo === 321, "RENAMED: `was =` keeps the wire id");
-    check(back[0].added === 11, "MISSING: a field the writer does not carry takes its declared default");
-    check(back[0].extra.x === 0 && back[0].extra.y === 0, "MISSING: a whole nested type takes its defaults");
-    check(back[0].nested.a === 111 && back[0].nested.b === 222, "older writer: the nesting");
-    check(r.unknown === 1, `older writer: \`gone\` is the one field this reader cannot name (got ${r.unknown})`);
-    check(r.kindMismatch === 0 && !r.malformed && r.refused === 0, "older writer: nothing else fired");
-  }
-
-  // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
-  {
-    const two = new fx2home.FxRoot();
-    two.keep = 5150;
-    two.narrow = 70000;
-    two.renamedTo = 808;
-    two.added = 909;
-    two.nested.a = 33;
-    two.nested.b = 44;
-    two.extra.x = 55;
-    two.extra.y = 66;
-    const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
-    check(fx2.FxRootFixedSave([two], 1, w2) === w2.length, "FX2 save");
-
-    const back = [new fx1home.FxRoot()];
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(back, 1, w2, w2.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 1, "newer writer: one record");
-    check(back[0].keep === 5150, "newer writer: an unmoved field lands past the unknowns");
-    check(back[0].renamed === 808, "newer writer: `was =` reads the other way too");
-    check(back[0].gone === 9, "newer writer: a field the writer dropped takes its declared default");
-    check(back[0].nested.a === 33 && back[0].nested.b === 44,
-      "newer writer: the nesting lands past the unknown type");
-    // `added` is an unknown FIELD; `extra` is an unknown nested TYPE, and
-    // stepping over it by its block size is what puts `nested` in the right
-    // place above
-    check(r.unknown === 2, `newer writer: two names this reader does not have (got ${r.unknown})`);
-    // narrow is uint32 THERE and uint16 HERE: coming back DOWN the ladder is a
-    // kind that MOVED, reported and never reinterpreted
-    check(r.kindMismatch === 1, `newer writer: the narrowed field is a kind mismatch (got ${r.kindMismatch})`);
-    check(back[0].narrow === 3, "newer writer: a narrowed field keeps its declared default, never a truncation");
-  }
-
-  // THE PLAN IS COMPILED ONCE PER PEER, NOT ONCE PER RECORD, and the same plan
-  // handed back is reused: the cache is by hash and the hash is the block's.
-  {
-    const many = Array.from({ length: 4 }, () => {
-      const v = new fx1home.FxRoot();
-      v.keep = 1; v.narrow = 2; v.renamed = 3; v.gone = 4; v.nested.a = 5; v.nested.b = 6;
-      return v;
-    });
-    const buf = new Uint8Array(fx1.FxRootFixedMeasure(4));
-    check(fx1.FxRootFixedSave(many, 4, buf) === buf.length, "FX1 save: four records");
-    const plan = fx2.FxRootFixedNewPlan();
-    const back = Array.from({ length: 4 }, () => new fx2home.FxRoot());
-    const r = new fx2home.TableFixedReport();
-    check(fx2.FxRootFixedLoad(back, 4, buf, buf.length, plan, r) === 4, "cached plan: four records");
-    check(plan.ready === true, "cached plan: the plan is marked ready for its hash");
-    const compiled = plan.count;
-    const r2 = new fx2home.TableFixedReport();
-    check(fx2.FxRootFixedLoad(back, 4, buf, buf.length, plan, r2) === 4, "cached plan: read again on the same plan");
-  check(plan.count === compiled, "cached plan: the second read compiled nothing new");
-  check(r2.widened === 4, `cached plan: one widened per record (got ${r2.widened})`);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // THE FORM HEADER, READ BEFORE THE FILE'S LENGTH (§5.3 STEPS 1 AND 2)
 // ---------------------------------------------------------------------------
 //
 // §5.3 step 1 reads the FORM BYTE BEFORE THE FILE'S LENGTH: a committed form-1
 // file is TEN bytes and a form-2 batch THREE, so a reader that measured first
-// would answer `damaged` for every real file of the two forms it is supposed
+// would answer `truncated` for every real file of the two forms it is supposed
 // to name, and SPEC-TABLES §3.4's promise ("a fixed reader given 1 answers
 // `previous_form`, given 2 answers `message_form_as_file`") would hold for no
 // file anyone has. Step 2 is the twenty-byte minimum and then the seven
@@ -952,13 +810,13 @@ function versioning(check, fx1, fx2, fx1home, fx2home) {
 //
 // THESE ARE THE FIVE CASES THE ELIXIR MODEL CARRIES (test/elixir-fixedform/
 // main.exs, the `form byte` block of its negative controls) and this leg did
-// not. THIS IS NOT THE RETIRED `negativeControls` BLOCK: every case there read
-// a stranger's layout through a compiled plan, and every case here is answered
-// at the header, before a hash is looked up, so none of it is owed to the
-// lineage harness. THE PROBES RUN THE READER, and each asserts three things:
-// the refusal by name (or `damaged`, which has no name), that the joint
-// answer holds (§5.3: a refusal by name never ALSO sets `damaged`), and that
-// not one destination field was written — REFUSE is total.
+// not. Every case here is answered at the header, before a hash is looked
+// up, so none of it belongs to the lineage harness. THE PROBES RUN THE READER, and each asserts three things:
+// the refusal by name (framing damage included: `truncated` and
+// `reserved_not_zero`, §5.3's refusal table), that the report carries no
+// second answer channel ("There is no `malformed` flag on this form's
+// report", §5.3), and that not one destination field was written — REFUSE is
+// total.
 function formHeaderProbes(check, fx1, fx1home) {
   const R = fx1home.TableFixedRefusal;
 
@@ -996,36 +854,22 @@ function formHeaderProbes(check, fx1, fx1home) {
     poison(values[0]);
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === reason && !r.damaged,
-      `form header: ${what} is ${fx1home.TableFixedRefusalName(reason)}, and damaged does not fire`);
+    check(n === -1 && r.refused === reason && !("damaged" in r),
+      `form header: ${what} is ${fx1home.TableFixedRefusalName(reason)}, and the report has no malformed flag`);
     check(r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0,
       `form header: ${what} moves no counter`);
     check(untouched(values[0]),
       `form header: ${what} hands the destination back at its declared default`);
   };
 
-  const damagedFile = (what, bytes) => {
-    const values = [new fx1home.FxRoot()];
-    poison(values[0]);
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.damaged && r.refused === R.None,
-      `form header: ${what} is damaged, with no other answer claiming success`);
-    check(r.unknown === 0 && r.mismatch === 0 && r.widened === 0 && r.oor === 0,
-      `form header: ${what} moves no counter`);
-    check(untouched(values[0]),
-      `form header: ${what} hands the destination back at its declared default`);
-  };
-
-  // 1. ZERO BYTES: there is no first byte to earn a name, so the residue is
-  //    `damaged` and no reason is claimed.
-  damagedFile("zero bytes", new Uint8Array(0));
+  // 1. ZERO BYTES: there is no first byte to read, `truncated` (§5.3).
+  refusedByName("zero bytes", new Uint8Array(0), R.Truncated);
 
   // 2. A TEN-byte form-1 file: the form byte earns `previous_form` BEFORE the
-  //    length is measured. Measured first it would be `damaged`.
+  //    length is measured. Measured first it would be `truncated`.
   refusedByName("a ten-byte form-1 file", new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0]), R.PreviousForm);
 
-  // 3. A THREE-byte form-2 batch: `message_form_as_file`, not `damaged`.
+  // 3. A THREE-byte form-2 batch: `message_form_as_file`, not `truncated`.
   refusedByName("a three-byte form-2 batch", new Uint8Array([2, 1, 0]), R.MessageFormAsFile);
 
   // 4. FORM BYTE 0 with the otherwise-valid fixture tail: no form defines it,
@@ -1037,11 +881,21 @@ function formHeaderProbes(check, fx1, fx1home) {
   }
 
   // 5. A RESERVED BYTE NONZERO on an otherwise-valid form-3 file: the seven
-  //    reserved bytes are REFUSED, not ignored — `damaged`, no name.
+  //    reserved bytes are REFUSED, not ignored — `reserved_not_zero`.
   {
     const bad = Uint8Array.from(w1);
     bad[3] = 1;
-    damagedFile("reserved byte 3 set nonzero", bad);
+    refusedByName("reserved byte 3 set nonzero", bad, R.ReservedNotZero);
+  }
+
+  // 6. A FORM-3 FILE UNDER THE 20-BYTE HEADER: `truncated`, by name.
+  refusedByName("a ten-byte form-3 file", Uint8Array.from(w1.subarray(0, 10)), R.Truncated);
+
+  // 7. A RAGGED TAIL, rest mod record_bytes != 0: `truncated`, by name.
+  {
+    const bad = new Uint8Array(w1.length + 1);
+    bad.set(w1);
+    refusedByName("a ragged tail", bad, R.Truncated);
   }
 }
 
@@ -1093,8 +947,8 @@ function refuseTotalProbe(check, fx1, fx1home) {
   const r = new fx1home.TableFixedReport();
   const n = fx1.FxRootFixedLoad(values, 1, bad, bad.length, plan, r);
 
-  check(n === -1 && r.refused === R.NoLayout && !r.damaged,
-    "REFUSE is total: a record whose hash names no held layout refuses no_layout, and damaged does not fire");
+  check(n === -1 && r.refused === R.NoLayout,
+    "REFUSE is total: a record whose hash names no held layout refuses no_layout, and nothing else");
   check(r.unknown === 0 && r.mismatch === 0 && r.oor === 0 && r.widened === 0 && r.repeated === 0,
     "REFUSE is total: no counter moves");
   check(plan.image.every((b) => b === 0x5A),
@@ -1108,608 +962,6 @@ function refuseTotalProbe(check, fx1, fx1home) {
   fx1home.InitFxRoot(reset);
   check(deepDiff(v, reset) === null,
     "REFUSE is total: nothing is decoded, and the row is handed back at its declared default (R4)");
-}
-
-// ---------------------------------------------------------------------------
-// THE NEGATIVE CONTROLS
-// ---------------------------------------------------------------------------
-
-function negativeControls(check, fx1, fx2, fx1home, fx2home) {
-  const one = new fx1home.FxRoot();
-  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
-  one.nested.a = 111; one.nested.b = 222;
-  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
-  fx1.FxRootFixedSave([one], 1, w1);
-
-  // THE NEGATIVE CONTROL §3.4 NAMES: A READER GIVEN THE WRONG PLAN FOR A
-  // RECORD GOES RED. The plan is the whole of this form's safety, so a test
-  // that never watched a wrong plan fail is a test that never checked the
-  // right one worked. Here the plan compiled for FX1's own block is run
-  // against an FX2 record, which is the same loop over the wrong plan.
-  {
-    const two = new fx2home.FxRoot();
-    two.keep = 5150; two.narrow = 70000; two.renamedTo = 808; two.added = 909;
-    two.nested.a = 33; two.nested.b = 44; two.extra.x = 55; two.extra.y = 66;
-    const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
-    fx2.FxRootFixedSave([two], 1, w2);
-
-    const right = [new fx1home.FxRoot()];
-    const rr = new fx1home.TableFixedReport();
-    fx1.FxRootFixedLoad(right, 1, w2, w2.length, fx1.FxRootFixedNewPlan(), rr);
-
-    // now run FX1's IDENTITY plan over the FX2 body — the wrong plan for these
-    // bytes — straight through the shared loop, and watch it disagree
-    const plan = fx1.FxRootFixedNewPlan();
-    const wrong = [new fx1home.FxRoot()];
-    const wr = new fx1home.TableFixedReport();
-    const body = w2.subarray(LAYOUT_AT + fx2.FxRootFixedLayoutBytes + 8);
-    const bodyView = new DataView(body.buffer, body.byteOffset, body.length);
-    plan.image.set(new Uint8Array(plan.image.length)); // the prefill
-    fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]),
-      1, body, bodyView, 0, plan.image, plan.view, null, wr);
-    fx1home.FxRootFixedDecode(wrong[0], plan.view, 0, wr);
-    check(wrong[0].keep !== right[0].keep || wrong[0].renamed !== right[0].renamed ||
-      wrong[0].nested.a !== right[0].nested.a || wrong[0].nested.b !== right[0].nested.b,
-      "NEGATIVE CONTROL: the identity plan run over another writer's record comes out WRONG");
-  }
-
-  // EVERY REFUSAL IS BY NAME, and none of them is one of §4's six events:
-  // nothing is decoded and there is nothing to count.
-  const fresh = () => [new fx1home.FxRoot()];
-  {
-    const R = fx1home.TableFixedRefusal;
-    const seven = [
-      R.LayoutCountMismatch, R.LayoutKindUnknown, R.LayoutSizeMismatch,
-      R.LayoutKindInvalid, R.LayoutTreeUnclosed, R.LayoutRecordTooLarge,
-      R.LayoutTooDeep,
-    ];
-    check(new Set(seven).size === 7 && seven.every((v) => v !== R.LayoutMalformed && v !== R.None),
-      "the seven layout refusals are distinct, and none is layout_malformed");
-  }
-  {
-    // A LAYOUT THAT IS NOT A LAYOUT IS REFUSED BY NAME, whole, and never damage.
-    // Every rule has its own case in layoutValidation() below; this one is
-    // here because it is also the check that a refusal MOVES NO COUNTER.
-    const two = new fx2home.FxRoot();
-    const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
-    fx2.FxRootFixedSave([two], 1, w2);
-    const broken = Uint8Array.from(w2);
-    // THE ENTRY COUNT, which is the layout's own first four bytes and not
-    // the u32 LENGTH in front of them: a length that no longer matches the
-    // file is a different rule with a different name.
-    broken[LAYOUT_AT] ^= 0xff;
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(fresh(), 1, broken, broken.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutCountMismatch,
-      "REFUSED BY NAME: layout_count_mismatch");
-    check(r.unknown === 0 && r.kindMismatch === 0 && !r.malformed,
-      "REFUSED BY NAME: a refusal moves no counter");
-  }
-  {
-    // THE FORM BYTE SAYS WHICH DIRECTION (§3). The registry is ORDERED, so a
-    // byte this reader cannot read is named by WHERE IT SITS relative to this
-    // form — and never by one word for all three.
-    const bad = Uint8Array.from(w1);
-    bad[0] = 4; // §4.2's unknown-form control byte, which is 4 now that 3 is taken
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.NewerForm && !r.malformed,
-      "REFUSAL: a form byte NEWER than this build is newer_form, and malformed does not fire");
-  }
-  {
-    const bad = Uint8Array.from(w1);
-    bad[0] = 1; // form 1, the variable form: a form that came BEFORE this one
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.PreviousForm && !r.malformed,
-      "REFUSAL: form 1, the variable form, is previous_form and NOT newer_form");
-  }
-  {
-    const bad = Uint8Array.from(w1);
-    bad[0] = 2; // form 2, the message form: a WIRE where a FILE was expected
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.MessageFormAsFile && !r.malformed,
-      "REFUSAL: form 2 handed to a file reader is message_form_as_file, named apart from both");
-  }
-  {
-    const bad = Uint8Array.from(w1);
-    // a layout length that overruns the file
-    bad[LAYOUT_LENGTH_AT] = 0xff; bad[LAYOUT_LENGTH_AT + 1] = 0xff;
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
-      "REFUSAL: a layout length that overruns the file is layout_malformed");
-  }
-  {
-    // a layout whose ENTRY COUNT does not close its own tree is refused WHOLE
-    const bad = Uint8Array.from(w1);
-    bad[LAYOUT_AT + 4 + 13] = 0x7f; // the root's child count, which now closes nothing
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutTreeUnclosed,
-      "REFUSAL: a layout whose tree does not close is layout_tree_unclosed, and it sets nothing");
-  }
-  {
-    // THE HEADER NAMES THE LAYOUT ONCE, AND IT IS CHECKED LAST (§3): a header
-    // whose hash is not the hash of the layout behind it is a lying header,
-    // and the layout's OWN rules refuse under their own names first so that a
-    // broken layout is never reported as this.
-    const bad = Uint8Array.from(w1);
-    bad[HASH_AT] ^= 0xff;
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
-      "REFUSAL: a header whose hash is not the layout's is layout_malformed");
-  }
-  {
-    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS is a refusal by
-    // name — never a guess and never damage
-    const bad = Uint8Array.from(w1);
-    bad[LAYOUT_AT + fx1.FxRootFixedLayoutBytes] ^= 0xff; // the record's own hash
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.NoLayout,
-      "REFUSAL: a record whose hash is not the layout's is no_layout");
-  }
-  {
-    // BYTES LEFT OVER ARE malformed — §3's rule, for the same reason
-    const bad = new Uint8Array(w1.length + 3);
-    bad.set(w1);
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 && r.malformed,
-      "REFUSAL: bytes left over past the last whole record are malformed");
-  }
-  {
-    // the caller's capacity is the caller's, and more records than it holds is
-    // a refusal by name rather than a write past the end
-    const many = Array.from({ length: 3 }, () => one);
-    const buf = new Uint8Array(fx1.FxRootFixedMeasure(3));
-    fx1.FxRootFixedSave(many, 3, buf);
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.BatchTooLarge,
-      "REFUSAL: more records than the caller's capacity is batch_too_large");
-  }
-  {
-    // THE PLAN'S STORAGE IS THE CALLER'S, and a plan that does not fit is a
-    // refusal by name — this codec never allocates its way out
-    const two = new fx2home.FxRoot();
-    const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
-    fx2.FxRootFixedSave([two], 1, w2);
-    const tiny = fx1.FxRootFixedNewPlan(1, 4);
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(fresh(), 1, w2, w2.length, tiny, r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.PlanTooLarge,
-      "REFUSAL: a layout whose compiled plan does not fit the caller's storage is plan_too_large");
-  }
-  {
-    // a write that does not fit answers -1 and touches nothing, exactly as the
-    // flat packet writer does
-    const small = new Uint8Array(fx1.FxRootFixedMeasure(1) - 1);
-    check(fx1.FxRootFixedSave([one], 1, small) === -1,
-      "REFUSAL: a buffer too small for the file answers -1");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// THE LAYOUT VALIDATION — §1.1'S SEVEN RULES, EACH UNDER ITS OWN NAME
-// ---------------------------------------------------------------------------
-//
-// THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4). It is
-// the one structure a reader must parse before it knows anything at all, so
-// docs/FIXED-FORM-ALGORITHM.md §1.1 holds it to SEVEN RULES and gives each one
-// ITS OWN NAME, raised before a single record byte is touched. A VALIDATION
-// NOBODY WATCHED FAIL IS A VALIDATION NOBODY HAS, so there is one case per
-// named rule here — the C++ reference's own twelve, in its own order
-// (test/tables/fixedform_main.cpp, layout_validation) — each taking a layout
-// this reader ACCEPTS and breaking EXACTLY ONE THING in it.
-//
-// THE ASSERTION IS ON THE NAME. The seven members exist; the fixture still
-// reverse-maps the frozen enum to the MEMBER NAME so a missing rule still
-// says which one, and a wrong member still fails.
-//
-// The file is §3's HEADER (the form byte, seven reserved zero bytes, the layout
-// hash at 8, the body at 16), then `u32 layout length, layout, records` — so
-// the layout starts at LAYOUT_AT, the entry count is the four bytes there, and
-// entry k is the seventeen bytes at LAYOUT_AT + 4 + 17k: id (u64), kind (u8),
-// size (u32), children (u32), every number little-endian.
-//
-// AND THE BROKEN FILE IS SEALED AROUND THE BREAK. A hostile peer writes a file
-// that is consistent with itself: the header's hash IS the hash of the layout
-// it carries, and so is every record's. §2 step 5 puts the header hash check
-// LAST of the three for exactly this reason — so a broken layout is never
-// reported as a lying header. The seven named rules run first; the seal is
-// still the measurement, because a file left with the good layout's hash in
-// its header would be refused `layout_malformed` for the tampering rather
-// than for the rule. The layout's fnv1a64 is recomputed over the broken bytes
-// and stamped into the header and into the record behind it. What refuses a
-// sealed file is the RULE or nothing.
-//
-// The hash is computed here from §1's own definition, in BigInt, rather than
-// borrowed from the module under test — a driver that hashed with the code it
-// is checking would agree with whatever that code happened to do. The seal is
-// proved against the good file first: resealing bytes that are already right
-// must change nothing.
-
-function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
-  // §1'S HASH: fnv1a64 over the layout's bytes as written, THE 4-BYTE COUNT
-  // INCLUDED. A fixture's oracle, so it is written the plain way.
-  const fnv1a64 = (bytes, at, length) => {
-    let h = 0xcbf29ce484222325n;
-    for (let i = 0; i < length; i++) {
-      h = ((h ^ BigInt(bytes[at + i])) * 0x100000001b3n) & 0xffffffffffffffffn;
-    }
-    return h;
-  };
-
-  const get32 = (f, at) => (f[at] | (f[at + 1] << 8) | (f[at + 2] << 16) | (f[at + 3] << 24)) >>> 0;
-  const put32 = (f, at, v) => {
-    f[at] = v & 0xff; f[at + 1] = (v >>> 8) & 0xff;
-    f[at + 2] = (v >>> 16) & 0xff; f[at + 3] = (v >>> 24) & 0xff;
-  };
-
-  const ENTRY_BYTES = 17;
-  const entryAt = (k) => LAYOUT_AT + 4 + ENTRY_BYTES * k;
-  const KIND_AT = 8, SIZE_AT = 9, CHILDREN_AT = 13; // inside an entry
-
-  // the hash stamped into the header and into every record behind the layout
-  const seal = (f, recordBytes) => {
-    const layoutBytes = get32(f, LAYOUT_LENGTH_AT);
-    const h = fnv1a64(f, LAYOUT_AT, layoutBytes);
-    const lo = Number(h & 0xffffffffn), hi = Number((h >> 32n) & 0xffffffffn);
-    put32(f, HASH_AT, lo); put32(f, HASH_AT + 4, hi);
-    for (let at = LAYOUT_AT + layoutBytes; recordBytes > 0 && at + 8 <= f.length; at += recordBytes) {
-      put32(f, at, lo); put32(f, at + 4, hi);
-    }
-    return f;
-  };
-
-  // A FILE AROUND A HAND-BUILT LAYOUT, for the rules no single break of a real
-  // layout reaches: the form byte, the layout's length, the layout, NO records.
-  // Every rule below refuses before a record would be reached.
-  const fileOf = (layout) => {
-    const f = new Uint8Array(LAYOUT_AT + layout.length);
-    f[0] = 3; // the fixed form's byte
-    put32(f, LAYOUT_LENGTH_AT, layout.length);
-    f.set(layout, LAYOUT_AT);
-    return seal(f, 0);
-  };
-
-  const putEntry = (out, id, kind, size, children) => {
-    out.push(id & 0xff, (id >>> 8) & 0xff, (id >>> 16) & 0xff, (id >>> 24) & 0xff, 0, 0, 0, 0);
-    out.push(kind & 0xff);
-    out.push(size & 0xff, (size >>> 8) & 0xff, (size >>> 16) & 0xff, (size >>> 24) & 0xff);
-    out.push(children & 0xff, (children >>> 8) & 0xff, (children >>> 16) & 0xff, (children >>> 24) & 0xff);
-    return out;
-  };
-
-  const handLayout = (count, build) => {
-    const out = build([0, 0, 0, 0]);
-    const layout = Uint8Array.from(out);
-    put32(layout, 0, count);
-    return layout;
-  };
-
-  // THE NAME, NOT THE VALUE: the frozen enum read backwards. A refusal this
-  // build does not register at all comes back as the bare number, which is
-  // itself the report — a reader answering a value nobody named.
-  const REFUSAL_NAME = new Map(Object.entries(fx1home.TableFixedRefusal).map(([name, v]) => [v, name]));
-  const refusalName = (v) => REFUSAL_NAME.get(v) ?? `an unregistered refusal value (${v})`;
-
-  const read = (bytes) => {
-    const values = [new fx1home.FxRoot()];
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
-    return { n, r };
-  };
-
-  // ONE CASE IS ONE RED AND NEVER THE RUN'S LAST WORD: a throw out of the
-  // loader is a failure of THAT case and the rest are still measured, because a
-  // reader that walks a hostile layout off the end of its own array is the
-  // damage the validation exists to prevent and not a reason to stop looking.
-  const refuses = (bytes, want, what) => {
-    let got = null, n = 0, threw = null;
-    try {
-      const out = read(bytes);
-      n = out.n; got = out.r;
-    } catch (e) {
-      threw = e;
-    }
-    if (threw !== null) {
-      check(false, `${what} — expected ${want}, and the read THREW ${threw.name}: ${threw.message}`);
-      return;
-    }
-    const name = refusalName(got.refused);
-    check(n === -1 && got.refused !== 0 && name === want,
-      `${what} — expected ${want}, got ${name}` + (n === -1 ? "" : ` and a read of ${n} record(s)`));
-    // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
-    // record, or that compiled a plan over the hostile layout on its way out,
-    // would be the damage the refusal exists to prevent.
-    check(got.unknown === 0 && got.kindMismatch === 0 && got.widened === 0 && got.clamped === 0 && !got.malformed,
-      `${what}: a layout refusal sets nothing and counts nothing ` +
-      `(unknown ${got.unknown}, kindMismatch ${got.kindMismatch}, widened ${got.widened}, ` +
-      `clamped ${got.clamped}, malformed ${got.malformed})`);
-  };
-
-  // the layout this reader ACCEPTS, which every case below breaks once: the
-  // OTHER generation's file, read by this one, which is the versioning path
-  const two = new fx2home.FxRoot();
-  two.keep = 5150; two.narrow = 70000; two.renamedTo = 808; two.added = 909;
-  two.nested.a = 33; two.nested.b = 44; two.extra.x = 55; two.extra.y = 66;
-  const good = new Uint8Array(fx2.FxRootFixedMeasure(1));
-  check(fx2.FxRootFixedSave([two], 1, good) === good.length,
-    "layout validation: the unbroken file saves");
-  const RECORD_BYTES = fx2.FxRootFixedRecordBytes;
-
-  {
-    // and it READS, so every refusal below is the ONE break and not the file
-    const { n, r } = read(good);
-    check(n === 1 && r.refused === 0 && !r.malformed,
-      `layout validation: the unbroken file reads, so the breaks below are the breaks ` +
-      `(got ${n}, refused ${refusalName(r.refused)})`);
-  }
-  {
-    // THE SEAL IS THE READER'S OWN ARITHMETIC. Resealing a file that is already
-    // consistent must not move a byte; if this goes red every case below is
-    // measuring a hash of the fixture's own making and nothing else.
-    const resealed = seal(Uint8Array.from(good), RECORD_BYTES);
-    let same = resealed.length === good.length;
-    for (let i = 0; same && i < good.length; i++) { same = resealed[i] === good[i]; }
-    check(same, "layout validation: resealing the unbroken file changes nothing, so the seal is §1's own hash");
-  }
-  {
-    // and the two entries every case below indexes are the entries it thinks
-    // they are: the ROOT is the table, entry 1 is `keep`, a u32 leaf in four
-    check(good[entryAt(0) + KIND_AT] === 13 && get32(good, entryAt(0) + SIZE_AT) > 0,
-      `layout validation: entry 0 is the root TABLE, kind 13 (got kind ${good[entryAt(0) + KIND_AT]})`);
-    check(good[entryAt(1) + KIND_AT] === 8 && get32(good, entryAt(1) + SIZE_AT) === 4 &&
-      get32(good, entryAt(1) + CHILDREN_AT) === 0,
-      `layout validation: entry 1 is a u32 LEAF in four bytes (got kind ${good[entryAt(1) + KIND_AT]}, ` +
-      `size ${get32(good, entryAt(1) + SIZE_AT)})`);
-  }
-
-  const broken = (mutate) => {
-    const f = Uint8Array.from(good);
-    mutate(f);
-    return seal(f, RECORD_BYTES);
-  };
-
-  // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY (§1.1 rule 1)
-  {
-    const f = broken((f) => put32(f, LAYOUT_AT, get32(f, LAYOUT_AT) + 1));
-    refuses(f, "LayoutCountMismatch", "RULE: the entry count fits the layout length exactly");
-  }
-  {
-    // a count of ZERO is not a layout either: there is no root to walk
-    const f = broken((f) => put32(f, LAYOUT_AT, 0));
-    refuses(f, "LayoutCountMismatch", "RULE: an entry count of zero is not a layout");
-  }
-
-  // 2. EVERY KIND IS IN THE CLOSED SET (§1.1 rule 2). A fixed form's kind set is
-  //    CLOSED — 1..30, 32, 33, 35 — so a kind outside it means a NEWER FORM
-  //    BYTE, a different form, and not a newer layout of this one. It is
-  //    refused, never stepped over.
-  {
-    const f = broken((f) => { f[entryAt(1) + KIND_AT] = 200; }); // a kind no form byte this build carries defines
-    refuses(f, "LayoutKindUnknown", "RULE: a kind outside the closed set is REFUSED, not skipped");
-  }
-
-  // 3. A KIND IS USED AS ITS DEFINITION ALLOWS (§1.1 rule 4) — here, the ROOT
-  //    is a table
-  {
-    const f = broken((f) => { f[entryAt(0) + KIND_AT] = 14; }); // an array as the root of a record
-    refuses(f, "LayoutKindInvalid", "RULE: the root entry is a TABLE");
-  }
-
-  // 4. A CONSTANT SIZE MATCHES ITS KIND (§1.1 rule 3, §1.2)
-  {
-    const f = broken((f) => put32(f, entryAt(1) + SIZE_AT, 5)); // a uint32 leaf in five bytes
-    refuses(f, "LayoutSizeMismatch", "RULE: a constant size its kind does not admit");
-  }
-  {
-    // and a TABLE's size is the SUM of its children's, not a number of its own
-    const f = broken((f) => put32(f, entryAt(0) + SIZE_AT, get32(f, entryAt(0) + SIZE_AT) + 4));
-    refuses(f, "LayoutSizeMismatch", "RULE: a table's size is the sum of its fields'");
-  }
-
-  // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES (§1.1 rule 5)
-  {
-    const f = broken((f) => put32(f, entryAt(0) + CHILDREN_AT, get32(f, entryAt(0) + CHILDREN_AT) + 1));
-    refuses(f, "LayoutTreeUnclosed", "RULE: the tree runs out of layout");
-  }
-  {
-    // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
-    // reaches. It takes a hand-built layout to reach, and that is itself worth
-    // stating: dropping a child of a TABLE is caught one rule sooner, by the
-    // size that no longer sums, so the only subtree whose loss the size rule
-    // cannot see is one that contributes NO size — an enum's variants, at kind
-    // 32 and size 0.
-    const layout = handLayout(4, (out) => {
-      putEntry(out, 1, 13, 4, 1); // a table of one field
-      putEntry(out, 2, 30, 4, 0); // an enum, its TWO variants unreached
-      putEntry(out, 3, 32, 0, 0);
-      putEntry(out, 4, 32, 0, 0);
-      return out;
-    });
-    refuses(fileOf(layout), "LayoutTreeUnclosed", "RULE: the layout outlasts the tree");
-  }
-
-  // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW (§1.1 rule 6)
-  {
-    const f = broken((f) => put32(f, entryAt(0) + SIZE_AT, 65537));
-    refuses(f, "LayoutRecordTooLarge", "RULE: a record size past 65536");
-  }
-  {
-    // A SIZE THAT WOULD WRAP. The children's sizes are summed wider than 32
-    // bits precisely so a u32 that overflows is CAUGHT rather than wrapped into
-    // a small number that then agrees with a parent.
-    const f = broken((f) => put32(f, entryAt(1) + SIZE_AT, 0xffffffff));
-    refuses(f, "LayoutRecordTooLarge", "RULE: a size that would overflow the sum");
-  }
-
-  // 7. NOTHING NESTED PAST THE READER'S WALK BOUND (§1.1 rule 7). A BOUND ON
-  //    THE WALK AND NOT ON THE WIRE: the validation recurses, so a layout of a
-  //    thousand entries each claiming one child would spend a reader's stack
-  //    before any other rule could fire. Nothing in §3.4 fixes the number; the
-  //    reference states 64.
-  {
-    const depth = 4096; // far past any reader's own bound
-    const layout = handLayout(depth + 1, (out) => {
-      for (let i = 0; i < depth; i++) {
-        // a table, then optional wrappers all the way down
-        putEntry(out, 1, i === 0 ? 13 : 35, depth - i, 1);
-      }
-      putEntry(out, 2, 1, 1, 0); // a bool at the bottom
-      return out;
-    });
-    refuses(fileOf(layout), "LayoutTooDeep", "RULE: a nesting depth past the walk's own bound");
-  }
-
-  // AND THE RESIDUE: bytes that are not a layout at all, which is the one case
-  // the seven named rules never reach (§1.1).
-  {
-    refuses(fileOf(new Uint8Array(2)), "LayoutMalformed",
-      "RULE: fewer bytes than a layout header is layout_malformed");
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 4. THE OPTIONALS — §3.4's kind 35, against the C++ reference's own bytes
-// ---------------------------------------------------------------------------
-//
-// ON THE PACKET WIRE `?T` AND A PLAIN `T` ARE THE SAME BITS (SPEC §2.3). ON
-// THIS FORM THEY ARE NOT: an optional rides as kind 35, a PRESENT BYTE at the
-// field's own offset with the payload WHOLE behind it, so the two spellings are
-// one byte apart and every offset behind them moves. That makes the flag's
-// position a wire fact, and a wire fact has exactly one honest oracle here —
-// the reference's bytes.
-//
-// OptRoot's body, which is §3.4's arithmetic and nothing else, is what the
-// forgeries below index. It is spelled out because a forgery that indexed the
-// wrong byte would be testing nothing:
-//
-//   0..3    name's used length      16..19  plain
-//   4..15   name's 12 bytes         20      opt PRESENT
-//                                   21..36  opt's Leaf: v, tag length, tag(8)
-//   37      num PRESENT             38..41  num
-//   42      mark PRESENT            43      mark's ordinal
-//   44..47  wrap.n                  48      wrap.leaf PRESENT
-//   49..64  wrap.leaf's Leaf        65      effect's tag
-//   66..69  effect's widest arm     70..71  tail
-const OPT_PRESENT = 20, OPT_V = 21, NUM_PRESENT = 37, MARK_PRESENT = 42;
-const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
-const PLAIN = 16, MARK = MARK_PRESENT + 1, BOOST_POWER = EFFECT_TAG + 1;
-
-// setText lays a string(N) member down the way every port must: the bytes,
-// then the USED LENGTH beside them.
-// ---------------------------------------------------------------------------
-// A TEXT FIELD UNDER A UNION ARM: two facts, two lanes
-// ---------------------------------------------------------------------------
-//
-// A PLAN ENTRY CARRIES TWO FACTS THAT ARE NOT THE SAME FACT: the ordinal the
-// GUARD byte must hold for the entry to run, and the ARGUMENT the entry's own
-// op takes — for a text entry, its flavour. They had one lane between them, so
-// a `string(N)` under a union's arm could be guarded correctly or read with the
-// right flavour and could not be both.
-//
-// Neither failure is quiet. The flavour of a `string(N)` is 1 and UT1's second
-// arm's ordinal is 2, so a shared lane does not merely lose one fact — it turns
-// a byte string into a WIDE one, halving the bound. And under a compiled plan
-// the entry runs only when the tag happens to equal the flavour, which means it
-// runs under the WRONG ARM and writes across a sibling's storage, which a union
-// shares.
-//
-// UT2 inserts `mid` IN THE MIDDLE of the union, so the arm carrying the string
-// moves from ordinal 2 to ordinal 3 and the read is a COMPILED plan: the guard
-// must hold THEIR ordinal while the tag lands MINE, which is the other half of
-// the same confusion. The pair is the C++ leg's own (test/tables/UT1.schema,
-// UT2.schema) and this is its JavaScript twin.
-function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
-  const LABEL = "arm-text";
-  const textOf = (buf, n) => {
-    let out = "";
-    for (let i = 0; i < n; i++) { out += String.fromCharCode(buf[i]); }
-    return out;
-  };
-
-  // 1. UT2 WRITES ARM `b` — ordinal 3 THERE — AND UT1 READS IT AS ORDINAL 2.
-  //    The string is guarded by the WRITER's ordinal and lands under the
-  //    READER's, and its flavour is neither number.
-  {
-    const v = new ut2home.UtRoot();
-    v.head = 41;
-    v.pick.type = ut2types.PickType.B;
-    v.pick.b.labelLength = setText(v.pick.b.label, LABEL);
-    v.pick.b.m = 55;
-    v.tail = 66;
-    const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
-    check(ut2.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT2 wrote its arm-b record");
-
-    const out = [new ut1home.UtRoot()];
-    const r = new ut1home.TableFixedReport();
-    const n = ut1.UtRootFixedLoad(out, 1, buf, buf.length, ut1.UtRootFixedNewPlan(), r);
-    check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's record through a compiled plan");
-    const got = out[0];
-    check(got.pick.type === ut1types.PickType.B,
-      `union-arm text: the tag lands on UT1's OWN ordinal for arm b — got ${got.pick.type}, want ${ut1types.PickType.B}`);
-    const label = textOf(got.pick.b.label, got.pick.b.labelLength);
-    check(got.pick.b.labelLength === LABEL.length && label === LABEL,
-      `union-arm text: the arm's string survives BOTH the guard and the flavour — got ${got.pick.b.labelLength} ${JSON.stringify(label)}, want ${LABEL.length} ${JSON.stringify(LABEL)}`);
-    check(got.pick.b.m === 55, `union-arm text: the scalar behind the string is 55, got ${got.pick.b.m}`);
-    check(got.head === 41 && got.tail === 66,
-      `union-arm text: the fields either side of the union are 41/66, got ${got.head}/${got.tail}`);
-  }
-
-  // 2. UT2 WRITES ARM `a` — ordinal 1, WHICH IS ALSO A BYTE STRING'S FLAVOUR.
-  //    This is the sharper half: with one lane between the two facts, arm b's
-  //    text entry runs under arm a's tag and smears its payload across a
-  //    sibling arm's storage.
-  {
-    const v = new ut2home.UtRoot();
-    v.head = 71;
-    v.pick.type = ut2types.PickType.A;
-    v.pick.a.n = -404;
-    v.tail = 77;
-    const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
-    check(ut2.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT2 wrote its arm-a record");
-
-    const out = [new ut1home.UtRoot()];
-    const r = new ut1home.TableFixedReport();
-    const n = ut1.UtRootFixedLoad(out, 1, buf, buf.length, ut1.UtRootFixedNewPlan(), r);
-    check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's arm-a record");
-    const got = out[0];
-    check(got.pick.type === ut1types.PickType.A,
-      `union-arm text: the tag lands on arm a — got ${got.pick.type}, want ${ut1types.PickType.A}`);
-    check(got.pick.a.n === -404,
-      `union-arm text: arm a's scalar is untouched by arm b's text entry — got ${got.pick.a.n}, want -404`);
-    check(got.head === 71 && got.tail === 77,
-      `union-arm text: the fields either side of the union are 71/77, got ${got.head}/${got.tail}`);
-  }
-
-  // 3. AND THE OTHER DIRECTION, so neither side is the only one proved: UT1
-  //    writes arm b at ordinal 2, UT2 reads it as ordinal 3.
-  {
-    const v = new ut1home.UtRoot();
-    v.head = 81;
-    v.pick.type = ut1types.PickType.B;
-    v.pick.b.labelLength = setText(v.pick.b.label, "back");
-    v.pick.b.m = -12;
-    v.tail = 88;
-    const buf = new Uint8Array(ut1.UtRootFixedMeasure(1));
-    check(ut1.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT1 wrote its arm-b record");
-
-    const out = [new ut2home.UtRoot()];
-    const r = new ut2home.TableFixedReport();
-    const n = ut2.UtRootFixedLoad(out, 1, buf, buf.length, ut2.UtRootFixedNewPlan(), r);
-    check(n === 1 && !r.malformed, "union-arm text: UT2 read UT1's record through a compiled plan");
-    const got = out[0];
-    const label = textOf(got.pick.b.label, got.pick.b.labelLength);
-    check(got.pick.type === ut2types.PickType.B && label === "back" && got.pick.b.m === -12,
-      `union-arm text: the arm's string and scalar land the other way round too — tag ${got.pick.type} ${JSON.stringify(label)} ${got.pick.b.m}`);
-    check(got.head === 81 && got.tail === 88,
-      `union-arm text: the fields either side of the union are 81/88, got ${got.head}/${got.tail}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1735,8 +987,8 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
 // one byte of it, so it RUNS. Nothing else on this leg makes its two load-bearing
 // assertions: the reference's own file saved back IDENTICAL, and "the slack is
 // zero" over records built from CONSTRUCTED storage rather than read from a file.
-// `referenceOracleCompiled`, below it, is the half §5 retires: FX1 reading the
-// reference's FX2 file with no lineage entry for FX2's hash.
+// The half §5 retired — FX1 reading the reference's FX2 file with no lineage
+// entry — is now the refusal TestJSFixedVersioningReferenceForwardRefusal holds.
 function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
   const read = (name) => {
     try {
@@ -1759,7 +1011,7 @@ function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
     const v = [new fx1home.FxRoot(), new fx1home.FxRoot()];
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(v, 2, file, file.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 2 && !r.damaged, `reference oracle: fx1.bin holds two records, got ${n}`);
+    check(n === 2 && r.refused === 0, `reference oracle: fx1.bin holds two records, got ${n}`);
     if (n !== 2) { return; }
 
     // the values the reference states, checked INDEPENDENTLY of the bytes: a
@@ -1822,51 +1074,6 @@ function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
   }
 }
 
-// RETIRED BY §5.6 (called by name at the call site, kept compiling, §5.9 #23):
-// fx2.bin is ANOTHER WRITER'S LAYOUT and FX1 has no lineage entry for its hash,
-// so under §5 this file comes back layout_unknown. The coverage is owed on the
-// lineage harness, where FX2's entry is HANDED to the reader as its lock.
-function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
-  const read = (name) => {
-    try {
-      return new Uint8Array(readFileSync(resolve(oracleDir, name)));
-    } catch {
-      return null;
-    }
-  };
-  const textOf = (buf, n) => {
-    let out = "";
-    for (let i = 0; i < n; i++) { out += String.fromCharCode(buf[i]); }
-    return out;
-  };
-
-  // ---- fx2.bin: ANOTHER WRITER'S LAYOUT, so the plan path reads it
-  {
-    const file = read("fx2.bin");
-    check(file !== null, "reference oracle: fx2.bin is present");
-    if (file === null) { return; }
-    const v = [new fx1home.FxRoot()];
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(v, 1, file, file.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 1 && !r.malformed,
-      `reference oracle: FX1 reads the reference's FX2 file through a COMPILED plan, got ${n}`);
-    if (n !== 1) { return; }
-    check(v[0].keep === 5150, `reference oracle: fx2's keep lands, got ${v[0].keep}`);
-    check(v[0].renamed === 808, `reference oracle: fx2's renamed_to lands under was, got ${v[0].renamed}`);
-    // narrow is 70000 in FX2 and a uint16 here: a kind that MOVED, not a widening
-    check(v[0].nested.a === 33 && v[0].nested.b === 44,
-      `reference oracle: fx2's nested lands, got ${v[0].nested.a}/${v[0].nested.b}`);
-    check(v[0].labelLength === 3 && textOf(v[0].label, 3) === "fx2",
-      `reference oracle: fx2's short string lands through the plan — got ${v[0].labelLength} ${JSON.stringify(textOf(v[0].label, v[0].labelLength))}`);
-    check(v[0].marksCount === 1 && v[0].marks[0] === 303,
-      `reference oracle: fx2's partly-used array lands through the plan — got count ${v[0].marksCount} [${v[0].marks[0]}]`);
-    check(v[0].blobLength === 3 && v[0].blob[0] === 1 && v[0].blob[1] === 2 && v[0].blob[2] === 3,
-      `reference oracle: fx2's partly-used bytes(N) lands through the plan — got length ${v[0].blobLength}`);
-    check(v[0].gone === 9,
-      `reference oracle: a field FX2 does not carry keeps its declared default, got ${v[0].gone}`);
-  }
-}
-
 // LIVE-COUNT: only used slots land, but every dead wire byte must be zero
 // (§5.3 step 11). Stale constructed tails write zero; forged wire tails refuse
 // before touching a destination. Keep a clean positive twin beside the poison.
@@ -1925,10 +1132,11 @@ function liveCountSlack(check, fx1, fx1home) {
 // a union tag, a nested body's position. Every byte of a form-3 file is flipped
 // to a hostile value here and handed to THIS build's identity reader. UNDER THE
 // STRICT READ (docs/plans/strict-only.md) there are exactly TWO answers: a CLEAN
-// read — n records, nothing refused, nothing damaged, no counter moved, every
+// read — n records, nothing refused, no counter moved, every
 // landed field inside the bound the schema declares — or a REFUSAL, n = -1 with
-// a reason named or `damaged` set (or both). A throw, a negative read with
-// neither, a landed read that moved `oor`, or an out-of-bound field is a third
+// a reason named — framing damage included, which refuses `truncated` or
+// `reserved_not_zero` by name (§5.3: "There is no `malformed` flag on this
+// form's report"). A throw, a negative read with no name, a landed read that moved `oor`, or an out-of-bound field is a third
 // answer, which is what this refuses.
 //
 // REFUSE IS TOTAL, and the sweep holds it on every refusal: the destination is
@@ -1975,8 +1183,8 @@ export function hostileByteSweep(check, fx1, fx1home) {
   {
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(lawful, 1, file, file.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === 1 && !r.damaged && r.refused === 0 && r.oor === 0 && r.widened === 0,
-      `P3 hostile bytes: the lawful record reads clean (n ${n}, refused ${r.refused}, damaged ${r.damaged}, oor ${r.oor})`);
+    check(n === 1 && r.refused === 0 && r.oor === 0 && r.widened === 0,
+      `P3 hostile bytes: the lawful record reads clean (n ${n}, refused ${r.refused}, oor ${r.oor})`);
     check(fx1HostileIssue(lawful[0]) === null,
       `P3 hostile bytes: the lawful record lands every field in bound (${fx1HostileIssue(lawful[0])})`);
     check(deepDiff(lawful[0], fresh) !== null,
@@ -1993,7 +1201,7 @@ export function hostileByteSweep(check, fx1, fx1home) {
   };
 
   const POISON = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
-  let named = 0, damagedOnly = 0, landed = 0, threw = 0, divergences = 0;
+  let named = 0, landed = 0, threw = 0, divergences = 0;
   const seen = new Map(); // refusal name -> count
   const fail = (msg) => { divergences++; if (divergences <= 20) { check(false, msg); } };
   for (let at = 0; at < file.length; at++) {
@@ -2013,17 +1221,16 @@ export function hostileByteSweep(check, fx1, fx1home) {
         continue;
       }
       if (n < 0) {
-        if (r.refused === 0 && !r.damaged) {
-          fail(`P3 hostile bytes: ${where} answered a THIRD way: n ${n} with no reason and no damage`);
+        if (r.refused === 0) {
+          fail(`P3 hostile bytes: ${where} answered a THIRD way: n ${n} with no reason named`);
           continue;
         }
-        if (r.refused !== 0) {
-          named++;
-          const name = fx1home.TableFixedRefusalName(r.refused);
-          seen.set(name, (seen.get(name) || 0) + 1);
-        } else {
-          damagedOnly++;
+        if ("damaged" in r) {
+          fail(`P3 hostile bytes: ${where} grew a malformed flag the fixed form's report does not have (§5.3)`);
         }
+        named++;
+        const name = fx1home.TableFixedRefusalName(r.refused);
+        seen.set(name, (seen.get(name) || 0) + 1);
         if (r.oor !== 0 || r.widened !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.repeated !== 0) {
           fail(`P3 hostile bytes: ${where} refused and still moved a counter (oor ${r.oor}, widened ${r.widened})`);
         }
@@ -2034,8 +1241,8 @@ export function hostileByteSweep(check, fx1, fx1home) {
         continue;
       }
       landed++;
-      if (n !== 1 || r.refused !== 0 || r.damaged || r.oor !== 0 || r.widened !== 0) {
-        fail(`P3 hostile bytes: ${where} read n ${n} but is not clean (refused ${r.refused}, damaged ${r.damaged}, oor ${r.oor}, widened ${r.widened})`);
+      if (n !== 1 || r.refused !== 0 || r.oor !== 0 || r.widened !== 0) {
+        fail(`P3 hostile bytes: ${where} read n ${n} but is not clean (refused ${r.refused}, oor ${r.oor}, widened ${r.widened})`);
       }
       const issue = fx1HostileIssue(back[0]);
       if (issue !== null) {
@@ -2043,19 +1250,19 @@ export function hostileByteSweep(check, fx1, fx1home) {
       }
     }
   }
-  // NOT VACUOUS: each answer must actually have been SEEN — a clean read, a
-  // refusal by name, a damaged read — and each refusal the strict read owes in
-  // place of a clamp must have fired on this file at least once.
+  // NOT VACUOUS: each answer must actually have been SEEN — a clean read and a
+  // refusal by name — and each refusal the strict read owes in place of a
+  // clamp, and the framing refusal a flipped reserved byte owes, must have
+  // fired on this file at least once.
   check(named > 0, `P3 hostile bytes: the sweep saw a named refusal (${named})`);
-  check(damagedOnly > 0, `P3 hostile bytes: the sweep saw a damaged read (${damagedOnly})`);
   check(landed > 0, `P3 hostile bytes: the sweep saw clean reads (${landed})`);
-  for (const reason of [R.CountOverBound, R.LengthOverBound, R.OutOfRange]) {
+  for (const reason of [R.CountOverBound, R.LengthOverBound, R.OutOfRange, R.ReservedNotZero]) {
     const name = fx1home.TableFixedRefusalName(reason);
     check((seen.get(name) || 0) > 0, `P3 hostile bytes: the sweep saw the strict refusal ${name} (${seen.get(name) || 0})`);
   }
   check(divergences === 0, `P3 hostile bytes: ${divergences} divergences`);
   console.log(`P3 hostile bytes: ${file.length} bytes x ${POISON.length} poisons — ${named} refused by name ` +
-    `(${[...seen].map(([k, c]) => `${k} ${c}`).join(", ")}), ${damagedOnly} damaged, ${landed} clean reads, ` +
+    `(${[...seen].map(([k, c]) => `${k} ${c}`).join(", ")}), ${landed} clean reads, ` +
     `${threw} throws, ${divergences} divergences`);
 }
 
@@ -2070,38 +1277,6 @@ function holePrefillIdentity(check, fx1, fx1home) {
   const idPlan = fx1.FxRootFixedNewPlan();
   const idHoles = fx1home.TableFixedHoles(identity, 1, idPlan.cover, idPlan.holes);
   check(idHoles === 0, `hole prefill: identity's hole list is empty, got ${idHoles}`);
-}
-
-// RETIRED BY §5.6: compiled FX2→FX1 has holes for Gone and a dirty image still
-// reads the default — through a plan compiled from a FILE, which is the walk §5
-// retires. Owed on the lineage harness, where the 0x5A poison now lies.
-function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
-  const two = new fx2home.FxRoot();
-  two.keep = 5150;
-  two.narrow = 70000;
-  two.renamedTo = 808;
-  two.added = 909;
-  two.nested.a = 33;
-  two.nested.b = 44;
-  const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
-  check(fx2.FxRootFixedSave([two], 1, w2) === w2.length, "hole prefill: FX2 save");
-
-  const plan = fx1.FxRootFixedNewPlan();
-  const back = [new fx1home.FxRoot()];
-  const r = new fx1home.TableFixedReport();
-  const n = fx1.FxRootFixedLoad(back, 1, w2, w2.length, plan, r);
-  check(n === 1, "hole prefill: FX1 reads FX2 through a compiled plan");
-  check(back[0].gone === 9, `hole prefill: Gone keeps its declared default, got ${back[0].gone}`);
-  const compiledHoles = fx1home.TableFixedHoles(plan.entries, plan.count, plan.cover, plan.holes);
-  check(compiledHoles > 0, `hole prefill: compiled FX2→FX1 has holes (Gone), got ${compiledHoles}`);
-
-  plan.image.fill(0xff);
-  const dirty = [new fx1home.FxRoot()];
-  const r2 = new fx1home.TableFixedReport();
-  check(fx1.FxRootFixedLoad(dirty, 1, w2, w2.length, plan, r2) === 1,
-    "hole prefill: a second load on a dirty image");
-  check(dirty[0].gone === 9,
-    `hole prefill: holes restore Gone's default after a dirty image, got ${dirty[0].gone}`);
 }
 
 // BYTES(N) IS AN ARRAY ROW AND NOT A TEXT ROW (docs/SPEC-TABLES.md §3, §3.4;
@@ -2122,8 +1297,9 @@ function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
 // FX1 record is the compiled path over a bytes(N) row this port wrote itself.
 //
 // THE SPLIT (§5.6, §5.9 #31): the INSTRUMENT here is the two paths against each
-// other, and the compiled path is a stranger's layout, so the instrument itself
-// is retired — `bytesArrayConventionCompiled` below. What §5 does not touch, and
+// other, and the compiled path is a stranger's layout, so on this driver the
+// instrument is retired; the compiled half is held on the lineage harness
+// (TestJSFixedVersioningBytesAndDefaults, lawful). What §5 does not touch, and
 // what runs here, is the IDENTITY path's own landing: this leg writes a partly
 // used `bytes(N)` with its own writer, reads it back through its own identity
 // plan, and the used length, the content and the slack are all its own facts. A
@@ -2146,7 +1322,7 @@ function bytesArrayConventionIdentity(check, fx1, fx1home) {
   const ri = new fx1home.TableFixedReport();
   check(fx1.FxRootFixedLoad(ident, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), ri) === 1,
     "bytes(N) identity: the identity path reads the record");
-  check(!ri.damaged && ri.refused === 0,
+  check(ri.refused === 0,
     "bytes(N) identity: the identity read moves no refusal counter");
   check(ident[0].blobLength === 4,
     `bytes(N) identity: the used length lands, got ${ident[0].blobLength}`);
@@ -2168,79 +1344,8 @@ function bytesArrayConventionIdentity(check, fx1, fx1home) {
     `bytes(N) element is kind 6 (u8): got ${w1[elemEntryAt + KIND_AT]}`);
 }
 
-// RETIRED BY §5.6: every assertion below the first save reads a record through
-// FX2's plan compiled from FX1's block, and the reference's fx1.bin the same way.
-// Owed on the lineage harness, where FX1's entry is handed to FX2 as its lock.
-function bytesArrayConventionCompiled(check, fx1, fx2, fx1home, fx2home, oracleDir) {
-  // an FX1 record whose blob is PARTLY USED, so a swapped pair is loud: a used
-  // length of 4 in the buffer's place would read back as a content byte, and
-  // the first four content bytes in the length's place as a length of 4028645
-  const one = new fx1home.FxRoot();
-  one.keep = 4242; one.narrow = 40000; one.renamed = 321; one.gone = 654;
-  one.nested.a = 111; one.nested.b = 222;
-  one.labelLength = setText(one.label, "fx1");
-  one.marks[0] = 101; one.marks[1] = 202; one.marksCount = 2;
-  one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
-  one.blobLength = 4;
-
-  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
-  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length, "bytes(N): FX1 save of a partly-used blob");
-
-  // ---- THE IDENTITY PATH: FX1's own hash, one copy of the whole body
-  const ident = [new fx1home.FxRoot()];
-  const ri = new fx1home.TableFixedReport();
-  check(fx1.FxRootFixedLoad(ident, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), ri) === 1,
-    "bytes(N): the identity path reads the record");
-
-  // ---- THE COMPILED PATH: FX2's reader, a plan compiled from FX1's block
-  const comp = [new fx2home.FxRoot()];
-  const rc = new fx2home.TableFixedReport();
-  check(fx2.FxRootFixedLoad(comp, 1, w1, w1.length, fx2.FxRootFixedNewPlan(), rc) === 1,
-    "bytes(N): the compiled path reads the same record");
-
-  check(ident[0].blobLength === 4,
-    `bytes(N): identity lands the used length, got ${ident[0].blobLength}`);
-  check(comp[0].blobLength === ident[0].blobLength,
-    `bytes(N): IDENTITY == COMPILED on the used length — identity ${ident[0].blobLength}, compiled ${comp[0].blobLength}. ` +
-    `A text-convention destination row lands the count where the buffer lives and reads a length out of the content`);
-  for (let i = 0; i < 6; i++) {
-    check(comp[0].blob[i] === ident[0].blob[i],
-      `bytes(N): IDENTITY == COMPILED on blob[${i}] — identity 0x${ident[0].blob[i].toString(16)}, compiled 0x${comp[0].blob[i].toString(16)}`);
-  }
-  check(ident[0].blob[0] === 0xDE && ident[0].blob[1] === 0xAD &&
-    ident[0].blob[2] === 0xBE && ident[0].blob[3] === 0xEF,
-    "bytes(N): and the blob both paths land is the one that was written");
-  // the slack behind the used length is the template's zeros on BOTH paths
-  check(ident[0].blob[4] === 0 && ident[0].blob[5] === 0 &&
-    comp[0].blob[4] === 0 && comp[0].blob[5] === 0,
-    "bytes(N): the slack behind the used length is zero on both paths");
-  check(!rc.malformed && rc.refused === 0,
-    "bytes(N): the compiled read moves no refusal counter");
-
-  // ---- AND THE REFERENCE'S OWN FILE, read the second way: fx1.bin is the C++
-  // reference's bytes, the oracle already reads it through FX1's identity plan,
-  // and FX2 reading the same file is the compiled path over a blob NO PORT here
-  // wrote. Its record 0 blob is DE AD BE EF at length 4 (test/tables/fixedform_fx1.c).
-  if (!oracleDir) { return; }
-  let file = null;
-  try { file = new Uint8Array(readFileSync(resolve(oracleDir, "fx1.bin"))); } catch { file = null; }
-  check(file !== null, "bytes(N): fx1.bin is present for the compiled read");
-  if (file === null) { return; }
-  const v = [new fx2home.FxRoot(), new fx2home.FxRoot()];
-  const r = new fx2home.TableFixedReport();
-  const n = fx2.FxRootFixedLoad(v, 2, file, file.length, fx2.FxRootFixedNewPlan(), r);
-  check(n === 2 && !r.malformed,
-    `bytes(N): FX2 reads the reference's fx1.bin through a compiled plan, got ${n}`);
-  if (n !== 2) { return; }
-  check(v[0].blobLength === 4,
-    `bytes(N): FX2 over fx1.bin lands the reference's used length, got ${v[0].blobLength}`);
-  check(v[0].blob[0] === 0xDE && v[0].blob[1] === 0xAD && v[0].blob[2] === 0xBE && v[0].blob[3] === 0xEF,
-    `bytes(N): FX2 over fx1.bin keeps blob[0..3] — got ` +
-    `[${v[0].blob[0]}, ${v[0].blob[1]}, ${v[0].blob[2]}, ${v[0].blob[3]}], want [222, 173, 190, 239]`);
-  check(v[1].blobLength === 0 && v[1].blob[0] === 0,
-    `bytes(N): FX2 over fx1.bin record 1 uses nothing — got length ${v[1].blobLength}`);
-}
-
+// setText lays a string(N) member down the way every port must: the bytes,
+// then the USED LENGTH beside them.
 function setText(buf, s) {
   buf.fill(0);
   for (let i = 0; i < s.length; i++) { buf[i] = s.charCodeAt(i); }
@@ -2354,7 +1459,7 @@ function optionalBytes(check, o, dir) {
     const r = new fo1home.TableFixedReport();
     check(fo1.OptRootFixedLoad(back, 4, ref, ref.length, fo1.OptRootFixedNewPlan(), r) === 4,
       "optionals: the reference's four records read");
-    check(r.oor === 0 && r.unknown === 0 && r.mismatch === 0 && !r.damaged && r.refused === 0,
+    check(r.oor === 0 && r.unknown === 0 && r.mismatch === 0 && r.refused === 0,
       "optionals: a clean read of the reference's own corpus moves no counter");
 
     check(back[0].optPresent && back[0].opt.v === 11 && back[0].opt.tagLength === 2 &&
@@ -2437,113 +1542,6 @@ function optionalBytes(check, o, dir) {
 }
 
 // ---------------------------------------------------------------------------
-// THE OPTIONALS THROUGH A COMPILED PLAN — the positions are the WRITER's
-// ---------------------------------------------------------------------------
-
-function optionalVersioning(check, o, dir) {
-  const { fo1, fo1home, fo2, fo2home, p1, p1home, p3, p3home } = o;
-  const fo1bin = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
-
-  // FO2 READS FO1. FO2 inserts `added` BEFORE `wrap`, so `wrap.leaf`'s present
-  // byte sits four bytes later in an FO2 body than in an FO1 record: a reader
-  // that landed a present byte at its OWN offset instead of following the plan
-  // would read it absent on every record and never say so.
-  {
-    const back = Array.from({ length: 4 }, () => new fo2home.OptRoot());
-    const r = new fo2home.TableFixedReport();
-    const n = fo2.OptRootFixedLoad(back, 4, fo1bin, fo1bin.length, fo2.OptRootFixedNewPlan(), r);
-    check(n === 4, `compiled plan: FO2 reads FO1's four records (got ${n})`);
-    check(back[0].plain2 === 101, "compiled plan: `was =` keeps the wire id across the rename");
-    check(back[0].added === 77, "compiled plan: the inserted field takes its declared default");
-    check(back[0].optPresent && back[0].opt.v === 11 && back[0].opt.tagLength === 2,
-      "compiled plan: a PRESENT optional's flag AND payload land");
-    check(back[0].numberPresent && back[0].number === 12 && back[0].markPresent && back[0].mark === 2,
-      "compiled plan: an optional scalar and an optional enum land");
-    check(back[0].wrap.n === 13 && back[0].wrap.leafPresent && back[0].wrap.leaf.v === 14,
-      "compiled plan: a present flag inside a nested table lands past the inserted field");
-    check(back[0].effect.type === 1 && back[0].effect.boost.power === 15 && back[0].tail === 16,
-      "compiled plan: the fields behind the optionals land");
-    check(!back[1].optPresent && back[1].opt.v === 7 && !back[1].numberPresent && !back[1].markPresent &&
-      !back[1].wrap.leafPresent && back[1].wrap.leaf.v === 7,
-      "compiled plan: an ABSENT optional lands absent, at its declared default");
-    check(back[1].tail === 203 && back[1].effect.type === 2 && back[1].effect.ward.charge === 0.5,
-      "compiled plan: the record behind four absent optionals is intact");
-    check(!back[2].optPresent && back[2].wrap.leafPresent && back[2].wrap.leaf.v === -304,
-      "compiled plan: root absent and nested present, through the plan");
-    check(back[3].optPresent && back[3].opt.v === 402 && !back[3].wrap.leafPresent,
-      "compiled plan: root present and nested absent, through the plan");
-    check(r.unknown === 0 && r.kindMismatch === 0 && r.clamped === 0 && !r.malformed && r.refused === 0,
-      `compiled plan: nothing fired reading an older generation (unknown ${r.unknown}, kind ${r.kindMismatch})`);
-  }
-
-  // AND THE OTHER DIRECTION: FO1 reads FO2, where `added` is a name it has no
-  // field for — one unknown, and every optional still lands
-  {
-    const two = Array.from({ length: 1 }, () => new fo2home.OptRoot());
-    two[0].nameLength = setText(two[0].name, "newer");
-    two[0].plain2 = 909;
-    two[0].added = 910;
-    two[0].optPresent = true;
-    two[0].opt.v = 911;
-    two[0].numberPresent = true;
-    two[0].number = 912;
-    two[0].wrap.n = 913;
-    two[0].wrap.leafPresent = true;
-    two[0].wrap.leaf.v = 914;
-    two[0].tail = 915;
-    const w = new Uint8Array(fo2.OptRootFixedMeasure(1));
-    check(fo2.OptRootFixedSave(two, 1, w) === w.length, "FO2 save");
-
-    const back = [new fo1home.OptRoot()];
-    const r = new fo1home.TableFixedReport();
-    check(fo1.OptRootFixedLoad(back, 1, w, w.length, fo1.OptRootFixedNewPlan(), r) === 1,
-      "newer writer: one record");
-    check(back[0].plain === 909, "newer writer: the renamed field reads the other way too");
-    check(back[0].optPresent && back[0].opt.v === 911 && back[0].numberPresent && back[0].number === 912,
-      "newer writer: the optionals land past the unknown field");
-    check(back[0].wrap.n === 913 && back[0].wrap.leafPresent && back[0].wrap.leaf.v === 914 &&
-      back[0].tail === 915,
-      "newer writer: the nested present byte lands past the unknown field");
-    check(r.unknown === 1, `newer writer: added is the one name this reader lacks (got ${r.unknown})`);
-    check(r.kindMismatch === 0 && !r.malformed && r.refused === 0, "newer writer: nothing else fired");
-  }
-
-  // P3 READS P1 — `?Link` against a `Link` nested by value. §3.4's ONE
-  // departure from §2.3 lives here, and the C++ leg pins the same fact
-  // (test/tables/fixedform_main.cpp's p_case): the block says kind 35 on one
-  // side and kind 13 on the other, so the edit is REPORTED and never a silent
-  // reread of a payload one byte out of place.
-  {
-    const p1bin = new Uint8Array(readFileSync(resolve(dir, "p1.bin")));
-    const back = [new p3home.Chain()];
-    const r = new p3home.TableFixedReport();
-    check(p3.ChainFixedLoad(back, 1, p1bin, p1bin.length, p3.ChainFixedNewPlan(), r) === 1,
-      "P3 reads P1: one record");
-    check(back[0].nameLength === 5 && back[0].name[0] === 0x63,
-      "P3 reads P1: the plain field lands");
-    check(r.kindMismatch === 1,
-      `OPTIONAL vs VALUE is a reported kind on this form, never a silent reread (got ${r.kindMismatch})`);
-    check(!back[0].linkPresent && back[0].link.value === 0,
-      "P3 reads P1: the optional reads ABSENT at its declared default, not the value one byte over");
-  }
-
-  // AND BACK: P1 reads P3, the same mismatch from the other side
-  {
-    const p3bin = new Uint8Array(readFileSync(resolve(dir, "p3.bin")));
-    const back = [new p1home.Chain(), new p1home.Chain()];
-    const r = new p1home.TableFixedReport();
-    check(p1.ChainFixedLoad(back, 2, p3bin, p3bin.length, p1.ChainFixedNewPlan(), r) === 2,
-      "P1 reads P3: two records");
-    check(back[0].nameLength === 5 && back[1].nameLength === 4,
-      "P1 reads P3: the plain field lands both records");
-    check(r.kindMismatch === 1,
-      `P1 reads P3: VALUE vs OPTIONAL is the same reported kind, once per plan (got ${r.kindMismatch})`);
-    check(back[0].link.value === 0,
-      "P1 reads P3: the nested value keeps its declared default rather than reading the flag as a payload byte");
-  }
-}
-
-// ---------------------------------------------------------------------------
 // C7 — THE RANGED SCALAR, the hostile half (docs/FIXED-FORM-ALGORITHM.md §4.6,
 // §5.4; the reference's bounds_case, item 1, test/tables/fixedform_main.cpp).
 // ---------------------------------------------------------------------------
@@ -2603,7 +1601,7 @@ export function rangedScalarClamp(check, o) {
   // IN RANGE: the value stands, the neighbour lands, nothing moves.
   const reads = (planted) => {
     const { n, v, r } = read(planted);
-    check(n === 1 && r.refused === 0 && !r.damaged && r.oor === 0 && v.plain === planted,
+    check(n === 1 && r.refused === 0 && r.oor === 0 && v.plain === planted,
       `C7 RANGED: a value of ${planted} reads as itself and moves no counter (n ${n}, refused ${r.refused}, got ${v.plain})`);
     check(v.tail === 203,
       `C7 RANGED: a value of ${planted} leaves the neighbour behind it untouched (got ${v.tail})`);
@@ -2617,209 +1615,6 @@ export function rangedScalarClamp(check, o) {
   // refusal that fired on a legal value would be visible.
   reads(1000);    // the legitimate max
   reads(0);       // the legitimate min
-}
-
-// ---------------------------------------------------------------------------
-// THE OPTIONALS' NEGATIVE CONTROLS
-// ---------------------------------------------------------------------------
-
-function optionalControls(check, o, dir) {
-  const { fo1, fo1home, fo2, fo2home } = o;
-  const corpus = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
-  const head = LAYOUT_AT + fo1.OptRootFixedLayoutBytes;
-  const rec = 80; // 8 + 72
-
-  // ONE record of the reference's corpus, framed as a file of its own, so a
-  // forged byte is the only thing that differs from bytes already proved good.
-  const oneRecord = (k) => {
-    const out = new Uint8Array(head + rec);
-    out.set(corpus.subarray(0, head));
-    out.set(corpus.subarray(head + k * rec, head + (k + 1) * rec), head);
-    return out;
-  };
-  const body = head + 8; // one record per file, so the body is always here
-  const load = (bytes, mods = fo1, home = fo1home) => {
-    const back = [new home.OptRoot()];
-    const r = new home.TableFixedReport();
-    const n = mods.OptRootFixedLoad(back, 1, bytes, bytes.length, mods.OptRootFixedNewPlan(), r);
-    return { n, v: back[0], r };
-  };
-
-  // the corpus reads clean one record at a time, before anything is forged
-  {
-    const { n, v, r } = load(oneRecord(1));
-    check(n === 1 && !v.optPresent && v.opt.v === 7 && r.clamped === 0,
-      "control base: record 1 alone reads absent and clean");
-  }
-
-  // A PRESENT BYTE IS A FLAG, NOT A NUMBER. A peer's `true` is allowed to be
-  // any non-zero byte — that is the rule `bool` already reads under — so 7
-  // means PRESENT and the payload behind it is projected.
-  {
-    const bad = oneRecord(1);
-    const b = body;
-    bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03; // 999, in Leaf.v's range, so a projection is visible
-    bad[b + WRAP_LEAF_PRESENT] = 0xff;
-    bad[b + WRAP_LEAF_V] = 0x2a;
-    bad[b + NUM_PRESENT] = 2;
-    bad[b + MARK_PRESENT] = 0x80;
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.optPresent && v.opt.v === 999,
-      `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.optPresent}, ${v.opt.v})`);
-    check(v.wrap.leafPresent && v.wrap.leaf.v === 42,
-      "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
-    check(v.numberPresent && v.markPresent,
-      "NEGATIVE CONTROL: every present byte is a flag, at every kind an optional wraps");
-    check(r.clamped === 0 && !r.malformed && r.refused === 0,
-      "NEGATIVE CONTROL: a non-canonical present byte is not damage and moves no counter");
-  }
-
-  // AND THE OTHER HALF: THE PAYLOAD BEHIND A ZERO FLAG IS NEVER PROJECTED. The
-  // bytes are whatever the writer's storage held, they are not the value, and a
-  // reader that landed them would hand the consumer a value the writer said was
-  // not there. The field reads its DECLARED DEFAULT instead — `Leaf.v = 7`.
-  {
-    const bad = oneRecord(1);
-    const b = body;
-    bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff; bad[b + OPT_V + 2] = 0xff;
-    bad[b + OPT_V + 3] = 0x7f;                        // 2147483647 behind a zero flag
-    bad[b + WRAP_LEAF_V] = 0x99;
-    bad[b + NUM_PRESENT + 1] = 0x7b;                  // number's payload, flag still zero
-    bad[b + MARK_PRESENT + 1] = 0x09;                 // an ordinal naming no variant
-    const { n, v, r } = load(bad);
-    check(n === 1 && !v.optPresent && v.opt.v === 7,
-      `NEGATIVE CONTROL: an ABSENT payload is ignored on read; the field is its declared default (got ${v.opt.v})`);
-    check(!v.wrap.leafPresent && v.wrap.leaf.v === 7,
-      "NEGATIVE CONTROL: an absent payload inside a nested table is ignored too");
-    check(!v.numberPresent && v.number === 0 && !v.markPresent && v.mark === 0,
-      "NEGATIVE CONTROL: an absent scalar and an absent enum ignore their payloads");
-    check(!r.malformed && r.refused === 0 && r.kindMismatch === 0,
-      "NEGATIVE CONTROL: ignoring an absent payload is not an event; nothing is counted");
-  }
-
-  // THE SAME TWO FACTS ON THE COMPILED PATH, where the flag arrives through a
-  // one-byte OP_COPY rather than the whole-body one
-  {
-    const bad = oneRecord(1);
-    const b = body;
-    bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03;
-    const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.optPresent && v.opt.v === 999,
-      "NEGATIVE CONTROL: a present byte of 7 reads as present through a COMPILED plan too");
-  }
-  {
-    const bad = oneRecord(1);
-    const b = body;
-    bad[b + OPT_V] = 0xff; bad[b + OPT_V + 1] = 0xff;
-    const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && !v.optPresent && v.opt.v === 7,
-      "NEGATIVE CONTROL: an absent payload is ignored through a COMPILED plan too");
-  }
-
-  // A UNION TAG BEYOND THE ARM COUNT LANDS AS None (0) AND COUNTS ONE clamped.
-  // It is the twin of the forged count above and it is here for the same
-  // reason: on the IDENTITY path the whole body is one OP_COPY, so the tag
-  // arrives raw and a consumer would otherwise be handed an ordinal naming an
-  // arm that does not exist.
-  {
-    const bad = oneRecord(0);
-    bad[body + EFFECT_TAG] = 9; // Effect has two arms
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.effect.type === 0,
-      `NEGATIVE CONTROL: a union tag beyond the arm count lands as None (got ${v.effect.type})`);
-    check(r.clamped === 1, `NEGATIVE CONTROL: a tag beyond the arms counts one clamped (got ${r.clamped})`);
-    check(!r.malformed && r.refused === 0,
-      "NEGATIVE CONTROL: a tag beyond the arms is an event and not a refusal — the record still reads");
-    check(v.tail === 16, "NEGATIVE CONTROL: the rest of the record still lands");
-  }
-  {
-    // and on the COMPILED path it is already None: an arm's entries run only
-    // under their own tag's guard, so a tag matching no guard leaves the
-    // prefill's zero standing and nothing is reinterpreted
-    const bad = oneRecord(0);
-    bad[body + EFFECT_TAG] = 9;
-    const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.effect.type === 0,
-      "a union tag beyond the arm count is None on the COMPILED path too, by the guard matching nothing");
-  }
-
-  // A RANGED INTEGER CLAMPS ON LOAD AND COUNTS. Identity is one OP_COPY, so
-  // the plan never holds the bound; the projection is the pass both paths
-  // share. `plain` is `int32 | min = 0, max = 1000`.
-  {
-    const bad = oneRecord(1);
-    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.plain === 1000,
-      `NEGATIVE CONTROL: a ranged integer past max lands as this reader's max (got ${v.plain})`);
-    check(r.clamped === 1, `NEGATIVE CONTROL: a ranged integer past max counts one clamped (got ${r.clamped})`);
-    check(!r.malformed && r.refused === 0,
-      "NEGATIVE CONTROL: a ranged clamp is an event and not a refusal — the record still reads");
-  }
-  {
-    const bad = oneRecord(1);
-    new DataView(bad.buffer).setInt32(body + PLAIN, -1, true);
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.plain === 0 && r.clamped === 1,
-      `NEGATIVE CONTROL: a ranged integer below min lands as this reader's min (got ${v.plain}, clamped ${r.clamped})`);
-  }
-  {
-    const bad = oneRecord(1);
-    new DataView(bad.buffer).setInt32(body + PLAIN, 1000, true);
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.plain === 1000 && r.clamped === 0,
-      "NEGATIVE CONTROL: a ranged integer AT the bound is not a clamp and moves no counter");
-  }
-  {
-    // the same bound through a COMPILED plan: same-size is a copy, so the
-    // decode is what holds it, on this path too
-    const bad = oneRecord(1);
-    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
-    const { n, v, r } = load(bad, fo2, fo2home);
-    check(n === 1 && v.plain2 === 1000 && r.clamped === 1,
-      `NEGATIVE CONTROL: a ranged integer past max clamps through a COMPILED plan too (got ${v.plain2}, clamped ${r.clamped})`);
-  }
-  {
-    // a ranged field under a live union arm, identity COPY of the whole body
-    const bad = oneRecord(0);
-    new DataView(bad.buffer).setInt32(body + BOOST_POWER, 9999, true);
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.effect.type === 1 && v.effect.boost.power === 1000 && r.clamped === 1,
-      `NEGATIVE CONTROL: a ranged integer under a live arm clamps (got power ${v.effect.boost.power}, clamped ${r.clamped})`);
-  }
-
-  // AN ENUM ORDINAL PAST THE TOP VALUE LANDS None AND COUNTS ONE clamped.
-  // Record 0 has `mark` PRESENT as Gold (2). Identity copies the ordinal raw.
-  {
-    const bad = oneRecord(0);
-    bad[body + MARK] = 9;
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.markPresent && v.mark === 0,
-      `NEGATIVE CONTROL: an enum ordinal past the last variant lands as None (got ${v.mark})`);
-    check(r.clamped === 1, `NEGATIVE CONTROL: an enum ordinal past the last variant counts one clamped (got ${r.clamped})`);
-    check(!r.malformed && r.refused === 0,
-      "NEGATIVE CONTROL: an enum ordinal past the set is an event and not a refusal — the record still reads");
-    check(v.tail === 16, "NEGATIVE CONTROL: the rest of the record still lands beside a clamped enum");
-  }
-  {
-    const bad = oneRecord(0);
-    bad[body + MARK] = 2;
-    const { n, v, r } = load(bad);
-    check(n === 1 && v.markPresent && v.mark === 2 && r.clamped === 0,
-      "NEGATIVE CONTROL: an enum ordinal in the set is not a clamp and moves no counter");
-  }
-  {
-    // compiled path: kind 30 remaps through an ordinal op, so a value past
-    // this reader's table is already None in the image and the decode's
-    // comparison does not fire. The consumer still sees None.
-    const bad = oneRecord(0);
-    bad[body + MARK] = 9;
-    const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.markPresent && v.mark === 0,
-      "NEGATIVE CONTROL: an enum ordinal past the last variant is None on the COMPILED path too");
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2843,11 +1638,6 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const optional = process.argv[4] ?? "build/js-fixed-optional";
   const oracle = process.argv[5] ?? "build/fixedform-corpus";
   await checkFixedForm(check, generated, corpus, optional, oracle);
-  if (retiredCount !== 0) {
-    console.log("retired by §5.6 and owed again: " + retiredCount + " sections, each named above — " +
-      "the COMPILED half only, now that referenceOracle, holePrefill and bytesArrayConvention " +
-      "are split and their identity halves RUN above");
-  }
   if (failed !== 0 || ran === 0) {
     console.log("FAILED");
     console.log(`ran ${ran}, failed ${failed}`);
@@ -2857,10 +1647,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     "reference's byte for byte, all 64 paired records read to the values the reference " +
     "states and write back IDENTICAL to its corpus, and the OPTIONALS match the " +
     "reference at every place a present byte can ride. THE VERSIONING CONFORMANCE " +
-    "MOVED: a fixed table reads BACKWARD and never forward (§5), so the sections " +
-    "that compiled a stranger\'s layout are retired by name above and the rows are " +
+    "MOVED: a fixed table reads BACKWARD and never forward (§5), and the rows are " +
     "held by internal/codegen/jstable/fixedversioning_test.go over the reference\'s " +
-    "own corpus — and the three that were MIXED are SPLIT, so the reference\'s own " +
+    "own corpus — and the identity halves run here, so the reference\'s own " +
     "fx1.bin still saves back identical, \"the slack is zero\" is still checked over " +
     "CONSTRUCTED storage, and §5.3 step 8\'s empty identity hole list is still " +
     "asserted here and not only owed");
