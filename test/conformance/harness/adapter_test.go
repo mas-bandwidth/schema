@@ -140,10 +140,7 @@ func TestCaseSlugsAreRegistryCases(t *testing.T) {
 // TestTheRegistryHoldsEveryConformanceCase: test/registry/registry.jsonl
 // holds exactly the corpus's rows, field for field (adapter.go). A case added
 // to the corpus with no row, a row whose case is gone, and a row that names
-// other files, another type or another surface are each red, by key. Its owed
-// lines for the corpus are exactly the harness's retain-refusal ledger: a
-// ledger line with no owed line, or an owed line the ledger does not hold,
-// is red by language and case.
+// other files, another type or another surface are each red, by key.
 func TestTheRegistryHoldsEveryConformanceCase(t *testing.T) {
 	chdirRepoRoot(t)
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)

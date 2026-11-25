@@ -65,6 +65,11 @@ type wireFuzzOptions struct {
 	vectors      string
 	// Kept for command-line compatibility so a retired exemption fails clearly.
 	finiteOwed string
+	// listRoots prints the roster this profile builds, one root per line
+	// (`<unit> TAB <root> TAB variable|fixed TAB file|message`), and starts no
+	// leg. A caller that runs one leg per unit reads it to know which arms a
+	// unit has roots for, from the corpus rather than from a list of names.
+	listRoots bool
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -896,6 +901,13 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.builder && opts.message {
 		return fmt.Errorf("--builder is a file arm: the message form has no builder load")
 	}
+	if opts.listRoots {
+		_, roots, _, _, err := buildWireFuzzRoster(m, opts)
+		if err != nil {
+			return err
+		}
+		return writeRosterRoots(os.Stdout, roots)
+	}
 	if opts.driver == "" {
 		return fmt.Errorf("wire-fuzz needs --driver")
 	}
@@ -1204,6 +1216,24 @@ func checkWireVectorIndex(path string, vecs []wireVector) error {
 	if len(unlisted) > 0 {
 		sort.Strings(unlisted)
 		return fmt.Errorf("%s: %d vector file(s) on disk are not in the index, so nothing runs them: %s", path, len(unlisted), strings.Join(unlisted, ", "))
+	}
+	return nil
+}
+
+// writeRosterRoots writes one line per roster root for --list-roots:
+// `<unit> TAB <root> TAB variable|fixed TAB file|message`.
+func writeRosterRoots(w io.Writer, roots []*wireRoot) error {
+	for _, r := range roots {
+		class, form := "fixed", "file"
+		if r.variable {
+			class = "variable"
+		}
+		if r.message {
+			form = "message"
+		}
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.unit, r.root, class, form); err != nil {
+			return err
+		}
 	}
 	return nil
 }

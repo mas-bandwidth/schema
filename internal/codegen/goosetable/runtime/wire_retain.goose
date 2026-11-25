@@ -484,7 +484,21 @@ fn load_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals:
             return -1;
         }
     }
-    return load_with(unit, root, data, vals, nodes, report, store, true);
+    let rec = load_with(unit, root, data, vals, nodes, report, store, true);
+    // A REFUSED RETAINING READ HANDS THE STORE BACK HOLDING NOTHING (§6.6: "a
+    // retention buffer belongs to one loaded region, and the next LoadRetain
+    // into it resets both stores"; ruling strict-only-read: any damage refuses
+    // the whole load). The reset above dropped the earlier read's records;
+    // this one drops the refused read's own partial captures, so a save
+    // through the store after the refusal writes neither
+    // (test/conformance retain-refusal).
+    if load_error(report, rec) != LoadRefuseOk {
+        store.used = 0;
+        store.bytes.clear();
+        store.recs.clear();
+        store.ids.clear();
+    }
+    return rec;
 }
 
 // retain_last_short is the byte capacity ONE BYTE SHORT OF THE LAST RECORD a

@@ -26,7 +26,7 @@
 -- only: the message form is the fixed table's (docs/SPEC-TABLES.md §3.3), so a
 -- variable-class root's form-2 entry answers 0 by name. Every entry answered 0
 -- is NOTED (__moofuzz.note, the file MOOFUZZ_NOTE names), and make/moo-fuzz.mk
--- holds the list to test/conformance/moo/wire-fuzz-absent.txt.
+-- fails the run on any noted entry, naming it.
 --
 -- The reply is the harness's 47-byte header
 --   u8 loaded; i32 unknown, kind_mismatch, widened, clamped, duplicate;

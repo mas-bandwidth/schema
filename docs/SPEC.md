@@ -1888,9 +1888,7 @@ All compile errors with positions:
   testdata/name-buildability: every such name the table emitters of all 18
   targets declare, each used as an enum, a table field and a union arm, and
   the nightly builds every row in every target. A (target, row) that does
-  not build yet is written in the corpus's owed.txt with its cause, an exact
-  set: the nightly fails on a failure the ledger does not name and on a
-  ledgered pair that builds.
+  not build is red; no ledger holds one back.
 - **Emitter name rules:** the checker also runs the rules a target's
   emitter holds itself (for Ruby and Python, the emitter's whole name check
   under every surface a generate can select: a Ruby declaration's constant,

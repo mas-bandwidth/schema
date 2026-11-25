@@ -80,7 +80,8 @@ var wireFuzzFamilies = map[string]bool{"wire-fuzz": true, "wire-fuzz-vector": tr
 const bitPhaseFamily = "bit-phase"
 
 // harnessFor is the harness that runs a family, if one does. Which languages
-// answer a family is the registry's (its owed lines), never the harness's.
+// answer a family is the registry's (its lang rows and unrepresentable
+// declarations), never the harness's.
 func harnessFor(family string) (harness, bool) {
 	switch {
 	case family == alignArrays.Name || family == bitPhaseFamily:
@@ -109,8 +110,8 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
 		// every language row names corpus: one adapter routes each family
-		// to its harness for any language, and what a language does not
-		// answer yet is an owed line of the registry, MISSING by name
+		// to its harness for any language, and a case a language does not
+		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
 		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
 		"model-check": modelCheckAdapter{build: b, log: log},

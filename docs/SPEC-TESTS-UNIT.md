@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 2795.
+Unit tests every language answers: 0. Language-free tests: 2796.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1851,7 +1851,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.golangci-lint-cache-isolated-per-workspace` | `gotest` | Go test TestGolangciLintCacheIsolatedPerWorkspace in ./internal/ci | `package: ./internal/ci`<br>`test: TestGolangciLintCacheIsolatedPerWorkspace` | the Go test passes | `internal/ci/setup_rust_hosted_only_test.go:329` |
 | `none.unit.tooling.ci.golden-rewrites-go-through-rewriting` | `gotest` | Go test TestGoldenRewritesGoThroughRewriting in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewritesGoThroughRewriting` | the Go test passes | `internal/ci/golden_rewrites_test.go:70` |
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
-| `none.unit.tooling.ci.goose-wire-fuzz-holds-no-root-arms-by-name` | `gotest` | Go test TestGooseWireFuzzHoldsNoRootArmsByName in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseWireFuzzHoldsNoRootArmsByName` | the Go test passes | `internal/ci/goose_wirefuzz_noroots_test.go:21` |
+| `none.unit.tooling.ci.goose-wire-fuzz-arms-come-from-the-corpus` | `gotest` | Go test TestGooseWireFuzzArmsComeFromTheCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseWireFuzzArmsComeFromTheCorpus` | the Go test passes | `internal/ci/goose_wirefuzz_arms_test.go:23` |
 | `none.unit.tooling.ci.harness-lane-is-the-make-it-runs` | `gotest` | Go test TestHarnessLaneIsTheMakeItRuns in ./internal/ci | `package: ./internal/ci`<br>`test: TestHarnessLaneIsTheMakeItRuns` | the Go test passes | `internal/ci/silent_skips_test.go:376` |
 | `none.unit.tooling.ci.hostile-counts-are-derived-from-the-corpus` | `gotest` | Go test TestHostileCountsAreDerivedFromTheCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestHostileCountsAreDerivedFromTheCorpus` | the Go test passes | `internal/ci/hostile_count_derived_test.go:14` |
 | `none.unit.tooling.ci.hostile-refusal-reason-fails-closed` | `gotest` | Go test TestHostileRefusalReasonFailsClosed in ./internal/ci | `package: ./internal/ci`<br>`test: TestHostileRefusalReasonFailsClosed` | the Go test passes | `internal/ci/schema_shared_hostile_corpus_test.go:42` |
@@ -2282,7 +2282,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.read-passes-text-through` | `gotest` | Go test TestReadPassesTextThrough in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadPassesTextThrough` | the Go test passes | `tools/gotestrun/main_test.go:77` |
 | `none.unit.tooling.gotestrun.run-refuses-no-arguments-and-foreign-flags` | `gotest` | Go test TestRunRefusesNoArgumentsAndForeignFlags in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRunRefusesNoArgumentsAndForeignFlags` | the Go test passes | `tools/gotestrun/main_test.go:88` |
 
-#### `tooling` family `harness`, 323 tests
+#### `tooling` family `harness`, 324 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2583,6 +2583,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.wire-fuzz-driver-stall` | `gotest` | Go test TestWireFuzzDriverStall in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzDriverStall` | the Go test passes | `test/conformance/harness/wirefuzz_test.go:202` |
 | `none.unit.tooling.harness.wire-fuzz-evolution-and-damage` | `gotest` | Go test TestWireFuzzEvolutionAndDamage in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzEvolutionAndDamage` | the Go test passes | `test/conformance/harness/wirefuzz_discard_test.go:141` |
 | `none.unit.tooling.harness.wire-fuzz-finite-exemption-is-retired` | `gotest` | Go test TestWireFuzzFiniteExemptionIsRetired in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzFiniteExemptionIsRetired` | the Go test passes | `test/conformance/harness/wirefuzz_test.go:288` |
+| `none.unit.tooling.harness.wire-fuzz-list-roots-is-the-roster` | `gotest` | Go test TestWireFuzzListRootsIsTheRoster in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzListRootsIsTheRoster` | the Go test passes | `test/conformance/harness/wirefuzz_listroots_test.go:12` |
 | `none.unit.tooling.harness.wire-fuzz-map-header-crossing-its-length-refuses` | `gotest` | Go test TestWireFuzzMapHeaderCrossingItsLengthRefuses in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzMapHeaderCrossingItsLengthRefuses` | the Go test passes | `test/conformance/harness/wirefuzz_mapheader_test.go:9` |
 | `none.unit.tooling.harness.wire-fuzz-max-mutants-covers-every-root-and-stateful-reuse` | `gotest` | Go test TestWireFuzzMaxMutantsCoversEveryRootAndStatefulReuse in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzMaxMutantsCoversEveryRootAndStatefulReuse` | the Go test passes | `test/conformance/harness/wirefuzz_maxmutants_test.go:8` |
 | `none.unit.tooling.harness.wire-fuzz-max-mutants-rejects-invalid-combinations` | `gotest` | Go test TestWireFuzzMaxMutantsRejectsInvalidCombinations in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzMaxMutantsRejectsInvalidCombinations` | the Go test passes | `test/conformance/harness/wirefuzz_maxmutants_test.go:86` |
