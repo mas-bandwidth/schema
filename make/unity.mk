@@ -139,6 +139,7 @@ build/packet-write-refusal/unity/.stamp: bin/schema test/packet-write-refusal/Re
 packet-write-refusal-unity: build/packet-write-refusal/unity/.stamp
 	$(DOTNET) build test/packet-write-refusal/unity/packet-write-refusal-unity.csproj -c Debug -o build/packet-write-refusal/unity-debug --nologo -v quiet
 	$(DOTNET) build/packet-write-refusal/unity-debug/packet-write-refusal-unity.dll test/packet-write-refusal/cases.txt
+	$(packet_write_refusal_out_of_tree)
 
 # One upper bound moved in a copy of the generated code must turn the boundary
 # case red, by name, while every other case stays green.
@@ -159,6 +160,7 @@ packet-write-refusal-unity-negative-control: build/packet-write-refusal/unity/.s
 		{ echo 'NEGATIVE CONTROL FAILED: a case other than the boundary went red'; cat $(UNITY_WRITE_REFUSAL_NC)/log; exit 1; }
 	@grep -m1 '^FAILED: ' $(UNITY_WRITE_REFUSAL_NC)/log
 	@echo 'packet write-refusal Unity negative control: a moved upper bound turns the boundary case red and nothing else'
+	$(packet_write_refusal_out_of_tree)
 
 # ---- the leg ----
 

@@ -32,9 +32,35 @@ dist-moo:
 	@echo $(MOO_PIN) > $(MOO_DIST)/PIN
 	@echo "dist-moo: moo $(MOO_PIN) at $(MOO_DIST)"
 
+# THE PIN AS A FILE, for the targets that name the pin's tools under
+# MOO_DIST (make/schema-moo-generated-analyze-strict-gate.mk): dist/moo is
+# built before they run, never left to an earlier `make dist-moo`. THE FLEET'S
+# BENCHES ALREADY HOLD THE PIN: their SDK ($NOVA_SDK) has moo-<release>/bin
+# with moo, moo-analyze and a PIN naming the commit, built from the same
+# source, and a sandboxed bench job has no network to fetch it. An SDK build
+# whose PIN is MOO_PIN and whose moo answers is linked into dist/moo, so every
+# path is unchanged; with none, dist-moo builds the pin from source.
+# make/moo.mk holds MOO_PIN: a pin moved there restages dist/moo.
+$(MOO_DIST)/PIN: make/moo.mk
+	@for pin in $(wildcard $(NOVA_SDK)/moo-*/bin/PIN); do \
+		d=$$(dirname "$$pin"); \
+		if [ "$$(cat "$$pin")" = "$(MOO_PIN)" ] && "$$d/moo" --version >/dev/null 2>&1 && [ -x "$$d/moo-analyze" ]; then \
+			mkdir -p $(MOO_DIST) && ln -sf "$$d/moo" "$$d/moo-analyze" $(MOO_DIST)/ && \
+			echo $(MOO_PIN) > $@ && echo "dist-moo: moo $(MOO_PIN) from the fleet SDK $$d, no build" && exit 0; \
+		fi; \
+	done; \
+	$(MAKE) --no-print-directory dist-moo
+
 # THE TOOLCHAIN GATE, this leg's half (issue #599): one probe per pin.
-.PHONY: toolchain-moo
+.PHONY: toolchain-moo toolchain-moo-dist
 toolchain-moo:
+	@$(call toolchain_probe,moo,MOO,$(MOO))
+	@$(call toolchain_probe,moo,MOO_ANALYZE,$(MOO_ANALYZE))
+
+# The same gate for the targets that name the pin's tools under MOO_DIST: the
+# pin there is built first ($(MOO_DIST)/PIN), unless the command line names
+# another moo, which is then the one probed.
+toolchain-moo-dist: $(if $(filter command line,$(origin MOO)),,$(MOO_DIST)/PIN)
 	@$(call toolchain_probe,moo,MOO,$(MOO))
 	@$(call toolchain_probe,moo,MOO_ANALYZE,$(MOO_ANALYZE))
 

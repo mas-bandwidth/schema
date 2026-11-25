@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sort"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testvolume"
 )
 
 func goFile(base, body string) string {
@@ -56,13 +58,13 @@ func dirNames(t *testing.T, dir string) []string {
 // named, where it keeps them apart (there the tree above that does
 // not fold is the case that applies, and the end-to-end test below runs it).
 func TestRegenerationOnAVolumeThatFoldsNames(t *testing.T) {
-	probe := t.TempDir()
+	probe := testvolume.Folding(t)
 	writeTestFile(t, filepath.Join(probe, "Probe.go"), "probe")
 	if _, err := os.Lstat(filepath.Join(probe, "probe.go")); err != nil {
 		t.Fatalf("this volume keeps Probe.go and probe.go apart, so a write to one never lands on the other here: %v", err)
 	}
 	t.Run("source renamed in case", func(t *testing.T) {
-		out := t.TempDir()
+		out := testvolume.Folding(t)
 		if err := writeGenerated(out, playerRun("Player", "first run"), "go", true, "demo", []string{"Player"}, false); err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +83,7 @@ func TestRegenerationOnAVolumeThatFoldsNames(t *testing.T) {
 		}
 	})
 	t.Run("output renamed in case", func(t *testing.T) {
-		out := t.TempDir()
+		out := testvolume.Folding(t)
 		run := playerRun("Demo", "first run")
 		if err := writeGenerated(out, run, "go", true, "demo", []string{"Demo"}, false); err != nil {
 			t.Fatal(err)
