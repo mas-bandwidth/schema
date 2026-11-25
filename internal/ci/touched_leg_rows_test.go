@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestTouchedLegReadsItsFamiliesAgain runs the plan block that gives every
@@ -14,6 +16,8 @@ import (
 // plan with `Cannot index string with string "leg"` (run 45544253136).
 func TestTouchedLegReadsItsFamiliesAgain(t *testing.T) {
 	t.Parallel()
+	// the bash child reads only the workflow block, given on its command line
+	testinputs.Files(t, ".github/workflows/ci-fast.yml")
 	wf := readFastWorkflow(t)
 	_, tail, ok := strings.Cut(wf, "          # A TOUCHED LEG READS ITS FAMILIES AGAIN")
 	if !ok {
