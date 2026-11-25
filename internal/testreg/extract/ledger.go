@@ -156,23 +156,6 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		out[id] = t.Key
 	}
 	for _, t := range reg.Tests {
-		if t.Adapter != "gotest" && t.PerLang() {
-			var in struct{ Package, Test string }
-			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
-				continue // a corpus row whose inputs name no per-language Go test
-			}
-			for _, l := range reg.Langs {
-				if l.Name == testreg.LangFree {
-					continue
-				}
-				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
-				// every case row of the family names the same test
-				if _, seen := out[id]; !seen {
-					out[id] = t.Key
-				}
-			}
-			continue
-		}
 		switch t.Adapter {
 		case "gotest":
 			var in struct{ Package, Test string }
@@ -252,6 +235,24 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				if !goldenCase[it.ID()] {
 					goldenCase[it.ID()] = true
 					claim(t, it, "pin "+f)
+				}
+			}
+		default:
+			if !t.PerLang() {
+				continue
+			}
+			var in struct{ Package, Test string }
+			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
+				continue // a corpus row whose inputs name no per-language Go test
+			}
+			for _, l := range reg.Langs {
+				if l.Name == testreg.LangFree {
+					continue
+				}
+				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
+				// every case row of the family names the same test
+				if _, seen := out[id]; !seen {
+					out[id] = t.Key
 				}
 			}
 		}
