@@ -535,7 +535,7 @@ func TestTheCheckoutAdaptersRunOneAfterAnother(t *testing.T) {
 	t.Parallel()
 	ads := adapters(io.Discard)
 	withRunner(ads, &testreg.Runner{})
-	for name, want := range map[string]bool{"make": true, "golden": true, "plant": true, "model-check": true, "corpus": true, "gotest": false} {
+	for name, want := range map[string]bool{"make": true, "golden": true, "plant": true, "model-check": true, "corpus": true, "gotest": false, "subtest": false} {
 		s, ok := ads[name].(testreg.Serial)
 		if got := ok && s.Serial(); got != want {
 			t.Errorf("adapter %s Serial is %t, want %t", name, got, want)

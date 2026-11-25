@@ -779,3 +779,26 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }
+
+func TestASubtestRowClaimsItsDataCaseAndNotTheParentTest(t *testing.T) {
+	t.Parallel()
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
+		gotestRow("compiler.ir.parent", "./ir", "TestWasRenameCorpus"),
+		{Key: "compiler.ir.bare", Adapter: "subtest", Inputs: []byte(`{"package":"./ir","test":"TestWasRenameCorpus","subtest":"release-variant/bare.schema","files":["ir/testdata/was-rename/release-variant/bare.schema"]}`)},
+		{Key: "compiler.ir.before", Adapter: "subtest", Inputs: []byte(`{"package":"./ir","test":"TestWasRenameCorpus","subtest":"release-variant/before.schema","files":["ir/testdata/was-rename/release-variant/bare.schema","ir/testdata/was-rename/release-variant/before.schema"]}`)},
+	}}
+	out, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatalf("problems: %v", problems)
+	}
+	if got := out[Item{Kind: KindGoTest, Dir: "ir", Name: "TestWasRenameCorpus"}.ID()]; got != "compiler.ir.parent" {
+		t.Errorf("parent test covered by %q", got)
+	}
+	// the first row to name the stem keeps the data case; the sibling may read the same file
+	if got := out[Item{Kind: KindDataCase, Dir: "ir/testdata/was-rename/release-variant", Name: "bare"}.ID()]; got != "compiler.ir.bare" {
+		t.Errorf("bare covered by %q", got)
+	}
+	if got := out[Item{Kind: KindDataCase, Dir: "ir/testdata/was-rename/release-variant", Name: "before"}.ID()]; got != "compiler.ir.before" {
+		t.Errorf("before covered by %q", got)
+	}
+}

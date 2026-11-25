@@ -251,6 +251,32 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					claim(t, it, "pin "+f)
 				}
 			}
+		case "subtest":
+			// The parent gotest row claims the top-level test. This row names
+			// one subtest; the files it reads are the data case. A sibling row
+			// may read the same file, so the first row keeps the case.
+			var in struct {
+				Package, Test, Subtest string
+				Files                  []string
+			}
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" || in.Subtest == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a subtest row without a package, a test and a subtest in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			for _, f := range in.Files {
+				if !isDataPath(f) || f != path.Clean(f) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s names %s, which is no data case's file", reg.Path, t.Line, t.Key, f))
+					continue
+				}
+				dir, name := path.Split(f)
+				if name == "" || strings.HasSuffix(name, ".jsonl") {
+					continue
+				}
+				id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+				if _, seen := out[id]; !seen {
+					out[id] = t.Key
+				}
+			}
 		default:
 			if !t.PerLang() {
 				continue
@@ -418,10 +444,10 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 // names, so it indexes the files its inputs name (a Go test that replays a
 // committed case folder), and one that names no adapter indexes nothing.
 // filesHeld are the language-free adapters that hold a row to the files its
-// inputs name: gotest fails a row whose files are gone before it runs, and
-// its rows' tests read exactly those files. A language-free row of another
-// adapter indexes no files.
-var filesHeld = map[string]bool{"gotest": true}
+// inputs name: gotest and subtest fail a row whose files are gone before it
+// runs, and their rows' tests read exactly those files. A language-free row
+// of another adapter indexes no files.
+var filesHeld = map[string]bool{"gotest": true, "subtest": true}
 
 func Indexed(reg *testreg.Registry) map[string]string {
 	out := map[string]string{}

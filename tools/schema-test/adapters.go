@@ -137,6 +137,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
+		"subtest":     newSubtestAdapter(".", goTestJobs()),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
