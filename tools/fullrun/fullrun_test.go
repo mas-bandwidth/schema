@@ -586,7 +586,7 @@ func TestCoversNamesWhatTheFullRunDoesNotRun(t *testing.T) {
 		}
 		return p
 	}
-	ok := write("ok.yml", "jobs:\n  a:\n    steps:\n      - run: make test-go 2>/dev/null\n      - run: make LUA_SEED=${{ github.run_id }} x-negative-control\n      - run: go test -run 'TestA' ./internal/x/\n      - run: go run ./tools/schema-test run --type model --timeout 0\n      - run: python3 -m pip install x\n")
+	ok := write("ok.yml", "jobs:\n  a:\n    steps:\n      - run: make test-go 2>/dev/null\n      - run: make x-negative-control\n      - run: go test -run 'TestA' ./internal/x/\n      - run: go run ./tools/schema-test run --type model --timeout 0\n      - run: python3 -m pip install x\n")
 	c, err := workflowCoverage(ok, "ok.yml", units)
 	if err != nil {
 		t.Fatal(err)
@@ -602,15 +602,42 @@ func TestCoversNamesWhatTheFullRunDoesNotRun(t *testing.T) {
 		t.Fatalf("a quoted -run with | and a tagged run: %+v", c)
 	}
 	for body, why := range map[string]string{
-		"      - run: make ${{ matrix.target }}\n":                             "a matrix target",
-		"      - run: make no-such-target\n":                                   "a target the plan lacks",
-		"      - run: go test ./internal/nosuch/\n":                            "a package the plan lacks",
-		"      - run: ./scripts/check.sh\n":                                    "a script",
-		"      - run: make --no-print-directory -j4 no-such-target\n":          "a target behind make flags",
-		"      - run: echo nothing this check reads\n":                         "a workflow this check reads no command from",
-		"      - run: go test -run '^(TestA|TestNope' ./internal/x/\n":         "a -run that does not compile",
-		"      - run: go test -race -run TestA ./internal/x/\n":                "the race detector",
-		"      - run: go test -tags schema_leg_moo -run TestA ./internal/x/\n": "a tag the test is not built with",
+		"      - run: make ${{ matrix.target }}\n":                                                        "a matrix target",
+		"      - run: make no-such-target\n":                                                              "a target the plan lacks",
+		"      - run: go test ./internal/nosuch/\n":                                                       "a package the plan lacks",
+		"      - run: ./scripts/check.sh\n":                                                               "a script",
+		"      - run: make --no-print-directory -j4 no-such-target\n":                                     "a target behind make flags",
+		"      - run: echo nothing this check reads\n":                                                    "a workflow this check reads no command from",
+		"      - run: go test -run '^(TestA|TestNope' ./internal/x/\n":                                    "a -run that does not compile",
+		"      - run: go test -race -run TestA ./internal/x/\n":                                           "the race detector",
+		"      - run: go test -tags schema_leg_moo -run TestA ./internal/x/\n":                            "a tag the test is not built with",
+		"      - run: make test-go\n      - run: make LUA_SEED=${{ github.run_id }} x-negative-control\n": "a variable the workflow sets from an expression",
+		"      - run: make test-go\n      - run: make \"x-${PIN}-control\" \"SEED=${SEED}\"\n":            "quoted words a shell variable names",
+		"      - run: make test-go\n      - run: make $TARGET\n":                                          "a target a shell variable names",
+		"      - run: make test-go V=1\n":                                                                 "a variable the workflow sets",
+		"      - run: make test-go -j4 no-such-target\n":                                                  "a target after a flag",
+		"      - run: make test-go _no-such-target\n":                                                     "a target that starts with an underscore",
+		"      - run: make test-go \\\n          no-such-target\n":                                        "a make command continued on the next line",
+		"      - run: make -C sub test-go\n":                                                              "another directory's Makefile",
+		"      - run: make test-go >log no-such-target\n":                                                 "a target after a redirection",
+		"      - run: make test-go -j no-such-target\n":                                                   "a target after a -j with no number",
+		"      - run: make test-go 2>&1 no-such-target\n":                                                 "a target after 2>&1",
+		"      - run: FOO=1 make test-go\n":                                                               "a variable set before make",
+		"      - run: |\n          export GOFLAGS=-mod=readonly\n          make test-go\n":                "an exported variable",
+		"      - run: make test-go\n    env:\n      GOFLAGS: -mod=readonly\n":                             "a job env: variable",
+		"      - run: >\n          make test-go\n          no-such-target\n":                              "a folded run",
+		"      - run: |\n          make test-go \\\n            no-such-target\n":                         "a block line continued with a backslash",
+		"      - run: cd sub && make test-go\n":                                                           "make after cd",
+		"      - working-directory: sub\n        run: make test-go\n":                                     "a step working-directory",
+		"      - run: echo \"GOFLAGS=-race\" >> \"$GITHUB_ENV\"\n      - run: make test-go\n":             "a variable set through GITHUB_ENV",
+		"      - run: \"GOFLAGS=-race make test-go\"\n":                                                   "a quoted run value that sets a variable",
+		"      -   run: GOFLAGS=-race make test-go\n":                                                     "a spaced step that sets a variable",
+		"      - run: make test-go\n    env: {GOFLAGS: -race}\n":                                          "a flow env:",
+		"      - run: make test-go\n    env:   # job vars\n      GOFLAGS: -race\n":                        "an env: with a comment",
+		"      - run: time GOFLAGS=-race make test-go\n":                                                  "a variable after time",
+		"      - run: make --eval=X:=1 test-go\n":                                                         "make --eval",
+		"      - run: make test-go\n      - *more\n":                                                      "a YAML alias step",
+		"      - run: make test-go\n          no-such-target\n":                                           "a plain run continued on the next line",
 	} {
 		c, err := workflowCoverage(write("bad.yml", "jobs:\n  a:\n    steps:\n"+body), "bad.yml", units)
 		if err != nil {
@@ -619,6 +646,15 @@ func TestCoversNamesWhatTheFullRunDoesNotRun(t *testing.T) {
 		if c.Redundant() {
 			t.Errorf("%s is shown covered: %+v", why, c)
 		}
+	}
+	// a variable the workflow sets is named as what the full run does not
+	// do, not taken for a target
+	c, err = workflowCoverage(write("var.yml", "jobs:\n  a:\n    steps:\n      - run: make test-go \"SEED=${SEED}\"\n"), "var.yml", units)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Makes) != 1 || len(c.Env) != 1 || !strings.Contains(c.Env[0], "SEED=${SEED}") || c.Redundant() || !c.SameTargets() {
+		t.Errorf("a variable the workflow sets: %+v", c)
 	}
 }
 
@@ -938,4 +974,48 @@ func TestARegistryRowTheExtractCannotReadIsARed(t *testing.T) {
 		}
 	}
 	t.Fatalf("the unreadable row is no red: %v", names(units))
+}
+
+// TestASkippedSubBenchmarkFailsItsBenchmark: go test -json sends no
+// top-level pass for a benchmark, so a skipped sub-benchmark fails it
+// rather than leaving it to pass on its printed /op lines.
+func TestASkippedSubBenchmarkFailsItsBenchmark(t *testing.T) {
+	t.Parallel()
+	got := goTestVerdicts(goJSON(
+		`{"Action":"output","Test":"BenchmarkZ","Output":"BenchmarkZ/a-8  \t100\t  12 ns/op\n"}`,
+		`{"Action":"output","Test":"BenchmarkZ/b","Output":"    z_test.go:7: no fixture\n"}`,
+		`{"Action":"skip","Test":"BenchmarkZ/b"}`,
+	), []string{"BenchmarkZ"}, nil, true, "")
+	if v := got["BenchmarkZ"]; v.Verdict != Fail || !strings.Contains(v.First, "BenchmarkZ/b") {
+		t.Errorf("a benchmark with a skipped sub-benchmark: %+v", v)
+	}
+	ran := goTestVerdicts(goJSON(
+		`{"Action":"output","Test":"BenchmarkZ","Output":"BenchmarkZ/a-8  \t100\t  12 ns/op\n"}`,
+	), []string{"BenchmarkZ"}, nil, true, "")
+	if v := ran["BenchmarkZ"]; v.Verdict != Pass {
+		t.Errorf("a benchmark that ran: %+v", v)
+	}
+}
+
+// TestAShardThatFinishesWhileLookedAtIsDone: a shard that writes DONE and
+// exits between shard-status's first look and its liveness check is done,
+// not dead.
+func TestAShardThatFinishesWhileLookedAtIsDone(t *testing.T) {
+	t.Parallel()
+	out := t.TempDir()
+	if err := os.WriteFile(filepath.Join(out, launcherPID), []byte("7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st, err := shardStatus(out, func(int) bool {
+		if err := os.WriteFile(filepath.Join(out, doneFile), nil, 0o644); err != nil {
+			t.Error(err)
+		}
+		return false
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Done || st.Alive {
+		t.Errorf("a shard that finished while looked at: %+v", st)
+	}
 }

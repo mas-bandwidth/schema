@@ -23,6 +23,9 @@ type Coverage struct {
 	Groups []string
 	// Other commands that check something and are not one of the above.
 	Others []string
+	// Variables the workflow sets for what it runs (env:, VAR=x make,
+	// export, make VAR=x); the full run sets none of them.
+	Env []string
 }
 
 // GoTestCall is one go test command line of a workflow.
@@ -37,6 +40,12 @@ type GoTestCall struct {
 // Redundant reports whether the full run runs everything the workflow
 // runs.
 func (c Coverage) Redundant() bool {
+	return len(c.Env) == 0 && c.SameTargets()
+}
+
+// SameTargets reports whether the full run runs every target, test and
+// check the workflow runs, though perhaps under other variables.
+func (c Coverage) SameTargets() bool {
 	if len(c.Makes)+len(c.GoTests)+len(c.Groups) == 0 {
 		return false // it read no command it knows: it cannot say what the workflow runs
 	}
@@ -52,12 +61,19 @@ func (c Coverage) Redundant() bool {
 }
 
 var (
-	// makeCallRE is the extract's: the words after make and its flags, up
-	// to a shell operator.
-	makeCallRE = regexp.MustCompile(`(?:^|[\s;&|(])make((?:\s+(?:-[Cf]\s+\S+|-[^\s;&|)]+(?:\s+[0-9]+)?))*)((?:\s+[A-Za-z0-9$][^\s;&|)]*)+)`)
+	// makeCallRE is every word after make, its flags too, up to a shell
+	// operator.
+	makeCallRE = regexp.MustCompile(`(?:^|[\s;&|(])make((?:\s+(?:>&|[^\s;&|)])+)+)`)
 	goTestRE   = regexp.MustCompile(`\bgo test\b(.*)`)
 	groupRE    = regexp.MustCompile(`schema-test run\b([^;&|]*)`)
 	exprRE     = regexp.MustCompile(`\$\{\{[^}]*\}\}`)
+	digitsRE   = regexp.MustCompile(`^[0-9.]+$`)
+	// assignRE is a variable a command sets for what it runs: VAR=x make,
+	// export VAR=x, env VAR=x.
+	assignRE = regexp.MustCompile(`(?:^|[\s;&|(` + "`" + `"'])(?:export\s+|env\s+)?([A-Za-z_][A-Za-z0-9_]*)=`)
+	// cdRE is a command that changes directory: make there runs another
+	// Makefile.
+	cdRE = regexp.MustCompile(`(?:^|[;&|(])\s*(?:cd|pushd)\s`)
 	// otherRE is a command that checks something by itself: a tool run,
 	// a script, a language toolchain's test runner.
 	otherRE = regexp.MustCompile(`^\s*(go run \./tools/\S+|\./\S+\.sh|bash \S+\.sh|python3? \S+\.py|node \S+\.m?js|cargo test|dotnet test|dart test|mix test|java -jar)`)
@@ -84,20 +100,117 @@ func workflowCoverage(path, rel string, units []Unit) (Coverage, error) {
 		}
 	}
 	seen := map[string]bool{}
+	env, folded, plain := -1, -1, -1 // the indent of an env:, run: > or plain run: key above
 	for line := range strings.SplitSeq(string(data), "\n") {
 		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "#") || strings.HasPrefix(t, "- name:") || strings.HasPrefix(t, "name:") {
+		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
-		t = exprRE.ReplaceAllString(strings.TrimPrefix(strings.TrimPrefix(t, "- "), "run: "), "EXPR")
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		key := len(line) - len(strings.TrimLeft(line, " -"))
+		if env >= 0 && indent > env {
+			// a variable the workflow sets for its commands: make and go
+			// read them (GOFLAGS, a ?= seed), and the full run sets none
+			if k, _, ok := strings.Cut(t, ":"); ok {
+				envVar(&c, seen, strings.TrimSpace(k)+" (env:)")
+			}
+			continue
+		}
+		env = -1
+		if folded >= 0 && indent > folded || plain >= 0 && indent > plain {
+			// one command folded over lines, which this check reads
+			// line by line: what the joined line runs is unread
+			other(&c, seen, "a run: command folded over lines: "+t)
+		}
+		if indent <= folded {
+			folded = -1
+		}
+		if indent <= plain {
+			plain = -1
+		}
+		step := strings.TrimSpace(strings.TrimPrefix(t, "-"))
+		switch v, ok := strings.CutPrefix(step, "run:"); {
+		case strings.HasPrefix(step, "env:"):
+			if rest := strings.TrimSpace(strings.TrimPrefix(step, "env:")); rest == "" || strings.HasPrefix(rest, "#") {
+				env = key
+			} else {
+				envVar(&c, seen, rest+" (env:)") // env: {A: x}, or an expression
+			}
+			continue
+		case strings.HasPrefix(step, "working-directory:"):
+			other(&c, seen, step+": make there runs another Makefile")
+			continue
+		case strings.HasPrefix(step, "*") || strings.HasPrefix(step, "<<:"):
+			other(&c, seen, "a YAML alias this check does not follow: "+step)
+			continue
+		case ok && strings.HasPrefix(strings.TrimSpace(v), ">"):
+			folded = key
+			continue
+		case ok && strings.TrimSpace(v) != "" && !strings.HasPrefix(strings.TrimSpace(v), "|"):
+			plain = key
+		}
+		if strings.HasSuffix(t, `\`) {
+			other(&c, seen, "a command continued on the next line: "+t)
+		}
+		if strings.HasPrefix(t, "- name:") || strings.HasPrefix(t, "name:") {
+			continue
+		}
+		cmd := step
+		if r, ok := strings.CutPrefix(cmd, "run:"); ok {
+			cmd = strings.Trim(strings.TrimSpace(r), `"'`)
+		}
+		if cdRE.MatchString(cmd) {
+			other(&c, seen, "a command that changes directory, so make there runs another Makefile: "+cmd)
+		}
+		t = exprRE.ReplaceAllString(cmd, "EXPR")
 		for _, m := range makeCallRE.FindAllStringSubmatch(t, -1) {
-			for w := range strings.FieldsSeq(m[2]) {
-				if strings.Contains(w, "EXPR") && !strings.Contains(w, "=") {
-					// a target a matrix or expression names: this check
-					// cannot see which, so it is not shown covered
+			words := strings.Fields(m[1])
+			for i := 0; i < len(words); i++ {
+				w := strings.Trim(words[i], `"'`)
+				switch {
+				case w == `\`:
+					continue // not a target: the line goes on below, named above
+				case w == "-C" || w == "-f" || strings.HasPrefix(w, "-C") || strings.HasPrefix(w, "-f") || strings.HasPrefix(w, "--directory") || strings.HasPrefix(w, "--file") || strings.HasPrefix(w, "--makefile"):
+					// another Makefile: its targets are not the root's
+					other(&c, seen, "make "+w+": the full run runs the root Makefile's targets")
+					if w == "-C" || w == "-f" {
+						i++
+					}
+					continue
+				case w == "-E" || strings.HasPrefix(w, "--eval"):
+					envVar(&c, seen, "make "+w+" (sets make variables)")
+					if w == "-E" {
+						i++
+					}
+					continue
+				case w == "-o" || w == "-W":
+					i++ // a flag and its argument
+					continue
+				case (w == "-j" || w == "-l") && i+1 < len(words) && digitsRE.MatchString(words[i+1]):
+					i++ // -j 4: the number is -j's; -j alone takes none
+					continue
+				case strings.HasPrefix(w, "-"):
+					continue // a flag: -j4, -k, --no-print-directory
+				case strings.HasSuffix(w, ">") || strings.HasSuffix(w, "<"):
+					i++ // a redirection and its file
+					continue
+				case strings.ContainsAny(w, "<>"):
+					continue // a redirection with its file: 2>/dev/null
+				}
+				if k, _, ok := strings.Cut(w, "="); ok && k != "" && !strings.ContainsAny(k, "$`") {
+					// a variable the workflow sets: the full run passes
+					// none and takes the Makefile's own (a fresh seed, the
+					// default pin), so it does not run what this runs
+					envVar(&c, seen, k+" (make "+w+")")
+					continue
+				}
+				if strings.Contains(w, "EXPR") || strings.ContainsAny(w, "$`") {
+					// a target a matrix, expression or shell variable
+					// names: this check cannot see which, so it is not
+					// shown covered
 					w = "${{ expression }}"
 				}
-				if strings.ContainsAny(w, "=\"'`<>") || strings.HasPrefix(w, "$") && w != "${{ expression }}" || seen["make "+w] {
+				if seen["make "+w] {
 					continue
 				}
 				seen["make "+w] = true
@@ -106,6 +219,10 @@ func workflowCoverage(path, rel string, units []Unit) (Coverage, error) {
 					c.MakesIn = append(c.MakesIn, w)
 				}
 			}
+		}
+		// after the make words, so make VAR=x is named as make's
+		for _, m := range assignRE.FindAllStringSubmatch(cmd, -1) {
+			envVar(&c, seen, m[1]+" (set in a run: step)")
 		}
 		for _, m := range groupRE.FindAllStringSubmatch(t, -1) {
 			q := strings.TrimSpace(m[1])
@@ -242,7 +359,7 @@ func coversCmd(root string, files []string, out io.Writer) error {
 		}
 	}
 	sort.Strings(files)
-	redundant := 0
+	redundant, same := 0, 0
 	for _, f := range files {
 		rel, _ := filepath.Rel(root, f)
 		c, err := workflowCoverage(f, filepath.ToSlash(rel), units)
@@ -250,9 +367,13 @@ func coversCmd(root string, files []string, out io.Writer) error {
 			return err
 		}
 		verdict := "NOT COVERED"
-		if c.Redundant() {
+		switch {
+		case c.Redundant():
 			verdict = "REDUNDANT"
 			redundant++
+		case c.SameTargets():
+			verdict = "SAME TARGETS, OTHER VARIABLES"
+			same++
 		}
 		logf(out, "%s %s: make targets %d run, %d in the full run", verdict, c.Workflow, len(c.Makes), len(c.MakesIn))
 		if missing := minus(c.Makes, c.MakesIn); len(missing) > 0 {
@@ -275,9 +396,12 @@ func coversCmd(root string, files []string, out io.Writer) error {
 		if len(c.Others) > 0 {
 			logf(out, "; other checks not in the full run: %s", strings.Join(c.Others, " | "))
 		}
+		if len(c.Env) > 0 {
+			logf(out, "; variables it sets that the full run does not: %s", strings.Join(c.Env, " | "))
+		}
 		logf(out, "\n")
 	}
-	logf(out, "fullrun covers: %d scheduled workflows, %d redundant with the full run\n", len(files), redundant)
+	logf(out, "fullrun covers: %d scheduled workflows, %d redundant with the full run, %d run only targets the full run runs but set variables it does not\n", len(files), redundant, same)
 	return nil
 }
 
@@ -303,4 +427,21 @@ func pkgMatches(pkg, arg string) bool {
 		return pkg == prefix || strings.HasPrefix(pkg, prefix+"/") || prefix == "."
 	}
 	return pkg == arg
+}
+
+// other adds a check the full run does not do, once.
+func other(c *Coverage, seen map[string]bool, why string) {
+	if !seen["other "+why] {
+		seen["other "+why] = true
+		c.Others = append(c.Others, why)
+	}
+}
+
+// envVar adds a variable the workflow sets, once by its name.
+func envVar(c *Coverage, seen map[string]bool, v string) {
+	name, _, _ := strings.Cut(v, " ")
+	if !seen["env "+name] {
+		seen["env "+name] = true
+		c.Env = append(c.Env, v)
+	}
 }

@@ -207,6 +207,9 @@ func (s *scan) workflowJobs(files []string) {
 // tree and move files, and check nothing.
 var driverActions = []string{"actions/checkout@", "actions/upload-artifact@", "actions/download-artifact@", "actions/setup-go@"}
 
+// setRE is a line that only sets shell options: set -euo pipefail.
+var setRE = regexp.MustCompile(`^set(\s+[-+][a-zA-Z]+(\s+pipefail)?)+\s*$`)
+
 // driverCommands are the commands a driver-only job's steps may run.
 var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-test "}
 
@@ -217,12 +220,33 @@ var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-
 func DriverOnly(lines []string) bool {
 	runs := 0
 	block := -1 // the indent of a run: | step while inside its block
+	plain := -1 // the indent of a plain run: value's key, on the next line
+	bare := -1  // the indent of a run: key with its value on the lines below
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
 		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if plain >= 0 && t != "" {
+			if indent > plain {
+				// a more-indented line continues the plain run: value,
+				// a command this check did not read: not driver-only
+				return false
+			}
+			plain = -1
+		}
+		if bare >= 0 && t != "" {
+			if indent > bare && !strings.HasPrefix(t, "shell:") && !strings.HasPrefix(t, "working-directory:") && !strings.HasPrefix(t, "#") {
+				// the value of a bare run: key, on its own line: a
+				// command this check did not read (a defaults: run:
+				// holds only shell: and working-directory:)
+				return false
+			}
+			if indent <= bare {
+				bare = -1
+			}
+		}
 		if block >= 0 {
 			if t == "" || indent > block {
-				if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "set -") {
+				if t == "" || strings.HasPrefix(t, "#") || setRE.MatchString(t) {
 					continue
 				}
 				if !driverCommand(t) {
@@ -233,8 +257,14 @@ func DriverOnly(lines []string) bool {
 			}
 			block = -1
 		}
-		t = strings.TrimPrefix(t, "- ")
+		if strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "--") {
+			t = strings.TrimSpace(t[1:]) // a step: -   run: is one too
+		}
 		switch {
+		case strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "<<:"):
+			// a flow-style step, or a YAML alias, this check does not
+			// read: not driver-only
+			return false
 		case strings.HasPrefix(t, "uses:"):
 			u := strings.TrimSpace(strings.TrimPrefix(t, "uses:"))
 			ok := false
@@ -247,7 +277,10 @@ func DriverOnly(lines []string) bool {
 		case strings.HasPrefix(t, "run:"):
 			v := strings.TrimSpace(strings.TrimPrefix(t, "run:"))
 			if v == "" {
-				continue // defaults: run: (its shell is checked below)
+				// defaults: run: (its shell is checked below), or a
+				// step's command on the lines below, which is read there
+				bare = len(line) - len(strings.TrimLeft(line, " -"))
+				continue
 			}
 			if v == "|" || v == ">" || v == "|-" || v == ">-" {
 				block = len(line) - len(strings.TrimLeft(line, " -"))
@@ -257,6 +290,7 @@ func DriverOnly(lines []string) bool {
 				return false
 			}
 			runs++
+			plain = len(line) - len(strings.TrimLeft(line, " -"))
 		case strings.HasPrefix(t, "shell:") && !strings.Contains(t, "go run ./tools/pgroup"):
 			return false
 		}
