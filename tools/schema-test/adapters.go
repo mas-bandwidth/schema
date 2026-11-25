@@ -61,7 +61,8 @@ var conformance = harness{
 
 // harnessFor is the harness that runs a test, if one does: a union row's
 // (its inputs name each language's Go test) is goUnion, and every other
-// row's is its family's.
+// row's is its family's. Which languages answer a family is the registry's
+// (its lang rows and unrepresentable declarations), never the harness's.
 func harnessFor(t testreg.Test) (harness, bool) {
 	family := t.Family
 	switch {
@@ -91,8 +92,8 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
 		// every language row names corpus: one adapter routes each family
-		// to its harness for any language, and what a language does not
-		// answer yet is an owed line of the registry, MISSING by name
+		// to its harness for any language, and a case a language does not
+		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
 		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
 		"model-check": modelCheckAdapter{build: b, log: log},

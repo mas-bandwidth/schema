@@ -24,7 +24,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -32,7 +31,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
-	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -153,44 +152,28 @@ func luauFuzzStagePipeUnits(t *testing.T, keys []string, edit func([]byte) []byt
 	return stageDir, groups
 }
 
-var (
-	luauFuzzHostOnce sync.Once
-	luauFuzzHostPath string
-	luauFuzzHostErr  error
-)
-
-// luauFuzzHost resolves or builds tools/luaufuzzhost once per test binary.
+// luauFuzzHost returns the native Luau fuzz host (tools/luaufuzzhost):
+// $LUAUFUZZHOST when set, else build/luaufuzzhost/luaufuzzhost. The host is a
+// toolchain: make builds it (it downloads the pinned Luau source and compiles
+// it), never this test, which would fetch from the network and compile 61
+// vendored C++ files inside a test's deadline. Absent, the test fails naming it.
 func luauFuzzHost(t *testing.T) string {
 	t.Helper()
+	host := filepath.Join(root, "build", "luaufuzzhost", "luaufuzzhost")
 	if env := os.Getenv("LUAUFUZZHOST"); env != "" {
-		if !filepath.IsAbs(env) {
-			env = filepath.Join(root, env)
+		host = env
+		if !filepath.IsAbs(host) {
+			host = filepath.Join(root, host)
 		}
-		return env
 	}
-	luauFuzzHostOnce.Do(func() {
-		rel := filepath.Join("build", "luaufuzzhost", "luaufuzzhost")
-		full := filepath.Join(root, rel)
-		if _, err := os.Stat(full); err != nil {
-			testinputs.Build(t)
-			cmd := testproc.Command(t, "make", rel)
-			cmd.Dir = root
-			if out, merr := cmd.CombinedOutput(); merr != nil {
-				luauFuzzHostErr = fmt.Errorf("make %s: %w\n%s", rel, merr, out)
-				return
-			}
-		}
-		abs, err := filepath.Abs(full)
-		if err != nil {
-			luauFuzzHostErr = err
-			return
-		}
-		luauFuzzHostPath = abs
-	})
-	if luauFuzzHostErr != nil {
-		t.Fatal(luauFuzzHostErr)
+	abs, err := filepath.Abs(host)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return luauFuzzHostPath
+	if _, err := os.Stat(abs); err != nil {
+		slowtest.Missing(t, fmt.Sprintf("the native Luau fuzz host %s (%v): run make build/luaufuzzhost/luaufuzzhost, or set LUAUFUZZHOST", abs, err))
+	}
+	return abs
 }
 
 // luauFuzzHarness builds the conformance wire-fuzz harness once.

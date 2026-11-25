@@ -25,6 +25,19 @@ func init() {
 	rubyFixedSetups["text-bytes-flags-defaults"] = "rows[1].s = \"xyz\"\nrows[1].b = [0, 255, 90, 1].pack(\"C*\")\nrows[1].c = 4\n"
 }
 
+// rubyFixedProofShapeRows are the shape rows TestRubyFixedProofShapes proves
+// and TestRubyFixedProofShapesControlRows sabotages.
+var rubyFixedProofShapeRows = []string{"utf8-values", "byte-buffers", "nested-types", "nested-fixed-tables", "fixed-arrays", "counted-arrays", "keyed-arrays", "nested-keyed-arrays", "text-bytes-flags-defaults"}
+
+// TestRubyFixedProofShapesControlRows runs the negative control of every shape
+// row: each sabotaged row must fail. It is its own test, so make
+// ruby-fixed-proof-shapes-negative-control selects it by name and
+// TestRubyFixedProofShapes does not run it a second time.
+func TestRubyFixedProofShapesControlRows(t *testing.T) {
+	t.Parallel()
+	fixedproof.RunNegativeControlRows(t, rubyFixedProofRunner{}, rubyFixedProofShapeRows...)
+}
+
 func TestRubyFixedProofShapes(t *testing.T) {
 	t.Parallel()
 	expected := map[string]map[string]string{
@@ -39,9 +52,7 @@ func TestRubyFixedProofShapes(t *testing.T) {
 		"text-bytes-flags-defaults": {"r0.s": `"hi"`, "r0.b_length": "2", "r0.b[0]": "97", "r0.b[1]": "98", "r0.c": "3", "r1.s": `"xyz"`, "r1.b_length": "4", "r1.b[1]": "255", "r1.c": "4"},
 	}
 	runner := rubyFixedProofRunner{}
-	rows := []string{"utf8-values", "byte-buffers", "nested-types", "nested-fixed-tables", "fixed-arrays", "counted-arrays", "keyed-arrays", "nested-keyed-arrays", "text-bytes-flags-defaults"}
-	t.Run("value-suite", func(t *testing.T) { fixedproof.RunValueRows(t, runner, rows...) })
-	t.Run("negative-controls", func(t *testing.T) { fixedproof.RunNegativeControlRows(t, runner, rows...) })
+	t.Run("value-suite", func(t *testing.T) { fixedproof.RunValueRows(t, runner, rubyFixedProofShapeRows...) })
 	allCases := fixedproof.Cases()
 	if len(allCases) == 0 {
 		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
