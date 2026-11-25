@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2948.
+Unit tests every language answers: 2. Language-free tests: 2949.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -359,7 +359,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.codegen-golang.tidy-leaves-no-bare-blocks` | `gotest` | Go test TestTidyLeavesNoBareBlocks in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestTidyLeavesNoBareBlocks` | the Go test passes | `internal/codegen/golang/tidy_test.go:61` |
 | `none.unit.compiler.codegen-golang.union-surface-emitted` | `gotest` | Go test TestUnionSurfaceEmitted in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestUnionSurfaceEmitted` | the Go test passes | `internal/codegen/golang/golang_test.go:264` |
 
-#### `compiler` family `compiler`, 444 tests
+#### `compiler` family `compiler`, 445 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -783,6 +783,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.tool-cooks-a-map-bearing-unit` | `gotest` | Go test TestToolCooksAMapBearingUnit in ./compiler | `package: ./compiler`<br>`test: TestToolCooksAMapBearingUnit` | the Go test passes | `compiler/tablesmaps_test.go:317` |
 | `none.unit.compiler.compiler.tutorial-second-language-is-go` | `gotest` | Go test TestTutorialSecondLanguageIsGo in ./compiler | `package: ./compiler`<br>`test: TestTutorialSecondLanguageIsGo` | the Go test passes | `compiler/tutorial_test.go:231` |
 | `none.unit.compiler.compiler.tutorial-starlight-generates-for-python` | `gotest` | Go test TestTutorialStarlightGeneratesForPython in ./compiler | `package: ./compiler`<br>`test: TestTutorialStarlightGeneratesForPython` | the Go test passes | `compiler/tutorial_test.go:198` |
+| `none.unit.compiler.compiler.unbound-fixtures-names-every-one` | `gotest` | Go test TestUnboundFixturesNamesEveryOne in ./compiler | `package: ./compiler`<br>`test: TestUnboundFixturesNamesEveryOne` | the Go test passes | `compiler/spec_json_wide_fixtures_strings_test.go:131` |
 | `none.unit.compiler.compiler.unbounded-text-refused-off-go` | `gotest` | Go test TestUnboundedTextRefusedOffGo in ./compiler | `package: ./compiler`<br>`test: TestUnboundedTextRefusedOffGo` | the Go test passes | `compiler/unboundedtext_refusal_test.go:52` |
 | `none.unit.compiler.compiler.union-arm-refusals-name-the-union` | `gotest` | Go test TestUnionArmRefusalsNameTheUnion in ./compiler | `package: ./compiler`<br>`test: TestUnionArmRefusalsNameTheUnion` | the Go test passes | `compiler/tablessquirrel_test.go:325` |
 | `none.unit.compiler.compiler.union-arrays-carriers` | `gotest` | Go test TestUnionArraysCarriers in ./compiler | `package: ./compiler`<br>`test: TestUnionArraysCarriers` | the Go test passes | `compiler/tablesunionarrays_test.go:42` |
