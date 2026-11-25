@@ -448,7 +448,7 @@ tables-c-fuzz: build/schema_test_c_fuzz
 # else: the hour-long soak (the TABLES_C_SOAK_ITERATIONS default) that `make
 # test` runs at 512 passes, the forged-block fuzzer at five times the PR scale
 # under a second seed, and each one's planted control.
-C_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+C_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-c-release
 tables-c-release:
 	$(MAKE) -j$(C_RELEASE_JOBS) build/schema_test_c_soak build/schema_test_c_fuzz
