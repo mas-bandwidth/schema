@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2904.
+Unit tests every language answers: 2. Language-free tests: 2905.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2310,7 +2310,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:` |
 | `none.unit.tooling.gotestrun.the-wrapper-keeps-the-exit-and-under-red-only-one-is-red` | `gotest` | Go test TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed` | the Go test passes | `tools/gotestrun/main_test.go:151` |
 
-#### `tooling` family `harness`, 335 tests
+#### `tooling` family `harness`, 336 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2416,6 +2416,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.held-element-kind-vectors-answer-the-engine` | `gotest` | Go test TestHeldElementKindVectorsAnswerTheEngine in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHeldElementKindVectorsAnswerTheEngine` | the Go test passes | `test/conformance/harness/held_element_kinds_test.go:43` |
 | `none.unit.tooling.harness.held-graph-vectors-answer-the-engine` | `gotest` | Go test TestHeldGraphVectorsAnswerTheEngine in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHeldGraphVectorsAnswerTheEngine` | the Go test passes | `test/conformance/harness/held_graph_test.go:47` |
 | `none.unit.tooling.harness.held-reserved-type-vectors-answer-the-engine` | `gotest` | Go test TestHeldReservedTypeVectorsAnswerTheEngine in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHeldReservedTypeVectorsAnswerTheEngine` | the Go test passes | `test/conformance/harness/held_reserved_type_test.go:18` |
+| `none.unit.tooling.harness.hostile-expectations-carry-no-exemption` | `gotest` | Go test TestHostileExpectationsCarryNoExemption in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHostileExpectationsCarryNoExemption` | the Go test passes | `test/conformance/harness/noexemption_test.go:19` |
 | `none.unit.tooling.harness.hostile-ill-formed-row-has-no-port-exemption` | `gotest` | Go test TestHostileIllFormedRowHasNoPortExemption in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHostileIllFormedRowHasNoPortExemption` | the Go test passes | `test/conformance/harness/portexemption_test.go:14` |
 | `none.unit.tooling.harness.hostile-saves-are-read-only-when-the-battery-can-run` | `gotest` | Go test TestHostileSavesAreReadOnlyWhenTheBatteryCanRun in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHostileSavesAreReadOnlyWhenTheBatteryCanRun` | the Go test passes | `test/conformance/harness/scoped_run_test.go:100` |
 | `none.unit.tooling.harness.hostile-zero-escape-rows` | `gotest` | Go test TestHostileZeroEscapeRows in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestHostileZeroEscapeRows` | the Go test passes | `test/conformance/harness/zeroescaperows_test.go:12` |
