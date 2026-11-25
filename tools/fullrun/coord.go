@@ -330,15 +330,16 @@ func startScript(st *State, s *ShardState) string {
 O=%[1]s
 mkdir -p "$O"
 cd %[2]s
-if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
 # a shard the launcher took for dead (its bench did not answer) may still
-# run: then this start refuses, and the launcher watches the live one
+# run: then this start refuses, before anything else is read or changed,
+# and the launcher watches the live one
 if [ -f "$O/launcher.pid" ]; then
   status=$(%[3]s shard-status --out "$O")
   case "$status" in *'"alive":true'*)
     echo "the shard still runs in $O: not started again" >&2; exit 5 ;;
   esac
 fi
+if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
 # the units' temporary files go beside the shard's out directory on the
 # bench's disk, not into a shared /tmp; the shard removes them when done
 T="$O.tmp"

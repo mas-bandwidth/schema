@@ -136,8 +136,12 @@ func TestAStartBesideALiveShardRefuses(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	script := startScript(st, s)
+	if i, j := strings.Index(script, "shard-status"), strings.Index(script, "env.sh"); i < 0 || j < 0 || i > j {
+		t.Errorf("the start reads the bench environment before it checks for a live shard")
+	}
 	// testinputs:none — the start script and its fake launcher are written under t.TempDir
-	out, err := exec.Command("bash", "-c", startScript(st, s)).CombinedOutput()
+	out, err := exec.Command("bash", "-c", script).CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "still runs") {
 		t.Fatalf("a start beside a live shard: %v: %s", err, out)
 	}

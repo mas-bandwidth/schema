@@ -502,6 +502,12 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		"  action:\n    runs-on: x\n    steps:\n      - uses: some/checker@abc\n      - run: go run ./tools/fullrun merge\n" +
 		"  shell:\n    runs-on: x\n    defaults:\n      run:\n        shell: python {0}\n    steps:\n      - run: go run ./tools/fullrun merge\n" +
 		"  chained:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group x && make verify-all\n" +
+		"  continued:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group x\n          && make test-all\n      - uses: actions/checkout@abc\n" +
+		"  flow:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - {run: make test-all}\n" +
+		"  bare:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - run:\n          make test-all\n" +
+		"  spaced:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      -   run: make test-all\n" +
+		"  setchain:\n    runs-on: x\n    steps:\n      - run: |\n          set -e; make test-all\n          go run ./tools/fullrun merge\n" +
+		"  alias:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - *tests\n" +
 		"  empty:\n    runs-on: x\n"
 	res, err := Extract(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", ".github/workflows/n.yml": wf}))
 	if err != nil {
@@ -512,7 +518,7 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		got = append(got, it.Name)
 	}
 	sort.Strings(got)
-	if want := []string{"action", "chained", "empty", "mixed", "shell"}; !slices.Equal(got, want) {
+	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "mixed", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }

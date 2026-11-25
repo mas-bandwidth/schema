@@ -530,7 +530,9 @@ func goTestVerdicts(out []byte, asked []string, runErr error, bench bool, tags s
 		}
 	}
 	for top, sub := range skipped {
-		if got[top].Verdict == Pass {
+		// a benchmark has no top-level pass event, so one with no verdict
+		// yet is flipped too: else benchRan would pass it below
+		if v, ok := got[top]; !ok || v.Verdict == Pass {
 			got[top] = Result{Verdict: Fail, First: clip("subtest skipped, and nothing is ever skipped: " + sub)}
 		}
 	}
@@ -674,5 +676,17 @@ func shardStatus(out string, alive func(pid int) bool) (ShardStatus, error) {
 		return st, fmt.Errorf("%s holds %q, not a pid", launcherPID, strings.TrimSpace(string(b)))
 	}
 	st.Alive = alive(pid)
+	if !st.Alive && !st.Done {
+		// the shard may have finished between the first look and the
+		// liveness check: read again, so a done shard is not called dead
+		if _, err := os.Stat(filepath.Join(out, doneFile)); err == nil {
+			st.Done = true
+			if res, err := loadResults(filepath.Join(out, resultsFile)); err == nil {
+				st.Results = len(res)
+			} else {
+				return st, err
+			}
+		}
+	}
 	return st, nil
 }
