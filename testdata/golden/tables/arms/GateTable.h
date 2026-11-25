@@ -11691,7 +11691,12 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                                     break;
                                 }
                                 value.reach.type = ReachType::Plain;
-                                if ( sub.size != 4 ) { value.reach.type = ReachType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.reach.type = ReachType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.reach.type = ReachType::None;
@@ -12475,68 +12480,69 @@ inline bool GateNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
     {
         case ReachType::Only:
         {
-    {
-        const Only * pointee = OnlyAt( ctx, value.reach.only ); // only
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
+                const Only * pointee = OnlyAt( ctx, value.reach.only ); // only
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                    if ( found != NULL )
+                    {
+                        if ( found->open != 0 ) { return false; } // a data cycle
+                    }
+                    else
+                    {
+                        TableNodeEntry node;
+                        node.node = (const void *) pointee;
+                        node.type_id = 0x31badbc06c5f0b97ull; // fnv1a64( "Only" )
+                        node.measure = &TableNodeMeasureThunk<Ctx, Only>;
+                        node.save = &TableNodeSaveThunk<Ctx, Only>;
+                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return OnlyPackBytes( *(const Ctx *) pack_ctx, *(const Only *) pack_node ); };
+                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return OnlyPackCopy( *(const Ctx *) pack_ctx, *(const Only *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return OnlyPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Only *) pack_src, *(Only *) pack_dst, pack_base ); };
+                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return OnlyNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Only *) walk_node ); };
+                        node.close = false;
+                        node.hint = 0;
+                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                    }
+                }
             }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0x31badbc06c5f0b97ull; // fnv1a64( "Only" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Only>;
-                node.save = &TableNodeSaveThunk<Ctx, Only>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return OnlyPackBytes( *(const Ctx *) pack_ctx, *(const Only *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return OnlyPackCopy( *(const Ctx *) pack_ctx, *(const Only *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return OnlyPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Only *) pack_src, *(Only *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return OnlyNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Only *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
-            }
-        }
-    }
             break;
         }
         case ReachType::Text:
         {
-    {
-        const TableBlob * blob = TableBlobAt( ctx, value.reach.text ); // text: a byte buffer
-        if ( blob != NULL )
-        {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
-            if ( found != NULL )
             {
-                numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) blob;
-                node.type_id = kTableStringTypeId;
-                node.measure = &TableBlobMeasureThunk<Ctx>;
-                node.save = &TableBlobSaveThunk<Ctx>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, true ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
+                const TableBlob * blob = TableBlobAt( ctx, value.reach.text ); // text: a byte buffer
+                if ( blob != NULL )
                 {
-                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
-                    const TableBlob * pack_blob = (const TableBlob *) pack_src;
-                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
-                    return true;
-                };
-                node.pack_slots = NULL;
-                node.walk = NULL; // a blob reaches nothing: no descent
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) blob );
+                    if ( found != NULL )
+                    {
+                        numbering.shared = true; // a SECOND slot names the one blob (§2.5, §16.7)
+                    }
+                    else
+                    {
+                        TableNodeEntry node;
+                        node.node = (const void *) blob;
+                        node.type_id = kTableStringTypeId;
+                        node.measure = &TableBlobMeasureThunk<Ctx>;
+                        node.save = &TableBlobSaveThunk<Ctx>;
+                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, true ); };
+                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool {
+                            (void) pack_ctx;
+                            (void) pack_base;
+                            (void) pack_capacity;
+                            const TableBlob * pack_blob = (const TableBlob *) pack_src;
+                            memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
+                            return true;
+                        };
+                        node.pack_slots = NULL;
+                        node.walk = NULL; // a blob reaches nothing: no descent
+                        node.close = false;
+                        node.hint = 0;
+                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                    }
+                }
             }
-        }
-    }
             break;
         }
         default: break;
@@ -12619,12 +12625,12 @@ inline bool GateCycleSlots( const Ctx & ctx, TableCycle & cycle, const Gate & va
     {
         case ReachType::Only:
         {
-    if ( !TableCycleEdge( cycle, value.reach.only ) ) { return false; } // only
+            if ( !TableCycleEdge( cycle, value.reach.only ) ) { return false; } // only
             break;
         }
         case ReachType::Text:
         {
-    // text: a byte buffer reaches nothing
+            // text: a byte buffer reaches nothing
             break;
         }
         default: break;
@@ -12661,30 +12667,30 @@ inline bool GatePackSlots( const Ctx & ctx, TablePackMap & seen, const Gate & sr
     {
         case ReachType::Only:
         {
-    {
-        dst.reach.only.value = 0; // only
-        const Only * pointee = OnlyAt( ctx, src.reach.only );
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.reach.only.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.reach.only );
-        }
-    }
+            {
+                dst.reach.only.value = 0; // only
+                const Only * pointee = OnlyAt( ctx, src.reach.only );
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                    dst.reach.only.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.reach.only );
+                }
+            }
             break;
         }
         case ReachType::Text:
         {
-    {
-        dst.reach.text.value = 0; // text: a byte buffer
-        const TableBlob * blob = TableBlobAt( ctx, src.reach.text );
-        if ( blob != NULL )
-        {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.reach.text.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.reach.text );
-        }
-    }
+            {
+                dst.reach.text.value = 0; // text: a byte buffer
+                const TableBlob * blob = TableBlobAt( ctx, src.reach.text );
+                if ( blob != NULL )
+                {
+                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) blob );
+                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                    dst.reach.text.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.reach.text );
+                }
+            }
             break;
         }
         default: break;
@@ -14266,7 +14272,12 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                                     break;
                                 }
                                 value.reach.type = ReachType::Plain;
-                                if ( sub.size != 4 ) { value.reach.type = ReachType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.reach.type = ReachType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.reach.type = ReachType::None;
@@ -14284,7 +14295,8 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.reach.type = ReachType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -15013,17 +15025,17 @@ inline bool GateCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         table_cook_put( at + 0, (uint64_t) value.reach.type, 1, order ); // the tag; None is the tag alone
         switch ( value.reach.type )
         {
-                case ReachType::Only:
+            case ReachType::Only:
             {
                 if ( !table_cook_ref( region, at + 0 + 8, (const void *) OnlyAt( ctx, value.reach.only ), order ) ) { return false; } // only
                 break;
             }
-                case ReachType::Text:
+            case ReachType::Text:
             {
                 if ( !table_cook_ref( region, at + 0 + 8, (const void *) TableBlobAt( ctx, value.reach.text ), order ) ) { return false; } // text
                 break;
             }
-                case ReachType::Plain:
+            case ReachType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.reach.plain, 4, order );
                 break;

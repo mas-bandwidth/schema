@@ -8382,7 +8382,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }

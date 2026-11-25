@@ -8443,10 +8443,13 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.moving = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.moving = bool_byte != 0;
                 }
                 break;
             }
@@ -8470,10 +8473,13 @@ BENCHTABLE_TABLE_INLINE bool TableEntityLoadBody( TableReader & r, TableEntity &
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.firing = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.firing = bool_byte != 0;
                 }
                 break;
             }
@@ -12129,7 +12135,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                                 }
                                 value.game_event.type = TableEventType::Hit;
                                 TableHitEventLoadBody( sub, value.game_event.hit );
-                                if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.game_event.type = TableEventType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xf2a38d910b5b348bull: // chat
@@ -12145,7 +12156,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                                 }
                                 value.game_event.type = TableEventType::Chat;
                                 TableChatEventLoadBody( sub, value.game_event.chat );
-                                if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.game_event.type = TableEventType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x9fa3a41c86ecb765ull: // pickup
@@ -12161,7 +12177,12 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                                 }
                                 value.game_event.type = TableEventType::Pickup;
                                 TablePickupEventLoadBody( sub, value.game_event.pickup );
-                                if ( sub.offset != sub.size ) { value.game_event.type = TableEventType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.game_event.type = TableEventType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             default:
@@ -12560,7 +12581,10 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.drift = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.drift = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -12584,7 +12608,10 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.drift = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.drift = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -12805,10 +12832,13 @@ BENCHTABLE_TABLE_INLINE bool TableMixedLoadBody( TableReader & r, TableMixed & v
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_extra = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_extra = bool_byte != 0;
                 }
                 break;
             }
@@ -14947,12 +14977,19 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         kept = 16;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->damaged = true; return false; }
+                        if ( !r.get( by, 8 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         if ( (int32_t) i < kept ) { value.payload[i] = (uint8_t) by; }
                     }
                     value.payload_length = kept;
@@ -16359,10 +16396,13 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventLoadBody( TableReader & r, TableHitEve
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.crit = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.crit = bool_byte != 0;
                 }
                 break;
             }
@@ -18809,8 +18849,16 @@ inline void TableEntityFixedClampBody( TableEntity & value, int32_t & TABLE_CLAM
     value.vel_z = ( value.vel_z < -2048 ) ? -2048 : ( ( value.vel_z > 2047 ) ? 2047 : value.vel_z );
     oor_count += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
-    if ( (uint64_t) value.weapon > 15u ) { value.weapon = TableWeapon::None; oor_count++; }
-    if ( ( (uint64_t) value.damage >> 8 ) != 0 ) { value.damage &= 0xffull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+    if ( (uint64_t) value.weapon > 15u )
+    {
+        value.weapon = TableWeapon::None;
+        oor_count++;
+    }
+    if ( ( (uint64_t) value.damage >> 8 ) != 0 )
+    {
+        value.damage &= 0xffull;
+        oor_count++;
+    } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
 }
 
 // TableStat's read-side bounds, CHECKED: true when every clamp below would
@@ -19112,7 +19160,11 @@ inline void TableMixedFixedClampBody( TableMixed & value, int32_t & TABLE_CLAMP_
     {
         TableStatFixedClampBody( value.stats[i], oor_count, damaged );
     }
-    if ( (uint64_t) value.game_event.type > 3u ) { value.game_event.type = TableEventType::None; oor_count++; }
+    if ( (uint64_t) value.game_event.type > 3u )
+    {
+        value.game_event.type = TableEventType::None;
+        oor_count++;
+    }
     switch ( value.game_event.type )
     {
         case TableEventType::Hit:
@@ -21711,9 +21763,15 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
         table_cook_put( at + 1224, (uint64_t) value.game_event.type, 1, order ); // the tag; None is the tag alone
         switch ( value.game_event.type )
         {
-            case TableEventType::Hit: if ( !TableHitEventCookBody( at + 1224 + 4, value.game_event.hit, order ) ) { return false; } break;
-            case TableEventType::Chat: if ( !TableChatEventCookBody( at + 1224 + 4, value.game_event.chat, order ) ) { return false; } break;
-            case TableEventType::Pickup: if ( !TablePickupEventCookBody( at + 1224 + 4, value.game_event.pickup, order ) ) { return false; } break;
+            case TableEventType::Hit:
+                if ( !TableHitEventCookBody( at + 1224 + 4, value.game_event.hit, order ) ) { return false; }
+                break;
+            case TableEventType::Chat:
+                if ( !TableChatEventCookBody( at + 1224 + 4, value.game_event.chat, order ) ) { return false; }
+                break;
+            case TableEventType::Pickup:
+                if ( !TablePickupEventCookBody( at + 1224 + 4, value.game_event.pickup, order ) ) { return false; }
+                break;
             default: break; // every byte outside the set arm stays zero
         }
     }
@@ -21732,9 +21790,17 @@ inline bool TableMixedCookBody( uint8_t * at, const TableMixed & value, TableByt
     if ( !TableFloatFinite( value.aim_z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
     table_cook_put( at + 1296, (uint64_t) TableStoredFloatBits( value.aim_z ), 4, order );
     if ( !TableFloatFinite( value.recoil ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.recoil, 4 ); table_cook_put( at + 1300, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.recoil, 4 );
+        table_cook_put( at + 1300, (uint64_t) bits, 4, order );
+    }
     if ( !TableFloatFinite( value.drift ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.drift, 8 ); table_cook_put( at + 1304, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.drift, 8 );
+        table_cook_put( at + 1304, bits, 8, order );
+    }
     table_cook_put( at + 1312, (uint64_t) value.wide_key, 8, order );
     table_cook_put( at + 1320, (uint64_t) value.flux, 8, order );
     if ( !TableFloatFinite( value.ping ) ) { return false; } // a NaN or an infinity is refused (§3.3)

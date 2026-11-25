@@ -9731,10 +9731,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_target_lock = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_target_lock = bool_byte != 0;
                 }
                 break;
             }
@@ -9758,10 +9761,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.predicted_explode = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.predicted_explode = bool_byte != 0;
                 }
                 break;
             }
@@ -11304,10 +11310,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_target_lock = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_target_lock = bool_byte != 0;
                 }
                 break;
             }
@@ -15004,7 +15013,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.scale = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.scale = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -15028,7 +15040,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.scale = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.scale = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -16273,7 +16288,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.scale = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.scale = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -16297,7 +16315,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.scale = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.scale = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -17620,7 +17641,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.t = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.t = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -17644,7 +17668,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.t = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.t = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -18760,7 +18787,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.t = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.t = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -18784,7 +18814,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.t = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.t = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22464,7 +22497,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.x = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.x = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22488,7 +22524,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.x = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.x = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22508,7 +22547,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.y = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.y = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22532,7 +22574,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.y = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.y = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22552,7 +22597,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.z = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.z = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22576,7 +22624,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.z = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.z = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -23279,7 +23330,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.x = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.x = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -23303,7 +23357,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.x = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.x = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -23323,7 +23380,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.y = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.y = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -23347,7 +23407,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.y = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.y = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -23367,7 +23430,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.z = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.z = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -23391,7 +23457,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.z = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.z = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -23411,7 +23480,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.w = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.w = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -23435,7 +23507,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.w = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.w = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -24408,9 +24483,21 @@ inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( ( (uint64_t) value.flags >> 4 ) != 0 ) { value.flags &= 0xfull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
-    if ( (uint64_t) value.ship_type > 3u ) { value.ship_type = ShipType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( ( (uint64_t) value.flags >> 4 ) != 0 )
+    {
+        value.flags &= 0xfull;
+        oor_count++;
+    } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+    if ( (uint64_t) value.ship_type > 3u )
+    {
+        value.ship_type = ShipType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderTurret's read-side bounds, CHECKED: true when every clamp below would
@@ -24439,7 +24526,11 @@ inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CL
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderMissile's read-side bounds, CHECKED: true when every clamp below would
@@ -24470,8 +24561,16 @@ inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & TABLE_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.missile_type > 2u ) { value.missile_type = MissileType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.missile_type > 2u )
+    {
+        value.missile_type = MissileType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderDynamicProp's read-side bounds, CHECKED: true when every clamp below would
@@ -24502,8 +24601,16 @@ inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t 
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.prop_type > 3u )
+    {
+        value.prop_type = PropType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderStaticProp's read-side bounds, CHECKED: true when every clamp below would
@@ -24534,8 +24641,16 @@ inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & 
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.prop_type > 3u )
+    {
+        value.prop_type = PropType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderCosmeticProp's read-side bounds, CHECKED: true when every clamp below would
@@ -24566,8 +24681,16 @@ inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.prop_type > 3u )
+    {
+        value.prop_type = PropType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderLaser's read-side bounds, CHECKED: true when every clamp below would
@@ -24598,8 +24721,16 @@ inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAM
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.laser_type > 2u ) { value.laser_type = LaserType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.laser_type > 2u )
+    {
+        value.laser_type = LaserType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderExplosion's read-side bounds, CHECKED: true when every clamp below would
@@ -24630,8 +24761,16 @@ inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & TA
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.explosion_type > 2u ) { value.explosion_type = ExplosionType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.explosion_type > 2u )
+    {
+        value.explosion_type = ExplosionType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderFrame's read-side bounds, CHECKED: true when every clamp below would
@@ -30898,7 +31037,11 @@ inline bool RenderCameraCookBody( uint8_t * at, const RenderCamera & value, Tabl
     table_cook_put( at + 60, (uint64_t) value.camera_type, 4, order );
     table_cook_put( at + 64, (uint64_t) value.target_object_id, 4, order );
     if ( !TableFloatFinite( value.fov ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.fov, 4 ); table_cook_put( at + 68, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.fov, 4 );
+        table_cook_put( at + 68, (uint64_t) bits, 4, order );
+    }
     return true;
 }
 
@@ -30910,7 +31053,11 @@ inline bool RenderShipCookBody( uint8_t * at, const RenderShip & value, TableByt
     table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.target_object_id, 4, order );
     if ( !TableFloatFinite( value.thrust ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.thrust, 4 ); table_cook_put( at + 72, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.thrust, 4 );
+        table_cook_put( at + 72, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 76, (uint64_t) value.object_sequence, 1, order );
     table_cook_put( at + 77, (uint64_t) value.ship_type, 1, order );
     table_cook_put( at + 78, (uint64_t) value.team, 1, order );
@@ -30962,7 +31109,11 @@ inline bool RenderStaticPropCookBody( uint8_t * at, const RenderStaticProp & val
     if ( !RenderVector3CookBody( at + 0, value.position, order ) ) { return false; }
     if ( !RenderQuaternionCookBody( at + 24, value.rotation, order ) ) { return false; }
     if ( !TableFloatFinite( value.scale ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.scale, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.scale, 8 );
+        table_cook_put( at + 56, bits, 8, order );
+    }
     table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 72, (uint64_t) value.static_prop_id, 4, order );
     table_cook_put( at + 76, (uint64_t) value.prop_type, 1, order );
@@ -30975,7 +31126,11 @@ inline bool RenderCosmeticPropCookBody( uint8_t * at, const RenderCosmeticProp &
     if ( !RenderVector3CookBody( at + 0, value.position, order ) ) { return false; }
     if ( !RenderQuaternionCookBody( at + 24, value.rotation, order ) ) { return false; }
     if ( !TableFloatFinite( value.scale ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.scale, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.scale, 8 );
+        table_cook_put( at + 56, bits, 8, order );
+    }
     table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 72, (uint64_t) value.cosmetic_prop_id, 4, order );
     table_cook_put( at + 76, (uint64_t) value.prop_sequence, 1, order );
@@ -30989,7 +31144,11 @@ inline bool RenderLaserCookBody( uint8_t * at, const RenderLaser & value, TableB
     if ( !RenderVector3CookBody( at + 0, value.start, order ) ) { return false; }
     if ( !RenderVector3CookBody( at + 24, value.finish, order ) ) { return false; }
     if ( !TableFloatFinite( value.t ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.t, 8 ); table_cook_put( at + 48, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.t, 8 );
+        table_cook_put( at + 48, bits, 8, order );
+    }
     table_cook_put( at + 56, (uint64_t) value.laser_id, 4, order );
     table_cook_put( at + 60, (uint64_t) value.laser_type, 1, order );
     table_cook_put( at + 61, (uint64_t) value.team, 1, order );
@@ -31001,7 +31160,11 @@ inline bool RenderExplosionCookBody( uint8_t * at, const RenderExplosion & value
     if ( !RenderVector3CookBody( at + 0, value.position, order ) ) { return false; }
     if ( !RenderQuaternionCookBody( at + 24, value.rotation, order ) ) { return false; }
     if ( !TableFloatFinite( value.t ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.t, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.t, 8 );
+        table_cook_put( at + 56, bits, 8, order );
+    }
     table_cook_put( at + 64, (uint64_t) value.explosion_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.parent_object_id, 4, order );
     table_cook_put( at + 72, (uint64_t) value.explosion_type, 1, order );
@@ -31090,24 +31253,52 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
 inline bool RenderVector3CookBody( uint8_t * at, const RenderVector3 & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.x, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.x, 8 );
+        table_cook_put( at + 0, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.y, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.y, 8 );
+        table_cook_put( at + 8, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.z, 8 ); table_cook_put( at + 16, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.z, 8 );
+        table_cook_put( at + 16, bits, 8, order );
+    }
     return true;
 }
 
 inline bool RenderQuaternionCookBody( uint8_t * at, const RenderQuaternion & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.x, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.x, 8 );
+        table_cook_put( at + 0, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.y, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.y, 8 );
+        table_cook_put( at + 8, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.z, 8 ); table_cook_put( at + 16, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.z, 8 );
+        table_cook_put( at + 16, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.w ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.w, 8 ); table_cook_put( at + 24, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.w, 8 );
+        table_cook_put( at + 24, bits, 8, order );
+    }
     return true;
 }
 

@@ -11760,10 +11760,13 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.active = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.active = bool_byte != 0;
                 }
                 break;
             }
@@ -11817,10 +11820,13 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_target = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_target = bool_byte != 0;
                 }
                 break;
             }
@@ -13215,10 +13221,13 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.active = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.active = bool_byte != 0;
                 }
                 break;
             }
@@ -13272,10 +13281,13 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_target = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_target = bool_byte != 0;
                 }
                 break;
             }
@@ -13842,11 +13854,19 @@ inline bool PatrolCookBody( const Ctx & ctx, const TableCookRegion & region, uin
     (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, (uint64_t) ( value.active ? 1 : 0 ), 1, order );
     if ( !TableFloatFinite( value.speed ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.speed, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.speed, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 8, (uint64_t) ( value.has_target ? 1 : 0 ), 1, order );
     table_cook_put( at + 12, (uint64_t) value.target_id, 4, order );
     if ( !TableFloatFinite( value.wander ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.wander, 4 ); table_cook_put( at + 16, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.wander, 4 );
+        table_cook_put( at + 16, (uint64_t) bits, 4, order );
+    }
     table_cook_bytes( at + 20, value.note, value.note_length, 9 );
     table_cook_put( at + 32, (uint64_t) (uint32_t) value.note_length, 4, order );
     return true;

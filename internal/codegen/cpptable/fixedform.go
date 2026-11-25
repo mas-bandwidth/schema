@@ -1559,8 +1559,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 				if g.fixedCheck {
 					g.pf("%sbad |= (int) ( (uint64_t) %s.type > %du );\n", ind, expr, r.Max)
 				} else {
-					g.pf("%sif ( (uint64_t) %s.type > %du ) { %s.type = %sType::None; oor_count++; }\n",
-						ind, expr, r.Max, expr, f.Type.Name)
+					g.emitIfBlock(ind, fmt.Sprintf("if ( (uint64_t) %s.type > %du )", expr, r.Max), fmt.Sprintf("%s.type = %sType::None; oor_count++;", expr, f.Type.Name), "")
 				}
 			}
 			if !fixedClampNeededUnionArm(r) {
@@ -1591,8 +1590,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 				g.pf("%sbad |= (int) ( ( (uint64_t) %s >> %d ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)\n", ind, expr, r.WireBits)
 				return
 			}
-			g.pf("%sif ( ( (uint64_t) %s >> %d ) != 0 ) { %s &= 0x%xull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)\n",
-				ind, expr, r.WireBits, expr, (uint64(1)<<uint(r.WireBits))-1)
+			g.emitIfBlock(ind, fmt.Sprintf("if ( ( (uint64_t) %s >> %d ) != 0 )", expr, r.WireBits), fmt.Sprintf("%s &= 0x%xull; oor_count++;", expr, (uint64(1)<<uint(r.WireBits))-1), " // a mask bit at or above W (docs/SPEC-TABLES.md §4)")
 			return
 		case *ir.Enum:
 			// AN ORDINAL PAST THE ENUM'S TOP VALUE is not a variant this
@@ -1623,8 +1621,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 				g.pf("%sbad |= (int) ( (uint64_t) %s > %du );\n", ind, expr, r.Max)
 				return
 			}
-			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; oor_count++; }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
+			g.emitIfBlock(ind, fmt.Sprintf("if ( (uint64_t) %s > %du )", expr, r.Max), fmt.Sprintf("%s = %s::None; oor_count++;", expr, f.Type.Name), "")
 			return
 		}
 		return

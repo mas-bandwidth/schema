@@ -11435,7 +11435,12 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                                 value.carry.type = CarryType::Leaf;
                                 LeafLoadBody( sub, nodes, value.carry.leaf );
                                 if ( nodes.refused ) { return false; }
-                                if ( sub.offset != sub.size ) { value.carry.type = CarryType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.carry.type = CarryType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfd4d194e1652b207ull: // plain
@@ -11474,7 +11479,12 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                                     break;
                                 }
                                 value.carry.type = CarryType::Plain;
-                                if ( sub.size != 4 ) { value.carry.type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.carry.type = CarryType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.carry.type = CarryType::None;
@@ -11996,12 +12006,20 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = CarryType::Leaf;
                                             LeafLoadBody( elem_arm, nodes, value.entries[(int32_t) i].leaf );
                                             if ( nodes.refused ) { return false; }
-                                            if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xfd4d194e1652b207ull: // plain
@@ -12032,10 +12050,18 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = CarryType::Plain;
-                                            if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.entries[(int32_t) i].type = CarryType::None;
@@ -12048,7 +12074,7 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                                         }
                                         default:
                                             r.report->unknown++;
-                                             break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -12451,12 +12477,20 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                                             {
                                                 if ( elem_arm_kind_links != 13 )
                                                 {
-                                                    ( *slot ).type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = CarryType::Leaf;
                                                 LeafLoadBody( elem_arm_links, nodes, ( *slot ).leaf );
                                                 if ( nodes.refused ) { return false; }
-                                                if ( elem_arm_links.offset != elem_arm_links.size ) { ( *slot ).type = CarryType::None; r.report->damaged = true; break; }
+                                                if ( elem_arm_links.offset != elem_arm_links.size )
+                                                {
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xfd4d194e1652b207ull: // plain
@@ -12487,10 +12521,18 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = CarryType::Plain;
-                                                if ( elem_arm_links.size != 4 ) { ( *slot ).type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_links.size != 4 )
+                                                {
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_links.has( 4 ) )
                                                 {
                                                     ( *slot ).type = CarryType::None;
@@ -12503,7 +12545,7 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_links;
                                     }
@@ -18568,7 +18610,12 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                                 value.carry.type = CarryType::Leaf;
                                 LeafLoadBodyRetain( sub, nodes, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                                 if ( nodes.refused ) { return false; }
-                                if ( sub.offset != sub.size ) { value.carry.type = CarryType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.carry.type = CarryType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfd4d194e1652b207ull: // plain
@@ -18607,7 +18654,12 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                                     break;
                                 }
                                 value.carry.type = CarryType::Plain;
-                                if ( sub.size != 4 ) { value.carry.type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.carry.type = CarryType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.carry.type = CarryType::None;
@@ -18625,7 +18677,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.carry.type = CarryType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -19139,12 +19192,20 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = CarryType::Leaf;
                                             LeafLoadBodyRetain( elem_arm, nodes, value.entries[(int32_t) i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) );
                                             if ( nodes.refused ) { return false; }
-                                            if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xfd4d194e1652b207ull: // plain
@@ -19175,10 +19236,18 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = CarryType::Plain;
-                                            if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.entries[(int32_t) i].type = CarryType::None;
@@ -19191,7 +19260,8 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                                         }
                                         default:
                                             r.report->unknown++;
-                                             r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            r.report->retain_lost++;
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -19604,12 +19674,20 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                                             {
                                                 if ( elem_arm_kind_links != 13 )
                                                 {
-                                                    ( *slot ).type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = CarryType::Leaf;
                                                 LeafLoadBodyRetain( elem_arm_links, nodes, ( *slot ).leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) );
                                                 if ( nodes.refused ) { return false; }
-                                                if ( elem_arm_links.offset != elem_arm_links.size ) { ( *slot ).type = CarryType::None; r.report->damaged = true; break; }
+                                                if ( elem_arm_links.offset != elem_arm_links.size )
+                                                {
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xfd4d194e1652b207ull: // plain
@@ -19640,10 +19718,18 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = CarryType::Plain;
-                                                if ( elem_arm_links.size != 4 ) { ( *slot ).type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_links.size != 4 )
+                                                {
+                                                    ( *slot ).type = CarryType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_links.has( 4 ) )
                                                 {
                                                     ( *slot ).type = CarryType::None;
@@ -19656,7 +19742,8 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_links;
                                     }
@@ -21811,8 +21898,10 @@ inline bool HolderCookBody( const Ctx & ctx, const TableCookRegion & region, uin
         table_cook_put( at + 0, (uint64_t) value.carry.type, 1, order ); // the tag; None is the tag alone
         switch ( value.carry.type )
         {
-            case CarryType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8, value.carry.leaf, order ) ) { return false; } break;
-                case CarryType::Plain:
+            case CarryType::Leaf:
+                if ( !LeafCookBody( ctx, region, at + 0 + 8, value.carry.leaf, order ) ) { return false; }
+                break;
+            case CarryType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.carry.plain, 4, order );
                 break;
@@ -21837,8 +21926,10 @@ inline bool HandCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
             table_cook_put( at + 0 + i * 24, (uint64_t) value.entries[i].type, 1, order ); // the tag; None is the tag alone
             switch ( value.entries[i].type )
             {
-                case CarryType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + i * 24 + 8, value.entries[i].leaf, order ) ) { return false; } break;
-                    case CarryType::Plain:
+                case CarryType::Leaf:
+                    if ( !LeafCookBody( ctx, region, at + 0 + i * 24 + 8, value.entries[i].leaf, order ) ) { return false; }
+                    break;
+                case CarryType::Plain:
                 {
                     table_cook_put( at + 0 + i * 24 + 8, (uint64_t) value.entries[i].plain, 4, order );
                     break;
@@ -21986,8 +22077,10 @@ inline bool ChainCookExtent( const Ctx & ctx, const TableCookRegion & region, ui
                 table_cook_put( array + i * 24, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                    case CarryType::Leaf: if ( !LeafCookBody( ctx, region, array + i * 24 + 8, cursor[i].leaf, order ) ) { return false; } break;
-                        case CarryType::Plain:
+                    case CarryType::Leaf:
+                        if ( !LeafCookBody( ctx, region, array + i * 24 + 8, cursor[i].leaf, order ) ) { return false; }
+                        break;
+                    case CarryType::Plain:
                     {
                         table_cook_put( array + i * 24 + 8, (uint64_t) cursor[i].plain, 4, order );
                         break;

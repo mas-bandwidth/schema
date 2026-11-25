@@ -13216,7 +13216,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -13296,7 +13296,12 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                                 value.arm.type = ForceType::Squad;
                                 SquadLoadBody( sub, nodes, value.arm.squad );
                                 if ( nodes.refused ) { return false; }
-                                if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.arm.type = ForceType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfd4d194e1652b207ull: // plain
@@ -13335,7 +13340,12 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                                     break;
                                 }
                                 value.arm.type = ForceType::Plain;
-                                if ( sub.size != 4 ) { value.arm.type = ForceType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.arm.type = ForceType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.arm.type = ForceType::None;
@@ -17271,7 +17281,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -17352,7 +17362,12 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                                 value.arm.type = ForceType::Squad;
                                 SquadLoadBodyRetain( sub, nodes, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) );
                                 if ( nodes.refused ) { return false; }
-                                if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.arm.type = ForceType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfd4d194e1652b207ull: // plain
@@ -17391,7 +17406,12 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                                     break;
                                 }
                                 value.arm.type = ForceType::Plain;
-                                if ( sub.size != 4 ) { value.arm.type = ForceType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.arm.type = ForceType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.arm.type = ForceType::None;
@@ -17409,7 +17429,8 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.arm.type = ForceType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -18549,8 +18570,10 @@ inline bool DepthCookBody( const Ctx & ctx, const TableCookRegion & region, uint
         table_cook_put( at + 104, (uint64_t) value.arm.type, 1, order ); // the tag; None is the tag alone
         switch ( value.arm.type )
         {
-            case ForceType::Squad: if ( !SquadCookBody( ctx, region, at + 104 + 8, value.arm.squad, order ) ) { return false; } break;
-                case ForceType::Plain:
+            case ForceType::Squad:
+                if ( !SquadCookBody( ctx, region, at + 104 + 8, value.arm.squad, order ) ) { return false; }
+                break;
+            case ForceType::Plain:
             {
                 table_cook_put( at + 104 + 8, (uint64_t) value.arm.plain, 4, order );
                 break;

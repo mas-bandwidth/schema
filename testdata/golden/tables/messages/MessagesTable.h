@@ -13270,7 +13270,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                 }
                                 value.origin.type = OriginType::User;
                                 UserLoadBody( sub, value.origin.user );
-                                if ( sub.offset != sub.size ) { value.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.origin.type = OriginType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xacfc82293c04634aull: // script
@@ -13286,7 +13291,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                 }
                                 value.origin.type = OriginType::Script;
                                 ScriptLoadBody( sub, value.origin.script );
-                                if ( sub.offset != sub.size ) { value.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.origin.type = OriginType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x77af701956600122ull: // pid
@@ -13331,7 +13341,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                     break;
                                 }
                                 value.origin.type = OriginType::Pid;
-                                if ( sub.size != 4 ) { value.origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.origin.type = OriginType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.origin.type = OriginType::None;
@@ -13501,22 +13516,38 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::User;
                                             UserLoadBody( elem_arm, value.origins[(int32_t) i].user );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.origins[(int32_t) i].type = OriginType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xacfc82293c04634aull: // script
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::Script;
                                             ScriptLoadBody( elem_arm, value.origins[(int32_t) i].script );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.origins[(int32_t) i].type = OriginType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0x77af701956600122ull: // pid
@@ -13553,10 +13584,18 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::Pid;
-                                            if ( elem_arm.size != 4 ) { value.origins[(int32_t) i].type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.origins[(int32_t) i].type = OriginType::None;
@@ -13577,7 +13616,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                         {
                                             if ( elem_arm_kind != 12 )
                                             {
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::Note;
                                             memset( (void *) &value.origins[(int32_t) i].note, 0, sizeof( value.origins[(int32_t) i].note ) ); // selection establishes the arm (§2.6)
@@ -13606,7 +13648,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                         }
                                         default:
                                             r.report->unknown++;
-                                             break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -15739,7 +15781,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                 }
                                 value.body.type = EditBodyType::Insert;
                                 InsertTextLoadBody( sub, value.body.insert );
-                                if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = EditBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfff83d536a1d457dull: // remove
@@ -15755,7 +15802,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                 }
                                 value.body.type = EditBodyType::Remove;
                                 RemoveTextLoadBody( sub, value.body.remove );
-                                if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = EditBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xb1e5e28e4479a274ull: // tally
@@ -15806,7 +15858,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                     break;
                                 }
                                 value.body.type = EditBodyType::Tally;
-                                if ( sub.size != 4 ) { value.body.type = EditBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.body.type = EditBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.body.type = EditBodyType::None;
@@ -16725,12 +16782,19 @@ inline bool EditLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                         kept_2 = 4;
                                         report->refused = true;
                                         report->refuse_reason = out_of_range;
-                                        } else { kept_2 = (int32_t) n_2;
+                                    }
+                                    else
+                                    {
+                                        kept_2 = (int32_t) n_2;
                                     }
                                     for ( uint64_t i_2 = 0; i_2 < n_2; i_2++ )
                                     {
                                         uint64_t by_2 = 0;
-                                        if ( !r.get( by_2, 8 ) ) { report->damaged = true; return false; }
+                                        if ( !r.get( by_2, 8 ) )
+                                        {
+                                            report->damaged = true;
+                                            return false;
+                                        }
                                         if ( (int32_t) i_2 < kept_2 ) { value.body.blob.value[i_2] = (uint8_t) by_2; }
                                     }
                                     value.body.blob.value_length = kept_2;
@@ -17795,10 +17859,13 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.force = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.force = bool_byte != 0;
                 }
                 break;
             }
@@ -18946,22 +19013,38 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Insert;
                                             InsertTextLoadBody( elem_arm, value.pending[(int32_t) i].insert );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xfff83d536a1d457dull: // remove
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Remove;
                                             RemoveTextLoadBody( elem_arm, value.pending[(int32_t) i].remove );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xb1e5e28e4479a274ull: // tally
@@ -19004,10 +19087,18 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Tally;
-                                            if ( elem_arm.size != 4 ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.pending[(int32_t) i].type = EditBodyType::None;
@@ -19034,7 +19125,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Marks;
                                             memset( (void *) &value.pending[(int32_t) i].marks, 0, sizeof( value.pending[(int32_t) i].marks ) ); // selection establishes the arm (§2.6)
@@ -19119,7 +19213,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Blob;
                                             memset( (void *) &value.pending[(int32_t) i].blob, 0, sizeof( value.pending[(int32_t) i].blob ) ); // selection establishes the arm (§2.6)
@@ -19168,7 +19265,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         {
                                             if ( elem_arm_kind != 30 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Mode;
                                             {
@@ -19202,7 +19302,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         }
                                         default:
                                             r.report->unknown++;
-                                             break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -20273,12 +20373,19 @@ inline bool TransactionLoadMessageBody( TableBitReader & r, const TableVocabular
                                                 kept_3 = 4;
                                                 report->refused = true;
                                                 report->refuse_reason = out_of_range;
-                                                } else { kept_3 = (int32_t) n_3;
+                                            }
+                                            else
+                                            {
+                                                kept_3 = (int32_t) n_3;
                                             }
                                             for ( uint64_t i_3 = 0; i_3 < n_3; i_3++ )
                                             {
                                                 uint64_t by_3 = 0;
-                                                if ( !r.get( by_3, 8 ) ) { report->damaged = true; return false; }
+                                                if ( !r.get( by_3, 8 ) )
+                                                {
+                                                    report->damaged = true;
+                                                    return false;
+                                                }
                                                 if ( (int32_t) i_3 < kept_3 ) { ( in_bounds ? value.pending[i] : scratch ).blob.value[i_3] = (uint8_t) by_3; }
                                             }
                                             ( in_bounds ? value.pending[i] : scratch ).blob.value_length = kept_3;
@@ -21882,7 +21989,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 }
                                 value.body.type = ToolBodyType::Open;
                                 OpenDocumentLoadBody( sub, value.body.open );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x096a5e18bf857c28ull: // save
@@ -21898,7 +22010,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 }
                                 value.body.type = ToolBodyType::Save;
                                 SaveDocumentLoadBody( sub, value.body.save );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xed96bbf4dc6ff587ull: // transact
@@ -21914,7 +22031,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 }
                                 value.body.type = ToolBodyType::Transact;
                                 TransactionLoadBody( sub, value.body.transact );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xbf30e00dc53307a9ull: // ping
@@ -21930,7 +22052,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 }
                                 value.body.type = ToolBodyType::Ping;
                                 PingLoadBody( sub, value.body.ping );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xb55a6b90e87557f8ull: // caps
@@ -21975,7 +22102,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                     break;
                                 }
                                 value.body.type = ToolBodyType::Caps;
-                                if ( sub.size != 8 ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 8 )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 8 ) )
                                 {
                                     value.body.type = ToolBodyType::None;
@@ -22130,22 +22262,38 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::User;
                                                 UserLoadBody( arm_inner, value.body.origin.user );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xacfc82293c04634aull: // script
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Script;
                                                 ScriptLoadBody( arm_inner, value.body.origin.script );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0x77af701956600122ull: // pid
@@ -22182,10 +22330,18 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Pid;
-                                                if ( arm_inner.size != 4 ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( arm_inner.size != 4 )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !arm_inner.has( 4 ) )
                                                 {
                                                     value.body.origin.type = OriginType::None;
@@ -22206,7 +22362,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             {
                                                 if ( arm_inner_kind != 12 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Note;
                                                 memset( (void *) &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
@@ -22235,7 +22394,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name
+                                                break; // an arm this reader cannot name
                                         }
                                         sub.offset += (int64_t) arm_inner_len;
                                     }
@@ -22379,44 +22538,76 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Open;
                                             OpenDocumentLoadBody( elem_arm, value.history[(int32_t) i].open );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0x096a5e18bf857c28ull: // save
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Save;
                                             SaveDocumentLoadBody( elem_arm, value.history[(int32_t) i].save );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xed96bbf4dc6ff587ull: // transact
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Transact;
                                             TransactionLoadBody( elem_arm, value.history[(int32_t) i].transact );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xbf30e00dc53307a9ull: // ping
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Ping;
                                             PingLoadBody( elem_arm, value.history[(int32_t) i].ping );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xb55a6b90e87557f8ull: // caps
@@ -22453,10 +22644,18 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Caps;
-                                            if ( elem_arm.size != 8 ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 8 )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 8 ) )
                                             {
                                                 value.history[(int32_t) i].type = ToolBodyType::None;
@@ -22477,7 +22676,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Spans;
                                             memset( (void *) &value.history[(int32_t) i].spans, 0, sizeof( value.history[(int32_t) i].spans ) ); // selection establishes the arm (§2.6)
@@ -22559,7 +22761,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         {
                                             if ( elem_arm_kind != 15 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Origin;
                                             {
@@ -22601,22 +22806,38 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         {
                                                             if ( arm_inner_kinda != 13 )
                                                             {
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::User;
                                                             UserLoadBody( arm_innera, value.history[(int32_t) i].origin.user );
-                                                            if ( arm_innera.offset != arm_innera.size ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                            if ( arm_innera.offset != arm_innera.size )
+                                                            {
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->damaged = true;
+                                                                break;
+                                                            }
                                                             break;
                                                         }
                                                         case 0xacfc82293c04634aull: // script
                                                         {
                                                             if ( arm_inner_kinda != 13 )
                                                             {
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::Script;
                                                             ScriptLoadBody( arm_innera, value.history[(int32_t) i].origin.script );
-                                                            if ( arm_innera.offset != arm_innera.size ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                            if ( arm_innera.offset != arm_innera.size )
+                                                            {
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->damaged = true;
+                                                                break;
+                                                            }
                                                             break;
                                                         }
                                                         case 0x77af701956600122ull: // pid
@@ -22653,10 +22874,18 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                                     r.report->widened++;
                                                                     break;
                                                                 }
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::Pid;
-                                                            if ( arm_innera.size != 4 ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                            if ( arm_innera.size != 4 )
+                                                            {
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->damaged = true;
+                                                                break;
+                                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                             if ( !arm_innera.has( 4 ) )
                                                             {
                                                                 value.history[(int32_t) i].origin.type = OriginType::None;
@@ -22677,7 +22906,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         {
                                                             if ( arm_inner_kinda != 12 )
                                                             {
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::Note;
                                                             memset( (void *) &value.history[(int32_t) i].origin.note, 0, sizeof( value.history[(int32_t) i].origin.note ) ); // selection establishes the arm (§2.6)
@@ -22706,7 +22938,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         }
                                                         default:
                                                             r.report->unknown++;
-                                                             break; // an arm this reader cannot name
+                                                            break; // an arm this reader cannot name
                                                     }
                                                     elem_arm.offset += (int64_t) arm_inner_lena;
                                                 }
@@ -22717,7 +22949,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         {
                                             if ( elem_arm_kind != 32 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Ack;
                                             if ( elem_arm.size != 0 )
@@ -22730,7 +22965,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         }
                                         default:
                                             r.report->unknown++;
-                                             break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -25610,7 +25845,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                 }
                                 value.body.type = ToolBodyType::Open;
                                 OpenDocumentLoadBody( sub, value.body.open );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x096a5e18bf857c28ull: // save
@@ -25626,7 +25866,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                 }
                                 value.body.type = ToolBodyType::Save;
                                 SaveDocumentLoadBody( sub, value.body.save );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xed96bbf4dc6ff587ull: // transact
@@ -25642,7 +25887,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                 }
                                 value.body.type = ToolBodyType::Transact;
                                 TransactionLoadBody( sub, value.body.transact );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xbf30e00dc53307a9ull: // ping
@@ -25658,7 +25908,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                 }
                                 value.body.type = ToolBodyType::Ping;
                                 PingLoadBody( sub, value.body.ping );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xb55a6b90e87557f8ull: // caps
@@ -25703,7 +25958,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                     break;
                                 }
                                 value.body.type = ToolBodyType::Caps;
-                                if ( sub.size != 8 ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 8 )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 8 ) )
                                 {
                                     value.body.type = ToolBodyType::None;
@@ -25858,22 +26118,38 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::User;
                                                 UserLoadBody( arm_inner, value.body.origin.user );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xacfc82293c04634aull: // script
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Script;
                                                 ScriptLoadBody( arm_inner, value.body.origin.script );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0x77af701956600122ull: // pid
@@ -25910,10 +26186,18 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Pid;
-                                                if ( arm_inner.size != 4 ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( arm_inner.size != 4 )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !arm_inner.has( 4 ) )
                                                 {
                                                     value.body.origin.type = OriginType::None;
@@ -25934,7 +26218,10 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                             {
                                                 if ( arm_inner_kind != 12 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Note;
                                                 memset( (void *) &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
@@ -25963,7 +26250,7 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name
+                                                break; // an arm this reader cannot name
                                         }
                                         sub.offset += (int64_t) arm_inner_len;
                                     }
@@ -27972,7 +28259,11 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_
     {
         damaged++;
     }
-    if ( (uint64_t) value.origin.type > 4u ) { value.origin.type = OriginType::None; oor_count++; }
+    if ( (uint64_t) value.origin.type > 4u )
+    {
+        value.origin.type = OriginType::None;
+        oor_count++;
+    }
     switch ( value.origin.type )
     {
         case OriginType::User:
@@ -28003,7 +28294,11 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_
     }
     for ( int64_t i = 0; i < (int64_t) value.origins_count; ++i )
     {
-        if ( (uint64_t) value.origins[i].type > 4u ) { value.origins[i].type = OriginType::None; oor_count++; }
+        if ( (uint64_t) value.origins[i].type > 4u )
+        {
+            value.origins[i].type = OriginType::None;
+            oor_count++;
+        }
         switch ( value.origins[i].type )
         {
             case OriginType::User:
@@ -28037,7 +28332,11 @@ inline void InsertTextFixedClampBody( InsertText & value, int32_t & TABLE_CLAMP_
     {
         for ( int64_t i = 0; i < (int64_t) value.modes_count; ++i )
         {
-            if ( (uint64_t) value.modes[i] > 2u ) { value.modes[i] = Mode::None; oor_count++; }
+            if ( (uint64_t) value.modes[i] > 2u )
+            {
+                value.modes[i] = Mode::None;
+                oor_count++;
+            }
         }
     }
 }
@@ -28106,7 +28405,11 @@ inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT oor
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.body.type > 6u ) { value.body.type = EditBodyType::None; oor_count++; }
+    if ( (uint64_t) value.body.type > 6u )
+    {
+        value.body.type = EditBodyType::None;
+        oor_count++;
+    }
     switch ( value.body.type )
     {
         case EditBodyType::Insert:
@@ -28122,7 +28425,11 @@ inline void EditFixedClampBody( Edit & value, int32_t & TABLE_CLAMP_RESTRICT oor
         }
         case EditBodyType::Mode:
         {
-            if ( (uint64_t) value.body.mode > 2u ) { value.body.mode = Mode::None; oor_count++; }
+            if ( (uint64_t) value.body.mode > 2u )
+            {
+                value.body.mode = Mode::None;
+                oor_count++;
+            }
             break;
         }
         default: break;
@@ -28161,7 +28468,11 @@ inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & TABLE_CL
     {
         damaged++;
     }
-    if ( (uint64_t) value.mode > 2u ) { value.mode = Mode::None; oor_count++; }
+    if ( (uint64_t) value.mode > 2u )
+    {
+        value.mode = Mode::None;
+        oor_count++;
+    }
 }
 
 // SaveDocument's read-side bounds, CHECKED: true when every clamp below would
@@ -28286,7 +28597,11 @@ inline void TransactionFixedClampBody( Transaction & value, int32_t & TABLE_CLAM
     }
     for ( int64_t i = 0; i < 2; ++i )
     {
-        if ( (uint64_t) value.pending[i].type > 6u ) { value.pending[i].type = EditBodyType::None; oor_count++; }
+        if ( (uint64_t) value.pending[i].type > 6u )
+        {
+            value.pending[i].type = EditBodyType::None;
+            oor_count++;
+        }
         switch ( value.pending[i].type )
         {
             case EditBodyType::Insert:
@@ -28302,7 +28617,11 @@ inline void TransactionFixedClampBody( Transaction & value, int32_t & TABLE_CLAM
             }
             case EditBodyType::Mode:
             {
-                if ( (uint64_t) value.pending[i].mode > 2u ) { value.pending[i].mode = Mode::None; oor_count++; }
+                if ( (uint64_t) value.pending[i].mode > 2u )
+                {
+                    value.pending[i].mode = Mode::None;
+                    oor_count++;
+                }
                 break;
             }
             default: break;
@@ -28584,7 +28903,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.body.type > 8u ) { value.body.type = ToolBodyType::None; oor_count++; }
+    if ( (uint64_t) value.body.type > 8u )
+    {
+        value.body.type = ToolBodyType::None;
+        oor_count++;
+    }
     switch ( value.body.type )
     {
         case ToolBodyType::Open:
@@ -28604,12 +28927,20 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
         }
         case ToolBodyType::Caps:
         {
-            if ( ( (uint64_t) value.body.caps >> 2 ) != 0 ) { value.body.caps &= 0x3ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+            if ( ( (uint64_t) value.body.caps >> 2 ) != 0 )
+            {
+                value.body.caps &= 0x3ull;
+                oor_count++;
+            } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
             break;
         }
         case ToolBodyType::Origin:
         {
-            if ( (uint64_t) value.body.origin.type > 4u ) { value.body.origin.type = OriginType::None; oor_count++; }
+            if ( (uint64_t) value.body.origin.type > 4u )
+            {
+                value.body.origin.type = OriginType::None;
+                oor_count++;
+            }
             switch ( value.body.origin.type )
             {
                 case OriginType::User:
@@ -28644,7 +28975,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
     }
     for ( int64_t i = 0; i < (int64_t) value.history_count; ++i )
     {
-        if ( (uint64_t) value.history[i].type > 8u ) { value.history[i].type = ToolBodyType::None; oor_count++; }
+        if ( (uint64_t) value.history[i].type > 8u )
+        {
+            value.history[i].type = ToolBodyType::None;
+            oor_count++;
+        }
         switch ( value.history[i].type )
         {
             case ToolBodyType::Open:
@@ -28664,12 +28999,20 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
             }
             case ToolBodyType::Caps:
             {
-                if ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ) { value.history[i].caps &= 0x3ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+                if ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 )
+                {
+                    value.history[i].caps &= 0x3ull;
+                    oor_count++;
+                } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
             {
-                if ( (uint64_t) value.history[i].origin.type > 4u ) { value.history[i].origin.type = OriginType::None; oor_count++; }
+                if ( (uint64_t) value.history[i].origin.type > 4u )
+                {
+                    value.history[i].origin.type = OriginType::None;
+                    oor_count++;
+                }
                 switch ( value.history[i].origin.type )
                 {
                     case OriginType::User:
@@ -28714,7 +29057,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
     {
         for ( int64_t i = 0; i < 2; ++i )
         {
-            if ( (uint64_t) value.marks[i] > 2u ) { value.marks[i] = Mode::None; oor_count++; }
+            if ( (uint64_t) value.marks[i] > 2u )
+            {
+                value.marks[i] = Mode::None;
+                oor_count++;
+            }
         }
     }
 }
@@ -39614,7 +39961,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                 }
                                 value.origin.type = OriginType::User;
                                 UserLoadBodyRetain( sub, value.origin.user, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
-                                if ( sub.offset != sub.size ) { value.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.origin.type = OriginType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xacfc82293c04634aull: // script
@@ -39630,7 +39982,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                 }
                                 value.origin.type = OriginType::Script;
                                 ScriptLoadBodyRetain( sub, value.origin.script, retain, TableRetainStepInto( path, 2, (uint32_t) ( 1 ) ) );
-                                if ( sub.offset != sub.size ) { value.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.origin.type = OriginType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x77af701956600122ull: // pid
@@ -39675,7 +40032,12 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                     break;
                                 }
                                 value.origin.type = OriginType::Pid;
-                                if ( sub.size != 4 ) { value.origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.origin.type = OriginType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.origin.type = OriginType::None;
@@ -39735,7 +40097,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.origin.type = OriginType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -39848,22 +40211,38 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::User;
                                             UserLoadBodyRetain( elem_arm, value.origins[(int32_t) i].user, retain, TableRetainStepInto( TableRetainStepInto( path, 3, (uint32_t) ( i ) ), 3, (uint32_t) ( 0 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.origins[(int32_t) i].type = OriginType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xacfc82293c04634aull: // script
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::Script;
                                             ScriptLoadBodyRetain( elem_arm, value.origins[(int32_t) i].script, retain, TableRetainStepInto( TableRetainStepInto( path, 3, (uint32_t) ( i ) ), 3, (uint32_t) ( 1 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.origins[(int32_t) i].type = OriginType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0x77af701956600122ull: // pid
@@ -39900,10 +40279,18 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::Pid;
-                                            if ( elem_arm.size != 4 ) { value.origins[(int32_t) i].type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.origins[(int32_t) i].type = OriginType::None;
@@ -39924,7 +40311,10 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                         {
                                             if ( elem_arm_kind != 12 )
                                             {
-                                                value.origins[(int32_t) i].type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.origins[(int32_t) i].type = OriginType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.origins[(int32_t) i].type = OriginType::Note;
                                             memset( (void *) &value.origins[(int32_t) i].note, 0, sizeof( value.origins[(int32_t) i].note ) ); // selection establishes the arm (§2.6)
@@ -39953,7 +40343,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                         }
                                         default:
                                             r.report->unknown++;
-                                             r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            r.report->retain_lost++;
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -40058,7 +40449,8 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.modes[(int32_t) i] ) )
                                 {
                                     value.modes[(int32_t) i] = Mode::None;
-                                    r.report->unknown++; r.report->retain_lost++;
+                                    r.report->unknown++;
+                                    r.report->retain_lost++;
                                 }
                             }
                             decoded = i + 1;
@@ -40562,7 +40954,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                                 }
                                 value.body.type = EditBodyType::Insert;
                                 InsertTextLoadBodyRetain( sub, value.body.insert, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = EditBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfff83d536a1d457dull: // remove
@@ -40578,7 +40975,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                                 }
                                 value.body.type = EditBodyType::Remove;
                                 RemoveTextLoadBodyRetain( sub, value.body.remove, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = EditBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = EditBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xb1e5e28e4479a274ull: // tally
@@ -40629,7 +41031,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                                     break;
                                 }
                                 value.body.type = EditBodyType::Tally;
-                                if ( sub.size != 4 ) { value.body.type = EditBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.body.type = EditBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.body.type = EditBodyType::None;
@@ -40826,7 +41233,8 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                                     else if ( !TableEnumValue( r.ids->at( variant_ref ), value.body.mode ) )
                                     {
                                         value.body.mode = Mode::None;
-                                        r.report->unknown++; r.report->retain_lost++;
+                                        r.report->unknown++;
+                                        r.report->retain_lost++;
                                     }
                                     if ( sub.offset != sub.size )
                                     {
@@ -40844,7 +41252,8 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.body.type = EditBodyType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -41054,7 +41463,8 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBodyRetain( TableReader & r, OpenD
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.mode ) )
                 {
                     value.mode = Mode::None;
-                    r.report->unknown++; r.report->retain_lost++;
+                    r.report->unknown++;
+                    r.report->retain_lost++;
                 }
                 break;
             }
@@ -41246,10 +41656,13 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBodyRetain( TableReader & r, SaveD
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.force = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.force = bool_byte != 0;
                 }
                 break;
             }
@@ -41979,22 +42392,38 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Insert;
                                             InsertTextLoadBodyRetain( elem_arm, value.pending[(int32_t) i].insert, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 0 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xfff83d536a1d457dull: // remove
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Remove;
                                             RemoveTextLoadBodyRetain( elem_arm, value.pending[(int32_t) i].remove, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 1 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xb1e5e28e4479a274ull: // tally
@@ -42037,10 +42466,18 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Tally;
-                                            if ( elem_arm.size != 4 ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.pending[(int32_t) i].type = EditBodyType::None;
@@ -42067,7 +42504,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Marks;
                                             memset( (void *) &value.pending[(int32_t) i].marks, 0, sizeof( value.pending[(int32_t) i].marks ) ); // selection establishes the arm (§2.6)
@@ -42152,7 +42592,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Blob;
                                             memset( (void *) &value.pending[(int32_t) i].blob, 0, sizeof( value.pending[(int32_t) i].blob ) ); // selection establishes the arm (§2.6)
@@ -42201,7 +42644,10 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                         {
                                             if ( elem_arm_kind != 30 )
                                             {
-                                                value.pending[(int32_t) i].type = EditBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.pending[(int32_t) i].type = EditBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.pending[(int32_t) i].type = EditBodyType::Mode;
                                             {
@@ -42222,7 +42668,8 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.pending[(int32_t) i].mode ) )
                                                 {
                                                     value.pending[(int32_t) i].mode = Mode::None;
-                                                    r.report->unknown++; r.report->retain_lost++;
+                                                    r.report->unknown++;
+                                                    r.report->retain_lost++;
                                                 }
                                                 if ( elem_arm.offset != elem_arm.size )
                                                 {
@@ -42235,7 +42682,8 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                                         }
                                         default:
                                             r.report->unknown++;
-                                             r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            r.report->retain_lost++;
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -43623,7 +44071,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 }
                                 value.body.type = ToolBodyType::Open;
                                 OpenDocumentLoadBodyRetain( sub, value.body.open, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x096a5e18bf857c28ull: // save
@@ -43639,7 +44092,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 }
                                 value.body.type = ToolBodyType::Save;
                                 SaveDocumentLoadBodyRetain( sub, value.body.save, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xed96bbf4dc6ff587ull: // transact
@@ -43655,7 +44113,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 }
                                 value.body.type = ToolBodyType::Transact;
                                 TransactionLoadBodyRetain( sub, value.body.transact, retain, TableRetainStepInto( path, 1, (uint32_t) ( 2 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xbf30e00dc53307a9ull: // ping
@@ -43671,7 +44134,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 }
                                 value.body.type = ToolBodyType::Ping;
                                 PingLoadBodyRetain( sub, value.body.ping, retain, TableRetainStepInto( path, 1, (uint32_t) ( 3 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xb55a6b90e87557f8ull: // caps
@@ -43716,7 +44184,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                     break;
                                 }
                                 value.body.type = ToolBodyType::Caps;
-                                if ( sub.size != 8 ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 8 )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 8 ) )
                                 {
                                     value.body.type = ToolBodyType::None;
@@ -43871,22 +44344,38 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::User;
                                                 UserLoadBodyRetain( arm_inner, value.body.origin.user, retain, TableRetainStepInto( path, 1, (uint32_t) ( 6 ) ) );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xacfc82293c04634aull: // script
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Script;
                                                 ScriptLoadBodyRetain( arm_inner, value.body.origin.script, retain, TableRetainStepInto( path, 1, (uint32_t) ( 6 ) ) );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0x77af701956600122ull: // pid
@@ -43923,10 +44412,18 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Pid;
-                                                if ( arm_inner.size != 4 ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( arm_inner.size != 4 )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !arm_inner.has( 4 ) )
                                                 {
                                                     value.body.origin.type = OriginType::None;
@@ -43947,7 +44444,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                             {
                                                 if ( arm_inner_kind != 12 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Note;
                                                 memset( (void *) &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
@@ -43976,7 +44476,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name
                                         }
                                         sub.offset += (int64_t) arm_inner_len;
                                     }
@@ -44010,7 +44511,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.body.type = ToolBodyType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -44123,44 +44625,76 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Open;
                                             OpenDocumentLoadBodyRetain( elem_arm, value.history[(int32_t) i].open, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 0 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0x096a5e18bf857c28ull: // save
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Save;
                                             SaveDocumentLoadBodyRetain( elem_arm, value.history[(int32_t) i].save, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 1 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xed96bbf4dc6ff587ull: // transact
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Transact;
                                             TransactionLoadBodyRetain( elem_arm, value.history[(int32_t) i].transact, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 2 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xbf30e00dc53307a9ull: // ping
                                         {
                                             if ( elem_arm_kind != 13 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Ping;
                                             PingLoadBodyRetain( elem_arm, value.history[(int32_t) i].ping, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 3 ) ) );
-                                            if ( elem_arm.offset != elem_arm.size ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; }
+                                            if ( elem_arm.offset != elem_arm.size )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
                                             break;
                                         }
                                         case 0xb55a6b90e87557f8ull: // caps
@@ -44197,10 +44731,18 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Caps;
-                                            if ( elem_arm.size != 8 ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 8 )
+                                            {
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 8 ) )
                                             {
                                                 value.history[(int32_t) i].type = ToolBodyType::None;
@@ -44221,7 +44763,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Spans;
                                             memset( (void *) &value.history[(int32_t) i].spans, 0, sizeof( value.history[(int32_t) i].spans ) ); // selection establishes the arm (§2.6)
@@ -44303,7 +44848,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         {
                                             if ( elem_arm_kind != 15 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Origin;
                                             {
@@ -44345,22 +44893,38 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                         {
                                                             if ( arm_inner_kinda != 13 )
                                                             {
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::User;
                                                             UserLoadBodyRetain( arm_innera, value.history[(int32_t) i].origin.user, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 6 ) ) );
-                                                            if ( arm_innera.offset != arm_innera.size ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                            if ( arm_innera.offset != arm_innera.size )
+                                                            {
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->damaged = true;
+                                                                break;
+                                                            }
                                                             break;
                                                         }
                                                         case 0xacfc82293c04634aull: // script
                                                         {
                                                             if ( arm_inner_kinda != 13 )
                                                             {
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::Script;
                                                             ScriptLoadBodyRetain( arm_innera, value.history[(int32_t) i].origin.script, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 6 ) ) );
-                                                            if ( arm_innera.offset != arm_innera.size ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                            if ( arm_innera.offset != arm_innera.size )
+                                                            {
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->damaged = true;
+                                                                break;
+                                                            }
                                                             break;
                                                         }
                                                         case 0x77af701956600122ull: // pid
@@ -44397,10 +44961,18 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                                     r.report->widened++;
                                                                     break;
                                                                 }
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::Pid;
-                                                            if ( arm_innera.size != 4 ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                            if ( arm_innera.size != 4 )
+                                                            {
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->damaged = true;
+                                                                break;
+                                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                             if ( !arm_innera.has( 4 ) )
                                                             {
                                                                 value.history[(int32_t) i].origin.type = OriginType::None;
@@ -44421,7 +44993,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                         {
                                                             if ( arm_inner_kinda != 12 )
                                                             {
-                                                                value.history[(int32_t) i].origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                                value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                r.report->refused = true;
+                                                                r.report->refuse_reason = kind_mismatch;
+                                                                break;
                                                             }
                                                             value.history[(int32_t) i].origin.type = OriginType::Note;
                                                             memset( (void *) &value.history[(int32_t) i].origin.note, 0, sizeof( value.history[(int32_t) i].origin.note ) ); // selection establishes the arm (§2.6)
@@ -44450,7 +45025,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                         }
                                                         default:
                                                             r.report->unknown++;
-                                                             r.report->retain_lost++; break; // an arm this reader cannot name
+                                                            r.report->retain_lost++;
+                                                            break; // an arm this reader cannot name
                                                     }
                                                     elem_arm.offset += (int64_t) arm_inner_lena;
                                                 }
@@ -44461,7 +45037,10 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         {
                                             if ( elem_arm_kind != 32 )
                                             {
-                                                value.history[(int32_t) i].type = ToolBodyType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.history[(int32_t) i].type = ToolBodyType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.history[(int32_t) i].type = ToolBodyType::Ack;
                                             if ( elem_arm.size != 0 )
@@ -44474,7 +45053,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         }
                                         default:
                                             r.report->unknown++;
-                                             r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            r.report->retain_lost++;
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -44683,7 +45263,8 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.marks[(int32_t) i] ) )
                                 {
                                     value.marks[(int32_t) i] = Mode::None;
-                                    r.report->unknown++; r.report->retain_lost++;
+                                    r.report->unknown++;
+                                    r.report->retain_lost++;
                                 }
                             }
                         }
@@ -45264,7 +45845,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 }
                                 value.body.type = ToolBodyType::Open;
                                 OpenDocumentLoadBodyRetain( sub, value.body.open, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x096a5e18bf857c28ull: // save
@@ -45280,7 +45866,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 }
                                 value.body.type = ToolBodyType::Save;
                                 SaveDocumentLoadBodyRetain( sub, value.body.save, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xed96bbf4dc6ff587ull: // transact
@@ -45296,7 +45887,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 }
                                 value.body.type = ToolBodyType::Transact;
                                 TransactionLoadBodyRetain( sub, value.body.transact, retain, TableRetainStepInto( path, 1, (uint32_t) ( 2 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xbf30e00dc53307a9ull: // ping
@@ -45312,7 +45908,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 }
                                 value.body.type = ToolBodyType::Ping;
                                 PingLoadBodyRetain( sub, value.body.ping, retain, TableRetainStepInto( path, 1, (uint32_t) ( 3 ) ) );
-                                if ( sub.offset != sub.size ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xb55a6b90e87557f8ull: // caps
@@ -45357,7 +45958,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                     break;
                                 }
                                 value.body.type = ToolBodyType::Caps;
-                                if ( sub.size != 8 ) { value.body.type = ToolBodyType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 8 )
+                                {
+                                    value.body.type = ToolBodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 8 ) )
                                 {
                                     value.body.type = ToolBodyType::None;
@@ -45512,22 +46118,38 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::User;
                                                 UserLoadBodyRetain( arm_inner, value.body.origin.user, retain, TableRetainStepInto( path, 1, (uint32_t) ( 6 ) ) );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xacfc82293c04634aull: // script
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Script;
                                                 ScriptLoadBodyRetain( arm_inner, value.body.origin.script, retain, TableRetainStepInto( path, 1, (uint32_t) ( 6 ) ) );
-                                                if ( arm_inner.offset != arm_inner.size ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0x77af701956600122ull: // pid
@@ -45564,10 +46186,18 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Pid;
-                                                if ( arm_inner.size != 4 ) { value.body.origin.type = OriginType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( arm_inner.size != 4 )
+                                                {
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !arm_inner.has( 4 ) )
                                                 {
                                                     value.body.origin.type = OriginType::None;
@@ -45588,7 +46218,10 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                             {
                                                 if ( arm_inner_kind != 12 )
                                                 {
-                                                    value.body.origin.type = OriginType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.body.origin.type = OriginType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.body.origin.type = OriginType::Note;
                                                 memset( (void *) &value.body.origin.note, 0, sizeof( value.body.origin.note ) ); // selection establishes the arm (§2.6)
@@ -45617,7 +46250,8 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name
                                         }
                                         sub.offset += (int64_t) arm_inner_len;
                                     }
@@ -45651,7 +46285,8 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.body.type = ToolBodyType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -47140,14 +47775,18 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
         table_cook_put( at + 48, (uint64_t) value.origin.type, 1, order ); // the tag; None is the tag alone
         switch ( value.origin.type )
         {
-            case OriginType::User: if ( !UserCookBody( at + 48 + 4, value.origin.user, order ) ) { return false; } break;
-            case OriginType::Script: if ( !ScriptCookBody( at + 48 + 4, value.origin.script, order ) ) { return false; } break;
-                case OriginType::Pid:
+            case OriginType::User:
+                if ( !UserCookBody( at + 48 + 4, value.origin.user, order ) ) { return false; }
+                break;
+            case OriginType::Script:
+                if ( !ScriptCookBody( at + 48 + 4, value.origin.script, order ) ) { return false; }
+                break;
+            case OriginType::Pid:
             {
                 table_cook_put( at + 48 + 4, (uint64_t) value.origin.pid, 4, order );
                 break;
             }
-                case OriginType::Note:
+            case OriginType::Note:
             {
                 table_cook_bytes( at + 48 + 4, value.origin.note.value, value.origin.note.value_length, 25 );
                 table_cook_put( at + 48 + 32, (uint64_t) (uint32_t) value.origin.note.value_length, 4, order );
@@ -47165,14 +47804,18 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
             table_cook_put( at + 128 + i * 80, (uint64_t) value.origins[i].type, 1, order ); // the tag; None is the tag alone
             switch ( value.origins[i].type )
             {
-                case OriginType::User: if ( !UserCookBody( at + 128 + i * 80 + 4, value.origins[i].user, order ) ) { return false; } break;
-                case OriginType::Script: if ( !ScriptCookBody( at + 128 + i * 80 + 4, value.origins[i].script, order ) ) { return false; } break;
-                    case OriginType::Pid:
+                case OriginType::User:
+                    if ( !UserCookBody( at + 128 + i * 80 + 4, value.origins[i].user, order ) ) { return false; }
+                    break;
+                case OriginType::Script:
+                    if ( !ScriptCookBody( at + 128 + i * 80 + 4, value.origins[i].script, order ) ) { return false; }
+                    break;
+                case OriginType::Pid:
                 {
                     table_cook_put( at + 128 + i * 80 + 4, (uint64_t) value.origins[i].pid, 4, order );
                     break;
                 }
-                    case OriginType::Note:
+                case OriginType::Note:
                 {
                     table_cook_bytes( at + 128 + i * 80 + 4, value.origins[i].note.value, value.origins[i].note.value_length, 25 );
                     table_cook_put( at + 128 + i * 80 + 32, (uint64_t) (uint32_t) value.origins[i].note.value_length, 4, order );
@@ -47211,14 +47854,18 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
         table_cook_put( at + 4, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
         switch ( value.body.type )
         {
-            case EditBodyType::Insert: if ( !InsertTextCookBody( at + 4 + 4, value.body.insert, order ) ) { return false; } break;
-            case EditBodyType::Remove: if ( !RemoveTextCookBody( at + 4 + 4, value.body.remove, order ) ) { return false; } break;
-                case EditBodyType::Tally:
+            case EditBodyType::Insert:
+                if ( !InsertTextCookBody( at + 4 + 4, value.body.insert, order ) ) { return false; }
+                break;
+            case EditBodyType::Remove:
+                if ( !RemoveTextCookBody( at + 4 + 4, value.body.remove, order ) ) { return false; }
+                break;
+            case EditBodyType::Tally:
             {
                 table_cook_put( at + 4 + 4, (uint64_t) value.body.tally, 4, order );
                 break;
             }
-                case EditBodyType::Marks:
+            case EditBodyType::Marks:
             {
                 // 3 slots of storage, value.body.marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
                 schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
@@ -47230,13 +47877,13 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
                 table_cook_put( at + 4 + 12, (uint64_t) (uint32_t) value.body.marks.value_count, 4, order );
                 break;
             }
-                case EditBodyType::Blob:
+            case EditBodyType::Blob:
             {
                 table_cook_bytes( at + 4 + 4, value.body.blob.value, value.body.blob.value_length, 4 );
                 table_cook_put( at + 4 + 8, (uint64_t) (uint32_t) value.body.blob.value_length, 4, order );
                 break;
             }
-                case EditBodyType::Mode:
+            case EditBodyType::Mode:
             {
                 table_cook_put( at + 4 + 4, (uint64_t) value.body.mode, 1, order );
                 break;
@@ -47282,14 +47929,18 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
             table_cook_put( at + 964 + i * 308, (uint64_t) value.pending[i].type, 1, order ); // the tag; None is the tag alone
             switch ( value.pending[i].type )
             {
-                case EditBodyType::Insert: if ( !InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[i].insert, order ) ) { return false; } break;
-                case EditBodyType::Remove: if ( !RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[i].remove, order ) ) { return false; } break;
-                    case EditBodyType::Tally:
+                case EditBodyType::Insert:
+                    if ( !InsertTextCookBody( at + 964 + i * 308 + 4, value.pending[i].insert, order ) ) { return false; }
+                    break;
+                case EditBodyType::Remove:
+                    if ( !RemoveTextCookBody( at + 964 + i * 308 + 4, value.pending[i].remove, order ) ) { return false; }
+                    break;
+                case EditBodyType::Tally:
                 {
                     table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[i].tally, 4, order );
                     break;
                 }
-                    case EditBodyType::Marks:
+                case EditBodyType::Marks:
                 {
                     // 3 slots of storage, value.pending[i].marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
                     schema_assert( value.pending[i].marks.value_count >= 0 && value.pending[i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
@@ -47301,13 +47952,13 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
                     table_cook_put( at + 964 + i * 308 + 12, (uint64_t) (uint32_t) value.pending[i].marks.value_count, 4, order );
                     break;
                 }
-                    case EditBodyType::Blob:
+                case EditBodyType::Blob:
                 {
                     table_cook_bytes( at + 964 + i * 308 + 4, value.pending[i].blob.value, value.pending[i].blob.value_length, 4 );
                     table_cook_put( at + 964 + i * 308 + 8, (uint64_t) (uint32_t) value.pending[i].blob.value_length, 4, order );
                     break;
                 }
-                    case EditBodyType::Mode:
+                case EditBodyType::Mode:
                 {
                     table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[i].mode, 1, order );
                     break;
@@ -47342,16 +47993,24 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
         table_cook_put( at + 8, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
         switch ( value.body.type )
         {
-            case ToolBodyType::Open: if ( !OpenDocumentCookBody( at + 8 + 8, value.body.open, order ) ) { return false; } break;
-            case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; } break;
-            case ToolBodyType::Transact: if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; } break;
-            case ToolBodyType::Ping: if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; } break;
-                case ToolBodyType::Caps:
+            case ToolBodyType::Open:
+                if ( !OpenDocumentCookBody( at + 8 + 8, value.body.open, order ) ) { return false; }
+                break;
+            case ToolBodyType::Save:
+                if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; }
+                break;
+            case ToolBodyType::Transact:
+                if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; }
+                break;
+            case ToolBodyType::Ping:
+                if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; }
+                break;
+            case ToolBodyType::Caps:
             {
                 table_cook_put( at + 8 + 8, (uint64_t) value.body.caps, 8, order ); // a mask rides raw, in every target
                 break;
             }
-                case ToolBodyType::Spans:
+            case ToolBodyType::Spans:
             {
                 for ( int32_t ia = 0; ia < 2; ia++ )
                 {
@@ -47359,20 +48018,24 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                 }
                 break;
             }
-                case ToolBodyType::Origin:
+            case ToolBodyType::Origin:
             {
                 {
                     table_cook_put( at + 8 + 8, (uint64_t) value.body.origin.type, 1, order ); // the tag; None is the tag alone
                     switch ( value.body.origin.type )
                     {
-                        case OriginType::User: if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; } break;
-                        case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
-                            case OriginType::Pid:
+                        case OriginType::User:
+                            if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; }
+                            break;
+                        case OriginType::Script:
+                            if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; }
+                            break;
+                        case OriginType::Pid:
                         {
                             table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
                             break;
                         }
-                            case OriginType::Note:
+                        case OriginType::Note:
                         {
                             table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
                             table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );
@@ -47395,16 +48058,24 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
             table_cook_put( at + 1648 + i * 1640, (uint64_t) value.history[i].type, 1, order ); // the tag; None is the tag alone
             switch ( value.history[i].type )
             {
-                case ToolBodyType::Open: if ( !OpenDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[i].open, order ) ) { return false; } break;
-                case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[i].save, order ) ) { return false; } break;
-                case ToolBodyType::Transact: if ( !TransactionCookBody( at + 1648 + i * 1640 + 8, value.history[i].transact, order ) ) { return false; } break;
-                case ToolBodyType::Ping: if ( !PingCookBody( at + 1648 + i * 1640 + 8, value.history[i].ping, order ) ) { return false; } break;
-                    case ToolBodyType::Caps:
+                case ToolBodyType::Open:
+                    if ( !OpenDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[i].open, order ) ) { return false; }
+                    break;
+                case ToolBodyType::Save:
+                    if ( !SaveDocumentCookBody( at + 1648 + i * 1640 + 8, value.history[i].save, order ) ) { return false; }
+                    break;
+                case ToolBodyType::Transact:
+                    if ( !TransactionCookBody( at + 1648 + i * 1640 + 8, value.history[i].transact, order ) ) { return false; }
+                    break;
+                case ToolBodyType::Ping:
+                    if ( !PingCookBody( at + 1648 + i * 1640 + 8, value.history[i].ping, order ) ) { return false; }
+                    break;
+                case ToolBodyType::Caps:
                 {
                     table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[i].caps, 8, order ); // a mask rides raw, in every target
                     break;
                 }
-                    case ToolBodyType::Spans:
+                case ToolBodyType::Spans:
                 {
                     for ( int32_t ia = 0; ia < 2; ia++ )
                     {
@@ -47412,20 +48083,24 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
                     }
                     break;
                 }
-                    case ToolBodyType::Origin:
+                case ToolBodyType::Origin:
                 {
                     {
                         table_cook_put( at + 1648 + i * 1640 + 8, (uint64_t) value.history[i].origin.type, 1, order ); // the tag; None is the tag alone
                         switch ( value.history[i].origin.type )
                         {
-                            case OriginType::User: if ( !UserCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.user, order ) ) { return false; } break;
-                            case OriginType::Script: if ( !ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.script, order ) ) { return false; } break;
-                                case OriginType::Pid:
+                            case OriginType::User:
+                                if ( !UserCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.user, order ) ) { return false; }
+                                break;
+                            case OriginType::Script:
+                                if ( !ScriptCookBody( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.script, order ) ) { return false; }
+                                break;
+                            case OriginType::Pid:
                             {
                                 table_cook_put( at + 1648 + i * 1640 + 8 + 4, (uint64_t) value.history[i].origin.pid, 4, order );
                                 break;
                             }
-                                case OriginType::Note:
+                            case OriginType::Note:
                             {
                                 table_cook_bytes( at + 1648 + i * 1640 + 8 + 4, value.history[i].origin.note.value, value.history[i].origin.note.value_length, 25 );
                                 table_cook_put( at + 1648 + i * 1640 + 8 + 32, (uint64_t) (uint32_t) value.history[i].origin.note.value_length, 4, order );
@@ -47474,16 +48149,24 @@ inline bool ToolEnvelopeCookBody( const Ctx & ctx, const TableCookRegion & regio
         table_cook_put( at + 8, (uint64_t) value.body.type, 1, order ); // the tag; None is the tag alone
         switch ( value.body.type )
         {
-            case ToolBodyType::Open: if ( !OpenDocumentCookBody( at + 8 + 8, value.body.open, order ) ) { return false; } break;
-            case ToolBodyType::Save: if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; } break;
-            case ToolBodyType::Transact: if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; } break;
-            case ToolBodyType::Ping: if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; } break;
-                case ToolBodyType::Caps:
+            case ToolBodyType::Open:
+                if ( !OpenDocumentCookBody( at + 8 + 8, value.body.open, order ) ) { return false; }
+                break;
+            case ToolBodyType::Save:
+                if ( !SaveDocumentCookBody( at + 8 + 8, value.body.save, order ) ) { return false; }
+                break;
+            case ToolBodyType::Transact:
+                if ( !TransactionCookBody( at + 8 + 8, value.body.transact, order ) ) { return false; }
+                break;
+            case ToolBodyType::Ping:
+                if ( !PingCookBody( at + 8 + 8, value.body.ping, order ) ) { return false; }
+                break;
+            case ToolBodyType::Caps:
             {
                 table_cook_put( at + 8 + 8, (uint64_t) value.body.caps, 8, order ); // a mask rides raw, in every target
                 break;
             }
-                case ToolBodyType::Spans:
+            case ToolBodyType::Spans:
             {
                 for ( int32_t ia = 0; ia < 2; ia++ )
                 {
@@ -47491,20 +48174,24 @@ inline bool ToolEnvelopeCookBody( const Ctx & ctx, const TableCookRegion & regio
                 }
                 break;
             }
-                case ToolBodyType::Origin:
+            case ToolBodyType::Origin:
             {
                 {
                     table_cook_put( at + 8 + 8, (uint64_t) value.body.origin.type, 1, order ); // the tag; None is the tag alone
                     switch ( value.body.origin.type )
                     {
-                        case OriginType::User: if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; } break;
-                        case OriginType::Script: if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; } break;
-                            case OriginType::Pid:
+                        case OriginType::User:
+                            if ( !UserCookBody( at + 8 + 8 + 4, value.body.origin.user, order ) ) { return false; }
+                            break;
+                        case OriginType::Script:
+                            if ( !ScriptCookBody( at + 8 + 8 + 4, value.body.origin.script, order ) ) { return false; }
+                            break;
+                        case OriginType::Pid:
                         {
                             table_cook_put( at + 8 + 8 + 4, (uint64_t) value.body.origin.pid, 4, order );
                             break;
                         }
-                            case OriginType::Note:
+                        case OriginType::Note:
                         {
                             table_cook_bytes( at + 8 + 8 + 4, value.body.origin.note.value, value.body.origin.note.value_length, 25 );
                             table_cook_put( at + 8 + 8 + 32, (uint64_t) (uint32_t) value.body.origin.note.value_length, 4, order );

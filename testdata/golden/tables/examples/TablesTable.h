@@ -12524,10 +12524,13 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.homing = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.homing = bool_byte != 0;
                 }
                 break;
             }
@@ -12590,7 +12593,12 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig 
                                 }
                                 value.effect.type = EffectType::Buff;
                                 BuffLoadBody( sub, value.effect.buff );
-                                if ( sub.offset != sub.size ) { value.effect.type = EffectType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.effect.type = EffectType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x13cdc5ede73d2fd7ull: // debuff
@@ -12606,7 +12614,12 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig 
                                 }
                                 value.effect.type = EffectType::Debuff;
                                 DebuffLoadBody( sub, value.effect.debuff );
-                                if ( sub.offset != sub.size ) { value.effect.type = EffectType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.effect.type = EffectType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             default:
@@ -15831,7 +15844,10 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.precision = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.precision = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -15855,7 +15871,10 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.precision = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.precision = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -15963,10 +15982,13 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_loadout = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_loadout = bool_byte != 0;
                 }
                 break;
             }
@@ -16474,12 +16496,19 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         kept = 16;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->damaged = true; return false; }
+                        if ( !r.get( by, 8 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         if ( (int32_t) i < kept ) { value.icon[i] = (uint8_t) by; }
                     }
                     value.icon_length = kept;
@@ -21278,7 +21307,12 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBody( TableReader & r, MinArmFix & valu
                                     break;
                                 }
                                 value.pick.type = MinPickType::Other;
-                                if ( sub.size != 4 ) { value.pick.type = MinPickType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.pick.type = MinPickType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.pick.type = MinPickType::None;
@@ -24804,7 +24838,11 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & TABLE_CL
     // bits(6) width clamp
     oor_count += ( value.channel > 63ull );
     value.channel = ( value.channel > 63ull ) ? 63ull : value.channel;
-    if ( (uint64_t) value.effect.type > 2u ) { value.effect.type = EffectType::None; oor_count++; }
+    if ( (uint64_t) value.effect.type > 2u )
+    {
+        value.effect.type = EffectType::None;
+        oor_count++;
+    }
     switch ( value.effect.type )
     {
         case EffectType::Debuff:
@@ -24908,16 +24946,32 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & TABLE_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.grade > 3u ) { value.grade = Grade::None; oor_count++; }
+    if ( (uint64_t) value.grade > 3u )
+    {
+        value.grade = Grade::None;
+        oor_count++;
+    }
     for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
     {
-        if ( (uint64_t) value.grades[i] > 3u ) { value.grades[i] = Grade::None; oor_count++; }
+        if ( (uint64_t) value.grades[i] > 3u )
+        {
+            value.grades[i] = Grade::None;
+            oor_count++;
+        }
     }
     for ( int64_t i = 0; i < 3; ++i )
     {
-        if ( (uint64_t) value.podium[i] > 3u ) { value.podium[i] = Grade::None; oor_count++; }
+        if ( (uint64_t) value.podium[i] > 3u )
+        {
+            value.podium[i] = Grade::None;
+            oor_count++;
+        }
     }
-    if ( ( (uint64_t) value.perks >> 3 ) != 0 ) { value.perks &= 0x7ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+    if ( ( (uint64_t) value.perks >> 3 ) != 0 )
+    {
+        value.perks &= 0x7ull;
+        oor_count++;
+    } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
     WeaponConfigFixedClampBody( value.primary, oor_count, damaged );
     for ( int64_t i = 0; i < 2; ++i )
     {
@@ -25116,7 +25170,11 @@ inline void MoodsFixedClampBody( Moods & value, int32_t & TABLE_CLAMP_RESTRICT o
     (void) damaged;
     for ( int64_t i = 0; i < (int64_t) value.row_count; ++i )
     {
-        if ( (uint64_t) value.row[i] > 3u ) { value.row[i] = Mood::None; oor_count++; }
+        if ( (uint64_t) value.row[i] > 3u )
+        {
+            value.row[i] = Mood::None;
+            oor_count++;
+        }
     }
 }
 
@@ -25147,7 +25205,11 @@ inline void MoodFieldFixedClampBody( MoodField & value, int32_t & TABLE_CLAMP_RE
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.mood > 3u ) { value.mood = Mood::None; oor_count++; }
+    if ( (uint64_t) value.mood > 3u )
+    {
+        value.mood = Mood::None;
+        oor_count++;
+    }
 }
 
 // MinArmFix's read-side bounds, CHECKED: true when every clamp below would
@@ -25194,7 +25256,11 @@ inline void MinArmFixFixedClampBody( MinArmFix & value, int32_t & TABLE_CLAMP_RE
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.pick.type > 2u ) { value.pick.type = MinPickType::None; oor_count++; }
+    if ( (uint64_t) value.pick.type > 2u )
+    {
+        value.pick.type = MinPickType::None;
+        oor_count++;
+    }
     switch ( value.pick.type )
     {
         case MinPickType::Few:
@@ -32015,10 +32081,13 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBodyRetain( TableReader & r, WeaponC
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.homing = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.homing = bool_byte != 0;
                 }
                 break;
             }
@@ -32082,7 +32151,12 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBodyRetain( TableReader & r, WeaponC
                                 }
                                 value.effect.type = EffectType::Buff;
                                 BuffLoadBodyRetain( sub, value.effect.buff, retain, TableRetainStepInto( path, 5, (uint32_t) ( 0 ) ) );
-                                if ( sub.offset != sub.size ) { value.effect.type = EffectType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.effect.type = EffectType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x13cdc5ede73d2fd7ull: // debuff
@@ -32098,7 +32172,12 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBodyRetain( TableReader & r, WeaponC
                                 }
                                 value.effect.type = EffectType::Debuff;
                                 DebuffLoadBodyRetain( sub, value.effect.debuff, retain, TableRetainStepInto( path, 5, (uint32_t) ( 1 ) ) );
-                                if ( sub.offset != sub.size ) { value.effect.type = EffectType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.effect.type = EffectType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             default:
@@ -32108,7 +32187,8 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBodyRetain( TableReader & r, WeaponC
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.effect.type = EffectType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -32445,7 +32525,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.grade ) )
                 {
                     value.grade = Grade::None;
-                    r.report->unknown++; r.report->retain_lost++;
+                    r.report->unknown++;
+                    r.report->retain_lost++;
                 }
                 break;
             }
@@ -32532,7 +32613,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.grades[(int32_t) i] ) )
                                 {
                                     value.grades[(int32_t) i] = Grade::None;
-                                    r.report->unknown++; r.report->retain_lost++;
+                                    r.report->unknown++;
+                                    r.report->retain_lost++;
                                 }
                             }
                             decoded = i + 1;
@@ -32628,7 +32710,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.podium[(int32_t) i] ) )
                                 {
                                     value.podium[(int32_t) i] = Grade::None;
-                                    r.report->unknown++; r.report->retain_lost++;
+                                    r.report->unknown++;
+                                    r.report->retain_lost++;
                                 }
                             }
                         }
@@ -33531,7 +33614,10 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBodyRetain( TableReader & r, Profil
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.precision = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.precision = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -33555,7 +33641,10 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBodyRetain( TableReader & r, Profil
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.precision = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.precision = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -33663,10 +33752,13 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBodyRetain( TableReader & r, Profil
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_loadout = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_loadout = bool_byte != 0;
                 }
                 break;
             }
@@ -34677,7 +34769,8 @@ TABLEDEMO_TABLE_INLINE bool MoodsLoadBodyRetain( TableReader & r, Moods & value,
                                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.row[(int32_t) i] ) )
                                 {
                                     value.row[(int32_t) i] = Mood::None;
-                                    r.report->unknown++; r.report->retain_lost++;
+                                    r.report->unknown++;
+                                    r.report->retain_lost++;
                                 }
                             }
                             decoded = i + 1;
@@ -34820,7 +34913,8 @@ TABLEDEMO_TABLE_INLINE bool MoodFieldLoadBodyRetain( TableReader & r, MoodField 
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.mood ) )
                 {
                     value.mood = Mood::None;
-                    r.report->unknown++; r.report->retain_lost++;
+                    r.report->unknown++;
+                    r.report->retain_lost++;
                 }
                 break;
             }
@@ -35187,7 +35281,12 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBodyRetain( TableReader & r, MinArmFix 
                                     break;
                                 }
                                 value.pick.type = MinPickType::Other;
-                                if ( sub.size != 4 ) { value.pick.type = MinPickType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.pick.type = MinPickType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.pick.type = MinPickType::None;
@@ -35205,7 +35304,8 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBodyRetain( TableReader & r, MinArmFix 
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.pick.type = MinPickType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -36711,9 +36811,17 @@ inline bool DebuffCookBody( uint8_t * at, const Debuff & value, TableByteOrder o
 inline bool WeaponConfigCookBody( uint8_t * at, const WeaponConfig & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.damage ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.damage, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.damage, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     if ( !TableFloatFinite( value.speed ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.speed, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.speed, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 8, (uint64_t) value.penetration, 4, order );
     table_cook_put( at + 12, (uint64_t) value.channel, 4, order );
     table_cook_put( at + 16, (uint64_t) ( value.homing ? 1 : 0 ), 1, order );
@@ -36721,8 +36829,12 @@ inline bool WeaponConfigCookBody( uint8_t * at, const WeaponConfig & value, Tabl
         table_cook_put( at + 20, (uint64_t) value.effect.type, 1, order ); // the tag; None is the tag alone
         switch ( value.effect.type )
         {
-            case EffectType::Buff: if ( !BuffCookBody( at + 20 + 4, value.effect.buff, order ) ) { return false; } break;
-            case EffectType::Debuff: if ( !DebuffCookBody( at + 20 + 4, value.effect.debuff, order ) ) { return false; } break;
+            case EffectType::Buff:
+                if ( !BuffCookBody( at + 20 + 4, value.effect.buff, order ) ) { return false; }
+                break;
+            case EffectType::Debuff:
+                if ( !DebuffCookBody( at + 20 + 4, value.effect.debuff, order ) ) { return false; }
+                break;
             default: break; // every byte outside the set arm stays zero
         }
     }
@@ -36775,11 +36887,19 @@ inline bool ProfileConfigCookBody( uint8_t * at, const ProfileConfig & value, Ta
     table_cook_put( at + 82, (uint64_t) value.port, 2, order );
     table_cook_put( at + 88, (uint64_t) value.epoch, 8, order );
     if ( !TableFloatFinite( value.precision ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.precision, 8 ); table_cook_put( at + 96, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.precision, 8 );
+        table_cook_put( at + 96, bits, 8, order );
+    }
     for ( int32_t i = 0; i < 4; i++ )
     {
         if ( !TableFloatFinite( value.ratings[i] ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        { uint32_t bits = 0; memcpy( &bits, &value.ratings[i], 4 ); table_cook_put( at + 104 + i * 4, (uint64_t) bits, 4, order ); }
+        {
+            uint32_t bits = 0;
+            memcpy( &bits, &value.ratings[i], 4 );
+            table_cook_put( at + 104 + i * 4, (uint64_t) bits, 4, order );
+        }
     }
     table_cook_put( at + 120, (uint64_t) ( value.has_loadout ? 1 : 0 ), 1, order );
     if ( !LoadoutConfigCookBody( at + 128, value.loadout, order ) ) { return false; }
@@ -36855,7 +36975,7 @@ inline bool MinArmFixCookBody( uint8_t * at, const MinArmFix & value, TableByteO
         table_cook_put( at + 0, (uint64_t) value.pick.type, 1, order ); // the tag; None is the tag alone
         switch ( value.pick.type )
         {
-                case MinPickType::Few:
+            case MinPickType::Few:
             {
                 // 4 slots of storage, value.pick.few.value_count live: a slot past the count keeps the extent's zero (§7.2)
                 schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
@@ -36867,7 +36987,7 @@ inline bool MinArmFixCookBody( uint8_t * at, const MinArmFix & value, TableByteO
                 table_cook_put( at + 0 + 20, (uint64_t) (uint32_t) value.pick.few.value_count, 4, order );
                 break;
             }
-                case MinPickType::Other:
+            case MinPickType::Other:
             {
                 table_cook_put( at + 0 + 4, (uint64_t) value.pick.other, 4, order );
                 break;
@@ -36895,14 +37015,22 @@ inline bool AttachmentCookBody( uint8_t * at, const Attachment & value, TableByt
 {
     table_cook_put( at + 0, (uint64_t) value.slot, 4, order );
     if ( !TableFloatFinite( value.power ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.power, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.power, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     return true;
 }
 
 inline bool BuffCookBody( uint8_t * at, const Buff & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.multiplier ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.multiplier, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.multiplier, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     return true;
 }
 

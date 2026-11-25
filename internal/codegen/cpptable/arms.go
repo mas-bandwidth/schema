@@ -288,8 +288,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 	kind := tableScalarKind(f)
 	value, count := armValue(base, v), armCount(base, v)
 	if w := armWireLength(v); w > 0 {
-		g.pf("%sif ( %s.size != %d ) { %s = %s; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)\n",
-			ind, rdr, w, tag, none)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( %s.size != %d )", rdr, w), fmt.Sprintf("%s = %s; r.report->damaged = true; break;", tag, none), " // an L that is not the kind's width is that arm's own framing damage (§3)")
 	}
 	switch {
 	case v.Body():
@@ -299,8 +298,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		// terminator is not the last byte of its `L` is framing damage — the
 		// payload stops, the union reads None, and the enclosing body
 		// continues past the arm by `L`.
-		g.pf("%sif ( %s.offset != %s.size ) { %s = %s; r.report->damaged = true; break; }\n",
-			ind, rdr, rdr, tag, none)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( %s.offset != %s.size )", rdr, rdr), fmt.Sprintf("%s = %s; r.report->damaged = true; break;", tag, none), "")
 	case f.Type.Blob(), f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.emitNodeIndexLoad(f, value, ind, rdr,
 			[]string{fmt.Sprintf("%s = %s;", tag, none), "r.report->damaged = true;", "break;"}, sfx, true)
@@ -416,12 +414,13 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, innerKind, armWireKind(in), ind)
 			g.emitArmWiden(in, value, innerKind, inner, value+".type",
 				un.Name+"Type::"+ir.GoExportName(in.Name), un.Name+"Type::None", ind+"                    ")
-			g.pf("%s                    %s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;\n%s                }\n", ind, value, un.Name, ind)
+			g.emitStatements(ind+"                    ", fmt.Sprintf("%s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;", value, un.Name))
+			g.pf("%s                }\n", ind)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, value, un.Name, ir.GoExportName(in.Name))
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
-		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]s break; // an arm this reader cannot name\n", ind, g.retainLostInline())
+		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]sbreak; // an arm this reader cannot name\n", ind, g.retainLostLead(ind+"                "))
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n", ind)

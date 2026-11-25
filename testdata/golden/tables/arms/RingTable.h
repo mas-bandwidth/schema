@@ -11843,7 +11843,10 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                                             {
                                                 if ( elem_arm_kind_items != 17 )
                                                 {
-                                                    ( *slot ).type = SlotType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotType::Vertex;
                                                 {
@@ -11892,10 +11895,18 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = SlotType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotType::Plain;
-                                                if ( elem_arm_items.size != 4 ) { ( *slot ).type = SlotType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_items.size != 4 )
+                                                {
+                                                    ( *slot ).type = SlotType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_items.has( 4 ) )
                                                 {
                                                     ( *slot ).type = SlotType::None;
@@ -11908,7 +11919,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_items;
                                     }
@@ -12343,7 +12354,10 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                                             {
                                                 if ( elem_arm_kind_items != 14 )
                                                 {
-                                                    ( *slot ).type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotsType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotsType::Many;
                                                 memset( (void *) &( *slot ).many, 0, sizeof( ( *slot ).many ) ); // selection establishes the arm (§2.6)
@@ -12427,10 +12441,18 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotsType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotsType::Plain;
-                                                if ( elem_arm_items.size != 4 ) { ( *slot ).type = SlotsType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_items.size != 4 )
+                                                {
+                                                    ( *slot ).type = SlotsType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_items.has( 4 ) )
                                                 {
                                                     ( *slot ).type = SlotsType::None;
@@ -12443,7 +12465,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_items;
                                     }
@@ -12852,7 +12874,10 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.entries[(int32_t) i].type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = SlotsType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = SlotsType::Many;
                                             memset( (void *) &value.entries[(int32_t) i].many, 0, sizeof( value.entries[(int32_t) i].many ) ); // selection establishes the arm (§2.6)
@@ -12936,10 +12961,18 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.entries[(int32_t) i].type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = SlotsType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = SlotsType::Plain;
-                                            if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.entries[(int32_t) i].type = SlotsType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.entries[(int32_t) i].type = SlotsType::None;
@@ -12952,7 +12985,7 @@ inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & va
                                         }
                                         default:
                                             r.report->unknown++;
-                                             break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -13963,32 +13996,32 @@ inline bool RingNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
             {
                 case SlotType::Vertex:
                 {
-            {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
-                if ( pointee != NULL )
-                {
-                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-                    if ( found != NULL )
                     {
-                        if ( found->open != 0 ) { return false; } // a data cycle
+                        const Node * pointee = NodeAt( ctx, cursor_items[i].vertex ); // vertex
+                        if ( pointee != NULL )
+                        {
+                            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                            if ( found != NULL )
+                            {
+                                if ( found->open != 0 ) { return false; } // a data cycle
+                            }
+                            else
+                            {
+                                TableNodeEntry node;
+                                node.node = (const void *) pointee;
+                                node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
+                                node.measure = &TableNodeMeasureThunk<Ctx, Node>;
+                                node.save = &TableNodeSaveThunk<Ctx, Node>;
+                                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
+                                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                                node.close = false;
+                                node.hint = 0;
+                                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                            }
+                        }
                     }
-                    else
-                    {
-                        TableNodeEntry node;
-                        node.node = (const void *) pointee;
-                        node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
-                        node.measure = &TableNodeMeasureThunk<Ctx, Node>;
-                        node.save = &TableNodeSaveThunk<Ctx, Node>;
-                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
-                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
-                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
-                        node.close = false;
-                        node.hint = 0;
-                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
-                    }
-                }
-            }
                     break;
                 }
                 default: break;
@@ -14078,7 +14111,7 @@ inline bool RingCycleSlots( const Ctx & ctx, TableCycle & cycle, const Ring & va
             {
                 case SlotType::Vertex:
                 {
-            if ( !TableCycleEdge( cycle, cursor_items[i].vertex ) ) { return false; } // vertex
+                    if ( !TableCycleEdge( cycle, cursor_items[i].vertex ) ) { return false; } // vertex
                     break;
                 }
                 default: break;
@@ -14124,16 +14157,16 @@ inline bool RingPackSlots( const Ctx & ctx, TablePackMap & seen, const Ring & sr
             {
                 case SlotType::Vertex:
                 {
-            {
-                placed_items[i].vertex.value = 0; // vertex
-                const Node * pointee = NodeAt( ctx, cursor_items[i].vertex );
-                if ( pointee != NULL )
-                {
-                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-                    placed_items[i].vertex.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].vertex );
-                }
-            }
+                    {
+                        placed_items[i].vertex.value = 0; // vertex
+                        const Node * pointee = NodeAt( ctx, cursor_items[i].vertex );
+                        if ( pointee != NULL )
+                        {
+                            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                            placed_items[i].vertex.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].vertex );
+                        }
+                    }
                     break;
                 }
                 default: break;
@@ -14158,35 +14191,35 @@ inline bool RackNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
             {
                 case SlotsType::Many:
                 {
-            for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-            {
-            {
-                const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] ); // many
-                if ( pointee != NULL )
-                {
-                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-                    if ( found != NULL )
+                    for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
                     {
-                        if ( found->open != 0 ) { return false; } // a data cycle
+                        {
+                            const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] ); // many
+                            if ( pointee != NULL )
+                            {
+                                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                                if ( found != NULL )
+                                {
+                                    if ( found->open != 0 ) { return false; } // a data cycle
+                                }
+                                else
+                                {
+                                    TableNodeEntry node;
+                                    node.node = (const void *) pointee;
+                                    node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
+                                    node.measure = &TableNodeMeasureThunk<Ctx, Node>;
+                                    node.save = &TableNodeSaveThunk<Ctx, Node>;
+                                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
+                                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                                    node.close = false;
+                                    node.hint = 0;
+                                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                                }
+                            }
+                        }
                     }
-                    else
-                    {
-                        TableNodeEntry node;
-                        node.node = (const void *) pointee;
-                        node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
-                        node.measure = &TableNodeMeasureThunk<Ctx, Node>;
-                        node.save = &TableNodeSaveThunk<Ctx, Node>;
-                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
-                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
-                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
-                        node.close = false;
-                        node.hint = 0;
-                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
-                    }
-                }
-            }
-            }
                     break;
                 }
                 default: break;
@@ -14276,10 +14309,10 @@ inline bool RackCycleSlots( const Ctx & ctx, TableCycle & cycle, const Rack & va
             {
                 case SlotsType::Many:
                 {
-            for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-            {
-            if ( !TableCycleEdge( cycle, cursor_items[i].many.value[k] ) ) { return false; } // many
-            }
+                    for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+                    {
+                        if ( !TableCycleEdge( cycle, cursor_items[i].many.value[k] ) ) { return false; } // many
+                    }
                     break;
                 }
                 default: break;
@@ -14325,19 +14358,19 @@ inline bool RackPackSlots( const Ctx & ctx, TablePackMap & seen, const Rack & sr
             {
                 case SlotsType::Many:
                 {
-            for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-            {
-            {
-                placed_items[i].many.value[k].value = 0; // many
-                const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] );
-                if ( pointee != NULL )
-                {
-                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-                    placed_items[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].many.value[k] );
-                }
-            }
-            }
+                    for ( int32_t k = 0; k < cursor_items[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+                    {
+                        {
+                            placed_items[i].many.value[k].value = 0; // many
+                            const Node * pointee = NodeAt( ctx, cursor_items[i].many.value[k] );
+                            if ( pointee != NULL )
+                            {
+                                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                                placed_items[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &placed_items[i].many.value[k] );
+                            }
+                        }
+                    }
                     break;
                 }
                 default: break;
@@ -14359,35 +14392,35 @@ inline bool TrayNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
     {
         case SlotsType::Many:
         {
-    for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-    {
-    {
-        const Node * pointee = NodeAt( ctx, value.entries[i].many.value[k] ); // many
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
+                {
+                    const Node * pointee = NodeAt( ctx, value.entries[i].many.value[k] ); // many
+                    if ( pointee != NULL )
+                    {
+                        const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                        if ( found != NULL )
+                        {
+                            if ( found->open != 0 ) { return false; } // a data cycle
+                        }
+                        else
+                        {
+                            TableNodeEntry node;
+                            node.node = (const void *) pointee;
+                            node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
+                            node.measure = &TableNodeMeasureThunk<Ctx, Node>;
+                            node.save = &TableNodeSaveThunk<Ctx, Node>;
+                            node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
+                            node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                            node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
+                            node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
+                            node.close = false;
+                            node.hint = 0;
+                            if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                        }
+                    }
+                }
             }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0x66bd1cc6d2f6b68dull; // fnv1a64( "Node" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Node>;
-                node.save = &TableNodeSaveThunk<Ctx, Node>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return NodePackBytes( *(const Ctx *) pack_ctx, *(const Node *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return NodePackCopy( *(const Ctx *) pack_ctx, *(const Node *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return NodePackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Node *) pack_src, *(Node *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return NodeNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Node *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
-            }
-        }
-    }
-    }
             break;
         }
         default: break;
@@ -14473,10 +14506,10 @@ inline bool TrayCycleSlots( const Ctx & ctx, TableCycle & cycle, const Tray & va
     {
         case SlotsType::Many:
         {
-    for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-    {
-    if ( !TableCycleEdge( cycle, value.entries[i].many.value[k] ) ) { return false; } // many
-    }
+            for ( int32_t k = 0; k < value.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+            {
+                if ( !TableCycleEdge( cycle, value.entries[i].many.value[k] ) ) { return false; } // many
+            }
             break;
         }
         default: break;
@@ -14516,19 +14549,19 @@ inline bool TrayPackSlots( const Ctx & ctx, TablePackMap & seen, const Tray & sr
     {
         case SlotsType::Many:
         {
-    for ( int32_t k = 0; k < src.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
-    {
-    {
-        dst.entries[i].many.value[k].value = 0; // many
-        const Node * pointee = NodeAt( ctx, src.entries[i].many.value[k] );
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.entries[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.entries[i].many.value[k] );
-        }
-    }
-    }
+            for ( int32_t k = 0; k < src.entries[i].many.value_count && k < 2; k++ ) // many: [..2]*Node
+            {
+                {
+                    dst.entries[i].many.value[k].value = 0; // many
+                    const Node * pointee = NodeAt( ctx, src.entries[i].many.value[k] );
+                    if ( pointee != NULL )
+                    {
+                        const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                        if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                        dst.entries[i].many.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.entries[i].many.value[k] );
+                    }
+                }
+            }
             break;
         }
         default: break;
@@ -18316,7 +18349,10 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                                             {
                                                 if ( elem_arm_kind_items != 17 )
                                                 {
-                                                    ( *slot ).type = SlotType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotType::Vertex;
                                                 {
@@ -18365,10 +18401,18 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = SlotType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotType::Plain;
-                                                if ( elem_arm_items.size != 4 ) { ( *slot ).type = SlotType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_items.size != 4 )
+                                                {
+                                                    ( *slot ).type = SlotType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_items.has( 4 ) )
                                                 {
                                                     ( *slot ).type = SlotType::None;
@@ -18381,7 +18425,8 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_items;
                                     }
@@ -18826,7 +18871,10 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                                             {
                                                 if ( elem_arm_kind_items != 14 )
                                                 {
-                                                    ( *slot ).type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotsType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotsType::Many;
                                                 memset( (void *) &( *slot ).many, 0, sizeof( ( *slot ).many ) ); // selection establishes the arm (§2.6)
@@ -18910,10 +18958,18 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = SlotsType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = SlotsType::Plain;
-                                                if ( elem_arm_items.size != 4 ) { ( *slot ).type = SlotsType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_items.size != 4 )
+                                                {
+                                                    ( *slot ).type = SlotsType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_items.has( 4 ) )
                                                 {
                                                     ( *slot ).type = SlotsType::None;
@@ -18926,7 +18982,8 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_items;
                                     }
@@ -19345,7 +19402,10 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                                         {
                                             if ( elem_arm_kind != 14 )
                                             {
-                                                value.entries[(int32_t) i].type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = SlotsType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = SlotsType::Many;
                                             memset( (void *) &value.entries[(int32_t) i].many, 0, sizeof( value.entries[(int32_t) i].many ) ); // selection establishes the arm (§2.6)
@@ -19429,10 +19489,18 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                                                     r.report->widened++;
                                                     break;
                                                 }
-                                                value.entries[(int32_t) i].type = SlotsType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                value.entries[(int32_t) i].type = SlotsType::None;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = kind_mismatch;
+                                                break;
                                             }
                                             value.entries[(int32_t) i].type = SlotsType::Plain;
-                                            if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = SlotsType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( elem_arm.size != 4 )
+                                            {
+                                                value.entries[(int32_t) i].type = SlotsType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !elem_arm.has( 4 ) )
                                             {
                                                 value.entries[(int32_t) i].type = SlotsType::None;
@@ -19445,7 +19513,8 @@ inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tra
                                         }
                                         default:
                                             r.report->unknown++;
-                                             r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            r.report->retain_lost++;
+                                            break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
                                     sub.offset += (int64_t) elem_arm_len;
                                 }
@@ -21242,7 +21311,7 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
             table_cook_put( at + 0 + i * 32, (uint64_t) value.entries[i].type, 1, order ); // the tag; None is the tag alone
             switch ( value.entries[i].type )
             {
-                    case SlotsType::Many:
+                case SlotsType::Many:
                 {
                     schema_assert( value.entries[i].many.value_count >= 0 && value.entries[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                     if ( value.entries[i].many.value_count < 0 || value.entries[i].many.value_count > 2 ) { return false; }
@@ -21253,7 +21322,7 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
                     table_cook_put( at + 0 + i * 32 + 24, (uint64_t) (uint32_t) value.entries[i].many.value_count, 4, order );
                     break;
                 }
-                    case SlotsType::Plain:
+                case SlotsType::Plain:
                 {
                     table_cook_put( at + 0 + i * 32 + 8, (uint64_t) value.entries[i].plain, 4, order );
                     break;
@@ -21314,12 +21383,12 @@ inline bool RingCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                 table_cook_put( array + i * 16, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                        case SlotType::Vertex:
+                    case SlotType::Vertex:
                     {
                         if ( !table_cook_ref( region, array + i * 16 + 8, (const void *) NodeAt( ctx, cursor[i].vertex ), order ) ) { return false; } // vertex
                         break;
                     }
-                        case SlotType::Plain:
+                    case SlotType::Plain:
                     {
                         table_cook_put( array + i * 16 + 8, (uint64_t) cursor[i].plain, 4, order );
                         break;
@@ -21354,7 +21423,7 @@ inline bool RackCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                 table_cook_put( array + i * 32, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                        case SlotsType::Many:
+                    case SlotsType::Many:
                     {
                         schema_assert( cursor[i].many.value_count >= 0 && cursor[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
                         if ( cursor[i].many.value_count < 0 || cursor[i].many.value_count > 2 ) { return false; }
@@ -21365,7 +21434,7 @@ inline bool RackCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                         table_cook_put( array + i * 32 + 24, (uint64_t) (uint32_t) cursor[i].many.value_count, 4, order );
                         break;
                     }
-                        case SlotsType::Plain:
+                    case SlotsType::Plain:
                     {
                         table_cook_put( array + i * 32 + 8, (uint64_t) cursor[i].plain, 4, order );
                         break;

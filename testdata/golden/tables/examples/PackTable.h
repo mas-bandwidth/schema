@@ -12026,10 +12026,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.tracking = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.tracking = bool_byte != 0;
                 }
                 break;
             }
@@ -15305,7 +15308,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -15407,7 +15410,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 // a slot this reader cannot name
+                                // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -15473,7 +15476,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBody( TableReader & r, PackConfig & va
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 // a slot this reader cannot name
+                                // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -16695,7 +16698,11 @@ inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & TABL
     (void) damaged;
     oor_count += (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
     value.tick_rate = ( value.tick_rate < 1 ) ? 1 : ( ( value.tick_rate > 240 ) ? 240 : value.tick_rate );
-    if ( (uint64_t) value.difficulty > 3u ) { value.difficulty = Difficulty::None; oor_count++; }
+    if ( (uint64_t) value.difficulty > 3u )
+    {
+        value.difficulty = Difficulty::None;
+        oor_count++;
+    }
     if ( !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) )
     {
         damaged++;
@@ -19330,10 +19337,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsLoadBodyRetain( TableReader & r, Gunne
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.tracking = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.tracking = bool_byte != 0;
                 }
                 break;
             }
@@ -20061,7 +20071,8 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.difficulty ) )
                 {
                     value.difficulty = Difficulty::None;
-                    r.report->unknown++; r.report->retain_lost++;
+                    r.report->unknown++;
+                    r.report->retain_lost++;
                 }
                 break;
             }
@@ -20639,7 +20650,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -20741,7 +20752,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -20807,7 +20818,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigLoadBodyRetain( TableReader & r, PackConfi
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -21248,7 +21259,11 @@ inline bool PackConfigCookBody( uint8_t * at, const PackConfig & value, TableByt
 inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.reaction ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.reaction, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.reaction, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 4, (uint64_t) ( value.tracking ? 1 : 0 ), 1, order );
     table_cook_bytes( at + 5, value.callsign, value.callsign_length, 25 );
     table_cook_put( at + 32, (uint64_t) (uint32_t) value.callsign_length, 4, order );
@@ -21260,9 +21275,17 @@ inline bool ShipEntryCookBody( uint8_t * at, const ShipEntry & value, TableByteO
     table_cook_bytes( at + 0, value.display_name, value.display_name_length, 33 );
     table_cook_put( at + 36, (uint64_t) (uint32_t) value.display_name_length, 4, order );
     if ( !TableFloatFinite( value.health ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.health, 4 ); table_cook_put( at + 40, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.health, 4 );
+        table_cook_put( at + 40, (uint64_t) bits, 4, order );
+    }
     if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.mass, 4 ); table_cook_put( at + 44, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.mass, 4 );
+        table_cook_put( at + 44, (uint64_t) bits, 4, order );
+    }
     // 4 slots of storage, value.hardpoints_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // storage invariant, debug only (§5.1)
     if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; }
@@ -21288,7 +21311,11 @@ inline bool GlobalSettingsCookBody( uint8_t * at, const GlobalSettings & value, 
     for ( int32_t i = 0; i < 3; i++ )
     {
         if ( !TableFloatFinite( value.spawn_delays[i] ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-        { uint32_t bits = 0; memcpy( &bits, &value.spawn_delays[i], 4 ); table_cook_put( at + 60 + i * 4, (uint64_t) bits, 4, order ); }
+        {
+            uint32_t bits = 0;
+            memcpy( &bits, &value.spawn_delays[i], 4 );
+            table_cook_put( at + 60 + i * 4, (uint64_t) bits, 4, order );
+        }
     }
     return true;
 }

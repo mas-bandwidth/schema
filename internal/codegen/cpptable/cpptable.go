@@ -379,6 +379,14 @@ func (g *tableGen) emitIfBlock(ind, head, body, tail string) {
 	g.pf("%s}%s\n", ind, tail)
 }
 
+// emitStatements writes a run of statements one to a line, as clang-format
+// does; a trailing comment stays on the last statement's line.
+func (g *tableGen) emitStatements(ind, run string) {
+	for _, st := range splitStatements(run) {
+		g.pf("%s%s\n", ind, st)
+	}
+}
+
 // emitIfActions lays out an already-separated sequence of C++ statements.
 // The caller owns the statements; this only supplies the block and indentation.
 func (g *tableGen) emitIfActions(ind, condition string, actions ...string) {

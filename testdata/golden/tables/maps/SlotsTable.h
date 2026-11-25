@@ -12411,7 +12411,7 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 // a slot this reader cannot name
+                                // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -12465,7 +12465,7 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 // a slot this reader cannot name
+                                // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -14497,7 +14497,7 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -14551,7 +14551,7 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }

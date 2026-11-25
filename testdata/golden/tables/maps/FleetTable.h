@@ -18639,9 +18639,8 @@ inline bool FleetCycleSlots( const Ctx & ctx, TableCycle & cycle, const Fleet & 
     (void) ctx;
     (void) cycle;
     (void) value;
-    if ( !TableMapVisitStored( ctx, value.by_id, [&]( const FleetByIdEntry & entry )
-    {
-        return FleetByIdEntryCycleSlots( ctx, cycle, entry );
+    if ( !TableMapVisitStored( ctx, value.by_id, [&]( const FleetByIdEntry & entry ) {
+             return FleetByIdEntryCycleSlots( ctx, cycle, entry );
          } ) ) { return false; }
     if ( !TableCycleEdge( cycle, value.flagship ) ) { return false; } // flagship
     return true;

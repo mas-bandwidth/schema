@@ -12963,32 +12963,32 @@ inline bool CrewsMembersEntryNumberEdges( const Ctx & ctx, TableNumbering & numb
 {
     for ( int32_t k = 0; k < value.value_count && k < 2; k++ ) // value: [..2]*Item
     {
-    {
-        const Item * pointee = ItemAt( ctx, value.value[k] ); // value
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Item * pointee = ItemAt( ctx, value.value[k] ); // value
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0x52cfa1d198476806ull; // fnv1a64( "Item" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Item>;
-                node.save = &TableNodeSaveThunk<Ctx, Item>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ItemPackBytes( *(const Ctx *) pack_ctx, *(const Item *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ItemPackCopy( *(const Ctx *) pack_ctx, *(const Item *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ItemPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Item *) pack_src, *(Item *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ItemNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Item *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0x52cfa1d198476806ull; // fnv1a64( "Item" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Item>;
+                    node.save = &TableNodeSaveThunk<Ctx, Item>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ItemPackBytes( *(const Ctx *) pack_ctx, *(const Item *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ItemPackCopy( *(const Ctx *) pack_ctx, *(const Item *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ItemPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Item *) pack_src, *(Item *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ItemNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Item *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     return true;
 }
@@ -13066,7 +13066,7 @@ inline bool CrewsMembersEntryCycleSlots( const Ctx & ctx, TableCycle & cycle, co
     (void) value;
     for ( int32_t k = 0; k < value.value_count && k < 2; k++ ) // value: [..2]*Item
     {
-    if ( !TableCycleEdge( cycle, value.value[k] ) ) { return false; } // value
+        if ( !TableCycleEdge( cycle, value.value[k] ) ) { return false; } // value
     }
     return true;
 }
@@ -13098,16 +13098,16 @@ inline bool CrewsMembersEntryPackSlots( const Ctx & ctx, TablePackMap & seen, co
 {
     for ( int32_t k = 0; k < src.value_count && k < 2; k++ ) // value: [..2]*Item
     {
-    {
-        dst.value[k].value = 0; // value
-        const Item * pointee = ItemAt( ctx, src.value[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.value[k] );
+            dst.value[k].value = 0; // value
+            const Item * pointee = ItemAt( ctx, src.value[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.value[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.value[k] );
+            }
         }
-    }
     }
     return true;
 }
@@ -13205,9 +13205,8 @@ inline bool CrewsCycleSlots( const Ctx & ctx, TableCycle & cycle, const Crews & 
     (void) ctx;
     (void) cycle;
     (void) value;
-    if ( !TableMapVisitStored( ctx, value.members, [&]( const CrewsMembersEntry & entry )
-    {
-        return CrewsMembersEntryCycleSlots( ctx, cycle, entry );
+    if ( !TableMapVisitStored( ctx, value.members, [&]( const CrewsMembersEntry & entry ) {
+             return CrewsMembersEntryCycleSlots( ctx, cycle, entry );
          } ) ) { return false; }
     return true;
 }

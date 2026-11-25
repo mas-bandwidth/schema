@@ -11053,7 +11053,12 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                 value.inner.type = InnerType::Leaf;
                                 LeafLoadBody( sub, nodes, value.inner.leaf );
                                 if ( nodes.refused ) { return false; }
-                                if ( sub.offset != sub.size ) { value.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.inner.type = InnerType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfd4d194e1652b207ull: // plain
@@ -11092,7 +11097,12 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                     break;
                                 }
                                 value.inner.type = InnerType::Plain;
-                                if ( sub.size != 4 ) { value.inner.type = InnerType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.inner.type = InnerType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.inner.type = InnerType::None;
@@ -11480,12 +11490,20 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.outer.inner.type = InnerType::Leaf;
                                                 LeafLoadBody( arm_inner, nodes, value.outer.inner.leaf );
                                                 if ( nodes.refused ) { return false; }
-                                                if ( arm_inner.offset != arm_inner.size ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xfd4d194e1652b207ull: // plain
@@ -11516,10 +11534,18 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.outer.inner.type = InnerType::Plain;
-                                                if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( arm_inner.size != 4 )
+                                                {
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !arm_inner.has( 4 ) )
                                                 {
                                                     value.outer.inner.type = InnerType::None;
@@ -11532,7 +11558,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name
+                                                break; // an arm this reader cannot name
                                         }
                                         sub.offset += (int64_t) arm_inner_len;
                                     }
@@ -11575,7 +11601,12 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                     break;
                                 }
                                 value.outer.type = OuterType::Plain;
-                                if ( sub.size != 4 ) { value.outer.type = OuterType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.outer.type = OuterType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.outer.type = OuterType::None;
@@ -14803,7 +14834,12 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 value.inner.type = InnerType::Leaf;
                                 LeafLoadBodyRetain( sub, nodes, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                                 if ( nodes.refused ) { return false; }
-                                if ( sub.offset != sub.size ) { value.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.inner.type = InnerType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xfd4d194e1652b207ull: // plain
@@ -14842,7 +14878,12 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                     break;
                                 }
                                 value.inner.type = InnerType::Plain;
-                                if ( sub.size != 4 ) { value.inner.type = InnerType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.inner.type = InnerType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.inner.type = InnerType::None;
@@ -14860,7 +14901,8 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.inner.type = InnerType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -15238,12 +15280,20 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                             {
                                                 if ( arm_inner_kind != 13 )
                                                 {
-                                                    value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.outer.inner.type = InnerType::Leaf;
                                                 LeafLoadBodyRetain( arm_inner, nodes, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                                                 if ( nodes.refused ) { return false; }
-                                                if ( arm_inner.offset != arm_inner.size ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                                if ( arm_inner.offset != arm_inner.size )
+                                                {
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0xfd4d194e1652b207ull: // plain
@@ -15274,10 +15324,18 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    value.outer.inner.type = InnerType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 value.outer.inner.type = InnerType::Plain;
-                                                if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( arm_inner.size != 4 )
+                                                {
+                                                    value.outer.inner.type = InnerType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !arm_inner.has( 4 ) )
                                                 {
                                                     value.outer.inner.type = InnerType::None;
@@ -15290,7 +15348,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name
                                         }
                                         sub.offset += (int64_t) arm_inner_len;
                                     }
@@ -15333,7 +15392,12 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                     break;
                                 }
                                 value.outer.type = OuterType::Plain;
-                                if ( sub.size != 4 ) { value.outer.type = OuterType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.outer.type = OuterType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.outer.type = OuterType::None;
@@ -15351,7 +15415,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.outer.type = OuterType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -16596,8 +16661,10 @@ inline bool TwigCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         table_cook_put( at + 0, (uint64_t) value.inner.type, 1, order ); // the tag; None is the tag alone
         switch ( value.inner.type )
         {
-            case InnerType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8, value.inner.leaf, order ) ) { return false; } break;
-                case InnerType::Plain:
+            case InnerType::Leaf:
+                if ( !LeafCookBody( ctx, region, at + 0 + 8, value.inner.leaf, order ) ) { return false; }
+                break;
+            case InnerType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.inner.plain, 4, order );
                 break;
@@ -16615,14 +16682,16 @@ inline bool NestCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         table_cook_put( at + 0, (uint64_t) value.outer.type, 1, order ); // the tag; None is the tag alone
         switch ( value.outer.type )
         {
-                case OuterType::Inner:
+            case OuterType::Inner:
             {
                 {
                     table_cook_put( at + 0 + 8, (uint64_t) value.outer.inner.type, 1, order ); // the tag; None is the tag alone
                     switch ( value.outer.inner.type )
                     {
-                        case InnerType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + 8 + 8, value.outer.inner.leaf, order ) ) { return false; } break;
-                            case InnerType::Plain:
+                        case InnerType::Leaf:
+                            if ( !LeafCookBody( ctx, region, at + 0 + 8 + 8, value.outer.inner.leaf, order ) ) { return false; }
+                            break;
+                        case InnerType::Plain:
                         {
                             table_cook_put( at + 0 + 8 + 8, (uint64_t) value.outer.inner.plain, 4, order );
                             break;
@@ -16632,7 +16701,7 @@ inline bool NestCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
                 }
                 break;
             }
-                case OuterType::Plain:
+            case OuterType::Plain:
             {
                 table_cook_put( at + 0 + 8, (uint64_t) value.outer.plain, 4, order );
                 break;

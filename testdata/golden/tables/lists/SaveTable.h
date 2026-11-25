@@ -15375,11 +15375,19 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                                             {
                                                 if ( elem_arm_kind_hits != 13 )
                                                 {
-                                                    ( *slot ).type = HitType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = HitType::Point;
                                                 PointLoadBody( elem_arm_hits, ( *slot ).point );
-                                                if ( elem_arm_hits.offset != elem_arm_hits.size ) { ( *slot ).type = HitType::None; r.report->damaged = true; break; }
+                                                if ( elem_arm_hits.offset != elem_arm_hits.size )
+                                                {
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0x7f6308be8ab37fc0ull: // damage
@@ -15410,10 +15418,18 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = HitType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = HitType::Damage;
-                                                if ( elem_arm_hits.size != 4 ) { ( *slot ).type = HitType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_hits.size != 4 )
+                                                {
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_hits.has( 4 ) )
                                                 {
                                                     ( *slot ).type = HitType::None;
@@ -15426,7 +15442,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_hits;
                                     }
@@ -21873,7 +21889,8 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                                     else if ( !TableEnumValue( r.ids->at( variant_ref ), ( *slot ) ) )
                                     {
                                         ( *slot ) = Grade::None;
-                                        r.report->unknown++; r.report->retain_lost++;
+                                        r.report->unknown++;
+                                        r.report->retain_lost++;
                                     }
                                 }
                                 landed = true;
@@ -22209,11 +22226,19 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                                             {
                                                 if ( elem_arm_kind_hits != 13 )
                                                 {
-                                                    ( *slot ).type = HitType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = HitType::Point;
                                                 PointLoadBodyRetain( elem_arm_hits, ( *slot ).point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( i ) ), 2, (uint32_t) ( 0 ) ) );
-                                                if ( elem_arm_hits.offset != elem_arm_hits.size ) { ( *slot ).type = HitType::None; r.report->damaged = true; break; }
+                                                if ( elem_arm_hits.offset != elem_arm_hits.size )
+                                                {
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                }
                                                 break;
                                             }
                                             case 0x7f6308be8ab37fc0ull: // damage
@@ -22244,10 +22269,18 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                                                         r.report->widened++;
                                                         break;
                                                     }
-                                                    ( *slot ).type = HitType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->refused = true;
+                                                    r.report->refuse_reason = kind_mismatch;
+                                                    break;
                                                 }
                                                 ( *slot ).type = HitType::Damage;
-                                                if ( elem_arm_hits.size != 4 ) { ( *slot ).type = HitType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                                if ( elem_arm_hits.size != 4 )
+                                                {
+                                                    ( *slot ).type = HitType::None;
+                                                    r.report->damaged = true;
+                                                    break;
+                                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                 if ( !elem_arm_hits.has( 4 ) )
                                                 {
                                                     ( *slot ).type = HitType::None;
@@ -22260,7 +22293,8 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                                             }
                                             default:
                                                 r.report->unknown++;
-                                                 r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                                r.report->retain_lost++;
+                                                break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_hits;
                                     }
@@ -23775,9 +23809,17 @@ inline bool MixedCookBody( const Ctx & ctx, const TableCookRegion & region, uint
 inline bool PlacementCookBody( uint8_t * at, const Placement & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.x, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.x, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     if ( !TableFloatFinite( value.y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.y, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.y, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 8, (uint64_t) value.model, 4, order );
     return true;
 }
@@ -23987,8 +24029,10 @@ inline bool MixedCookExtent( const Ctx & ctx, const TableCookRegion & region, ui
                 table_cook_put( array + i * 12, (uint64_t) cursor[i].type, 1, order ); // the tag; None is the tag alone
                 switch ( cursor[i].type )
                 {
-                    case HitType::Point: if ( !PointCookBody( array + i * 12 + 4, cursor[i].point, order ) ) { return false; } break;
-                        case HitType::Damage:
+                    case HitType::Point:
+                        if ( !PointCookBody( array + i * 12 + 4, cursor[i].point, order ) ) { return false; }
+                        break;
+                    case HitType::Damage:
                     {
                         table_cook_put( array + i * 12 + 4, (uint64_t) cursor[i].damage, 4, order );
                         break;

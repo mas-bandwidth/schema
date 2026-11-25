@@ -12921,9 +12921,10 @@ inline bool DocsPagesEntryNumberEdges( const Ctx & ctx, TableNumbering & numberi
                 node.measure = &TableBlobMeasureThunk<Ctx>;
                 node.save = &TableBlobSaveThunk<Ctx>;
                 node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, true ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool
-                {
-                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;
+                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool {
+                    (void) pack_ctx;
+                    (void) pack_base;
+                    (void) pack_capacity;
                     const TableBlob * pack_blob = (const TableBlob *) pack_src;
                     memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );
                     return true;
@@ -13145,9 +13146,8 @@ inline bool DocsCycleSlots( const Ctx & ctx, TableCycle & cycle, const Docs & va
     (void) ctx;
     (void) cycle;
     (void) value;
-    if ( !TableMapVisitStored( ctx, value.pages, [&]( const DocsPagesEntry & entry )
-    {
-        return DocsPagesEntryCycleSlots( ctx, cycle, entry );
+    if ( !TableMapVisitStored( ctx, value.pages, [&]( const DocsPagesEntry & entry ) {
+             return DocsPagesEntryCycleSlots( ctx, cycle, entry );
          } ) ) { return false; }
     return true;
 }

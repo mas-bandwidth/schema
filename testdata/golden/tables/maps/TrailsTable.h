@@ -13318,9 +13318,8 @@ inline bool TrailsCycleSlots( const Ctx & ctx, TableCycle & cycle, const Trails 
     (void) ctx;
     (void) cycle;
     (void) value;
-    if ( !TableMapVisitStored( ctx, value.steps, [&]( const TrailsStepsEntry & entry )
-    {
-        return TrailsStepsEntryCycleSlots( ctx, cycle, entry );
+    if ( !TableMapVisitStored( ctx, value.steps, [&]( const TrailsStepsEntry & entry ) {
+             return TrailsStepsEntryCycleSlots( ctx, cycle, entry );
          } ) ) { return false; }
     return true;
 }

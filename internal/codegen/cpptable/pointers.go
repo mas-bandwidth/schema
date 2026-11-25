@@ -681,7 +681,7 @@ func (g *tableGen) emitNumber(st *ir.Struct) {
 			g.pf("                node.measure = &TableBlobMeasureThunk<Ctx>;\n")
 			g.pf("                node.save = &TableBlobSaveThunk<Ctx>;\n")
 			g.pf("                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { (void) pack_ctx; return TableBlobStorage( (int64_t) ( (const TableBlob *) pack_node )->length, %v ); };\n", blobTerminated(f))
-			g.pf("                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool\n                {\n                    (void) pack_ctx; (void) pack_base; (void) pack_capacity;\n                    const TableBlob * pack_blob = (const TableBlob *) pack_src;\n                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );\n                    return true;\n                };\n")
+			g.pf("                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool {\n                    (void) pack_ctx;\n                    (void) pack_base;\n                    (void) pack_capacity;\n                    const TableBlob * pack_blob = (const TableBlob *) pack_src;\n                    memcpy( pack_dst, (const void *) pack_blob, (size_t) ( kTableBlobHeader + (int64_t) pack_blob->length ) );\n                    return true;\n                };\n")
 			g.pf("                node.pack_slots = NULL;\n")
 			g.pf("                node.walk = NULL; // a blob reaches nothing: no descent\n")
 			g.pf("                node.close = false;\n")
@@ -1646,7 +1646,7 @@ func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor,
 		switch {
 		case arm.F.Type.Blob():
 			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
-			v.blob(arm.F, armExpr)
+			g.armIndented(indent, func() { v.blob(arm.F, armExpr) })
 			g.pf("%s        break;\n%s    }\n", indent, indent)
 		case arm.F.Type.Pointer:
 			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
@@ -1654,7 +1654,9 @@ func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor,
 			if armCompanioned(arm) {
 				slots, count = armExpr.member("value", 0), armExpr.Src+".value_count"
 			}
-			g.emitPointerSlotsOf(arm.F, slots, count, func(slot edgeExpr) { v.pointer(arm.F, slot) })
+			g.armIndented(indent, func() {
+				g.emitPointerSlotsOf(arm.F, slots, count, func(slot edgeExpr) { v.pointer(arm.F, slot) })
+			})
 			g.pf("%s        break;\n%s    }\n", indent, indent)
 		case arm.Type != "" && g.isVar(arm.Type):
 			g.pf("%s    case %sType::%s:\n%s    {\n", indent, un.Name, ir.GoExportName(arm.Name), indent)
@@ -1671,6 +1673,17 @@ func (g *tableGen) emitUnionArmWalk(un *ir.Union, value edgeExpr, v edgeVisitor,
 		}
 	}
 	g.pf("%s    default: break;\n%s}\n", indent, indent)
+}
+
+// armIndented runs an edge visitor's body one block deeper than the
+// visitors' own depth (a function body's, four spaces): inside a union arm's
+// case (indent is the switch's) or a slot loop's body (indent ""). Their
+// lines are prefixed by indent plus four.
+func (g *tableGen) armIndented(indent string, body func()) {
+	saved := g.indent
+	g.indent = saved + indent + "    "
+	body()
+	g.indent = saved
 }
 
 // emitPointerSlots emits one block per POINTER SLOT of a field — the field
@@ -1691,11 +1704,11 @@ func (g *tableGen) emitPointerSlotsOf(f *ir.Field, base edgeExpr, count string, 
 	switch f.Array {
 	case ir.ArrayCounted:
 		g.pf("    for ( int32_t k = 0; k < %s && k < %d; k++ ) // %s: [..%d]*%s\n    {\n", count, f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(base.index("k", 8))
+		g.armIndented("", func() { body(base.index("k", 8)) }) // the loop's body is one level in
 		g.pf("    }\n")
 	case ir.ArrayFixed:
 		g.pf("    for ( int32_t k = 0; k < %d; k++ ) // %s: [%d]*%s\n    {\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
-		body(base.index("k", 8))
+		g.armIndented("", func() { body(base.index("k", 8)) }) // the loop's body is one level in
 		g.pf("    }\n")
 	default:
 		body(base)
@@ -2189,8 +2202,8 @@ func (g *tableGen) emitCycleSlots(st *ir.Struct) {
 		},
 		mapField: func(f *ir.Field) {
 			entry := mapEntryOf(f).Name
-			g.pf("    if ( !TableMapVisitStored( ctx, value.%s, [&]( const %s & entry )\n    {\n", f.Name, entry)
-			g.pf("        return %sCycleSlots( ctx, cycle, entry );\n", entry)
+			g.pf("    if ( !TableMapVisitStored( ctx, value.%s, [&]( const %s & entry ) {\n", f.Name, entry)
+			g.pf("             return %sCycleSlots( ctx, cycle, entry );\n", entry)
 			g.pf("         } ) ) { return false; }\n")
 		},
 		listField: func(f *ir.Field, v edgeVisitor) { g.emitListEdge(f, v, "return false;") },

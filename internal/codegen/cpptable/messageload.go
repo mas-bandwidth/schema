@@ -245,12 +245,12 @@ func (g *tableGen) emitMessageReadTextFromChecked(f *ir.Field, value, count, ind
 	// narrowed FIRST is negative, passes a signed test against the bound
 	// untouched, and lands a negative length in the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
-	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
+	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n%[1]s    else\n%[1]s    {\n%[1]s        kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
 	g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
 	// a `bytes(N)` and every ARRAY whose element kind is 6: the payload is
 	// bytes, so it carries no content rule and the surplus is stepped over
 	// one byte at a time
-	g.pf("%s        uint64_t by%s = 0;\n%s        if ( !r.get( by%s, 8 ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx)
+	g.pf("%[1]s        uint64_t by%[2]s = 0;\n%[1]s        if ( !r.get( by%[2]s, 8 ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
 	g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = (uint8_t) by%s; }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
 	g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
 }

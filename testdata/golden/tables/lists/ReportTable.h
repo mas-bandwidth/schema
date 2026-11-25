@@ -19280,7 +19280,11 @@ inline bool FloatsCookExtent( const Ctx & ctx, const TableCookRegion & region, u
         for ( int32_t i = 0; i < cursor.count; i++ ) // INDEX order, live elements only
         {
             if ( !TableFloatFinite( cursor[i] ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-            { uint32_t bits = 0; memcpy( &bits, &cursor[i], 4 ); table_cook_put( array + i * 4, (uint64_t) bits, 4, order ); }
+            {
+                uint32_t bits = 0;
+                memcpy( &bits, &cursor[i], 4 );
+                table_cook_put( array + i * 4, (uint64_t) bits, 4, order );
+            }
         }
     }
     return true;

@@ -11173,7 +11173,12 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                                 }
                                 value.frame.type = FrameType::Header;
                                 HeaderLoadBody( sub, value.frame.header );
-                                if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x0f838176873c8e22ull: // chunk
@@ -11189,7 +11194,12 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                                 }
                                 value.frame.type = FrameType::Chunk;
                                 ChunkLoadBody( sub, nodes, value.frame.chunk );
-                                if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xbf4b9bad694f4809ull: // link
@@ -11258,7 +11268,12 @@ inline bool FeedLoadBody( TableReader & r, const TableNodeMap & nodes, Feed & va
                                     break;
                                 }
                                 value.frame.type = FrameType::Tag;
-                                if ( sub.size != 4 ) { value.frame.type = FrameType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.frame.type = FrameType::None;
@@ -12059,32 +12074,32 @@ inline bool ChunkNumberEdges( const Ctx & ctx, TableNumbering & numbering, const
     }
     for ( int32_t k = 0; k < value.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.links[k] ); // links
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Chunk * pointee = ChunkAt( ctx, value.links[k] ); // links
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                    node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     return true;
 }
@@ -12163,7 +12178,7 @@ inline bool ChunkCycleSlots( const Ctx & ctx, TableCycle & cycle, const Chunk & 
     if ( !TableCycleEdge( cycle, value.next ) ) { return false; } // next
     for ( int32_t k = 0; k < value.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
-    if ( !TableCycleEdge( cycle, value.links[k] ) ) { return false; } // links
+        if ( !TableCycleEdge( cycle, value.links[k] ) ) { return false; } // links
     }
     return true;
 }
@@ -12205,16 +12220,16 @@ inline bool ChunkPackSlots( const Ctx & ctx, TablePackMap & seen, const Chunk & 
     }
     for ( int32_t k = 0; k < src.links_count && k < 2; k++ ) // links: [..2]*Chunk
     {
-    {
-        dst.links[k].value = 0; // links
-        const Chunk * pointee = ChunkAt( ctx, src.links[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.links[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.links[k] );
+            dst.links[k].value = 0; // links
+            const Chunk * pointee = ChunkAt( ctx, src.links[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.links[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.links[k] );
+            }
         }
-    }
     }
     return true;
 }
@@ -12234,93 +12249,93 @@ inline bool FeedNumberEdges( const Ctx & ctx, TableNumbering & numbering, const 
         }
         case FrameType::Link:
         {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.frame.link ); // link
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
+                const Chunk * pointee = ChunkAt( ctx, value.frame.link ); // link
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                    if ( found != NULL )
+                    {
+                        if ( found->open != 0 ) { return false; } // a data cycle
+                    }
+                    else
+                    {
+                        TableNodeEntry node;
+                        node.node = (const void *) pointee;
+                        node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                        node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                        node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                        node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                        node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                        node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                        node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                        node.close = false;
+                        node.hint = 0;
+                        if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                    }
+                }
             }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
-            }
-        }
-    }
             break;
         }
         default: break;
     }
     for ( int32_t k = 0; k < value.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.parts[k] ); // parts
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Chunk * pointee = ChunkAt( ctx, value.parts[k] ); // parts
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                    node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
-    {
-        const Chunk * pointee = ChunkAt( ctx, value.pair[k] ); // pair
-        if ( pointee != NULL )
         {
-            const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
-            if ( found != NULL )
+            const Chunk * pointee = ChunkAt( ctx, value.pair[k] ); // pair
+            if ( pointee != NULL )
             {
-                if ( found->open != 0 ) { return false; } // a data cycle
-            }
-            else
-            {
-                TableNodeEntry node;
-                node.node = (const void *) pointee;
-                node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
-                node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
-                node.save = &TableNodeSaveThunk<Ctx, Chunk>;
-                node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
-                node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
-                node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
-                node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
-                node.close = false;
-                node.hint = 0;
-                if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                const TablePackEntry * found = TablePackMapFind( numbering.seen, (const void *) pointee );
+                if ( found != NULL )
+                {
+                    if ( found->open != 0 ) { return false; } // a data cycle
+                }
+                else
+                {
+                    TableNodeEntry node;
+                    node.node = (const void *) pointee;
+                    node.type_id = 0xcf4368dcf951e082ull; // fnv1a64( "Chunk" )
+                    node.measure = &TableNodeMeasureThunk<Ctx, Chunk>;
+                    node.save = &TableNodeSaveThunk<Ctx, Chunk>;
+                    node.pack_bytes = +[]( const void * pack_ctx, const void * pack_node ) -> int64_t { return ChunkPackBytes( *(const Ctx *) pack_ctx, *(const Chunk *) pack_node ); };
+                    node.pack_copy = +[]( const void * pack_ctx, const void * pack_src, void * pack_dst, uint8_t * pack_base, int64_t pack_capacity ) -> bool { return ChunkPackCopy( *(const Ctx *) pack_ctx, *(const Chunk *) pack_src, pack_dst, pack_base, pack_capacity ); };
+                    node.pack_slots = +[]( const void * pack_ctx, TablePackMap & pack_seen, const void * pack_src, void * pack_dst, uint8_t * pack_base ) -> bool { return ChunkPackSlots( *(const Ctx *) pack_ctx, pack_seen, *(const Chunk *) pack_src, *(Chunk *) pack_dst, pack_base ); };
+                    node.walk = +[]( const void * walk_ctx, TableNumbering & walk_numbering, const void * walk_node ) -> bool { return ChunkNumberEdges( *(const Ctx *) walk_ctx, walk_numbering, *(const Chunk *) walk_node ); };
+                    node.close = false;
+                    node.hint = 0;
+                    if ( !TableNumberingWorkPush( numbering, node ) ) { return false; }
+                }
             }
         }
-    }
     }
     return true;
 }
@@ -12405,18 +12420,18 @@ inline bool FeedCycleSlots( const Ctx & ctx, TableCycle & cycle, const Feed & va
         }
         case FrameType::Link:
         {
-    if ( !TableCycleEdge( cycle, value.frame.link ) ) { return false; } // link
+            if ( !TableCycleEdge( cycle, value.frame.link ) ) { return false; } // link
             break;
         }
         default: break;
     }
     for ( int32_t k = 0; k < value.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
-    if ( !TableCycleEdge( cycle, value.parts[k] ) ) { return false; } // parts
+        if ( !TableCycleEdge( cycle, value.parts[k] ) ) { return false; } // parts
     }
     for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
-    if ( !TableCycleEdge( cycle, value.pair[k] ) ) { return false; } // pair
+        if ( !TableCycleEdge( cycle, value.pair[k] ) ) { return false; } // pair
     }
     return true;
 }
@@ -12455,45 +12470,45 @@ inline bool FeedPackSlots( const Ctx & ctx, TablePackMap & seen, const Feed & sr
         }
         case FrameType::Link:
         {
-    {
-        dst.frame.link.value = 0; // link
-        const Chunk * pointee = ChunkAt( ctx, src.frame.link );
-        if ( pointee != NULL )
-        {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.frame.link.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.frame.link );
-        }
-    }
+            {
+                dst.frame.link.value = 0; // link
+                const Chunk * pointee = ChunkAt( ctx, src.frame.link );
+                if ( pointee != NULL )
+                {
+                    const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                    if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                    dst.frame.link.value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.frame.link );
+                }
+            }
             break;
         }
         default: break;
     }
     for ( int32_t k = 0; k < src.parts_count && k < 4; k++ ) // parts: [..4]*Chunk
     {
-    {
-        dst.parts[k].value = 0; // parts
-        const Chunk * pointee = ChunkAt( ctx, src.parts[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.parts[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[k] );
+            dst.parts[k].value = 0; // parts
+            const Chunk * pointee = ChunkAt( ctx, src.parts[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.parts[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.parts[k] );
+            }
         }
-    }
     }
     for ( int32_t k = 0; k < 2; k++ ) // pair: [2]*Chunk
     {
-    {
-        dst.pair[k].value = 0; // pair
-        const Chunk * pointee = ChunkAt( ctx, src.pair[k] );
-        if ( pointee != NULL )
         {
-            const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
-            if ( entry == NULL ) { return false; } // the numbering and the pack disagree
-            dst.pair[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[k] );
+            dst.pair[k].value = 0; // pair
+            const Chunk * pointee = ChunkAt( ctx, src.pair[k] );
+            if ( pointee != NULL )
+            {
+                const TablePackEntry * entry = TablePackMapFind( seen, (const void *) pointee );
+                if ( entry == NULL ) { return false; } // the numbering and the pack disagree
+                dst.pair[k].value = (int64_t) ( ( base + entry->offset ) - (const uint8_t *) &dst.pair[k] );
+            }
         }
-    }
     }
     return true;
 }
@@ -15296,7 +15311,12 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                                 }
                                 value.frame.type = FrameType::Header;
                                 HeaderLoadBodyRetain( sub, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
-                                if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0x0f838176873c8e22ull: // chunk
@@ -15312,7 +15332,12 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                                 }
                                 value.frame.type = FrameType::Chunk;
                                 ChunkLoadBodyRetain( sub, nodes, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
-                                if ( sub.offset != sub.size ) { value.frame.type = FrameType::None; r.report->damaged = true; break; }
+                                if ( sub.offset != sub.size )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 break;
                             }
                             case 0xbf4b9bad694f4809ull: // link
@@ -15381,7 +15406,12 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                                     break;
                                 }
                                 value.frame.type = FrameType::Tag;
-                                if ( sub.size != 4 ) { value.frame.type = FrameType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( sub.size != 4 )
+                                {
+                                    value.frame.type = FrameType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                } // an L that is not the kind's width is that arm's own framing damage (§3)
                                 if ( !sub.has( 4 ) )
                                 {
                                     value.frame.type = FrameType::None;
@@ -15399,7 +15429,8 @@ inline bool FeedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Fee
                                 // must not leave an arm decoded by an earlier occurrence
                                 // standing (docs/SPEC-TABLES.md §4).
                                 value.frame.type = FrameType::None;
-                                r.report->unknown++; r.report->retain_lost++;
+                                r.report->unknown++;
+                                r.report->retain_lost++;
                                 break;
                         }
                     }
@@ -16521,14 +16552,18 @@ inline bool FeedCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
         table_cook_put( at + 8, (uint64_t) value.frame.type, 1, order ); // the tag; None is the tag alone
         switch ( value.frame.type )
         {
-            case FrameType::Header: if ( !HeaderCookBody( at + 8 + 8, value.frame.header, order ) ) { return false; } break;
-            case FrameType::Chunk: if ( !ChunkCookBody( ctx, region, at + 8 + 8, value.frame.chunk, order ) ) { return false; } break;
-                case FrameType::Link:
+            case FrameType::Header:
+                if ( !HeaderCookBody( at + 8 + 8, value.frame.header, order ) ) { return false; }
+                break;
+            case FrameType::Chunk:
+                if ( !ChunkCookBody( ctx, region, at + 8 + 8, value.frame.chunk, order ) ) { return false; }
+                break;
+            case FrameType::Link:
             {
                 if ( !table_cook_ref( region, at + 8 + 8, (const void *) ChunkAt( ctx, value.frame.link ), order ) ) { return false; } // link
                 break;
             }
-                case FrameType::Tag:
+            case FrameType::Tag:
             {
                 table_cook_put( at + 8 + 8, (uint64_t) value.frame.tag, 4, order );
                 break;

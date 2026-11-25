@@ -12838,10 +12838,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBody( TableReader & r, GunnerConfig 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.tracking = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.tracking = bool_byte != 0;
                 }
                 break;
             }
@@ -14261,7 +14264,7 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -15221,7 +15224,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -15320,7 +15323,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -16236,7 +16239,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 // a slot this reader cannot name
+                                // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -16302,7 +16305,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 // a slot this reader cannot name
+                                // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -20106,10 +20109,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBodyRetain( TableReader & r, GunnerC
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.tracking = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.tracking = bool_byte != 0;
                 }
                 break;
             }
@@ -20625,7 +20631,7 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBodyRetain( TableReader & r, HullConfi
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -20990,7 +20996,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -21089,7 +21095,7 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -21362,7 +21368,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -21428,7 +21434,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
                                 r.report->unknown++;
-                                 r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -21881,7 +21887,11 @@ inline bool TeamConfigCookBody( uint8_t * at, const TeamConfig & value, TableByt
 inline bool GunnerConfigCookBody( uint8_t * at, const GunnerConfig & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.reaction ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.reaction, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.reaction, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 4, (uint64_t) ( value.tracking ? 1 : 0 ), 1, order );
     return true;
 }
@@ -21889,9 +21899,17 @@ inline bool GunnerConfigCookBody( uint8_t * at, const GunnerConfig & value, Tabl
 inline bool TurretConfigCookBody( uint8_t * at, const TurretConfig & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.damage ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.damage, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.damage, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     if ( !TableFloatFinite( value.cooldown ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.cooldown, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.cooldown, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 16, (uint64_t) ( value.gunner_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     if ( value.gunner_present )
     {
@@ -21903,9 +21921,17 @@ inline bool TurretConfigCookBody( uint8_t * at, const TurretConfig & value, Tabl
 inline bool HullConfigCookBody( uint8_t * at, const HullConfig & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.health ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.health, 4 ); table_cook_put( at + 0, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.health, 4 );
+        table_cook_put( at + 0, (uint64_t) bits, 4, order );
+    }
     if ( !TableFloatFinite( value.mass ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.mass, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.mass, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     // [Weapon]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {

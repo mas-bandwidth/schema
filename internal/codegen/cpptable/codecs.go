@@ -2649,7 +2649,7 @@ func (g *tableGen) emitEnumRefLoadChecked(f *ir.Field, dst, ind, rdr, onBad stri
 		g.emitIfBlock(ind, "else if ( variant_ref > (uint64_t) r.ids->count )", onBad, "")
 	}
 	g.pf("%selse if ( !TableEnumValue( r.ids->at( variant_ref ), %s ) )\n%s{\n", ind, dst, ind)
-	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;%s\n%s}\n", ind, dst, e, ind, g.retainLostInline(), ind)
+	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;%s\n%s}\n", ind, dst, e, ind, g.retainLostLine(ind+"    "), ind)
 }
 
 // retainLostInline is one EXCLUDED CLASS counted (docs/SPEC-TABLES.md §6.6),
@@ -2658,11 +2658,23 @@ func (g *tableGen) emitEnumRefLoadChecked(f *ir.Field, dst, ind, rdr, onBad stri
 // it back is a splice into something the reader rebuilds rather than a field
 // appended to a body. Every exclusion counts, so a caller that needs to know
 // retention held reads one number.
-func (g *tableGen) retainLostInline() string {
+// retainLostLine is the same count as a statement of its own: a newline and
+// the indent, then the statement, so it never shares a line (clang-format
+// writes one statement a line). It is empty when the unit retains nothing.
+func (g *tableGen) retainLostLine(ind string) string {
 	if !g.retain {
 		return ""
 	}
-	return " r.report->retain_lost++;"
+	return "\n" + ind + "r.report->retain_lost++;"
+}
+
+// retainLostLead is the statement on its own line ahead of the next one,
+// which is written at ind; empty when the unit retains nothing.
+func (g *tableGen) retainLostLead(ind string) string {
+	if !g.retain {
+		return ""
+	}
+	return "r.report->retain_lost++;\n" + ind
 }
 
 func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
@@ -2907,7 +2919,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", in)
 		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", in)
 		g.pf("%s            value.%s.type = %sType::None;\n", in, f.Name, un.Name)
-		g.pf("%s            r.report->unknown++;%s\n%s            break;\n", in, g.retainLostInline(), in)
+		g.pf("%s            r.report->unknown++;%s\n%s            break;\n", in, g.retainLostLine(in+"            "), in)
 		g.pf("%s    }\n%s}\n", in, in)
 		g.pf("%sr.offset += (int64_t) body_len;\n", in)
 		g.pf("%s}\n", ind)
@@ -2979,14 +2991,15 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 			g.pf("%s                if ( %s != %d )\n%s                {\n", ind, armKind, armWireKind(v), ind)
 			g.emitArmWiden(v, dst, armKind, "elem_arm"+sfx, dst+".type",
 				un.Name+"Type::"+ir.GoExportName(v.Name), un.Name+"Type::None", ind+"                    ")
-			g.pf("%s                    %s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;\n%s                }\n", ind, dst, un.Name, ind)
+			g.emitStatements(ind+"                    ", fmt.Sprintf("%s.type = %sType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;", dst, un.Name))
+			g.pf("%s                }\n", ind)
 			g.pf("%s                %s.type = %sType::%s;\n", ind, dst, un.Name, ir.GoExportName(v.Name))
 			g.inStep(strconv.Itoa(ai), func() {
 				g.emitArmLoad(v, dst, ind+"                ", "elem_arm"+sfx, dst+".type", un.Name+"Type::None", sfx+"a")
 			})
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
-		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]s break; // an arm this reader cannot name: the element reads None, the body skips by its length\n", ind, g.retainLostInline())
+		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]sbreak; // an arm this reader cannot name: the element reads None, the body skips by its length\n", ind, g.retainLostLead(ind+"                "))
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n%s}\n", ind, ind)
@@ -3056,9 +3069,11 @@ func (g *tableGen) emitTableReadScalarFromChecked(f *ir.Field, kind int, lvalue,
 			if f.HasDefault && f.DefBool {
 				defByte = 1
 			}
-			g.pf("%[1]s{ const uint8_t bool_byte = %[2]s.get8(); if ( bool_byte > 1 )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    } else if ( bool_byte == %[3]d ) { %[4]s } %[5]s = bool_byte != 0;\n%[1]s}\n", ind, rdr, defByte, strings.Join(onTrunc, " "), lvalue)
+			g.pf("%[1]s{\n%[1]s    const uint8_t bool_byte = %[2]s.get8();\n%[1]s    if ( bool_byte > 1 )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s    }\n", ind, rdr)
+			g.emitIfBlock(ind+"    ", fmt.Sprintf("else if ( bool_byte == %d )", defByte), strings.Join(onTrunc, " "), "")
+			g.pf("%[1]s    %[2]s = bool_byte != 0;\n%[1]s}\n", ind, lvalue)
 		} else {
-			g.pf("%[1]s{ const uint8_t bool_byte = %[2]s.get8(); if ( bool_byte > 1 )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    } %[3]s = bool_byte != 0;\n%[1]s}\n", ind, rdr, lvalue)
+			g.pf("%[1]s{\n%[1]s    const uint8_t bool_byte = %[2]s.get8();\n%[1]s    if ( bool_byte > 1 )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s    }\n%[1]s    %[3]s = bool_byte != 0;\n%[1]s}\n", ind, rdr, lvalue)
 		}
 	case tkF32:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
@@ -3098,7 +3113,7 @@ func (g *tableGen) emitTableReadScalarFromChecked(f *ir.Field, kind int, lvalue,
 			g.emitIfActions(ind+"        ", g.fieldIsDefault(f, "decoded_d"), onTrunc...)
 			g.pf("%s        %s = decoded_d;\n%s    }\n%s}\n", ind, lvalue, ind, ind)
 		} else {
-			g.pf("%s    else { %s = table_bits_to_double( decoded_bits ); }\n%s}\n", ind, lvalue, ind)
+			g.pf("%[1]s    else\n%[1]s    {\n%[1]s        %[2]s = table_bits_to_double( decoded_bits );\n%[1]s    }\n%[1]s}\n", ind, lvalue)
 		}
 	default:
 		// A TIMESTAMP IS THE INT64'S PAYLOAD under its own kind 36: the bytes

@@ -12255,12 +12255,19 @@ inline bool WideBlobLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 70000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->damaged = true; return false; }
+                        if ( !r.get( by, 8 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         if ( (int32_t) i < kept ) { value.payload[i] = (uint8_t) by; }
                     }
                     value.payload_length = kept;

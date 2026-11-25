@@ -7566,7 +7566,10 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.value = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.value = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -7590,7 +7593,10 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.value = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.value = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -7614,10 +7620,13 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.flag = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.flag = bool_byte != 0;
                 }
                 break;
             }
@@ -7888,7 +7897,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
                             r.report->unknown++;
-                             // a slot this reader cannot name
+                            // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -9978,12 +9987,19 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 12;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
-                        if ( !r.get( by, 8 ) ) { report->damaged = true; return false; }
+                        if ( !r.get( by, 8 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         if ( (int32_t) i < kept ) { value.blob[i] = (uint8_t) by; }
                     }
                     value.blob_length = kept;
@@ -12751,7 +12767,11 @@ inline bool PaddedRowCookBody( uint8_t * at, const PaddedRow & value, TableByteO
 {
     table_cook_put( at + 0, (uint64_t) value.tag, 1, order );
     if ( !TableFloatFinite( value.value ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.value, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.value, 8 );
+        table_cook_put( at + 8, bits, 8, order );
+    }
     table_cook_put( at + 16, (uint64_t) ( value.flag ? 1 : 0 ), 1, order );
     table_cook_put( at + 20, (uint64_t) value.id, 4, order );
     table_cook_bytes( at + 24, value.label, value.label_length, 16 );

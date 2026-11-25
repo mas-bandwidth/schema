@@ -6604,7 +6604,10 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & va
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.thickness = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.thickness = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -6628,7 +6631,10 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & va
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.thickness = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.thickness = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -10068,7 +10074,11 @@ inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, 
 inline bool ArmorPlateCookBody( uint8_t * at, const ArmorPlate & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.thickness ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.thickness, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.thickness, 8 );
+        table_cook_put( at + 0, bits, 8, order );
+    }
     table_cook_put( at + 8, (uint64_t) value.material, 4, order );
     table_cook_put( at + 12, (uint64_t) value.layer, 1, order );
     return true;
@@ -10079,7 +10089,11 @@ inline bool ArmorConfigCookBody( uint8_t * at, const ArmorConfig & value, TableB
     if ( !ArmorPlateCookBody( at + 0, value.front, order ) ) { return false; }
     if ( !ArmorPlateCookBody( at + 16, value.rear, order ) ) { return false; }
     if ( !TableFloatFinite( value.rating ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.rating, 4 ); table_cook_put( at + 32, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.rating, 4 );
+        table_cook_put( at + 32, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 36, (uint64_t) value.tier, 1, order );
     return true;
 }
@@ -10088,7 +10102,11 @@ inline bool FiringGroupCookBody( uint8_t * at, const FiringGroup & value, TableB
 {
     table_cook_put( at + 0, (uint64_t) value.barrel, 4, order );
     if ( !TableFloatFinite( value.cooldown ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.cooldown, 4 ); table_cook_put( at + 4, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.cooldown, 4 );
+        table_cook_put( at + 4, (uint64_t) bits, 4, order );
+    }
     return true;
 }
 
@@ -10111,7 +10129,11 @@ inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, 
     }
     table_cook_put( at + 292, (uint64_t) (uint32_t) value.missile_groups_count, 4, order );
     if ( !TableFloatFinite( value.reload_seconds ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.reload_seconds, 4 ); table_cook_put( at + 296, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.reload_seconds, 4 );
+        table_cook_put( at + 296, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 300, (uint64_t) value.gunner_id, 4, order );
     return true;
 }
