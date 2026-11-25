@@ -463,7 +463,7 @@ const data=readFileSync(%q), back=[new T()], plan=TNewPlan(4096,4096);
 const before=show(back); plan.image.fill(0x5A);
 const r=new TableFixedReport(), n=TLoad(back,1,data,data.length,plan,r);
 const hash=new DataView(data.buffer,data.byteOffset,data.length).getBigUint64(8,true);
-if(n!==-1 || r.refused!==TableFixedRefusal.LayoutNewer || r.layoutHash!==hash || r.damaged ||
+if(n!==-1 || r.refused!==TableFixedRefusal.LayoutUnknown || r.layoutHash!==hash || r.damaged ||
    r.unknown || r.mismatch || r.widened || r.oor || r.repeated) { fail("FX2 outside FX1 lineage: "+reason(r)); }
 if(show(back)!==before || plan.image.some(b=>b!==0x5A)) { fail("unknown reference version wrote destination"); }
 `, filepath.Join(corpus, "fx2.bin"))

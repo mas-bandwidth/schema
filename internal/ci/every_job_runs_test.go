@@ -201,7 +201,7 @@ func runOmissionLog(t *testing.T, block, all, unmapped string) (string, bool) {
 	cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+tmp, "ALL="+all,
 		"LINT_ROWS=[]", "CODEGEN=no", "CLEAN=[]", "LINTS=[]", "NIGHTLY=[]", "VERIFY=[]",
 		"DART_CORPUS=false", "CPP_CORPUS=false", "ELIXIR_CORPUS=false", "INPUT_ROWS=[]",
-		"CORPUS_SHARDS=[]", "NEWLEG=no", "ROWS=[]", "PACKAGES=", "PINS=no")
+		"CORPUS_SHARDS=[]", "NEWLEG=no", "ROWS=[]", "PACKAGES=", "PINS=no", "ROWS_LEGS=[]", "ROWS_ELIXIR=no")
 	out, err := cmd.CombinedOutput()
 	return string(out), err == nil
 }

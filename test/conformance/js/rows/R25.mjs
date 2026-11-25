@@ -88,8 +88,12 @@ function buildCellFile() {
   const bytes = buildCellFile();
   const report = new TableFixedReport();
   
-  // Pass null as the plan parameter - the caller has no plan storage
-  const values = [{}];
+  // Pass null as the plan parameter - the caller has no plan storage. The
+  // values are real Cells, POISONED, so the refusal's reset to declared
+  // defaults (ruling R4, commit fa1d6bdea) shows: the row once handed in `{}`,
+  // which the reset cannot initialise (TypeError reading .fill).
+  const values = [new tbl.Cell()];
+  values[0].power = 77; values[0].labelLength = 3; values[0].label.fill(0x5a);
   const result = CellFixedLoad(values, 1, bytes, bytes.length, null, report);
   
   // EXPECTED: result === -1, report.refused === PlanTooLarge (13)
@@ -97,6 +101,11 @@ function buildCellFile() {
   assert(report.refused === TableFixedRefusal.PlanTooLarge,
     "plan_too_large (null plan): report.refused = PlanTooLarge, got " + TableFixedRefusalName(report.refused));
   assert(!report.damaged, "plan_too_large (null plan): report.damaged = false");
+  const fresh = new tbl.Cell();
+  tbl.InitCell(fresh);
+  assert(values[0].power === fresh.power && values[0].labelLength === fresh.labelLength &&
+    values[0].label.every((b, i) => b === fresh.label[i]),
+    "plan_too_large (null plan): the refused read hands the row back at its declared defaults (ruling R4)");
 }
 
 // Test: with a valid plan, it should NOT refuse with plan_too_large
@@ -104,15 +113,10 @@ function buildCellFile() {
   const bytes = buildCellFile();
   const report = new TableFixedReport();
   
-  const plan = {
-    capacity: 1,
-    image: new Uint8Array(256),
-    view: new DataView(new ArrayBuffer(256)),
-    cover: new Uint8Array(256),
-    holes: [],
-  };
-  
-  const values = [{ power: 0, labelLength: 0, label: new Uint8Array(8) }];
+  // THE GENERATED PLAN, sized by the unit itself: the row once built a
+  // hand-rolled object the load no longer accepts.
+  const plan = v1.CellFixedNewPlan();
+  const values = [new tbl.Cell()];
   const result = CellFixedLoad(values, 1, bytes, bytes.length, plan, report);
   
   // Should succeed (return 1 record)

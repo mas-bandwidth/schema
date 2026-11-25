@@ -20,11 +20,12 @@ import (
 )
 
 // cppConformanceWhole is what `_verify-cpp-conformance` built and ran as one
-// row before the split, at c1e5f93a.
+// row before the split, at c1e5f93a, less conformance-rows-cpp: the C++ rows
+// run in ci-fast.yml's conformance-rows job (#4920).
 var cppConformanceWhole = []string{
 	"build/conformance-harness", "build/conformance-cpp", "build/schema_test_cook", "build/schema_test",
 	"build/schema_test_ludicrous", "packet-defaults-cpp", "packet-void-cpp", "table-base64-cpp",
-	"build/packet-text/cpp/driver", "build/packet-text/harness", "conformance-rows-cpp", "build/schema_test_tables",
+	"build/packet-text/cpp/driver", "build/packet-text/harness", "build/schema_test_tables",
 	"./build/schema_test", "./build/schema_test_tables", "./build/schema_test_ludicrous",
 	"./build/packet-text/harness ./build/packet-text/cpp/driver",
 	"./build/conformance-harness run --only cpp --claims",
@@ -122,7 +123,7 @@ func TestCppConformancePartsCoverTheGate(t *testing.T) {
 		name     string
 		mk, fast string
 	}{
-		{"part 1 loses schema_test_tables", plant(mk, " conformance-rows-cpp build/schema_test_tables\n", " conformance-rows-cpp\n"), fast},
+		{"part 1 loses schema_test_tables", plant(mk, " build/packet-text/harness build/schema_test_tables\n", " build/packet-text/harness\n"), fast},
 		{"part 2 loses the claims run", plant(mk, "\t./build/conformance-harness run --only cpp --claims", "\t@true"), fast},
 		{"the gate runs one part", plant(mk, "_verify-cpp-conformance: _verify-cpp-conformance-1 _verify-cpp-conformance-2", "_verify-cpp-conformance: _verify-cpp-conformance-1"), fast},
 		{"ci-fast runs one part", mk, plant(fast, "        part: [1, 2]\n", "        part: [1]\n")},

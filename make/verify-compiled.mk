@@ -95,7 +95,7 @@ _verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
-		./build/conformance-harness message-fuzz --only $(1) \
+		./build/conformance-harness message-fuzz --only $(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
 
@@ -134,8 +134,9 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 # checks run, so the two halves of the build run on two runners:
 #
 #   part 1: the standalone C++ test binaries (schema_test, schema_test_tables,
-#           schema_test_ludicrous, packet text, and the packet-defaults,
-#           packet-void and R15 row checks their targets run);
+#           schema_test_ludicrous, packet text, and the packet-defaults
+#           and packet-void checks their targets run; the C++ conformance
+#           rows run in ci-fast.yml's conformance-rows job);
 #   part 2: the harness's --claims run and what test/conformance/cpp/ci.json
 #           says it needs (the driver, schema_test_cook, table-base64-cpp).
 #
@@ -145,7 +146,7 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 .PHONY: _verify-cpp-conformance _verify-cpp-conformance-1 _verify-cpp-conformance-2 verify-cpp-conformance-1 verify-cpp-conformance-2 _verify-cpp-bench
 _verify-cpp-conformance: _verify-cpp-conformance-1 _verify-cpp-conformance-2
 
-_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
+_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness build/schema_test_tables
 	./build/schema_test
 	./build/schema_test_tables
 	./build/schema_test_ludicrous
@@ -166,7 +167,7 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
+_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
@@ -270,7 +271,7 @@ _verify-rust-driver-write-refusal: build/conformance-rust
 	PATH="$(RUSTUP_BIN):$$PATH" go test -count=1 -run '^TestRustDriverAnswersWriteRefusal$$' ./test/conformance/harness
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
+_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust
 	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
@@ -307,7 +308,7 @@ _verify-java-packet-main: toolchain-java build/java-test/.stamp
 _verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
@@ -329,7 +330,7 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-packets _verify-dart-bench
-_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
+_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 

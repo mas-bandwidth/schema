@@ -14,6 +14,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `errdiscard/` | errors dropped by the Go programs under cmd/ and tools/, type-checked | `go test ./internal/errdiscard` | `make errdiscard` |
 | `execref/` | os/exec references resolved by binding, for the child-process policies | `go test ./internal/execref` | `go test ./internal/execref` |
 | `fixedproof/` | leg-independent fixed-table proof suite | `go test ./internal/fixedproof` | `go test ./internal/fixedproof` |
+| `fixedunlawful/` | fixed form's shared unlawful-lineage corpus | `go test ./internal/fixedunlawful` | `go test ./internal/fixedunlawful` |
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |

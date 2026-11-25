@@ -140,6 +140,8 @@ next table. Every job of every other workflow is a row here.
 | `input-family-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
 | `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
 | `verify-goose-fuzz` | `ci-fast.yml` | per-PR, main, dispatch | plan: the goose leg; two rows, `make verify-goose-fuzz-part-1` and `-2`, which together run every goose fuzz pass at 5000 cases |
+| `conformance-rows` | `ci-fast.yml` | per-PR, main, dispatch | plan: every verified leg with a rows directory (all of them when the row runner, make/conformance-rows.mk or a rows directory changes); one row per leg, `make conformance-rows-<leg>`; every row file runs and any failing row is red |
+| `conformance-rows-elixir` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir leg, as for conformance-rows; `make conformance-rows-elixir` on the corpus the lang-clean agreement shards compile |
 | `input-family-merge` | `ci-fast.yml` | per-PR, main, dispatch | plan: a sharded corpus account (`corpus_shards`); folds the shards' records into the whole account |
 | `input-family-elixir-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir corpus account; runs on lang-clean's uploaded elixir build |
 | `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |

@@ -146,6 +146,27 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+- **MF-ROSTER: every message-fuzz root is answered.** A root of the
+  message-fuzz roster that a leg answers with nothing (no known message in
+  any case) is dead, and `harness message-fuzz` is red on every dead root,
+  named. There is no ledger of roots a leg lacks.
+- **Every conformance row file runs.** A leg's row list is its directory
+  `test/conformance/<leg>/rows/`, never a list copied by hand: `make
+  conformance-rows-<leg>` (tools/conformancerows) builds and runs every row
+  file, and Go's rows are named off the `TestRow*` functions of its rows
+  directory. A row the leg cannot answer yet is red: there is no ledger of
+  rows a leg owes. A failing row is named by its cause, the failure itself,
+  read off the row's log (the compiler's error, the exception and its
+  message, the failed check): a banner around it ("error: compilation
+  failed", "Unhandled exception:", "N passed, M failed") or a line of the
+  row's own source is never the cause. A scripted row (Dart, Java, JavaScript,
+  Elixir) with no way to fail (no non-zero exit, throw, raise or assert)
+  checked nothing and is red when it exits 0, the twin of a Rust row whose
+  test binary ran no test.
+- **No fixed-form gate prints a skip.** A native leg's fixed-form gate that
+  prints a `SKIP`/`RETIRED` line for a test retired by FIXED-FORM-ALGORITHM.md
+  §5.6 has a test that did not run: `tools/retiredskips` wraps each gate and
+  any printed skip line is red. There is no ledger of retirements.
 
 **The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
 the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
@@ -454,6 +475,9 @@ per-port check where no shared case exercises it.
 | Elixir variable enum-keyed text completion and typed write extent | A text `[E]T` value may omit a named slot and the reader completes it with that slot's element default (SPEC-TABLES.md §16.2, §16.9.4). The resulting full typed value saves. A directly supplied typed keyed map must already contain exactly one value per variant; a short value refuses under SF-20 rather than being silently padded. | `internal/codegen/elixirtable` `TestElixirFiniteFloat` reads `{"keyed":{"A":5.25}}` for `Key { A, B }`, observes `B = 0.0`, and saves the completed value; the paired direct `%{"A" => 5.25}` save refuses. Shared `sref_keyed_short` independently requires the same typed-writer refusal. |
 | C and C++ block integer bounds | The generated block API must build for full-range signed and unsigned 64-bit fields and for fields that narrow either end by one. Values at each declared endpoint are legal. A narrower upper or lower bound still applies. | `internal/codegen/ctable` `TestCBlockRangeChecksElideStorageLimits` and `internal/codegen/cpptable` `TestCPPBlockRangeChecksElideStorageLimits` check the generated bound expressions for the six declarations. Run `make tables-clamp-limits` for the native limit checks. |
 | C and C++ block float32 ends | `BlockBytes` holds a ranged float, always float32 (SPEC.md §4.3), against ends held at float32, as the table write check and the Go, Rust and C# blocks hold it: `max = 0.1` admits the float32 0.1 and refuses the float32 one step past it (`tables/examples/Tables.schema` `FloatBound`). A double literal promoted the field to double, refused that 0.1 and drew `-Wdouble-promotion` in the C++ gate (#424). | `internal/codegen/ctable` `TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth` and `internal/codegen/cpptable` `TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` check the generated bound expressions; each goes red with its emitter's double-literal spelling planted back. |
+| JavaScript step-5 miss is `layout_unknown` | A fixed-form file whose header hash is in no lineage entry refuses at FIXED-FORM-ALGORITHM §5.3 step 5 as `layout_unknown`, never `layout_newer`: `n = -1`, `layoutHash` is the file's hash and nothing else, every counter is zero, and every value handed in holds its declared default (ruling R4). Fixed 2026-11-24; the JavaScript leg answered `layout_newer` before. | `test/conformance/js/rows/R15.mjs` (the build's own `Cell` file reads as its positive control, then the same file under hash `0xdeadbeefcafe0001`); `internal/codegen/jstable` `TestJSFixedVersioningOldRefusesNew`, `TestJSFixedVersioningHash`, `TestJSFixedVersioningReferenceForwardRefusal`, `TestFixedRoadmapT01Framing` (js/R8, js/R13) and `TestFixedRoadmapJsT03PlansVersions` (js/R15). |
+| JavaScript `TableFixedKnownLayout` carries the contract's members only | One known-layout entry has exactly FIXED-FORM-ALGORITHM §5.9 #19's members in #19's order, the hash as two `uint32` lanes (#34): `hashLo`, `hashHi`, `layout`, `layoutBytes`, `recordBytes`, and nothing else. The lock bytes' `DataView` the layout compare reads through rides beside the table in `<Name>FixedKnownViews`. Fixed 2026-11-24; the entry carried a sixth own key, `layoutView`, before. | `test/conformance/js/rows/R23.mjs` (`Object.keys` of an entry, and every `<Name>FixedKnown` entry of the v1 unit). |
+| JavaScript `const` op refuses a forged tag before it writes | The run's None `const` entry holds the writer's raw tag to the writer's arm count and refuses `out_of_range` (FIXED-FORM-ALGORITHM §4.6) before any destination byte is written, the same as the `ordinal` op and every §4.5 refusal; no counter moves. Fixed 2026-11-24; the op stored its None first and refused after. | `test/conformance/js/rows/R16.mjs` (TEST 7: the same forged tag 5 through the `ordinal` and the `const` op over a poisoned image, one refusal, not one byte written). |
 | Go packet Write: an off-range int128, fixed or ufixed refuses, never panics | Row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value off its raw range (`min << F` to `max << F`); a refuse-every-build leg refuses it in every build, and Go returns `serialize.ErrValueOutOfRange` from the packet `Write`, never the runtime's panic (SPEC.md §5.1 row 1 and the Go packet `Write` line). Both shared `PacketWriteRefusal` schemas declare an `int128 \| min = -10, max = 100000000000000000000`, a `fixed(16, 16) \| min = -10, max = 10` and a `ufixed(32, 32) = 1 \| min = 1, max = 4000000000`, whose top raw bound lies past int64: one raw step past each bound is refused and each bound is written | `write-refusal-packet`: in [`test/packet-write-refusal/cases.txt`](../test/packet-write-refusal/cases.txt) (the assert legs and Go) `int128_*`, `fixed_*` and `ufixed_*`; in [`rows.txt`](../test/conformance/write-refusal-packet/rows.txt) (the every-build legs) `int128_*`, `fixed_raw_*` and `ufixed_*`; `TestWriteRefusalPacket` (`test/conformance/harness`), whose second negative control drops the generated 128-bit and fixed-point refusals and requires `int128_high`, `fixed_high` and `ufixed_high` red |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules

@@ -325,11 +325,17 @@ const FixedTableFixedKnown = [
 // the module's own entries to their values but cannot replace one.
 for (const entry of FixedTableFixedKnown) { globalThis.Object.freeze(entry); }
 globalThis.Object.freeze(FixedTableFixedKnown);
+// THE LOCK BYTES' VIEWS, one per entry and made ONCE here, so the per-read
+// layout compare moves in 32-bit lanes and allocates nothing. They ride
+// BESIDE the table and never on TableFixedKnownLayout, whose members are
+// the contract (docs/FIXED-FORM-ALGORITHM.md §5.9 #19, #34).
+const FixedTableFixedKnownViews = globalThis.Object.freeze(FixedTableFixedKnown.map(
+  (k) => new globalThis.DataView(k.layout.buffer, k.layout.byteOffset, k.layout.length)));
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
 // index cut and the operator's two answers stay distinct: below it a layout
 // this build once served is layout_unsupported (upgrade the client), outside
-// the lineage is layout_newer (ship the reader).
+// the lineage is layout_unknown (§5.3 step 5).
 export const FixedTableFixedFloor = 0;
 
 // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes at module
@@ -431,14 +437,14 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
   const hashHi = ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
                   (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0);
   const pick = TableFixedSelect(FixedTableFixedKnown, hashLo, hashHi);
-  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }
+  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, hashLo, hashHi); }
   if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
   const known = FixedTableFixedKnown[pick];
   if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
   const srcView = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   {
     // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.
-    const lv = known.layoutView;
+    const lv = FixedTableFixedKnownViews[pick];
     let i = 0;
     for (; i + 4 <= layoutBytes; i += 4) {
       if (srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }

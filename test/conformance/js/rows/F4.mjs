@@ -13,7 +13,7 @@
 //
 // THE CHECK RUNS BEFORE THE HASH SELECT, so the header's hash is irrelevant to
 // it: a truncated layout is refused layout_malformed even for a hash in no
-// lineage, before layout_newer or no_layout could have their say.
+// lineage, before layout_unknown or no_layout could have their say.
 //
 // Reaches the generated tree exactly as the driver does (test/conformance/js/
 // main.mjs): the same SCHEMA_JS_GENERATED indirection and the same module
@@ -82,16 +82,46 @@ check(tables.WeaponConfigFixedSave(one, 1, file) === file.length,
     "F4: a 20-byte header claiming L=1 is layout_malformed before the hash select (refused=" + rep.refused + ")");
 }
 
-// THE BOUNDARY: `20 + L == bytes` is NOT truncated. Cut the file exactly at the
-// end of the layout (drop the records), so 20 + L == bytes and rest == 0: the
-// reader proceeds past the guard and reports zero records, no refusal, no flag.
+// THE BOUNDARY: `20 + L == bytes` is NOT truncated at step 3. Cut the file
+// exactly at the end of the layout (drop the records), so 20 + L == bytes and
+// rest == 0: the reader proceeds PAST step 3's guard. What it meets next is
+// step 9 (docs/FIXED-FORM-ALGORITHM.md §5.3, line ~1201): "if rest == 0 ...
+// REFUSE truncated — A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD". This row
+// once read that file as zero records and no refusal; the at-least-one-record
+// rule (§5.3 step 9, SPEC-TABLES §22.6) made it the `truncated` residue, which
+// this leg reports as the malformed FLAG (report.damaged), never the
+// layout_malformed NAME. The boundary this row pins is the step-3 guard, so
+// the assertion that bites is "not layout_malformed".
 {
   const exact = file.subarray(0, LAYOUT_AT + L);
   const back = [new home.WeaponConfig()];
   const rep = new home.TableFixedReport();
   const n = tables.WeaponConfigFixedLoad(back, back.length, exact, exact.length, tables.WeaponConfigFixedNewPlan(), rep);
-  check(n === 0 && rep.refused === 0 && !rep.damaged,
-    "F4 boundary: exactly 20+L bytes is NOT truncated — zero records, no refusal (n=" + n + ", refused=" + rep.refused + ")");
+  check(n === -1 && rep.refused !== home.TableFixedRefusal.LayoutMalformed,
+    "F4 boundary: exactly 20+L bytes passes step 3 — never layout_malformed (n=" + n + ", refused=" + rep.refused + ")");
+  check(rep.damaged && rep.refused === 0,
+    "F4 boundary: a header and a layout with no record behind it is step 9's truncated FLAG — a fixed-form file holds at least one record (malformed=" + rep.damaged + ", refused=" + rep.refused + ")");
+}
+
+// PROOF THE READER GOT PAST STEP 3 ON THE BOUNDARY: the same exact cut under a
+// hash in no lineage entry is answered by STEP 5 (layout_unknown), which only
+// a reader that passed step 3 can reach. One byte shorter, the same file is
+// step 3's layout_malformed whatever the hash says (the case above).
+{
+  const exact = new Uint8Array(file.subarray(0, LAYOUT_AT + L));
+  new DataView(exact.buffer).setUint32(home.TableFixedHashAt, 0xdeadbeef, true);
+  const back = [new home.WeaponConfig()];
+  const rep = new home.TableFixedReport();
+  const n = tables.WeaponConfigFixedLoad(back, back.length, exact, exact.length, tables.WeaponConfigFixedNewPlan(), rep);
+  check(n === -1 && rep.refused === home.TableFixedRefusal.LayoutUnknown,
+    "F4 boundary: at exactly 20+L bytes a stranger's hash reaches step 5's layout_unknown (refused=" + rep.refused + ")");
+}
+
+// ONE RECORD PAST THE BOUNDARY reads: 20 + L + one record is the smallest
+// lawful file (the positive control above is exactly this file).
+{
+  check(file.length === LAYOUT_AT + L + tables.WeaponConfigFixedRecordBytes,
+    "F4 boundary: the lawful file is exactly 20 + L + one " + tables.WeaponConfigFixedRecordBytes + "-byte record");
 }
 
 // THE DISTINCTION FROM F7: a file UNDER the 20-byte header is the malformed

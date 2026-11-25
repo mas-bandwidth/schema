@@ -34,7 +34,7 @@ package jstable
 // js/R15 [verify]: the four forward-read clamps are retired — count clamp across
 //                bounds, range clamp across versions, remap of an unknown
 //                variant to None, drop-and-count of an unknown field: each is
-//                layout_newer now.
+//                layout_unknown now.
 
 import (
 	"encoding/binary"
@@ -494,7 +494,7 @@ func t03JsR10(t *testing.T) {
 
 // t03JsR15: R15 "the four forward-read clamps are retired — count clamp across
 // bounds, range clamp across versions, remap of an unknown variant to None,
-// drop-and-count of an unknown field: each is layout_newer now". The four rows'
+// drop-and-count of an unknown field: each is layout_unknown now". The four rows'
 // OLD-REFUSES-NEW columns are TestJSFixedVersioningOldRefusesNew's; this
 // subtest proves the four rows are in the suite and none is a same-hash row,
 // so a row quietly dropped from the suite — or a clamp still forwarded — is red
@@ -515,12 +515,24 @@ func t03JsR15(t *testing.T) {
 			}
 		}
 		if !inRows {
-			t.Errorf("R15: %s is not in jsVersionRows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+			t.Errorf("R15: %s is not in jsVersionRows: its OLD-REFUSES-NEW column is where the retired clamp is layout_unknown by name", row)
 		}
 	}
-	// The refusal each column lands is layout_newer, by name, in the emitted
+	// The refusal each column lands is layout_unknown, by name, in the emitted
 	// load — the reader that once forwarded now refuses on the hash alone
-	// (§5.6: all four forward reads are now layout_newer).
+	// (§5.6: all four forward reads are now layout_unknown).
 	_, src := t02Table(t, t03Flat)
-	t02Has(t, src, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi);", "R15 the four retired forward reads are layout_newer by name")
+	t02Has(t, src, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, hashLo, hashHi);", "R15 the four retired forward reads are layout_unknown by name")
+	// AND NEVER layout_newer (§5.3 step 5, decided 2026-11-03: "layout_newer
+	// keeps its ordinal and no read answers it"): no emitted line of the table
+	// module names the retired refusal except the runtime's name switch, which
+	// keeps spelling the ordinal it holds.
+	named := `case TableFixedRefusal.LayoutNewer: return "layout_newer";`
+	if strings.Count(src, "TableFixedRefusal.LayoutNewer") != strings.Count(src, named) {
+		t.Error("R15: the emitted table module still answers the retired layout_newer")
+	}
+	// The runtime spells the step-5 answer as the C++ reference does.
+	if !strings.Contains(fixedRuntime, `case TableFixedRefusal.LayoutUnknown: return "layout_unknown";`) {
+		t.Error(`R15: TableFixedRefusalName does not name LayoutUnknown "layout_unknown"`)
+	}
 }

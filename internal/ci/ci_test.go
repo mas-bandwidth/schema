@@ -1455,6 +1455,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:block-gate",
 		"ci-fast.yml:build-cpp-conformance-account",
 		"ci-fast.yml:ci-policy",
+		"ci-fast.yml:conformance-rows",
+		"ci-fast.yml:conformance-rows-elixir",
 		"ci-fast.yml:generated-current",
 		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
