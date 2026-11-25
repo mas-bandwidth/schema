@@ -474,13 +474,17 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 // and run-level problems. A run that wrote none, or wrote one that is not a
 // report, is an error naming the run's own exit (runErr).
 func readPlantReport(reportPath, log string, runErr error) (plantRun, error) {
+	exit := "exit status 0"
+	if runErr != nil {
+		exit = runErr.Error()
+	}
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
-		return plantRun{log: log}, fmt.Errorf("the planted run wrote no report (its exit: %v): %w", runErr, err)
+		return plantRun{log: log}, fmt.Errorf("the planted run wrote no report (its exit: %s): %w", exit, err)
 	}
 	var rep testreg.Report
 	if err := json.Unmarshal(data, &rep); err != nil {
-		return plantRun{log: log}, fmt.Errorf("the planted run's report (its exit: %v): %w", runErr, err)
+		return plantRun{log: log}, fmt.Errorf("the planted run's report (its exit: %s): %w", exit, err)
 	}
 	run := plantRun{status: map[string]outcome{}, problems: rep.Problems, log: log}
 	for _, o := range rep.Outcomes {
