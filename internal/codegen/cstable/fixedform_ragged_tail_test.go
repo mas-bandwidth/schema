@@ -12,20 +12,23 @@ import (
 
 // §5.3 `fixed_form_ragged_tail`, schema#876 item F8 — a GAP on go, cpp and cs,
 // only partial on c and elixir. A record region that is not a whole number of
-// records is MALFORMED, not refused. It is F7's direct sibling, the very next
-// guard in the same emitted function; go closed it in #1291. Nothing already
-// covers the ragged tail on this leg: fixedform_under_20_bytes stops at the
-// short-buffer guard and no other row appends bytes to a whole file. The reader
-// owes two answers and they are NEVER both set — `refused` plus a `reason`, or
-// `malformed`. A ragged tail is the residue of a bad file, so Reason stays
-// at its declared default (R4). record_bytes is the SELECTED LINEAGE ENTRY's record size, compiled
-// into the reader (known.RecordBytes), so the guard's `record_bytes <= 8` arm is NOT
-// reachable from a file at all; rest is the file's bytes after the header and
-// layout, so this row forges only `rest % record_bytes != 0` by appending 1 to
-// record_bytes-1 bytes. extra == record_bytes is one more WHOLE record and owes
-// batch_too_large, not malformed, and is measured separately. CONTROL 2 deletes
-// the ragged arm and must turn the row RED; on go that red was a reported
-// SUCCESS, not a crash, so the shape is recorded, not assumed.
+// records REFUSES `truncated` by name: docs/FIXED-FORM-ALGORITHM.md §5.3's
+// refusal table ("a ragged tail: `rest mod record_bytes != 0` | `truncated`")
+// and "There is no `malformed` flag on this form's report". It is F7's direct
+// sibling, the very next guard in the same emitted function; go closed it in
+// #1291. Nothing already covers the ragged tail on this leg:
+// fixedform_under_20_bytes stops at the short-buffer guard and no other row
+// appends bytes to a whole file. The report answers Refused, Reason
+// "truncated", Verdict.Refused, Damaged never set, and every row handed in at
+// its declared default (R4). record_bytes is the SELECTED LINEAGE ENTRY's
+// record size, compiled into the reader (known.RecordBytes), so the guard's
+// `record_bytes <= 8` arm is NOT reachable from a file at all; rest is the
+// file's bytes after the header and layout, so this row forges only
+// `rest % record_bytes != 0` by appending 1 to record_bytes-1 bytes. extra ==
+// record_bytes is one more WHOLE record and owes batch_too_large, and is
+// measured separately. CONTROL 2 deletes the ragged arm and must turn the row
+// RED; on go that red was a reported SUCCESS, not a crash, so the shape is
+// recorded, not assumed.
 func TestFixedFormRaggedTail(t *testing.T) {
 
 	corpus := csFixedCorpus(t)
@@ -90,32 +93,28 @@ func TestFixedFormRaggedTail(t *testing.T) {
                 long n = Schema.@TABLE@FixedLoad(back, ragged, plan, r);
                 if (n != -1)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a record region that is not whole records must be malformed and return -1: extra=" + extra + " n=" + n + " malformed=" + r.Damaged + " refused=" + r.Refused);
+                    bad += ProbeLog.Fail(@NAME@, "a record region that is not whole records must refuse and return -1: extra=" + extra + " n=" + n + " refused=" + r.Refused + " reason=" + r.Reason);
                     continue;
                 }
-                if (!r.Damaged)
+                if (!r.Refused || r.Reason != "truncated")
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a ragged tail is malformed, never clean: extra=" + extra + " malformed=" + r.Damaged);
+                    bad += ProbeLog.Fail(@NAME@, "a ragged tail refuses truncated by name (§5.3 refusal table): extra=" + extra + " refused=" + r.Refused + " reason=" + r.Reason);
                 }
-                if (r.Refused)
+                if (r.Damaged)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a ragged tail is the residue of a bad file, not a refusal by name: extra=" + extra + " refused=" + r.Refused + " reason=" + r.Reason);
+                    bad += ProbeLog.Fail(@NAME@, "there is no malformed flag on this form's report (§5.3): extra=" + extra + " malformed=" + r.Damaged);
                 }
-                if (r.Reason != null)
+                if (r.Verdict != Schema.TableWire.Verdict.Refused)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "reason stays untouched on a malformed read: extra=" + extra + " reason=" + r.Reason);
-                }
-                if (r.Verdict != Schema.TableWire.Verdict.Damaged)
-                {
-                    bad += ProbeLog.Fail(@NAME@, "this leg answers Verdict.Damaged alongside Malformed: extra=" + extra + " verdict=" + r.Verdict);
+                    bad += ProbeLog.Fail(@NAME@, "a ragged tail's verdict is Refused: extra=" + extra + " verdict=" + r.Verdict);
                 }
                 if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a malformed read: extra=" + extra + " unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a refusal: extra=" + extra + " unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
                 }
                 if (r.LayoutHash != 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "malformed publishes no hash: extra=" + extra + " hash=0x" + r.LayoutHash.ToString("x16"));
+                    bad += ProbeLog.Fail(@NAME@, "truncated publishes no hash: extra=" + extra + " hash=0x" + r.LayoutHash.ToString("x16"));
                 }
                 for (int row = 0; row < back.Length; ++row)
                 {

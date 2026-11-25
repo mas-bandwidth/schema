@@ -59,7 +59,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 				requireNamedRefusal(t, vec.File, r, "outOfRange")
 				return
 			}
-			if r.n != 1 || r.refused || r.damaged {
+			if r.n != 1 || r.refused {
 				t.Fatalf("the file reads one record: %+v", r)
 			}
 			if len(order) == 0 {

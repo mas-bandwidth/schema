@@ -36,7 +36,7 @@ public final class KindMovedProbe {
         short[] remap = new short[1 << 10];
         kindmoved.TableFixed.Report r = new kindmoved.TableFixed.Report();
         int n = kindmoved.TFixed.load(vals, vals.length, data, plan, remap, kindmoved.TFixed.image(), r);
-        System.out.println("n=" + n + " refused=" + r.refused + " damaged=" + r.damaged + " reason=" + r.reason + " b=" + vals[0].b);
+        System.out.println("n=" + n + " refused=" + r.refused + " reason=" + r.reason + " b=" + vals[0].b);
     }
 }
 `
@@ -105,7 +105,7 @@ func javaKindMovedRun(t *testing.T, sabotage func(string) string) string {
 
 func TestJavaLineageKindMovedRefuses(t *testing.T) {
 	t.Parallel()
-	const want = "refused=true damaged=false reason=layoutMalformed"
+	const want = "refused=true reason=layoutMalformed"
 	t.Run("refuses", func(t *testing.T) {
 		t.Parallel()
 		got := javaKindMovedRun(t, nil)

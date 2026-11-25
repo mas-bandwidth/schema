@@ -38,8 +38,8 @@ func TestJavaCompiledPlanDeprecatedVariantReadsDefault(t *testing.T) {
 		{key: "reads", schema: dir + "/current.schema", older: []string{dir + "/old.schema"}},
 	})
 	got := runProbe(t, classes, "Probe_reads", file)
-	if got.n != 1 || got.refused || got.damaged || got.unknown != 0 {
-		t.Fatalf("read: n=%d refused=%v reason=%s damaged=%v unknown=%d, want one clean record", got.n, got.refused, got.reason, got.damaged, got.unknown)
+	if got.n != 1 || got.refused || got.unknown != 0 {
+		t.Fatalf("read: n=%d refused=%v reason=%s unknown=%d, want one clean record", got.n, got.refused, got.reason, got.unknown)
 	}
 	if one := got.value["one"]; one != "3" {
 		t.Errorf("one = %q, want 3 (the field's declared default Fierce, not the retired Old)", one)
