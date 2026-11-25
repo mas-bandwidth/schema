@@ -19,7 +19,7 @@ build/schema-python: $(shell find internal/codegen/pythontable/runtime/_schema -
 # shards so cold Go compilation plus one shard fits the two-minute per-commit
 # cap. internal/ci's TestPythonMessageCIPlan proves every ^TestPythonMessage
 # function in the package source is run by exactly one registered row of this
-# file (a shard or a dedicated row), so a new message test fails ci-policy
+# file (a shard or a dedicated row), so a new message test fails the pr group
 # until a row claims it. python-message still runs every one of them.
 .PHONY: python-message $(PYTHON_MESSAGE_SHARDS) python-message-negative-control
 python-message: $(PYTHON_MESSAGE_SHARDS) python-message-negative-control python-message-write-negative-control \

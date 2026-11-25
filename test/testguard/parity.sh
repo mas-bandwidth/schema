@@ -1,5 +1,5 @@
 #!/bin/sh
-# The parity table for tools/testguard (test/testguard/ci-policy-rest.tsv): every shared test
+# The parity table (internal/ci TestTheParityTableIsCovered holds it): every shared test
 # family against every leg (language). A cell is covered when the repository
 # registers the leg's runner for that family; a cell with no runner is red
 # unless that config holds it as a gap with the reason it does not apply.

@@ -211,7 +211,7 @@ var driverActions = []string{"actions/checkout@", "actions/upload-artifact@", "a
 var setRE = regexp.MustCompile(`^set(\s+[-+][a-zA-Z]+(\s+pipefail)?)+\s*$`)
 
 // driverCommands are the commands a driver-only job's steps may run.
-var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-test "}
+var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-test ", "go run ./tools/schema-test/ "}
 
 // DriverOnly reports whether a workflow job's lines (below its key) run
 // nothing but the driver: at least one run step, every run line a driver

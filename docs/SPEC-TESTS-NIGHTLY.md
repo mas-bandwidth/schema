@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 0. Language-free tests: 60.
+Nightly tests every language answers: 0. Language-free tests: 71.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -31,6 +31,36 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.nightly.plant.model-check.judge-refuses-three-broken-trees` | `model-check` | tools/tlcrun -controls: the judge refuses another model's violation in a reversed witness, a config error in place of a violation, and a config with no RUNS.tsv row | `controls: true` | each of the three broken copies of tla/ is refused with its named reason | `tools/tlcrun/main.go runControls` |
 | `none.nightly.plant.model-check.no-tlc-jar-on-the-runner` | `plant` | a runner without the TLC jar: the model check fails naming the runner, never skips | `env: {"TLC_JAR":"/nonexistent/tla2tools.jar"}`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red naming the runner and the missing jar | `tools/tlcrun/adapter.go toolProblem` |
 | `none.nightly.plant.model-check.witness-checks-an-undefined-invariant` | `plant` | a reversed witness whose config checks an invariant its module does not define: TLC stops on a config error, not the recorded violation | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"INVARIANT NoSuchInvariantInThisModule"}`<br>`target: none.nightly.model.card-hops.divergent-leg` | model.card-hops.divergent-leg goes red: exit 151 where its row records 12 | `tools/tlcrun/adapter.go PlantAppendEnv` |
+
+### Type `compiler`
+
+the compiler or IR itself (parse, check, plan), with no generated language involved.
+
+#### `compiler` family `compiler`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.compiler.compiler.issue710-packet-string-bounds` | `gotest` | Go test TestIssue710PacketStringBounds in ./compiler | `package: ./compiler`<br>`test: TestIssue710PacketStringBounds` | the Go test passes | `compiler/issue710_test.go:256` |
+| `none.nightly.compiler.compiler.issue746-base64-writer-int32-max-ub-san` | `gotest` | Go test TestIssue746Base64WriterInt32MaxUBSan in ./compiler | `package: ./compiler`<br>`test: TestIssue746Base64WriterInt32MaxUBSan` | the Go test passes | `compiler/issue746_test.go:68` |
+
+#### `compiler` family `fuzz`, 7 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.compiler.fuzz.prop-refusal-never-silent` | `gotest` | Go test TestPropRefusalNeverSilent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRefusalNeverSilent` | the Go test passes | `internal/fuzz/rapidprops_test.go:210` |
+| `none.nightly.compiler.fuzz.prop-round-trip-every-form` | `gotest` | Go test TestPropRoundTripEveryForm in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRoundTripEveryForm` | the Go test passes | `internal/fuzz/rapidprops_test.go:195` |
+| `none.nightly.compiler.fuzz.prop-strict-reads-agree` | `gotest` | Go test TestPropStrictReadsAgree in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropStrictReadsAgree` | the Go test passes | `internal/fuzz/rapidprops_test.go:226` |
+| `none.nightly.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:765` |
+| `none.nightly.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:790` |
+| `none.nightly.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:819` |
+| `none.nightly.compiler.fuzz.rapid-props-negative-control` | `gotest` | Go test TestRapidPropsNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRapidPropsNegativeControl` | the Go test passes | `internal/fuzz/rapidprops_test.go:335` |
+
+#### `compiler` family `publicapi`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.compiler.publicapi.external-generator-registers` | `gotest` | Go test TestExternalGeneratorRegisters in ./internal/publicapi | `package: ./internal/publicapi`<br>`test: TestExternalGeneratorRegisters` | the Go test passes | `internal/publicapi/publicapi_test.go:287` |
+| `none.nightly.compiler.publicapi.external-module-builds-the-cli` | `gotest` | Go test TestExternalModuleBuildsTheCLI in ./internal/publicapi | `package: ./internal/publicapi`<br>`test: TestExternalModuleBuildsTheCLI` | the Go test passes | `internal/publicapi/publicapi_test.go:122` |
 
 ### Type `model`
 

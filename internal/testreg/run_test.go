@@ -3,6 +3,8 @@ package testreg
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -346,6 +348,59 @@ func TestShardsCoverEveryNameExactlyOnce(t *testing.T) {
 		if _, err := Shard([]Instance{{Full: "a"}}, bad[0], bad[1]); err == nil {
 			t.Errorf("shard %d/%d accepted", bad[0], bad[1])
 		}
+	}
+}
+
+// TestShardsWeighByMeasuredSeconds: the parts are cut by measured seconds,
+// in list order, so a heavy test gets a part to itself and the light ones
+// share; no part is heavier than a contiguous cut must make it, and a test
+// with no measure weighs DefaultSeconds.
+func TestShardsWeighByMeasuredSeconds(t *testing.T) {
+	t.Parallel()
+	inst := func(name string, s float64) Instance {
+		return Instance{Full: name, Test: Test{Seconds: s}}
+	}
+	all := []Instance{inst("a", 1), inst("b", 1), inst("c", 1), inst("heavy", 30), inst("d", 1), inst("e", 1), inst("f", 1)}
+	parts := Parts(all, 3)
+	var got []string
+	for _, p := range parts {
+		var names []string
+		for _, i := range p {
+			names = append(names, i.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,b,c | heavy | d,e,f" {
+		t.Fatalf("parts %q, want the heavy test alone between the light ones", got)
+	}
+	if secs := PartSeconds(parts); secs[0] != 3 || secs[1] != 30 || secs[2] != 3 {
+		t.Fatalf("part seconds %v", secs)
+	}
+	if w := Weight(inst("x", 0)); w != DefaultSeconds {
+		t.Fatalf("an unmeasured test weighs %v", w)
+	}
+	// round robin would put a heavy test with light ones; the cut by seconds
+	// keeps every part within the heaviest single test or the even share
+	even := []Instance{inst("p", 5), inst("q", 5), inst("r", 5), inst("s", 5)}
+	for _, secs := range PartSeconds(Parts(even, 2)) {
+		if secs != 10 {
+			t.Fatalf("four 5 s tests in two parts: %v", PartSeconds(Parts(even, 2)))
+		}
+	}
+}
+
+// TestAHeavyTestLeavesNoPartEmpty: a test heavier than the even share sets
+// the heaviest part, and the parts after it still share the rest evenly
+// instead of the first filling to the heavy test's size and the last
+// getting what is left (4 | 9 | 3 | 3, never 4 | 9 | 5 | 1).
+func TestAHeavyTestLeavesNoPartEmpty(t *testing.T) {
+	t.Parallel()
+	var all []Instance
+	for i, s := range []float64{1, 1, 1, 1, 9, 1, 1, 1, 1, 1, 1} {
+		all = append(all, Instance{Full: fmt.Sprint(i), Test: Test{Seconds: s}})
+	}
+	if got := PartSeconds(Parts(all, 4)); !slices.Equal(got, []float64{4, 9, 3, 3}) {
+		t.Fatalf("part seconds %v, want [4 9 3 3]", got)
 	}
 }
 
