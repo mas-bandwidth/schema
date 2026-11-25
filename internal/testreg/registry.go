@@ -52,10 +52,13 @@ type Tier struct {
 }
 
 // Type is one kind of check a test makes (roundtrip, load-refusal, ...).
+// Contract is what an adapter must do to answer a test of the type; the spec
+// addenda write it out, and refuse a type without one (addenda.go).
 type Type struct {
-	Name string `json:"name"`
-	What string `json:"what"`
-	Line int    `json:"-"`
+	Name     string `json:"name"`
+	What     string `json:"what"`
+	Contract string `json:"contract"`
+	Line     int    `json:"-"`
 }
 
 // Test is one language-free test. Its key is type.family.case; Inputs and
@@ -213,9 +216,10 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 			}
 		case "tier", "type":
 			var v struct {
-				Rec  string `json:"rec"`
-				Name string `json:"name"`
-				What string `json:"what"`
+				Rec      string `json:"rec"`
+				Name     string `json:"name"`
+				What     string `json:"what"`
+				Contract string `json:"contract"`
 			}
 			if !dec(&v) {
 				continue
@@ -225,6 +229,8 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 				seen = types
 			}
 			switch {
+			case head.Rec == "tier" && v.Contract != "":
+				fail(n, "tier %s: a tier has no \"contract\"; a type does", v.Name)
 			case !nameRE.MatchString(v.Name):
 				fail(n, "%s name %q is not a lowercase name", head.Rec, v.Name)
 			case strings.TrimSpace(v.What) == "":
@@ -236,7 +242,7 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 				reg.Tiers = append(reg.Tiers, Tier{v.Name, v.What, n})
 			default:
 				seen[v.Name] = n
-				reg.Types = append(reg.Types, Type{v.Name, v.What, n})
+				reg.Types = append(reg.Types, Type{v.Name, v.What, v.Contract, n})
 			}
 		case "test":
 			var v struct {
