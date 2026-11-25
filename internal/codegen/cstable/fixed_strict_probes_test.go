@@ -209,7 +209,21 @@ func csCheckNoMalformedFlag(body string) []string {
 	if strings.Contains(body, "Verdict.Damaged") {
 		bad = append(bad, "the fixed load answers Verdict.Damaged")
 	}
+	if strings.Contains(body, "IntegrityDamage(") {
+		bad = append(bad, "the fixed load answers an integrity mismatch through IntegrityDamage, which sets Damaged")
+	}
 	return bad
+}
+
+// csCheckIntegrity: an integrity trailer that does not hold refuses
+// integrity_mismatch by name (docs/SPEC-TABLES.md §2.14), with no malformed
+// flag (docs/FIXED-FORM-ALGORITHM.md §5.3).
+func csCheckIntegrity(body string) []string {
+	var bad []string
+	if !strings.Contains(body, `if (!TableWire.IntegrityRead(ref data)) { if (report != null) { report.Refused = true; report.Reason = "integrity_mismatch"; report.Verdict = TableWire.Verdict.Refused; } return -1; }`) {
+		bad = append(bad, "an integrity mismatch does not refuse integrity_mismatch by name")
+	}
+	return append(bad, csCheckNoMalformedFlag(body)...)
 }
 
 // csUnder20Refusal and csRaggedRefusal are the two framing guards of the
@@ -335,6 +349,11 @@ fixed table Lineage
     z int32 = 0
     w int32 = 77
 }`,
+		"sealed": `package demo
+fixed table Sealed | integrity = "crc32c"
+{
+    x int32 = 0
+}`,
 		"array_elem_widen":   csReadSchema(t, "VNEW_array_elem_widen"),
 		"cfloat_range_widen": csReadSchema(t, "VNEW_cfloat_range_widen"),
 	}
@@ -362,6 +381,7 @@ func TestCSharpFixedProbesStrict(t *testing.T) {
 	check("cs/R9 known-hash malformed", csCheckReasons(framingBody, []string{"layout_malformed"}))
 	check("cs/R13 refuse is total", csCheckReasons(framingBody, csStrictFramingReasons))
 	check("cs/R13 no malformed flag", csCheckNoMalformedFlag(framingBody))
+	check("cs/integrity mismatch refuses by name", csCheckIntegrity(csStrictFixedLoadBody(csStrictText(csStrictGen(t, schemas["sealed"])), "Sealed")))
 	check("cs/F7 under 20 bytes", csCheckUnder20(framingBody))
 	check("cs/F8 ragged tail", csCheckRaggedTail(framingBody))
 	check("cs/F10 refuse writes nothing", csCheckStrictContract(framingBody))
@@ -467,4 +487,22 @@ func TestCSharpFixedProbesStrictNegativeControl(t *testing.T) {
 			}
 		})
 	}
+
+	// THE INTEGRITY PLANT runs over a sealed table: the retired answer, the
+	// shared IntegrityDamage helper that sets Damaged, put back in its place.
+	t.Run("integrity-sets-malformed", func(t *testing.T) {
+		sealedText := csStrictText(csStrictGen(t, schemas["sealed"]))
+		if p := csCheckIntegrity(csStrictFixedLoadBody(sealedText, "Sealed")); len(p) != 0 {
+			t.Fatalf("the pristine sealed artifact already fails:\n%s", strings.Join(p, "\n"))
+		}
+		planted := csMutateFixedLoadBody(sealedText, "Sealed",
+			`{ if (report != null) { report.Refused = true; report.Reason = "integrity_mismatch"; report.Verdict = TableWire.Verdict.Refused; } return -1; }`,
+			`{ if (report != null) { TableWire.IntegrityDamage(report); } return -1; }`)
+		if planted == sealedText {
+			t.Fatal("plant integrity-sets-malformed did not change the generated artifact: its needle is stale")
+		}
+		if p := csCheckIntegrity(csStrictFixedLoadBody(planted, "Sealed")); len(p) == 0 {
+			t.Fatal("NEGATIVE CONTROL FAILED (integrity-sets-malformed): the sabotaged artifact stayed green")
+		}
+	})
 }

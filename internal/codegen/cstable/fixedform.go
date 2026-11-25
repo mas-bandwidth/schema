@@ -2139,7 +2139,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n        }\n")
 	g.pf("        return -1;\n    }\n")
 	if st.Integrity == "crc32c" {
-		g.pf("    if (!TableWire.IntegrityRead(ref data)) { if (report != null) { TableWire.IntegrityDamage(report); } return -1; }\n")
+		// AN INTEGRITY TRAILER THAT DOES NOT HOLD REFUSES integrity_mismatch BY
+		// NAME (docs/SPEC-TABLES.md §2.14): there is no malformed flag on this
+		// form's report (docs/FIXED-FORM-ALGORITHM.md §5.3), so Damaged stays unset.
+		g.pf("    if (!TableWire.IntegrityRead(ref data)) { if (report != null) { report.Refused = true; report.Reason = \"integrity_mismatch\"; report.Verdict = TableWire.Verdict.Refused; } return -1; }\n")
 	}
 	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"truncated\"; report.Verdict = TableWire.Verdict.Refused; }\n")
