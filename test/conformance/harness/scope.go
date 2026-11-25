@@ -67,14 +67,11 @@ func closeScope(asked map[caseKey]bool, legWants map[string][]expectation, disc 
 	return scope
 }
 
-// unscopedSurfaces are the surfaces whose rows no manifest line names a case
-// of (derivedRows: a forgery line carries no case column), so every such
-// line is handed whole.
-var unscopedSurfaces = map[string]bool{"forgery": true, "cook-forgery": true}
-
 // scopeLines is a derived manifest's text cut to the scope: every line that
-// carries a case in it, every instance a kept line reads, and every line that
-// carries no case (units, connections, forgeries). A case of the scope that no
+// carries a case in it, every line a kept line reads (the instance a
+// cook-write row reads; the block or cook a forgery is made from, since the
+// drivers look its subject up), and every line that carries no case (units,
+// connections). A case of the scope that no
 // kept line carries is refused by name: the leg would never be sent it.
 func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 	keep := func(f []string, row derivedRow) bool {
@@ -88,8 +85,10 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 		}
 		return false
 	}
-	// the instances the kept rows read, so the instance line goes with them
+	// the lines the kept rows read, so they go with them: an instance by
+	// name, and a forgery's subject as "block <name>" or "cook <name>"
 	instances := map[string]bool{}
+	subjects := map[string]bool{}
 	for line := range strings.SplitSeq(text, "\n") {
 		f, row, err := derivedLine(line)
 		if err != nil {
@@ -98,12 +97,16 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 		if f != nil && row.ref == refInstance && keep(f, row) {
 			instances[f[row.col]] = true
 		}
+		if f != nil && f[0] == "forgery" && len(f) > 3 && keep(f, row) {
+			subjects[f[2]+" "+f[3]] = true
+		}
 	}
 	carried := map[caseKey]bool{}
 	var b strings.Builder
 	for line := range strings.SplitSeq(text, "\n") {
 		f, row, _ := derivedLine(line)
-		if f != nil && !keep(f, row) && !(f[0] == "instance" && instances[f[1]]) {
+		read := f != nil && ((f[0] == "instance" && instances[f[1]]) || ((f[0] == "block" || f[0] == "cook") && subjects[f[0]+" "+f[1]]))
+		if f != nil && !keep(f, row) && !read {
 			continue
 		}
 		if f != nil && row.cases != nil {
@@ -116,7 +119,8 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 	}
 	var lost []string
 	for key := range scope {
-		if !carried[key] && !unscopedSurfaces[key.surface] {
+		if !carried[key] {
+
 			lost = append(lost, key.surface+"/"+key.name)
 		}
 	}

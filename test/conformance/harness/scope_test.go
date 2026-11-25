@@ -38,8 +38,10 @@ func TestTheScopeClosesOverTwins(t *testing.T) {
 
 // TestScopeLinesKeepTheAskedRowsAndWhatTheyRead: the scoped manifest holds
 // the rows that carry the scope's cases, the instance a kept cook-write row
-// reads, and every row that carries no case; every other row is dropped. A
-// scope case no row carries is refused by name, never sent as nothing.
+// reads, the block or cook a kept forgery is made from (a driver looks the
+// subject up and fails the surface without it), and every row that carries no
+// case; every other row is dropped. A scope case no row carries is refused by
+// name, never sent as nothing.
 func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 	text := strings.Join([]string{
 		"# derived",
@@ -50,7 +52,13 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 		"cook-write inst1 inst1.cook",
 		"write-refusal wr1 U Root",
 		"message msg1 C",
-		"forgery forged1 block x",
+		"block x U x.blk",
+		"block y U y.blk",
+		"cook ck U Root ck.cook",
+		"cook cj U Root cj.cook",
+		"forgery forged1 block x f1.blk 64 0",
+		"forgery forged2 block y f2.blk 64 0",
+		"forgery forged3 cook ck f3.cook 64 null",
 	}, "\n")
 	kept, err := scopeLines(text, map[caseKey]bool{{"cook-write", "inst1"}: true})
 	if err != nil {
@@ -62,10 +70,24 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 		"connection C U",
 		"instance inst1 U Root a.bin",
 		"cook-write inst1 inst1.cook",
-		"forgery forged1 block x",
 	}, "\n")
 	if kept != wantKept {
 		t.Errorf("kept\n%s\nwant\n%s", kept, wantKept)
+	}
+	// a forgery goes with the image it forges, and no other forgery or image
+	kept, err = scopeLines(text, map[caseKey]bool{{"forgery", "forged1"}: true, {"cook-forgery", "forged3"}: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range []string{"forgery forged1 ", "block x U", "forgery forged3 ", "cook ck U"} {
+		if !strings.Contains(kept, line) {
+			t.Errorf("the scope of forged1 and forged3 dropped %q:\n%s", line, kept)
+		}
+	}
+	for _, line := range []string{"forgery forged2 ", "block y U", "cook cj U"} {
+		if strings.Contains(kept, line) {
+			t.Errorf("the scope of forged1 and forged3 kept %q:\n%s", line, kept)
+		}
 	}
 	kept, err = scopeLines(text, map[caseKey]bool{{"message", "msg1"}: true, {"json-read", "inst2"}: true})
 	if err != nil {
@@ -90,7 +112,6 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 // the scoped run: every case of every surface the harness scores is carried
 // by a line of the derived manifest (derivedRows says which), so asking it
 // alone sends the leg that row, and the row's references survive the cut.
-// A surface whose rows no line names is handed whole (unscopedSurfaces).
 func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 	chdirRepoRoot(t)
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
@@ -143,12 +164,13 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 		}
 		for _, name := range names {
 			cases++
-			if !unscopedSurfaces[s] && !carried[caseKey{s, name}] {
+			if !carried[caseKey{s, name}] {
 				t.Errorf("%s/%s: no derived manifest line carries it, so a scoped run would never send it", s, name)
 			}
 		}
 		// the first case asked alone cuts a manifest whose references hold
-		if _, err := scopeLines(string(data), map[caseKey]bool{{s, names[0]}: true}); err != nil && !unscopedSurfaces[s] {
+		if _, err := scopeLines(string(data), map[caseKey]bool{{s, names[0]}: true}); err != nil {
+
 			t.Errorf("%s/%s asked alone: %v", s, names[0], err)
 		}
 	}

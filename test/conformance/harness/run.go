@@ -1042,7 +1042,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		exemptions := map[string][]string{}
 		for _, s := range surfaces {
 			legWants[s] = want[s]
-			if s == "json-hostile" {
+			// a run that cannot reach the battery does not read its saves
+			if s == "json-hostile" && (opts.only == nil || opts.only[s]) {
+
 				legWants[s], exemptions[s] = hostileExpectations(m, d.lang)
 				if err := attachHostileSaves(m, legWants[s]); err != nil {
 					return false, err
@@ -1356,8 +1358,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	// A run that selected no row, or ran no leg on any surface, proved nothing
 	// either: --surfaces naming surfaces that hold no expectation, or --only
 	// naming a leg that answers none of them. It must not print a green matrix.
-	if err := emptySelection(results, only, opts.only); err != nil {
-		return false, err
+	// A run scoped to asked cases (the corpus adapter) answers each of them
+	// instead: an asked case the leg answered absent is MISSING by name, and
+	// one the corpus does not have is a stale row by name (adapter.go).
+	if opts.cases == nil {
+		if err := emptySelection(results, only, opts.only); err != nil {
+			return false, err
+		}
 	}
 	proveRan(langs, results)
 
