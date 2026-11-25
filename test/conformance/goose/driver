@@ -1450,13 +1450,31 @@ batch_dir() {
 # runs several surfaces' calls at once, so the warms of one run take turns
 # under the run's warm lock: never more than nproc compiles at a time, as
 # when one call warmed every unit. A call with no unit to warm starts none.
+# The lock holds its holder's pid: a holder that died (a call killed while
+# the run goes on) is named and its lock taken, never waited on for ever.
+warm_lock() {
+	while ! mkdir "$1" 2>/dev/null; do
+		_p=$(cat "$1/pid" 2>/dev/null)
+		if [ -n "$_p" ] && ! kill -0 "$_p" 2>/dev/null; then
+			echo "goose driver: the warm lock $1 is held by $_p, which has ended: taking it" >&2
+			rm -rf "$1"
+			continue
+		fi
+		sleep 1
+	done
+	if ! echo "$$" >"$1/pid"; then
+		echo "goose driver: cannot write the warm lock's holder into $1/pid; no warm" >&2
+		rm -rf "$1"
+		return 1
+	fi
+}
 batch_warm() {
 	_todo=$(for _k in $3; do
 		[ -d "$units/$_k" ] && [ -n "$(batch_of "$2/batch.map" "$_k")" ] && ! batch_fresh "$2/$_k.out" "$units/$_k" &&
 			printf '%s %s\n' "$(du -sk "$units/$_k" | cut -f1)" "$_k"
 	done | sort -rn | cut -d" " -f2)
 	[ -n "$_todo" ] || return 0
-	batch_lock "$2/warm.lock"
+	warm_lock "$2/warm.lock" || return 1
 	printf '%s\n' "$_todo" | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill ||
 		echo "goose driver: a unit's batch failed (its .err in $2 says why); its surfaces fall back to single runs" >&2
 	rm -rf "$2/warm.lock"

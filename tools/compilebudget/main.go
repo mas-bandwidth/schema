@@ -70,7 +70,7 @@ func say(w io.Writer, s string) bool {
 // given; the error names every unit past the budget and every timing that
 // is missing or unreadable.
 func check(fsys fs.FS, dir string, budget float64, units []string) (string, error) {
-	if budget <= 0 {
+	if budget <= 0 || math.IsNaN(budget) || math.IsInf(budget, 0) {
 		return "", fmt.Errorf("-budget %g: a budget must be more than zero seconds", budget)
 	}
 	if len(units) == 0 {

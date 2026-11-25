@@ -2,6 +2,7 @@ package main
 
 import (
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -144,8 +145,10 @@ func TestCheckRedsAnUnreadableTiming(t *testing.T) {
 	if _, err := check(recordedFS(units), "objs", recordedBudget, nil); err == nil {
 		t.Error("no unit at all passed")
 	}
-	if _, err := check(recordedFS(units), "objs", 0, units); err == nil {
-		t.Error("a zero budget passed")
+	for _, budget := range []float64{0, math.NaN(), math.Inf(1)} {
+		if _, err := check(recordedFS(units), "objs", budget, units); err == nil || !strings.Contains(err.Error(), "a budget must be more than zero seconds") {
+			t.Errorf("a budget of %g passed: %v", budget, err)
+		}
 	}
 }
 

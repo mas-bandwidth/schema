@@ -1,11 +1,13 @@
 package ci
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
@@ -20,7 +22,8 @@ import (
 // the units it answers, and only those, under the run's warm lock (the
 // harness runs surfaces side by side, and their warms take turns, so no more
 // than nproc compiles run at once); a second call that finds its units warm
-// compiles nothing. The goose compiler is a stand-in script that logs each
+// compiles nothing; a warm lock left by a call that ended is named and taken.
+// The goose compiler is a stand-in script that logs each
 // program it is asked to run, and whether the run's warm lock was held, and
 // answers one wire case; the driver is the real one. Reads and writes only
 // its temporary directory.
@@ -105,6 +108,36 @@ echo "case1 00"
 	}
 	if len(strays) > 0 {
 		t.Fatalf("a fill ran for no unit: %q", strays)
+	}
+	// a warm lock whose holder has ended (a call killed while the run goes
+	// on) is named and taken, never waited on: the cache of unit asked is
+	// made stale by its time alone (no clock is read), so a third call warms
+	// it again under a lock a dead process left
+	dirs, err := filepath.Glob(filepath.Join(units+".driver", "batch", "*-*"))
+	if err != nil || len(dirs) != 1 {
+		t.Fatalf("want the run's one batch directory, got %q (%v)", dirs, err)
+	}
+	ended := exec.Command("true")
+	if err := ended.Run(); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(dirs[0], "warm.lock", "pid"), fmt.Sprintln(ended.Process.Pid), 0o644)
+	long := time.Unix(1_000_000_000, 0)
+	if err := os.Chtimes(filepath.Join(dirs[0], "asked.out"), long, long); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", "test/conformance/goose/driver", manifest, "wire", out)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GOOSE="+goose, "GOOSE_LOG="+log, "GOOSE_UNITS="+units, "SCHEMA_GOOSE_GENERATED="+units)
+	text, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the driver's wire call after a dead warm lock failed: %v\n%s", err, text)
+	}
+	if want := fmt.Sprintf("is held by %d, which has ended: taking it", ended.Process.Pid); !strings.Contains(string(text), want) {
+		t.Errorf("the dead holder's warm lock was not named (want %q):\n%s", want, text)
+	}
+	if got, _ := os.ReadFile(log); strings.Join(strings.Fields(string(got)), " ") != "batch asked batch asked" {
+		t.Errorf("after a dead warm lock the stand-in ran %q; want unit asked's batch warmed again", got)
 	}
 	answer, err := os.ReadFile(filepath.Join(out, "case1"))
 	if err != nil {
