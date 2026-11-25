@@ -48,20 +48,26 @@ func TestCardsTestWholeRepoPackageJudgeCatchesThePlant(t *testing.T) {
 	if got := wholeRepoPackageRuns([]string{"$(GO_TEST) -count=1 -run '^TestX$$' ./internal/ci/"}); len(got) != 0 {
 		t.Fatalf("a named -run selection judged whole: %q", got)
 	}
+	for _, c := range []string{"$(GO_TEST) -run . ./internal/ci/", "go test -count=1 ./..."} {
+		if got := wholeRepoPackageRuns([]string{c}); len(got) != 1 {
+			t.Errorf("%q judged %q, want it named: an unanchored -run or ./... is the whole package", c, got)
+		}
+	}
 }
 
 var (
 	goTestCmdRe  = regexp.MustCompile(`\$\(GO_TEST\)|\bgo test\b`)
-	repoPkgArgRe = regexp.MustCompile(`(?:^|\s)\./(?:internal|tools|cmd|compiler)\b[^\s]*`)
+	repoPkgArgRe = regexp.MustCompile(`(?:^|\s)\./(?:(?:internal|tools|cmd|compiler)\b[^\s]*|\.\.\.)`)
+	namedRunRe   = regexp.MustCompile(`-run[= ]'?\^`)
 )
 
 // wholeRepoPackageRuns is each command that runs go test, from the
 // repository root (no cd into another module first), over a repository
-// package with no -run selection.
+// package with no -run selection anchored at ^ (a test named, not ".").
 func wholeRepoPackageRuns(cmds []string) []string {
 	var bad []string
 	for _, c := range cmds {
-		if strings.HasPrefix(c, "cd ") || !goTestCmdRe.MatchString(c) || strings.Contains(c, "-run") {
+		if strings.HasPrefix(c, "cd ") || !goTestCmdRe.MatchString(c) || namedRunRe.MatchString(c) {
 			continue
 		}
 		if repoPkgArgRe.MatchString(c) {
