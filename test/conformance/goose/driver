@@ -1363,9 +1363,12 @@ announce_prep() {
 		echo "goose driver: unit $2 has no module holding MessageAnnouncement" >&2
 		return 1
 	fi
-	_ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$_m" | head -n 1)
+	# the namespace as glue takes it, so the write names the same constant
+	# main.goose's glue would; a module that holds it under another namespace
+	# fails to compile here, and the surface falls back by name
+	_ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$1"/*Table.goose | head -n 1)
 	if [ -z "$_ns" ]; then
-		echo "goose driver: $_m names no namespace" >&2
+		echo "goose driver: unit $2's *Table.goose names no namespace" >&2
 		return 1
 	fi
 	_a="$batch_d/announce/$2"
