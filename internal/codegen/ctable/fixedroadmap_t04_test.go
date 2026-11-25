@@ -33,6 +33,8 @@ func cT04Header(t *testing.T, files map[string][]byte) string {
 	for name, data := range files {
 		if strings.HasSuffix(name, "Table.h") {
 			b.Write(data)
+			// the header includes <Base>TableData.h, which holds the fixed form's arrays
+			b.Write(files[strings.TrimSuffix(name, ".h")+"Data.h"])
 		}
 	}
 	if b.Len() == 0 {

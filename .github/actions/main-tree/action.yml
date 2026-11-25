@@ -1,0 +1,59 @@
+name: main's tree
+description: >
+  Exports main's tree beside the checkout for `schema-test extract --since`,
+  main's unmoved ledger for `--shrinks-from` when main has one, and the tree
+  of the commit this change merges into for `--pins-base`: for a pull
+  request the tip of the branch it targets (main, or an integration branch),
+  for a push the branch's own previous tip, for a dispatch main, as
+  `schema-test ci --pins-base-ref` reads it from the event. An exported
+  tree, not a worktree: a worktree stays registered in .git on a persistent
+  runner and refuses the next job. Runs no test.
+outputs:
+  tree:
+    description: the directory main's tree is in
+    value: ${{ steps.export.outputs.tree }}
+  ledger:
+    description: main's test/registry/unmoved.tsv, or empty when main has none
+    value: ${{ steps.export.outputs.ledger }}
+  base:
+    description: the directory the tree of the commit this change merges into is in
+    value: ${{ steps.export.outputs.base }}
+runs:
+  using: composite
+  steps:
+    - id: export
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --quiet --depth 1 origin main
+        main=$(git rev-parse FETCH_HEAD)
+        tree="$RUNNER_TEMP/main-tree"
+        rm -rf "$tree"
+        mkdir -p "$tree"
+        git archive "$main" | tar -x -C "$tree"
+        echo "tree=$tree" >> "$GITHUB_OUTPUT"
+        if git cat-file -e "$main":test/registry/unmoved.tsv; then
+          git show "$main":test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"
+          echo "ledger=$RUNNER_TEMP/unmoved-main.tsv" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
+          echo "ledger=" >> "$GITHUB_OUTPUT"
+        fi
+        # the commit this change merges into, from the event (schema-test ci
+        # --pins-base-ref: a pull request's target branch, a push's previous
+        # tip, main for a dispatch; any other case is red by name)
+        ref=$(go run ./tools/schema-test ci --pins-base-ref)
+        if ! git fetch --quiet --depth 1 origin "$ref"; then
+          echo "::error::the base $ref ($GITHUB_EVENT_NAME) cannot be fetched, so the not-yet-generated list has nothing to be held to: a push whose previous tip is gone (a force-push) has no base"
+          exit 1
+        fi
+        base_sha=$(git rev-parse FETCH_HEAD)
+        if [ "$base_sha" = "$main" ]; then
+          echo "base=$tree" >> "$GITHUB_OUTPUT"
+        else
+          base="$RUNNER_TEMP/base-tree"
+          rm -rf "$base"
+          mkdir -p "$base"
+          git archive "$base_sha" | tar -x -C "$base"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+        fi

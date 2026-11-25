@@ -1,10 +1,10 @@
 package ci
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -79,42 +79,31 @@ func TestCIFullPRSelect(t *testing.T) {
 	}
 }
 
-// TestCIFullPRSelectMatchesTheFastPlan holds pr-select's shared roots and C#
-// paths to ci-fast.yml plan's, so the C# tables leg is selected on exactly
-// the diffs that select the C# leg there.
-func TestCIFullPRSelectMatchesTheFastPlan(t *testing.T) {
-	t.Parallel()
-	read := func(name string) string {
-		data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows", name))
-		if err != nil {
-			t.Fatal(err)
+// selectorOutput returns the selector's own verdict from the combined output.
+// The script ends with a newline-free `printf`, so its verdict is the text
+// after the last newline; a bench whose bash sources a startup file that reads
+// an unset PS1 under the selector's `set -u` prefixes the selection with a
+// diagnostic line that no child environment can suppress, and only that line
+// is dropped. A clean runner has no newline, so the output is unchanged.
+func selectorOutput(out []byte) string {
+	if i := bytes.LastIndexByte(out, '\n'); i >= 0 {
+		return string(out[i+1:])
+	}
+	return string(out)
+}
+
+// scriptEnv returns environ without the startup files a non-interactive bash
+// sources before the -c script: BASH_ENV, or ENV for a POSIX shell. A bench
+// whose BASH_ENV reads an unset variable under the selector's `set -u` writes
+// that diagnostic to stderr, and CombinedOutput would capture it into the
+// selection. The workflow runs where neither name is set.
+func scriptEnv(environ []string) []string {
+	out := make([]string, 0, len(environ))
+	for _, kv := range environ {
+		if strings.HasPrefix(kv, "BASH_ENV=") || strings.HasPrefix(kv, "ENV=") {
+			continue
 		}
-		return string(data)
+		out = append(out, kv)
 	}
-	fast, full := read("ci-fast.yml"), read("ci-full.yml")
-	broadRE := regexp.MustCompile(`grep -q?E '\^\((ir/\|compiler/[^']*)\)'`)
-	fb, ub := broadRE.FindStringSubmatch(fast), broadRE.FindStringSubmatch(full)
-	if fb == nil || ub == nil {
-		t.Fatal("the broad rule was not found in ci-fast.yml plan or ci-full.yml pr-select")
-	}
-	if want := strings.Replace(fb[1], `ci-fast\.yml`, `ci-full\.yml`, 1); ub[1] != want {
-		t.Errorf("ci-full.yml pr-select's shared roots\n  %s\ndiffer from ci-fast.yml plan's (this file in place of that one)\n  %s", ub[1], want)
-	}
-	csCase := regexp.MustCompile(`(?m)^\s+(internal/codegen/cstable/[^)]*)\) add_leg cs ;;`).FindStringSubmatch(fast)
-	if csCase == nil {
-		t.Fatal("ci-fast.yml plan's cs row was not found")
-	}
-	var want []string
-	for p := range strings.SplitSeq(csCase[1], "|") {
-		p = strings.TrimSuffix(p, "*")
-		p = strings.ReplaceAll(p, ".", `\.`)
-		p = strings.ReplaceAll(p, "*", "[^/]*") // an inner glob star
-		if !strings.HasSuffix(p, "/") {
-			p += "$"
-		}
-		want = append(want, p)
-	}
-	if !strings.Contains(full, "'^("+strings.Join(want, "|")+")'") {
-		t.Errorf("ci-full.yml pr-select's C# paths are not ci-fast.yml plan's cs row %q (want the alternation %q)", csCase[1], strings.Join(want, "|"))
-	}
+	return out
 }

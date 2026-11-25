@@ -85,7 +85,8 @@ static SCHEMA_UNUSED int blockdemo_table_json_format_g( char * text, size_t size
 {
     return _snprintf_l( text, size, "%.*g", blockdemo_table_json_c_locale(), digits, value );
 }
-#else
+#endif
+#if !( defined( _WIN32 ) )
 static SCHEMA_UNUSED locale_t blockdemo_table_json_c_locale( void )
 {
     static locale_t c = (locale_t) 0;
@@ -1217,7 +1218,8 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_map( blockdemo_table_json_ou
 #endif
 #ifdef SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_json_out_t * out, const void * slot, const blockdemo_table_field_info_t * f, int32_t depth );
-#else
+#endif
+#if !( defined( SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME ) )
 static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_json_out_t * out, const void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     (void) out;
@@ -2362,7 +2364,8 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_token_integer( const char * to
 static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth );
 static SCHEMA_UNUSED int blockdemo_table_json_skipped_ampersand( blockdemo_table_json_in_t * in, const char * key, char close, uint64_t * opened );
 static SCHEMA_UNUSED void blockdemo_table_json_skipped_close( blockdemo_table_json_in_t * in, uint64_t label );
-#else
+#endif
+#if !( defined( SCHEMA_BLOCKDEMO_TABLE_GRAPH_RUNTIME ) )
 static SCHEMA_UNUSED int blockdemo_table_json_read_pointer( blockdemo_table_json_in_t * in, void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     (void) slot;
@@ -3324,9 +3327,11 @@ static SCHEMA_UNUSED int schema_blockdemo_table_json_text_total_keep_( blockdemo
 #ifndef SCHEMA_BLOCKDEMO_JSON_NOINLINE
 #if defined( __GNUC__ ) || defined( __clang__ )
 #define SCHEMA_BLOCKDEMO_JSON_NOINLINE __attribute__( ( noinline ) )
-#elif defined( _MSC_VER )
+#endif
+#if !( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( _MSC_VER ) )
 #define SCHEMA_BLOCKDEMO_JSON_NOINLINE __declspec( noinline )
-#else
+#endif
+#if !( defined( __GNUC__ ) || defined( __clang__ ) ) && !( defined( _MSC_VER ) )
 #define SCHEMA_BLOCKDEMO_JSON_NOINLINE
 #endif
 #endif

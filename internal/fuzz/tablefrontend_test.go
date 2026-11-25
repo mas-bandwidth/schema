@@ -13,11 +13,13 @@
 package fuzz_test
 
 import (
+	"fmt"
 	goparser "go/parser"
 	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -119,49 +121,298 @@ var tableHandSeeds = []string{
 	"package probe\ntable Leaf { values []int32 }\nunion Choice {\n    Empty\n    pointer *Leaf\n    ptrs [4]*Leaf\n    blob *bytes\n}\ntable UnionListRoot { values []Choice\n    bounded [..3]Choice }\n",
 }
 
+// tableFrontEndSeeds is FuzzTableFrontEnd's seed corpus: every schema file
+// under tableSeedDirs and every hand seed, each distinct text once, in walk
+// order. A third of the files are copies of another's text (the same unit
+// under testdata and test, say), and the oracle is a function of the text
+// alone, so a copy ran the same input again: 1587 seeds, 1088 of them distinct
+// (2026-11-25). A seed directory that is missing, unreadable or holds no
+// schema is an error, never a shorter corpus
+// (TestTableFrontEndSeedsAreEveryDistinctSchemaOnce).
+func tableFrontEndSeeds() ([]string, error) {
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	for _, dir := range tableSeedDirs {
+		n, err := seedSchemas(dir, add)
+		if err != nil {
+			return nil, fmt.Errorf("seed directory %s: %w", dir, err)
+		}
+		if n == 0 {
+			return nil, fmt.Errorf("seed directory %s holds no .schema file", dir)
+		}
+	}
+	for _, s := range tableHandSeeds {
+		add(s)
+	}
+	return out, nil
+}
+
+// TestTableFrontEndSeedsAreEveryDistinctSchemaOnce holds the seed corpus to
+// what it replaced: the set of texts is exactly every schema file under
+// tableSeedDirs plus every hand seed (none lost), and no text is in it twice.
+// Planted: tableFrontEndSeeds without its seen check repeats texts (red); with
+// a seed directory dropped, texts go missing (red).
+func TestTableFrontEndSeedsAreEveryDistinctSchemaOnce(t *testing.T) {
+	t.Parallel()
+	seeds, err := tableFrontEndSeeds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, s := range seeds {
+		got[s]++
+	}
+	want := map[string]bool{}
+	files := 0
+	for _, dir := range tableSeedDirs {
+		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || filepath.Ext(path) != ".schema" {
+				return err
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			want[string(b)] = true
+			files++
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, s := range tableHandSeeds {
+		want[s] = true
+	}
+	for s, n := range got {
+		if n > 1 {
+			t.Errorf("seed %.60q is in the corpus %d times", s, n)
+		}
+		if !want[s] {
+			t.Errorf("seed %.60q is no schema file and no hand seed", s)
+		}
+	}
+	missing := 0
+	for s := range want {
+		if got[s] == 0 {
+			missing++
+		}
+	}
+	if missing > 0 {
+		t.Errorf("%d distinct schema texts of %d files and %d hand seeds are not in the corpus", missing, files, len(tableHandSeeds))
+	}
+	if len(seeds) != len(want) {
+		t.Errorf("the corpus holds %d seeds, want the %d distinct texts", len(seeds), len(want))
+	}
+}
+
 // FuzzTableFrontEnd: any bytes the front end accepts into a unit must give the
 // Go emitter a unit it neither panics nor refuses in silence on, and the
 // emitted Go — for one input in four — must parse.
 func FuzzTableFrontEnd(f *testing.F) {
-	for _, dir := range tableSeedDirs {
-		n, err := seedSchemas(dir, func(s string) { f.Add(s) })
-		if err != nil {
-			f.Fatalf("seed directory %s: %v", dir, err)
+	seeds, err := tableFrontEndSeeds()
+	if err != nil {
+		f.Fatal(err)
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(tableFrontEndOracle)
+}
+
+// tableFrontEndOracle is FuzzTableFrontEnd's check of one input: a refusal
+// has a message, a unit the front end accepts reaches the Go emitter, which
+// neither panics nor refuses in silence, and for one input in four every
+// emitted Go file parses.
+func tableFrontEndOracle(t *testing.T, src string) {
+	if len(src) > 3000 {
+		return
+	}
+	unit, errs := loadUnit("A.schema", src)
+	for _, e := range errs {
+		if e.Error() == "" {
+			t.Fatalf("empty refusal message for input %q", src)
 		}
-		if n == 0 {
-			f.Fatalf("seed directory %s holds no .schema file", dir)
+	}
+	if unit == nil {
+		return
+	}
+	out, gerr := compiler.New().Generate(unit, "go", nil)
+	if gerr != nil && gerr.Error() == "" {
+		t.Fatalf("empty generate refusal for input %q", src)
+	}
+	if len(src)%4 != 0 {
+		return
+	}
+	fset := token.NewFileSet()
+	for fn, data := range out {
+		if _, perr := goparser.ParseFile(fset, fn, data, goparser.AllErrors); perr != nil {
+			t.Fatalf("generated Go %s does not parse: %v\n---- schema ----\n%s", fn, perr, src)
+		}
+	}
+}
+
+// tableFrontEndCorpusDir is where the fuzzer commits FuzzTableFrontEnd's
+// crashers, each a permanent regression input.
+const tableFrontEndCorpusDir = "testdata/fuzz/FuzzTableFrontEnd"
+
+// readFuzzCorpusString reads one committed corpus file of a fuzz target that
+// takes one string: "go test fuzz v1", then string("..."). Any other shape is
+// an error, never a seed left out.
+func readFuzzCorpusString(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	head, body, ok := strings.Cut(strings.TrimRight(string(b), "\n"), "\n")
+	if !ok || head != "go test fuzz v1" || strings.Contains(body, "\n") {
+		return "", fmt.Errorf("%s: not a one-string go fuzz corpus file", path)
+	}
+	lit, ok := strings.CutPrefix(body, "string(")
+	if !ok || !strings.HasSuffix(lit, ")") {
+		return "", fmt.Errorf("%s: its value is not string(...)", path)
+	}
+	v, err := strconv.Unquote(strings.TrimSuffix(lit, ")"))
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	return v, nil
+}
+
+// tableFrontEndRegressionSeeds are the inputs TestTableFrontEndRegressionSeeds
+// runs per change: every hand seed, every committed crasher, and the first
+// schema (in walk order) of each seed directory, one of each kind of unit the
+// corpus holds. FuzzTableFrontEnd runs every distinct seed in the nightly tier
+// (91 s alone on amd-2, 2026-11-25: past a per-PR shard).
+func tableFrontEndRegressionSeeds() ([]string, error) {
+	out := append([]string(nil), tableHandSeeds...)
+	entries, err := os.ReadDir(tableFrontEndCorpusDir)
+	if err != nil {
+		return nil, err
+	}
+	crashers := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		s, err := readFuzzCorpusString(filepath.Join(tableFrontEndCorpusDir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+		crashers++
+	}
+	if crashers == 0 {
+		return nil, fmt.Errorf("%s holds no corpus file", tableFrontEndCorpusDir)
+	}
+	for _, dir := range tableSeedDirs {
+		var first []string
+		if _, err := seedSchemas(dir, func(s string) {
+			if len(first) == 0 {
+				first = append(first, s)
+			}
+		}); err != nil {
+			return nil, fmt.Errorf("seed directory %s: %w", dir, err)
+		}
+		if len(first) == 0 {
+			return nil, fmt.Errorf("seed directory %s holds no .schema file", dir)
+		}
+		out = append(out, first[0])
+	}
+	return out, nil
+}
+
+// TestTableFrontEndRegressionSeeds is FuzzTableFrontEnd's per-change twin: its
+// oracle over the hand seeds, the committed crashers and one schema of each
+// seed directory. Every one of these is also a seed of FuzzTableFrontEnd
+// (TestTableFrontEndRegressionSeedsAreFuzzSeeds), which runs them all with
+// every other distinct schema nightly.
+func TestTableFrontEndRegressionSeeds(t *testing.T) {
+	t.Parallel()
+	seeds, err := tableFrontEndRegressionSeeds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range seeds {
+		t.Run(fmt.Sprint(i), func(t *testing.T) { tableFrontEndOracle(t, s) })
+	}
+}
+
+// TestTableFrontEndRegressionSeedsAreFuzzSeeds: the twin runs nothing the
+// fuzz target does not (each of its inputs is a seed of FuzzTableFrontEnd or
+// one of its committed crashers), it runs every hand seed and every crasher,
+// and the corpus reader refuses a file it cannot read whole. Planted: the
+// reader without its header check reads a v2 file (red).
+func TestTableFrontEndRegressionSeedsAreFuzzSeeds(t *testing.T) {
+	t.Parallel()
+	twin, err := tableFrontEndRegressionSeeds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeds, err := tableFrontEndSeeds()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fuzz := map[string]bool{}
+	for _, s := range seeds {
+		fuzz[s] = true
+	}
+	entries, err := os.ReadDir(tableFrontEndCorpusDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := map[string]bool{}
+	for _, s := range twin {
+		in[s] = true
+	}
+	for _, e := range entries {
+		s, err := readFuzzCorpusString(filepath.Join(tableFrontEndCorpusDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fuzz[s] = true
+		if !in[s] {
+			t.Errorf("crasher %s is not in the twin", e.Name())
 		}
 	}
 	for _, s := range tableHandSeeds {
-		f.Add(s)
+		if !in[s] {
+			t.Errorf("hand seed %.60q is not in the twin", s)
+		}
 	}
-	f.Fuzz(func(t *testing.T, src string) {
-		if len(src) > 3000 {
-			return
+	for _, s := range twin {
+		if !fuzz[s] {
+			t.Errorf("the twin runs %.60q, which is no seed of FuzzTableFrontEnd", s)
 		}
-		unit, errs := loadUnit("A.schema", src)
-		for _, e := range errs {
-			if e.Error() == "" {
-				t.Fatalf("empty refusal message for input %q", src)
-			}
+	}
+	if want := len(tableHandSeeds) + len(entries) + len(tableSeedDirs); len(twin) != want {
+		t.Errorf("the twin holds %d inputs, want %d", len(twin), want)
+	}
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"no-header":    "string(\"package p\\n\")\n",
+		"wrong-header": "go test fuzz v2\nstring(\"package p\")\n",
+		"two-args":     "go test fuzz v1\nstring(\"a\")\nstring(\"b\")\n",
+		"bytes":        "go test fuzz v1\n[]byte(\"package p\")\n",
+		"unquoted":     "go test fuzz v1\nstring(package p)\n",
+	} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
 		}
-		if unit == nil {
-			return
+		if v, err := readFuzzCorpusString(p); err == nil {
+			t.Errorf("corpus file %s read as %q: want an error", name, v)
 		}
-		out, gerr := compiler.New().Generate(unit, "go", nil)
-		if gerr != nil && gerr.Error() == "" {
-			t.Fatalf("empty generate refusal for input %q", src)
-		}
-		if len(src)%4 != 0 {
-			return
-		}
-		fset := token.NewFileSet()
-		for fn, data := range out {
-			if _, perr := goparser.ParseFile(fset, fn, data, goparser.AllErrors); perr != nil {
-				t.Fatalf("generated Go %s does not parse: %v\n---- schema ----\n%s", fn, perr, src)
-			}
-		}
-	})
+	}
+	if v, err := readFuzzCorpusString(filepath.Join(tableFrontEndCorpusDir, "f057_valid_no_diagnostics")); err != nil || v != "package fixtures\ntype Good { value uint8 }\n" {
+		t.Errorf("a committed crasher read as %q, %v", v, err)
+	}
 }
 
 // TestZeroStrideAndEdgeShapesAllTargets exercises empty-enum keyed refusals,

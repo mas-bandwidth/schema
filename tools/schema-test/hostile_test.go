@@ -7,7 +7,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -402,5 +404,217 @@ func TestEveryHostileTargetDeclaresItsBuild(t *testing.T) {
 		if !slices.Contains(prereqs[target], build) {
 			t.Errorf("%s: %s does not depend on %s (its prerequisites: %q)", lang, target, build, prereqs[target])
 		}
+	}
+}
+
+// TestEveryHostileTargetDryRunsWithoutWriting runs make -n on every registry
+// language's corpus target (which names its declared build) and holds each to
+// a dry run: make exits 0 and no file or directory of the tree is created,
+// changed or removed. make -n still runs a recipe line whose text names
+// $(MAKE), so a line that also untars, deletes or downloads does it for real;
+// dist-squirrel's extract line did (make/squirrel.mk, SQUIRREL_SUBMAKE).
+//
+// It dry-runs a private copy of the checkout's files (tracked and untracked,
+// not ignored) at build/dryrun-<n>/checkout, so no other run writing the
+// checkout can turn it red, and the copy is cold the way a fresh CI checkout
+// is. It watches all of build/dryrun-<n>, so a write through the make files'
+// ../ sibling paths (../serialize and the rest) lands inside what it sees.
+// Those siblings are absent there: the dry run takes the path a checkout
+// without them takes. It sees writes to that folder only, not to caches or
+// $HOME. Functional tier: it runs git and make.
+func TestEveryHostileTargetDryRunsWithoutWriting(t *testing.T) {
+	t.Chdir("../..")
+	reg, err := testreg.Load(testreg.DefaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	langs := reg.LangNames()
+	if len(langs) == 0 {
+		t.Fatal("the registry names no language")
+	}
+	watched, tree := dryRunCopy(t)
+	// the dry run is make's own, not a parent make's jobserver or flags
+	var env []string
+	for _, kv := range os.Environ() {
+		switch k, _, _ := strings.Cut(kv, "="); k {
+		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL", "GNUMAKEFLAGS", "MAKEFILES":
+		default:
+			env = append(env, kv)
+		}
+	}
+	before, err := checkoutState(watched)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lang := range langs {
+		target := strings.ReplaceAll(hostileTarget, testreg.LangPlaceholder, lang)
+		cmd := exec.Command("make", "-n", target)
+		cmd.Dir = tree
+		cmd.Env = env
+		out, runErr := cmd.CombinedOutput()
+		after, err := checkoutState(watched)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if runErr != nil {
+			t.Errorf("%s: make -n %s failed: %v\n%s", lang, target, runErr, tail(string(out), 10))
+		}
+		if changed := stateDiff(before, after); len(changed) > 0 {
+			t.Errorf("%s: make -n %s wrote the tree: %s", lang, target, strings.Join(changed, ", "))
+		}
+		before = after
+	}
+}
+
+// dryRunCopy copies every file git lists in the checkout (tracked, and
+// untracked but not ignored) into checkout/ of a new folder under build/,
+// removed when the test ends, and returns the folder and the copy. A tracked
+// file deleted in the checkout is not copied: the copy is the working tree as
+// it stands.
+func dryRunCopy(t *testing.T) (string, string) {
+	t.Helper()
+	list, err := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard").Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v", err)
+	}
+	if err := os.MkdirAll("build", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp("build", "dryrun-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Errorf("remove %s: %v", dir, err)
+		}
+	})
+	copied := 0
+	seen := map[string]bool{}
+	for _, rel := range strings.Split(strings.TrimRight(string(list), "\x00"), "\x00") {
+		if rel == "" || seen[rel] {
+			continue
+		}
+		seen[rel] = true
+		info, err := os.Lstat(rel)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst := filepath.Join(dir, "checkout", rel)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, err := os.Readlink(rel)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, dst); err != nil {
+				t.Fatal(err)
+			}
+		case info.Mode().IsRegular():
+			data, err := os.ReadFile(rel)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(dst, data, info.Mode().Perm()); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatalf("%s: git lists it, and it is neither a file nor a link (%s)", rel, info.Mode())
+		}
+		copied++
+	}
+	if copied == 0 {
+		t.Fatal("git ls-files listed no file to copy")
+	}
+	return dir, filepath.Join(dir, "checkout")
+}
+
+// fileState is one path's kind, size, modification time and identity (its
+// inode and change time, which a delete-and-restore changes even when tar
+// puts the size and modification time back).
+type fileState struct {
+	dir   bool
+	size  int64
+	mtime int64
+	id    string
+}
+
+// checkoutState is every path under root but .git.
+func checkoutState(root string) (map[string]fileState, error) {
+	out := map[string]fileState{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		id, err := fileIdentity(info)
+		if err != nil {
+			return fmt.Errorf("%s: %w", p, err)
+		}
+		st := fileState{dir: d.IsDir(), mtime: info.ModTime().UnixNano(), id: id}
+		if !st.dir {
+			st.size = info.Size()
+		}
+		out[p] = st
+		return nil
+	})
+	return out, err
+}
+
+// stateDiff names, in order, each path created, changed or removed between
+// two states, at most 20 of them and then how many more.
+func stateDiff(before, after map[string]fileState) []string {
+	var changed []string
+	for p, a := range after {
+		b, ok := before[p]
+		switch {
+		case !ok:
+			changed = append(changed, p+" (created)")
+		case !a.dir && (a.size != b.size || a.mtime != b.mtime || a.id != b.id):
+			changed = append(changed, p+" (changed)")
+		}
+	}
+	for p := range before {
+		if _, ok := after[p]; !ok {
+			changed = append(changed, p+" (removed)")
+		}
+	}
+	slices.Sort(changed)
+	if len(changed) > 20 {
+		changed = append(changed[:20], fmt.Sprintf("and %d more", len(changed)-20))
+	}
+	return changed
+}
+
+// TestStateDiffNamesEveryWrite holds stateDiff to naming a created, a changed,
+// a removed and a deleted-and-restored path (same size and mtime, a new inode
+// and change time), and nothing for an untouched one or a directory whose
+// listing alone changed.
+func TestStateDiffNamesEveryWrite(t *testing.T) {
+	before := map[string]fileState{
+		"same": {size: 1, mtime: 1, id: "1/1"}, "edited": {size: 1, mtime: 1, id: "2/1"}, "gone": {size: 1, mtime: 1, id: "3/1"},
+		"retarred": {size: 1, mtime: 1, id: "4/1"}, "d": {dir: true, mtime: 1, id: "5/1"},
+	}
+	after := map[string]fileState{
+		"same": {size: 1, mtime: 1, id: "1/1"}, "edited": {size: 1, mtime: 2, id: "2/1"}, "new": {size: 0, mtime: 3, id: "6/1"},
+		// deleted and extracted again: tar restores size and mtime, never the
+		// inode and change time
+		"retarred": {size: 1, mtime: 1, id: "7/2"}, "d": {dir: true, mtime: 9, id: "5/9"},
+	}
+	want := []string{"edited (changed)", "gone (removed)", "new (created)", "retarred (changed)"}
+	if got := stateDiff(before, after); !slices.Equal(got, want) {
+		t.Errorf("stateDiff = %q, want %q", got, want)
 	}
 }

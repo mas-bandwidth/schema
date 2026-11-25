@@ -2,6 +2,7 @@ package goldens
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 )
@@ -23,6 +26,72 @@ var bannedTerm = regexp.MustCompile(`peer|PEER|Peer|(?i:\bpeer)`)
 // absolutePath is the shape of a machine-local absolute path: a home, volume
 // or temporary directory, or a Windows drive path.
 var absolutePath = regexp.MustCompile(`(?m:^|[^A-Za-z0-9_.])(/Users/|/home/|/Volumes/|/private/|/tmp/|/var/folders/|/root/|[A-Za-z]:\\{1,2}Users\\)`)
+
+// bannedNeedles: every match of bannedTerm is a casing of "peer", so its
+// folded text holds foldKey("peer").
+var bannedNeedles = [][]byte{foldKey([]byte("peer"))}
+
+// absoluteNeedles: every match of absolutePath holds one of these bytes as
+// written (absolutePath has no (?i)); the drive path's is its "Users\".
+var absoluteNeedles = [][]byte{[]byte("/Users/"), []byte("/home/"), []byte("/Volumes/"), []byte("/private/"), []byte("/tmp/"), []byte("/var/folders/"), []byte("/root/"), []byte("Users\\")}
+
+// A scanner is one rule: its expression, and needles at least one of which
+// every match of the expression holds (in the folded text when folded). A
+// text that holds none cannot match, and the expression does not run on it:
+// run on every generated file it was two thirds of this test's time
+// (TestGeneratedTextNamesNoMachine, 80 s of 113 s on amd-2, 2026-11-25). The
+// prefilter only skips texts the expression cannot match, so find returns
+// exactly what the expression's FindAllIndex does
+// (TestAScannerFindsWhatItsExpressionFinds).
+type scanner struct {
+	re      *regexp.Regexp
+	folded  bool
+	needles [][]byte
+}
+
+// find is s.re.FindAllIndex(text, -1); folded is foldKey(text).
+func (s scanner) find(text, folded []byte) [][]int {
+	hay := text
+	if s.folded {
+		hay = folded
+	}
+	for _, n := range s.needles {
+		if bytes.Contains(hay, n) {
+			return s.re.FindAllIndex(text, -1)
+		}
+	}
+	return nil
+}
+
+// machineScanner is the rule for one machine word: the word whole, in any
+// casing (?i) matches, between non-word bytes or line ends.
+func machineScanner(w string) scanner {
+	return scanner{
+		re:      regexp.MustCompile(`(?im)(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(w) + `($|[^A-Za-z0-9_])`),
+		folded:  true,
+		needles: [][]byte{foldKey([]byte(w))},
+	}
+}
+
+// foldKey maps each rune of b to the least rune of its simple case-folding
+// orbit (unicode.SimpleFold), the equivalence (?i) matches by: 'k', 'K' and
+// the Kelvin sign all become 'K', and 's', 'S' and the long s all become 'S'.
+// A word (?i) matches in a text is then a substring of the folded text, as
+// its folded word. A byte that is not UTF-8 is U+FFFD on both sides, as the
+// regexp package reads it.
+func foldKey(b []byte) []byte {
+	out := make([]byte, 0, len(b))
+	for len(b) > 0 {
+		r, n := utf8.DecodeRune(b)
+		b = b[n:]
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		out = utf8.AppendRune(out, least)
+	}
+	return out
+}
 
 // textUnits is every testdata schema unit: the two corpora and every unit
 // under tables/ that holds schema files.
@@ -80,15 +149,15 @@ func machineWords(t *testing.T) []string {
 // machine that ran the compiler. A unit a target refuses is skipped; every
 // target must emit for at least one unit.
 func TestGeneratedTextNamesNoMachine(t *testing.T) {
-	// every unit generated for every target: 96 s alone on a loaded bench,
-	// past what a two-minute fast-lane job can hold, so it runs nightly
-	var machine []*regexp.Regexp
+	var machine []scanner
 	for _, w := range machineWords(t) {
 		if len(w) < 3 {
 			continue
 		}
-		machine = append(machine, regexp.MustCompile(`(?im)(^|[^A-Za-z0-9_])`+regexp.QuoteMeta(w)+`($|[^A-Za-z0-9_])`))
+		machine = append(machine, machineScanner(w))
 	}
+	banned := scanner{re: bannedTerm, folded: true, needles: bannedNeedles}
+	absolute := scanner{re: absolutePath, needles: absoluteNeedles}
 	units := textUnits(t)
 	allTargets := schema.Targets()
 	if len(allTargets) == 0 {
@@ -124,9 +193,10 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 				scanned += len(names)
 				for _, name := range names {
 					text := files[name]
+					folded := foldKey(text)
 					where := target + " " + dir + " " + name
-					report := func(m *regexp.Regexp, what string) {
-						for _, at := range m.FindAllIndex(text, -1) {
+					report := func(m scanner, what string) {
+						for _, at := range m.find(text, folded) {
 							start := bytes.LastIndexByte(text[:at[0]], '\n') + 1
 							end := bytes.IndexByte(text[at[0]:], '\n')
 							if end < 0 {
@@ -136,8 +206,8 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 							t.Errorf("%s:%d %s: %s", where, line, what, strings.TrimSpace(string(text[start:at[0]+end])))
 						}
 					}
-					report(bannedTerm, "uses the banned term")
-					report(absolutePath, "carries an absolute path")
+					report(banned, "uses the banned term")
+					report(absolute, "carries an absolute path")
 					for _, m := range machine {
 						report(m, "names the machine that ran the compiler")
 					}
@@ -150,5 +220,48 @@ func TestGeneratedTextNamesNoMachine(t *testing.T) {
 				t.Errorf("target %s emitted no file across every unit, so nothing of its output was scanned", target)
 			}
 		})
+	}
+}
+
+// TestAScannerFindsWhatItsExpressionFinds holds the prefilter to its
+// expression: on every sample, each rule's find returns exactly the
+// expression's own FindAllIndex, so skipping the expression on a text the
+// needles rule out never hides a match. The samples are the casings (?i)
+// matches beyond ASCII (the Kelvin sign for k, the long s for s), the banned
+// term in each spelling, every absolute-path shape, and texts that hold none.
+// Planted: foldKey as bytes.ToLower misses the long s and the Kelvin sign
+// (red); absoluteNeedles without "Users\\" misses the drive path (red).
+func TestAScannerFindsWhatItsExpressionFinds(t *testing.T) {
+	t.Parallel()
+	rules := map[string]scanner{
+		"banned":   {re: bannedTerm, folded: true, needles: bannedNeedles},
+		"absolute": {re: absolutePath, needles: absoluteNeedles},
+		"host":     machineScanner("build-sis"),
+		"user":     machineScanner("kelvin"),
+		"path":     machineScanner("/srv/work/schema"),
+	}
+	samples := []string{
+		"", "nothing to see", "peer", "PEER", "Peer", "pEeR", "a peer here", "xpeerx", "BuildPeerVersion", "TypeError",
+		"open /Users/x/a", "\"/home/ci\"", "/Volumes/nova", "/private/var", "x=/tmp/y", "/var/folders/q", "/root/.cache",
+		"C:\\Users\\me", "c:\\\\Users\\\\me", "D:Users\\x", "/usr/local", "usersx\\",
+		"build-sis", "BUILD-SIS", "Build-Sis", "build-\u017fi\u017f", "x build-sis.", "xbuild-sis", "build-sisy",
+		"kelvin", "KELVIN", "\u212aelvin", "a \u212aELVIN b", "kelvins",
+		"/srv/work/schema", "/SRV/WORK/\u017fchema/sub", "at /srv/work/schema\n", "\xff/srv/work/schema\xfe",
+		"line one\nPEER on two\n/home/x on three\nkelvin four",
+	}
+	for name, rule := range rules {
+		hits := 0
+		for _, s := range samples {
+			text := []byte(s)
+			want := rule.re.FindAllIndex(text, -1)
+			got := rule.find(text, foldKey(text))
+			hits += len(want)
+			if fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Errorf("%s on %q: the prefiltered scan found %v, the expression %v", name, s, got, want)
+			}
+		}
+		if hits == 0 {
+			t.Errorf("%s matched no sample: the samples do not exercise it", name)
+		}
 	}
 }

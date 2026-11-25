@@ -24,7 +24,12 @@ import (
 //	schema-test extract --json             every test, one JSON line each
 //	schema-test extract --write-ledger     rewrite the ledger to what is unmoved now
 //	schema-test extract --shrinks-from F   also hold the ledger to F (main's), which it may not exceed
-//	schema-test extract --since DIR        also name each test DIR (main's tree) lacks that has no row
+//	schema-test extract --since DIR --pins-base BASE
+//	                                       also name each test DIR (main's tree) lacks that has no row,
+//	                                       and hold ci-pins.tsv's not-yet-generated list to BASE's: the
+//	                                       tree of the commit this change merges into (main for a change
+//	                                       to main, the integration branch's previous tip otherwise);
+//	                                       --since takes --pins-base, always
 //	schema-test extract --move L           give every unmoved test of layer L's ledger lines its
 //	                                       registry row (the kinds the driver has an adapter for), then
 //	                                       rewrite the ledger
@@ -37,12 +42,16 @@ func extractCmd(args []string, stdout io.Writer) error {
 	write := fs.Bool("write-ledger", false, "")
 	shrinks := fs.String("shrinks-from", "", "")
 	since := fs.String("since", "", "")
+	pinsBase := fs.String("pins-base", "", "")
 	move := fs.String("move", "", "")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
 	if fs.NArg() != 0 {
 		return usageError{"extract takes no names"}
+	}
+	if (*since == "") != (*pinsBase == "") {
+		return usageError{"--since and --pins-base go together: --pins-base names the tree this change merges into, which the not-yet-generated list is held to"}
 	}
 	res, err := extract.Extract(*root)
 	if err != nil {
@@ -134,6 +143,11 @@ func extractCmd(args []string, stdout io.Writer) error {
 		}
 		problems = append(problems, extract.NewWithoutRows(before, res, reg)...)
 		problems = append(problems, extract.DroppedMakeTargets(before, res)...)
+		pp, err := pinsShrinkFrom(*pinsBase, *root)
+		if err != nil {
+			return err
+		}
+		problems = append(problems, pp...)
 	}
 	if *shrinks != "" {
 		old, err := extract.LoadLedger(*shrinks)
@@ -287,4 +301,80 @@ func nestedModule(root, dir string) bool {
 		}
 	}
 	return false
+}
+
+// pinsShrinkFrom holds root's not-yet-generated workflows to base's, the
+// tree of the commit the change merges into: the list only shrinks. The
+// base's list is its ci-pins.tsv's not-yet-generated lines; a base from
+// before ci-pins.tsv existed has every workflow not yet generated, so its
+// list is every workflow file it holds that schema-test ci does not
+// generate and that runs no test (nonTestWorkflows) does not name. There
+// is always a base list to compare against, and nothing to say aloud. A
+// base that is not a directory is an error, and a ci-pins.tsv gone from
+// root while the base's ci-pins.tsv lists any workflow is red.
+func pinsShrinkFrom(base, root string) ([]string, error) {
+	if fi, err := os.Stat(base); err != nil || !fi.IsDir() {
+		return nil, fmt.Errorf("--pins-base %s: not a directory: it names the tree this change merges into", base)
+	}
+	read := func(dir string) ([]ciPin, []string, bool, error) {
+		data, err := os.ReadFile(filepath.Join(dir, ciPinsPath))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, false, nil
+		}
+		if err != nil {
+			return nil, nil, false, err
+		}
+		pins, problems := readPins(data)
+		return pins, problems, true, nil
+	}
+	old, oldProblems, hadOld, err := read(base)
+	if err != nil {
+		return nil, err
+	}
+	now, problems, hasNow, err := read(root)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range oldProblems {
+		problems = append(problems, "--pins-base "+base+": "+p)
+	}
+	if !hadOld {
+		if old, err = baseWorkflows(base); err != nil {
+			return nil, err
+		}
+	}
+	if hadOld && !hasNow {
+		for _, p := range old {
+			if p.State == pinNotYetGenerated {
+				problems = append(problems, fmt.Sprintf("%s is gone, and the base lists %s as not yet generated: the list only shrinks, by generating", ciPinsPath, p.Path))
+			}
+		}
+	}
+	return append(problems, notYetGeneratedShrinks(old, now)...), nil
+}
+
+// baseWorkflows is the not-yet-generated list of a base with no
+// ci-pins.tsv: each workflow file it holds, but the ones schema-test ci
+// generates and the ones that run no test.
+func baseWorkflows(base string) ([]ciPin, error) {
+	entries, err := os.ReadDir(filepath.Join(base, ".github", "workflows"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	generated := map[string]bool{}
+	for _, p := range generatedWorkflowFiles {
+		generated[p] = true
+	}
+	var out []ciPin
+	for _, e := range entries {
+		p := ".github/workflows/" + e.Name()
+		if e.IsDir() || generated[p] || nonTestWorkflows[e.Name()] != "" {
+			continue
+		}
+		out = append(out, ciPin{Path: p, State: pinNotYetGenerated})
+	}
+	return out, nil
 }

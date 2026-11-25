@@ -87,7 +87,7 @@ const (
 // Report is a run's whole account. Expected counts every selected instance
 // that is not declared unrepresentable; Ran counts those an adapter
 // reported. A run is green only when nothing failed, nothing is missing,
-// no adapter reported a stray result, and Expected == Ran == Passed.
+// no adapter reported a stray result, and Expected == Ran == Passed > 0.
 type Report struct {
 	Expected, Ran, Passed, Failed, Missing, Unrep int
 	Outcomes                                      []Outcome
@@ -96,7 +96,7 @@ type Report struct {
 
 // OK reports whether the run is green.
 func (r *Report) OK() bool {
-	return len(r.Problems) == 0 && r.Failed == 0 && r.Missing == 0 && r.Expected == r.Ran && r.Passed == r.Expected
+	return len(r.Problems) == 0 && r.Failed == 0 && r.Missing == 0 && r.Expected == r.Ran && r.Passed == r.Expected && r.Expected > 0
 }
 
 // Summary is the counts line every run prints.
@@ -254,6 +254,26 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 	return p
 }
 
+// timedOut names a call the driver's own deadline killed: the adapter, the
+// call, the limit the call had and how long it ran (by the runner's clock;
+// with none, the deadline itself), so a timeout never reads as a crash. Each
+// row the call left unreported carries this line by its own name.
+func (rn *Runner) timedOut(ctx context.Context, g group, start time.Time) string {
+	limit := "a deadline"
+	deadline, ok := ctx.Deadline()
+	switch {
+	case ok && rn.Now != nil:
+		limit = "its limit of " + deadline.Sub(start).Round(time.Millisecond).String()
+	case ok:
+		limit = "its deadline " + deadline.UTC().Format(time.RFC3339)
+	}
+	ran := ""
+	if rn.Now != nil {
+		ran = ", after it ran " + rn.clock().Sub(start).Round(time.Millisecond).String()
+	}
+	return fmt.Sprintf("adapter %s timed out: TIMED OUT: the driver killed call %s at %s%s", g.adapter, g.name, limit, ran)
+}
+
 // Run runs the instances and accounts for every one of them.
 func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	plan := rn.Plan(instances)
@@ -281,9 +301,9 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
 		switch {
 		case timedOut && err == nil:
-			err = fmt.Errorf("adapter %s timed out", g.adapter)
+			err = fmt.Errorf("%s", rn.timedOut(ctx, g, start))
 		case timedOut:
-			err = fmt.Errorf("adapter %s timed out: %w", g.adapter, err)
+			err = fmt.Errorf("%s: %w", rn.timedOut(ctx, g, start), err)
 		case err != nil:
 			err = fmt.Errorf("adapter %s crashed: %w", g.adapter, err)
 		}
@@ -347,11 +367,15 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 			default:
 				got[res.Instance] = true
 				rep.Ran++
-				switch res.Verdict {
-				case Pass:
+				switch {
+				case res.Verdict == Pass && RefuseSkips(strings.Split(res.Reason, "\n")) != nil:
+					// a pass whose reason says it skipped did not run what it
+					// passes for
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: "a pass whose reason reports a skip, and nothing is ever skipped: " + res.Reason, Seconds: secondsOf(res)}
+				case res.Verdict == Pass:
 					// a pass keeps its reason: a fuzz row's names its seed
 					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Reason: res.Reason, Seconds: secondsOf(res)}
-				case Fail:
+				case res.Verdict == Fail:
 					reason := res.Reason
 					if strings.TrimSpace(reason) == "" {
 						reason = "the adapter gave no reason"
@@ -393,6 +417,10 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	sort.SliceStable(rep.Outcomes, func(i, j int) bool { return rank(rep.Outcomes[i].Status) < rank(rep.Outcomes[j].Status) })
 	if rep.Expected != rep.Ran {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("expected %d instances to run, %d ran", rep.Expected, rep.Ran))
+	}
+	// a run that ran nothing proves nothing: it is red, never a pass of 0
+	if rep.Expected == 0 {
+		rep.Problems = append(rep.Problems, "the run had no instance to run, and a run of 0 tests is no pass")
 	}
 	return rep
 }

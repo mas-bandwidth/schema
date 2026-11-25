@@ -17,6 +17,12 @@
 // --write writes them, --plant ROW writes the read plant that proves ROW's
 // credits; it prints Go reads to consider and credits with no plant.
 //
+//	schema-test ci [--check] [--verdict] [--root DIR]
+//
+// ci writes .github/workflows/ci-fast.yml and docs/CI-TIERS.md from the
+// registry (ci.go); --check regenerates them, holds the tree to them, and
+// holds every workflow to running tests only through schema-test.
+//
 // seconds records, in the registry, the measured seconds of every test a
 // run's log (a CI job's, say) shows passing: what --shard weighs it by.
 //
@@ -74,6 +80,7 @@ const usage = `usage:
   schema-test addenda [--check] [--root DIR]
   schema-test seconds [--registry PATH] LOG...
   schema-test reads [--write] [--plant ROW]... [--registry PATH]   propose read credits; --plant writes a row's read plant
+  schema-test ci [--check] [--verdict]   write (or --check) ci-fast.yml and docs/CI-TIERS.md from the registry
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
   --shard i/n       the i-th of n parts of the expanded list
@@ -164,6 +171,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	if sub == "reads" {
 		return readsCmd(ctx, args[1:], stdout)
+	}
+	if sub == "ci" {
+		return ciCmd(args[1:], stdout)
 	}
 	if sub != "run" && sub != "list" && sub != "coverage" {
 		return usageError{fmt.Sprintf("unknown subcommand %q", sub)}
@@ -403,11 +413,14 @@ func narrowLangs(group, named []string) ([]string, error) {
 // langsCmd is "schema-test langs": the registry's languages as a JSON list,
 // with --ready only those whose adapter has landed, then "none" for the
 // language-free tests. A workflow's per-language matrix reads it, so the list
-// is never written in a workflow.
+// is never written in a workflow. --targets prints the languages alone,
+// comma-separated, for a reader that is no JSON reader (the roadmap's
+// all-targets acceptance, make roadmap-all-targets-check).
 func langsCmd(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("schema-test langs", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	ready := fs.Bool("ready", false, "")
+	targets := fs.Bool("targets", false, "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
@@ -427,6 +440,10 @@ func langsCmd(args []string, stdout io.Writer) error {
 	}
 	if len(out) == 0 {
 		return fmt.Errorf("langs: the registry has no language%s", map[bool]string{true: " whose adapter has landed", false: ""}[*ready])
+	}
+	if *targets {
+		_, err = fmt.Fprintln(stdout, strings.Join(out, ","))
+		return err
 	}
 	out = append(out, testreg.LangFree)
 	b, err := json.Marshal(out)

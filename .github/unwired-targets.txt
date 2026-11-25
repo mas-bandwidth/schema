@@ -23,7 +23,6 @@ conformance-valuedefaults-pin | by-hand: authoring, re-pins value-default expect
 proof-write | by-hand: authoring, regenerates test/proof/proof.json
 python-fixed-proof-ci-patterns | by-hand: prints the CI patterns of the python fixed proof, runs no test
 python-fixed-proof-evolution | by-hand: aggregate of the evolution parts CI already runs one by one
-roadmap-original-nine-check | by-hand: release acceptance, red by design until the original nine are complete; roadmap.yml runs roadmap-check per pull request
 schema-go-generated-golangci-lint-gate-ratchet-regenerate | by-hand: authoring, regenerates the golangci-lint ratchet
 shape-gate | by-hand: alias; ci-full runs `go run ./bench/tools/shapegate` directly, not through make
 slow-gate-coverage | by-hand: the whole-tree audit; ci-full.yml runs it as slow-gate-coverage-codegen shards
