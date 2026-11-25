@@ -83,30 +83,45 @@ func subjectKeys(f []string) []string {
 	return nil
 }
 
-// scopeLines is a derived manifest's text cut to the scope: every line that
-// carries a case in it, every line a kept line reads (the instance a
-// cook-write row reads; the block or cook a forgery is made from, since the
-// drivers look its subject up), and every line that carries no case (units,
-// connections). A case of the scope that no kept line carries, and a kept
-// forgery whose subject no line answers to, are refused by name: the leg
-// would never be sent the one, nor be able to read the other.
+// scopeLines is a derived manifest's text cut to the scope. A line is cut
+// only when it carries cases, none of them is asked, and a surface it is
+// scored on runs (the scope's surfaces): what a run saves is the rows a
+// running surface answers and nobody asked. Every other line stays, so a
+// driver that reads one line kind beside its own finds it: the elixir
+// write-refusal-message writer reads the batch of the `message` row with its
+// connection and wire, and falls back to another writer without it. On a
+// running surface a line a kept line reads stays too: the instance a
+// cook-write row reads, the `message` row a write-refusal-message row reads,
+// and the block or cook a forgery is made from (the drivers look its subject
+// up). A case of the scope that no kept line carries, and a kept forgery
+// whose subject no line answers to, are refused by name: the leg would never
+// be sent the one, nor be able to read the other.
 func scopeLines(text string, scope map[caseKey]bool) (string, error) {
+	running := map[string]bool{}
+	for key := range scope {
+		running[key.surface] = true
+	}
 	keep := func(f []string, row derivedRow) bool {
 		if row.cases == nil {
 			return true
 		}
+		runs := false
 		for _, key := range row.cases(f) {
 			if scope[key] {
 				return true
 			}
+			runs = runs || running[key.surface]
 		}
-		return false
+		return !runs
 	}
 	// the lines the kept rows read, so they go with them: an instance by
 	// name, and a forgery's subject as "block <name>" or "cook <name>"
 	// (subjectKeys), each with the forgeries that read it
 	instances := map[string]bool{}
 	subjects := map[string][]string{}
+	// the message rows a kept write-refusal-message row reads, by connection
+	// and wire file
+	batches := map[string]bool{}
 	for line := range strings.SplitSeq(text, "\n") {
 		f, row, err := derivedLine(line)
 		if err != nil {
@@ -115,8 +130,13 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 		if f != nil && row.ref == refInstance && keep(f, row) {
 			instances[f[row.col]] = true
 		}
-		if f != nil && f[0] == "forgery" && len(f) > 3 && keep(f, row) {
+		// a forgery's subject matters to a surface that runs it: one kept
+		// because its surface does not run is read by nothing
+		if f != nil && f[0] == "forgery" && len(f) > 3 && keep(f, row) && running[row.cases(f)[0].surface] {
 			subjects[f[2]+" "+f[3]] = append(subjects[f[2]+" "+f[3]], f[1])
+		}
+		if f != nil && f[0] == "write-refusal-message" && len(f) > 4 && keep(f, row) {
+			batches[f[2]+" "+f[4]] = true
 		}
 	}
 	carried := map[caseKey]bool{}
@@ -125,6 +145,7 @@ func scopeLines(text string, scope map[caseKey]bool) (string, error) {
 	for line := range strings.SplitSeq(text, "\n") {
 		f, row, _ := derivedLine(line)
 		read := f != nil && f[0] == "instance" && instances[f[1]]
+		read = read || (f != nil && f[0] == "message" && len(f) > 4 && batches[f[2]+" "+f[4]])
 		if f != nil {
 			for _, key := range subjectKeys(f) {
 				if _, ok := subjects[key]; ok {

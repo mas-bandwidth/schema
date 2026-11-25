@@ -36,91 +36,84 @@ func TestTheScopeClosesOverTwins(t *testing.T) {
 	}
 }
 
-// TestScopeLinesKeepTheAskedRowsAndWhatTheyRead: the scoped manifest holds
-// the rows that carry the scope's cases, the instance a kept cook-write row
-// reads, the block or cook a kept forgery is made from (a driver looks the
-// subject up and fails the surface without it), and every row that carries no
-// case; every other row is dropped. A scope case no row carries is refused by
-// name, never sent as nothing.
+// TestScopeLinesKeepTheAskedRowsAndWhatTheyRead: the scoped manifest cuts a
+// line only when a surface it is scored on runs and none of its cases is
+// asked; it keeps what a kept line reads (the instance of a cook-write row,
+// the message batch of a write-refusal-message row, the block or cook a
+// forgery is made from, by case or by root), and every line of a surface that
+// does not run. A scope case no row carries, and a forgery whose subject no
+// line answers to, are refused by name, never sent as nothing.
 func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 	text := strings.Join([]string{
 		"# derived",
 		"unit U a.schema",
-		"connection C U",
+		"connection C U h ann.bin",
 		"instance inst1 U Root a.bin",
 		"instance inst2 U Root b.bin",
-		"cook-write inst1 inst1.cook",
+		"cook-write inst1 in1 - -",
+		"cook-write inst2 in2 - -",
 		"write-refusal wr1 U Root",
-		"message msg1 C",
+		"message msg1 C Root m1.bin m1.batch",
+		"message msg2 C Root m2.bin m2.batch",
+		"write-refusal-message wrm1 C Root m1.bin field kind text",
 		"block x U x.blk",
 		"block y U y.blk",
 		"cook ck U Root ck.cook",
 		"cook cj U Root cj.cook",
+		"cook cv U Scene cv.cook",
 		"forgery forged1 block x f1.blk 64 0",
 		"forgery forged2 block y f2.blk 64 0",
 		"forgery forged3 cook ck f3.cook 64 null",
-		"cook cv U Scene cv.cook",
 		"forgery forged4 cook Scene f4.cook 64 null",
 		"forgery forged5 block nowhere f5.blk 64 0",
 	}, "\n")
-	kept, err := scopeLines(text, map[caseKey]bool{{"cook-write", "inst1"}: true})
-	if err != nil {
-		t.Fatal(err)
+	cut := func(scope map[caseKey]bool) string {
+		t.Helper()
+		kept, err := scopeLines(text, scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return kept
 	}
-	wantKept := strings.Join([]string{
-		"# derived",
-		"unit U a.schema",
-		"connection C U",
-		"instance inst1 U Root a.bin",
-		"cook-write inst1 inst1.cook",
-	}, "\n")
-	if kept != wantKept {
-		t.Errorf("kept\n%s\nwant\n%s", kept, wantKept)
-	}
-	// a forgery goes with the image it forges, and no other forgery or image
-	kept, err = scopeLines(text, map[caseKey]bool{{"forgery", "forged1"}: true, {"cook-forgery", "forged3"}: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range []string{"forgery forged1 ", "block x U", "forgery forged3 ", "cook ck U"} {
-		if !strings.Contains(kept, line) {
-			t.Errorf("the scope of forged1 and forged3 dropped %q:\n%s", line, kept)
+	has := func(what, kept string, want, wantNot []string) {
+		t.Helper()
+		for _, line := range want {
+			if !strings.Contains(kept, line) {
+				t.Errorf("%s dropped %q:\n%s", what, line, kept)
+			}
+		}
+		for _, line := range wantNot {
+			if strings.Contains(kept, line) {
+				t.Errorf("%s kept %q:\n%s", what, line, kept)
+			}
 		}
 	}
-	for _, line := range []string{"forgery forged2 ", "block y U", "cook cj U", "cook cv U"} {
-		if strings.Contains(kept, line) {
-			t.Errorf("the scope of forged1 and forged3 kept %q:\n%s", line, kept)
-		}
-	}
-	// a cooked forgery's subject may be a root: the cook line of that root
-	// goes with it (squirrel, luau, lobster, moo and elixir look it up so)
-	kept, err = scopeLines(text, map[caseKey]bool{{"cook-forgery", "forged4"}: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(kept, "cook cv U Scene cv.cook") {
-		t.Errorf("the scope of forged4, made from root Scene, dropped the cook of that root:\n%s", kept)
-	}
-	// a forgery whose subject no line answers to is refused, by name
-	if _, err := scopeLines(text, map[caseKey]bool{{"forgery", "forged5"}: true}); err == nil || !strings.Contains(err.Error(), "block nowhere") || !strings.Contains(err.Error(), "forged5") {
-		t.Errorf("a forgery made from no line: err %v, want a refusal naming block nowhere and forged5", err)
-	}
-	kept, err = scopeLines(text, map[caseKey]bool{{"message", "msg1"}: true, {"json-read", "inst2"}: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range []string{"message msg1 C", "instance inst2 U Root b.bin", "connection C U"} {
-		if !strings.Contains(kept, line) {
-			t.Errorf("the scope of msg1 and inst2's text read dropped %q:\n%s", line, kept)
-		}
-	}
-	for _, line := range []string{"instance inst1", "write-refusal wr1", "cook-write inst1"} {
-		if strings.Contains(kept, line) {
-			t.Errorf("the scope of msg1 and inst2's text read kept %q:\n%s", line, kept)
-		}
-	}
+	// the asked cook-write row, the instance it reads, every line of a
+	// surface that does not run; the other cook-write row is cut
+	has("the scope of cook-write inst1", cut(map[caseKey]bool{{"cook-write", "inst1"}: true}),
+		[]string{"cook-write inst1 ", "instance inst1 ", "instance inst2 ", "write-refusal wr1 ", "message msg1 ", "block y ", "forgery forged2 "},
+		[]string{"cook-write inst2 "})
+	// the asked rows on json-read, cook-write and message, and the cut of
+	// each surface's unasked rows (inst1 is read by no kept row); a
+	// write-refusal-message row on a surface that does not run keeps its
+	// batch, msg1, there too
+	has("the scope of msg2 and inst2", cut(map[caseKey]bool{{"message", "msg2"}: true, {"json-read", "inst2"}: true, {"cook-write", "inst2"}: true}),
+		[]string{"message msg2 ", "instance inst2 ", "cook-write inst2 ", "connection C ", "message msg1 ", "write-refusal-message wrm1 "},
+		[]string{"instance inst1 ", "cook-write inst1 "})
+	// a write-refusal-message row asked keeps the message row whose batch it
+	// writes against, even when the message surface runs without it
+	has("the scope of wrm1 and msg2", cut(map[caseKey]bool{{"write-refusal-message", "wrm1"}: true, {"message", "msg2"}: true}),
+		[]string{"write-refusal-message wrm1 ", "message msg1 ", "message msg2 "}, nil)
+	// a forgery goes with the image it forges, by case or by cooked root,
+	// and the forgery surface's other rows are cut
+	has("the scope of forged1, forged3 and forged4", cut(map[caseKey]bool{{"forgery", "forged1"}: true, {"cook-forgery", "forged3"}: true, {"cook-forgery", "forged4"}: true}),
+		[]string{"forgery forged1 ", "block x U", "forgery forged3 ", "cook ck U", "forgery forged4 ", "cook cv U Scene"},
+		[]string{"forgery forged2 ", "forgery forged5 "})
 	if _, err := scopeLines(text, map[caseKey]bool{{"wire", "gone"}: true}); err == nil || !strings.Contains(err.Error(), "wire/gone") {
 		t.Errorf("a scope case no row carries: err %v, want a refusal naming wire/gone", err)
+	}
+	if _, err := scopeLines(text, map[caseKey]bool{{"forgery", "forged5"}: true}); err == nil || !strings.Contains(err.Error(), "block nowhere") || !strings.Contains(err.Error(), "forged5") {
+		t.Errorf("a forgery made from no line: err %v, want a refusal naming block nowhere and forged5", err)
 	}
 }
 
