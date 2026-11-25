@@ -421,6 +421,10 @@ func needsGOOS(gates []string, source string) string {
 		}
 		exprs = append(exprs, e)
 	}
+	set := map[string]bool{}
+	for _, t := range strings.Split(buildTags(gates), ",") {
+		set[t] = true
+	}
 	builds := func(goos string) bool {
 		for _, e := range exprs {
 			ok := e.Eval(func(tag string) bool {
@@ -432,7 +436,7 @@ func needsGOOS(gates []string, source string) string {
 				case osTags[tag], archTags[tag]:
 					return false
 				}
-				return true // a plain tag: -tags sets it
+				return set[tag] // a plain tag: set when buildTags passes it
 			})
 			if !ok {
 				return false

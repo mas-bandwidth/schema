@@ -710,7 +710,20 @@ func benchRan(lines []string, name string) bool {
 
 var (
 	goLineRE = regexp.MustCompile(`\.go:\d+: `)
-	failRE   = regexp.MustCompile(`(?i)(\berror\b|\bfail|refuse|panic:|\*\*\*|fatal|mismatch|not found|no such)`)
+	failRE   = regexp.MustCompile(`(?i)(\berror\b|\bfail|refuse|panic:|\*\*\*|fatal|mismatch|not found|no such|undefined reference)`)
+	// chatterRE is a line that only echoes: a recipe's comment, a pass,
+	// a build that counts no errors.
+	chatterRE = regexp.MustCompile(`^(# |PASS\b|0 (Error|Warning)\(s\)$)`)
+	// genericRE is make's or the linker's own line that something above
+	// it failed.
+	// summaryLineRE is a build tool's closing line that names no cause.
+	summaryLineRE = regexp.MustCompile(`^(FAIL|ok|exit status [0-9]+|[0-9]+ (Error|Warning)\(s\)|Build FAILED\.?|Time Elapsed.*|ERROR)$`)
+	// recipeRE is a command a recipe prints before it runs it.
+	recipeRE = regexp.MustCompile(`^(g\+\+|gcc|cc|clang|go |cargo |dotnet |mix |dart |javac |java |node |python|ruby |lua|cd |mkdir |cp |rm |printf |echo |\+ )`)
+	// saysNotRE is a line that says, without failRE's words, that
+	// something did not work.
+	saysNotRE = regexp.MustCompile(`(?i)(\bnot\b|incomplete|absent|cannot|differ|undefined|NOT CONFORMING)`)
+	genericRE = regexp.MustCompile(`^(make(\[[0-9]+\])?: \*\*\* |collect2: error: ld returned)`)
 	// warnRE is a warning: "warning: ...", or one a tool names itself or
 	// a place for ("x.c:3:5: warning: ...", "make: warning: ...").
 	warnRE  = regexp.MustCompile(`(?i)(^|: )warning: `)
@@ -721,28 +734,45 @@ var (
 // first test log line (file.go:N:), else the first line that says it
 // failed, else the last line, else def. A warning is passed over while a
 // line that is not one says the same; with none, the first warning that
-// says it failed is the line.
+// says it failed is the line. Lines that only echo (a recipe's comment, a
+// pass, "0 Error(s)") are not read, and make's and the linker's own
+// summary lines are the line only when nothing else says what failed.
 func firstFailLine(lines []string, def string) string {
 	for _, l := range lines {
 		if goLineRE.MatchString(l) && !noiseRE.MatchString(strings.TrimSpace(l)) && !warnRE.MatchString(l) {
 			return clip(l)
 		}
 	}
-	warned := ""
+	warned, generic := "", ""
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
-		if t == "" || noiseRE.MatchString(t) || !failRE.MatchString(t) {
+		if t == "" || noiseRE.MatchString(t) || chatterRE.MatchString(t) || !failRE.MatchString(t) {
 			continue
 		}
-		if !warnRE.MatchString(t) {
+		switch {
+		case warnRE.MatchString(t):
+			if warned == "" {
+				warned = t
+			}
+		case genericRE.MatchString(t):
+			if generic == "" {
+				generic = t
+			}
+		default:
 			return clip(t)
 		}
-		if warned == "" {
-			warned = t
-		}
+	}
+	// nothing but a warning or make's own lines says it failed: the
+	// failure is the line nearest above make's closing lines that says so
+	// in other words ("roster incomplete", "the sabotage did not apply")
+	if above := aboveMake(lines); above != "" && (warned != "" || generic != "") {
+		return clip(above)
 	}
 	if warned != "" {
 		return clip(warned)
+	}
+	if generic != "" {
+		return clip(generic)
 	}
 	t := lastLine(strings.Join(lines, "\n"))
 	switch {
@@ -752,6 +782,35 @@ func firstFailLine(lines []string, def string) string {
 		return clip(t)
 	}
 	return clip(def)
+}
+
+// aboveMake is the line nearest above the make *** lines a log ends with
+// that says something did not work, within 60 lines: past blanks, echoes,
+// warnings, the commands a recipe prints and make's and the build tools'
+// own summary lines. "" when the log does not end in make's lines or no
+// such line is there.
+func aboveMake(lines []string) string {
+	end := len(lines)
+	for end > 0 && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	last := -1
+	for i := end - 1; i >= 0 && genericRE.MatchString(strings.TrimSpace(lines[i])); i-- {
+		last = i
+	}
+	if last < 0 {
+		return ""
+	}
+	for i := last - 1; i >= 0 && i >= last-60; i-- {
+		t := strings.TrimSpace(lines[i])
+		if t == "" || noiseRE.MatchString(t) || chatterRE.MatchString(t) || warnRE.MatchString(t) || genericRE.MatchString(t) || summaryLineRE.MatchString(t) || recipeRE.MatchString(t) {
+			continue
+		}
+		if failRE.MatchString(t) || saysNotRE.MatchString(t) || goLineRE.MatchString(t) {
+			return t
+		}
+	}
+	return ""
 }
 
 func firstSkipLine(lines []string) string {

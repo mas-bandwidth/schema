@@ -1289,6 +1289,8 @@ func TestAWindowsTestRunsOnABenchThatRunsWindows(t *testing.T) {
 		{[]string{"build: unix"}, "a/x_test.go:1", ""},
 		{[]string{"build: linux || windows"}, "a/x_test.go:1", ""},
 		{[]string{"build: schema_leg_moo"}, "a/x_test.go:1", ""},
+		{[]string{"build: windows || !schema_leg_moo"}, "a/x_test.go:1", ""},
+		{[]string{"build: schema_leg_moo", "build: windows"}, "a/x_test.go:1", "windows"},
 		{nil, "a/windows_test.go:1", ""},
 		{nil, "internal/codegen/js/serialize_js_lookup_test.go:1", ""},
 		{nil, "a/x_amd64_test.go:1", ""},
@@ -1378,12 +1380,77 @@ func TestAWarningIsNotTheFirstLineBesideAFailure(t *testing.T) {
 		want  string
 	}{
 		{[]string{"warning: table WideBlob refused: past the fixed-form ceiling", "build ok", "rust fixed form: 21 FAILED", "make: *** [x] Error 1"}, "rust fixed form: 21 FAILED"},
-		{[]string{"x.c:3:5: warning: an error-prone cast", "unit.c:(.text+0x3a): undefined reference to `f'", "collect2: error: ld returned 1 exit status"}, "collect2: error: ld returned 1 exit status"},
+		{[]string{"x.c:3:5: warning: an error-prone cast", "unit.c:(.text+0x3a): undefined reference to `f'", "collect2: error: ld returned 1 exit status"}, "unit.c:(.text+0x3a): undefined reference to `f'"},
 		{[]string{"warning: cards_test.go:12: a fixture failed to load", "cards_test.go:40: wrong bytes"}, "cards_test.go:40: wrong bytes"},
 		{[]string{"checking", "warning: go key order: the control failed to go red", "done"}, "warning: go key order: the control failed to go red"},
+		{[]string{"warning: x refused", "# the root refuses form 1, so", "PASS TestRefuseBeforePublishing", "0 Error(s)", "tables conformance: 7 rows FAILED", "make: *** [t] Error 1"}, "tables conformance: 7 rows FAILED"},
+		{[]string{"warning: x refused", "u.c:(.text+0x3a): undefined reference to 'f'", "collect2: error: ld returned 1 exit status", "make: *** [t] Error 1"}, "u.c:(.text+0x3a): undefined reference to 'f'"},
+		{[]string{"warning: x refused", "wire-fuzz roster incomplete: a codec is absent", "echo the roster is not read here", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2", ""}, "wire-fuzz roster incomplete: a codec is absent"},
+		{[]string{"warning: x refused", "NEGATIVE CONTROL: the sabotage did not apply", "make: *** [t] Error 2"}, "NEGATIVE CONTROL: the sabotage did not apply"},
+		{[]string{"roster built", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2"}, "make[1]: *** [Makefile:9: t] Error 1"},
+		{[]string{"warning: x failed", "./gen --check", "make: *** [t] Error 2"}, "warning: x failed"},
+		{[]string{"u.c: undefined reference to 'f'", "link step over"}, "u.c: undefined reference to 'f'"},
 	} {
 		if got := firstFailLine(c.lines, "make x: exit status 2"); got != c.want {
 			t.Errorf("firstFailLine(%q) = %q, want %q", c.lines, got, c.want)
 		}
+	}
+}
+
+// TestAPartHoldsNoUnitItsRunnerCannotRun: a part runs on a Linux runner, so
+// a unit built for Windows is in no part; every part runs exactly what it
+// is dealt, and the merge reports the Windows test NOT RUN, naming the
+// bench it needs, instead of refusing the parts.
+func TestAPartHoldsNoUnitItsRunnerCannotRun(t *testing.T) {
+	t.Parallel()
+	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
+		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
+	units := []Unit{makeUnit("a"), makeUnit("b"), win}
+	parts := t.TempDir()
+	for k := 1; k <= 2; k++ {
+		p, err := part(units, k, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shards, err := assign(p, []Bench{{Host: LocalHost, Shards: 2}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := &State{Run: "part", Sha: "abc", Part: fmt.Sprintf("%d/2", k), Dir: filepath.Join(parts, fmt.Sprintf("p%d", k)), Benches: []Bench{{Host: LocalHost, Shards: 2}}}
+		n := 0
+		for _, s := range shards {
+			s.ID = fmt.Sprintf("p%d-%s", k, s.ID)
+			st.Shards = append(st.Shards, &ShardState{Shard: s, Label: "runner"})
+			sd := filepath.Join(st.Dir, "shards", s.ID)
+			if err := os.MkdirAll(sd, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			var b strings.Builder
+			for _, u := range s.Units {
+				n++
+				if u.GOOS != "" {
+					t.Errorf("part %d/2 holds %s, built for %s", k, u.ID, u.GOOS)
+				}
+				j, _ := json.Marshal(Result{Name: u.Names[0].Name, Unit: u.ID, Verdict: Pass, Log: "l"})
+				b.Write(append(j, '\n'))
+			}
+			if err := os.WriteFile(filepath.Join(sd, resultsFile), []byte(b.String()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if n != len(p) {
+			t.Errorf("part %d/2 is dealt %d units, and its runner's shards hold %d", k, len(p), n)
+		}
+		if err := st.save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := t.TempDir()
+	err := mergeParts(units, "abc", parts, out, func() time.Time { return time.Unix(0, 0) }, io.Discard)
+	if err != nil && strings.Contains(err.Error(), "one merge is one plan") {
+		t.Fatalf("the merge refused the parts: %v", err)
+	}
+	if r := readReds(t, out); !strings.Contains(r, "unmoved/go-test/tools/treelock/TestW") || !strings.Contains(r, "no bench in this run runs windows tests") {
+		t.Errorf("the Windows test is not NOT RUN by name:\n%s", r)
 	}
 }
