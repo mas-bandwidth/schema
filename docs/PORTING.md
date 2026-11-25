@@ -1622,6 +1622,8 @@ code. The admission is limited to the observed kinds in `make/cpp-warn-allow.txt
 the normal shrink-only rule, new-kind rejection, stale-entry rejection and source
 negative control remain in force. The format inventory is unchanged.
 
+**Wave 3 warning inventory (2026-11-25).** The C++ table units that Wave 3 put on main, `ann/announce4096`, `ann/announce4097`, `packetunions`, `prior`, `shapes`, `surfaces` and the `examples` block, view and union arm (f259a7aa3a, 02249b0443), entered the corpus without their warning lines; #5046 records them under the same one-time rule: 35 lines, 110 path/kind pairs, each kind one the list already holds for that template file type (the packet files carry only the `switch-default` / `covered-switch-default` pair). They are an inventory of units already on main, not new warnings.
+
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua | python | ruby | unity |
