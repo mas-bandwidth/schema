@@ -3324,22 +3324,6 @@ local function adapted(root: string): (any, any, any)
   return desc, A, t
 end
 
--- fromJsonWalk is the walk text read (docs/SPEC-TABLES.md §6.5, §16):
--- it keeps the recovered value with the counters counted onto the report, and
--- answers no value only where the text does not say what the instance holds:
--- a malformed text, a zero or ill-formed string placed in text (§16.3) and a
--- missing required field (§2.3), each with the count and its reason.
-function J.fromJsonWalk(root: string, text: buffer, report: any): any
-  local _, A, adesc = adapted(root)
-  local input = buffer.readstring(text, 0, buffer.len(text))
-  local lua = core_from(A, root, input, report)
-  -- FromJson answers no value on any refusal (docs/SPEC-TABLES.md §16.3,
-  -- §16): a partial value is not one the read placed.
-  if lua == nil or report.malformed then return nil end
-  local memo = { l2u = {}, u2l = {}, len = {} }
-  return from_lua(adesc, lua, A, memo)
-end
-
 -- the strict text read's refusals, in Go's TableReport.Err() order
 -- (docs/SPEC-TABLES.md §6.5): unknown and widened alone never refuse; a
 -- repeated key, keyed slot or map key is damage (docs/plans/strict-only.md
@@ -3352,13 +3336,38 @@ local STRICT: { { string } } = {
   { "nonFinite", "non_finite" },
 }
 
+-- fromJsonWalk is the walk text read (docs/SPEC-TABLES.md §6.5, §16): it
+-- counts onto the report, as the strict read's ranking needs, and, strict only
+-- (docs/rulings.json strict-only-read), hands back no value once any refusing
+-- counter has moved, as L.loadWalk does: a malformed text, a zero or
+-- ill-formed string placed in text (§16.3), a missing required field (§2.3),
+-- a repeated key, a blob named from two slots, a value past its bound, a kind
+-- mismatch (base64 damage among them) and a non-finite float, each with the
+-- count and its reason.
+function J.fromJsonWalk(root: string, text: buffer, report: any): any
+  local _, A, adesc = adapted(root)
+  local input = buffer.readstring(text, 0, buffer.len(text))
+  local lua = core_from(A, root, input, report)
+  -- FromJson answers no value on any refusal (docs/SPEC-TABLES.md §16.3,
+  -- §16): a partial value is not one the read placed.
+  if lua == nil or report.malformed then return nil end
+  for _, k in STRICT do
+    if (report[k[1]] or 0) > 0 then
+      report.reason = k[2]
+      return nil
+    end
+  end
+  local memo = { l2u = {}, u2l = {}, len = {} }
+  return from_lua(adesc, lua, A, memo)
+end
+
 -- THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): FromJson
 -- overwrites the caller's report (optional, nil allowed) with this read's
 -- counters, and refuses with one named reason and no recovered value every
 -- read that crosses a security or meaning boundary — a malformed text, a
 -- missing required field, a blob named from two slots, a clamped value, a
--- kind mismatch. A caller who needs the recovered value past one of those
--- asks for it by name, through fromJsonWalk.
+-- kind mismatch. No read hands back the recovered value past one of those,
+-- fromJsonWalk included (strict-only-read).
 function J.FromJson(root: string, text: buffer, report: any): any
   local rep: any = report or {}
   rep.malformed = false
