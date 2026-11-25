@@ -148,12 +148,10 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 }
 
 // workflowJobs emits every job of every workflow: the keys two spaces in
-// under the top-level jobs: key. A job whose steps run the driver
-// (`go run ./tools/schema-test run|coverage|extract`) is the registry
-// running, not a test of its own: its tests are the rows it selects and the
-// registry it holds, and it is not emitted. A job that only names the
-// driver's directory, or runs another of its commands (langs, addenda), is a
-// job like any other.
+// under the top-level jobs: key. A job that only calls the driver (every
+// step checks out, moves artifacts, or runs go run ./tools/fullrun or
+// ./tools/schema-test) runs no test of its own: every test it runs is a
+// registry row or an unmoved test the driver runs, so it is not one.
 func (s *scan) workflowJobs(files []string) {
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(s.root, rel))
@@ -162,9 +160,9 @@ func (s *scan) workflowJobs(files []string) {
 			continue
 		}
 		type job struct {
-			name       string
-			line       int
-			runsDriver bool
+			name  string
+			line  int
+			lines []string
 		}
 		var jobs []job
 		in := false
@@ -179,17 +177,15 @@ func (s *scan) workflowJobs(files []string) {
 			if !in {
 				continue
 			}
-			if len(jobs) > 0 && !strings.HasPrefix(strings.TrimSpace(line), "#") && driverRun.MatchString(line) {
-				jobs[len(jobs)-1].runsDriver = true
+			if len(line) >= 3 && line[:2] == "  " && line[2] != ' ' && line[2] != '#' {
+				if name, _, ok := strings.Cut(strings.TrimSpace(line), ":"); ok {
+					jobs = append(jobs, job{name: name, line: i + 1})
+					continue
+				}
 			}
-			if len(line) < 3 || line[:2] != "  " || line[2] == ' ' || line[2] == '#' {
-				continue
+			if len(jobs) > 0 {
+				jobs[len(jobs)-1].lines = append(jobs[len(jobs)-1].lines, line)
 			}
-			name, _, ok := strings.Cut(strings.TrimSpace(line), ":")
-			if !ok {
-				continue
-			}
-			jobs = append(jobs, job{name: name, line: i + 1})
 		}
 		if len(jobs) == 0 {
 			s.fail(rel, "no jobs: key with jobs under it")
@@ -199,7 +195,7 @@ func (s *scan) workflowJobs(files []string) {
 			tier = "nightly"
 		}
 		for _, j := range jobs {
-			if j.runsDriver {
+			if DriverOnly(j.lines) {
 				continue
 			}
 			s.add(Item{Kind: KindWorkflowJob, Dir: rel, Name: j.name, Source: rel + ":" + strconv.Itoa(j.line), Tier: tier})
@@ -207,12 +203,114 @@ func (s *scan) workflowJobs(files []string) {
 	}
 }
 
-// driverRun is the command a workflow job runs the registry with: one of
-// the driver's verbs that runs or holds the registry's tests, spelled the
-// one way the workflows spell it (`go run ./tools/schema-test <verb>`, the
-// verb first); a job that runs the driver any other way is counted as a
-// job of its own, so the miscount is loud, never silent.
-var driverRun = regexp.MustCompile(`go run \./tools/schema-test/? (run|coverage|extract)\b`)
+// driverActions are the actions a driver-only job may use: they fetch the
+// tree and move files, and check nothing.
+var driverActions = []string{"actions/checkout@", "actions/upload-artifact@", "actions/download-artifact@", "actions/setup-go@"}
+
+// setRE is a line that only sets shell options: set -euo pipefail.
+var setRE = regexp.MustCompile(`^set(\s+[-+][a-zA-Z]+(\s+pipefail)?)+\s*$`)
+
+// driverCommands are the commands a driver-only job's steps may run.
+var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-test ", "go run ./tools/schema-test/ "}
+
+// DriverOnly reports whether a workflow job's lines (below its key) run
+// nothing but the driver: at least one run step, every run line a driver
+// command (or a set -e line), every action one of driverActions, and no
+// shell but tools/pgroup's.
+func DriverOnly(lines []string) bool {
+	runs := 0
+	block := -1 // the indent of a run: | step while inside its block
+	plain := -1 // the indent of a plain run: value's key, on the next line
+	bare := -1  // the indent of a run: key with its value on the lines below
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if plain >= 0 && t != "" {
+			if indent > plain {
+				// a more-indented line continues the plain run: value,
+				// a command this check did not read: not driver-only
+				return false
+			}
+			plain = -1
+		}
+		if bare >= 0 && t != "" {
+			if indent > bare && !strings.HasPrefix(t, "shell:") && !strings.HasPrefix(t, "working-directory:") && !strings.HasPrefix(t, "#") {
+				// the value of a bare run: key, on its own line: a
+				// command this check did not read (a defaults: run:
+				// holds only shell: and working-directory:)
+				return false
+			}
+			if indent <= bare {
+				bare = -1
+			}
+		}
+		if block >= 0 {
+			if t == "" || indent > block {
+				if t == "" || strings.HasPrefix(t, "#") || setRE.MatchString(t) {
+					continue
+				}
+				if !driverCommand(t) {
+					return false
+				}
+				runs++
+				continue
+			}
+			block = -1
+		}
+		if strings.HasPrefix(t, "-") && !strings.HasPrefix(t, "--") {
+			t = strings.TrimSpace(t[1:]) // a step: -   run: is one too
+		}
+		switch {
+		case strings.HasPrefix(t, "{") || strings.HasPrefix(t, "[") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "<<:"):
+			// a flow-style step, or a YAML alias, this check does not
+			// read: not driver-only
+			return false
+		case strings.HasPrefix(t, "uses:"):
+			u := strings.TrimSpace(strings.TrimPrefix(t, "uses:"))
+			ok := false
+			for _, a := range driverActions {
+				ok = ok || strings.HasPrefix(u, a)
+			}
+			if !ok {
+				return false
+			}
+		case strings.HasPrefix(t, "run:"):
+			v := strings.TrimSpace(strings.TrimPrefix(t, "run:"))
+			if v == "" {
+				// defaults: run: (its shell is checked below), or a
+				// step's command on the lines below, which is read there
+				bare = len(line) - len(strings.TrimLeft(line, " -"))
+				continue
+			}
+			if v == "|" || v == ">" || v == "|-" || v == ">-" {
+				block = len(line) - len(strings.TrimLeft(line, " -"))
+				continue
+			}
+			if !driverCommand(v) {
+				return false
+			}
+			runs++
+			plain = len(line) - len(strings.TrimLeft(line, " -"))
+		case strings.HasPrefix(t, "shell:") && !strings.Contains(t, "go run ./tools/pgroup"):
+			return false
+		}
+	}
+	return runs > 0
+}
+
+func driverCommand(cmd string) bool {
+	// one command, the driver's: a second command after a shell operator,
+	// a substitution or a continued line would be a test hiding behind it
+	if strings.ContainsAny(cmd, ";&|<>`") || strings.Contains(cmd, "$(") || strings.HasSuffix(cmd, "\\") {
+		return false
+	}
+	for _, d := range driverCommands {
+		if strings.HasPrefix(cmd, d) {
+			return true
+		}
+	}
+	return false
+}
 
 // dataCases emits each line of a .jsonl file and each other data file,
 // files that share a stem in one directory (case.in, case.out) being one

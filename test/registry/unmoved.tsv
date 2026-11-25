@@ -617,7 +617,7 @@ negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the pl
 negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	30	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	32	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
@@ -666,7 +666,9 @@ workflow-job	.github/workflows/schema-squirrel-all-port-differential.yml	2	L7	wo
 workflow-job	.github/workflows/schema-squirrel-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-squirrel-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-squirrel-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/schema-test-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-unity-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/tla-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 data-case	bench/tables/moo/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	cmd/schema/testdata/fmt_directory	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	cmd/schema/testdata/form_classification	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
