@@ -1555,6 +1555,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-runs-hostile-corpus.yml:negative-control",
 		"schema-nightly.yml:part",
 		"schema-nightly.yml:verdict",
+		"schema-nightly.yml:windows",
 		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-python-runs-hostile-corpus.yml:fast",
 		"schema-python-runs-hostile-corpus.yml:nightly",

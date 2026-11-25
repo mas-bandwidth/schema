@@ -1457,3 +1457,103 @@ func TestAPartHoldsNoUnitItsRunnerCannotRun(t *testing.T) {
 		t.Errorf("the Windows test is not NOT RUN by name:\n%s", r)
 	}
 }
+
+// TestTheWindowsPartRunsEveryWindowsTest: the part named windows holds
+// exactly the plan's units built for Windows and needs a bench that runs
+// them; the merge holds it to that deal, names it missing when its job
+// uploaded nothing, and is green when every part, numbered and named, is.
+func TestTheWindowsPartRunsEveryWindowsTest(t *testing.T) {
+	t.Parallel()
+	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
+		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
+	units := []Unit{makeUnit("a"), makeUnit("b"), win}
+	if p, err := goosPart(units, "windows"); err != nil || len(p) != 1 || p[0].ID != win.ID {
+		t.Fatalf("the windows part is %v (%v), want exactly %s", p, err, win.ID)
+	}
+	if _, err := goosPart(units, "darwin"); err == nil || !strings.Contains(err.Error(), "holds no unit") {
+		t.Errorf("an empty darwin part: %v", err)
+	}
+	if _, _, _, err := parsePart("windows", []Bench{{Host: LocalHost, Shards: 2}}); err == nil || !strings.Contains(err.Error(), "needs a bench that runs windows") {
+		t.Errorf("--part windows on a Linux bench: %v", err)
+	}
+	if _, _, g, err := parsePart("windows", []Bench{{Host: LocalHost, Shards: 1, GOOS: []string{"windows"}}}); err != nil || g != "windows" {
+		t.Errorf("--part windows on a windows bench: %q %v", g, err)
+	}
+	if k, n, g, err := parsePart("2/3", nil); err != nil || k != 2 || n != 3 || g != "" {
+		t.Errorf("--part 2/3: %d %d %q %v", k, n, g, err)
+	}
+	if _, _, _, err := parsePart("linux", []Bench{{Host: LocalHost, Shards: 1, GOOS: []string{"linux"}}}); err == nil || !strings.Contains(err.Error(), "nor one of") {
+		t.Errorf("--part linux, on a bench said to run it: %v", err)
+	}
+	write := func(dir, name, partOf string, us []Unit, b Bench) {
+		st := &State{Run: "part", Sha: "abc", Part: partOf, Dir: filepath.Join(dir, name), Benches: []Bench{b},
+			Shards: []*ShardState{{Shard: Shard{ID: name + "-local-1", Bench: LocalHost, Units: us}, Label: "runner"}}}
+		sd := filepath.Join(st.Dir, "shards", st.Shards[0].ID)
+		if err := os.MkdirAll(sd, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		var lines strings.Builder
+		for _, u := range us {
+			j, _ := json.Marshal(Result{Name: u.Names[0].Name, Unit: u.ID, Verdict: Pass, Log: "l"})
+			lines.Write(append(j, '\n'))
+		}
+		if err := os.WriteFile(filepath.Join(sd, resultsFile), []byte(lines.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linux := Bench{Host: LocalHost, Shards: 2}
+	windows := Bench{Host: LocalHost, Shards: 1, GOOS: []string{"windows"}}
+	numbered := func(dir string) {
+		for k := 1; k <= 2; k++ {
+			p, err := part(units, k, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(dir, fmt.Sprintf("p%d", k), fmt.Sprintf("%d/2", k), p, linux)
+		}
+	}
+	now := func() time.Time { return time.Unix(0, 0) }
+
+	dir, out := t.TempDir(), t.TempDir()
+	numbered(dir)
+	if err := mergeParts(units, "abc", dir, out, now, io.Discard); err == nil {
+		t.Error("a merge without the windows part passed")
+	}
+	if r := readReds(t, out); !strings.Contains(r, "PART MISSING windows") || !strings.Contains(r, win.Names[0].Name+"\t-\t") {
+		t.Errorf("the missing windows part is not named, or its test not NOT RUN:\n%s", r)
+	}
+
+	write(dir, "pwindows", "windows", []Unit{win}, windows)
+	out = t.TempDir()
+	if err := mergeParts(units, "abc", dir, out, now, io.Discard); err != nil {
+		t.Fatalf("every part green: %v\n%s", err, readReds(t, out))
+	}
+
+	for _, c := range []struct {
+		why  string
+		add  func(dir string)
+		want string
+	}{
+		{"the windows part ran a Linux unit", func(d string) { write(d, "pwindows", "windows", []Unit{win, makeUnit("a")}, windows) }, "one merge is one plan"},
+		{"the windows part twice", func(d string) {
+			write(d, "pwindows", "windows", []Unit{win}, windows)
+			write(d, "pwindows2", "windows", []Unit{win}, windows)
+		}, "part windows is there twice"},
+	} {
+		d := t.TempDir()
+		numbered(d)
+		c.add(d)
+		if err := mergeParts(units, "abc", d, t.TempDir(), now, io.Discard); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: merge said %v, want %q", c.why, err, c.want)
+		}
+	}
+
+	d, o := t.TempDir(), t.TempDir()
+	write(d, "pwindows", "windows", []Unit{win}, windows)
+	if err := mergeParts(units, "abc", d, o, now, io.Discard); err == nil || !strings.Contains(readReds(t, o), "PART MISSING i/n") {
+		t.Errorf("only the windows part: %v\n%s", err, readReds(t, o))
+	}
+}

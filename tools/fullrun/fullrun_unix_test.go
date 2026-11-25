@@ -174,3 +174,42 @@ func TestRereadRefusesAShardThatHoldsItsLock(t *testing.T) {
 		t.Errorf("reread of a shard let go: %v", err)
 	}
 }
+
+// TestALockLetGoIsFreeWhileAForkHoldsItsDescriptor: a process forked while
+// the shard holds its out directory carries a copy of the lock's
+// descriptor until it execs; letting go of the lock frees the directory
+// even then, so a shard run again in this process is not refused.
+func TestALockLetGoIsFreeWhileAForkHoldsItsDescriptor(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	release, err := lockOut(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want syscall.Stat_t
+	if err := syscall.Stat(dir+"/shard.lock", &want); err != nil {
+		t.Fatal(err)
+	}
+	// the fork's copy: a duplicate of the lock's descriptor, as fork makes
+	held := -1
+	for fd := 3; fd < 4096 && held < 0; fd++ {
+		var st syscall.Stat_t
+		if syscall.Fstat(fd, &st) == nil && st.Dev == want.Dev && st.Ino == want.Ino {
+			held = fd
+		}
+	}
+	if held < 0 {
+		t.Fatal("no descriptor of this process holds shard.lock")
+	}
+	dup, err := syscall.Dup(held)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(dup)
+	release()
+	again, err := lockOut(dir)
+	if err != nil {
+		t.Fatalf("a lock let go while a fork holds its descriptor: %v", err)
+	}
+	again()
+}
