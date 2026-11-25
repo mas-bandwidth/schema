@@ -8,7 +8,7 @@ package rusttable_test
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // compared on the verdict alone with the Go engine's (internal/tabletext), and
 // the engine is first held to the verdict the vectors state. Building the
-// generated Rust with rustc makes this a functional test, gated by slowtest.
+// generated Rust with rustc makes this a functional test.
 
 import (
 	"bufio"
@@ -65,10 +65,7 @@ func rustJsonFlagsNameOnceRows(t *testing.T) []rustJsonFlagsNameOnceRow {
 func TestRustJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 
 	rows := rustJsonFlagsNameOnceRows(t)

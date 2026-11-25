@@ -50,8 +50,7 @@ func nestedUnionNoneWidthSchema() string {
 
 // cppNestedUnionNoneWidthBytes generates the C++ fixed form, saves one record
 // through the generated writer and answers its body and layout bytes. The
-// probe prints each as hex; a missing C++ compiler is a skip, a failure under
-// SCHEMA_REQUIRE_CORPUS.
+// probe prints each as hex; a missing C++ compiler is a failure by name.
 func cppNestedUnionNoneWidthBytes(t *testing.T, src string) (body, layout []byte) {
 	t.Helper()
 

@@ -252,12 +252,13 @@ func TestEvenRoundMedian(t *testing.T) {
 	}
 }
 
-// Explicit opt-in exercises real, already-built runners without starting a
+// Exercises real, already-built runners (SCHEMA_PAIRED_TEST_BUILT names
+// the languages, default cpp,c,go,cs) without starting a
 // benchmark. No fixture mutation is needed: a missing golden must refuse.
 func TestBuiltGateOnly(t *testing.T) {
 	langs := os.Getenv("SCHEMA_PAIRED_TEST_BUILT")
 	if langs == "" {
-		t.Skip("set SCHEMA_PAIRED_TEST_BUILT=cpp,c,go,cs after building")
+		langs = "cpp,c,go,cs"
 	}
 	t.Chdir("../..")
 	for lang := range strings.SplitSeq(langs, ",") {

@@ -254,7 +254,7 @@ func TestCppTableRefOrdinalBytes(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, refOrdinalSchema()), "cpp", Options{})
 	if err != nil {
@@ -431,7 +431,7 @@ int main()
 func TestCppTableRefOrdinalSharedId(t *testing.T) {
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, refOrdinalCollisionSchema), "cpp", Options{})
 	if err != nil {

@@ -79,7 +79,7 @@ schema-squirrel-generated-lint-gate-negative-control: dist-squirrel generated/sq
 		echo 'NEGATIVE CONTROL FAILED: the Squirrel lint gate stayed green with three planted defects'; \
 		cat $(SQUIRREL_LINT_NC_DIR)/planted.log; exit 1; \
 	fi
-	@grep -E '^(COMPILE|FORMAT) ' $(SQUIRREL_LINT_NC_DIR)/planted.log > $(SQUIRREL_LINT_NC_DIR)/findings.log || true
+	@grep -E '^(COMPILE|FORMAT) ' $(SQUIRREL_LINT_NC_DIR)/planted.log > $(SQUIRREL_LINT_NC_DIR)/findings.log || [ $$? -eq 1 ] || exit 1
 	@n=$$(wc -l < $(SQUIRREL_LINT_NC_DIR)/findings.log | tr -d ' '); \
 	ok=1; \
 	grep -q '^COMPILE $(SQUIRREL_LINT_NC_DIR)/squirrel/Types.nut: ' $(SQUIRREL_LINT_NC_DIR)/findings.log || ok=0; \

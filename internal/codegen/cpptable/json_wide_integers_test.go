@@ -8,7 +8,7 @@ package cpptable
 // integer token only — no fraction, no exponent, no -0 — and its range is
 // tested on the exact value. The rows are the vectors under
 // testdata/wire/json-integers, and building the generated C++ makes this a
-// functional test behind slowtest.
+// functional test.
 
 import (
 	"fmt"
@@ -271,10 +271,7 @@ func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	rows := cppJsonIntegersRows(t, "MANIFEST.tsv", false)
 	rows = append(rows, cppJsonIntegersRows(t, "NUMBER-TOKEN.tsv", true)...)

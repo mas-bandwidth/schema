@@ -46,7 +46,7 @@ func TestCPPFixedLoadNamesEveryRefusal(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skip("the generated fixed reader is C++: no c++ on PATH")
+		t.Fatal("the generated fixed reader is C++: no c++ on PATH")
 	}
 
 	dir := t.TempDir()

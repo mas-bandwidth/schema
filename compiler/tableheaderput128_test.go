@@ -440,14 +440,14 @@ func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	runtime, err := filepath.Abs("../../serialize")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(runtime, "serialize.h")); err != nil {
-		t.Skip("serialize runtime header not at the sibling path")
+		t.Fatal("serialize runtime header not at the sibling path")
 	}
 	pinning := slowtest.Rewriting(t, "SCHEMA_UPDATE_HEADER_GOLDEN")
 

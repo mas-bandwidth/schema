@@ -129,9 +129,9 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/surfaces/Surfaces.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/surfaces/Surfaces.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-java
-	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
+	rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
 	# variable-class codecs ride this stamp, and the LIST unit (tables/lists)
@@ -400,11 +400,8 @@ tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
 # the counts behind it are in docs/JAVA-DIALECT.md, and
 # `make tables-java-format-census` measures both styles over the same trees.
 #
-# THE GATE CANNOT SKIP SILENTLY. A formatter that does not resolve at the pinned
-# release is a FAILURE, naming the tool, under SCHEMA_REQUIRE_CORPUS=1 or
-# JAVA_REQUIRE_FORMATTER=1, and `make test-java` sets the second: the leg's own
-# pass never skips its format gate. Run alone without either, it prints SKIP
-# naming both. And a glob that matches nothing is not a clean tree: the gate
+# THE GATE CANNOT SKIP. A formatter that does not resolve at the pinned
+# release is a FAILURE, naming the tool, however the gate is run. And a glob that matches nothing is not a clean tree: the gate
 # counts the files it hands the formatter and refuses below JAVA_CLEAN_MIN.
 GOOGLE_JAVA_FORMAT_VERSION := 1.37.0
 GOOGLE_JAVA_FORMAT_SHA256 := 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
@@ -422,8 +419,6 @@ JAVA_FORMAT_STYLE ?= --aosp
 # which carries the version in its path. The first draft of this probe passed
 # on exactly that, so the missing-formatter control plants that case.
 java_format_probe = $(GOOGLE_JAVA_FORMAT) --version 2>&1 | grep -x 'google-java-format: Version $(GOOGLE_JAVA_FORMAT_VERSION)' >/dev/null
-# deferred, so test-java's own JAVA_REQUIRE_FORMATTER (below) reaches the gate
-JAVA_FORMAT_REQUIRED = $(if $(filter 1,$(SCHEMA_REQUIRE_CORPUS) $(JAVA_REQUIRE_FORMATTER)),1,)
 
 # THE PACKET-WIRE UNITS, generated fresh from the emitter rather than read off
 # the committed generated/ tree, so the gate watches internal/codegen/java and
@@ -452,15 +447,11 @@ JAVA_CLEAN_LOG   ?= build/java-clean/format.log
 .PHONY: tables-java-clean
 tables-java-clean: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
 	@if ! $(java_format_probe); then \
-		if [ -n "$(JAVA_FORMAT_REQUIRED)" ]; then \
-			echo "tables-java-clean REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve"; \
-			echo '  GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)'; \
-			echo "  make/java.mk names the pinned release and where it comes from; install it under dist/,"; \
-			echo "  or override the pin (GOOGLE_JAVA_FORMAT=<launcher>). A gate that skips is a gate with no blade."; \
-			exit 1; \
-		fi; \
-		echo "SKIP tables-java-clean: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve (GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)); SCHEMA_REQUIRE_CORPUS=1 or JAVA_REQUIRE_FORMATTER=1 turns this SKIP into a FAILURE"; \
-		exit 0; \
+		echo "tables-java-clean REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve"; \
+		echo '  GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)'; \
+		echo "  make/java.mk names the pinned release and where it comes from; install it under dist/,"; \
+		echo "  or override the pin (GOOGLE_JAVA_FORMAT=<launcher>). A gate that skips is a gate with no blade."; \
+		exit 1; \
 	fi; \
 	files=$$(find $(JAVA_CLEAN_PATHS) -name '*.java' | sort); \
 	n=$$(printf '%s\n' $$files | grep -c '\.java$$'); \
@@ -475,9 +466,6 @@ tables-java-clean: build/tables-generated-java/.stamp build/java-clean-packet/.s
 	fi; \
 	echo "tables Java: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) $(JAVA_FORMAT_STYLE) clean over $$n generated Java files ($(JAVA_CLEAN_PATHS))"
 test-java: tables-java-clean
-# the leg's own pass REQUIRES the formatter: a test-java that skipped its
-# format gate would report a clean leg it never checked.
-test-java: JAVA_REQUIRE_FORMATTER = 1
 test-java: tables-java-t14
 test-java: tables-java-fixed-t18
 
@@ -520,7 +508,7 @@ tables-java-clean-drift-negative-control: build/tables-generated-java/.stamp bui
 	@$(java_format_probe) || \
 		{ echo "NEGATIVE CONTROL CANNOT RUN: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve (GOOGLE_JAVA_FORMAT = $(GOOGLE_JAVA_FORMAT)), and a drift control without the formatter proves nothing"; exit 1; }
 	@rm -rf $(JAVA_FORMAT_DRIFT) && mkdir -p $(JAVA_FORMAT_DRIFT)
-	@$(MAKE) --no-print-directory tables-java-clean JAVA_REQUIRE_FORMATTER=1 \
+	@$(MAKE) --no-print-directory tables-java-clean \
 		JAVA_CLEAN_PATHS=build/tables-generated-java/blockhome/TableBytes.java JAVA_CLEAN_MIN=1 \
 		JAVA_CLEAN_LOG=$(JAVA_FORMAT_DRIFT)/base.log > $(JAVA_FORMAT_DRIFT)/base.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged TableBytes.java is not format-clean, so this control would watch a file that is red anyway"; \
@@ -533,7 +521,7 @@ tables-java-clean-drift-negative-control: build/tables-generated-java/.stamp bui
 	$(JAVA_FORMAT_DRIFT)/schema generate --lang java --out $(JAVA_FORMAT_DRIFT)/generated/blockhome tables/blockhome
 	@grep -q '^     private TableBytes() {}' $(JAVA_FORMAT_DRIFT)/generated/blockhome/TableBytes.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no mis-indented line"; exit 1; }
-	@if $(MAKE) --no-print-directory tables-java-clean JAVA_REQUIRE_FORMATTER=1 \
+	@if $(MAKE) --no-print-directory tables-java-clean \
 			JAVA_CLEAN_PATHS=$(JAVA_FORMAT_DRIFT)/generated/blockhome/TableBytes.java JAVA_CLEAN_MIN=1 \
 			JAVA_CLEAN_LOG=$(JAVA_FORMAT_DRIFT)/drift.log > $(JAVA_FORMAT_DRIFT)/drift.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a mis-indented line left tables-java-clean green"; cat $(JAVA_FORMAT_DRIFT)/drift.out; exit 1; \
@@ -546,26 +534,26 @@ tables-java-clean-drift-negative-control: build/tables-generated-java/.stamp bui
 
 # MISSING FORMATTER: the default launcher over a jar that is not there (a path
 # carrying the pinned version, the case a substring probe passed on) must be a
-# FAILURE naming the tool under SCHEMA_REQUIRE_CORPUS=1; and, the other half of
-# the same claim, a launcher that is not there must SKIP naming the variable
-# without it. Never a silent pass.
+# FAILURE naming the tool; and a launcher that is not there at all must be the
+# same FAILURE. Never a pass, never a skip.
 JAVA_FORMAT_MISSING := build/java-format-missing
 .PHONY: tables-java-clean-formatter-missing-negative-control
 tables-java-clean-formatter-missing-negative-control: build/tables-generated-java/.stamp build/java-clean-packet/.stamp
 	@rm -rf $(JAVA_FORMAT_MISSING) && mkdir -p $(JAVA_FORMAT_MISSING)
-	@if $(MAKE) --no-print-directory tables-java-clean SCHEMA_REQUIRE_CORPUS=1 JAVA_REQUIRE_FORMATTER= \
+	@if $(MAKE) --no-print-directory tables-java-clean \
 			GOOGLE_JAVA_FORMAT="$(JAVA) $(GOOGLE_JAVA_FORMAT_EXPORTS) -jar $(CURDIR)/$(JAVA_FORMAT_MISSING)/google-java-format-$(GOOGLE_JAVA_FORMAT_VERSION)-all-deps.jar" > $(JAVA_FORMAT_MISSING)/required.out 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: tables-java-clean passed under SCHEMA_REQUIRE_CORPUS=1 with no formatter"; cat $(JAVA_FORMAT_MISSING)/required.out; exit 1; \
+		echo "NEGATIVE CONTROL FAILED: tables-java-clean passed with no formatter"; cat $(JAVA_FORMAT_MISSING)/required.out; exit 1; \
 	fi
 	@grep -q "REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve" $(JAVA_FORMAT_MISSING)/required.out || \
 		{ echo "NEGATIVE CONTROL FAILED: tables-java-clean went red, but did not name the missing formatter"; cat $(JAVA_FORMAT_MISSING)/required.out; exit 1; }
-	@$(MAKE) --no-print-directory tables-java-clean SCHEMA_REQUIRE_CORPUS= JAVA_REQUIRE_FORMATTER= \
-		GOOGLE_JAVA_FORMAT=$(CURDIR)/$(JAVA_FORMAT_MISSING)/no-google-java-format > $(JAVA_FORMAT_MISSING)/optional.out 2>&1 || \
-		{ echo "NEGATIVE CONTROL FAILED: without SCHEMA_REQUIRE_CORPUS a missing formatter should SKIP, and the gate failed"; cat $(JAVA_FORMAT_MISSING)/optional.out; exit 1; }
-	@grep -q '^SKIP tables-java-clean: .*SCHEMA_REQUIRE_CORPUS=1 or JAVA_REQUIRE_FORMATTER=1' $(JAVA_FORMAT_MISSING)/optional.out || \
-		{ echo "NEGATIVE CONTROL FAILED: the skip did not name the variable that makes it a failure"; cat $(JAVA_FORMAT_MISSING)/optional.out; exit 1; }
+	@if $(MAKE) --no-print-directory tables-java-clean \
+			GOOGLE_JAVA_FORMAT=$(CURDIR)/$(JAVA_FORMAT_MISSING)/no-google-java-format > $(JAVA_FORMAT_MISSING)/absent.out 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: tables-java-clean passed with no launcher at all"; cat $(JAVA_FORMAT_MISSING)/absent.out; exit 1; \
+	fi
+	@grep -q "REFUSES: google-java-format $(GOOGLE_JAVA_FORMAT_VERSION) does not resolve" $(JAVA_FORMAT_MISSING)/absent.out || \
+		{ echo "NEGATIVE CONTROL FAILED: tables-java-clean went red with no launcher, but did not name the missing formatter"; cat $(JAVA_FORMAT_MISSING)/absent.out; exit 1; }
 	@grep -m1 'REFUSES' $(JAVA_FORMAT_MISSING)/required.out
-	@echo "negative control: with no google-java-format, tables-java-clean FAILS by name under SCHEMA_REQUIRE_CORPUS=1 and SKIPS by name without it"
+	@echo "negative control: with no google-java-format, tables-java-clean FAILS by name, over a missing jar and over a missing launcher"
 
 # EVERY generated unit compiles, warnings as errors, under the CONSUMER's javac
 # — the same flags the type wire's Java legs use, so a warning here is a build
@@ -661,7 +649,7 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 	@rm -rf $(JAVA_FUZZ_SABOTAGE) && mkdir -p $(JAVA_FUZZ_SABOTAGE)
 	@sed -e '$(JAVA_FUZZ_SABOTAGE_SED)' -e '$(JAVA_FUZZ_SABOTAGE_SED2)' internal/codegen/javatable/block.go > $(JAVA_FUZZ_SABOTAGE)/javatable-block.go.txt
 	@cmp -s internal/codegen/javatable/block.go $(JAVA_FUZZ_SABOTAGE)/javatable-block.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Java block sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Java block sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(JAVA_FUZZ_SABOTAGE)/javatable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_FUZZ_SABOTAGE)/overlay.json
 	go build -overlay $(JAVA_FUZZ_SABOTAGE)/overlay.json -o $(JAVA_FUZZ_SABOTAGE)/schema ./cmd/schema
@@ -704,7 +692,7 @@ tables-java-block-lead-negative-control: build/java-tables/.stamp
 	@rm -rf $(JAVA_BLOCK_LEAD_SABOTAGE) && mkdir -p $(JAVA_BLOCK_LEAD_SABOTAGE)
 	@sed '$(JAVA_BLOCK_LEAD_SABOTAGE_SED)' internal/codegen/javatable/block.go > $(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt
 	@cmp -s internal/codegen/javatable/block.go $(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Java block-lead sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Java block-lead sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(JAVA_BLOCK_LEAD_SABOTAGE)/javatable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_BLOCK_LEAD_SABOTAGE)/overlay.json
 	go build -overlay $(JAVA_BLOCK_LEAD_SABOTAGE)/overlay.json -o $(JAVA_BLOCK_LEAD_SABOTAGE)/schema ./cmd/schema
@@ -852,13 +840,12 @@ tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixe
 # `go test ./...` on a tree that never built the oracle — and is exactly how a §5
 # regression rides into a green CI, since the go-test job runs nothing but
 # `go test ./...`. So the target BUILDS THE ORACLE FIRST (the reference's own
-# dump) and then sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a
+# dump) and then sets the rule that nothing skips, which turns that skip into a
 # FAILURE: under this name a missing corpus can never pass silently. It is the
 # Java twin of `tables-go-versioning` (make/go.mk) and it is hung off the same
 # job, for the same reason.
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -871,7 +858,6 @@ tables-java-versioning: tables-fixedform-corpus
 # every malformed and out-of-range message batch by name.
 .PHONY: tables-java-message-batch
 tables-java-message-batch:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestMessageFormBatchJava|TestMessageFormAnnounceJava'
 	@echo 'tables Java message form: announcement and batch round-trip, versioning and refusals pass'
 
@@ -883,7 +869,6 @@ tables-java-message-batch:
 # reference bytes in build/fixedform-corpus (fu1.bin, fu2.bin).
 .PHONY: tables-java-fixed-roadmap
 tables-java-fixed-roadmap: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
 	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
 
@@ -896,11 +881,10 @@ tables-java-fixed-roadmap: tables-fixedform-corpus
 # the generated load and compares value for value; P3 sweeps every byte of a
 # record, one bit at a time, demanding each load refuse, read malformed, or
 # land values — never a fourth answer; P4 feeds a record body the wrong compiled
-# plan and demands the read go red. This target sets SCHEMA_REQUIRE_CORPUS=1
+# plan and demands the read go red. This target sets the rule that nothing skips
 # so a missing oracle turns the skip into a FAILURE.
 .PHONY: tables-java-fixed-t18
 tables-java-fixed-t18: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
 	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
 
@@ -911,11 +895,10 @@ tables-java-fixed-t18: tables-fixedform-corpus
 # red until that target is run by hand. `test-java` does depend on the corpus but
 # runs only named -run subsets, never the whole package; card gates and the
 # heavy reads run the whole package, and this is the one target that builds the
-# corpus first and then runs it all with SCHEMA_REQUIRE_CORPUS=1, so a missing
+# corpus first and then runs it all with the rule that nothing skips, so a missing
 # oracle can never pass silently.
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 900s
 	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
 
@@ -927,7 +910,6 @@ tables-java-package: tables-fixedform-corpus
 # with an off-grid float32 and asserts the unfused witness bits 0xbf4ccccc.
 .PHONY: tables-java-t14
 tables-java-t14:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
 
@@ -942,14 +924,12 @@ tables-java-t14:
 # (TestTextDifferentialJava). The control, run inside this target, caps the
 # emitted float32 window at six significant digits in memory and must go red on
 # the TEXT comparison (TestTextDifferentialJavaNegativeControl).
-# SCHEMA_REQUIRE_CORPUS=1 makes a missing JDK a FAILURE rather than a skip.
+# the rule that nothing skips makes a missing JDK a FAILURE rather than a skip.
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl|TestJsonLeadingBOMBoundaryJava)$$'
 	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
 tables-java-json-differential-negative-control:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
 	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
 
@@ -962,11 +942,11 @@ test-java: tables-java-json-differential
 .PHONY: tables-java-block-build
 tables-java-block-build:
 	@mkdir -p build/java-block-build
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$' \
 		> build/java-block-build/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-block-build/log | head -40; tail -20 build/java-block-build/log; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-block-build/log; then \
-		echo "tables-java-block-build: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-block-build/log; exit 1; \
+		echo "tables-java-block-build: a test SKIPPED"; grep -- '--- SKIP' build/java-block-build/log; exit 1; \
 	fi
 	@grep -q -- '--- PASS: TestBlockBuildAndCookWriteJava ' build/java-block-build/log || \
 		{ echo "tables-java-block-build: TestBlockBuildAndCookWriteJava did not run to a PASS"; tail -20 build/java-block-build/log; exit 1; }
@@ -983,11 +963,10 @@ test-java: tables-java-block-build
 # arrays of scalars/strings/enums, arrays of pointers and pointers outside a
 # list element, the 64-bit id-table wire refusing the held kind 31 (R17) and the
 # §16.7 sharing text.
-# `SCHEMA_REQUIRE_CORPUS=1` turns a missing-oracle skip into a FAILURE, so under
+# the rule that nothing skips turns a missing-oracle skip into a FAILURE, so under
 # this name a missing oracle can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
@@ -1017,7 +996,7 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@if JAVAC=$(JAVAC) JAVA=$(JAVA) \
 			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
 			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
 			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
@@ -1041,17 +1020,17 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 # both compiled, one corpus through each, the fixed bodies byte-identical and
 # cross-decoding, and each form's message and the keyed variable wire held
 # byte for byte to the Go codec's encoding of the same value. Under
-# SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure, not a skip, and EACH test
+# the rule that nothing skips a missing JDK is a failure, not a skip, and EACH test
 # must run to its own PASS: a name the -run pattern no longer matches would
 # otherwise leave the gate green having run nothing.
 .PHONY: tables-java-keyed tables-java-keyed-negative-control
 tables-java-keyed:
 	@mkdir -p build/java-keyed
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestKeyedArrayIndexingJava|TestKeyedFormWireCodeMatchesUnkeyedInTree' \
 		> build/java-keyed/log 2>&1 || { tail -40 build/java-keyed/log; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-keyed/log; then \
-		echo "tables-java-keyed: a keyed test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-keyed/log; exit 1; \
+		echo "tables-java-keyed: a keyed test SKIPPED"; grep -- '--- SKIP' build/java-keyed/log; exit 1; \
 	fi
 	@grep -q -- '--- PASS: TestKeyedArrayIndexingJava ' build/java-keyed/log || \
 		{ echo "tables-java-keyed: TestKeyedArrayIndexingJava did not run to a PASS"; tail -20 build/java-keyed/log; exit 1; }
@@ -1080,7 +1059,7 @@ tables-java-keyed-negative-control:
 		grep -q SABOTAGED $$d/fixedform.gotext || { echo "NEGATIVE CONTROL FAILED: the $$end sabotage patched nothing"; exit 1; }; \
 		printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/%s/fixedform.gotext"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$d" > $$d/overlay.json; \
-		if SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		if JAVAC=$(JAVAC) JAVA=$(JAVA) \
 				go test -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
 				-run 'TestKeyedArrayIndexingJava' > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: dropping the $$end bound left the keyed accessor green"; tail -20 $$d/log; exit 1; \
@@ -1100,11 +1079,11 @@ tables-java-keyed-negative-control:
 .PHONY: tables-java-deprecated-write
 tables-java-deprecated-write:
 	@mkdir -p build/java-deprecated
-	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaDeprecatedVariant(NeverWritten|NegativeControl)$$' \
 		> build/java-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-deprecated/log | head -40; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-deprecated/log; then \
-		echo "tables-java-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/java-deprecated/log; exit 1; \
+		echo "tables-java-deprecated-write: a test SKIPPED"; grep -- '--- SKIP' build/java-deprecated/log; exit 1; \
 	fi
 	@grep -q -- '--- PASS: TestJavaDeprecatedVariantNeverWritten ' build/java-deprecated/log || \
 		{ echo "tables-java-deprecated-write: TestJavaDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/java-deprecated/log; exit 1; }
@@ -1125,12 +1104,12 @@ test-java: tables-java-deprecated-write
 # check. Its NEGATIVE CONTROL removes each check from the generated code in turn
 # (the variable read, the retained unknown, the message read, the fixed read,
 # the variable writer, the accessor) and requires exactly that check's lines
-# red and every other line green. Under SCHEMA_REQUIRE_CORPUS=1 a missing JDK
+# red and every other line green. Under the rule that nothing skips a missing JDK
 # is a failure, not a skip.
 .PHONY: tables-java-finite-float tables-java-finite-float-negative-control
 tables-java-finite-float:
 	@mkdir -p build/java-finite
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloats$$' \
 		> build/java-finite/log 2>&1 || { tail -40 build/java-finite/log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaFiniteFloats ' build/java-finite/log || \
@@ -1140,7 +1119,7 @@ test-java: tables-java-finite-float
 
 tables-java-finite-float-negative-control:
 	@mkdir -p build/java-finite
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloatNegativeControl$$' \
 		> build/java-finite/control.log 2>&1 || { tail -40 build/java-finite/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaFiniteFloatNegativeControl ' build/java-finite/control.log || \
@@ -1154,11 +1133,11 @@ tables-java-finite-float-negative-control:
 # retention store emptied. The gate is TestDamageDiscardsTheWholeLoadJava; its
 # NEGATIVE CONTROL removes the discard from the generated load, the text read
 # and the retaining load in turn and requires the gate red on exactly that
-# entry point. Under SCHEMA_REQUIRE_CORPUS=1 a missing JDK is a failure.
+# entry point. Under the rule that nothing skips a missing JDK is a failure.
 .PHONY: tables-java-discard tables-java-discard-negative-control
 tables-java-discard:
 	@mkdir -p build/java-discard
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestDamageDiscardsTheWholeLoadJava$$' \
 		> build/java-discard/log 2>&1 || { tail -40 build/java-discard/log; exit 1; }
 	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJava ' build/java-discard/log || \
@@ -1168,7 +1147,7 @@ test-java: tables-java-discard
 
 tables-java-discard-negative-control:
 	@mkdir -p build/java-discard
-	@SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 900s -v -run '^TestDamageDiscardsTheWholeLoadJavaNegativeControl$$' \
 		> build/java-discard/control.log 2>&1 || { tail -40 build/java-discard/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJavaNegativeControl ' build/java-discard/control.log || \
@@ -1285,7 +1264,7 @@ tables-java-fixedform-arm-negative-control: bin/schema build/java-fixedform-corp
 	@rm -rf $(JAVA_ARM_SABOTAGE) && mkdir -p $(JAVA_ARM_SABOTAGE)
 	@sed '$(JAVA_ARM_SABOTAGE_SED)' internal/codegen/javatable/fixedruntime.go > $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext
 	@cmp -s internal/codegen/javatable/fixedruntime.go $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext && \
-		{ echo "NEGATIVE CONTROL: the arm-text sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the arm-text sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@grep -q SABOTAGED $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedruntime.go":"%s/$(JAVA_ARM_SABOTAGE)/fixedruntime.gotext"}}\n' \
@@ -1452,7 +1431,7 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 	@rm -rf $(JAVA_EXTENT_SABOTAGE) && mkdir -p $(JAVA_EXTENT_SABOTAGE)
 	@sed '$(JAVA_EXTENT_SABOTAGE_SED)' internal/codegen/javatable/cook.go > $(JAVA_EXTENT_SABOTAGE)/javatable-cook.go.txt
 	@cmp -s internal/codegen/javatable/cook.go $(JAVA_EXTENT_SABOTAGE)/javatable-cook.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Java cook sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Java cook sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/javatable/cook.go":"%s/$(JAVA_EXTENT_SABOTAGE)/javatable-cook.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_EXTENT_SABOTAGE)/overlay.json
 	go build -overlay $(JAVA_EXTENT_SABOTAGE)/overlay.json -o $(JAVA_EXTENT_SABOTAGE)/schema ./cmd/schema
@@ -1481,8 +1460,7 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 # feature version and the JVM's per-thread allocation counter, and refuses to
 # certify on any JDK other than the pin — or with no counter at all — without
 # measuring. SCHEMA_JAVA_ALLOC_PINNED_FEATURE overrides the pin for the negative
-# control; SCHEMA_JAVA_ALLOC_ANY_JDK=1 is the escape hatch: it reports and does
-# not certify. On the pin it measures the ROWS (test/java-tables/src/AllocPaths.java),
+# control; there is no observation-only mode. On the pin it measures the ROWS (test/java-tables/src/AllocPaths.java),
 # each a real path through the generated code over a committed file, each
 # warmed until its per-iteration count settles and gated on its ceiling:
 #   1 block-walk    open + every row of block_render.bin: one handle, 0 per row
@@ -1497,12 +1475,11 @@ JAVA_ALLOC_WIRES := testdata/wire/tables/graph_tree.bin testdata/wire/tables/gra
 JAVA_ALLOC_ARGS := $(JAVA_ALLOC_BLOCK) $(JAVA_ALLOC_COOK) $(JAVA_ALLOC_WIRES)
 .PHONY: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control
 tables-java-allocator: build/java-tables/.stamp
-	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java allocation observation mode: NOT CERTIFIED"; fi
 	$(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS)
 
 tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 	@mkdir -p build/java-allocator-runtime-negative-control
-	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 SCHEMA_JAVA_ALLOC_ANY_JDK=0 $(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS) > build/java-allocator-runtime-negative-control/log 2>&1; then \
+	@if SCHEMA_JAVA_ALLOC_PINNED_FEATURE=17 $(JAVA) -cp build/java-tables Main allocator $(JAVA_ALLOC_ARGS) > build/java-allocator-runtime-negative-control/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the allocation gate certified on a JDK that is not the pin'; \
 		cat build/java-allocator-runtime-negative-control/log; exit 1; \
 	fi
@@ -1522,12 +1499,10 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 # load builds a Value tree, so the floor is not zero and the gate is on
 # STABILITY, not on zero — with resident-heap drift reported beside it as the
 # weaker instrument that sees retention. It refuses to certify off the pinned
-# JDK exactly as modeAllocator does, and honours SCHEMA_JAVA_ALLOC_ANY_JDK=1
-# as observation only (reports, does not certify).
+# JDK exactly as modeAllocator does.
 TABLES_JAVA_SOAK_ITERATIONS ?= 134217728
 .PHONY: tables-java-soak tables-java-soak-negative-control
 tables-java-soak: build/java-tables/.stamp
-	@if [ "$${SCHEMA_JAVA_ALLOC_ANY_JDK:-}" = 1 ]; then echo "Java soak observation mode: NOT CERTIFIED"; fi
 	$(JAVA) -cp build/java-tables Soak --selftest
 	$(JAVA) -cp build/java-tables Soak $(TABLES_JAVA_SOAK_ITERATIONS) testdata/wire/tables/blob_small.bin testdata/wire/tables/list_scalars.bin testdata/wire/tables/graph_tree.bin
 
@@ -1768,7 +1743,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/surfaces/*.java \
 		build/tables-generated-java/tblann4096/*.java \
 		build/tables-generated-java/tblann4097/*.java \
-		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
+		build/tables-generated-java/featurewitnesses/*.java \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@touch $@
 
@@ -1872,7 +1847,7 @@ test-java: tables-java-wire-fuzz
 # unplanted gate above must be green.
 JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 tblfixedevo tblvarevo1 tblvarevo2 tblvarevo3 cooktorture cooktorturewide messages widelist stream lists rt1 \
 	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9 \
-	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),featurewitnesses)
+	featurewitnesses
 JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
 tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_WIRE_FUZZ_SABOTAGE) && mkdir -p $(JAVA_WIRE_FUZZ_SABOTAGE)/generated $(JAVA_WIRE_FUZZ_SABOTAGE)/classes
@@ -2082,11 +2057,11 @@ conformance-negative-control-java-block: build/conformance-harness build/tables-
 	@rm -rf $(CONFORMANCE_NEGATIVE_JAVA_BLOCK) && mkdir -p $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated
 	@sed '$(CONFORMANCE_NEGATIVE_JAVA_BLOCK_SED)' internal/codegen/javatable/block.go > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt
 	@cmp -s internal/codegen/javatable/block.go $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Java block sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Java block sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema ./cmd/schema
-	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
+	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/pointers tables/pointers
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/blobs tables/blobs
@@ -2139,11 +2114,11 @@ conformance-negative-control-java-walk: build/conformance-harness
 	@go run ./tools/sabotage -name java-text-walk-field-match \
 		-out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt internal/codegen/javatable/variableform.go
 	@cmp -s internal/codegen/javatable/variableform.go $(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Java text-walk sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Java text-walk sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/javatable/variableform.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema ./cmd/schema
-	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
+	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/pointers tables/pointers
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/blobs tables/blobs
@@ -2237,7 +2212,8 @@ TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java
 CONFORMANCE_LEG_java := build-conformance-java
 TOOLCHAIN_PINS_java := JAVA JAVAC
-CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
+CONFORMANCE_OF.java := build-conformance-java
+CONFORMANCE_LEGS   += $(CONFORMANCE_OF.java)
 REGISTRY_NA        += bench-tables:java goldens:java
 REGISTRY_NA_WHY.bench-tables.java := bench/tables/java has no leg script, so bench/tables/run.sh runs no Java leg and nothing builds TableMain.java yet
 REGISTRY_NA_WHY.goldens.java      := no committed table goldens; its packet goldens (testdata/golden/java) are rewritten by internal/goldens at the top of update-goldens
@@ -2439,11 +2415,9 @@ test-java: cards-java-test cards-java-conformance cards-java-conformance-negativ
 # positive native codec gates.
 .PHONY: tables-java-variable-arms tables-java-variable-fixed-class
 tables-java-variable-arms: bin/schema
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
 
 tables-java-variable-fixed-class: bin/schema
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
@@ -2492,7 +2466,6 @@ tables-java-view: bin/schema test/java-view/View.java
 # one and says which declaration a wrong string belongs to.
 .PHONY: tables-java-descriptor-doc
 tables-java-descriptor-doc: bin/schema
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestJavaDescriptorDocAndTags$$'
 
 test-java: tables-java-view tables-java-descriptor-doc
@@ -2709,14 +2682,14 @@ test-java: packet-end-java packet-end-java-negative-control
 .PHONY: tables-java-transport-id tables-java-transport-id-negative-control
 tables-java-transport-id:
 	@mkdir -p build/java-transport-id
-	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDFirstUse$$' ./internal/codegen/javatable/ \
 		> build/java-transport-id/positive.log 2>&1 || { cat build/java-transport-id/positive.log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaTransportIDFirstUse ' build/java-transport-id/positive.log || { cat build/java-transport-id/positive.log; exit 1; }
 	@echo 'Java transport IDs: legal and noncanonical vectors matched the Go oracle'
 
 tables-java-transport-id-negative-control: tables-java-transport-id
-	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDNegativeControl$$' ./internal/codegen/javatable/ \
 		> build/java-transport-id/control.log 2>&1 || { cat build/java-transport-id/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaTransportIDNegativeControl ' build/java-transport-id/control.log || { cat build/java-transport-id/control.log; exit 1; }

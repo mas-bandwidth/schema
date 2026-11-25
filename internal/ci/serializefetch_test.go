@@ -18,26 +18,26 @@ import (
 // bare mirrors of the repositories they work on under $NOVA_MIRRORS, laid out
 // as <owner>/<repo>.git (for example $NOVA_MIRRORS/mas-bandwidth/serialize.git).
 // A bench with no network — or one the forge has rate-limited — could not build
-// the corpus before this order existed, and every SCHEMA_REQUIRE_CORPUS gate
+// the corpus before this order existed, and every test that needs the corpus
 // reported the same absence. The fetch must try that mirror first and fall back
 // to the network repository, without changing either pin.
 //
-// The test shells out to make and git, so it is a functional test behind the
-// slow gate and a bare `go test ./...` skips it by name. It uses no network and
+// The test shells out to make and git, so it is a functional test: without
+// them it fails naming what is missing. It uses no network and
 // no real remote: it builds a LOCAL bare repository under <tmp>/mirrors in the
 // mirror layout, tags it with the pin it READS from the Makefile, names a
 // nonexistent SERIALIZE_REPO (so only the mirror can satisfy the fetch), and
-// runs make's runtime-header target in the repository root. The Go-runtime
-// subtests use copied Makefile inputs in temporary roots so a real sibling
-// cannot bypass the dependency-fetch path.
+// runs make's runtime-header target. Every subtest runs make in copied
+// Makefile inputs in a temporary root, so a real sibling cannot bypass the
+// dependency-fetch path.
 func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 	t.Parallel()
 
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("the fetch gate shells out to make: %v", err)
+		t.Fatalf("the fetch gate shells out to make: %v", err)
 	}
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("the fetch gate shells out to git: %v", err)
+		t.Fatalf("the fetch gate shells out to git: %v", err)
 	}
 
 	root := repoRoot(t)
@@ -49,19 +49,21 @@ func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 
 	t.Run("the C++ runtime", func(t *testing.T) {
 		t.Parallel()
-		sibling := filepath.Join(root, "..", "serialize", "serialize.h")
-		if _, err := os.Stat(sibling); err == nil {
-			t.Skipf("a sibling C++ serialize checkout at %s resolves SERIALIZE, so the fetch is not reached", sibling)
-		}
 		pin := makePin(t, makefile, "SERIALIZE_PIN")
 		tmp := t.TempDir()
+		// make runs in a copy of the make files under <tmp>/repo, so a sibling
+		// C++ serialize checkout beside the real root (../serialize, which
+		// resolves SERIALIZE) cannot stand in for the fetch: <tmp>/serialize
+		// does not exist
+		makeRoot := filepath.Join(tmp, "repo")
+		copyMakeWorkspace(t, root, makeRoot)
 		mirrors := filepath.Join(tmp, "mirrors")
 		makeBareRuntime(t, filepath.Join(mirrors, "mas-bandwidth", "serialize.git"), pin,
 			map[string]string{"serialize.h": "// the pinned serialize runtime\n"})
 		fetched := filepath.Join(tmp, "out", "serialize")
 		header := filepath.Join(fetched, "serialize.h")
 
-		out, err := runMakeFetch(t, root, []string{
+		out, err := runMakeFetch(t, makeRoot, []string{
 			"NOVA_MIRRORS=" + mirrors,
 			"SERIALIZE_REPO=/nonexistent/serialize.git",
 			"SERIALIZE_FETCHED=" + fetched,

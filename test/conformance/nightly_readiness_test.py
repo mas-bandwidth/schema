@@ -39,7 +39,6 @@ class FakeRunner(m.Runner):
         self.temporary = tempfile.TemporaryDirectory()
         self.out = Path(self.temporary.name)
         self.results = []
-        self.native_passes = set()
         self.calls = []
         self.lang = lang
         self.instances.append(self)
@@ -136,13 +135,13 @@ class Contracts(unittest.TestCase):
         text="\n".join(native().splitlines()[:-1])
         self.assertTrue(m.native_result(text,["TestReady"],"gotable"))
 
-    def test_retired_exact_scope(self):
+    def test_native_skip_is_a_failure(self):
         name="TestFixedFormPlanPath"
-        text="\n".join(native(name=name,action="skip",output=m.RETIRED[name][0]).splitlines()[:-1])+"\n"+native()
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(m.native_result(text,[name,"TestReady"],"gotable",set(m.RETIRED[name][1])),[])
-            self.assertTrue(m.native_result(native(name=name,action="skip",output="owed"),[name,"TestReady"],"gotable"))
-            self.assertTrue(m.native_result(text.replace("gotable","ctable"),[name,"TestReady"],"ctable"))
+        reason="retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness"
+        text="\n".join(native(name=name,action="skip",output=reason).splitlines()[:-1])+"\n"+native()
+        self.assertTrue(m.native_result(text,[name,"TestReady"],"gotable"))
+        self.assertTrue(m.native_result(native(name=name,action="skip",output="owed"),[name,"TestReady"],"gotable"))
+        self.assertTrue(m.native_result(text.replace("gotable","ctable"),[name,"TestReady"],"ctable"))
 
     def test_fuzz_positive_all_seeds_arms(self):
         for arm in ("plain","retain"):
@@ -391,40 +390,14 @@ class Contracts(unittest.TestCase):
             self.assertTrue(m.packet_result(text))
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
-    def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),68)
-        for lang, entries in m.RETIRED_NATIVE.items():
-            for marker, required in entries.items():
-                with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(m.native_retirement_errors(marker,lang,required),[])
-                    self.assertTrue(m.native_retirement_errors(marker,lang,set()))
-                    self.assertTrue(m.native_retirement_errors(marker+" changed",lang,required))
-                    for missing in required:
-                        self.assertTrue(m.native_retirement_errors(marker,lang,required-{missing}))
-        self.assertTrue(m.native_retirement_errors("SKIP: unknown future test","go",set()))
-        self.assertTrue(m.native_retirement_errors("SKIPPED: owed live ruling","elixir",set()))
-
-    def test_js_retirement_inventory_is_exact(self):
-        source = (ROOT / "test/js-tables/fixedform.mjs").read_text()
-        calls = re.findall(r'  retired\("([^"]+)", "([^"]+)"\);', source)
-        markers = {"RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): " + name + " — " + reason
-                   for name, reason in calls}
-        self.assertEqual(len(calls), 9)
-        self.assertEqual(markers, set(m.RETIRED_NATIVE["js"]))
-
-    def test_java_retirement_inventory_is_exact(self):
-        main_java = (ROOT/"test/java-fixedform/src/Main.java").read_text()
-        calls = m.re.findall(r'retired\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)', main_java)
-        expected = {f"RETIRED by §5.6: {fn} — {owed}" for fn, owed in calls}
-        self.assertEqual(len(expected), 7)
-        self.assertEqual(set(m.RETIRED_NATIVE["java"]), expected)
-
-    def test_go_retirement_without_replacement_is_incomplete(self):
-        for name,(reason,required) in m.RETIRED.items():
-            text="\n".join(native(name=name,action="skip",output=reason).splitlines()[:-1])+"\n"+native()
-            with contextlib.redirect_stdout(io.StringIO()):
-                self.assertTrue(m.native_result(text,[name,"TestReady"],"gotable",set()))
-                self.assertEqual(m.native_result(text,[name,"TestReady"],"gotable",set(required)),[])
+    def test_every_native_program_skip_marker_is_a_failure(self):
+        for marker in ("SKIP: unknown future test","SKIPPED: owed live ruling","SKIP",
+                       "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): versioning — owed on the lineage harness",
+                       "RETIRED by §5.6: anOlderWriter — held by the versioning harness",
+                       "fixed_test.go:12: SKIP: nested in a Go test log"):
+            with self.subTest(marker=marker):
+                self.assertTrue(m.native_skip_errors(marker))
+        self.assertEqual(m.native_skip_errors("PASS\nok"),[])
 
     def test_inherited_noop_skip_and_update_flags_are_removed(self):
         unsafe={"MAKEFLAGS":"-n","MFLAGS":"-n","GNUMAKEFLAGS":"-n","MAKEFILES":"/tmp/injected.mk","MAKEOVERRIDES":"SKIP=1",
@@ -438,8 +411,6 @@ class Contracts(unittest.TestCase):
                     self.assertNotIn(key,runner.env)
             self.assertEqual(runner.env["GOFLAGS"],"-p=2")
             self.assertEqual(runner.env["JAVA"],"/approved/tool/java")
-            self.assertEqual(runner.env["SCHEMA_SLOW"],"1")
-            self.assertEqual(runner.env["SCHEMA_REQUIRE_CORPUS"],"1")
             self.assertEqual(runner.env["SCHEMA_C_COLLECTIONS_DRIVER"],str(runner.root/"build/c-collections-fuzz"))
             self.assertEqual(runner.env["SCHEMA_CPP_COLLECTIONS_DRIVER"],str(runner.root/"build/cpp-collections-fuzz"))
 
@@ -568,13 +539,10 @@ class Contracts(unittest.TestCase):
                       "retain-goose-tablewire","retain-goose-fuzz",
                       *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
             self.assertIn(phase,required)
-        # no §5.6 retirement is admitted for Goose
-        self.assertNotIn("goose",m.RETIRED_NATIVE)
-        self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything","goose",set()))
-        skip="\n".join(native("goosetable","TestFixedFormPlanPath","skip",m.RETIRED["TestFixedFormPlanPath"][0]).splitlines()[:-1])+"\n"+native("goosetable")
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertTrue(m.native_result(skip,["TestFixedFormPlanPath","TestReady"],"goosetable",
-                                            set(m.RETIRED["TestFixedFormPlanPath"][1])))
+        # no native skip is admitted for Goose
+        self.assertTrue(m.native_skip_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything"))
+        skip="\n".join(native("goosetable","TestFixedFormPlanPath","skip","retired by docs/FIXED-FORM-ALGORITHM.md §5.6").splitlines()[:-1])+"\n"+native("goosetable")
+        self.assertTrue(m.native_result(skip,["TestFixedFormPlanPath","TestReady"],"goosetable"))
         self.assertEqual(m.driver_command(ROOT,"goose"),"build/goose-wirefuzz-dispatch build/goose-wirefuzz-legs/legs")
         self.assertIn("goose",m.MIXED_BUILDER)
 
@@ -642,9 +610,8 @@ class Contracts(unittest.TestCase):
                       *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
             self.assertIn(phase,required)
         self.assertNotIn("packet-normal-1",required)
-        # no §5.6 retirement is admitted for MOO
-        self.assertNotIn("moo",m.RETIRED_NATIVE)
-        self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything","moo",set()))
+        # no native skip is admitted for MOO
+        self.assertTrue(m.native_skip_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything"))
         # one process over the whole roster, answering the region measure
         # itself: the plain profile, no dispatcher
         self.assertEqual(m.driver_command(ROOT,"moo"),"test/conformance/moo/wirefuzz-driver")
@@ -719,9 +686,8 @@ class Contracts(unittest.TestCase):
                       *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
             self.assertIn(phase,required)
         self.assertNotIn("packet-normal-1",required)
-        # no §5.6 retirement is admitted for Python
-        self.assertNotIn("python",m.RETIRED_NATIVE)
-        self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything","python",set()))
+        # no native skip is admitted for Python
+        self.assertTrue(m.native_skip_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything"))
         # one process over every unit under the current pin, the plain profile
         self.assertEqual(m.driver_command(ROOT,"python"),
                          m.PYTHON_DIST+" -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python")

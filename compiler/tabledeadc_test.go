@@ -69,7 +69,7 @@ func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("generated C execution requires cc")
+		t.Fatal("generated C execution requires cc")
 	}
 	files, err := generateCUnqualified(u)
 	if err != nil {

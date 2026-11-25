@@ -552,7 +552,7 @@ func luauFuzzRun(t testing.TB, lua string, g *luauFuzzGroup, c *luauFuzzChunk) (
 	return stdout.Bytes(), nil
 }
 
-// luauFuzzCost is what the slow half pays for these tests (internal/slowtest):
+// luauFuzzCost is what these tests cost:
 // the pinned Luau interpreter over every mutant, tens of CPU-seconds, most of
 // it tabledemo wide_blob's 210 KB instance read 200 times.
 const luauFuzzCost = "the pinned Luau interpreter (dist/luau-0.741, make dist-luau) over every mutant of the corpus"

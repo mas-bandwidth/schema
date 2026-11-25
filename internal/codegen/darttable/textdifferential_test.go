@@ -16,8 +16,8 @@ package darttable
 // wire, form 1). Only the instance generator is Dart; the comparison runs
 // here, inside Go.
 //
-// Running the Dart SDK makes this a functional test: it skips by name when the
-// SDK is absent, fails by name under SCHEMA_REQUIRE_CORPUS=1, and is reached
+// Running the Dart SDK makes this a functional test: it fails by name when the
+// SDK is absent, and is reached
 // from make tables-dart-text-differential.
 
 import (

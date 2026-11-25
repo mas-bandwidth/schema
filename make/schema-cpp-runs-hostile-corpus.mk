@@ -27,7 +27,6 @@
 CPP_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 CPP_HOSTILE_BUILD    := build/cpp-hostile
 CPP_HOSTILE_FINDINGS ?= test/cpp-hostile/known-findings.tsv
-CPP_HOSTILE_SKIPS    ?= test/cpp-hostile/known-skips.tsv
 # -g1, not -g: line tables are all a sanitizer report needs to name file and
 # line, and full -g made GCC's variable tracking 81% of compiling
 # unit_messagedemo.cpp (218 of 270 s, -ftime-report, g++ 16; the whole
@@ -105,8 +104,8 @@ $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go 
 .PHONY: schema-cpp-runs-hostile-corpus
 schema-cpp-runs-hostile-corpus: $(CPP_HOSTILE_BUILD)/case $(CPP_HOSTILE_BUILD)/hostilecorpusexec
 	$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case \
-		-corpus "$(CPP_HOSTILE_CORPUS)" -findings "$(CPP_HOSTILE_FINDINGS)" -skips "$(CPP_HOSTILE_SKIPS)"
-	sh make/checks/hostile-carry-controls.sh cpp findings $(CPP_HOSTILE_BUILD)/carry '$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case -corpus "$$CARRY_CORPUS" -findings "$$CARRY_FINDINGS" -skips ""'
+		-corpus "$(CPP_HOSTILE_CORPUS)" -findings "$(CPP_HOSTILE_FINDINGS)"
+	sh make/checks/hostile-carry-controls.sh cpp findings $(CPP_HOSTILE_BUILD)/carry '$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case -corpus "$$CARRY_CORPUS" -findings "$$CARRY_FINDINGS"'
 
 # The plant: one case the engine accepts is recorded as a refusal it never
 # names, in a scratch copy of the corpus, and the runner must name it FAIL.
@@ -119,7 +118,7 @@ schema-cpp-runs-hostile-corpus-negative-control: $(CPP_HOSTILE_BUILD)/case $(CPP
 	@if cmp -s $(CPP_HOSTILE_CORPUS)/manifest.tsv $(CPP_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdict did not apply'; exit 1; fi
 	@if $(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case \
-			-corpus $(CPP_HOSTILE_BUILD)/plant/corpus -findings "$(CPP_HOSTILE_FINDINGS)" -skips "$(CPP_HOSTILE_SKIPS)" > $(CPP_HOSTILE_BUILD)/plant/log 2>&1; then \
+			-corpus $(CPP_HOSTILE_BUILD)/plant/corpus -findings "$(CPP_HOSTILE_FINDINGS)" > $(CPP_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a changed verdict left the corpus green'; \
 		cat $(CPP_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@grep -q '^FAIL wire-valid ' $(CPP_HOSTILE_BUILD)/plant/log || \

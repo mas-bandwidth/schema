@@ -197,10 +197,7 @@ func TestRustIdTableReaderContract(t *testing.T) {
 	}
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 
 	// (a) 4097 distinct unknown ids (32,784-byte trailer): refused as malformed.

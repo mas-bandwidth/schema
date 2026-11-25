@@ -334,7 +334,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message message-prior retain retain-save retain-refusal json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into json-write-into)
+  @surfaces ~w(wire message message-prior retain retain-save retain-refusal json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into json-write-into)
 
   def main([manifest, "list"]) do
     _ = manifest

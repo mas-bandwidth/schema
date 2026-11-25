@@ -47,7 +47,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -276,10 +275,8 @@ func parseDumpedFloatBits(t *testing.T, v string) uint32 {
 	return uint32(bits)
 }
 
-// corpusDir answers where the C++ reference's bytes are, or skips — unless
-// SCHEMA_REQUIRE_CORPUS is set, under which a missing corpus is a FAILURE. A
-// bare `go test ./...` on a tree that never built the oracle is right to skip;
-// CI is not, which is what the environment variable is for.
+// corpusDir answers where the C++ reference's bytes are; a missing corpus is a
+// FAILURE by name.
 func corpusDir(t *testing.T) string {
 	t.Helper()
 	dir := os.Getenv("SCHEMA_FIXEDFORM_CORPUS")
@@ -287,10 +284,7 @@ func corpusDir(t *testing.T) string {
 		dir = filepath.Join("..", "..", "..", "build", "fixedform-corpus")
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and %s is not there: run `make tables-fixedform-corpus`", dir)
-		}
-		t.Skipf("no fixed-form corpus at %s: run `make tables-fixedform-corpus`", dir)
+		t.Fatalf("no fixed-form corpus at %s: run `make tables-fixedform-corpus`", dir)
 	}
 	return dir
 }

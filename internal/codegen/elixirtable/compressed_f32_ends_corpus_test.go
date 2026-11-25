@@ -11,8 +11,8 @@ package elixirtable
 // test holds each verdict, and each saved file byte for byte, to the row
 // (internal/tablewire's TestCompressedF32EndsCorpus is the reference runner).
 //
-// It compiles and runs the generated unit, so it is a functional test: without
-// SCHEMA_SLOW it skips by name.
+// It compiles and runs the generated unit, so it is a functional test: a
+// missing toolchain fails by name.
 import (
 	"bytes"
 	"encoding/hex"

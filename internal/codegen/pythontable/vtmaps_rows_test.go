@@ -380,7 +380,7 @@ func pythonVTMapRowsFailures(t *testing.T, mutate func(*testing.T, map[string][]
 
 // TestPythonVtMapsRows holds the map row over the manifest. Its completeness
 // check runs in every build; the read-then-write runs the pinned interpreters
-// (functional: run with SCHEMA_SLOW=1).
+// (functional.
 func TestPythonVtMapsRows(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -433,7 +433,7 @@ func TestPythonVtMapsRows(t *testing.T) {
 // key-order test inverted (every map of two or more entries refuses), and the
 // writer's entry count one too many (no saved map is the canonical wire).
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtMapsRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	plant := func(from, to string) func(*testing.T, map[string][]byte) {

@@ -27,7 +27,7 @@ func TestCPPTextFormDocumentEdits(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated writer is C++: no c++ on PATH")
+		t.Fatal("the generated writer is C++: no c++ on PATH")
 	}
 
 	type harness struct {

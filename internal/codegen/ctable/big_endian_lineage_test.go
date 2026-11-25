@@ -210,7 +210,7 @@ func bigEndianLineageCC(t *testing.T) string {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	return cc

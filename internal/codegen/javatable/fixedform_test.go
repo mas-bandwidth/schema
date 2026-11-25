@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -117,11 +116,11 @@ func TestIdentityCompiledBytesN(t *testing.T) {
 
 	javac, err := exec.LookPath("javac")
 	if err != nil {
-		t.Skip("javac not on PATH")
+		t.Fatalf("javac not on PATH: %v", err)
 	}
 	java, err := exec.LookPath("java")
 	if err != nil {
-		t.Skip("java not on PATH")
+		t.Fatalf("java not on PATH: %v", err)
 	}
 	files, err := Generate(unitFrom(t, `package probe
 

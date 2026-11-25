@@ -8,9 +8,7 @@ package rusttable
 // verdict the landed standard states there, and the emitted Rust reads it the
 // same way.
 //
-// THIS IS A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by
-// name when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by
-// name when SCHEMA_REQUIRE_CORPUS is set.
+// THIS IS A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent.
 
 import (
 	"bufio"
@@ -30,10 +28,7 @@ func TestRustJsonCommentIsWellFormedUTF8(t *testing.T) {
 	t.Parallel()
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 
 	repo, err := filepath.Abs("../../..")

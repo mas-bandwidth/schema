@@ -16,9 +16,7 @@ package jstable
 //	    retained wire.
 //
 // This is a functional test. It generates the modules and runs them under
-// node, so slowtest.Gate skips it unless SCHEMA_SLOW=1 or SCHEMA_REQUIRE_CORPUS
-// is set. A missing node fails by name under SCHEMA_REQUIRE_CORPUS; it does
-// not skip. The probe takes no real time of its own, opens no socket, and
+// node; a missing node fails by name, it does not skip. The probe takes no real time of its own, opens no socket, and
 // makes no network call.
 
 import (

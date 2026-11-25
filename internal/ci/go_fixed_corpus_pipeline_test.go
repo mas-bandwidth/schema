@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -14,9 +13,6 @@ import (
 )
 
 func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Linux CI artifact contract")
-	}
 	root := repoRoot(t)
 	pins, err := os.ReadFile(filepath.Join(root, "SIBLINGS"))
 	if err != nil {

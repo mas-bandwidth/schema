@@ -530,10 +530,7 @@ func TestFixedRoadmapCppT09IntegersFloats(t *testing.T) {
 			if row.needsSerialize {
 				ser, ok := cppSerializeDir(t)
 				if !ok {
-					if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-						t.Fatalf("the sibling runtime serialize is absent at %s (SPEC-TABLES.md §3.4: the generated header includes serialize.h by name for the 128-bit storage)", ser)
-					}
-					t.Skipf("named as not run: the sibling serialize runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
+					t.Fatalf("the sibling runtime serialize is absent at %s (SPEC-TABLES.md §3.4: the generated header includes serialize.h by name for the 128-bit storage)", ser)
 				}
 				// Every row saves out-of-range values to forge the bytes its
 				// reader must refuse, so the probe is a release build.

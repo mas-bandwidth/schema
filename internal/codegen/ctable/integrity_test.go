@@ -362,7 +362,7 @@ func writeAndCompileCIntegrity(t *testing.T, files map[string][]byte, driver str
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("no cc on PATH")
+		t.Fatal("no cc on PATH")
 	}
 	dir := t.TempDir()
 	var cFiles []string

@@ -26,7 +26,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -41,15 +40,8 @@ func cppFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_array_bounded_grow.bin")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
-		// `go test ./...` on a tree that never built the oracle has nothing to
-		// read and says so; under SCHEMA_REQUIRE_CORPUS a missing file means the
-		// build did not do what it was told — and a suite that skips itself there
-		// would report green over the row having never run.
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		// A missing oracle is a failure by name: a suite that skipped here would report green over the row having never run.
+		t.Fatalf("the reference's byte oracle is not in %s: %v", dir, err)
 	}
 	return dir
 }
@@ -300,9 +292,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	for _, r := range cppVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
-			if r.unported != "" {
-				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
-			}
 			older := loadUnit(t, filepath.Join("..", "..", "..", "test", "tables", "VOLD_"+r.row+".schema"))
 			root := cppFixedRoot(t, older)
 			lead, trail := cppBrackets(t, corpus, r.row, ir.TableFixedTypeBytes(root))

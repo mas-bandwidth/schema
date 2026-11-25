@@ -21,7 +21,7 @@ import (
 // an unknown key's value. Each row is compared on the verdict alone (read or
 // refused) with the compiler's own engine, internal/tabletext, after the engine
 // is first held to the manifest's verdict.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestElixirJsonCommentIsWellFormedUTF8(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirBinary(t)

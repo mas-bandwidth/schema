@@ -111,10 +111,7 @@ func TestCSkippedValueIsValidated(t *testing.T) {
 
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is not on PATH: %v", err)
-		}
-		t.Skipf("cc is not on PATH: %v", err)
+		t.Fatalf("cc is not on PATH: %v", err)
 	}
 	build := t.TempDir()
 	for name, data := range files {

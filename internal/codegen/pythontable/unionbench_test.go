@@ -41,7 +41,7 @@ table Root
 // record in docs/PORT-PYTHON.md and it asserts only that both shapes of each
 // direction agree on the bytes and the value.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonUnionShapeBench(t *testing.T) {
 	t.Parallel()
 	files, err := Generate(loadUnit(t, pythonUnionBenchSchema))

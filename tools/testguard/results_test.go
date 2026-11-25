@@ -84,7 +84,9 @@ func TestJUnitRefusals(t *testing.T) {
 
 func TestGoJSONTestsSubtestsSkipsFailuresAndEmptyPackages(t *testing.T) {
 	t.Parallel()
-	r := read(t, "go.json", goGreen+`{"Action":"skip","Package":"ex/empty"}
+	r := read(t, "go.json", goGreen+`{"Action":"run","Package":"ex/a","Test":"TestSkipped"}
+{"Action":"skip","Package":"ex/a","Test":"TestSkipped"}
+{"Action":"skip","Package":"ex/empty"}
 {"Action":"run","Package":"ex/crash","Test":"TestCrash"}
 {"Action":"fail","Package":"ex/crash"}
 `)
@@ -113,7 +115,7 @@ func TestGoJSONEveryIterationCounts(t *testing.T) {
 
 func TestGoJSONRefusals(t *testing.T) {
 	t.Parallel()
-	refusedWith(t, "go.json", goGreen+"FAIL ex/a 0.01s\n", "go.json:11 is not a go test -json event")
+	refusedWith(t, "go.json", goGreen+"FAIL ex/a 0.01s\n", "go.json:9 is not a go test -json event")
 	refusedWith(t, "go.json", `{"Action":"pass","Package":"s","Te`+"\n", "go.json:1 is not a go test -json event")
 	refusedWith(t, "go.json", `{"Package":"s"}`+"\n", "go.json:1 is not a go test -json event")
 	refusedWith(t, "go.json", "\n", "go.json holds no go test -json event")

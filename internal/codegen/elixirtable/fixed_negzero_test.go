@@ -8,8 +8,7 @@ package elixirtable
 // bytes the +0 record writes, from the landed value and from a held -0. A
 // plain float's -0 is carried bit-exact and is not this vector's subject.
 //
-// It compiles and runs the generated unit, so it is a functional test:
-// without SCHEMA_SLOW it skips by name, and under SCHEMA_REQUIRE_CORPUS=1 a
+// It compiles and runs the generated unit, so it is a functional test: a
 // missing corpus or toolchain is a failure, never a skip.
 import (
 	"path/filepath"

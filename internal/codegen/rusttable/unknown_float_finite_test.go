@@ -17,7 +17,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"testing"
 
@@ -91,10 +90,7 @@ func rewriteFloat(t *testing.T, wire, from, to []byte) []byte {
 func TestRustUnknownFieldFloatIsFinite(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the unknown-field finite rule cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the unknown-field finite rule cannot be built or run: %v", err)
 	}
 
 	writer := unitFrom(t, unknownFloatWriterSchema)

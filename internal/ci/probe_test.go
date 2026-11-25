@@ -21,7 +21,7 @@ import (
 func TestWideScalarProbeModuleBoundary(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("probe recipe requires make: %v", err)
+		t.Fatalf("probe recipe requires make: %v", err)
 	}
 	root, fixture := repoRoot(t), t.TempDir()
 	for _, dir := range []string{"cmd", "internal", "ir", "compiler", "bin", "tables"} {

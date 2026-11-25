@@ -20,7 +20,7 @@ table T
 `
 	// THE EMITTED SOURCE, in process: the writer drops default elision for
 	// the required fields only, and the reader names a missing required
-	// field. This half runs without SCHEMA_SLOW; the compiled half below is
+	// field. This half needs no toolchain; the compiled half below is
 	// the behavioural proof.
 	t.Run("emitted", func(t *testing.T) {
 		t.Parallel()

@@ -30,10 +30,10 @@ import (
 func TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("the runtime rule gate shells out to make: %v", err)
+		t.Fatalf("the runtime rule gate shells out to make: %v", err)
 	}
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("the runtime rule gate shells out to git: %v", err)
+		t.Fatalf("the runtime rule gate shells out to git: %v", err)
 	}
 	root := repoRoot(t)
 	makefile, err := os.ReadFile(filepath.Join(root, "Makefile"))

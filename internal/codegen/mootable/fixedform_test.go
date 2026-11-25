@@ -3,8 +3,8 @@ package mootable_test
 // THE FIXED FORM ON THE MOO LEG (docs/SPEC-TABLES.md §3.4,
 // docs/FIXED-FORM-ALGORITHM.md). The bytes are the C++ reference's: `make
 // tables-fixedform-corpus` writes build/fixedform-corpus and its manifest.txt,
-// the values the dump wrote into each file. The corpus is a SKIP on a bare
-// tree and a FAILURE under SCHEMA_REQUIRE_CORPUS=1, as on every other leg.
+// the values the dump wrote into each file. The corpus absent is a FAILURE
+// naming make tables-fixedform-corpus.
 
 import (
 	"encoding/binary"
@@ -22,7 +22,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -30,9 +29,6 @@ func fixedCorpus(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(root, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if !slowtest.CorpusRequired() {
-			t.Skip("the C++ reference's fixed-form corpus is absent (make tables-fixedform-corpus); SCHEMA_REQUIRE_CORPUS unset")
-		}
 		t.Fatalf("the fixed-form corpus is absent: build it with make tables-fixedform-corpus: %v", err)
 	}
 	return dir

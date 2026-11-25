@@ -234,7 +234,7 @@ func cppReasonCompiler(t *testing.T, names ...string) string {
 			return path
 		}
 	}
-	t.Skipf("none of %v is on PATH", names)
+	t.Fatalf("none of %v is on PATH", names)
 	return ""
 }
 

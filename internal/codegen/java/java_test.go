@@ -188,7 +188,7 @@ func compressedFloatJavaTools(t *testing.T) (javac, javaBin string) {
 			return p, j
 		}
 	}
-	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
+	t.Fatal("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""
 }
 

@@ -110,7 +110,7 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc: %v", err)
 	}
 	u := cUnitOf(t, cReadSchema(t, "VNEW_hostile_bool"))
 	files, err := cgen.Generate(u)

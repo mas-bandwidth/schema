@@ -10,7 +10,6 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,19 +20,13 @@ import (
 
 // luaFixedCorpus is the C++ reference's byte oracle, build/fixedform-corpus,
 // exactly as the other legs resolve it (jstable's jsFixedCorpus, cpptable's
-// cppFixedCorpus). A bare `go test` on a tree that never built the oracle has
-// nothing to read and SKIPS, saying so; under SCHEMA_REQUIRE_CORPUS (make
-// test-lua builds the corpus first and sets it) a missing file is a FAILURE,
-// because a suite that skips itself there would report green over §5 having
-// never run.
+// cppFixedCorpus). A tree that never built the oracle FAILS by name;
+// nothing skips.
 func luaFixedCorpus(t *testing.T, repo string) string {
 	t.Helper()
 	dir := filepath.Join(repo, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not in %s (make tables-fixedform-corpus): %v", dir, err)
 	}
 	return dir
 }

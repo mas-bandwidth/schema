@@ -27,7 +27,6 @@ import (
 // spliced in ahead of the node table, one per way a slot can fail to resolve.
 func TestLuaPointerRepeatAgreesWithTheEngine(t *testing.T) {
 
-	t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")

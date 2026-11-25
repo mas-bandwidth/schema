@@ -14,8 +14,7 @@ package gotable
 // value on both guard lanes.
 //
 // Assertions on the emitted plan that read Go values in-process are unit
-// tests. The generated-unit probe is a functional test: it opens with
-// slowtest.Gate and compiles the generated unit with the Go toolchain.
+// tests. The generated-unit probe is a functional test: it compiles the generated unit with the Go toolchain.
 
 import (
 	"encoding/base64"
@@ -132,8 +131,8 @@ func t16GoR31(t *testing.T) {
 	}
 
 	// THE FUNCTIONAL HALF: the generated reader compiles the writer's plan
-	// and runs it. slowtest.Gate is the toolchain gate; under SCHEMA_SLOW=1
-	// this RUNS, and a bare go test skips it by name.
+	// and runs it. It always RUNS; a missing toolchain fails it by
+	// name.
 	reader := unitFrom(t, t16ReaderSchema())
 	writerB64 := t16LayoutB64(t, t16WriterSchema())
 	overflowB64 := t16LayoutB64(t, t16OverflowSchema())

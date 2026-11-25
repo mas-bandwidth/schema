@@ -253,7 +253,7 @@ print("OK")
 // canonical engine wire byte for byte under both pinned interpreters. The
 // construct uses only the optional kind and the kinds the base carries.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1; make/test-python does.
+// Functional (python pins).
 func TestPythonVtOptional(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, optionalSchema)
@@ -573,7 +573,7 @@ print("OK")
 // a shorter older fixed bound pads, and a count past the bound, a foreign
 // element kind and a truncated file refuse by name.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1; make/test-python does.
+// Functional (python pins).
 func TestPythonVtOptionalArrays(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, optionalArraysSchema)

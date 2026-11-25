@@ -29,7 +29,7 @@ var rebuildEpoch = time.Unix(1000, 0)
 func TestLuaBinaryRebuildsWhenRuntimeChanges(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads make's prerequisite graph: %v", err)
+		t.Fatalf("this gate reads make's prerequisite graph: %v", err)
 	}
 
 	tree := newLuaRebuildTree(t)

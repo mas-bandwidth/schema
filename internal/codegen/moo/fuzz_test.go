@@ -20,7 +20,7 @@ package moo
 //
 // A moo trap anywhere is a finding: hostile bytes never raise.
 //
-// It runs moo and builds Go, so it is behind SCHEMA_SLOW. The test leg runs one
+// It runs moo and builds Go, so it is a functional test. The test leg runs one
 // short seeded round (SCHEMA_MOO_FUZZ_N instances per unit, default 400); the
 // nightly (make schema-moo-nightly-fuzz) runs SCHEMA_MOO_FUZZ_ROUNDS rounds from
 // SCHEMA_MOO_FUZZ_SEED, a case count and never a clock, so every finding

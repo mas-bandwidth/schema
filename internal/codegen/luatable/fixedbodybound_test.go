@@ -15,8 +15,8 @@ import (
 // body is refused by the reader. Only the verdict is compared
 // (docs/rulings.json refusal-verdict-only).
 //
-// This is a functional test: it runs the pinned Lua interpreter, so it sits
-// behind SCHEMA_SLOW=1. It takes no real time, opens no socket and uses no
+// This is a functional test: it runs the pinned Lua interpreter, so it needs
+// the pinned Lua. It takes no real time, opens no socket and uses no
 // network.
 const fixedBodyAtBoundSchema = `package probe
 

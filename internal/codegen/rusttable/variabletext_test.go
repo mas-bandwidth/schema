@@ -20,7 +20,7 @@ func TestCardTextFormMatchesGo(t *testing.T) {
 	t.Parallel()
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

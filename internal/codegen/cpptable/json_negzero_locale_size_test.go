@@ -82,15 +82,15 @@ func TestCPPJsonNegativeZeroAnyLength(t *testing.T) {
 // is the same after the call as before it.
 func TestCPPJsonFloatTextIsLocaleIndependent(t *testing.T) {
 	if _, err := exec.LookPath("localedef"); err != nil {
-		t.Skip("building a multi-byte-point locale requires localedef")
+		t.Fatal("building a multi-byte-point locale requires localedef")
 	}
 	if _, err := os.Stat("/usr/share/i18n/locales/ps_AF"); err != nil {
-		t.Skip("the ps_AF locale source is not installed")
+		t.Fatal("the ps_AF locale source is not installed")
 	}
 	locDir := t.TempDir()
 	if out, err := testproc.Command(t, "localedef", "-i", "ps_AF", "-f", "UTF-8", filepath.Join(locDir, "ps_AF.UTF-8")).CombinedOutput(); err != nil {
 		if _, serr := os.Stat(filepath.Join(locDir, "ps_AF.UTF-8", "LC_NUMERIC")); serr != nil {
-			t.Skipf("localedef could not build the locale: %v\n%s", err, out)
+			t.Fatalf("localedef could not build the locale: %v\n%s", err, out)
 		}
 	}
 	t.Setenv("LOCPATH", locDir)

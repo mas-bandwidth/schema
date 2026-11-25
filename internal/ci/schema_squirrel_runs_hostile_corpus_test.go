@@ -13,16 +13,14 @@
 // (docs/rulings.json refusal-verdict-only). A disagreement is a finding, not a reason to edit the
 // corpus (docs/HOSTILE-CORPUS.md).
 //
-// THE SLOW GATE. The two tests that run the pinned interpreter
-// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) sit
-// behind internal/slowtest.Gate, as the port's other interpreter-driven tests
-// in this package do: a plain `go test ./internal/ci/` on a machine without
-// dist/squirrel-3.2/bin/sq skips them by name. `make
+// THE INTERPRETER. The two tests that run the pinned interpreter
+// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) are
+// functional: on a machine without dist/squirrel-3.2/bin/sq they FAIL naming
+// it (sqrun.Interpreter), never skip and never pass vacuously. `make
 // schema-squirrel-runs-hostile-corpus` builds dist-squirrel first and runs them
-// through test/slowgate/proof, which sets SCHEMA_SLOW=1, refuses a gate skip
-// and requires each test's own --- PASS line; with the gate on, an interpreter
-// that does not resolve is red (sqrun.Interpreter), never a vacuous pass. The
-// pure-Go tests here (the mismatch list, the workflow guard) run everywhere.
+// through test/slowgate/proof, which refuses any skip and requires each test's
+// own --- PASS line. The pure-Go tests here (the mismatch list, the workflow
+// guard) run everywhere.
 package ci
 
 import (

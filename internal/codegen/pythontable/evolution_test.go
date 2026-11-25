@@ -855,7 +855,7 @@ func vtWriteFailures(t *testing.T, schema string, cases []vtWriteCase) []string 
 	return fails
 }
 
-// Functional (the pinned interpreters and analyzer): run with SCHEMA_SLOW=1.
+// Functional (the pinned interpreters and analyzer).
 func TestPythonVtEvolution(t *testing.T) {
 	t.Parallel()
 	for _, c := range vtEvolutionCases {
@@ -960,7 +960,7 @@ func vtControlRed(t *testing.T, what, name string, fails []string) {
 // construct (whose nodes carry strings off their defaults) to go red: a gate is
 // only watching the codec if a broken codec fails it.
 //
-// Functional (the pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (the pinned interpreters).
 func TestPythonVtEvolutionNegativeControl(t *testing.T) {
 	t.Parallel()
 	mutate := func(t *testing.T, files map[string][]byte) {
@@ -974,7 +974,7 @@ func TestPythonVtEvolutionNegativeControl(t *testing.T) {
 // requires defaults_at, whose wire omits every field, to go red: absent must
 // read the DECLARED default, and the gate watches it.
 //
-// Functional (the pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (the pinned interpreters).
 func TestPythonVtEvolutionNegativeControlDefaults(t *testing.T) {
 	t.Parallel()
 	mutate := func(t *testing.T, files map[string][]byte) {
@@ -988,7 +988,7 @@ func TestPythonVtEvolutionNegativeControlDefaults(t *testing.T) {
 // a copy of the generated Record, and requires rename_field to go red: a
 // renamed field keeps its wire id, and the gate watches it.
 //
-// Functional (the pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (the pinned interpreters).
 func TestPythonVtEvolutionNegativeControlRenames(t *testing.T) {
 	t.Parallel()
 	fieldID := func(schema string) uint64 {
@@ -1010,7 +1010,7 @@ func TestPythonVtEvolutionNegativeControlRenames(t *testing.T) {
 // skip_text_ill_formed (ill-formed text in a field the old reader skips) to
 // go red: a skipped value is checked, and the gate watches it.
 //
-// Functional (the pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (the pinned interpreters).
 func TestPythonVtEvolutionNegativeControlSkipCheck(t *testing.T) {
 	t.Parallel()
 	mutate := func(t *testing.T, files map[string][]byte) {

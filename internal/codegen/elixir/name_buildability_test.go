@@ -94,10 +94,7 @@ func nameCorpusElixir(t *testing.T) (elixirBin, elixircBin string) {
 		}
 	}
 	if elixirBin == "" || elixircBin == "" {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no Elixir toolchain is on this bench: not in dist/ and not on PATH")
-		}
-		t.Skip("no Elixir: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+		t.Fatal("no Elixir toolchain is on this bench: not in dist/ and not on PATH")
 	}
 	return elixirBin, elixircBin
 }

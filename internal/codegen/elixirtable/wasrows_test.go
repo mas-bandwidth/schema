@@ -119,7 +119,7 @@ func loadWasRowsUnit(t *testing.T, src string) *ir.Unit {
 // are read by the NEW Elixir build and re-saved byte-for-byte, and the engine's
 // own read of those bytes under the new unit names the new variants, arms and
 // fields.
-// Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
+// Functional (elixirBinary): a missing toolchain fails by name.
 func TestElixirWasRowsCarried(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirtable.ElixirBinaryForTest(t)

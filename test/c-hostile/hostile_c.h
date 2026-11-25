@@ -55,7 +55,7 @@ static inline int hc_verdict_refused_( int refused, int reason, int refuse_reaso
 
 /* A FIXED root (relocatable, bounded storage): read into the caller's value.
    C has no retaining load for such a root (its load_retain is a compile-time
-   refusal), so its wire_retain carrier answers skip. */
+   refusal), so its wire_retain carrier answers unbound (a failure). */
 #define HC_FIXED( FN ) \
     static int64_t hc_save_##FN( const void * v, uint8_t * b, int64_t n ) { return HC_Q( FN##_save )( (const HC_Q( FN##_t ) *) v, b, n ); } \
     static void hc_accepted_##FN( const HC_Q( FN##_t ) * value ) \
@@ -98,7 +98,7 @@ static inline int hc_verdict_refused_( int refused, int reason, int refuse_reaso
 /* a fixed root's row fields; a unit adds .message, .announce or .packet */
 #define HC_FIXED_FIELDS( SCHEMA, TABLE, FN ) \
     .schema = SCHEMA, .table = TABLE, .wire = hc_wire_##FN, .text = hc_text_##FN, \
-    .wire_retain_skip = "C has no retaining load for a fixed-storage root (its load_retain is a compile-time refusal)"
+    .wire_retain_why = "C has no retaining load for a fixed-storage root (its load_retain is a compile-time refusal)"
 
 /* A VARIABLE root: read into a caller-owned region sized by load_measure; its
    text is read into a builder whose lock packs the same region form. */

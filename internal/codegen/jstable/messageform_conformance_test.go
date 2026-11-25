@@ -11,7 +11,7 @@ package jstable
 // tree and requires one file per row — the bytes when the leg's tree carries
 // the form-2 verbs, `<case>.absent` when a row's unit or root the form refuses
 // is not reachable — and at least one answer, so a built tree that answers
-// nothing fails rather than skipping. It skips BY NAME when node is absent.
+// nothing fails rather than skipping. It fails BY NAME when node is absent.
 // The third holds the SHIPPED CONFORMANCE TARGET to the units the driver
 // reads: `CONFORMANCE_LEGS` names only build/tables-generated-js/.stamp, so a
 // row whose unit the stamp recipe does not generate can only ever answer

@@ -11,7 +11,7 @@ package elixirtable
 // word refused by name as :plan_too_large.
 //
 // Assertions on the emitted runtime text are unit tests. The generated-unit
-// probe is a functional test: slowtest.Gate first, then the leg's toolchain
+// probe is a functional test: it takes the leg's toolchain
 // the way this package's roadmap tests get it (elixirBinary, in the probe
 // runner).
 

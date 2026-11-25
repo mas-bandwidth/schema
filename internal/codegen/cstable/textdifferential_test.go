@@ -21,9 +21,7 @@ package cstable
 // The probe is compiled the way the t10 harness compiles its probes: the SDK's
 // Roslyn csc and dotnet exec, one build, one run, no csproj, no NuGet. The
 // nested type is a fixed table, so the unit is all table form and needs no
-// packet runtime beside it. It is a functional test (a foreign toolchain), so it
-// sits behind internal/slowtest.Gate, skips by name without dotnet, and fails
-// by name under SCHEMA_REQUIRE_CORPUS=1. The make targets are
+// packet runtime beside it. It is a functional test (a foreign toolchain), so it fails by name without dotnet. The make targets are
 // tables-cs-json-differential and tables-cs-json-differential-negative-control
 // (make/cs.mk).
 
@@ -188,13 +186,9 @@ type csTextDiffToolchain struct {
 
 func csTextDiffDiscover(t *testing.T) csTextDiffToolchain {
 	t.Helper()
-	require := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
 	miss := func(format string, args ...any) {
 		t.Helper()
-		if require {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and "+format, args...)
-		}
-		t.Skipf(format, args...)
+		t.Fatalf(format, args...)
 	}
 	var tc csTextDiffToolchain
 	tc.dotnet = os.Getenv("DOTNET")

@@ -6,8 +6,7 @@ package rusttable
 // needs 4097 and writes the one that needs exactly 4096, which the read
 // accepts. The unit is tablewire.IdCapSchema: 4095, 4096 and 4097 ids.
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc, behind slowtest.Gate
-// (SCHEMA_SLOW=1 runs it).
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc, and fails by name without it.
 
 import (
 	"fmt"
@@ -52,10 +51,7 @@ fn main() {
 func runIdCapRust(t *testing.T, edit func(map[string][]byte)) (string, error) {
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	files, err := Generate(unitFrom(t, tablewire.IdCapSchema()))
 	if err != nil {

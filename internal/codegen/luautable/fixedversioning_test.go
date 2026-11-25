@@ -56,7 +56,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -354,13 +353,7 @@ func luauFixedCorpus(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(root, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS:
-		// `make tables-luau-versioning` builds it first and sets
-		// SCHEMA_REQUIRE_CORPUS=1
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not in %s (make tables-fixedform-corpus): %v", dir, err)
 	}
 	return dir
 }

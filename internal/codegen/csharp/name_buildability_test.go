@@ -32,10 +32,7 @@ func TestNameCorpusBuildsCs(t *testing.T) {
 	for _, name := range []string{"Serialize.cs", "Int128Pair.cs"} {
 		path := filepath.Join(runtimeDir, "src", name)
 		if _, err := os.Stat(path); err != nil {
-			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-				t.Fatalf("the serialize.cs runtime is not staged at %s (SERIALIZE_CS, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says the corpus must build", path)
-			}
-			t.Skipf("serialize.cs runtime not staged at %s (SERIALIZE_CS, else the sibling checkout)", path)
+			t.Fatalf("the serialize.cs runtime is not staged at %s (SERIALIZE_CS, else the sibling checkout)", path)
 		}
 		runtime = append(runtime, path)
 	}
@@ -78,10 +75,7 @@ func cscToolchain(t *testing.T) (csc string, refs []string) {
 	t.Helper()
 	path, err := exec.LookPath(dotnet())
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and dotnet is not found: %v", err)
-		}
-		t.Skipf("dotnet unavailable: %v", err)
+		t.Fatalf("dotnet is not found: %v", err)
 	}
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
 		path = resolved

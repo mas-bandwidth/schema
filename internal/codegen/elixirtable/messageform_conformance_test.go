@@ -14,10 +14,9 @@ package elixirtable
 // files only. (3) THE HARNESS (functional): it runs
 // `./build/conformance-harness run --only elixir` over the built leg and
 // requires every answered row byte-equal and every variable root `refused`
-// (ruling R13: an absence is never credited on a must-refuse row); it skips by
-// name without Elixir or the built harness unless SCHEMA_REQUIRE_CORPUS=1,
-// under which a skip is a failure. make tables-elixir-message-conformance is
-// that gate.
+// (ruling R13: an absence is never credited on a must-refuse row); it fails by
+// name without Elixir or the built harness (make
+// tables-elixir-message-conformance builds it).
 
 import (
 	"bytes"
@@ -145,10 +144,7 @@ func TestMessageFormConformanceElixir(t *testing.T) {
 		ebin := filepath.Join(root, "build", "elixir-tables-ebin", ".stamp")
 		for _, p := range []string{harness, ebin} {
 			if _, err := os.Stat(p); err != nil {
-				if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-					t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not built (make tables-elixir-message-conformance builds it): %v", p, err)
-				}
-				t.Skipf("%s is not built: run make tables-elixir-message-conformance", p)
+				t.Fatalf("%s is not built (make tables-elixir-message-conformance builds it): %v", p, err)
 			}
 		}
 		// its own work directory: the default, build/conformance, is the one

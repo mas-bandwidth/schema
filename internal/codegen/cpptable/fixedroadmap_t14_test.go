@@ -33,7 +33,7 @@ func TestFixedRoadmapCppT14CompressedFloats(t *testing.T) {
 			cxx = "c++"
 		}
 		if _, err := exec.LookPath(cxx); err != nil {
-			t.Skipf("c++: %v", err)
+			t.Fatalf("c++: %v", err)
 		}
 		t14Cite(t)
 		src := t14CppEmit(t, t14Schema(0.1), nil)

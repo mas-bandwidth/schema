@@ -120,11 +120,11 @@ func TestSiblingsPresentMakeDepsFetchesNothing(t *testing.T) {
 	t.Parallel()
 
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate shells out to make: %v", err)
+		t.Fatalf("this gate shells out to make: %v", err)
 	}
 	realGit, err := exec.LookPath("git")
 	if err != nil {
-		t.Skipf("this gate shells out to git: %v", err)
+		t.Fatalf("this gate shells out to git: %v", err)
 	}
 
 	root := repoRoot(t)

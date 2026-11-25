@@ -147,7 +147,7 @@ func runCHostileResidual(t *testing.T, readerSrc, source string) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files := map[string][]byte{}

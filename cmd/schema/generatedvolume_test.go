@@ -52,14 +52,14 @@ func dirNames(t *testing.T, dir string) []string {
 }
 
 // The same two reproductions on the volume itself, through the real writer.
-// Runs where the volume takes two spellings of a name for one entry, and is
-// skipped, named, where it keeps them apart (there the tree above that does
+// Runs where the volume takes two spellings of a name for one entry, and fails,
+// named, where it keeps them apart (there the tree above that does
 // not fold is the case that applies, and the end-to-end test below runs it).
 func TestRegenerationOnAVolumeThatFoldsNames(t *testing.T) {
 	probe := t.TempDir()
 	writeTestFile(t, filepath.Join(probe, "Probe.go"), "probe")
 	if _, err := os.Lstat(filepath.Join(probe, "probe.go")); err != nil {
-		t.Skipf("this volume keeps Probe.go and probe.go apart, so a write to one never lands on the other here: %v", err)
+		t.Fatalf("this volume keeps Probe.go and probe.go apart, so a write to one never lands on the other here: %v", err)
 	}
 	t.Run("source renamed in case", func(t *testing.T) {
 		out := t.TempDir()

@@ -19,7 +19,7 @@ fn main() {
     }
     let surface = argv[1];
     if surface == "list" {
-        write_stdout("cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\n");
+        write_stdout("cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n");
         return;
     }
     if argv.len < 4 {

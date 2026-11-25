@@ -148,7 +148,7 @@ end
 print("writes-refused-ok")
 `
 
-// luaVariantCost is what the slow half pays for this test (internal/slowtest).
+// luaVariantCost is what this test costs.
 const luaVariantCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over two generated units"
 
 func luaVariantUnit(t *testing.T, src string) *ir.Unit {

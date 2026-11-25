@@ -11,7 +11,7 @@ JAVA_COOK_WRITE := build/conformance-java-cook-write
 conformance-java-cook-write: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_COOK_WRITE) && mkdir -p $(JAVA_COOK_WRITE)
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
-	JAVA=$(JAVA) ./build/conformance-harness run --only java --work $(JAVA_COOK_WRITE)/work > $(JAVA_COOK_WRITE)/log 2>&1 || true
+	JAVA=$(JAVA) ./build/conformance-harness run --only java --work $(JAVA_COOK_WRITE)/work > $(JAVA_COOK_WRITE)/log 2>&1; echo "exited $$? (the verdict is read from $(JAVA_COOK_WRITE)/log below)"
 	@grep -E '^cook-write ' $(JAVA_COOK_WRITE)/log || \
 		{ cat $(JAVA_COOK_WRITE)/log; echo "conformance-java-cook-write: the run printed no cook-write line"; exit 1; }
 	@grep -qE '^cook-write +pass ([0-9]+)/\1 *$$' $(JAVA_COOK_WRITE)/log || \
@@ -38,7 +38,7 @@ conformance-java-cook-write-negative-control: build/conformance-harness build-co
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_COOK_WRITE_SABOTAGE)" > $(JAVA_COOK_WRITE_SABOTAGE)/drivers.txt
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --drivers $(JAVA_COOK_WRITE_SABOTAGE)/drivers.txt \
-		--work $(JAVA_COOK_WRITE_SABOTAGE)/work > $(JAVA_COOK_WRITE_SABOTAGE)/log 2>&1 || true
+		--work $(JAVA_COOK_WRITE_SABOTAGE)/work > $(JAVA_COOK_WRITE_SABOTAGE)/log 2>&1; echo "exited $$? (the verdict is read from $(JAVA_COOK_WRITE_SABOTAGE)/log below)"
 	@if grep -qE '^cook-write +pass ([0-9]+)/\1 *$$' $(JAVA_COOK_WRITE_SABOTAGE)/log; then \
 		echo "NEGATIVE CONTROL FAILED: a cook writer that fills dead counted slots left the Java cook-write line green"; \
 		cat $(JAVA_COOK_WRITE_SABOTAGE)/log; exit 1; \

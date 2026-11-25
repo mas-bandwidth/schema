@@ -28,10 +28,7 @@ func TestNameCorpusBuildsC(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(serialize, "serialize.h")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says the corpus must build", serialize)
-		}
-		t.Skipf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
+		t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
 	}
 	cc := os.Getenv("CC")
 	if cc == "" {

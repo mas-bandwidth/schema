@@ -14,7 +14,7 @@ import (
 // So a unit the manifest marks `opt-in <unit>` reaches a leg only when the
 // leg's `list` names `unit <key>`. For any other leg the harness hands the
 // driver a manifest without those rows, and scores each of them ABSENT: a
-// missing feature, never a pass (and on the reference leg, a failure).
+// missing feature, never a pass, and an absence fails the run (reportComplete, run.go).
 
 // refKind is what a derived manifest line names in its reference column.
 type refKind int
@@ -117,9 +117,9 @@ func derivedLine(line string) ([]string, derivedRow, error) {
 // optInLines splits a derived manifest's text for one leg: kept is the text
 // without the rows on units the leg has not opted into, and dropped names
 // every row those rows carried.
-func optInLines(text string, skip map[string]bool) (kept string, dropped map[string]bool, err error) {
+func optInLines(text string, omit map[string]bool) (kept string, dropped map[string]bool, err error) {
 	dropped = map[string]bool{}
-	if len(skip) == 0 {
+	if len(omit) == 0 {
 		return text, dropped, nil
 	}
 	// a pass over the connections and instances first, so a row that reads
@@ -131,7 +131,7 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 		if err != nil {
 			return "", nil, err
 		}
-		if f == nil || row.ref != refUnit || !skip[f[row.col]] {
+		if f == nil || row.ref != refUnit || !omit[f[row.col]] {
 			continue
 		}
 		switch f[0] {
@@ -148,7 +148,7 @@ func optInLines(text string, skip map[string]bool) (kept string, dropped map[str
 		if f != nil {
 			switch row.ref {
 			case refUnit:
-				drop = skip[f[row.col]]
+				drop = omit[f[row.col]]
 			case refConn:
 				drop = conns[f[row.col]]
 			case refInstance:
@@ -256,15 +256,15 @@ func (n notAsked) has(surface, name string) bool {
 	return ok
 }
 
-// casesNotAsked is every case whose row reads a unit in skip.
-func casesNotAsked(m *Manifest, skip map[string]bool) (notAsked, error) {
+// casesNotAsked is every case whose row reads a unit in omit.
+func casesNotAsked(m *Manifest, omit map[string]bool) (notAsked, error) {
 	owners, err := caseOwners(m)
 	if err != nil {
 		return nil, err
 	}
 	out := notAsked{}
 	for key, unit := range owners {
-		if skip[unit] {
+		if omit[unit] {
 			out[key] = unit
 		}
 	}
@@ -275,19 +275,19 @@ func casesNotAsked(m *Manifest, skip map[string]bool) (notAsked, error) {
 // not asked: derived itself when the leg opted into every opt-in unit, and
 // otherwise a filtered copy beside it.
 func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (string, notAsked, []string, error) {
-	skip := map[string]bool{}
+	omit := map[string]bool{}
 	var missing []string
 	for key := range m.OptIn {
 		if !listed["unit "+key] {
-			skip[key] = true
+			omit[key] = true
 			missing = append(missing, key)
 		}
 	}
 	sort.Strings(missing)
-	if len(skip) == 0 {
+	if len(omit) == 0 {
 		return derived, notAsked{}, nil, nil
 	}
-	cases, err := casesNotAsked(m, skip)
+	cases, err := casesNotAsked(m, omit)
 	if err != nil {
 		return "", nil, nil, err
 	}
@@ -295,7 +295,7 @@ func legManifest(m *Manifest, derived, lang string, listed map[string]bool) (str
 	if err != nil {
 		return "", nil, nil, err
 	}
-	kept, _, err := optInLines(string(text), skip)
+	kept, _, err := optInLines(string(text), omit)
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("the manifest for %s: %w", lang, err)
 	}

@@ -88,10 +88,7 @@ func rustDiscardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	u := unitFrom(t, rustDiscardUnit)
 	fixed := rustDiscardWire(t, u, "Root", `{"a":5,"inner":{"ok":true,"n":3},"b":9}`)

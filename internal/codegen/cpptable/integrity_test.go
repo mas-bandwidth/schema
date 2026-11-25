@@ -143,7 +143,7 @@ func writeAndCompile(t *testing.T, files map[string][]byte, header, driver strin
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	dir := t.TempDir()
 	for name, data := range files {

@@ -232,7 +232,7 @@ func retainBinary(t *testing.T, schemaPath, probe string) string {
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	src, err := os.ReadFile(schemaPath)
 	if err != nil {

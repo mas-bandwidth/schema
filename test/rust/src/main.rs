@@ -59,6 +59,7 @@ const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
 // noise would read like a failure in the log.
 fn expect_assert<F: FnOnce()>(f: F, what: &str) {
     if !ASSERTS_ENABLED {
+        check(false, &format!("{what}: asserts are off in this build: this row needs the assert build"));
         return;
     }
     let previous = std::panic::take_hook();

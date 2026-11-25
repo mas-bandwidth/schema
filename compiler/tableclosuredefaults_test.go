@@ -112,7 +112,7 @@ fixed table Root {
 			case "cs":
 				dotnet := findDotnet()
 				if dotnet == "" {
-					t.Skip("dotnet unavailable")
+					t.Fatal("no dotnet on PATH or in ~/.dotnet")
 				}
 				runtime, err := filepath.Abs("../../serialize.cs")
 				if err != nil {

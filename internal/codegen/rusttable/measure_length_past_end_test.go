@@ -177,10 +177,7 @@ func runMeasurePastEndProbe(t *testing.T, u *ir.Unit, prefix string, cases map[s
 func TestRustMeasureLengthPastBodyEnd(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

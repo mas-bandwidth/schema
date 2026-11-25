@@ -19,7 +19,6 @@ type config struct {
 	dir      string // relative paths are read against it; "" is the working directory
 	path     string
 	suites   map[string]bool
-	skips    map[[2]string]bool // suite, test
 	tables   map[string]*table
 	order    []string // table names in the order the config gives them
 	baseline string
@@ -43,7 +42,7 @@ func (c *config) at(p string) string {
 }
 
 func readConfig(dir, path string) (*config, error) {
-	c := &config{dir: dir, path: path, suites: map[string]bool{}, skips: map[[2]string]bool{}, tables: map[string]*table{}}
+	c := &config{dir: dir, path: path, suites: map[string]bool{}, tables: map[string]*table{}}
 	data, err := os.ReadFile(c.at(path))
 	if err != nil {
 		return nil, refuse("ls -l "+path, "reading the config: %v", err)
@@ -70,10 +69,8 @@ func readConfig(dir, path string) (*config, error) {
 			}
 			c.suites[f[1]] = true
 		case "skip":
-			if len(f) != 4 {
-				return nil, bad("SUITE, TEST and REASON")
-			}
-			c.skips[[2]string{f[1], f[2]}] = true
+			// a skip ledger has no subject: no test may skip, so no line may allow one
+			return nil, refuse(at, "%s:%d: a skip line allows a skip, and no test may skip: delete the line and make the test run (a test that is not to run is left out at the root, tools/schema-test)", path, n+1)
 		case "cover":
 			if len(f) != 5 || !slices.Contains(axes, f[2]) || (f[3] != "file" && f[3] != "run") {
 				return nil, bad("TABLE, rows|columns|pairs, file|run and its PATH or COMMAND")
@@ -90,7 +87,7 @@ func readConfig(dir, path string) (*config, error) {
 			}
 			c.baseline = f[1]
 		default:
-			return nil, refuse(at, "%s:%d: %q is no entry; the entries are suite, skip, cover, gap and baseline", path, n+1, f[0])
+			return nil, refuse(at, "%s:%d: %q is no entry; the entries are suite, cover, gap and baseline", path, n+1, f[0])
 		}
 	}
 	var missing []string
@@ -145,7 +142,7 @@ func (r *report) byRule() string {
 	return strings.Join(parts, ", ")
 }
 
-// id is how a finding names a test: SUITE<TAB>TEST, as a skip line holds it.
+// id is how a finding names a test: SUITE<TAB>TEST.
 func id(suite, test string) string { return suite + "\t" + test }
 
 // guard reads the config and the results and runs every check. With write
@@ -199,7 +196,8 @@ func guard(dir, configPath string, args []string, write bool, sh shellFunc) (*re
 		}
 	}
 
-	// 1. Skips: the ledger is the exact set of skips.
+	// 1. Skips: every skip is red. No test may skip; one that is not to run is
+	// left out at the root (tools/schema-test), never inside it.
 	skipped := map[[2]string]bool{}
 	for name, s := range res {
 		for t := range s.skipped {
@@ -207,14 +205,7 @@ func guard(dir, configPath string, args []string, write bool, sh shellFunc) (*re
 		}
 	}
 	for _, k := range sortedPairs(skipped) {
-		if !c.skips[k] {
-			rep.add("skip", id(k[0], k[1]), "skipped, and the ledger does not hold it", "make it run, or add the line skip<TAB>SUITE<TAB>TEST<TAB>REASON to "+configPath)
-		}
-	}
-	for _, k := range sortedPairs(c.skips) {
-		if !skipped[k] {
-			rep.add("stale-skip", id(k[0], k[1]), "ledgered as a skip, and it did not skip here (it ran, or it is gone)", "delete its skip line from "+configPath)
-		}
+		rep.add("skip", id(k[0], k[1]), "skipped, and a skip is a failure", "make it run; a test that is not to run is left out at the root (tools/schema-test), never skipped")
 	}
 
 	// 2. Suites: every registered suite ran a test, and every suite that ran a test is registered.

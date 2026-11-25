@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestRubyFixedFormGrownBound reads the grown-bound versioning rows
@@ -17,10 +16,7 @@ func TestRubyFixedFormGrownBound(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	corpus := filepath.Join(repo, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("the fixed-form corpus is absent: %v (run make tables-fixedform-corpus)", err)
-		}
-		t.Skipf("the fixed-form corpus is not built (make tables-fixedform-corpus): %v", err)
+		t.Fatalf("the fixed-form corpus is absent: %v (run make tables-fixedform-corpus)", err)
 	}
 	fixedproof.CheckGrownFixedBound(t, repo, corpus, rubyFixedProofRunner{})
 }

@@ -35,17 +35,13 @@ import (
 func t15RunCS(t *testing.T, schemaSrc, body string) {
 	t.Helper()
 	// THE PACKET FORM READS THROUGH THE SIBLING C# RUNTIME (serialize.cs), the
-	// checkout t06WideRun compiles against: missing, it is a skip by name, and a
-	// failure under SCHEMA_REQUIRE_CORPUS — never faked.
+	// checkout t06WideRun compiles against: missing, it is a failure by name — never faked.
 	runtimeDir, err := filepath.Abs("../../../../serialize.cs")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(runtimeDir, "src", "Serialize.cs")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C# runtime checkout is not at %s", runtimeDir)
-		}
-		t.Skipf("the C# runtime checkout is not at %s", runtimeDir)
+		t.Fatalf("the C# runtime checkout is not at %s", runtimeDir)
 	}
 	u := unitFrom(t, schemaSrc)
 	files, err := csharp.Generate(u)

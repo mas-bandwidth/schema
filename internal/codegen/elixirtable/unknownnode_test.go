@@ -10,7 +10,7 @@ package elixirtable
 // The wires are the Go oracle's (internal/tablewire): every row's verdict is
 // taken from tablewire.Decode on the same bytes before the generated Elixir is
 // asked. It compiles and runs the generated unit with the real Elixir
-// toolchain, so it is a functional test gated by slowtest.
+// toolchain, so it is a functional test.
 
 import (
 	"encoding/hex"

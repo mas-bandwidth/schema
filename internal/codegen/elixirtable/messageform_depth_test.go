@@ -18,7 +18,7 @@ import (
 // (the BEAM counts the stack in it) is capped at a million words with
 // kill: true, so an unbounded descent kills the process and fails the test.
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestElixirAnnounceReadFirstUseWalkIsDepthBounded(t *testing.T) {
 	u := unitFrom(t, `package msgdeep
 

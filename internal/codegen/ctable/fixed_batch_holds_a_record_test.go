@@ -119,7 +119,7 @@ func cFixedBatchProbeRun(t *testing.T, mode string, args ...string) ([]byte, err
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc: %v", err)
 	}
 	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "fixed-empty-batch", "Batch.schema"))
 	if err != nil {

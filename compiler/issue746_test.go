@@ -18,9 +18,7 @@
 //
 // This is a CERTIFY-TIER test, not a per-commit one: a 2 GiB input plus a
 // 2.8 GiB output costs over ten seconds and does not fit the owner's two-minute
-// per-commit rule. It is therefore gated behind SCHEMA_CERTIFY_INT32_MAX, which
-// `make tables-cpp-release` sets (and certify.yml runs nightly). Without the
-// variable it skips, so `go test ./...` and `make test` stay cheap.
+// per-commit rule, so its tier is nightly: the driver selects it, it never skips.
 package compiler
 
 import (
@@ -68,13 +66,9 @@ int main()
 `
 
 func TestIssue746Base64WriterInt32MaxUBSan(t *testing.T) {
-
-	if os.Getenv("SCHEMA_CERTIFY_INT32_MAX") != "1" {
-		t.Skip("certify tier: set SCHEMA_CERTIFY_INT32_MAX=1 (2 GiB in, ~2.8 GiB out; `make tables-cpp-release` does)")
-	}
 	clang, err := exec.LookPath("clang++")
 	if err != nil {
-		t.Skip("the INT32_MAX Base64 reproduction is defined under Clang UBSan: no clang++ on PATH")
+		t.Fatal("the INT32_MAX Base64 reproduction is defined under Clang UBSan: no clang++ on PATH")
 	}
 
 	src := fmt.Sprintf("package certify\n\nfixed table Blob\n{\n    payload bytes(%d)\n}\n", issue746Int32Max)

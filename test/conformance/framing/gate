@@ -27,7 +27,7 @@ printf '%s %s/driver\n' "$lang" "$(cd "$work" && pwd)" > "$work/drivers.txt"
 rows=$(grep -c '^framing ' testdata/conformance/tables/MANIFEST.txt)
 rc=0
 ./build/conformance-harness run --drivers "$work/drivers.txt" --work "$work/run" > "$work/log" 2>&1 || rc=$?
-line=$(grep -E '^framing ' "$work/log" || true)
+line=$(grep -E '^framing ' "$work/log") || [ $? -eq 1 ]
 if [ -z "$want_red" ]; then
 	if [ $rc -ne 0 ] || ! echo "$line" | grep -Eq "^framing +pass $rows/$rows *\$"; then
 		cat "$work/log"

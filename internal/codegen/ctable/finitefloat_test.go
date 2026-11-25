@@ -332,7 +332,7 @@ func finiteProbeRun(t *testing.T, sabotage *finiteSabotage) ([]string, string) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, finiteProbeSchema)

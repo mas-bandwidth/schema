@@ -19,8 +19,11 @@ dir=$1
 marker='byte order: swapped below on a big-endian host'
 files=$(find "$dir" -name '*.cs' ! -name '*Cook.cs' ! -name '*Block.cs' | sort)
 [ -n "$files" ] || { echo "BYTE ORDER GATE FAILED: no generated C# under $dir" >&2; exit 1; }
-bad=$( { grep -nE 'MemoryMarshal\.(Read|Write|TryRead|TryWrite|Cast)\b|Unsafe\.(Read|Write)Unaligned|BitConverter\.(To(U?Int(16|32|64)|Single|Double|Half)|GetBytes|TryWriteBytes)' $files || true
-         grep -nE 'MemoryMarshal\.AsBytes.*\.CopyTo\(' $files || true; } | grep -vF "$marker" || true)
+# grep exits 1 when nothing matches, which is the clean answer; any other
+# status is a failure of the scan itself
+host_order=$(grep -nE 'MemoryMarshal\.(Read|Write|TryRead|TryWrite|Cast)\b|Unsafe\.(Read|Write)Unaligned|BitConverter\.(To(U?Int(16|32|64)|Single|Double|Half)|GetBytes|TryWriteBytes)' $files) || [ "$?" -eq 1 ]
+as_bytes=$(grep -nE 'MemoryMarshal\.AsBytes.*\.CopyTo\(' $files) || [ "$?" -eq 1 ]
+bad=$(printf '%s\n%s\n' "$host_order" "$as_bytes" | awk -v m="$marker" 'NF && index($0, m) == 0')
 if [ -n "$bad" ]; then
     echo "$bad" | head -10
     echo "BYTE ORDER GATE FAILED: a host-order read or write of wire bytes in the generated C#" >&2

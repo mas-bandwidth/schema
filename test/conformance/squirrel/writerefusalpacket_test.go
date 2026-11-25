@@ -45,8 +45,7 @@ func TestWriteRefusalPacketSquirrelSurface(t *testing.T) {
 
 // runWriteRefusalPacketSquirrel generates the shared schema for Squirrel,
 // stages the vendored runtime and the probe beside it, runs the probe under
-// the pinned interpreter (sqrun: a missing interpreter fails by name under
-// SCHEMA_SLOW=1, and the test skips without it) and holds its verdicts
+// the pinned interpreter (sqrun: a missing interpreter fails by name) and holds its verdicts
 // against rows.txt.
 func runWriteRefusalPacketSquirrel(t *testing.T) {
 	t.Helper()

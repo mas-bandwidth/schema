@@ -15,14 +15,15 @@ import (
 // holds the pinned interpreters, so `make dist-python` stages a pin from there
 // when, and only when, the SDK interpreter reports exactly its release.
 //
-// It shells out to make, so it is behind the slow gate. It uses no network:
+// It shells out to make, so it is a functional test: without make it fails
+// naming it. It uses no network:
 // the SDK is a temporary directory of scripts that answer as the interpreters
 // and mypy do, and curl on PATH is a script that fails, so a download the
 // branch should have avoided turns the run red by name.
 func TestDistPythonStagesTheFleetSDK(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("dist-python shells out to make: %v", err)
+		t.Fatalf("dist-python shells out to make: %v", err)
 	}
 	mk, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "python-toolchain.mk"))
 	if err != nil {

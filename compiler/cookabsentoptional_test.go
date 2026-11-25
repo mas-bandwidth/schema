@@ -90,7 +90,7 @@ func TestCookAbsentOptionalPayloadZero(t *testing.T) {
 	maps.Copy(cfiles, tfiles)
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("the generated cook path is C: no cc on PATH")
+		t.Fatal("the generated cook path is C: no cc on PATH")
 	}
 	dir := t.TempDir()
 	for name, data := range cfiles {

@@ -150,7 +150,7 @@ func syntaxCheck(t *testing.T, compiler string, flags []string, dir string, out 
 func FuzzGeneratedCompiles(f *testing.F) {
 	tc := toolchainOnce()
 	if tc.skip != "" {
-		f.Skip("compile fuzz unavailable: " + tc.skip)
+		f.Fatal("compile fuzz needs what is missing: " + tc.skip)
 	}
 	seedFromCorpus(f, func(s string) { f.Add(s) })
 	for _, s := range handSeeds {

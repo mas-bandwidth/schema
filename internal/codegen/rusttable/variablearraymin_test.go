@@ -50,8 +50,7 @@ table Root
 // The DEBUG build is held to the write side (Rust write checks are debug
 // asserts only): saving a value under Min panics there by name.
 //
-// A FUNCTIONAL test: it compiles Rust, skips by name without rustc, and fails
-// by name when SCHEMA_REQUIRE_CORPUS is set.
+// A FUNCTIONAL test: it compiles Rust, fails by name without rustc.
 func TestRustVariableCountedArrayMinimum(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, variableMinSrc)
@@ -166,10 +165,7 @@ func TestRustVariableCountedArrayMinimum(t *testing.T) {
 	}
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the [Min..N]T probe cannot be built: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the [Min..N]T probe cannot be built: %v", err)
 	}
 	modules, err := Generate(u)
 	if err != nil {

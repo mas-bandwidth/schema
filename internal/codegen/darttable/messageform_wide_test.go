@@ -19,7 +19,7 @@ package darttable
 // bytes. The Dart probe then (1) emits the same announcement, (2) reads the C++
 // announcement, (3) LoadMessages the C++ bytes and gets every value back
 // exactly, and (4) SaveMessages and MeasureMessages reproduce the C++ bytes. A
-// missing toolchain or sibling is a skip that names itself, never a green; the
+// missing toolchain or sibling is a failure that names itself, never a green; the
 // text clause at the end needs no toolchain and was red at BASE everywhere.
 
 import (
@@ -115,14 +115,14 @@ func cppWideReference(t *testing.T, values []wideValue) (announce, message []byt
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(ser, "serialize.h")); err != nil {
-		t.Skipf("named as not run: the sibling serialize runtime is not staged at %s, so the C++ reference's 128-bit storage type does not resolve", ser)
+		t.Fatalf("the sibling serialize runtime is not staged at %s, so the C++ reference's 128-bit storage type does not resolve", ser)
 	}
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skipf("named as not run: no C++ compiler (%s) for the reference", cxx)
+		t.Fatalf("no C++ compiler (%s) for the reference: %v", cxx, err)
 	}
 	u := unitFrom(t, wideSchema)
 	files, err := cpp.Generate(u)

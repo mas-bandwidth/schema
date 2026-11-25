@@ -8,9 +8,7 @@ package rusttable
 // is wire_damaged, and the same body with the repeat removed loads the first
 // value.
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1, as make tables-rust-message-batch runs it. The
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent, as make tables-rust-message-batch runs it. The
 // Go half reads only the generator's output and the oracle: no clock, no
 // socket, no network.
 

@@ -164,7 +164,7 @@ func cppNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skipf("c++: %v", err)
+		t.Fatalf("c++: %v", err)
 	}
 	schemaDir := t.TempDir()
 	for _, side := range []string{"VOLD_hostile_bool.schema", "VNEW_hostile_bool.schema"} {

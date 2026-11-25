@@ -269,7 +269,7 @@ func vtWidenFailures(t *testing.T, mutate func(*testing.T, map[string][]byte)) (
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtWidening(t *testing.T) {
 	t.Parallel()
 
@@ -323,7 +323,7 @@ func TestPythonVtWidening(t *testing.T) {
 // refuses), then the field, the arm and the map widened counters stop
 // counting. Each must turn its own rows red by name.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtWideningNegativeControl(t *testing.T) {
 	t.Parallel()
 	const ladder = `def _widens(wire: int, declared: int) -> bool:`

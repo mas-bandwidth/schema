@@ -270,7 +270,7 @@ func runVtCellsFilesProbe(t *testing.T, files map[string][]byte, body string) (s
 // read (docs/SPEC-TABLES.md §4, §6.5). The unit checks inspect the generated C
 // artifacts, emitter anchors, and scoped C variable-table test sources in
 // memory with no subprocesses, sockets, or network; the compiled C probe is a
-// functional test gated by slowtest.Gate that compiles and runs the real
+// functional test that compiles and runs the real
 // generated C code under AddressSanitizer and UndefinedBehaviorSanitizer.
 func TestCVariableCellsStrict(t *testing.T) {
 	t.Parallel()

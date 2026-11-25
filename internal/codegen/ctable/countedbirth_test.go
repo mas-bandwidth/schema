@@ -128,7 +128,7 @@ func TestCCountedArrayBirthValue(t *testing.T) {
 	t.Parallel()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("no C compiler on PATH")
+		t.Fatal("no C compiler on PATH")
 	}
 	u := unitFrom(t, cCountedBirthSchema)
 	files, err := cgen.Generate(u)

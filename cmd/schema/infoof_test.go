@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -12,12 +11,6 @@ import (
 // "no file there": read as absent, an output behind a directory the run may
 // not search passed the alias check unexamined, as if it could be no input.
 func TestInfoOfRefusesALookupThatFailed(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX directory modes: the search bit this test clears")
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("root reads through a directory it may not search, so the lookup cannot fail")
-	}
 	dir := t.TempDir()
 	locked := filepath.Join(dir, "locked")
 	if err := os.Mkdir(locked, 0o755); err != nil {

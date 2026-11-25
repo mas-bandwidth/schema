@@ -226,7 +226,7 @@ func vtIdtableCase(t *testing.T, repo, name string, mutate func(*testing.T, map[
 // TestPythonVtIdtableRows holds every manifest case of the id-table-wire row
 // to the one read on read-then-write under both pinned interpreters.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
+// Functional (python pins).
 func TestPythonVtIdtableRows(t *testing.T) {
 	t.Parallel()
 	repo, err := pyrun.RepoRoot()
@@ -250,7 +250,7 @@ func TestPythonVtIdtableRows(t *testing.T) {
 // case; and the variable read skipping kind 31 by its L as the removed escape
 // did, required red on escape_unnamed_field.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
+// Functional (python pins).
 func TestPythonVtIdtableRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	repo, err := pyrun.RepoRoot()

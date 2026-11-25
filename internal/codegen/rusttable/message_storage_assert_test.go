@@ -10,8 +10,7 @@ package rusttable
 // generated debug_assert! and requires this test red.
 //
 // A FUNCTIONAL TEST: it compiles and runs Rust with rustc in both profiles.
-// It skips by name when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset,
-// and fails by name when SCHEMA_REQUIRE_CORPUS=1.
+// It fails by name when rustc is absent.
 
 import (
 	"fmt"
@@ -86,10 +85,7 @@ fn main() {
 
 func TestMessageStorageDebugAssertRust(t *testing.T) {
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the message storage assert cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the message storage assert cannot be built or run: %v", err)
 	}
 
 	u := unitFrom(t, messageStorageAssertSchema)

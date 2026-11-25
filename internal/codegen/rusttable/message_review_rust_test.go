@@ -17,8 +17,7 @@ package rusttable
 //
 // The Go engine (internal/tablewire) reads the same bytes in every case and
 // its verdict is the oracle's. A FUNCTIONAL TEST: it compiles and runs Rust
-// with rustc and skips by name when rustc is absent and SCHEMA_REQUIRE_CORPUS
-// is unset. No clock, no socket, no network.
+// with rustc and fails by name when rustc is absent. No clock, no socket, no network.
 
 import (
 	"fmt"

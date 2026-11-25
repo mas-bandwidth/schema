@@ -32,7 +32,7 @@ table Root
 // are the record in docs/PORT-PYTHON.md and it asserts only that both save
 // shapes write the same bytes and the load reads them back.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func mapBenchPinSelected(selector, name string) bool {
 	return selector == "" || selector == name
 }

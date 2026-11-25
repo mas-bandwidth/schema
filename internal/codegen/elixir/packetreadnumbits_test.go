@@ -75,8 +75,8 @@ func committedElixirModules() ([]string, error) {
 }
 
 // elixirBinary is the leg's own toolchain: $ELIXIR when it names one, the
-// pinned dist/ tree, and the Elixir on PATH. A bench with no Elixir skips
-// without the corpus promise, and FAILS BY NAME under SCHEMA_REQUIRE_CORPUS.
+// pinned dist/ tree, and the Elixir on PATH. A bench with no Elixir FAILS
+// the test by name.
 func elixirBinary(t *testing.T) string {
 	t.Helper()
 	if env := os.Getenv("ELIXIR"); env != "" {
@@ -97,10 +97,7 @@ func elixirBinary(t *testing.T) string {
 	if found, err := exec.LookPath("elixir"); err == nil {
 		return found
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Elixir is on this bench: not at %s and not on PATH", bin)
-	}
-	t.Skip("no Elixir: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+	t.Fatalf("no Elixir is on this bench: not at %s and not on PATH", bin)
 	return ""
 }
 
@@ -123,10 +120,7 @@ func elixircBinary(t *testing.T) string {
 	if found, err := exec.LookPath("elixirc"); err == nil {
 		return found
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no elixirc is on this bench: not at %s and not on PATH", sibling)
-	}
-	t.Skip("no elixirc: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+	t.Fatalf("no elixirc is on this bench: not at %s and not on PATH", sibling)
 	return ""
 }
 

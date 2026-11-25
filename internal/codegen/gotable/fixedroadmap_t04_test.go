@@ -290,8 +290,8 @@ func t04GoE8(t *testing.T) {
 // RUNNING the pair, one row of docs/FIXED-FORM-VERSIONING-TESTS.md per subtest.
 //
 // The corpus `TestFixedVersioningNewReadsOld` reads is the C++ reference's and
-// its build needs the `../serialize` sibling that is not staged, so it SKIPS at
-// fixedversioning_test.go:811, and a skip is not a run. This harness instead
+// its build needs the `../serialize` sibling that is not staged, so it FAILS in
+// fixedCorpus (fixedversioning_test.go). This harness instead
 // generates BOTH sides with the table emitter: the OLD unit's identity plan
 // writes the file and the NEW unit, handed the OLD unit's locked lineage entry
 // (§5.2), reads it back with its COMPILED plan. The generated files for a fixed

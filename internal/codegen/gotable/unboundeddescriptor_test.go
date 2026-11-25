@@ -11,7 +11,7 @@ import (
 // UnboundedContainer column, with array_bound 0 beside it) in the Go backend.
 // It is a pure-Go test: it reads the descriptor rows out of the emitter's own
 // Generate output in-process and never compiles or runs a unit, so it costs no
-// toolchain and needs no slowtest.Gate.
+// toolchain.
 //
 //   - a map (map[string(8)]int32 and map[int32]int32), a []T ([]int32) and a
 //     text list []string(8) report UnboundedContainer true and ArrayBound 0, so
@@ -23,8 +23,7 @@ import (
 //     the container fields report Unbounded false;
 //   - bounded text is neither column, with ArrayBound 8.
 //
-// The round trip itself lives in unboundeddescriptor_slow_test.go behind
-// slowtest.Gate.
+// The round trip itself lives in unboundeddescriptor_slow_test.go (functional).
 func TestGoUnboundedDescriptorIsExplicit(t *testing.T) {
 	t.Parallel()
 	files := unboundedDescriptorFiles(t)

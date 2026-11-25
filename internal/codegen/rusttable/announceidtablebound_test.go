@@ -9,9 +9,7 @@ package rusttable
 // uses rather than a pairwise scan.
 //
 // A FUNCTIONAL TEST: it compiles and runs Rust with rustc alone (the
-// announcement runtime is self-contained). It skips by name when rustc is
-// absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name when
-// SCHEMA_REQUIRE_CORPUS=1. No clock, no socket, no network.
+// announcement runtime is self-contained). It fails by name when rustc is absent. No clock, no socket, no network.
 
 import (
 	"encoding/binary"
@@ -164,10 +162,7 @@ func TestRustAnnouncementIdTableBound(t *testing.T) {
 	runtime := string(src)
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 
 	ids4096 := announceBoundIds(4096)

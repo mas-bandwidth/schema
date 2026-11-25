@@ -344,7 +344,6 @@ public final class Main {
                 pin = 21;
             }
         }
-        boolean anyJdk = "1".equals(System.getenv("SCHEMA_JAVA_ALLOC_ANY_JDK"));
 
         java.lang.management.ThreadMXBean base = ManagementFactory.getThreadMXBean();
         com.sun.management.ThreadMXBean bean = null;
@@ -356,11 +355,7 @@ public final class Main {
             counterPresent = true;
         }
 
-        if (anyJdk) {
-            System.err.println("NOT CERTIFIED: allocation observations on JDK " + Runtime.version()
-                    + (counterPresent ? "" : " (no per-thread allocation counter)")
-                    + "; reporting, not certifying");
-        } else if (found != pin) {
+        if (found != pin) {
             fail("allocation certification requires JDK " + pin + ", running " + Runtime.version());
         } else if (!counterPresent) {
             fail("the JVM exposes no per-thread allocation counter, so the allocation gate "
@@ -371,15 +366,11 @@ public final class Main {
         // committed corpus, each against its ceiling. The refusals above run
         // first and measure nothing.
         describe("allocation measurement on JDK " + Runtime.version());
-        int code = AllocPaths.run(bean, !anyJdk, blockFile, cookFile, wires);
+        int code = AllocPaths.run(bean, true, blockFile, cookFile, wires);
         if (code != 0) {
             fail("the allocation gate is red on JDK " + Runtime.version() + " (the rows above say which)");
         }
-        if (!anyJdk) {
-            System.out.println("the java allocation gate certified on JDK " + pin);
-        } else {
-            System.out.println("NOT CERTIFIED: observations on JDK " + Runtime.version() + ", pin is " + pin);
-        }
+        System.out.println("the java allocation gate certified on JDK " + pin);
         return 0;
     }
 

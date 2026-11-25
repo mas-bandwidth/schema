@@ -32,7 +32,8 @@ root=$3
   echo '];'
 } > "$out"
 
-rows=$(grep -c "^  \['" "$out" || true)
+# grep -c exits 1 on a zero count (the check below names it); any other status fails
+rows=$(grep -c "^  \['" "$out") || [ "$?" -eq 1 ]
 if [ "$rows" -eq 0 ]; then
   echo "nightly fuzz registry: no table roots under $gen" >&2
   exit 1

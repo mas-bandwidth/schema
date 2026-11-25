@@ -97,7 +97,7 @@ func TestJSONTestSuiteProbe(t *testing.T) {
 `
 
 // TestJSONTestSuiteGenerated holds the emitted Go walk to JSONTestSuite
-// (docs/SPEC-TABLES.md §16.12), in a generated unit (SCHEMA_SLOW=1): every
+// (docs/SPEC-TABLES.md §16.12), in a generated unit (functional): every
 // vendored file against the standard's table, PENDING's files allowed to
 // disagree and logged, with the walk's memory bound held inside the generated
 // process.

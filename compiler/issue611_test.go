@@ -85,7 +85,7 @@ func TestIssue611(t *testing.T) {
 	t.Run("cs", func(t *testing.T) {
 		dotnet := findDotnet()
 		if dotnet == "" {
-			t.Skip("dotnet unavailable")
+			t.Fatal("no dotnet on PATH or in ~/.dotnet")
 		}
 		files, err := c.Generate(u, "cs", Options{})
 		if err != nil {

@@ -187,7 +187,7 @@ func TestCPPFromJsonIsStrict(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated C++ text form is C++: no c++ on PATH")
+		t.Fatal("the generated C++ text form is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, cppStrictFromJsonSchema), "cpp", Options{})
 	if err != nil {

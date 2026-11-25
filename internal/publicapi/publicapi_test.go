@@ -120,9 +120,6 @@ func run(t *testing.T, binPath string, args ...string) string {
 // does. cmd/schema is inside this module, so its imports of internal/ are
 // legal there, and its //go:embed files (help/ai.md) come with the module.
 func TestExternalModuleBuildsTheCLI(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: builds two compilers")
-	}
 	root := repoRoot(t)
 	work := t.TempDir()
 
@@ -288,9 +285,6 @@ func readTree(t *testing.T, dir string) map[string][]byte {
 // checks its output against the same walk performed here, in-module, over the
 // same public API.
 func TestExternalGeneratorRegisters(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: builds a compiler")
-	}
 	root := repoRoot(t)
 	work := t.TempDir()
 	bin := filepath.Join(work, "client")

@@ -56,7 +56,7 @@ func TestGoFlatCompressedFloatClampsTopStep(t *testing.T) {
 // runFlatCompressedClampProbe compiles the generated Go and writes each type
 // with its field at the declared max. The flat run and the per-field form must
 // both carry step index `steps` on the wire, and the value must read back as
-// max. Behind slowtest.Gate — it shells out to the Go toolchain.
+// max. It shells out to the Go toolchain (functional).
 func runFlatCompressedClampProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
 

@@ -195,8 +195,23 @@ wait_for() {
 	return 1
 }
 
+# reap_killed <pid>: wait for a verifier this control SIGKILLed; it must have
+# died by the kill (status 137), and any other exit is a failure, named
+reap_killed() {
+	reap_status=0
+	wait "$1" || reap_status=$?
+	if [ "$reap_status" -ne 137 ]; then
+		printf 'the SIGKILLed verifier %s exited %s, not by the kill (137)\n' "$1" "$reap_status" >&2
+		return 1
+	fi
+}
+
 assert_file_is() {
-	got=$(cat "$fixture/$1" 2>/dev/null || true)
+	if [ -e "$fixture/$1" ]; then
+		got=$(cat "$fixture/$1")
+	else
+		got='(no such file)'
+	fi
 	if [ "$got" != "$2" ]; then
 		printf 'ASSERTION FAILED: %s has %s, want %s\n' "$1" "$got" "$2" >&2
 		return 1
@@ -244,7 +259,7 @@ kill-retry)
 
 	wait_for build/replacement-exists 100 || { printf 'the replacement tree never appeared\n' >&2; cat "$work/run1.log" >&2; exit 1; }
 	kill -KILL -"$vpid"
-	wait "$vpid" 2>/dev/null || true
+	reap_killed "$vpid"
 
 	# The preserved original must still hold its exact bytes after the kill.
 	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
@@ -280,7 +295,7 @@ kill-before-emission)
 		fail=1
 	fi
 	kill -KILL -"$vpid"
-	wait "$vpid" 2>/dev/null || true
+	reap_killed "$vpid"
 
 	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
 
@@ -317,12 +332,14 @@ simultaneous-contender)
 	snapshot after
 	if ! cmp -s "$work/before.snap" "$work/after.snap"; then
 		printf 'ASSERTION FAILED: the refused contender changed a shared artefact\n' >&2
-		diff "$work/before.snap" "$work/after.snap" >&2 || true
+		# diff exits 1 on the difference cmp just found; any other status fails
+		diff "$work/before.snap" "$work/after.snap" >&2 || [ "$?" -eq 1 ]
 		fail=1
 	fi
 
-	kill -KILL -"$vpid" 2>/dev/null || true
-	wait "$vpid" 2>/dev/null || true
+	# the holder is still sleeping in its generation rule: kill its group and reap it
+	kill -KILL -"$vpid"
+	reap_killed "$vpid"
 	printf 'verify-control simultaneous-contender: the second verifier is refused, and original, prev, fresh and the marker are byte-identical before and after\n'
 	;;
 
@@ -364,7 +381,7 @@ two-reclaimers)
 	wait_for build/generated-tree/prev/go/ATable.go 100 || { printf 'the original never reached prev\n' >&2; cat "$work/run1.log" >&2; exit 1; }
 	wait_for build/emission-started 100 || { printf 'the generation rule never started\n' >&2; cat "$work/run1.log" >&2; exit 1; }
 	kill -KILL -"$vpid"
-	wait "$vpid" 2>/dev/null || true
+	reap_killed "$vpid"
 
 	assert_file_is build/generated-tree/prev/go/ATable.go 'committed original bytes' || fail=1
 
@@ -379,11 +396,12 @@ two-reclaimers)
 	rc1=0; wait "$rpid1" || rc1=$?
 	rc2=0; wait "$rpid2" || rc2=$?
 
-	rec1_recovered=0; grep -Fq 'RECOVERED' "$work/rec1.log" 2>/dev/null && rec1_recovered=1 || true
-	rec2_recovered=0; grep -Fq 'RECOVERED' "$work/rec2.log" 2>/dev/null && rec2_recovered=1 || true
+	# grep -q exits 1 when the log lacks the line; any other status fails
+	rec1_recovered=0; grep -Fq 'RECOVERED' "$work/rec1.log" && rec1_recovered=1 || [ "$?" -eq 1 ]
+	rec2_recovered=0; grep -Fq 'RECOVERED' "$work/rec2.log" && rec2_recovered=1 || [ "$?" -eq 1 ]
 
-	rec1_refused=0; grep -Fq 'REFUSED' "$work/rec1.log" 2>/dev/null && rec1_refused=1 || true
-	rec2_refused=0; grep -Fq 'REFUSED' "$work/rec2.log" 2>/dev/null && rec2_refused=1 || true
+	rec1_refused=0; grep -Fq 'REFUSED' "$work/rec1.log" && rec1_refused=1 || [ "$?" -eq 1 ]
+	rec2_refused=0; grep -Fq 'REFUSED' "$work/rec2.log" && rec2_refused=1 || [ "$?" -eq 1 ]
 
 	if [ "$rec1_recovered" -eq 1 ] && [ "$rec2_refused" -eq 1 ]; then
 		[ "$rc2" -ne 0 ] || { printf 'ASSERTION FAILED: refused reclaimer exited 0\n' >&2; fail=1; }

@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -19,9 +18,6 @@ import (
 // must still refuse a foreign commit that is not on main.
 func TestPrePushHookSkipsCommitsAlreadyOnMain(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("the hook is a POSIX shell script (bash); agent clones run on Linux and macOS")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatalf("git is required: %v", err)
 	}

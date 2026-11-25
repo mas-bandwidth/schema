@@ -7,7 +7,7 @@ package luautable_test
 // array inside a value the read only skips is held to the JSON grammar alone.
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // held to the verdict the vectors state. Running the pinned Luau interpreter
-// makes this a functional test, gated by slowtest.
+// makes this a functional test.
 
 import (
 	"bufio"

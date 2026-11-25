@@ -9,7 +9,7 @@
 #                     registering a port is one driver at <lang>/driver)
 #   tablegen          internal/codegen/<leg>table has Go tests
 #   wire-fuzz-plain   make/wire-fuzz-release.mk lists the leg and
-#   wire-fuzz-retain  test/conformance/wire-fuzz-owed.txt owes no such arm
+#   wire-fuzz-retain  (both arms: no owed list excuses an arm)
 #   write-refusal     the leg's conformance driver answers the write-refusal battery
 #
 #   sh test/testguard/parity.sh rows | columns | pairs
@@ -25,7 +25,7 @@ pairs)
 		if ls "internal/codegen/${leg}table/"*_test.go > /dev/null 2>&1; then echo "tablegen	$leg"; fi
 		case " $wfr " in *" $leg "*)
 			for arm in plain retain; do
-				grep -Eq "^$leg +$arm( |$)" test/conformance/wire-fuzz-owed.txt || echo "wire-fuzz-$arm	$leg"
+				echo "wire-fuzz-$arm	$leg"
 			done ;;
 		esac
 		if [ -d "test/conformance/$leg" ] && grep -rlq 'write-refusal\|WriteRefusal' "test/conformance/$leg"; then echo "write-refusal	$leg"; fi

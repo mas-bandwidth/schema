@@ -11,9 +11,7 @@ package rusttable
 // accepted row. Two escape rows pin that the JSON string is decoded before
 // base64 is judged (§16.2's "The JSON layer decides FIRST").
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1.
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent.
 
 import (
 	"fmt"

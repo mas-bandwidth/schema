@@ -6,8 +6,8 @@ import "testing"
 // test that drives the COMPILER (which imports this package) can run the leg's
 // own toolchain the way the in-package tests do (mapsarms_test.go).
 
-// ElixirBinaryForTest is elixirBinary: the pinned Elixir, or a skip that
-// SCHEMA_REQUIRE_CORPUS turns into a failure.
+// ElixirBinaryForTest is elixirBinary: the pinned Elixir, or a failure
+// naming what is missing.
 func ElixirBinaryForTest(t *testing.T) string { return elixirBinary(t) }
 
 // WriteModuleDirForTest is writeModuleDir: the generated modules in load order.

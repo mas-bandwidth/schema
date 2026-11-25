@@ -33,7 +33,7 @@ case "$mode" in
 check)
     out=build/conformance-lobster-cook-write
     rm -rf "$out" && mkdir -p "$out"
-    build/conformance-harness run --only lobster --work "$out/work" > "$out/log" 2>&1 || true
+    build/conformance-harness run --only lobster --work "$out/work" > "$out/log" 2>&1 || echo "lobster cook-write: the harness exited $? over the whole leg; this verdict reads the cook-write line alone" >&2
     if ! holds "$out/log"; then
         grep -E '^cook-write |lobster / cook-write' "$out/log" >&2 || cat "$out/log" >&2
         echo "conformance-lobster-cook-write FAILED: lobster / cook-write is not pass N/N, unrelaxed" >&2
@@ -69,7 +69,7 @@ negative-control)
         "$root" "$out" "$lobster" "$root" > "$out/driver"
     chmod +x "$out/driver"
     printf 'lobster %s/driver\n' "$out" > "$out/drivers.txt"
-    build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+    build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || echo "lobster cook-write: the harness exited $? over the whole leg; this verdict reads the cook-write line alone" >&2
     if holds "$out/log"; then
         echo "NEGATIVE CONTROL FAILED: the dead-slot zeroing was removed and lobster / cook-write still holds" >&2
         exit 1

@@ -181,12 +181,14 @@ void main(List<String> args) {
 
     if (refused) {
       refusedRan++;
-      if (assertsEnabled) {
-        check(
-          fired,
-          'packet-write-bareint $name: out-of-width value was written',
-        );
-      }
+      check(
+        assertsEnabled,
+        'packet-write-bareint $name: asserts are off in this build: this row needs the assert build',
+      );
+      check(
+        fired,
+        'packet-write-bareint $name: out-of-width value was written',
+      );
       continue;
     }
 

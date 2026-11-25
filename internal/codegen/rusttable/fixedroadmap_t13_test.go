@@ -26,11 +26,7 @@ package rusttable
 // refused as `layout_malformed` BEFORE any record is parsed, and every poisoned
 // row handed in is back at its declared default (ruling R4; §5.3 row 5).
 //
-// THE TEST COMPILES AND RUNS RUST, so it is a functional test: it SKIPS BY NAME
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and FAILS BY NAME when
-// SCHEMA_REQUIRE_CORPUS=1 (the corpus gate fixedversioning_test.go keeps at
-// versionCorpus: a suite that skips itself under a target that promised the
-// toolchain reports green over §5 having never run). It uses no real time,
+// THE TEST COMPILES AND RUNS RUST, so it is a functional test: it FAILS BY NAME when rustc is absent (as versionCorpus does without the corpus: a suite that skipped itself would report green over §5 having never run). It uses no real time,
 // sockets, network or outside services beyond the compiler it must run.
 //
 // THE REVERSED WITNESS: with the byte comparison removed from the emitted load
@@ -211,16 +207,12 @@ fn main() {
 }
 
 // t13Run generates the unit, drops the probe crate, and runs it once with rustc.
-// rustc absent is a SKIP unless SCHEMA_REQUIRE_CORPUS promises the toolchain, in
-// which case it is a FAILURE BY NAME.
+// rustc absent is a FAILURE BY NAME.
 func t13Run(t *testing.T) string {
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so rust/F12 cannot be run: %v", err)
-		}
-		t.Skip("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust")
+		t.Fatalf("rustc is not on PATH, so rust/F12 cannot be run: %v", err)
 	}
 	files, err := GenerateLineage(unitFrom(t, t13Schema), nil)
 	if err != nil {

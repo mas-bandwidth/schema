@@ -6,8 +6,7 @@ package squirreltable_test
 // the cook-write, cook-open, block-build, reflection, and unit-registry
 // surfaces.
 //
-// Functional: runs the pinned Squirrel interpreter via sqrun under
-// slowtest.Gate; the source gate takes no real time, sockets, or network.
+// Functional: runs the pinned Squirrel interpreter via sqrun; the source gate takes no real time, sockets, or network.
 
 import (
 	"bytes"

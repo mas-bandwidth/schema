@@ -18,8 +18,7 @@ package luautable_test
 // here, in the Go cell's order, and handed to the probe as one buffer of float
 // bit patterns; the probe places them with the generated constructors and
 // writes with the emitted runtime, so everything under test is Luau. Running
-// the interpreter makes this a functional test: it sits behind slowtest.Gate
-// and is reached from make tables-luau-text-differential.
+// the interpreter makes this a functional test, reached from make tables-luau-text-differential.
 
 import (
 	"bytes"

@@ -269,7 +269,7 @@ func TestCPPMapPresence(t *testing.T) {
 	t.Parallel()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated C++ is compiled and run: no c++ on PATH")
+		t.Fatal("the generated C++ is compiled and run: no c++ on PATH")
 	}
 	run := func(name, schema, driver string) {
 		t.Helper()

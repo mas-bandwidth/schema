@@ -17,8 +17,8 @@ import (
 // member, and never masks one into the width. Each refusal has its lawful
 // twin at the same boundary, which writes.
 //
-// It runs elixir, so it is a functional test: without the toolchain it skips
-// by name (elixirBinary), and SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
+// It runs elixir, so it is a functional test: without the toolchain it fails
+// by name (elixirBinary).
 func TestElixirWriteContractRefuses(t *testing.T) {
 	t.Parallel()
 

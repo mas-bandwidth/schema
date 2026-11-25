@@ -373,8 +373,7 @@ func dartBytes(b []byte) string {
 func dartInt(v int64) string { return strconv.FormatInt(v, 10) }
 
 // announceDartBinary is the leg's own Dart: the DART the Makefile passes, then
-// the unpacked SDK, then the PATH. When SCHEMA_REQUIRE_CORPUS is set, a missing
-// toolchain fails the test rather than skipping.
+// the unpacked SDK, then the PATH. A missing toolchain fails the test by name.
 func announceDartBinary(t *testing.T) string {
 
 	t.Helper()
@@ -389,10 +388,7 @@ func announceDartBinary(t *testing.T) string {
 	if dart, err := exec.LookPath("dart"); err == nil {
 		return dart
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no Dart toolchain is at DART, dist/dart-sdk-3.13.2, or on the PATH")
-	}
-	t.Skip("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
+	t.Fatal("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
 	return ""
 }
 

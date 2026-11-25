@@ -20,7 +20,6 @@ func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	m := textListModel(t)
 
 	t.Run("element past M clamps", func(t *testing.T) {
-		t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 		raw := textListRawWire(t, m, "123456789")
 		back := m.New(m.Lookup("Lists"))
 		var report tabletext.Report

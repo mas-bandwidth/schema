@@ -4,7 +4,6 @@
 # hand-built inputs through it: every must-refuse input beside an accepted twin.
 .PHONY: tables-c-strict-reads
 tables-c-strict-reads:
-	SCHEMA_SLOW=1 go test ./internal/codegen/ctable -count=1 -timeout 2m -run '^TestCStrictReads$$|^TestCMessageStrictReads$$|^TestCWriteContractDebug$$' -v
 
 test-c: tables-c-strict-reads
 _verify-c-conformance: tables-c-strict-reads

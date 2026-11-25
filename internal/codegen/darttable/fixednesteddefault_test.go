@@ -86,8 +86,7 @@ func TestFixedNestedDefaultCheckIsTyped(t *testing.T) {
 // fixed table whose nested message field holds its default value, written by
 // the Dart fixed form, must produce the same bytes as the Go emitter's output
 // for the same value (docs/SPEC-TABLES.md §3.3). It runs the leg's own Dart
-// toolchain; a missing toolchain is a skip by name unless
-// SCHEMA_REQUIRE_CORPUS is set, which makes it a failure by name instead.
+// toolchain; a missing toolchain is a failure by name.
 //
 // The expected bytes are the GO EMITTER'S OWN LIVE PROGRAM, never a hand-written
 // vector: this test generates the Go fixed library for the same schema, builds
@@ -188,8 +187,7 @@ void main() {
 }
 
 // nestedDefaultDartBinary resolves the leg's Dart without skipping before the
-// test can say why: an absent SDK is a SKIP by name, and under
-// SCHEMA_REQUIRE_CORPUS (every make leg sets it) it is a FAILURE by name.
+// test can say why: an absent SDK is a FAILURE by name.
 func nestedDefaultDartBinary(t *testing.T) string {
 
 	t.Helper()
@@ -204,10 +202,7 @@ func nestedDefaultDartBinary(t *testing.T) string {
 	if dart, err := exec.LookPath("dart"); err == nil {
 		return dart
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no Dart toolchain is present: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
-	}
-	t.Skip("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
+	t.Fatal("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
 	return ""
 }
 

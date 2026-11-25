@@ -251,8 +251,7 @@ puts hex(["unlexed:", *words.reject { |w| Ripper.lex(w).dig(0, 1) == :on_kw }].j
 // and each rule, turned off, lets its case through (the rules' negative
 // control); the checker's Ruby row is the keyword list less next and alias;
 // a record whose fields are every keyword reaches none bare; the conformance
-// driver answers every surface absent. The slow half (SCHEMA_SLOW, make
-// test-ruby) runs the pinned interpreters: the namespace loads under both with
+// driver answers every surface absent. The functional half runs the pinned interpreters: the namespace loads under both with
 // no warning under ruby -w, two units keep their own errors, the keyword
 // record runs, the name lists are the pins', and the warning, load and keyword
 // gates each go red on a planted fault. Every control is a subtest named

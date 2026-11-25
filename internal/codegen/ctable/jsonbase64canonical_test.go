@@ -52,8 +52,7 @@ type base64Probe struct {
 // (internal/tabletext), then the C read is compared with the engine on the
 // verdict, and on the bytes of a read.
 //
-// Compiling and running the C makes this a functional test: it skips by name
-// without SCHEMA_SLOW, and fails by name under SCHEMA_REQUIRE_CORPUS=1 when no
+// Compiling and running the C makes this a functional test: it fails by name when no
 // C compiler is found.
 func TestCJsonBase64Canonical(t *testing.T) {
 	t.Parallel()
@@ -257,10 +256,7 @@ func base64CVerdicts(t *testing.T, u *ir.Unit, p base64Probe, rows []base64Row) 
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cc, err)
-		}
-		t.Skipf("%s: %v", cc, err)
+		t.Fatalf("%s is not found: %v", cc, err)
 	}
 	files, err := cgen.Generate(u)
 	if err != nil {

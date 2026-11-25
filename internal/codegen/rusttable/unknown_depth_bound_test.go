@@ -6,9 +6,7 @@ package rusttable
 // 129 refuses — inside a table body, an array body, a keyed or map body, and a
 // union whose arm is structural.
 //
-// A FUNCTIONAL TEST: it compiles and runs the generated Rust with rustc. It
-// fails by name when SCHEMA_REQUIRE_CORPUS is set and rustc is absent, skips
-// by name otherwise, and is gated by slowtest.Gate (SCHEMA_SLOW=1 runs it).
+// A FUNCTIONAL TEST: it compiles and runs the generated Rust with rustc. It fails by name when rustc is absent.
 // The same two files go to the engine (internal/tablewire) for a verdict, so
 // this test compares the leg with the oracle instead of pinning an answer.
 
@@ -110,10 +108,7 @@ func depthNestedUnion(levels int) []byte {
 func TestRustUnknownFieldBinaryDepthBound(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the unknown-field depth bound cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the unknown-field depth bound cannot be built or run: %v", err)
 	}
 
 	u := unitFrom(t, rustUnknownDepthSchema)

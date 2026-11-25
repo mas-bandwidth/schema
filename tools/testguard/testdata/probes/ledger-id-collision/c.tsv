@@ -1,4 +1,0 @@
-suite	a
-suite	a.b
-skip	a.b.c	ledgered for suite a, class b, test c; since fixed
-baseline	bl

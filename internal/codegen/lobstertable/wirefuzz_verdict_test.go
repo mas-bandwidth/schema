@@ -7,9 +7,8 @@ package lobstertable_test
 // back the same canonical bytes as internal/tablewire.
 //
 // TestLobsterWireFuzzVerdictPipe checks make/lobster-fuzz.mk's gate
-// registration, then runs that pipe. The check is before slowtest.Gate, so a
-// dropped target fails even when SCHEMA_SLOW is unset. A skip is not a pass:
-// SCHEMA_SLOW=1 is what lets the pipe run.
+// registration, then runs that pipe. A dropped target fails
+// first; the pipe always runs.
 //
 // TestLobsterWireFuzzVerdictPipeNegativeControl plants its faults in the
 // generated artifacts the VM compiles. A string the emitter already writes,

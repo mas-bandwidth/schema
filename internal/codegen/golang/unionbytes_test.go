@@ -27,7 +27,7 @@ func TestGoUnionThenFixedByteArrayWire(t *testing.T) {
 // runUnionThenByteArrayProbe compiles the generated Go and runs it against the
 // serialize.go runtime: T with u at None and data {1, 2, 3, 4} writes 33 bits —
 // the one-bit tag then four bytes packed LSB-first — and reads back unchanged.
-// Behind slowtest.Gate — it shells out to the Go toolchain.
+// It shells out to the Go toolchain (functional).
 func runUnionThenByteArrayProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
 	const probe = `package t

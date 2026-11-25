@@ -16,7 +16,7 @@ import (
 // crosses it. The probe compiles the fixture's own layout against itself, so
 // the walk pushes the unguarded tail past the union behind guarded arm entries
 // and only the partition repairs that order. Compiling and running generated
-// Rust is a functional test behind slowtest.Gate.
+// Rust is a functional test.Gate.
 func TestFixedRoadmapRustT17PlanPartition(t *testing.T) {
 	t.Parallel()
 	t.Run("rust/W6", func(t *testing.T) {

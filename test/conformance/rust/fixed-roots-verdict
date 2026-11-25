@@ -6,13 +6,13 @@ dir=$1
 test -s "$dir/results.json" || { echo 'fixed roots: results missing'; exit 1; }
 for surface in json-read json-write; do
 	grep -qE "^$surface +pass ([1-9][0-9]*)/\\1 *\$" "$dir/log" || {
-		grep -E "^$surface " "$dir/log" || true
+		grep -E "^$surface " "$dir/log" || echo "fixed roots: $dir/log has no $surface line"
 		echo "fixed roots: $surface has a failure or an absent case"
 		exit 1
 	}
 done
 grep -qE '^cook-write +pass ([1-9][0-9]*)/\1 *$' "$dir/log" || {
-	grep -E '^cook-write ' "$dir/log" || true
+	grep -E '^cook-write ' "$dir/log" || echo "fixed roots: $dir/log has no cook-write line"
 	echo 'fixed roots: cook-write has a failure or unexpected absences'
 	exit 1
 }

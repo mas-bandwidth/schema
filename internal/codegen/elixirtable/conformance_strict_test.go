@@ -17,8 +17,8 @@ import (
 // read through its fixed form, an accepted read owes `read\n`, the complete
 // text value and the canonical write-back wire, a refused read owes only
 // `refused\n`, and retain answers with the known value in the same shape.
-// Anything that shells out to the BEAM toolchain is a functional test; the
-// two tests here are gated behind SCHEMA_SLOW / SCHEMA_REQUIRE_CORPUS.
+// Anything that shells out to the BEAM toolchain is a functional test; a
+// missing toolchain fails the two tests here by name.
 
 func elixirConformanceRoot(t *testing.T) string {
 	t.Helper()

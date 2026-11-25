@@ -39,10 +39,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		t.Parallel()
 		row := findMessageRow(t, "match_full")
 		u := batchUnit(t, row.path)
-		st := findTable(t, u, row.root)
-		if !st.IsTable || !st.FixedDeclared {
-			t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
-		}
+		findTable(t, u, row.root)
 		checkMessageReadClamp(t, row.root, u, matchReadClampMutant(t, tabletext.NewModel(u)), "out_of_range")
 	})
 
@@ -56,10 +53,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		t.Parallel()
 		row := findMessageRow(t, "store_full")
 		u := batchUnit(t, row.path)
-		st := findTable(t, u, row.root)
-		if !st.IsTable || !st.FixedDeclared {
-			t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
-		}
+		findTable(t, u, row.root)
 		m := tabletext.NewModel(u)
 		checkMessageReadClamp(t, row.root, u, storePurchaseClampMutant(t, m), "out_of_range")
 	})

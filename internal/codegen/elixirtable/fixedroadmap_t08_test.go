@@ -58,7 +58,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -230,16 +229,12 @@ func t08P2(t *testing.T) {
 // the elixir leg reads to the same value oracle every other leg reads to.
 //
 // This is the same assertion the lineage harness's TestFixedVersioningReads
-// TheManifest makes, restated here so the card's own test proves it; the branch
-// is live only when the tree carries the manifest, so a tree without one skips
-// rather than reading the very `.bin` it asserts.
+// TheManifest makes, restated here so the card's own test proves it; a tree
+// without the manifest fails by name.
 func t08R27(t *testing.T) {
 	corpus := fixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and %s/manifest.txt is missing: %v", corpus, err)
-		}
-		t.Skip("the tree carries no corpus manifest")
+		t.Fatalf("%s/manifest.txt is missing: %v", corpus, err)
 	}
 	fired := 0
 	for _, r := range versionRows {

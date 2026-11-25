@@ -248,8 +248,7 @@ func scanSkipSites(root string) (*skipScan, error) {
 						}
 						site.reason = strings.Join(strings.Fields(s), " ")
 						// a reason that opens with a verb ("%s: %v", tool, err)
-						// names its subject only at run time: the lane's
-						// ledger reads it there
+						// names its subject only at run time
 						if sel.Sel.Name == "Skipf" && verb.FindStringIndex(strings.TrimSpace(orig)) != nil && verb.FindStringIndex(strings.TrimSpace(orig))[0] == 0 {
 							site.literal, site.reason = false, ""
 						}
@@ -736,8 +735,8 @@ func neverCompiled(scan *constraintScan, proofs []laneProof) []constrainedTest {
 
 // A SKIP DISGUISED AS A PASS. A test looks for its toolchain, its sibling
 // checkout or its environment variable, does not find it, and returns: go
-// test prints PASS over a body that never ran, no ledger sees a skip, and no
-// require-the-toolchain variable can turn it red. The reviewer's case is
+// test prints PASS over a body that never ran, and no record of the run shows
+// a skip. The reviewer's case is
 // internal/codegen/rust's TestAssembleLibExportsUnionModule, which logged
 // "cargo ... not found; skipping compilation check" and returned.
 //

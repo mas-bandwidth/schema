@@ -79,8 +79,7 @@ func (r dartReport) String() string {
 
 // feedReportProbe generates the Dart reader, loads the bytes through it with a
 // report, saves what it loaded, and answers the six counters and the saved
-// bytes. A bare `go test` skips by name when the SDK is missing, through
-// dartBinary.
+// bytes. A missing SDK fails the test by name, through dartBinary.
 func feedReportProbe(t *testing.T, wire []byte, data []byte) (dartReport, []byte) {
 	t.Helper()
 	dart := dartBinary(t)

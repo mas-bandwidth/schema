@@ -50,7 +50,7 @@ func TestLuaCookWrite(t *testing.T) {
 			files, err := Generate(u)
 			if err != nil {
 				// the Lua target refuses this unit's kinds (docs/PORT-LUA.md)
-				t.Skipf("the Lua table backend does not generate this unit: %v", err)
+				t.Errorf("the Lua table backend does not generate this unit: %v", err)
 			}
 			m := tabletext.NewModel(u)
 			wire, err := os.ReadFile(filepath.Join(repo, r.wire))

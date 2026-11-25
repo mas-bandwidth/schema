@@ -137,7 +137,7 @@ int main()
 func TestCPPJSONArrayRoot(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("c++"); err != nil {
-		t.Skip("the array-root text form is C++: no c++ on PATH")
+		t.Fatal("the array-root text form is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, cppArrayRootSchema), "cpp", Options{})
 	if err != nil {

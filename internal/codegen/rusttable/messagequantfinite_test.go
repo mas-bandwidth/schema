@@ -14,9 +14,7 @@ package rusttable
 // clamp is false both ways for a NaN and so cannot stand in for the finite
 // test. A control triple with finite steps still loads its value.
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1. It reads only the generator's output: no
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent. It reads only the generator's output: no
 // clock, no socket, no network.
 
 import (
@@ -202,10 +200,7 @@ func TestRustMessageQuantizedFloatIsFiniteNegativeControl(t *testing.T) {
 func quantRustc(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the emitted message reader cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the emitted message reader cannot be built or run: %v", err)
 	}
 }
 

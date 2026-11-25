@@ -151,7 +151,7 @@ int main( void )
 	}
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated JSON path is C++: no c++ on PATH")
+		t.Fatal("the generated JSON path is C++: no c++ on PATH")
 	}
 	args := []string{"-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-ffp-contract=off", "-I", dir, filepath.Join(dir, "probe.cpp")}
 	names, err := os.ReadDir(dir)

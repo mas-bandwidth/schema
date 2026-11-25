@@ -3525,7 +3525,7 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\nmessage-prior\n"
+            System.out.print("wire\nreport\nframing\njson-read\njson-write\njson-hostile\nmessage\nmessage-prior\n"
                     + "retain\nretain-save\nretain-refusal\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"

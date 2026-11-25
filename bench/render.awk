@@ -13,7 +13,7 @@ $2 == "bench_mixed" && $13 == "gen" && $18 != "runtime" && $3 == "round_trip" { 
 # ruled the table to exactly two): a row over the INVALID
 # threshold prints no number at all, and every noisy row is named
 # in a note BELOW the table. spread_pct rides in the CSV as always.
-function render(ts, sp, absent,    i, j, n, tt, tl, langs, m, sk, parts, ref, notes) {
+function render(ts, sp, absent,    i, j, n, tt, tl, langs, ref, notes) {
     i = 0
     for (lang in ts) { i++; langs[i] = lang }
     n = i
@@ -66,16 +66,6 @@ function render(ts, sp, absent,    i, j, n, tt, tl, langs, m, sk, parts, ref, no
         print "  (no cpp row in this run: cpp is the 100% DENOMINATOR, so no percentage is defined — CSV carries the rates)"
     if (notes != "")
         printf "%s", notes
-    # loud skips (#175): a missing leg is an ABSENT row with its
-    # reason, never a silently narrower table
-    if (absent) {
-        m = split(skips, sk, ";")
-        for (i = 1; i <= m; i++) {
-            if (sk[i] == "") continue
-            split(sk[i], parts, "|")
-            printf "  %-10s %6s   ABSENT — %s\n", parts[1], "—", parts[2]
-        }
-    }
     return n
 }
 END {

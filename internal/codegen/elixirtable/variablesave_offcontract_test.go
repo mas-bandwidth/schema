@@ -23,7 +23,7 @@ import (
 // absent one lands at its birth count, and a compressed float's -0 is +0 on
 // read and on write (docs/SPEC-TABLES.md §3.3, ruling fixed-compressed-negzero).
 //
-// It runs elixir, so it is a functional test behind slowtest.Gate.
+// It runs elixir, so it is a functional test.
 func TestElixirVariableSaveRefusesOffContract(t *testing.T) {
 	t.Parallel()
 

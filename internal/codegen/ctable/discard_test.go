@@ -237,7 +237,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, discardProbeSchema)
@@ -363,7 +363,7 @@ func cHeldRun(t *testing.T, u *ir.Unit, body string) (string, error) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files, err := cgen.Generate(u)
@@ -748,7 +748,7 @@ func TestCycleOrdinalBoundaryC(t *testing.T) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, discardProbeSchema)

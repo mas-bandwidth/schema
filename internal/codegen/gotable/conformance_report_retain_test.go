@@ -15,8 +15,7 @@ package gotable_test
 //
 // This test builds and drives the real Go conformance driver over the
 // manifest's `report`, `retain`, and `retain-save` surfaces, so it is a
-// functional test: it skips by name without SCHEMA_SLOW, and fails by name
-// under SCHEMA_REQUIRE_CORPUS=1 when make or the Go toolchain is missing.
+// functional test: it fails by name when make or the Go toolchain is missing.
 
 import (
 	"bytes"
@@ -47,10 +46,7 @@ func goConformanceRoot(t *testing.T) string {
 	t.Helper()
 	for _, tool := range []string{"make", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-				t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", tool, err)
-			}
-			t.Skipf("%s: %v", tool, err)
+			t.Fatalf("%s is not found on PATH: %v", tool, err)
 		}
 	}
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

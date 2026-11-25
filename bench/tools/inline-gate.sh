@@ -159,11 +159,12 @@ check)
     mkdir -p "$GATE_DIR"
     rc=0
     # every (lang, opt) pair present in the CSV is gated against its budget
-    # slice; pairs with no budget lines at all are reported and skipped (the
-    # per-leg form is the completeness gate)
+    # slice; a pair with no budget lines at all is a failure, named (an
+    # unguarded slice is never a pass)
     awk -F, 'NF == 17 && $1 != "lang" { print $1, $16 }' "$CSV" | sort -u | while read -r lang opt; do
         if ! awk -v l="$lang" -v o="$opt" '!/^[ \t]*(#|$)/ && $1 == l && $4 == o { f = 1 } END { exit !f }' "$BUDGET"; then
-            echo "inline-gate note: no budget lines for $lang $opt — CSV slice unguarded"
+            echo "inline-gate FAIL: no budget lines for $lang $opt — CSV slice unguarded" >&2
+            echo "FAILED $lang $opt (no budget lines)" >> "$GATE_DIR/check.fails"
             continue
         fi
         csv_slice "$lang" "$opt" "$CSV" > "$GATE_DIR/slice-$lang-$opt.txt"
@@ -701,10 +702,10 @@ EOF
                 fail "end-to-end fixture: a compiled __attribute__((noinline)) callee must count >= 1 hot call, got '$n' — the otool pipeline is blind"
             fi
         else
-            echo "selftest note: cc failed on the e2e fixture — skipped (canned fixtures above still gate)" >&2
+            fail "end-to-end fixture: cc failed to compile the e2e fixture"
         fi
     else
-        echo "selftest note: no otool/cc on this host — e2e fixture skipped (canned fixtures above still gate)" >&2
+        fail "end-to-end fixture: no otool or no cc on this host — the e2e fixture cannot run"
     fi
 
     if [ "$FAILS" -gt 0 ]; then

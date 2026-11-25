@@ -18,7 +18,7 @@ import (
 // go/P1: the identity path and the compiled plan produce identical bytes for
 // one populated record. Assertions on Go plan values in-process are unit
 // tests; running the generated unit shells out to the Go toolchain and is a
-// functional test behind slowtest.Gate.
+// functional test.
 func TestFixedRoadmapGoT17PlanPartition(t *testing.T) {
 	t.Parallel()
 

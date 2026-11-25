@@ -97,7 +97,7 @@ func referenceCompileRun(t *testing.T, files map[string][]byte, source string, f
 	t.Helper()
 	compiler, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skipf("c++ unavailable: %v", err)
+		t.Fatalf("no c++ on PATH: %v", err)
 	}
 	runtime := os.Getenv("SERIALIZE")
 	if runtime == "" {

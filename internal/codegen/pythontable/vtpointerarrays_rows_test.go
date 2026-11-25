@@ -368,7 +368,7 @@ func ptrRowsFailures(t *testing.T, c ptrRowsCell, mutate func(*testing.T, map[st
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtPointerArraysRows(t *testing.T) {
 	t.Parallel()
 
@@ -442,7 +442,7 @@ func ptrRowsEdit(t *testing.T, files map[string][]byte, suffix, from, to string)
 // TestPythonVtPointerArraysRowsNegativeControl plants, one at a time, a fault
 // in a COPY of the emitted runtime and requires each planted row red by name.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtPointerArraysRowsNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, ctl := range []struct {

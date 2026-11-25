@@ -7,7 +7,7 @@ import (
 
 // The fast lane of the 2026-11-21 review fixes: no compiler, only the emitted
 // text, so a generator change that drops a read check shows here in
-// milliseconds. The gated TestCStrictReads and TestCMessageStrictReads run the
+// milliseconds. The functional TestCStrictReads and TestCMessageStrictReads run the
 // same rules through a compiled reader.
 func strictReadsEmitted(t *testing.T, schema string) string {
 	t.Helper()

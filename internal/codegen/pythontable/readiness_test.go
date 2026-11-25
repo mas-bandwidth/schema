@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE PYTHON LEG'S CI AND RELEASE TIER (docs/port-python/table-ci-release.md).
@@ -240,8 +239,8 @@ func readPythonReadinessFiles(t *testing.T) (string, map[string]string) {
 	return root, files
 }
 
-// TestPythonReadiness holds the tier's artifacts to the rules above, then,
-// under SCHEMA_SLOW, runs the bench leg's runner in its gate mode under both
+// TestPythonReadiness holds the tier's artifacts to the rules above, then
+// runs the bench leg's runner in its gate mode under both
 // pins over a unit generated from the bench corpus with its tables declared
 // variable, as the leg builds it: variant 0 is the pinned golden and every
 // one of the 64 records loads and saves back byte-identical.
@@ -250,10 +249,6 @@ func TestPythonReadiness(t *testing.T) {
 	root, files := readPythonReadinessFiles(t)
 	if findings := pythonReadinessFindings(files); len(findings) != 0 {
 		t.Fatalf("the Python CI and release tier breaks %v", findings)
-	}
-	if !slowtest.Enabled() {
-		t.Log("SCHEMA_SLOW unset: the bench gate under the pins is not run")
-		return
 	}
 	unit := benchLegUnit(t, root)
 	for _, python := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
@@ -266,7 +261,7 @@ func TestPythonReadiness(t *testing.T) {
 
 // TestPythonReadinessNegativeControl plants one fault per rule in a copy of
 // the real artifact the rule reads and requires the finding by its name;
-// under SCHEMA_SLOW it also hands the bench leg's gate a copy of the corpus
+// it also hands the bench leg's gate a copy of the corpus
 // whose golden differs from variant 0, then one whose variant 3 does not
 // round-trip, and requires each red by its own message.
 func TestPythonReadinessNegativeControl(t *testing.T) {
@@ -302,10 +297,6 @@ func TestPythonReadinessNegativeControl(t *testing.T) {
 		if got := pythonReadinessFindings(planted); !slices.Contains(got, plant.finding) {
 			t.Errorf("NEGATIVE CONTROL FAILED: a planted %s fault in %s was not found (findings %v)", plant.finding, plant.file, got)
 		}
-	}
-	if !slowtest.Enabled() {
-		t.Log("SCHEMA_SLOW unset: the bench gate's planted corpora are not run")
-		return
 	}
 	unit := benchLegUnit(t, root)
 	python := pyrun.Interpreter(t)

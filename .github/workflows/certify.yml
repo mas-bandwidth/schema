@@ -321,8 +321,8 @@ jobs:
             "MIX=mix"
             "NODE=node"
           )
-          # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
-          PREREQS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '/^test:/{for(i=2;i<=NF;i++) if($i != "toolchain") print $i; exit}')
+          # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+          PREREQS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && /^test:/{for(i=2;i<=NF;i++) if($i != "toolchain") print $i; done=1}')
           if [ -z "$PREREQS" ]; then
             echo "::error::make -qp printed no prerequisites for test:"
             exit 1
@@ -387,10 +387,9 @@ jobs:
             "MIX=mix"
             "NODE=node"
           )
-          ALL_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); printf "%s%s",sep,$i; sep=","}}')
           make -j"$JOBS" bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook "${MAKE_VARS[@]}"
           unset MAKEFLAGS
-          make test-core-tables-2 SCHEMA_SKIP_LEGS="$ALL_LEGS" "${MAKE_VARS[@]}"
+          make test-core-tables-2 CONFORMANCE_ONLY=cpp "${MAKE_VARS[@]}"
 
       - name: core-tables-3 — core block, cook, runtime-home, soak, pack and hostile gates
         if: matrix.shard == 'core-tables-3'
@@ -478,7 +477,9 @@ jobs:
           if [ "$BASE_LEG" != "$SHARD" ]; then
             SHARD_IDX="${SHARD#${BASE_LEG}-}"
           fi
-          OTHER_LEGS=$(make -s registry "${MAKE_VARS[@]}" | awk -v keep="$BASE_LEG" '/^test:/{sep=""; for(i=2;i<=NF;i++){sub(/^test-/,"",$i); if($i!=keep){printf "%s%s",sep,$i; sep=","}}}')
+          # this leg's own pinned toolchain gate, when the leg registered a pin
+          # (make registry, toolchain:); c, go and rust register none
+          PINNED=$(make -s registry "${MAKE_VARS[@]}" | awk -v keep="$BASE_LEG" '/^toolchain:/{for(i=2;i<=NF;i++) if($i==keep) print "toolchain-" keep}')
           EXTRA_BUILDS=(bin/schema build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook)
           if [ "$BASE_LEG" = "c" ]; then
             EXTRA_BUILDS+=(build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan build/fixedform-corpus/.stamp)
@@ -493,16 +494,16 @@ jobs:
           fi
           make -j"$JOBS" "${EXTRA_BUILDS[@]}" "${MAKE_VARS[@]}"
           unset MAKEFLAGS
-          make toolchain SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+          for t in $PINNED; do make "$t" "${MAKE_VARS[@]}"; done
           run_prereq_slice() {
             local leg_target="$1" idx="$2" total="$3" filter_mode="$4"
             local all_prereqs
             if [ "$leg_target" = "test-python" ]; then
-              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
-              all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-python:" || $1 == "python-ci-support:" {for(i=2;i<=NF;i++) if($i != "python-ci-support") print $i}')
+              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '$1 == "test-python:" || $1 == "python-ci-support:" {for(i=2;i<=NF;i++) if($i != "python-ci-support") print $i}')
             else
-              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
-              all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk -v tgt="${leg_target}:" '$1 == tgt {for(i=2;i<=NF;i++) print $i; exit}')
+              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk -v tgt="${leg_target}:" '!done && $1 == tgt {for(i=2;i<=NF;i++) print $i; done=1}')
             fi
             if [ -z "$all_prereqs" ]; then
               echo "::error::make -qp printed no prerequisites for ${leg_target}:"
@@ -549,29 +550,29 @@ jobs:
             done
           }
           if [ -z "$SHARD_IDX" ]; then
-            make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+            make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
             make "test-${SHARD}" "${MAKE_VARS[@]}"
           elif [ "$BASE_LEG" = "c" ]; then
             if [ "$SHARD_IDX" = "1" ]; then
-              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
               make test-c-recipe "${MAKE_VARS[@]}"
             else
               run_prereq_slice "test-c" "$((SHARD_IDX - 1))" 2 "all"
             fi
           elif [ "$BASE_LEG" = "elixir" ]; then
             if [ "$SHARD_IDX" = "1" ]; then
-              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
               make test-elixir-recipe "${MAKE_VARS[@]}"
             fi
             run_prereq_slice "test-elixir" "$SHARD_IDX" 4 "all"
           elif [ "$BASE_LEG" = "python" ]; then
             if [ "$SHARD_IDX" = "1" ]; then
-              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
               make python-ci-packages "${MAKE_VARS[@]}"
               make python-ci-compiler "${MAKE_VARS[@]}"
             elif [ "$SHARD_IDX" = "2" ]; then
-              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
-              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-python:" {for(i=2;i<=NF;i++) if($i ~ /^python-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
+              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && $1 == "test-python:" {for(i=2;i<=NF;i++) if($i ~ /^python-wirefuzz-.*-shard-[0-9]+$/) print $i; done=1}')
               if [ -z "$WF_SHARDS" ]; then
                 echo "::error::no python-wirefuzz-*-shard-* targets found on test-python:"
                 exit 1
@@ -584,18 +585,18 @@ jobs:
             fi
           elif [ "$BASE_LEG" = "goose" ]; then
             if [ "$SHARD_IDX" = "1" ]; then
-              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
               make test-goose-recipe "${MAKE_VARS[@]}"
             else
               run_prereq_slice "test-goose" "$((SHARD_IDX - 1))" 2 "all"
             fi
           elif [ "$BASE_LEG" = "ruby" ]; then
             if [ "$SHARD_IDX" = "1" ]; then
-              make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
+              make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
               make test-ruby-recipe "${MAKE_VARS[@]}"
             elif [ "$SHARD_IDX" = "2" ]; then
-              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
-              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-ruby:" {for(i=2;i<=NF;i++) if($i ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
+              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && $1 == "test-ruby:" {for(i=2;i<=NF;i++) if($i ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) print $i; done=1}')
               if [ -z "$WF_SHARDS" ]; then
                 echo "::error::no ruby-wirefuzz-*-shard-* targets found on test-ruby:"
                 exit 1

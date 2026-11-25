@@ -39,7 +39,7 @@ table Many
 // functional test; the numbers it logs are the record in docs/PORT-PYTHON.md
 // and it asserts only that both lookups read and write the same bytes.
 //
-// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+// Functional (pythonBinary).
 func TestPythonEnumLookupBench(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, enumBenchSchema)

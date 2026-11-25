@@ -382,18 +382,12 @@ Future<int> _drive(List<String> args) async {
   final runningSdk =
       Platform.environment['SCHEMA_DART_ALLOC_SDK_VERSION'] ??
       Platform.version.split(' ').first;
-  final anySdk = Platform.environment['SCHEMA_DART_ALLOC_ANY_SDK'] == '1';
-  if (runningSdk != pinnedDartSdk && !anySdk) {
+  if (runningSdk != pinnedDartSdk) {
     stdout.writeln(
-      'FAILED: allocation certification requires Dart SDK $pinnedDartSdk (pinned in make/dart.mk), running $runningSdk; set SCHEMA_DART_ALLOC_ANY_SDK=1 to report observations without certifying',
+      'FAILED: allocation certification requires Dart SDK $pinnedDartSdk (pinned in make/dart.mk), running $runningSdk',
     );
     stdout.writeln('NOT CERTIFIED');
     return 1;
-  }
-  if (anySdk) {
-    stdout.writeln(
-      'Dart soak observation mode (SCHEMA_DART_ALLOC_ANY_SDK=1 on SDK $runningSdk, pinned $pinnedDartSdk): reporting observations only, NOT CERTIFIED',
-    );
   }
 
   final env = Map<String, String>.from(Platform.environment);

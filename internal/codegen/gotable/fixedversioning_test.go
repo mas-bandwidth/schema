@@ -816,11 +816,7 @@ func TestRefuseWritesNothing(t *testing.T) {
 // written the manifest, the C++ reference's single value oracle every
 // corpus-gated subtest reads (docs/FIXED-FORM-ALGORITHM.md §5.7 step 1). It is
 // a functional test, not a unit test — it reads build output, never a schema —
-// so it runs behind the slow gate, and a bare `go test ./...` skips it by
-// name. Under SCHEMA_REQUIRE_CORPUS=1 (every leg gate sets it) a manifest that
-// is missing or empty is a failure by name, not a skip: a target that promises
-// the oracle and then reports green having built nothing is the exact silence
-// this gate exists to forbid.
+// and a manifest that is missing or empty is a failure by name.
 func TestFixedFormCorpusBuildsOnTheBench(t *testing.T) {
 	t.Parallel()
 	path, err := filepath.Abs("../../../build/fixedform-corpus/manifest.txt")
@@ -829,10 +825,7 @@ func TestFixedFormCorpusBuildsOnTheBench(t *testing.T) {
 	}
 	info, err := os.Stat(path)
 	if err != nil || info.Size() == 0 {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
-		}
-		t.Skip("the C++ reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
 	}
 }
 
@@ -845,17 +838,8 @@ func fixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
-		// `go test ./...` on a tree that never built the oracle has nothing to
-		// read and says so; but `make tables-go-versioning` builds the corpus
-		// first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
-		// missing file means the build did not do what the target says it did
-		// — and a suite that skips itself there would report green over §5
-		// having never run, which is the whole reason this gate exists.
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		// A missing oracle fails by name; nothing skips.
+		t.Fatalf("the reference's byte oracle is not in %s (make tables-fixedform-corpus): %v", dir, err)
 	}
 	return dir
 }

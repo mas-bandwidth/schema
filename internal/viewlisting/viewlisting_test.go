@@ -53,8 +53,8 @@ func corpus(t *testing.T) []string {
 // the listing a generated program prints from UnitView() must equal it byte
 // for byte. The program's half is produced by `make tables-view`, which
 // points SCHEMA_VIEW_LISTING_DIR at the directory it wrote the listings into;
-// without it this test still holds the pin producible over the whole corpus,
-// which is what keeps `go test ./...` honest about the IR half.
+// without it the test checks the pin over the whole corpus, then fails
+// naming the missing directory: its tier is functional.
 func TestUnitViewListingMatchesTheIR(t *testing.T) {
 	dir := os.Getenv("SCHEMA_VIEW_LISTING_DIR")
 	// SCHEMA_VIEW_LISTING_UNITS narrows the comparison to named packages,
@@ -92,6 +92,9 @@ func TestUnitViewListingMatchesTheIR(t *testing.T) {
 		if string(printed) != pin {
 			t.Errorf("%s: the generated program's listing is not the compiler's.\n%s", path, firstDifference(pin, string(printed)))
 		}
+	}
+	if dir == "" {
+		t.Fatal("SCHEMA_VIEW_LISTING_DIR names no directory of generated listings to compare: make tables-view sets it")
 	}
 }
 

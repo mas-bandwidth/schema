@@ -23,7 +23,7 @@ GO ?= go
 # THE SLOW GATE. The two interpreter-driven tests skip at internal/slowtest.Gate
 # in a plain `go test ./internal/ci/` (a machine without dist/squirrel-3.2/bin/sq
 # must stay green). These targets build the interpreter first and run through
-# test/slowgate/proof, which sets SCHEMA_SLOW=1, refuses a gate skip and
+# test/slowgate/proof, which sets the rule that nothing skips, refuses a gate skip and
 # requires each named test's own --- PASS line, so a missing interpreter is red
 # and a run that tested nothing is refused, never a vacuous pass.
 schema-squirrel-runs-hostile-corpus: dist-squirrel

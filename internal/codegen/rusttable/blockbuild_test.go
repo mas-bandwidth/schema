@@ -183,10 +183,7 @@ func blockProbeRun(t *testing.T, spillTo string) map[string]string {
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the emitted runtime cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the emitted runtime cannot be built or run: %v", err)
 	}
 	out := generate(t, blockBuildCookSchema)
 	root := t.TempDir()
@@ -364,11 +361,7 @@ int main(int argc, char** argv) {
 // side) and §7.6 (the cook write), held against the running runtime.
 //
 // THIS IS A FUNCTIONAL TEST: it compiles the emitted Rust runtime with rustc
-// and the emitted C++ block reader with c++, and RUNS both, so it skips by
-// name when either compiler is absent and SCHEMA_REQUIRE_CORPUS is unset, and
-// fails by name when SCHEMA_REQUIRE_CORPUS=1. The make target
-// tables-rust-block-build runs it with that variable set, so the target never
-// passes on a SKIP.
+// and the emitted C++ block reader with c++, and RUNS both, so it fails by name when either compiler is absent. The make target tables-rust-block-build runs it too.
 //
 // THE PINS ARE THE RUNNING RUNTIME'S OWN BYTES, not the emitter's text: the
 // block image the Rust builder writes is compared byte for byte against the
@@ -382,10 +375,7 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 
 	t.Parallel()
 	if _, err := exec.LookPath("c++"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and c++ is not on PATH, so the C++ reader cannot open the Rust-built block: %v", err)
-		}
-		t.Skipf("c++ is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs the C++ reader: %v", err)
+		t.Fatalf("c++ is not on PATH, so the C++ reader cannot open the Rust-built block: %v", err)
 	}
 
 	got := blockProbeRun(t, os.Getenv("SCHEMA_RUST_BLOCK_OUT"))
@@ -502,8 +492,7 @@ func TestBlockBuildAndCookWriteRust(t *testing.T) {
 // the other byte order are each refused by their own Open (docs/SPEC-TABLES.md
 // §7.1, §19.2). The cook-foreign and block-foreign surfaces reverse the magic;
 // this holds the order word alone. A FUNCTIONAL test: it compiles and runs
-// Rust, and fails by name when SCHEMA_REQUIRE_CORPUS is set and rustc is
-// missing.
+// Rust, and fails by name when rustc is missing.
 func TestRustOtherOrderWordIsRefused(t *testing.T) {
 	t.Parallel()
 	got := blockProbeRun(t, "")

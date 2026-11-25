@@ -261,10 +261,7 @@ func runSetterProbe(t *testing.T, u *ir.Unit, files map[string][]byte, edit func
 	t.Helper()
 	serialize, ok := setterSerializeDir(t)
 	if !ok {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says this probe must run", serialize)
-		}
-		t.Skipf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout): the selector probe cannot compile", serialize)
+		t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
 	}
 	dir := t.TempDir()
 	var includes []string

@@ -90,7 +90,6 @@ func TestLuaWideKindsJson(t *testing.T) {
 			inst := model.New(root)
 			var report tabletext.Report
 			if ok := model.Read(inst, text, &report); !ok {
-				t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 				t.Fatalf("the Go engine refused %s: %+v", text, report)
 			}
 			wantText, err := model.Write(inst)

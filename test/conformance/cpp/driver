@@ -21,7 +21,6 @@ list)
     echo cook
     echo cook-foreign
     echo cook-forgery
-    echo cook-reason
     ;;
 cook)
     # one line per cook, from the derived manifest:

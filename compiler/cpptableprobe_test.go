@@ -20,7 +20,7 @@ func runCppTableProbe(t *testing.T, files map[string][]byte, source string) {
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("generated C++ execution requires c++")
+		t.Fatal("generated C++ execution requires c++")
 	}
 	dir := t.TempDir()
 	for name, data := range files {

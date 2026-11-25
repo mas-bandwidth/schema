@@ -54,7 +54,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -614,15 +613,8 @@ func fixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
-		// `go test ./...` on a tree that never built the oracle has nothing to
-		// read and says so; but `make tables-elixir-versioning` builds the
-		// corpus first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
-		// missing file means the build did not do what the target says it did.
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		// a missing oracle fails by name: make tables-fixedform-corpus builds it
+		t.Fatalf("the reference's byte oracle is not in %s: %v", dir, err)
 	}
 	return dir
 }
@@ -635,8 +627,8 @@ func fixedCorpus(t *testing.T) string {
 // pinned dist/ tree, and THE ELIXIR ON PATH — which is the CI shape, where
 // setup-beam installs the pinned versions on PATH and dist/ is not in the job
 // at all (the negative-controls group overrides ELIXIR=elixir and nothing
-// else). A bench with no Elixir anywhere still skips, and still FAILS under
-// SCHEMA_REQUIRE_CORPUS: the leg's gate is never satisfied by absence.
+// else). A bench with no Elixir anywhere FAILS by name: the leg's gate is
+// never satisfied by absence.
 func elixirBinary(t *testing.T) string {
 
 	t.Helper()
@@ -658,10 +650,7 @@ func elixirBinary(t *testing.T) string {
 	if found, err := exec.LookPath("elixir"); err == nil {
 		return found
 	}
-	if slowtest.CorpusRequired() {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no Elixir is on this bench: not at %s and not on PATH", bin)
-	}
-	t.Skip("no Elixir: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+	t.Fatalf("no Elixir is on this bench: not at %s and not on PATH", bin)
 	return ""
 }
 
@@ -1148,10 +1137,7 @@ func TestFixedVersioningReadsTheManifest(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and %s/manifest.txt is missing: %v", corpus, err)
-		}
-		t.Skip("the tree carries no corpus manifest")
+		t.Fatalf("%s/manifest.txt is missing: %v", corpus, err)
 	}
 	fired := 0
 	for _, r := range versionRows {

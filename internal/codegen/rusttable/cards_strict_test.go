@@ -74,10 +74,7 @@ func requireRustcForCards(t *testing.T) string {
 			return candidate
 		}
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH")
-	}
-	t.Skip("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset")
+	t.Fatalf("rustc is not on PATH")
 	return ""
 }
 

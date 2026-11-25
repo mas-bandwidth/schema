@@ -153,9 +153,6 @@ func TestSpecInPlaceListHasAGuard(t *testing.T) {
 func TestJSFixedInPlaceEqualsSharedPath(t *testing.T) {
 
 	t.Parallel()
-	if !specInPlaceLanguages(t)["javascript"] {
-		t.Skip("docs/SPEC-TABLES.md §3.4 does not list javascript: there is no in-place path to compare")
-	}
 	node := jsNode(t)
 	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
 	files, err := js.Generate(u)

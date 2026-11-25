@@ -1,8 +1,9 @@
 // testguard reads test results and fails a CI run whose tests did not
-// really run or did not pass: a failure or an incomplete run, a skip the
-// repository's ledger does not hold, a suite that is missing or ran nothing, a
-// pair of a required coverage table that no test covers, or a test that ran
-// and that the baseline does not list, or the reverse. It reads result files
+// really run or did not pass: a failure or an incomplete run, any skip (no
+// test may skip; one that is not to run is left out at the root), a suite
+// that is missing or ran nothing, a pair of a required coverage table that no
+// test covers, or a test that ran and that the baseline does not list, or the
+// reverse. It reads result files
 // and a config file, runs only the commands the config names for coverage
 // tables, and writes nothing unless asked to add tests to the baseline.
 // `testguard help` is the manual.
@@ -161,8 +162,7 @@ const banner = `testguard: fails a CI run whose tests did not really run, or did
 It reads test result files and the repository's checked-in config, and finds:
   failed       a test that failed, or started and never ended; a count line with failed > 0
   incomplete   a run that bailed out, missed its plan, repeated a test, or failed outside a test
-  skip         a skipped, ignored or pending test the config's ledger does not hold
-  stale-skip   a ledgered skip that did not skip (it ran, or it is gone)
+  skip         a skipped, ignored or pending test: a skip is a failure, and no line allows one
   missing-suite, empty-suite   a registered suite absent from the results, or one that ran 0 tests
   unregistered-suite           a suite that ran tests and that the config does not name
   uncovered    a pair of a required coverage table (rows x columns) no test covers and no gap holds
@@ -196,7 +196,6 @@ usage:
 --config FILE     the config, tab-separated, one entry per line ('#' starts a comment); fields
                   have no leading or trailing blanks:
   suite     NAME                           a suite that must run at least one test (one at least)
-  skip      SUITE   TEST   REASON          a skip that is allowed, and must happen
   cover     TABLE   rows|columns|pairs   file PATH | run COMMAND
                                            a required table: every row x column pair must be
                                            covered. rows and columns list one name a line; pairs
@@ -216,7 +215,7 @@ usage:
 RESULT            a result file, its format chosen by extension or a prefix (junit:, gojson:,
                   tap:, count:)
 
-A test is SUITE<TAB>TEST, as a skip line holds it. The suite is: a go package; a JUnit
+A test is SUITE<TAB>TEST. The suite is: a go package; a JUnit
 testsuite's name (a test is CLASSNAME.NAME); a TAP file's name without its extension (a test
 is its description, or its number; a subtest is PARENT/NAME); a count log's last line, its prefix
 before the colon or else the file's name (a count names no tests or skips; its floor is #count).
