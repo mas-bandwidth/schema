@@ -28,7 +28,9 @@
 #
 # THE ROW'S TOOLS. Every target make/negative-controls.json puts in the moo
 # group names the pin's interpreter and analyzer under MOO_DIST, the place
-# .github/actions/moo installs and checks. A target-specific assignment wins
+# .github/actions/moo installs and checks, and its toolchain gate is
+# toolchain-moo-dist (make/moo.mk), which builds MOO_DIST first: the fleet
+# SDK's pin, else dist-moo. A target-specific assignment wins
 # over the runner's environment, and moo.mk exports both names to the recipe,
 # so a runner that names another moo cannot select it. A command-line
 # assignment still wins, so a developer can name another build.
@@ -59,7 +61,7 @@ schema-moo-generated-analyze-strict-gate: toolchain-moo
 # local (a lint warning, on which it EXITS 0). Each must red the gate with
 # exactly one diagnostic, its own kind, on the planted line.
 .PHONY: schema-moo-generated-analyze-strict-gate-negative-control
-schema-moo-generated-analyze-strict-gate-negative-control: toolchain-moo
+schema-moo-generated-analyze-strict-gate-negative-control: toolchain-moo-dist
 	sh test/slowgate/proof schema-moo-generated-analyze-strict-gate-negative-control \
 		'TestMooGeneratedAnalyzeStrictGatePlantedPattern/type-error TestMooGeneratedAnalyzeStrictGatePlantedPattern/lint-warning' \
 		./internal/codegen/moo -run '^TestMooGeneratedAnalyzeStrictGatePlantedPattern$$' -count=1
@@ -68,7 +70,7 @@ schema-moo-generated-analyze-strict-gate-negative-control: toolchain-moo
 # commit is refused, naming both commits; beside the true PIN it is accepted,
 # so the refusal is the PIN and nothing else.
 .PHONY: schema-moo-generated-analyze-strict-gate-pin-negative-control
-schema-moo-generated-analyze-strict-gate-pin-negative-control: toolchain-moo
+schema-moo-generated-analyze-strict-gate-pin-negative-control: toolchain-moo-dist
 	sh test/slowgate/proof schema-moo-generated-analyze-strict-gate-pin-negative-control \
 		'TestMooGeneratedAnalyzeStrictGatePinNegativeControl' \
 		./internal/codegen/moo -run '^TestMooGeneratedAnalyzeStrictGatePinNegativeControl$$' -count=1
@@ -81,7 +83,7 @@ schema-moo-generated-analyze-strict-gate-pin-negative-control: toolchain-moo
 # bool written twice in the generated writer, so exactly the goldens that
 # carry that field must stop matching the C++ reference's bytes.
 .PHONY: packet-wire-moo-negative-control
-packet-wire-moo-negative-control: toolchain-moo
+packet-wire-moo-negative-control: toolchain-moo-dist
 	sh test/slowgate/proof packet-wire-moo-negative-control \
 		'TestMooTypeWireWriteNegativeControl' \
 		./internal/codegen/moo -run '^TestMooTypeWireWriteNegativeControl$$' -count=1
@@ -89,7 +91,7 @@ packet-wire-moo-negative-control: toolchain-moo
 # packet-analyze-moo-negative-control: layer 1's analyzer control, an unused
 # local planted in a generated module, which the analyzer must name.
 .PHONY: packet-analyze-moo-negative-control
-packet-analyze-moo-negative-control: toolchain-moo
+packet-analyze-moo-negative-control: toolchain-moo-dist
 	sh test/slowgate/proof packet-analyze-moo-negative-control \
 		'TestMooAnalyzerGateNegativeControl' \
 		./internal/codegen/moo -run '^TestMooAnalyzerGateNegativeControl$$' -count=1
@@ -105,7 +107,7 @@ packet-analyze-moo-negative-control: toolchain-moo
 MOO_WIRE_NC_DIR := build/packet-wire-moo-negative
 MOO_WIRE_NC_RED := inputpacket joins probearray rigidbody_at_rest rigidbody_moving shipcreate_flags testdata
 .PHONY: packet-wire-moo-emitter-negative-control
-packet-wire-moo-emitter-negative-control: toolchain-moo
+packet-wire-moo-emitter-negative-control: toolchain-moo-dist
 	@rm -rf $(MOO_WIRE_NC_DIR) && mkdir -p $(MOO_WIRE_NC_DIR)
 	go run ./tools/sabotage -name packet-wire-moo-bool-twice \
 		-out $(MOO_WIRE_NC_DIR)/wire.gotext internal/codegen/moo/wire.go
