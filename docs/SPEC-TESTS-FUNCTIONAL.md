@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2240. Language-free tests: 483.
+Functional tests every language answers: 2240. Language-free tests: 484.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -3083,7 +3083,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 |---|---|---|---|---|---|
 | `none.functional.tooling.gotestrun.verdict` | `gotest` | Go test TestVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestVerdict` | the Go test passes | `tools/gotestrun/main_test.go:48` |
 
-#### `tooling` family `harness`, 52 tests
+#### `tooling` family `harness`, 53 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3098,6 +3098,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.harness.coverage-implementation-failure-cannot-be-overridden-by-receipts` | `gotest` | Go test TestCoverageImplementationFailureCannotBeOverriddenByReceipts in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCoverageImplementationFailureCannotBeOverriddenByReceipts` | the Go test passes | `test/conformance/harness/readiness_test.go:178` |
 | `none.functional.tooling.harness.cross-read-accepts-a-faithful-port` | `gotest` | Go test TestCrossReadAcceptsAFaithfulPort in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCrossReadAcceptsAFaithfulPort` | the Go test passes | `test/conformance/harness/crossread_test.go:96` |
 | `none.functional.tooling.harness.cross-read-port-bytes-not-cpps` | `gotest` | Go test TestCrossReadPortBytesNotCpps in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCrossReadPortBytesNotCpps` | the Go test passes | `test/conformance/harness/crossread_test.go:116` |
+| `none.functional.tooling.harness.cross-read-re-reads-authored-texts` | `gotest` | Go test TestCrossReadReReadsAuthoredTexts in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCrossReadReReadsAuthoredTexts` | the Go test passes | `test/conformance/harness/crossread_test.go:176` |
 | `none.functional.tooling.harness.cross-read-reference-refuses` | `gotest` | Go test TestCrossReadReferenceRefuses in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCrossReadReferenceRefuses` | the Go test passes | `test/conformance/harness/crossread_test.go:136` |
 | `none.functional.tooling.harness.cross-read-reference-resaves-differently` | `gotest` | Go test TestCrossReadReferenceResavesDifferently in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCrossReadReferenceResavesDifferently` | the Go test passes | `test/conformance/harness/crossread_test.go:148` |
 | `none.functional.tooling.harness.cross-read-skips-absent-cases` | `gotest` | Go test TestCrossReadSkipsAbsentCases in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestCrossReadSkipsAbsentCases` | the Go test passes | `test/conformance/harness/crossread_test.go:160` |

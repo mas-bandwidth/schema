@@ -329,7 +329,8 @@ testdata/conformance/tables/FORMAT.md, test/conformance/harness/jsontext.go): a
 leg's `json-read` runs on its manifest plus one `instance` line per such row,
 whose text in `json/<case>.json` arrives out of canonical order, so a leg whose
 builder keeps insertion order answers it wrong while every instance stays green
-(docs/SPEC-TABLES.md §22.7).
+(docs/SPEC-TABLES.md §22.7). `harness cross-read` re-reads a leg's answer to each
+such row as it does an instance's (crossread.go).
 
 **FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §7):
 
