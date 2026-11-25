@@ -386,3 +386,54 @@ func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
 		t.Fatal("a make input that is not one target was accepted")
 	}
 }
+
+// TestAPlantedGoSkipIsRedThroughTheAdapter: the gotest adapter runs a real
+// go test over a planted module, and a test that calls t.Skip and a test
+// whose subtest skips each fail by name. go test itself reports the first
+// as skipped and the second as passed, so with the adapter's skip handling
+// planted out the first would be no verdict and the second a pass; a test
+// beside them that runs passes. It runs the Go toolchain, so it is
+// functional (docs/rulings.json no-skips: the run-time gate).
+func TestAPlantedGoSkipIsRedThroughTheAdapter(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for f, body := range map[string]string{
+		"go.mod":      "module plant\n\ngo 1.21\n",
+		"p/p_test.go": "package p\n\nimport \"testing\"\n\nfunc TestSkips(t *testing.T) { t.Skip(\"no cc on PATH\") }\n\nfunc TestSubSkips(t *testing.T) {\n\tt.Run(\"needs_cc\", func(t *testing.T) { t.Skip(\"no cc on PATH\") })\n\tt.Run(\"runs\", func(t *testing.T) {})\n}\n\nfunc TestRuns(t *testing.T) {}\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inst := func(test string) testreg.Instance {
+		key := "tooling.plant." + strings.ToLower(test)
+		return testreg.Instance{Full: testreg.LangFree + ".functional." + key, Lang: testreg.LangFree, Test: testreg.Test{
+			Key: key, Scope: testreg.LangFree, Adapter: "gotest", Tier: "functional",
+			Inputs: []byte(`{"package":"./p","test":"` + test + `"}`)}}
+	}
+	insts := []testreg.Instance{inst("TestSkips"), inst("TestSubSkips"), inst("TestRuns")}
+	res, err := newGoTestAdapter(nil, root, 1).Run(context.Background(), "", insts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]testreg.Result{}
+	for _, r := range res {
+		got[r.Instance] = r
+	}
+	if r := got[insts[0].Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "the Go test skipped") || !strings.Contains(r.Reason, "no cc on PATH") {
+		t.Errorf("a planted t.Skip: %+v", r)
+	}
+	if r := got[insts[1].Full]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "subtests skipped") || !strings.Contains(r.Reason, "needs_cc") {
+		t.Errorf("a planted subtest skip: %+v", r)
+	}
+	if r := got[insts[2].Full]; r.Verdict != testreg.Pass {
+		t.Errorf("a test that runs: %+v", r)
+	}
+	if len(res) != 3 {
+		t.Errorf("want one result per row, got %+v", res)
+	}
+}

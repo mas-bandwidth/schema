@@ -105,6 +105,8 @@ import (
 //	               head.repo.fork) when no job of a workflow that runs on
 //	               pull requests runs, by its own condition, on them (the
 //	               fork lane: !=, or head.repo.fork)
+//	plant-run      a script, recipe or step that names a path under
+//	               testdata/plants/ (planted data, which no lane runs)
 //	native-skip    a test framework's own skip in a driver (it.skip, xit,
 //	               #[ignore], Skip = "...", @tag :skip, unittest.skip,
 //	               pytest.mark.skip, @Disabled, @Ignore, skip_if, skipTest)
@@ -125,11 +127,27 @@ import (
 // checkout, as in the planted tree, every such directory is scanned);
 // third_party/ (vendored
 // sibling code, owned by its own repository); working/ (scratch); docs
-// (prose about the rule, and history); and the files noSkipsExempt names,
-// each with its reason. A
-// testdata/ directory is scanned like any other, since driver sources live
-// under some of them; a planted fixture there is named in noSkipsExempt.
+// (prose about the rule, and history); and planted data, every file under a
+// plants/ directory directly inside a testdata/ directory (plantedData): a
+// fixture a scanner or a reader refuses, which no lane runs, and a recipe,
+// script or workflow naming such a path is plant-run. No list names a file
+// the scan does not read. Any other testdata/ directory is scanned like any
+// other, since driver sources live under some of them.
 // Inside this file, the plants are strings.
+//
+// Limits. This scan is a backstop, read statically, and cannot be complete:
+// a skip is known by its shape, and a shape it does not know passes it. It
+// reads Go through names, "+", Sprint calls and probes one package away, and
+// scripts, recipes and workflows line by line and condition by condition. It
+// does not follow a notice held in a struct field, a slice, a function's
+// result, strings.Join or another package's constant; a print through
+// io.WriteString, a Write method, a wrapped or passed writer, or slog; a
+// lowercase "skip" alone; a probe behind a dot import or two packages away;
+// a workflow condition that can never hold (false && ..., a lane combined
+// with a contrary condition or limited to closed pull requests), a YAML
+// anchor, or a job kept off forks by a secret. What enforces the rule is the
+// run itself: the driver (tools/schema-test) fails any test that reports a
+// skip, any row that did not run, and a run of 0 tests.
 func noSkips(root string) ([]string, error) {
 	tracked, trackedFiles, err := trackedDirs(root)
 	if err != nil {
@@ -543,8 +561,16 @@ var driverExt = map[string]bool{
 	".cpp": true, ".hpp": true, ".moo": true, ".goose": true, ".lobster": true,
 }
 
+// plantedData is a file under a plants/ directory directly inside a
+// testdata/ directory: a fixture planted for a scanner or a reader to
+// refuse, read by its tool as data and run by no lane. A recipe, script or
+// workflow that names such a path runs it, and is plant-run.
+func plantedData(rel string) bool {
+	return strings.Contains("/"+rel, "/testdata/plants/")
+}
+
 func noSkipsFile(path, rel string, probes *probeIndex) ([]string, error) {
-	if _, ok := noSkipsExempt[rel]; ok {
+	if plantedData(rel) {
 		return nil, nil
 	}
 	base := filepath.Base(rel)
@@ -609,6 +635,9 @@ func noSkipsFile(path, rel string, probes *probeIndex) ([]string, error) {
 			}
 			if inlineSelect.MatchString(code) {
 				hit(n, "inline-select", line)
+			}
+			if strings.Contains(code, "testdata/plants/") {
+				hit(n, "plant-run", line)
 			}
 			if skipAssign.MatchString(code) {
 				hit(n, "skip-var", line)
@@ -1467,7 +1496,7 @@ func goProbeIndex(root string, files []string) (*probeIndex, error) {
 	var gofiles []string
 	for _, f := range files {
 		if strings.HasSuffix(f, ".go") {
-			if _, ok := noSkipsExempt[f]; !ok {
+			if !plantedData(f) {
 				gofiles = append(gofiles, f)
 			}
 		}
@@ -1967,6 +1996,8 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	{"tools/run12/main.go", "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"2 tests skipped: no interpreter\")\n}\n", "go-skip-print"},
 	// a one-line condition with a trailing comment
 	{".github/workflows/cr.yml", "on: push\njobs:\n  a:\n    if: false # off for now\n    steps:\n      - run: make check\n", "if-false"},
+	// a recipe that runs planted data
+	{"make/pr.mk", "pr-test:\n\tsh test/x/testdata/plants/run.sh\n", "plant-run"},
 }
 
 // TestNoSkipMechanismIsPlanted plants one skip of each kind in a scratch tree
@@ -2026,6 +2057,8 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 		// spelling, and a parameter, hold none
 		"q/shadow.go":      "package q\n\nconst msg = \"skipped: no cc\"\n",
 		"q/shadow_test.go": "package q\n\nimport \"testing\"\n\nfunc say(t *testing.T, msg string) { t.Log(msg) }\n\nfunc TestShadow(t *testing.T) {\n\tmsg := \"ran fine\"\n\tt.Log(msg)\n\tsay(t, \"ran\")\n}\n",
+		// planted data: a fixture a scanner refuses, read as data, never run
+		"q/testdata/plants/z_test.go": "package z\n\nimport \"testing\"\n\nfunc TestZ(t *testing.T) {\n\tt.Skip(\"planted\")\n}\n",
 		// a nested module and its probe
 		"n/go.mod":     "module example.com/nested // the nested module\n",
 		"n/lib/lib.go": "package lib\n\nimport \"os/exec\"\n\nfunc Have(tool string) bool {\n\t_, err := exec.LookPath(tool)\n\treturn err == nil\n}\n",
@@ -2498,35 +2531,4 @@ func failsHere(st ast.Stmt) bool {
 		}
 	}
 	return false
-}
-
-// noSkipsExempt are the files the scan does not read, each with its reason.
-// TestNoSkipExemptionsAreCurrent holds every one to a file that exists.
-var noSkipsExempt = map[string]string{
-	// a client-side push guard, not a test: it refuses an agent clone's
-	// push of a commit not authored by the agent, and by design does nothing
-	// in a clone that is not an agent's (maintainers, outside contributors)
-	".githooks/pre-push": "a push guard scoped to agent clones, not a test",
-	// tools/gotestreport's record corpus: the real `go test -json` run of a
-	// test that skips once is what gotestreport must refuse (F-175)
-	"tools/gotestreport/testdata/recordgen/ledgertest/ledger_test.go": "a planted skip record gotestreport refuses",
-	// internal/recipescan's planted recipes: a lock cleanup and a fixture
-	// driver the scanner reads as text, never run
-	"internal/recipescan/testdata/stamp-correct.mk":                     "a planted recipe the recipe scanner reads, never run",
-	"internal/recipescan/testdata/stamp-touch-lost.mk":                  "a planted recipe the recipe scanner reads, never run",
-	"internal/recipescan/testdata/tree/test/conformance/fixture/driver": "a planted driver the recipe scanner reads, never run",
-}
-
-// TestNoSkipExemptionsAreCurrent: every exempt file exists, so an exemption
-// cannot outlive its file and quietly cover a new one of the same name.
-func TestNoSkipExemptionsAreCurrent(t *testing.T) {
-	t.Parallel()
-	for f, why := range noSkipsExempt {
-		if why == "" {
-			t.Errorf("%s is exempt with no reason", f)
-		}
-		if _, err := os.Stat(filepath.Join("..", "..", f)); err != nil {
-			t.Errorf("%s is exempt from the skip scan and does not exist: drop it (%v)", f, err)
-		}
-	}
 }

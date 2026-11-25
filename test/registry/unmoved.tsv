@@ -310,10 +310,11 @@ data-case	internal/modulemove/pincorpus/testdata/pin/versions	2	L4	corpus data a
 data-case	internal/publicapi/testdata/client	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/publicapi/testdata/client/vocabulary	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/publicapi/testdata/vocabulary	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/tree	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/tree/test/conformance/fixture	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/recipescan/testdata/tree/tools	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/recipescan/testdata	8	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/recipescan/testdata/plants	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/recipescan/testdata/plants/tree	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/recipescan/testdata/plants/tree/test/conformance/fixture	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/recipescan/testdata/plants/tree/tools	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/recipescan/testdata/workflow	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/tablepack/testdata/docclaims	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/tablepack/testdata/docclaims/bound-shrunk	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1065,7 +1066,7 @@ data-case	testdata/wire/tables/prior	3	L4	corpus data and harnesses: each langua
 data-case	testdata/wire/tables/storage-cap	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/storage-cap/wide	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/recordgen	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	tools/gotestreport/testdata/recordgen/ledgertest	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	tools/gotestreport/testdata/plants/ledgertest	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/records/f175-control-pass-twice	14	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/records/f175-skip-then-pass	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	tools/gotestreport/testdata/records/f177-budget-only	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

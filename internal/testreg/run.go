@@ -86,7 +86,7 @@ const (
 // Report is a run's whole account. Expected counts every selected instance
 // that is not declared unrepresentable; Ran counts those an adapter
 // reported. A run is green only when nothing failed, nothing is missing,
-// no adapter reported a stray result, and Expected == Ran == Passed.
+// no adapter reported a stray result, and Expected == Ran == Passed > 0.
 type Report struct {
 	Expected, Ran, Passed, Failed, Missing, Unrep int
 	Outcomes                                      []Outcome
@@ -95,7 +95,7 @@ type Report struct {
 
 // OK reports whether the run is green.
 func (r *Report) OK() bool {
-	return len(r.Problems) == 0 && r.Failed == 0 && r.Missing == 0 && r.Expected == r.Ran && r.Passed == r.Expected
+	return len(r.Problems) == 0 && r.Failed == 0 && r.Missing == 0 && r.Expected == r.Ran && r.Passed == r.Expected && r.Expected > 0
 }
 
 // Summary is the counts line every run prints.
@@ -392,6 +392,10 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	sort.SliceStable(rep.Outcomes, func(i, j int) bool { return rank(rep.Outcomes[i].Status) < rank(rep.Outcomes[j].Status) })
 	if rep.Expected != rep.Ran {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("expected %d instances to run, %d ran", rep.Expected, rep.Ran))
+	}
+	// a run that ran nothing proves nothing: it is red, never a pass of 0
+	if rep.Expected == 0 {
+		rep.Problems = append(rep.Problems, "the run had no instance to run, and a run of 0 tests is no pass")
 	}
 	return rep
 }

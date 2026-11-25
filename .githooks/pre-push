@@ -13,7 +13,10 @@ set -u
 login=rowan-claude
 email=305107455+rowan-claude@users.noreply.github.com
 
-[ "$(git config user.email)" = "$email" ] || exit 0
+# the guard is for agent clones; another clone's push has nothing to check
+if [ "$(git config user.email)" != "$email" ]; then
+  exit 0
+fi
 
 ok() { # name, email
   [ "$1" = "Rowan Claude" ] && [ "$2" = "$email" ]

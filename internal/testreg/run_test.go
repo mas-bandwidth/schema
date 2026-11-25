@@ -197,6 +197,15 @@ func TestExpectedNotRanFails(t *testing.T) {
 	wantRed(t, rep, "the fake adapter did not report it", "expected 3 instances to run, 2 ran")
 }
 
+// TestARunOfNoTestsFails: a run with no instance to run is red, by name: it
+// proves nothing, so it is never a pass of 0 (docs/rulings.json no-skips).
+// Planted: without the check, Expected == Ran == Passed == 0 reads green.
+func TestARunOfNoTestsFails(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	wantRed(t, runner(reg, fake{}).Run(context.Background(), nil), "a run of 0 tests is no pass")
+}
+
 func TestAResultNobodyAskedForFails(t *testing.T) {
 	t.Parallel()
 	reg := load(t, fixture)
