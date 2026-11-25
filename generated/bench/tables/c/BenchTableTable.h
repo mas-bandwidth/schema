@@ -20564,6 +20564,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_entity_body_pack_( struct bench
     benchtable_table_cook_put( at + 28, (uint64_t) value->vel_y, 4, order );
     benchtable_table_cook_put( at + 32, (uint64_t) value->vel_z, 4, order );
     benchtable_table_cook_put( at + 36, (uint64_t) value->health, 4, order );
+    schema_assert( !( (uint64_t) ( value->weapon ) > 15 ) );
     benchtable_table_cook_put( at + 40, (uint64_t) value->weapon, 1, order );
     benchtable_table_cook_put( at + 48, (uint64_t) value->damage, 8, order );
     benchtable_table_cook_put( at + 56, value->moving ? 1 : 0, 1, order );

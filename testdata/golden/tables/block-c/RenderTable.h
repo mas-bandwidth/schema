@@ -33453,7 +33453,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_ship_body_pack_( struct blockde
         blockdemo_table_cook_put( at + 72, bits, 4, order );
     }
     blockdemo_table_cook_put( at + 76, (uint64_t) value->object_sequence, 1, order );
+    schema_assert( !( (uint64_t) ( value->ship_type ) > 3 ) );
     blockdemo_table_cook_put( at + 77, (uint64_t) value->ship_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 78, (uint64_t) value->team, 1, order );
     blockdemo_table_cook_put( at + 79, value->has_target_lock ? 1 : 0, 1, order );
     blockdemo_table_cook_put( at + 80, value->predicted_explode ? 1 : 0, 1, order );
@@ -33492,6 +33494,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_turret_body_pack_( struct block
     blockdemo_table_cook_put( at + 48, (uint64_t) value->turret_index, 4, order );
     blockdemo_table_cook_put( at + 52, (uint64_t) value->target_object_id, 4, order );
     blockdemo_table_cook_put( at + 56, (uint64_t) value->object_sequence, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 57, (uint64_t) value->team, 1, order );
     blockdemo_table_cook_put( at + 58, value->has_target_lock ? 1 : 0, 1, order );
     return 1;
@@ -33527,7 +33530,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_missile_body_pack_( struct bloc
     blockdemo_table_cook_put( at + 56, (uint64_t) value->flags, 8, order );
     blockdemo_table_cook_put( at + 64, (uint64_t) value->object_id, 4, order );
     blockdemo_table_cook_put( at + 68, (uint64_t) value->object_sequence, 1, order );
+    schema_assert( !( (uint64_t) ( value->missile_type ) > 2 ) );
     blockdemo_table_cook_put( at + 69, (uint64_t) value->missile_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 70, (uint64_t) value->team, 1, order );
     return 1;
 }
@@ -33562,7 +33567,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_body_pack_( struct
     blockdemo_table_cook_put( at + 56, (uint64_t) value->flags, 8, order );
     blockdemo_table_cook_put( at + 64, (uint64_t) value->object_id, 4, order );
     blockdemo_table_cook_put( at + 68, (uint64_t) value->object_sequence, 1, order );
+    schema_assert( !( (uint64_t) ( value->prop_type ) > 3 ) );
     blockdemo_table_cook_put( at + 69, (uint64_t) value->prop_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 70, (uint64_t) value->team, 1, order );
     return 1;
 }
@@ -33602,7 +33609,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_body_pack_( struct 
     }
     blockdemo_table_cook_put( at + 64, (uint64_t) value->flags, 8, order );
     blockdemo_table_cook_put( at + 72, (uint64_t) value->static_prop_id, 4, order );
+    schema_assert( !( (uint64_t) ( value->prop_type ) > 3 ) );
     blockdemo_table_cook_put( at + 76, (uint64_t) value->prop_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 77, (uint64_t) value->team, 1, order );
     return 1;
 }
@@ -33643,7 +33652,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_body_pack_( struc
     blockdemo_table_cook_put( at + 64, (uint64_t) value->flags, 8, order );
     blockdemo_table_cook_put( at + 72, (uint64_t) value->cosmetic_prop_id, 4, order );
     blockdemo_table_cook_put( at + 76, (uint64_t) value->prop_sequence, 1, order );
+    schema_assert( !( (uint64_t) ( value->prop_type ) > 3 ) );
     blockdemo_table_cook_put( at + 77, (uint64_t) value->prop_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 78, (uint64_t) value->team, 1, order );
     return 1;
 }
@@ -33682,7 +33693,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_laser_body_pack_( struct blockd
         blockdemo_table_cook_put( at + 48, bits, 8, order );
     }
     blockdemo_table_cook_put( at + 56, (uint64_t) value->laser_id, 4, order );
+    schema_assert( !( (uint64_t) ( value->laser_type ) > 2 ) );
     blockdemo_table_cook_put( at + 60, (uint64_t) value->laser_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 61, (uint64_t) value->team, 1, order );
     return 1;
 }
@@ -33722,7 +33735,9 @@ static SCHEMA_UNUSED int schema_blockdemo_render_explosion_body_pack_( struct bl
     }
     blockdemo_table_cook_put( at + 64, (uint64_t) value->explosion_id, 4, order );
     blockdemo_table_cook_put( at + 68, (uint64_t) value->parent_object_id, 4, order );
+    schema_assert( !( (uint64_t) ( value->explosion_type ) > 2 ) );
     blockdemo_table_cook_put( at + 72, (uint64_t) value->explosion_type, 1, order );
+    schema_assert( !( (uint64_t) ( value->team ) > 4 ) );
     blockdemo_table_cook_put( at + 73, (uint64_t) value->team, 1, order );
     return 1;
 }

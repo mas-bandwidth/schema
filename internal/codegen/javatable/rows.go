@@ -576,6 +576,18 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 		compressed += fmt.Sprintf(".minCount(%d)", f.ArrayMin)
 	}
+	// an ENUM slot carries its variant set, so the cook can refuse an
+	// ordinal past it (docs/SPEC.md §5.1 row 5) and a deprecated variant
+	// (docs/SPEC-TABLES.md §2.15) before it writes (§7.6)
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed && !f.Type.Pointer {
+		compressed += fmt.Sprintf(".variants(%d", len(en.Variants))
+		for i := range en.Variants {
+			if variantDeprecated(en, i) {
+				compressed += fmt.Sprintf(", %d", i+1)
+			}
+		}
+		compressed += ")"
+	}
 	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)%s",
 		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
 		cookStorageKind(f), names, compressed)
