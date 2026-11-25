@@ -414,7 +414,15 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 // answers it (a ready language, one with an adapter, that does not declare it
 // unrepresentable), and its driver only for those languages. A
 // row no adapter answers, and the driver of a language with no adapter, stay
-// unmoved.
+// unmoved. A language-free row (scope none) runs through the adapter it
+// names, so it indexes the files its inputs name (a Go test that replays a
+// committed case folder), and one that names no adapter indexes nothing.
+// filesHeld are the language-free adapters that hold a row to the files its
+// inputs name: gotest fails a row whose files are gone before it runs, and
+// its rows' tests read exactly those files. A language-free row of another
+// adapter indexes no files.
+var filesHeld = map[string]bool{"gotest": true}
+
 func Indexed(reg *testreg.Registry) map[string]string {
 	out := map[string]string{}
 	claim := func(id, key string) {
@@ -422,8 +430,35 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			out[id] = key
 		}
 	}
+	dataCase := func(f, key string) {
+		dir, name := path.Split(f)
+		if strings.HasSuffix(name, ".jsonl") || name == "" {
+			return // each line of a .jsonl file is a case of its own
+		}
+		stem := name
+		if i := strings.Index(name[1:], "."); i >= 0 {
+			stem = name[:i+1]
+		}
+		claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), key)
+	}
 	for _, t := range reg.Tests {
 		if !t.PerLang() {
+			// a language-free row runs through the adapter it names, and
+			// the files its inputs name are the data it runs over (a Go
+			// test that replays a committed case folder names its files),
+			// but only through an adapter that holds a row to its files: a
+			// row of any other adapter could name files it never reads
+			if !filesHeld[t.Adapter] {
+				continue
+			}
+			var in struct {
+				Files []string `json:"files"`
+			}
+			if json.Unmarshal(t.Inputs, &in) == nil {
+				for _, f := range in.Files {
+					dataCase(f, t.Key)
+				}
+			}
 			continue
 		}
 		var in struct {
@@ -444,15 +479,7 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			continue // no language runs it: what it reads is not yet the registry's
 		}
 		for _, f := range in.Files {
-			dir, name := path.Split(f)
-			if strings.HasSuffix(name, ".jsonl") || name == "" {
-				continue // each line of a .jsonl file is a case of its own
-			}
-			stem := name
-			if i := strings.Index(name[1:], "."); i >= 0 {
-				stem = name[:i+1]
-			}
-			claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), t.Key)
+			dataCase(f, t.Key)
 		}
 		if in.Driver != "" {
 			for _, l := range answering {

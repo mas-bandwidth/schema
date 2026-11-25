@@ -42,6 +42,7 @@
     <Compile Include="src/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/featurewitnesses/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/shapes/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/moodmap/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/prior/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/rt1/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/r2/*.cs" />

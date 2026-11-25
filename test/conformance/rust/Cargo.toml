@@ -50,6 +50,7 @@ tblvarevo3 = { path = "../../../build/tables-generated-rust/tblvarevo3" }
 cooktorture = { path = "../../../build/tables-generated-rust/cooktorture" }
 cooktorturewide = { path = "../../../build/tables-generated-rust/cooktorturewide" }
 shapes = { path = "../../../build/tables-generated-rust/shapes" }
+tblmoodmap = { path = "../../../build/tables-generated-rust/tblmoodmap" }
 tblprior = { path = "../../../build/tables-generated-rust/tblprior" }
 tblsurf = { path = "../../../build/tables-generated-rust/tblsurf" }
 tblann4096 = { path = "../../../build/tables-generated-rust/tblann4096" }

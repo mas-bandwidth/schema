@@ -199,6 +199,10 @@ require shapes v0.0.0
 
 replace shapes => ../../../build/tables-generated-go/shapes
 
+require tblmoodmap v0.0.0
+
+replace tblmoodmap => ../../../build/tables-generated-go/moodmap
+
 // the 2026-11-22 surfaces' units (make/go.mk)
 require surfaces v0.0.0
 
