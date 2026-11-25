@@ -256,6 +256,7 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 		"name-buildability":     "name-buildability",
 		"wire-fuzz":             "wire-fuzz",
 		"wire-fuzz-vector":      "wire-fuzz",
+		"tables":                "tables",
 		"wire-fuzz-release":     "",
 		"no-such-family":        "",
 	} {
