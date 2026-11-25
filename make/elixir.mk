@@ -1580,13 +1580,14 @@ tables-elixir-versioning: tables-fixedform-corpus
 
 # ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
 # comparing a file with itself). The sabotage replaces the ONE name that carries
-# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
-# the reader — with `layout_malformed`, on a file OUTSIDE the lineage, and the
-# OLD-REFUSES-NEW column must go red naming it.
+# §5's whole direction — a hash no lineage entry holds is `layout_unknown`
+# (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5; `layout_newer` is retired) — with
+# `layout_malformed`, on a file OUTSIDE the lineage, and the OLD-REFUSES-NEW
+# column must go red naming it.
 .PHONY: tables-elixir-versioning-negative-control
 tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/elixir-versioning-nc && mkdir -p build/elixir-versioning-nc
-	@sed 's|{:error, :layout_newer, hash}|{:error, :layout_malformed, hash}|' \
+	@sed 's|{:error, :layout_unknown, hash}|{:error, :layout_malformed, hash}|' \
 		internal/codegen/elixirtable/fixedruntime.go > build/elixir-versioning-nc/fixedruntime.go.txt
 	@cmp -s internal/codegen/elixirtable/fixedruntime.go build/elixir-versioning-nc/fixedruntime.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || [ $$? -eq 1 ] || exit 1
@@ -1599,7 +1600,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/elixir-versioning-nc/log; exit 1; \
 	fi
-	@grep -q 'owes layout_newer' build/elixir-versioning-nc/log || \
+	@grep -q 'owes layout_unknown' build/elixir-versioning-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/elixir-versioning-nc/log; exit 1; }
 	@echo 'negative control: the wrong name for a hash outside the lineage reds the Elixir versioning gate'
@@ -1610,7 +1611,7 @@ tables-elixir-versioning-negative-control: tables-fixedform-corpus
 # bytes and the file header — with no corpus file, so this target needs only
 # the compiled fixed-form beams. It is the leg's on-GENERATED-code assertion
 # that a held hash over different bytes is refused `:layout_malformed`, changes
-# nothing and is never `:layout_newer`.
+# nothing and is never `:layout_unknown`.
 .PHONY: tables-elixir-row-f12
 tables-elixir-row-f12: build/elixir-fixedform/.stamp
 	$(ELIXIR) test/conformance/elixir/rows/F12.exs
@@ -1619,7 +1620,7 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 # its vectors from T.lineage_fixed_known/0 rather than the corpus: every byte of
 # the held layout bent in turn, the other lock entry's real layout under this
 # build's hash, and this build's layout under the older entry's hash, each
-# `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
+# `:layout_malformed`, plus the `:layout_unknown` contrast. It runs the leg's own
 # Elixir, so it runs exactly like tables-elixir-versioning: a missing corpus is
 # a FAILURE that names it (docs/rulings.json no-skips).
 .PHONY: tables-elixir-t13

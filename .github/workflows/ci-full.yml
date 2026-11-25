@@ -717,7 +717,9 @@ jobs:
 
       - name: go test the Goose emitter packages, row 2 of 5
         if: matrix.group == 'unit-codegen-goose-2'
-        run: go test -v ./internal/codegen/goosetable -run '^TestGoose[D-E]'
+        run: |
+          sel=$(go run ./tools/gotestselect -run '^TestGoose[D-E]' ./internal/codegen/goosetable) || exit 1
+          go test -v ./internal/codegen/goosetable -run "$sel"
 
       - name: go test the Goose emitter packages, row 3 of 5
         if: matrix.group == 'unit-codegen-goose-3'

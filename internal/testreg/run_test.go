@@ -836,6 +836,68 @@ func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
 	}
 }
 
+// TestADriverTimeoutNamesTheLimitAndTheRows: a call the driver's own
+// deadline kills is named a timeout, never a crash, with the limit the call
+// had and how long it ran, and every row it left unreported fails by its
+// own name carrying that line. The clock is the runner's (a stand-in that
+// moves 1 s when the call's wait ends), and the adapter blocks on a
+// channel until the deadline, which the stand-in context has already
+// passed, so no real time passes.
+// The plant is the old wording ("adapter fake timed out" alone): neither
+// the limit nor the time it ran is in the report.
+func TestADriverTimeoutNamesTheLimitAndTheRows(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	start := time.Date(2026, 11, 25, 6, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := start
+	hang := fake{run: func(ctx context.Context, _ []Instance) ([]Result, error) {
+		<-ctx.Done()
+		mu.Lock()
+		now = start.Add(time.Second) // the second the call waited
+		mu.Unlock()
+		return nil, ctx.Err()
+	}}
+	rn := runner(reg, hang)
+	rn.Now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	rn.Context = func(parent context.Context, _ string) (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(parent)
+		cancel() // the deadline has passed: a stand-in for one second's wait
+		return deadlineCtx{ctx, start.Add(time.Second)}, func() {}
+	}
+	insts := selectQ(t, reg, Query{Langs: []string{"go"}})
+	rep := rn.Run(context.Background(), insts)
+	wantRed(t, rep, "TIMED OUT", "limit of 1s", "after it ran 1s")
+	for _, o := range rep.Outcomes {
+		if o.Status != StatusFail || !strings.Contains(o.Reason, "TIMED OUT") || strings.Contains(o.Reason, "crashed") {
+			t.Errorf("row %s of a killed call: %+v", o.Full, o)
+		}
+	}
+	if len(rep.Outcomes) != len(insts) {
+		t.Errorf("%d outcomes for %d rows", len(rep.Outcomes), len(insts))
+	}
+}
+
+// deadlineCtx is a context whose deadline is a fixed time and whose Err is
+// DeadlineExceeded once it is done, as a real deadline's is.
+type deadlineCtx struct {
+	context.Context
+	at time.Time
+}
+
+func (c deadlineCtx) Deadline() (time.Time, bool) { return c.at, true }
+
+func (c deadlineCtx) Err() error {
+	if c.Context.Err() != nil {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
 // TestGoTestSubtestsOfOneParentShareOneShard: subtest rows of one Go test
 // share that test's process, so a cut keeps them one block, placed where
 // the first is, even when another row sits between them.
@@ -858,5 +920,68 @@ func TestGoTestSubtestsOfOneParentShareOneShard(t *testing.T) {
 	}
 	if strings.Join(got, " | ") != "a,s1,s2,s3 | b,o1 | c,d" {
 		t.Fatalf("parts %q, want TestA's three subtests together", got)
+	}
+}
+
+// stepped is an adapter that prepares in steps (StepPreparer); each step logs
+// itself and answers its context's error, as a build cut off does.
+type stepped struct {
+	name  string
+	steps []string
+	log   *eventLog
+}
+
+func (a stepped) Answers(Test) bool { return true }
+
+func (a stepped) PrepareSteps(_ string, _ []Instance) []PrepareStep {
+	var out []PrepareStep
+	for _, s := range a.steps {
+		out = append(out, PrepareStep{Name: s, Run: func(ctx context.Context) error {
+			a.log.add("step " + s)
+			return ctx.Err()
+		}})
+	}
+	return out
+}
+
+func (a stepped) Run(_ context.Context, _ string, instances []Instance) ([]Result, error) {
+	a.log.add("start " + a.name)
+	return passAll(instances), nil
+}
+
+// TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName: a
+// StepPreparer's steps each get a deadline of their own, named "prepare
+// <group> <step>", and run in the order declared; the step that outlasts its
+// limit fails the group naming that step, the steps after it never run and the
+// group's call never runs. Planted: a runner that prepared the steps under one
+// group deadline names no step and makes no deadline per step.
+func TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{
+		"a": stepped{name: "a", steps: []string{"build/one", "build/two", "build/slow", "build/after"}, log: log},
+		"b": stepped{name: "b", steps: []string{"build/fine"}, log: log},
+	}, Context: func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		if group == "prepare none/a build/slow" {
+			return context.WithDeadline(parent, time.Unix(0, 0)) // the step outlasted its limit
+		}
+		return context.WithCancel(parent)
+	}}
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "timed out in prepare none/a build/slow", "deadline exceeded")
+	for _, g := range []string{"prepare none/a build/one", "prepare none/a build/two", "prepare none/a build/slow", "prepare none/b build/fine"} {
+		if !log.has("deadline " + g) {
+			t.Errorf("no deadline made for %q: %q", g, log.ev)
+		}
+	}
+	if log.at("step build/one") >= log.at("step build/two") || log.at("step build/two") >= log.at("step build/slow") {
+		t.Errorf("the steps did not run in the order declared: %q", log.ev)
+	}
+	if log.has("step build/after") || log.has("start a") {
+		t.Errorf("a step or the call ran after a step timed out: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Errorf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
 	}
 }

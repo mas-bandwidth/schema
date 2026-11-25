@@ -281,7 +281,11 @@ func runJavaDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
                 failed = true;
             }
         } else {
-            if (count == 0 && rep.damaged && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+            // R4 (docs/SPEC-TABLES.md §6.5, 16e6466e11): a refused batch leaves
+            // EVERY value handed in at its declared default, not only the values
+            // the walk had reached; the Go twin holds the same.
+            int def = new RootFixed.Value().a;
+            if (count == 0 && rep.damaged && !rep.refused && values[0].a == def && values[1].a == def) {
                 System.out.println("PASS " + name);
             } else {
                 System.out.println("FAIL " + name + ": count=" + count + " damaged=" + rep.damaged + " refused=" + rep.refused + " a0=" + values[0].a + " a1=" + values[1].a);
@@ -352,6 +356,32 @@ func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	for _, name := range []string{"body_129", "union_129", "array_129"} {
 		if !strings.Contains(shiftedOut, "FAIL "+name) {
 			t.Fatalf("guard shift control (128 -> 256) did not fail %s:\n%s", name, shiftedOut)
+		}
+	}
+
+	// THE RESET CONTROL: a batch read that resets nothing it was handed after
+	// a refusal leaves the caller's -7s in place, and every refused case must
+	// turn red (R4, docs/SPEC-TABLES.md §6.5).
+	const resetLoop = "for (int j = 0; j < handed; j++) {"
+	keptOut, keptErr := runJavaDepthBoundaryProbe(t, u, ann, cases, func(files map[string][]byte) {
+		replaced := false
+		for name, data := range files {
+			s := string(data)
+			if strings.Contains(s, resetLoop) {
+				files[name] = []byte(strings.ReplaceAll(s, resetLoop, "for (int j = 0; j < 0; j++) {"))
+				replaced = true
+			}
+		}
+		if !replaced {
+			t.Fatalf("expected generated Java files to contain %q", resetLoop)
+		}
+	})
+	if keptErr == nil {
+		t.Fatalf("reset control (no reset after a refusal) unexpectedly passed:\n%s", keptOut)
+	}
+	for _, tc := range cases {
+		if !tc.expectOK && !strings.Contains(keptOut, "FAIL "+tc.name) {
+			t.Fatalf("reset control (no reset after a refusal) did not fail %s:\n%s", tc.name, keptOut)
 		}
 	}
 }

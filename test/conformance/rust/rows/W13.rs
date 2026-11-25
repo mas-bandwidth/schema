@@ -38,8 +38,12 @@ pub use v1_fixed::*;
 // ---- the C++ reference's handed constants for the SAME unit, V1.schema ----
 
 // The reference emitter's `CellFixedHash` (V1Table.h, from
-// `schema generate --lang cpp test/tables/V1.schema`).
-const REFERENCE_CELL_HASH: u64 = 0x70cc58293abe4686;
+// `schema generate --lang cpp test/tables/V1.schema`), fnv1a64 over the
+// layout and the definitions digest. Re-taken from the reference on
+// 2026-11-25: the v2 definitions digest (§5.2, every root records its identity
+// prefix) moved both hashes while the layout bytes below stayed byte-for-byte;
+// the copies here were the pre-v2 numbers.
+const REFERENCE_CELL_HASH: u64 = 0x210ba0ea336b070f;
 
 // The reference emitter's `CellFixedLayout[]` — 55 bytes, 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -51,7 +55,7 @@ const REFERENCE_CELL_LAYOUT: [u8; 55] = [
 ];
 
 // The reference emitter's `CfgFixedHash` (V1Table.h, same unit).
-const REFERENCE_CFG_HASH: u64 = 0xe4cdc4e937945f30;
+const REFERENCE_CFG_HASH: u64 = 0x913cc75b4d5b2df3;
 
 // The reference emitter's `CfgFixedLayout[]` — 1143 bytes, 67 entries.
 const REFERENCE_CFG_LAYOUT: [u8; 1143] = [

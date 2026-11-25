@@ -182,6 +182,7 @@ func main() {
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
+	mfUnits := fs.String("units", "", "comma-separated units: cut the roster to their roots (message-fuzz only; make's GOOSE_FUZZ_SLICE)")
 	listRoots := fs.Bool("list-roots", false, "print the roster this profile builds, one root per line (unit, root, variable|fixed, file|message), and start no leg (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
 	timeout := fs.Duration("timeout", 0, "whole-run wall-clock timeout (wire-fuzz only)")
@@ -298,7 +299,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "message-fuzz":
-		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants}); err != nil {
+		if err := messageFuzz(os.Stdout, m, messageFuzzOptions{driver: *driver, only: *only, work: *work, failed: *failed, replay: *replay, unit: *unit, root: *root, jsonDir: *jsonDir, seed: *seed, n: *n, maxMutants: *maxMutants, units: splitUnits(*mfUnits)}); err != nil {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":

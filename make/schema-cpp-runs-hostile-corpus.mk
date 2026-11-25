@@ -49,7 +49,7 @@ CPP_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 $(CPP_HOSTILE_SANITIZ
 # Table.h and no hook, and gets no define.
 CPP_HOSTILE_INLINE_OVERRIDE ?= inline
 # One compile per core: the objects are independent, only the link is serial.
-CPP_HOSTILE_JOBS     ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+CPP_HOSTILE_JOBS     ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # ccache when the host has it: an unchanged generated unit is not recompiled.
 # It keys on the preprocessed source and the flags, so a changed unit, header
 # or flag always compiles fresh.

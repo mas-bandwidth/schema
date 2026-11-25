@@ -135,6 +135,10 @@ func TestGooseFixedR14GrownTagReadsWritersTagWidth(t *testing.T) {
 		return FixedEvolutionEntry{Wire: ir.TableFixedLayoutHash(l, wSt), Layout: l, Record: 8 + int64(size)}
 	}
 	wide, tag3 := forgedEntry(6), forgedEntry(7)
+	// EVERY WIDTH INSIDE 1..8 THAT IS NOT AN ORDINAL WIDTH refuses too: the set
+	// is exactly 1, 2, 4 and 8 (docs/FIXED-FORM-ALGORITHM.md, THE GUARD'S
+	// WIDTH), so a "1..8" reading that admits 5, 6 or 7 is red here by name.
+	tag5, tag6, tag7 := forgedEntry(9), forgedEntry(10), forgedEntry(11)
 	type read struct {
 		name  string
 		entry FixedEvolutionEntry
@@ -160,7 +164,10 @@ func TestGooseFixedR14GrownTagReadsWritersTagWidth(t *testing.T) {
 			read{"wide_forged2", wide, []byte{2, 0, 0, 0, 0, 0}, "-1 out_of_range"},
 			read{"wide_forged257", wide, []byte{1, 1, 0x44, 0x33, 0x22, 0x11}, "-1 out_of_range"},
 			read{"tag3_malformed", tag3, []byte{1, 0, 0, 0x44, 0x33, 0x22, 0x11}, "-1 layout_malformed"},
-		), []FixedEvolutionEntry{theirs, wide, tag3}, false},
+			read{"tag5_malformed", tag5, []byte{1, 0, 0, 0, 0, 0x44, 0x33, 0x22, 0x11}, "-1 layout_malformed"},
+			read{"tag6_malformed", tag6, []byte{1, 0, 0, 0, 0, 0, 0x44, 0x33, 0x22, 0x11}, "-1 layout_malformed"},
+			read{"tag7_malformed", tag7, []byte{1, 0, 0, 0, 0, 0, 0, 0x44, 0x33, 0x22, 0x11}, "-1 layout_malformed"},
+		), []FixedEvolutionEntry{theirs, wide, tag3, tag5, tag6, tag7}, false},
 	}
 	// THE WRITER'S TAG WIDTH OVER A STRUCT ARM: the widest arm is found over
 	// the union's CHILDREN, each a subtree, so a struct arm's own fields never

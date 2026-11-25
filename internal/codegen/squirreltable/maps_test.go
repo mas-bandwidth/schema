@@ -231,11 +231,14 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 		return reportOf(report)
 	}
 
+	// a key given twice refuses the whole load (docs/SPEC-TABLES.md §2.8,
+	// §6.5; docs/rulings.json strict-only-read): the oracle and the leg's
+	// verdict agree (verdict only: the walk's counters are diagnostics)
 	dup := mapInt32Wire(t, [][2]int32{{3, 9}, {3, 7}, {5, 1}}, nil)
-	if want := decode(t, dup); want != "0,0,0,0,1,false,read" {
-		t.Fatalf("the duplicate oracle reports %q, want one duplicate", want)
-	} else if got := squirrelReport(t, rDir, "probemap", rMod, string(dup)); got != want {
-		t.Errorf("duplicate keys: Squirrel reports %q, the wire oracle %q", got, want)
+	if want := decode(t, dup); want != "refused" {
+		t.Fatalf("the duplicate oracle reports %q, want refused", want)
+	} else if got := squirrelReport(t, rDir, "probemap", rMod, string(dup)); reportVerdict(got) != want {
+		t.Errorf("duplicate keys: Squirrel reports %q, the wire oracle %q: want the read refused", got, want)
 	}
 
 	int8Unit := loadSource(t, "package probemap\n\ntable Root\n{\n    entries map[int8]int8\n}\n")
@@ -255,21 +258,23 @@ func TestSquirrelMapsMatchTheWire(t *testing.T) {
 		t.Errorf("widened values: Squirrel reports %q, the wire oracle %q", got, want)
 	}
 
+	// an announced entry its L does not hold is broken framing: refused
 	past := mapInt32Wire(t, nil, func() *uint64 { n := uint64(1); return &n }())
-	if want := decode(t, past); want != "0,0,0,0,0,true,read" {
-		t.Fatalf("the past-L oracle reports %q, want malformed and read", want)
-	} else if got := squirrelReport(t, rDir, "probemap", rMod, string(past)); got != want {
-		t.Errorf("wire-count-refusal: Squirrel reports %q, the wire oracle (verdict read) %q", got, want)
+	if want := decode(t, past); want != "refused" {
+		t.Fatalf("the past-L oracle reports %q, want refused", want)
+	} else if got := squirrelReport(t, rDir, "probemap", rMod, string(past)); got != "0,0,0,0,0,true,refused" {
+		t.Errorf("past-L count: Squirrel reports %q, the wire oracle %q: want body damage and the read refused", got, want)
 	}
 
 	t.Logf("load then save equals the wire for %d of %d map instance rows; duplicate, widened and past-L reports match the wire", compared, len(names))
 }
 
-// TestSquirrelMapWireCountRefusal pins the hostile-corpus row wire-count-refusal
-// (schema-squirrel-runs-hostile-corpus-t-r): the hand-made form-1 map[int32]int32
-// body whose entry count its own L cannot hold must READ as malformed, never
-// refuse — the verdict testdata/conformance/tables/MANIFEST.txt holds for it
-// (docs/SPEC-TABLES.md §2.8, §4).
+// TestSquirrelMapWireCountRefusal pins the hand-made form-1 map[int32]int32
+// body whose entry count its own L cannot hold (schema-squirrel-runs-hostile-
+// corpus-t-r): broken framing, which refuses the whole load
+// (docs/SPEC-TABLES.md §2.8, §6.5; docs/rulings.json strict-only-read, which
+// retired the malformed read). The oracle refuses it and so must Squirrel's
+// read, its walk flagging body damage.
 func TestSquirrelMapWireCountRefusal(t *testing.T) {
 	t.Parallel()
 	unit := loadSource(t, "package probemap\n\ntable Root\n{\n    entries map[int32]int32\n}\n")
@@ -282,10 +287,10 @@ func TestSquirrelMapWireCountRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := reportOf(report)
-	if want != "0,0,0,0,0,true,read" {
-		t.Fatalf("the past-L oracle reports %q, want malformed and read (verdict read)", want)
+	if want != "refused" {
+		t.Fatalf("the past-L oracle reports %q, want refused", want)
 	}
-	if got := squirrelReport(t, dir, "probemap", mod, string(past)); got != want {
-		t.Errorf("wire-count-refusal: Squirrel reports %q, the wire oracle (verdict read) %q", got, want)
+	if got := squirrelReport(t, dir, "probemap", mod, string(past)); got != "0,0,0,0,0,true,refused" {
+		t.Errorf("past-L count: Squirrel reports %q, the wire oracle %q: want body damage and the read refused", got, want)
 	}
 }

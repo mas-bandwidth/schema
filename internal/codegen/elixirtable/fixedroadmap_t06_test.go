@@ -185,24 +185,24 @@ func t06R17(t *testing.T) {
 
 // ---- elixir/C1 --------------------------------------------------------------
 
-// t06C1 holds elixir/C1 to §4.5 `count`: a negative count floors to zero and
-// counts one `clamped`.
+// t06C1 holds elixir/C1 to §4.5 `count`: "if v < 0 or v > size then REFUSE
+// count_over_bound" — a negative count refuses by name, never floored.
 func t06C1(t *testing.T) {
 	module, runtime := t06Emit(t)
-	t06Has(t, module, "min(max(n_vals, 0), 8)", "C1 a negative count floors to zero")
-	t06Has(t, module, "c = R.clamps(c, n_vals, 1, 8)", "C1 a negative count counts one clamp")
+	t06HasNot(t, module, "min(max(n_vals, 0), 8)", "C1 a negative count is never floored")
+	t06Has(t, module, "c = R.held_count(c, n_vals, 1, 8)", "C1 a negative count refuses count_over_bound")
 	t06Has(t, runtime, "raw < 0 -> throw({:refuse, :count_over_bound})", "C1 the negative end of the count clamp")
 }
 
 // ---- elixir/C2 --------------------------------------------------------------
 
 // t06C2 holds elixir/C2 to §4.5 `count`: a count past the bound the plan
-// carries (the writer's own, in elements) lands the bound and counts one
-// `clamped`.
+// carries (the writer's own, in elements) REFUSES count_over_bound, never
+// landing the bound.
 func t06C2(t *testing.T) {
 	module, runtime := t06Emit(t)
-	t06Has(t, module, "min(max(n_vals, 0), 8)", "C2 a count past Max lands the bound")
-	t06Has(t, module, "c = R.clamps(c, n_vals, 1, 8)", "C2 a count past Max counts one clamp")
+	t06HasNot(t, module, "R.clamps(c, n_vals", "C2 a count past Max is never clamped")
+	t06Has(t, runtime, "def held_count(_acc, v, min, max) when v < min or v > max,\n    do: throw({:refuse, :count_over_bound})", "C2 a count past Max refuses count_over_bound")
 	t06Has(t, runtime, "raw > max -> throw({:refuse, :count_over_bound})", "C2 the past-Max end of the count clamp")
 }
 

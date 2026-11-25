@@ -30,7 +30,7 @@
 .github/nightly-fast-rows.txt	0a51205ae5c8a75943302bc91aad4dfc1543c563c766d7d1e345b35bac6c8bc0	pinned
 .github/unwired-targets.txt	582497eac9e2fdab44f191281f1297294d5bd638b1f5f72972b052e8c024abbf	pinned
 .github/workflows/certify.yml	60a88c4d975ce06188e4e3bcb293fcf0b184949c50d3826f0cd80cad963b0c9b	not-yet-generated
-.github/workflows/ci-full.yml	d2a7478c6a8bc76346fba9ad12098d2f681d29ad1280484f0512d1ee3e9bbab8	not-yet-generated
+.github/workflows/ci-full.yml	9dedcc7859b409c5af89e4ae17e665cedd89959a45d4fa4ac05bf1bcf8207f75	not-yet-generated
 .github/workflows/cla.yml	09c1e21ea5492363a130250d94a20f907100a6ae1cd8c433ed33c5e822f2e781	pinned
 .github/workflows/leg.yml	50a923f39e4e3989b3ec9737ff4054216d07ba4f968ef3bec709be96df50f33c	not-yet-generated
 .github/workflows/lobster-fixed-proof-qualification.yml	60d6031384b40ac3366e410d27a52dd3e75164080d1937ed037b47859a10aefd	not-yet-generated

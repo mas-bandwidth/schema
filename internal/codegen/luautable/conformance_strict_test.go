@@ -18,14 +18,6 @@ import (
 // surface reads a wire it later cooks and is not a read-then-write surface, so
 // it is outside this rule's scope.
 
-func init() {
-	// schema_load.luau now refuses list_scalar_widen (array body bytes past
-	// its elements), matching reports.txt's "refused". Drop the carried row
-	// from luauReportCarried here because load_test.go is outside this
-	// card's PATHS.
-	delete(luauReportCarried, "list_scalar_widen")
-}
-
 func luauDriverSource(t *testing.T) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, "test", "conformance", "luau", "main.luau"))

@@ -717,9 +717,20 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 		return nil, new_store()
 	end
 	local nodeObjs = {}
-	local v = read(root, bytes, report, nodeObjs)
+	-- the walk answers the bytes the strict read's wire-alone judgement
+	-- reads; the plain load answers none, having judged them itself
+	local v, judged = read(root, bytes, report, nodeObjs)
 	if v == nil then
 		return v, new_store()
+	end
+	-- THE WALK REFUSES WHAT THE STRICT READ REFUSES (docs/SPEC-TABLES.md
+	-- §6.5): judged after the capture, so a non-finite float in a field this
+	-- reader does not declare is refused under the name the capture gives it
+	local function finish(value: any, kept: any)
+		if value ~= nil and judged ~= nil and Load.judgeWalk(value, judged, report) == nil then
+			return nil, new_store()
+		end
+		return value, kept
 	end
 	_nonFinite = nil
 	local store = new_store()
@@ -732,7 +743,7 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 	local endpos = len - 8 - count * 8
 	if count < 0 or endpos < 1 then
 		-- an id table the walk read could not frame: nothing to capture
-		return v, store
+		return finish(v, store)
 	end
 	local ids = {}
 	for i = 0, count - 1 do
@@ -770,7 +781,7 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 		report.field = _nonFinite
 		return nil, new_store()
 	end
-	return v, store
+	return finish(v, store)
 end
 
 function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
@@ -778,7 +789,7 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 end
 
 function R.loadRetainWalk(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
-	return load_retain(Load.loadWalk, root, bytes, report, capacity, idCount)
+	return load_retain(Load.walkUnjudged, root, bytes, report, capacity, idCount)
 end
 
 -- ---------------------------------------------------------------------------
@@ -1255,6 +1266,26 @@ save_emit_body = function(cx: any, body: any): string
 				parts[#parts + 1] = save_leb(fref)
 				parts[#parts + 1] = string.char(13)
 				parts[#parts + 1] = save_leb(#subBody) .. subBody
+			elseif f.materialized and f.node.t == "arr" then
+				-- the born array materialized for a record (save_locate_body):
+				-- every element body the terminator alone is the array at its
+				-- birth, which elides with every id it interned
+				local subMark, subUnk = #cx.out_ids, cx.unknownUsed
+				local fref = save_ref(cx, cx.ids[f.ref])
+				local content = save_emit_array(cx, f.node)
+				if cx.bad then return "" end
+				local n = #f.node.elems
+				if content == string.char(13) .. save_leb(n) .. string.rep("\1\0", n) then
+					for k = #cx.out_ids, subMark + 1, -1 do
+						cx.refmap[cx.out_ids[k]] = nil
+						cx.out_ids[k] = nil
+					end
+					cx.unknownUsed = subUnk
+					continue
+				end
+				parts[#parts + 1] = save_leb(fref)
+				parts[#parts + 1] = string.char(14)
+				parts[#parts + 1] = save_leb(#content) .. content
 			elseif f.materialized and f.node.t == "keyed" then
 				local subMark, subUnk = #cx.out_ids, cx.unknownUsed
 				local fref = save_ref(cx, cx.ids[f.ref])
@@ -1421,12 +1452,29 @@ save_locate_body = function(body: any, desc: any, steps: { any }, pos: number): 
 	end
 	if fd == nil then return nil end
 	local f = save_field_of(body, _ids, desc, st.o)
-	if f == nil and ((fd.s == "tab" and fd.present == nil) or (fd.s == "arr" and fd.array == "keyed" and fd.e ~= nil and fd.e.s == "tab")) then
+	-- A COUNTED ARRAY OF TABLES AT ITS BIRTH elided on the plain save
+	-- (schema_save.luau, tablewire encodeArray): its min elements are the
+	-- terminator alone, and a record path that reaches one of them names an
+	-- element the value holds. A body that carries a retained field does not
+	-- elide (docs/SPEC-TABLES.md §6.6), so the array is materialized at its
+	-- born count and elides again on the emit only if every element body is
+	-- still the terminator alone.
+	local born = 0
+	if fd.s == "arr" and fd.array == "counted" and fd.e ~= nil and fd.e.s == "tab" and not fd.required then
+		born = fd.min or 0
+	end
+	if f == nil and ((fd.s == "tab" and fd.present == nil) or (fd.s == "arr" and fd.array == "keyed" and fd.e ~= nil and fd.e.s == "tab") or (born > 0 and st.i < born)) then
 		_ids[#_ids + 1] = fd.id
 		if fd.s == "tab" then
 			f = { ref = #_ids, kind = 13, materialized = not fd.required, node = { t = "tab", body = { fields = {} } } }
-		else
+		elseif fd.array == "keyed" then
 			f = { ref = #_ids, kind = 16, materialized = true, node = { t = "keyed", ek = 13, slots = {} } }
+		else
+			local elems = {}
+			for i = 1, born do
+				elems[i] = { kind = "body", body = { fields = {} } }
+			end
+			f = { ref = #_ids, kind = 14, materialized = true, node = { t = "arr", ek = 13, elems = elems } }
 		end
 		local ins = #body.fields + 1
 		local fmap = fields_by_id(desc)

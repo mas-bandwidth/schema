@@ -614,7 +614,7 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 	glue.WriteString("    return schema_rt::save_table(conformance_unit(), root, data, vals, nodes, at, out);\n")
 	glue.WriteString("}\n")
 	glue.WriteString("fn conformance_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) {}\n")
-	glue.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
+	glue.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], fresh: bool, path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
 
 	files["conformance_unit.goose"] = []byte(glue.String())
 	main, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "main.goose"))
@@ -622,6 +622,7 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 		t.Fatal(err)
 	}
 	files["main.goose"] = main
+	stageAccel(t, root, files)
 	text, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "units", key+".goose"))
 	if err != nil {
 		text, err = os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "unit.goose"))

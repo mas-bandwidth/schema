@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 // jsonRow is one instance or json-hostile row of MANIFEST.txt: the unit, the
@@ -351,7 +353,11 @@ local function report()
 end
 local r = report()
 local v = json.fromJsonWalk("Box", inputs.text, r)
-if v == nil then print("refused"); return end
+if v == nil then
+	-- strict only (docs/rulings.json strict-only-read): both reads refuse
+	print(json.FromJson("Box", inputs.text) == nil and "refused" or "the walk refused, FromJson accepted")
+	return
+end
 print(string.format("km=%d u=%d", r.kindMismatch, r.unknown))
 print(buffer.tostring(json.ToJson("Box", v)))
 local back = load.load("Box", save.save(St.lookup("Box"), v), report())
@@ -366,9 +372,12 @@ print(buffer.tostring(json.ToJson("Box", back)))
 // keeps its entry and the list its length
 // (`elem and false or nil` is always nil in Lua: it deleted the entry and cut
 // the list at the hole); a false bool element is kept; and a `*bytes` map
-// value that is null, or not base64 (kind_mismatch), stays an entry holding a
-// null reference. Each text round-trips byte for byte through FromJson and
-// ToJson, and again through Save and Load.
+// value that is null stays an entry holding a null reference. Each text
+// round-trips byte for byte through FromJson and ToJson, and again through
+// Save and Load. A `*bytes` map value that is not base64 is a kind mismatch,
+// which the strict read refuses (docs/SPEC-TABLES.md §6.5, docs/rulings.json
+// strict-only-read): the Go reference and both Luau reads refuse it, compared
+// by verdict only. Every other row is one the Go reference reads too.
 func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 	t.Parallel()
 	const schema = "package px\nenum E { A, B }\ntable Box\n{\n\tm map[string]E\n\tl []E\n\tb []bool\n\tz map[string]*bytes\n}\n"
@@ -376,6 +385,15 @@ func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(jsonElemProbe), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	schemaPath := filepath.Join(t.TempDir(), "Carton.schema")
+	if err := os.WriteFile(schemaPath, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{schemaPath})
+	if err != nil {
+		t.Fatalf("the Go reference unit does not load: %v", err)
+	}
+	model := tabletext.NewModel(u)
 	const canonical = "{\n  \"m\": {\n    \"one\": \"B\",\n    \"zero\": \"None\"\n  },\n  \"l\": [\n    \"A\",\n    \"None\",\n    \"B\"\n  ],\n  \"b\": [\n    true,\n    false,\n    true\n  ],\n  \"z\": {\n    \"bad\": null,\n    \"ok\": \"AQI=\"\n  }\n}\n"
 	for _, tc := range []struct {
 		name, text, km string
@@ -383,12 +401,24 @@ func TestLuauJsonReadKeepsFalseElements(t *testing.T) {
 		{"enum-zero-map-value-and-list-element", canonical, "km=0 u=0"},
 		{"enum-unknown-name-list-element", strings.Replace(canonical, "\"A\",\n    \"None\"", "\"A\",\n    \"Q\"", 1), "km=0 u=1"},
 		{"enum-unknown-name-map-value", strings.Replace(canonical, `"zero": "None"`, `"zero": "Q"`, 1), "km=0 u=1"},
-		{"bytes-map-value-not-base64", strings.Replace(canonical, `"bad": null`, `"bad": "!!"`, 1), "km=1 u=0"},
+		{"bytes-map-value-not-base64", strings.Replace(canonical, `"bad": null`, `"bad": "!!"`, 1), "refused"},
 	} {
+		var rep tabletext.Report
+		goRead := model.Read(model.New(model.Lookup("Box")), []byte(tc.text), &rep)
+		if goRead != (tc.km != "refused") {
+			t.Errorf("%s: the Go reference read=%v (%+v), want read=%v", tc.name, goRead, rep, tc.km != "refused")
+			continue
+		}
 		out := string(luaurun.Run(t, g.dir, "main.luau", map[string][]byte{"text": []byte(tc.text)}))
 		head, rest, _ := strings.Cut(out, "\n")
 		if head != tc.km {
 			t.Errorf("%s: FromJson reported %q, want %q (output %q)", tc.name, head, tc.km, out)
+			continue
+		}
+		if tc.km == "refused" {
+			if rest != "" {
+				t.Errorf("%s: the refused read printed more: %q", tc.name, out)
+			}
 			continue
 		}
 		if want := canonical + "\n" + canonical + "\n"; rest != want {

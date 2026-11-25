@@ -3098,14 +3098,14 @@ void negativeControl() {
   // (§5.6): the digest is not on the wire, so the hash cannot be re-derived
   // from a file at all — it is TAKEN AS GIVEN and the layout is held to a BYTE
   // COMPARISON against the bytes the lock recorded. A hash nothing in the
-  // lineage holds is `layout_newer`; a KNOWN hash whose bytes differ is
+  // lineage holds is `layout_unknown`; a KNOWN hash whose bytes differ is
   // `layout_malformed`.
   retire(
     'negativeControl: a header whose hash is not the layout hash',
     'there is no third thing to check: hash_known_bytes_differ in '
         'internal/codegen/darttable/fixedversioning_test.go holds a known hash '
         'with changed layout bytes to layout_malformed, and hash_unknown holds '
-        'an unknown hash to layout_newer',
+        'an unknown hash to layout_unknown',
   );
 
   // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS is a refusal by name.
@@ -3135,7 +3135,7 @@ void negativeControl() {
   // A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS STILL A REFUSAL BY NAME
   // (§5.9 #5: the plan slice stays a CAPACITY DECLARATION, checked and never
   // written through) — but this control planted it on a STRANGER's file, and a
-  // stranger is `layout_newer` before a plan is ever looked up. The name is
+  // stranger is `layout_unknown` before a plan is ever looked up. The name is
   // live in the generated load; what has no fixture on this leg is a LINEAGE
   // ENTRY big enough to overflow a one-entry plan, because these libraries are
   // generated with no lock. NAMED AND OWED rather than quietly dropped
@@ -3824,7 +3824,7 @@ void planDstCase() {
 // that trusted the length step past the bytes it was handed before a hash could
 // name a plan. THE CHECK FIRES FIRST, so the header's hash is left zero and
 // selects nothing — which is why the name is `layout_malformed` and not
-// `layout_newer`.
+// `layout_unknown`.
 void layoutTruncatedCase() {
   final f = Uint8List(layoutAt + 4); // the header and four bytes of "layout"
   f[0] = 3; // this form
@@ -3862,7 +3862,7 @@ void main(List<String> args) {
   fixedBoundsCase();
   // THE FOUR CROSS-SCHEMA CASES ARE RETIRED (§5.6): each compiled a plan from
   // a layout THE FILE carried and read FORWARD, and under §5 a fixed table
-  // reads BACKWARD only — a peer the lineage does not hold is `layout_newer`
+  // reads BACKWARD only — a peer the lineage does not hold is `layout_unknown`
   // before a plan exists. The coverage moved to the lineage harness, where the
   // older generation is a LOCKED ENTRY of the newer build rather than a
   // stranger on the wire.

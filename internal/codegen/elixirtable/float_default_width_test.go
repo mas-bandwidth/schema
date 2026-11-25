@@ -32,15 +32,17 @@ table Root {
 }
 `)
 	m := tabletext.NewModel(u)
+	// An authored [E]T holds one value per variant (docs/SPEC.md §5.1, SF-35):
+	// the slot the text omits is authored at its default.
 	rows := []struct{ name, text, authored string }{
 		{"omitted", `{}`, `%{}`},
 		{"declared-default", `{"scalar":0.2}`, `%{"scalar" => 0.2}`},
 		{"rounded-default", `{"scalar":0.2}`, `%{"scalar" => 0.20000000298023224}`},
-		{"nested-defaults", `{"children":{"A":{"value":0.2}},"rows":[{"value":0.2},{"value":0.2}],"child":{"value":0.2}}`, `%{"children" => %{"A" => %{"value" => 0.2}}, "rows" => [%{"value" => 0.2}, %{"value" => 0.2}], "child" => %{"value" => 0.2}}`},
-		{"positive-underflow", `{"keyed":{"A":1e-50},"samples":[1e-50,0]}`, `%{"keyed" => %{"A" => 1.0e-50}, "samples" => [1.0e-50, 0.0]}`},
-		{"negative-zero", `{"scalar":-0.0,"keyed":{"A":-0.0},"samples":[-0.0,0]}`, `%{"scalar" => -0.0, "keyed" => %{"A" => -0.0}, "samples" => [-0.0, 0.0]}`},
-		{"negative-underflow", `{"keyed":{"A":-1e-50},"samples":[-1e-50,0]}`, `%{"keyed" => %{"A" => -1.0e-50}, "samples" => [-1.0e-50, 0.0]}`},
-		{"nondefault", `{"scalar":0.3,"keyed":{"A":0.3},"samples":[0.3,0.2]}`, `%{"scalar" => 0.3, "keyed" => %{"A" => 0.3}, "samples" => [0.3, 0.2]}`},
+		{"nested-defaults", `{"children":{"A":{"value":0.2}},"rows":[{"value":0.2},{"value":0.2}],"child":{"value":0.2}}`, `%{"children" => %{"A" => %{"value" => 0.2}, "B" => %{"value" => 0.2}}, "rows" => [%{"value" => 0.2}, %{"value" => 0.2}], "child" => %{"value" => 0.2}}`},
+		{"positive-underflow", `{"keyed":{"A":1e-50},"samples":[1e-50,0]}`, `%{"keyed" => %{"A" => 1.0e-50, "B" => 0.0}, "samples" => [1.0e-50, 0.0]}`},
+		{"negative-zero", `{"scalar":-0.0,"keyed":{"A":-0.0},"samples":[-0.0,0]}`, `%{"scalar" => -0.0, "keyed" => %{"A" => -0.0, "B" => 0.0}, "samples" => [-0.0, 0.0]}`},
+		{"negative-underflow", `{"keyed":{"A":-1e-50},"samples":[-1e-50,0]}`, `%{"keyed" => %{"A" => -1.0e-50, "B" => 0.0}, "samples" => [-1.0e-50, 0.0]}`},
+		{"nondefault", `{"scalar":0.3,"keyed":{"A":0.3},"samples":[0.3,0.2]}`, `%{"scalar" => 0.3, "keyed" => %{"A" => 0.3, "B" => 0.0}, "samples" => [0.3, 0.2]}`},
 	}
 	var probe strings.Builder
 	probe.WriteString(`
@@ -57,7 +59,7 @@ defmodule Probe do
  end
  def row(name, text, authored, want) do
   store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
-  zero = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+  zero = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
   {:ok, parsed, report} = T.from_json("Root", text)
   check(true, name <> " JSON report")
   {:ok, loaded, report} = T.load("Root", want)

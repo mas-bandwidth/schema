@@ -93,6 +93,7 @@ end
 {:ok, base, _} = mod.from_json("Fix", File.read!([BASE]))
 
 for {name, path, v, expect} <- [ROWS] do
+  # save/2 never raises: a raise is a failure of its own
   got =
     try do
       mod.save("Fix", set.(base, path, v))
@@ -100,6 +101,9 @@ for {name, path, v, expect} <- [ROWS] do
       e -> {:raised, Exception.message(e)}
     end
 
+  # the refusal is the verdict (docs/SPEC.md §5.1); each refused row's lawful
+  # twin at the same bound writes the reference bytes, so the refusal is the
+  # range's
   case {expect, got} do
     {_, {:raised, why}} ->
       fail.("#{name}: the fixed save of #{v} raised instead of answering: #{why}")

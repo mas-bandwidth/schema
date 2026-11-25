@@ -49,19 +49,17 @@ fn check_err(result: example::Result, what: &str) {
 // The generated writer holds its caller contracts with `debug_assert!`, the
 // idiom serialize.rs itself uses (src/stream.rs, `misuse_check!`), so a
 // violation PANICS in debug and is compiled out of release — where the caller
-// has taken responsibility for correctness (SPEC §5). This mirrors the Java
-// and Dart tests' `assertsEnabled`.
-const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
+// has taken responsibility for correctness (SPEC §5). So the assert rows EXIST
+// ONLY IN THE DEBUG BUILD: expect_assert and every call to it are
+// #[cfg(debug_assertions)], and the release run (the same make target, the
+// next cargo run) has no such row to run or to pass over.
 
 // expect_assert runs a writer-contract violation and demands the assertion
 // fires (checked twin only — the release writer trusts by design). The panic
 // hook is silenced for the duration: the panic IS the pass, and its backtrace
 // noise would read like a failure in the log.
+#[cfg(debug_assertions)]
 fn expect_assert<F: FnOnce()>(f: F, what: &str) {
-    if !ASSERTS_ENABLED {
-        check(false, &format!("{what}: asserts are off in this build: this row needs the assert build"));
-        return;
-    }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
@@ -618,6 +616,7 @@ fn main() {
         // a mask bit above the widened 8-bit wire violates the writer's
         // contract: the debug build asserts, release trusts the caller
         input.flags = 1 << 9;
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut buffer2 = [0u8; 2048];
@@ -635,11 +634,12 @@ fn main() {
     // checks in writing packets (asserts) in release build. Removing them is
     // the whole point... checks are *DEBUG ONLY*". So each violation below
     // PANICS in this debug build and is compiled out of release, and every one
-    // of these cases is skipped there rather than weakened. The READ side is
+    // of these cases exists only in the debug build rather than being weakened. The READ side is
     // untouched: it validates in every build, and its tests are elsewhere in
     // this file. ----
     {
         // an out-of-range enum value: Weapon(200) against wire [0, 15]
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut sample = ProbeSample::new();
@@ -669,6 +669,7 @@ fn main() {
 
         // and a count set below that minimum asserts: the count is a caller
         // contract like every other bound, ruled "debug only" with the rest
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut below = ProbeSample::new();
@@ -681,6 +682,7 @@ fn main() {
         );
 
         // ranged int: Test.test_b = 2000 against wire [0, 1000]
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut test = Test::default();
@@ -693,6 +695,7 @@ fn main() {
         );
 
         // bits(9): a tenth bit set
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut bits = ProbeBits::default();
@@ -706,6 +709,7 @@ fn main() {
         );
 
         // string length beyond the buffer bound
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut chat = Chat::default();

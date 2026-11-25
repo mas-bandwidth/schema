@@ -287,6 +287,8 @@ func Weight(inst Instance) float64 {
 func unitOf(inst Instance) string {
 	var in struct {
 		Writer  string `json:"writer"`
+		File    string `json:"file"`
+		Target  string `json:"target"`
 		Package string `json:"package"`
 		Test    string `json:"test"`
 		Subtest string `json:"subtest"`
@@ -296,6 +298,11 @@ func unitOf(inst Instance) string {
 	}
 	if inst.Test.Adapter == "golden" && in.Writer != "" {
 		return "golden " + in.Writer
+	}
+	// a make target's Go tests (the make-gotest rows) are one make run: rows
+	// of one target cut across two shards would run the target twice
+	if inst.Test.Adapter == "make-gotest" && in.Target != "" {
+		return "make-gotest " + in.File + " " + in.Target
 	}
 	if inst.Test.Adapter == "gotest" && in.Subtest != "" && in.Package != "" && in.Test != "" {
 		return "gotest " + in.Package + " " + in.Test
@@ -436,3 +443,8 @@ func Shard(instances []Instance, i, n int) ([]Instance, error) {
 	}
 	return out, nil
 }
+
+// UnitOf is the key of the rows one adapter call answers together, which a
+// cut must not split, or "" for a row that stands alone (unitOf): a plan
+// that deals rows to machines (tools/fullrun) keeps each such unit on one.
+func UnitOf(inst Instance) string { return unitOf(inst) }

@@ -40,6 +40,25 @@ type Preparer interface {
 	Prepare(ctx context.Context, lang string, instances []Instance) error
 }
 
+// PrepareStep is one build of a StepPreparer's preparation: a make target, a
+// harness build. Name is what the run names it by.
+type PrepareStep struct {
+	Name string
+	Run  func(ctx context.Context) error
+}
+
+// StepPreparer is a Preparer whose preparation is declared as steps (a row's
+// make target, each build its Go test reads). The runner runs each step, one
+// after another, under a call limit of its own (Runner.Context, group
+// "prepare <group> <step>"), so a cold checkout is built as steps that each
+// fit the limit a call has, and a step that outlasts it fails by its own name,
+// never the group's. The limit is the call limit, unchanged: a step is held to
+// it exactly as a call is, and a step that cannot fit must get faster or be
+// split into steps that do. A step that fails stops its group's preparation.
+type StepPreparer interface {
+	PrepareSteps(lang string, instances []Instance) []PrepareStep
+}
+
 // Serial is an adapter whose calls take the checkout (make, a writer, a
 // plant's runs): its calls would only wait for each other, so the runner runs
 // every Serial group one after another, each call's deadline starting when
@@ -254,6 +273,26 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 	return p
 }
 
+// timedOut names a call the driver's own deadline killed: the adapter, the
+// call, the limit the call had and how long it ran (by the runner's clock;
+// with none, the deadline itself), so a timeout never reads as a crash. Each
+// row the call left unreported carries this line by its own name.
+func (rn *Runner) timedOut(ctx context.Context, g group, start time.Time) string {
+	limit := "a deadline"
+	deadline, ok := ctx.Deadline()
+	switch {
+	case ok && rn.Now != nil:
+		limit = "its limit of " + deadline.Sub(start).Round(time.Millisecond).String()
+	case ok:
+		limit = "its deadline " + deadline.UTC().Format(time.RFC3339)
+	}
+	ran := ""
+	if rn.Now != nil {
+		ran = ", after it ran " + rn.clock().Sub(start).Round(time.Millisecond).String()
+	}
+	return fmt.Sprintf("adapter %s timed out: TIMED OUT: the driver killed call %s at %s%s", g.adapter, g.name, limit, ran)
+}
+
 // Run runs the instances and accounts for every one of them.
 func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	plan := rn.Plan(instances)
@@ -281,9 +320,9 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
 		switch {
 		case timedOut && err == nil:
-			err = fmt.Errorf("adapter %s timed out", g.adapter)
+			err = fmt.Errorf("%s", rn.timedOut(ctx, g, start))
 		case timedOut:
-			err = fmt.Errorf("adapter %s timed out: %w", g.adapter, err)
+			err = fmt.Errorf("%s: %w", rn.timedOut(ctx, g, start), err)
 		case err != nil:
 			err = fmt.Errorf("adapter %s crashed: %w", g.adapter, err)
 		}
@@ -412,6 +451,10 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 	out := make([]error, len(groups))
 	seconds := make([]float64, len(groups))
 	for gi, g := range groups {
+		if sp, ok := rn.Adapters[g.adapter].(StepPreparer); ok {
+			seconds[gi], out[gi] = rn.prepareSteps(parent, g, sp)
+			continue
+		}
 		p, ok := rn.Adapters[g.adapter].(Preparer)
 		if !ok {
 			continue
@@ -430,6 +473,29 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 		}
 	}
 	return out, seconds
+}
+
+// prepareSteps runs a group's steps, each under a deadline of its own named
+// "prepare <group> <step>", and returns the group's error (the first step's
+// that failed or timed out, naming it) and the seconds all the steps took.
+func (rn *Runner) prepareSteps(parent context.Context, g group, sp StepPreparer) (float64, error) {
+	var total float64
+	for _, step := range sp.PrepareSteps(g.lang, g.instances) {
+		name := "prepare " + g.name + " " + step.Name
+		ctx, cancel := rn.Context(parent, name)
+		start := rn.clock()
+		err := step.Run(ctx)
+		total += rn.clock().Sub(start).Seconds()
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
+		cancel()
+		switch {
+		case err != nil && timedOut:
+			return total, fmt.Errorf("adapter %s timed out in %s: %w", g.adapter, name, err)
+		case err != nil:
+			return total, fmt.Errorf("adapter %s could not %s: %w", g.adapter, name, err)
+		}
+	}
+	return total, nil
 }
 
 // Prepare builds what the instances' calls need (Preparer), as Run does

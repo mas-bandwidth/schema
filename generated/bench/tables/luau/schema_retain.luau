@@ -717,9 +717,20 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 		return nil, new_store()
 	end
 	local nodeObjs = {}
-	local v = read(root, bytes, report, nodeObjs)
+	-- the walk answers the bytes the strict read's wire-alone judgement
+	-- reads; the plain load answers none, having judged them itself
+	local v, judged = read(root, bytes, report, nodeObjs)
 	if v == nil then
 		return v, new_store()
+	end
+	-- THE WALK REFUSES WHAT THE STRICT READ REFUSES (docs/SPEC-TABLES.md
+	-- §6.5): judged after the capture, so a non-finite float in a field this
+	-- reader does not declare is refused under the name the capture gives it
+	local function finish(value: any, kept: any)
+		if value ~= nil and judged ~= nil and Load.judgeWalk(value, judged, report) == nil then
+			return nil, new_store()
+		end
+		return value, kept
 	end
 	_nonFinite = nil
 	local store = new_store()
@@ -732,7 +743,7 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 	local endpos = len - 8 - count * 8
 	if count < 0 or endpos < 1 then
 		-- an id table the walk read could not frame: nothing to capture
-		return v, store
+		return finish(v, store)
 	end
 	local ids = {}
 	for i = 0, count - 1 do
@@ -770,7 +781,7 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 		report.field = _nonFinite
 		return nil, new_store()
 	end
-	return v, store
+	return finish(v, store)
 end
 
 function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
@@ -778,7 +789,7 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, capacity: number
 end
 
 function R.loadRetainWalk(root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
-	return load_retain(Load.loadWalk, root, bytes, report, capacity, idCount)
+	return load_retain(Load.walkUnjudged, root, bytes, report, capacity, idCount)
 end
 
 -- ---------------------------------------------------------------------------

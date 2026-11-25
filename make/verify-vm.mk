@@ -504,9 +504,18 @@ _verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm b
 
 _verify-goose-bench: verify-toolchain-goose bench-goose-gate tables-goose-bench-gate verify-deep-goose verify-cards-goose
 
+# The legs are built for one GOOSE_FUZZ_SLICE; a different slice is a
+# different set of legs, so the slice is a prerequisite of the stamp (part 2
+# run after part 1 in one checkout must build part 2's legs, never fuzz
+# part 1's again).
+GOOSE_FUZZ_SLICE_SIG := build/goose-wirefuzz-legs/.slice-$(subst /,-of-,$(or $(GOOSE_FUZZ_SLICE),all))
+$(GOOSE_FUZZ_SLICE_SIG):
+	@mkdir -p $(@D) && rm -f $(@D)/.slice-* && touch $@
+
 build/goose-wirefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
 	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
-	test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-wirefuzz-build.sh
+	test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-wirefuzz-build.sh \
+	$(GOOSE_FUZZ_SLICE_SIG)
 	@GOOSE_FUZZ_JOBS=$(VERIFY_JOBS) $(MAKE) --no-print-directory build/conformance-goose-wirefuzz
 	@touch $@
 
@@ -549,10 +558,16 @@ _verify-goose-fuzz-json: $(GOOSE_FUZZ_BASE)
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-goose
 
+# Under a GOOSE_FUZZ_SLICE only that slice's unit legs are built, so the
+# message roster is cut to the roots of exactly the units whose legs were
+# built (--units, read off the legs directory): every root a part asks has
+# its leg, and MF-ROSTER holds each one live. The two slices together ask the
+# whole roster; the unsliced gate (nightly) asks it whole, with no cut.
 _verify-goose-fuzz-message: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
 	GOOSE="$(GOOSE)" GOOSE_DISPATCH="./$(GOOSE_DISPATCH)" GOOSE_MESSAGEFUZZ_LEGS="$(GOOSE_LEGS_DIR)/legs" \
 		./build/conformance-harness-vm message-fuzz --only goose \
+		$(if $(GOOSE_FUZZ_SLICE),--units "$$(ls $(GOOSE_LEGS_DIR)/legs | paste -sd, -)") \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-goose
 

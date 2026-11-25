@@ -109,6 +109,10 @@ func TestRustFuzzHalvesAreTheWholeGate(t *testing.T) {
 	}
 }
 
+// gooseSliceUnits is the message pass's cut under a slice: the units whose
+// legs the slice built.
+const gooseSliceUnits = "\t\t$(if $(GOOSE_FUZZ_SLICE),--units \"$$(ls $(GOOSE_LEGS_DIR)/legs | paste -sd, -)\") \\\n"
+
 // gooseErrs answers how the two Goose parts differ from the whole gate.
 func gooseErrs(t *testing.T, mk string) []string {
 	var errs []string
@@ -134,6 +138,12 @@ func gooseErrs(t *testing.T, mk string) []string {
 		if !strings.Contains(mk, slice) {
 			errs = append(errs, "no part takes "+slice)
 		}
+	}
+	// a slice builds only its units' legs, so its message pass asks only
+	// their roots (harness --units, read off the legs it built); the
+	// unsliced gate asks the whole roster
+	if !regexp.MustCompile(`(?m)^_verify-goose-fuzz-message:[^\n]*\n(?:\t[^\n]*\n)*?` + regexp.QuoteMeta(gooseSliceUnits)).MatchString(mk) {
+		errs = append(errs, "_verify-goose-fuzz-message does not cut the roster to the slice's legs (--units)")
 	}
 	return errs
 }
@@ -162,5 +172,13 @@ func TestGooseFuzzPartsAreTheWholeGate(t *testing.T) {
 	}
 	if len(gooseErrs(t, planted)) == 0 {
 		t.Error("PLANTED CONTROL FAILED: part 2 without the retain pass still read as the whole gate")
+	}
+	// PLANTED: the message pass asks the whole roster under a slice.
+	planted = strings.Replace(mk, gooseSliceUnits, "", 1)
+	if planted == mk {
+		t.Fatal("the planted --units control did not apply")
+	}
+	if len(gooseErrs(t, planted)) == 0 {
+		t.Error("PLANTED CONTROL FAILED: a sliced message pass over the whole roster still read as the whole gate")
 	}
 }

@@ -8,13 +8,13 @@
 //   field, the block, the hash and every byte of declared slack, because a byte
 //   this port encodes differently is a byte that does not come back.
 //
-//   THE VERSIONED PATH IS THE PATH. §3.4's invariant is that a record is
-//   positional BY PLAN and the positions are the WRITER's block. So every
-//   cross-schema case below reads a file written under ANOTHER block, through
-//   the same loop over a plan compiled from it: a widened field, a rename under
-//   `was`, a field this reader cannot name, a field the writer does not carry,
-//   a whole nested TYPE stepped over by its block size, and an optional against
-//   a value.
+//   THE PLAN IS THE PATH. §3.4's invariant is that a record is positional BY
+//   PLAN and the positions are the WRITER's block. Since §5 the reader takes
+//   the header's hash as given and resolves it in the lineage the build laid
+//   down, so a file written under ANOTHER schema is the lineage harness's to
+//   read (internal/codegen/rusttable/fixedversioning_test.go); here every
+//   file is the build's own, read through its identity plan and through a
+//   plan COMPILED from its own block, which must land the same values.
 //
 // And the NEGATIVE CONTROLS, because a test that never watched the wrong plan
 // fail never checked the right one worked.
@@ -22,9 +22,8 @@
 // THE UNION IS HERE TOO (docs/SPEC-TABLES.md §15). The reference's own paired
 // bench corpus — 64 records of BenchMixed, whose `game_event` is a three-arm
 // union — is read, value-checked against a straight-line decode of its own
-// bytes, and saved back byte for byte; the FE1/FE2 pair slides an ARM INTO THE
-// MIDDLE of a union and reads it back through a compiled plan; and a forged tag
-// past the arm count is watched landing as None.
+// bytes, and saved back byte for byte; and a forged tag past the arm count is
+// watched refusing out_of_range.
 use std::fs;
 use std::process::exit;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -49,32 +48,24 @@ fn slurp(dir: &str, name: &str) -> Vec<u8> {
 }
 
 // ---------------------------------------------------------------------------
-// WHAT §5.6 RETIRED, FAILED BY NAME AND NEVER DELETED.
+// WHAT §5.6 RETIRED HAS LEFT THIS PROGRAM.
 //
 // docs/FIXED-FORM-ALGORITHM.md §5 made the fixed reader read BACKWARD: it takes
 // the header's hash AS GIVEN, looks it up in the lineage the BUILD laid down,
-// and never walks a stranger's layout at run time. So every case below that
-// read a file written under ANOTHER schema through the load, and every case that
-// broke a layout and asked for its §1.1 name, is asserting a reader that no
-// longer exists — and a deleted test is a coverage claim nobody can audit. Each
-// one keeps its code and FAILS by name, saying where its coverage went (a case
-// not run is never a pass; a case is left out only at the root): `retired`
-// returns true so the case returns early, or false-at-the-guard so the block
-// stays compiled and stays readable.
+// and never walks a stranger's layout at run time. The cases that read a file
+// written under ANOTHER schema through the load (an older writer, a newer
+// writer, an optional against a value, the ordinal slide, and the compiled
+// halves of the union controls, the text under an arm, the enum extent, the
+// prefill holes and the plan_too_large control) asserted a reader that no
+// longer exists; their two read columns live in the lineage harness
+// internal/codegen/rusttable/fixedversioning_test.go, run by
+// `make tables-rust-versioning`. The §1.1 layout-rule cases that broke a layout
+// under a known hash are ONE name now, `layout_malformed`, which the kept case
+// in the_layout_validation watches; the rules themselves are the LOCK's
+// validation of what it records, plus the oracle's validation of the corpus.
+// A case not run is never a pass, so none of them is kept here to be printed
+// and passed over (tools/retiredskips fails the gate on any such line).
 // ---------------------------------------------------------------------------
-
-/// Where a cross-schema read's two columns live now.
-const LINEAGE: &str =
-    "the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row";
-
-/// Where §1.1's seven rules live now.
-const THE_LOCK: &str =
-    "the LOCK's validation of what it records, plus the oracle's validation of the corpus";
-
-fn retired(case: &str, because: &str, coverage: &str) -> bool {
-    check(false, &format!("RETIRED, NOT RUN {case}: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — {because} — and the coverage now lives in {coverage}."));
-    true
-}
 
 // ---------------------------------------------------------------------------
 // THE WRITE: read the reference's file, save it back, and the bytes must be
@@ -308,100 +299,6 @@ fn the_compiled_plan(dir: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// THE VERSIONED PATH, which §3.4 says IS the path
-// ---------------------------------------------------------------------------
-
-fn an_older_writer(dir: &str) {
-    if retired(
-        "an_older_writer",
-        "FX2 reading FX1's file is a cross-schema read and the generated crate carries no lineage, so the file comes back `layout_newer` before a record",
-        LINEAGE,
-    ) {
-        return;
-    }
-    // FX2 reads FX1: a WIDENED field, a RENAME under `was`, a field FX1 does
-    // not carry (defaulted from the prefill), a whole nested TYPE FX1 never
-    // heard of (defaulted whole), and one name FX2 cannot place.
-    let golden = slurp(dir, "fx1.bin");
-    let mut values = [tblfx2::FxRootRow::default(); 8];
-    let mut plan = [tblfx2::TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = tblfx2::TableFixedReport::default();
-    let n = tblfx2::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
-    check(n == Some(2), "older writer: both records");
-    let v = values[0];
-    check(v.keep == 4242, "older writer: an unmoved field");
-    check(v.narrow == 40000, "WIDENED: uint16 into uint32, exactly");
-    check(report.widened == 2, "WIDENED: one widened counts, per record");
-    check(v.renamed_to == 321, "RENAMED: `was =` keeps the wire id");
-    check(v.added == 11, "MISSING: a field the writer does not carry takes its declared default");
-    check(v.extra.x == 0 && v.extra.y == 0, "MISSING: a whole nested type takes its defaults");
-    check(v.nested.a == 111 && v.nested.b == 222, "older writer: the nesting");
-    check(report.unknown == 1, "older writer: `gone` is the one field this reader cannot name");
-    check(
-        !report.damaged && !report.refused,
-        "older writer: nothing else fired",
-    );
-    check(values[1].keep == 1 && values[1].narrow == 2, "older writer: the second record too");
-}
-
-fn a_newer_writer(dir: &str) {
-    if retired(
-        "a_newer_writer",
-        "FX1 reading FX2's file is the FORWARD read §5 replaced outright — a reader never steps over an unknown entry from the wire",
-        LINEAGE,
-    ) {
-        return;
-    }
-    // FX1 reads FX2: an unknown FIELD and an unknown nested TYPE, stepped over
-    // by the size their entries state — which is what puts `nested` in the
-    // right place — and a NARROWING, which is a kind that MOVED.
-    let golden = slurp(dir, "fx2.bin");
-    let mut values = [tblfx1::FxRootRow::default(); 8];
-    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = tblfx1::TableFixedReport::default();
-    let n = tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
-    check(n == Some(1), "newer writer: one record");
-    let v = values[0];
-    check(v.keep == 5150, "newer writer: an unmoved field lands past the unknowns");
-    check(v.renamed == 808, "newer writer: `was =` reads the other way too");
-    check(v.gone == 9, "newer writer: a field the writer dropped takes its declared default");
-    check(v.nested.a == 33 && v.nested.b == 44, "newer writer: the nesting lands past the unknown type");
-    check(report.unknown == 2, "newer writer: two names this reader does not have");
-    // a kind that moved is no read counter under strict-only: the compile
-    // census keeps it on the plan, and the field takes its declared default
-    check(v.narrow == 3, "newer writer: a narrowing leaves the declared default");
-    check(!report.damaged && !report.refused, "newer writer: no damage and no refusal");
-}
-
-fn an_optional(dir: &str) {
-    if retired(
-        "an_optional",
-        "P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer`",
-        LINEAGE,
-    ) {
-        return;
-    }
-    // §2.3 makes `?T` and a plain `T` nesting WIRE-IDENTICAL on form 1. ON THIS
-    // FORM THEY ARE ONE BYTE APART, and §3.4 says so rather than leaving it to
-    // be found: the edit reads as a kind mismatch and the field takes its
-    // declared default, instead of every byte after it sliding by one.
-    let golden = slurp(dir, "p1.bin");
-    let mut values = [tblp3::ChainRow::default(); 8];
-    let mut plan = [tblp3::TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = tblp3::TableFixedReport::default();
-    let n = tblp3::chain_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
-    check(n == Some(1), "optional: P3 reads P1's record");
-    check(values[0].name[..9] == *b"chain-one", "optional: the field before the edit lands");
-    // `?T` against `T` is a kind that MOVED: the plan gives the field its
-    // declared default and, under strict-only, no read counter moves
-    check(!values[0].link_present, "optional: the edited field takes its declared default");
-    check(!report.damaged && !report.refused, "optional: no damage and no refusal");
-}
-
-// ---------------------------------------------------------------------------
 // THE NEGATIVE CONTROLS. The plan is the whole of this form's safety, so a
 // test that never watched a wrong plan fail is a test that never checked the
 // right one worked.
@@ -449,12 +346,12 @@ fn the_negative_controls(dir: &str) {
             "a broken layout under a KNOWN hash: refused BY NAME — layout_malformed, the one name §5.3 gives it",
         );
         check(
-            !report.damaged && report.unknown == 0,
+            report.unknown == 0,
             "a broken layout under a KNOWN hash: a refusal moves no counter",
         );
     }
 
-    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_newer`, AND
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT is `layout_unknown`, AND
     //     THAT IS THE BETTER CONTROL (§5.3's own row). The hash is TAKEN AS
     //     GIVEN and nothing is recomputed from the wire, so a flipped hash is
     //     simply a version this build's lineage does not hold: the refusal
@@ -473,15 +370,15 @@ fn the_negative_controls(dir: &str) {
         let n = tblfx1::fx_root_fixed_load(&mut values, &lying, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "the header's hash: a lying header is refused");
         check(
-            report.refused && report.reason == tblfx1::TableFixedReason::LayoutNewer,
-            "the header's hash: refused BY NAME — layout_newer, because the hash is taken AS GIVEN",
+            report.refused && report.reason == tblfx1::TableFixedReason::LayoutUnknown,
+            "the header's hash: refused BY NAME — layout_unknown, because the hash is taken AS GIVEN",
         );
         check(
             report.layout_hash == flipped,
             "the header's hash: the report carries THE FILE'S hash, the flipped value and not this build's",
         );
         check(
-            !report.damaged && report.unknown == 0 && report.widened == 0,
+            report.unknown == 0 && report.widened == 0,
             "the header's hash: a refusal by name is never malformed and moves no counter",
         );
         // AND THE NEGATIVE CONTROL FOR IT: the same file untouched loads.
@@ -538,7 +435,6 @@ fn the_negative_controls(dir: &str) {
                 report.refused && report.reason == want,
                 &format!("REFUSED BY NAME: {what}"),
             );
-            check(!report.damaged, "REFUSED BY NAME: never damage");
             check(
                 report.unknown == 0
                     && report.widened == 0,
@@ -547,29 +443,9 @@ fn the_negative_controls(dir: &str) {
         }
     }
 
-    // 4. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE is `plan_too_large`:
-    //    this codec never allocates, so the storage is the caller's and a block
-    //    whose plan does not fit is a refusal rather than a heap.
-    if !retired(
-        "the_negative_controls' plan_too_large case",
-        "a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5)",
-        "the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached",
-    ) {
-        let fx1 = slurp(dir, "fx1.bin");
-        let mut values = [tblfx2::FxRootRow::default(); 8];
-        let mut plan: [tblfx2::TableFixedEntry; 1] = [tblfx2::TableFixedEntry::default(); 1];
-        let mut remap = [0u16; 4];
-        let mut report = tblfx2::TableFixedReport::default();
-        let n = tblfx2::fx_root_fixed_load(&mut values, &fx1, &mut plan, &mut remap, &mut report);
-        check(n.is_none(), "plan_too_large: refused");
-        check(
-            report.reason == tblfx2::TableFixedReason::PlanTooLarge,
-            "plan_too_large: refused BY NAME",
-        );
-    }
-
-    // 5. BYTES LEFT OVER ARE `malformed`, which is §3's rule for the same
-    //    reason: the two ends of the file have met.
+    // 4. BYTES LEFT OVER ARE REFUSED `truncated` (docs/FIXED-FORM-ALGORITHM.md
+    //    §5.3 step 9): the two ends of the file have met. This form's report
+    //    has no malformed flag.
     {
         let mut ragged = slurp(dir, "fx1.bin");
         ragged.push(0);
@@ -579,10 +455,13 @@ fn the_negative_controls(dir: &str) {
         let mut report = tblfx1::TableFixedReport::default();
         let n = tblfx1::fx_root_fixed_load(&mut values, &ragged, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "a ragged tail: refused");
-        check(report.damaged, "a ragged tail: malformed, because the two ends of the file met");
+        check(
+            report.refused && report.reason == tblfx1::TableFixedReason::Truncated,
+            "a ragged tail: refused truncated, because the two ends of the file met",
+        );
     }
 
-    // 6. MORE RECORDS THAN THE CALLER HAS ROOM FOR: nothing is decoded.
+    // 5. MORE RECORDS THAN THE CALLER HAS ROOM FOR: nothing is decoded.
     {
         let fx1 = slurp(dir, "fx1.bin");
         let mut values = [tblfx1::FxRootRow::default(); 1];
@@ -650,21 +529,12 @@ fn all_declared_defaults(values: &[tblfx1::FxRootRow]) -> bool {
     })
 }
 
-fn rows_bytes(values: &[tblfx1::FxRootRow]) -> &[u8] {
-    unsafe {
-        std::slice::from_raw_parts(
-            values.as_ptr() as *const u8,
-            std::mem::size_of_val(values),
-        )
-    }
-}
-
+/// Every framing answer is a named refusal (docs/FIXED-FORM-ALGORITHM.md §5.3,
+/// the condition table): this form's report has no malformed flag.
 #[derive(Clone, Copy)]
 enum FormProbe {
     /// A named refusal: `refused` with this reason, `malformed` clear.
     Named(tblfx1::TableFixedReason),
-    /// The residue: `malformed` set, no named reason, not a refusal by name.
-    Malformed,
 }
 
 fn form_probe(label: &str, file: &[u8], want: FormProbe) {
@@ -687,27 +557,21 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
                 &format!("{label}: named refusal restores every declared default"),
             );
             check(
-                report.refused && report.reason == reason && !report.damaged,
+                report.refused && report.reason == reason,
                 &format!("{label}: `{}` by name and nothing else claims the read", reason.name()),
-            );
-        }
-        FormProbe::Malformed => {
-            check(
-                all_declared_defaults(&values),
-                &format!("{label}: malformed input restores every declared default"),
-            );
-            check(
-                report.damaged && !report.refused,
-                &format!("{label}: `malformed`, and no named reason claims the read"),
             );
         }
     }
 }
 
 fn the_form_header_probes(dir: &str) {
-    // 1. EMPTY-FILE: ZERO BYTES. There is no first byte to earn a name, so this
-    //    is the residue, `malformed`, and not a named refusal.
-    form_probe("empty-file (zero bytes)", &[], FormProbe::Malformed);
+    // 1. EMPTY-FILE: ZERO BYTES. There is no first byte to read, so this is
+    //    `truncated` (§5.3 step 1).
+    form_probe(
+        "empty-file (zero bytes)",
+        &[],
+        FormProbe::Named(tblfx1::TableFixedReason::Truncated),
+    );
 
     // 2. SHORT-FORM1: A TEN-BYTE FORM-1 FILE, the size a committed variable-form
     //    file actually is. The form byte is read FIRST, so this is
@@ -740,14 +604,15 @@ fn the_form_header_probes(dir: &str) {
     }
 
     // 5. RESERVED-BYTE3: a valid form-3 fixture with reserved byte 3 set
-    //    nonzero. The reserved bytes are REFUSED, not ignored: `malformed`.
+    //    nonzero. The reserved bytes are REFUSED, not ignored:
+    //    `reserved_not_zero` (§5.3 step 2).
     {
         let mut reserved = slurp(dir, "fx1.bin");
         reserved[3] = 1;
         form_probe(
             "reserved-byte3 (a valid form-3 fixture, reserved byte 3 set nonzero)",
             &reserved,
-            FormProbe::Malformed,
+            FormProbe::Named(tblfx1::TableFixedReason::ReservedNotZero),
         );
     }
 }
@@ -805,12 +670,6 @@ fn put32(b: &mut [u8], at: usize, v: u32) {
 
 fn put64(b: &mut [u8], at: usize, v: u64) {
     b[at..at + 8].copy_from_slice(&v.to_le_bytes());
-}
-
-/// Entry `k` of the layout inside a whole file, as its seventeen bytes.
-fn entry_at(f: &mut [u8], k: usize) -> &mut [u8] {
-    let at = ENTRY0 + k * 17;
-    &mut f[at..at + 17]
 }
 
 /// An entry appended to a HAND-BUILT layout, for the two rules that no single
@@ -874,8 +733,7 @@ fn refuses(file: &[u8], want_name: &str, what: &str) {
     // record would be the damage the refusal exists to prevent.
     check(
         report.unknown == 0
-            && report.widened == 0
-            && !report.damaged,
+            && report.widened == 0,
         &format!("{what}: a layout refusal sets nothing and counts nothing"),
     );
 }
@@ -884,7 +742,7 @@ fn the_layout_validation() {
     // THE BUILD'S OWN FILE, which is the only file a break can still be the one
     // thing that moved in. It used to be FX2's, read by FX1 through a plan
     // compiled from it — and that compile is exactly what §5.6 retired: FX1
-    // handed FX2's file now answers `layout_newer` and never reaches a rule. So
+    // handed FX2's file now answers `layout_unknown` and never reaches a rule. So
     // FX1 writes it and FX1 reads it, its own hash resolves in its own lineage,
     // and the ONE case §5.3 keeps — a KNOWN hash whose layout bytes are not the
     // lock's — is reachable.
@@ -925,204 +783,6 @@ fn the_layout_validation() {
             "KEPT (§5.3): a KNOWN hash whose layout bytes are not the lock's is ONE name",
         );
     }
-
-    // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
-    if !retired(
-        "RULE: the entry count fits the layout length exactly",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        let mut f = good.clone();
-        let count = u32_at(&f, LAYOUT_AT);
-        put32(&mut f, LAYOUT_AT, count + 1);
-        refuses(
-            &f,
-            "LayoutCountMismatch",
-            "RULE: the entry count fits the layout length exactly",
-        );
-    }
-    if !retired(
-        "RULE: an entry count of zero is not a layout",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        // a count of ZERO is not a layout either: there is no root to walk
-        let mut f = good.clone();
-        put32(&mut f, LAYOUT_AT, 0);
-        refuses(
-            &f,
-            "LayoutCountMismatch",
-            "RULE: an entry count of zero is not a layout",
-        );
-    }
-
-    // 2. EVERY KIND IS IN THE CLOSED SET. A fixed form's kind set is CLOSED, so
-    //    a kind outside it means a NEWER FORM BYTE — a different form — and not
-    //    a newer layout of this one. It is refused, never stepped over.
-    if !retired(
-        "RULE: a kind outside the closed set is REFUSED, not skipped",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        let mut f = good.clone();
-        entry_at(&mut f, 1)[8] = 200; // a kind no form byte this build carries defines
-        refuses(
-            &f,
-            "LayoutKindUnknown",
-            "RULE: a kind outside the closed set is REFUSED, not skipped",
-        );
-    }
-
-    // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
-    if !retired(
-        "RULE: the root entry is a TABLE",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        let mut f = good.clone();
-        entry_at(&mut f, 0)[8] = 14; // an array as the root of a record
-        refuses(&f, "LayoutKindInvalid", "RULE: the root entry is a TABLE");
-    }
-
-    // 4. A CONSTANT SIZE MATCHES ITS KIND
-    if !retired(
-        "RULE: a constant size its kind does not admit",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        // entry 1 of FX2's FxRoot layout is `keep uint32`: kind 8, size 4, no
-        // children — so five bytes is a width its kind does not admit.
-        let mut f = good.clone();
-        put32(entry_at(&mut f, 1), 9, 5);
-        refuses(
-            &f,
-            "LayoutSizeMismatch",
-            "RULE: a constant size its kind does not admit",
-        );
-    }
-    if !retired(
-        "RULE: a table's size is the sum of its fields'",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        // and a TABLE's size is the SUM of its children's, not a number of its own
-        let mut f = good.clone();
-        let body = u32_at(entry_at(&mut f, 0), 9);
-        put32(entry_at(&mut f, 0), 9, body + 4);
-        refuses(
-            &f,
-            "LayoutSizeMismatch",
-            "RULE: a table's size is the sum of its fields'",
-        );
-    }
-
-    // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
-    if !retired(
-        "RULE: the tree runs out of layout",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        let mut f = good.clone();
-        let kids = u32_at(entry_at(&mut f, 0), 13);
-        put32(entry_at(&mut f, 0), 13, kids + 1);
-        refuses(
-            &f,
-            "LayoutTreeUnclosed",
-            "RULE: the tree runs out of layout",
-        );
-    }
-    if !retired(
-        "RULE: the layout outlasts the tree",
-        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
-        THE_LOCK,
-    ) {
-        // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
-        // reaches. It takes a hand-built layout to reach, and that is itself
-        // worth stating: dropping a child of a TABLE is caught one rule sooner,
-        // by the size that no longer sums, so the only subtree whose loss the
-        // size rule cannot see is one that contributes NO size — an enum's
-        // variants, at kind 32 and size 0.
-        let mut layout = vec![0u8; 4];
-        put32(&mut layout, 0, 4);
-        put_entry(&mut layout, 1, 13, 4, 1); // a table of one field
-        put_entry(&mut layout, 2, 30, 4, 0); // an enum, its TWO variants unreached
-        put_entry(&mut layout, 3, 32, 0, 0);
-        put_entry(&mut layout, 4, 32, 0, 0);
-        refuses(
-            &file_of(&layout),
-            "LayoutTreeUnclosed",
-            "RULE: the layout outlasts the tree",
-        );
-    }
-
-    // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
-    if !retired(
-        "RULE: a record size past 65536",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        let mut f = good.clone();
-        put32(entry_at(&mut f, 0), 9, 65537);
-        refuses(
-            &f,
-            "LayoutRecordTooLarge",
-            "RULE: a record size past 65536",
-        );
-    }
-    if !retired(
-        "RULE: a size that would overflow the sum",
-        "a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's",
-        THE_LOCK,
-    ) {
-        // A SIZE THAT WOULD WRAP. The children's sizes are summed in 64 bits
-        // precisely so a u32 that overflows is CAUGHT rather than wrapped into a
-        // small number that then agrees with a parent.
-        let mut f = good.clone();
-        put32(entry_at(&mut f, 1), 9, 0xFFFF_FFFF);
-        refuses(
-            &f,
-            "LayoutRecordTooLarge",
-            "RULE: a size that would overflow the sum",
-        );
-    }
-
-    // 7. NOTHING NESTED PAST THE READER'S WALK BOUND. A BOUND ON THE WALK AND
-    //    NOT ON THE WIRE: the validation recurses, so a layout of a thousand
-    //    entries each claiming one child would spend a reader's stack before any
-    //    other rule could fire. Nothing in §3.4 fixes the number.
-    if !retired(
-        "RULE: a nesting depth past the walk's own bound",
-        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
-        THE_LOCK,
-    ) {
-        let depth: u32 = 4096; // far past any reader's own bound
-        let mut layout = vec![0u8; 4];
-        put32(&mut layout, 0, depth + 1);
-        for i in 0..depth {
-            // a table, then optional wrappers all the way down
-            put_entry(&mut layout, 1, if i == 0 { 13 } else { 35 }, depth - i, 1);
-        }
-        put_entry(&mut layout, 2, 1, 1, 0); // a bool at the bottom
-        refuses(
-            &file_of(&layout),
-            "LayoutTooDeep",
-            "RULE: a nesting depth past the walk's own bound",
-        );
-    }
-
-    // AND THE RESIDUE: bytes that are not a layout at all, which is the one case
-    // the seven named rules never reach.
-    if !retired(
-        "RULE: fewer bytes than a header is layout_malformed",
-        "a hand-built layout's hash is in no lineage entry, so the read refuses `layout_newer` before any rule of the layout's own could fire",
-        THE_LOCK,
-    ) {
-        refuses(
-            &file_of(&[0u8; 2]),
-            "LayoutMalformed",
-            "RULE: fewer bytes than a header is layout_malformed",
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,7 +794,7 @@ fn the_layout_validation() {
 //
 // THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
 // field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
-// never parses a stranger — unknown hash is `layout_newer` — so the bound is
+// never parses a stranger — unknown hash is `layout_unknown` — so the bound is
 // asserted on `table_fixed_compile` directly, which is the path a known older
 // writer still takes. A Load of the same bytes still refuses, and sets nothing.
 //
@@ -1220,12 +880,11 @@ fn the_record_bound() {
         let n = tblfx1::fx_root_fixed_load(&mut values, &f, &mut plan, &mut remap, &mut report);
         check(
             n.is_none() && report.refused,
-            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)",
+            "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_unknown)",
         );
         check(
             report.unknown == 0
-                && report.widened == 0
-                && !report.damaged,
+                && report.widened == 0,
             "W10: the refusal sets nothing and counts nothing",
         );
         check(
@@ -1264,7 +923,7 @@ fn the_record_bound() {
             &mut report,
         );
         check(
-            made.is_some() && !report.refused && !report.damaged,
+            made.is_some() && !report.refused,
             "W10: a text entry ending EXACTLY at root.size is not a refusal",
         );
     }
@@ -1425,126 +1084,6 @@ fn the_bench_corpus(dir: &str) {
     );
 }
 
-// ---------------------------------------------------------------------------
-// THE ORDINAL SLIDE: an enum and a UNION that both gained a variant in the
-// middle (docs/SPEC-TABLES.md §3.4)
-//
-// FE2 inserts `Electrum` between Bronze and Silver, so Silver and Gold both
-// slide by one; and it inserts the `shield` arm between `boost` and `ward`, so
-// `ward`'s tag slides from 2 to 3 and the arm behind the tag moves with it. A
-// reader that took the number for its own would read Gold as Silver and a ward
-// as a shield, and NEITHER EDIT IS VISIBLE IN A RECORD'S BYTES — the ordinal is
-// the only thing that carries them.
-//
-// §3.4's answer to both is that AN ORDINAL IS A POSITION IN THE LAYOUT and the
-// plan REMAPS it BY NAME: the `ordinal` op resolves a variant through the
-// plan's own table, and a union's tag is written as MY ordinal under THEIR
-// tag's guard.
-// ---------------------------------------------------------------------------
-
-fn the_ordinal_slide() {
-    if retired(
-        "the_ordinal_slide, both halves",
-        "FE2 reading FE1's file and FE1 reading FE2's are both cross-schema reads, and the remap of a slid ordinal is a lineage plan's work, not a load's",
-        LINEAGE,
-    ) {
-        return;
-    }
-    // FE1 writes: Gold with a `ward`, and Bronze with a `boost`.
-    // THE ARM AND THE TAG MOVE TOGETHER, which is the only way they move at
-    // all: `set_ward` is the whole of "tag 2, ward 41" and the two cannot be
-    // set apart.
-    let older = {
-        let mut gold = tblfe1::FeRootRow {
-            grade: 3, // Gold
-            tail: 99,
-            ..Default::default()
-        };
-        gold.effect.set_ward(tblfe1::WardRow { charge: 41 });
-        let mut bronze = tblfe1::FeRootRow {
-            grade: 1, // Bronze
-            tail: 100,
-            ..Default::default()
-        };
-        bronze.effect.set_boost(tblfe1::BoostRow { power: 17 });
-        [gold, bronze]
-    };
-    let mut slide = vec![0u8; tblfe1::fe_root_fixed_measure(older.len())];
-    check(
-        tblfe1::fe_root_fixed_save(&older, &mut slide) == Some(slide.len()),
-        "the slide: FE1 writes its two records",
-    );
-
-    let mut values = [tblfe2::FeRootRow::default(); 4];
-    let mut plan = [tblfe2::TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = tblfe2::TableFixedReport::default();
-    let n = tblfe2::fe_root_fixed_load(&mut values, &slide, &mut plan, &mut remap, &mut report);
-    check(n == Some(2), "the slide: FE2 reads both of FE1's records");
-    check(values[0].grade == 4, "the slide: the enum's Gold slid 3 -> 4 and was REMAPPED");
-    check(values[0].effect.tag() == 3, "the slide: the union's `ward` tag slid 2 -> 3");
-    // SAFETY: the tag is 3, which is FE2's `ward`; the scatter set both.
-    check(
-        values[0].effect.ward().expect("the tag names `ward`").charge == 41,
-        "the slide: and the ARM BEHIND the slid tag landed",
-    );
-    check(
-        values[1].grade == 1 && values[1].effect.tag() == 1,
-        "the slide: Bronze did not slide, and neither did the `boost` arm",
-    );
-    // SAFETY: the tag is 1, which is FE2's `boost`.
-    check(
-        values[1].effect.boost().expect("the tag names `boost`").power == 17,
-        "the slide: the unslid arm's payload",
-    );
-    check(
-        values[0].tail == 99 && values[1].tail == 100,
-        "the slide: the field past the union is undisturbed",
-    );
-    check(
-        report.unknown == 0,
-        "the slide: `shield` is a field this WRITER does not carry, so nothing counts",
-    );
-    check(
-        !report.damaged && !report.refused,
-        "the slide: a slide does not damage and is not refused",
-    );
-
-    // AND BACK: FE1 reading FE2. `Electrum` and `shield` are variants this
-    // reader has no name for, so the ordinal resolves to NONE and the arm is
-    // simply never a source.
-    let newer = {
-        let mut one = tblfe2::FeRootRow {
-            grade: 2, // Electrum, which FE1 cannot name
-            tail: 8,
-            ..Default::default()
-        };
-        one.effect.set_shield(tblfe2::ShieldRow { plating: 5 }); // which FE1 cannot name either
-        [one]
-    };
-    let mut back = vec![0u8; tblfe2::fe_root_fixed_measure(newer.len())];
-    tblfe2::fe_root_fixed_save(&newer, &mut back);
-
-    let mut values = [tblfe1::FeRootRow::default(); 4];
-    let mut plan = [tblfe1::TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = tblfe1::TableFixedReport::default();
-    let n = tblfe1::fe_root_fixed_load(&mut values, &back, &mut plan, &mut remap, &mut report);
-    check(n == Some(1), "coming back: FE1 reads FE2's record");
-    check(values[0].grade == 0, "coming back: a variant this reader cannot name resolves to None");
-    check(
-        values[0].effect.tag() == 0,
-        "coming back: an ARM this reader cannot name leaves the tag at None",
-    );
-    check(values[0].tail == 8, "coming back: and the field past it still lands");
-    check(
-        !report.damaged && !report.refused,
-        "coming back: nothing was damaged and nothing was refused",
-    );
-}
-
-// ---------------------------------------------------------------------------
-
 fn the_union_controls(dir: &str) {
     // A TAG PAST THE ARM COUNT REFUSES THE LOAD out_of_range, which is the
     // ruling this form takes on a forged ordinal: the identity plan copies
@@ -1573,59 +1112,9 @@ fn the_union_controls(dir: &str) {
         "a forged tag: a tag past the arm count refuses as out_of_range",
     );
     check(
-        !report.damaged && report.unknown == 0 && report.widened == 0,
+        report.unknown == 0 && report.widened == 0,
         "a forged tag: REFUSE IS TOTAL — not damage, and no counter moved",
     );
-
-    // AND ON THE COMPILED PATH. §3.4's ruling is that there is ONE reader path,
-    // so a forged tag has to land as None there too — and it does, by a
-    // different mechanism worth stating: the compiler writes MY ordinal as a
-    // `const` under THEIR tag's GUARD, so a tag that matches no arm of the
-    // writer's fires no entry at all and the image keeps the prefill's zero.
-    // Nothing is out of range by the time the scatter sees it, which is why
-    // this case lands None and counts NOTHING, where the identity path above
-    // counts one clamped.
-    if !retired(
-        "the_union_controls' compiled forged-tag half",
-        "FE2 reading FE1's forged file is a cross-schema read; the identity half above still watches a forged tag refuse out_of_range",
-        LINEAGE,
-    ) {
-        let older = {
-            let mut one = tblfe1::FeRootRow {
-                grade: 1,
-                tail: 77,
-                ..Default::default()
-            };
-            one.effect.set_ward(tblfe1::WardRow { charge: 41 });
-            [one]
-        };
-        let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
-        tblfe1::fe_root_fixed_save(&older, &mut file);
-        // FE1's body is `grade`, then the union, then `tail`: the tag leads the
-        // union storage, so it is the byte after `grade`.
-        let tag_at = records_at(&file) + 8 + 1;
-        file[tag_at] = 250; // no arm of FE1's is the 250th either
-
-        let mut values = [tblfe2::FeRootRow::default(); 4];
-        let mut plan = [tblfe2::TableFixedEntry::default(); 512];
-        let mut remap = [0u16; 512];
-        let mut report = tblfe2::TableFixedReport::default();
-        let n =
-            tblfe2::fe_root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report);
-        check(n == Some(1), "a forged tag, compiled plan: the record still reads");
-        check(
-            values[0].effect.tag() == 0,
-            "a forged tag, compiled plan: a tag no arm of the WRITER's names lands as None",
-        );
-        check(
-            values[0].tail == 77,
-            "a forged tag, compiled plan: the field past the union still lands",
-        );
-        check(
-            !report.damaged && !report.refused,
-            "a forged tag, compiled plan: no damage and no refusal",
-        );
-    }
 
     // AND THE NEGATIVE CONTROL FOR THE CONTROL: the UNFORGED record's tag is
     // the pinned arm, so the clamp above is the forgery and not the reader.
@@ -1638,7 +1127,7 @@ fn the_union_controls(dir: &str) {
         &mut clean,
     );
     check(
-        values[0].value.game_event.tag() == 1 && !clean.refused && !clean.damaged,
+        values[0].value.game_event.tag() == 1 && !clean.refused,
         "NEGATIVE CONTROL: the same record unforged lands `hit` and refuses nothing",
     );
 }
@@ -1718,67 +1207,12 @@ fn the_text_under_an_arm() {
         "text under an arm: and the bool and the optional that lead the body",
     );
 
-    // AND THE COMPILED READ, of the same bytes through a peer whose layout hash
-    // differs — which is the only thing that changes.
-    let mut plan2 = [tblfu2::TableFixedEntry::default(); 512];
-    let mut remap2 = [0u16; 512];
-    if !retired(
-        "the_text_under_an_arm's compiled half",
-        "FU2 reading FU1's file is a cross-schema read; the two-lane entry it watches is now laid down at BUILD time and the harness proves it there",
-        LINEAGE,
-    ) {
-    let mut theirs = [tblfu2::FuRootRow::default(); 4];
-    let mut report2 = tblfu2::TableFixedReport::default();
-    let n2 = tblfu2::fu_root_fixed_load(&mut theirs, &file, &mut plan2, &mut remap2, &mut report2);
-    check(n2 == Some(2), "text under an arm: the compiled read takes both records");
-    check(
-        !report2.damaged && !report2.refused,
-        "text under an arm: and nothing was damaged, clamped or refused",
-    );
-
-    // FIELD FOR FIELD, which is the check the bug walked through: a compiled
-    // read that landed '' while the identity read landed 'hello' passed every
-    // other assertion in this file.
-    // SAFETY: both tags are 2, which names `labelled` in both builds.
-    let arm = theirs[0].pick.labelled().expect("the tag names `labelled`");
-    check(theirs[0].pick.tag() == 2, "text under an arm: the tag agrees");
-    check(arm.lead == id_arm.lead && arm.lead == 101, "text under an arm: the scalar BEFORE the text agrees");
-    check(
-        arm.label_length == id_arm.label_length && arm.label_length == 5,
-        "text under an arm: the LENGTH agrees",
-    );
-    check(
-        arm.label == id_arm.label && &arm.label[..5] == b"hello",
-        "text under an arm: THE TEXT ITSELF agrees — every byte of the buffer",
-    );
-    check(
-        arm.trail == id_arm.trail && arm.trail == 202,
-        "text under an arm: the scalar AFTER the text agrees",
-    );
-    check(theirs[0].tail == mine[0].tail && theirs[0].tail == 11, "text under an arm: the field past the union agrees");
-    check(
-        theirs[0].extra == 11,
-        "text under an arm: the field FU1 does not carry took its declared default",
-    );
-
-    // THE FIRST ARM TOO, because a lane that holds the arm ordinal is right by
-    // accident for ordinal 1 and wrong from 2 up.
-    // SAFETY: both tags are 1, which names `plain`.
-    check(
-        theirs[1].pick.tag() == 1
-            && theirs[1].pick.plain().expect("the tag names `plain`").n == mine[1].pick.plain().expect("the tag names `plain`").n
-            && theirs[1].pick.plain().expect("the tag names `plain`").n == 303,
-        "text under an arm: the FIRST arm agrees as well",
-    );
-    check(theirs[1].tail == 12, "text under an arm: and its tail");
-    }
-
     // ---------------------------------------------------------------------
     // A BOOL OR PRESENT BYTE THAT IS NOT 0 OR 1 IS DAMAGE (§4.5, the strict
     // read). A `bool` and an optional's PRESENCE each ride as one byte; a live
-    // byte past 1 is wire_damaged, a whole-load discard: the load answers
-    // None, `damaged` is set, nothing is refused, and every caller row is back
-    // at its declared default. FU1's body leads with those two bytes, so the
+    // byte past 1 refuses the whole load as wire_damaged (§5.3: this form's
+    // report has no malformed flag), and every caller row is back at its
+    // declared default. FU1's body leads with those two bytes, so the
     // forgeries below are at a known offset.
     // ---------------------------------------------------------------------
     let body0 = records_at(&file) + 8;
@@ -1790,7 +1224,10 @@ fn the_text_under_an_arm() {
         let mut r3 = tblfu1::TableFixedReport::default();
         let n3 = tblfu1::fu_root_fixed_load(&mut mine2, &bad, &mut plan, &mut remap, &mut r3);
         check(n3.is_none(), &format!("stray true bytes: {what} discards the whole load"));
-        check(r3.damaged && !r3.refused, &format!("stray true bytes: {what} is damage, never a refusal"));
+        check(
+            r3.refused && r3.reason == tblfu1::TableFixedReason::WireDamaged,
+            &format!("stray true bytes: {what} refuses by name, wire_damaged"),
+        );
         check(
             !mine2[0].flag && !mine2[0].note_present,
             &format!("stray true bytes: {what} leaves every caller row at its default"),
@@ -1848,31 +1285,9 @@ fn the_enum_extent() {
     let n = tblfe1::fe_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(n.is_none(), "a forged ordinal: the load refuses (strict-only)");
     check(
-        report.refused && report.reason == tblfe1::TableFixedReason::OutOfRange && !report.damaged,
+        report.refused && report.reason == tblfe1::TableFixedReason::OutOfRange,
         "a forged ordinal: an ordinal past the last variant refuses as out_of_range, not damage",
     );
-
-    // THE COMPILED PATH, over the same forged bytes.
-    if !retired(
-        "the_enum_extent's compiled half",
-        "FE2 reading FE1's forged file is a cross-schema read, so the `ordinal` op's clamp is the lineage plan's to prove",
-        LINEAGE,
-    ) {
-    let mut theirs = [tblfe2::FeRootRow::default(); 4];
-    let mut plan2 = [tblfe2::TableFixedEntry::default(); 512];
-    let mut remap2 = [0u16; 512];
-    let mut report2 = tblfe2::TableFixedReport::default();
-    let n2 = tblfe2::fe_root_fixed_load(&mut theirs, &forged, &mut plan2, &mut remap2, &mut report2);
-    check(n2.is_none(), "a forged ordinal, compiled plan: the load refuses there too");
-    check(
-        report2.refused && report2.reason == tblfe2::TableFixedReason::OutOfRange,
-        "a forged ordinal, compiled plan: as out_of_range",
-    );
-    check(
-        theirs[0].grade == 0 && theirs[0].tail == 0,
-        "a forged ordinal, compiled plan: nothing of the record landed",
-    );
-    }
 
     // AND THE NEGATIVE CONTROL FOR THE CONTROL: the same record UNFORGED reads
     // Gold and clamps nothing, so the clamp above is the forgery and not the
@@ -1883,7 +1298,7 @@ fn the_enum_extent() {
     let mut back = [tblfe1::FeRootRow::default(); 4];
     tblfe1::fe_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut clean);
     check(
-        back[0].grade == 3 && !clean.refused && !clean.damaged,
+        back[0].grade == 3 && !clean.refused,
         "NEGATIVE CONTROL: the same record unforged lands Gold and refuses nothing",
     );
 }
@@ -1929,9 +1344,9 @@ fn the_guard_is_the_whole_tag() {
 
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &body, &mut image, &mut report);
+    let ran = tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &body, &mut image, &mut report);
     check(
-        image == [0u8; 4] && !report.damaged,
+        image == [0u8; 4] && ran,
         "the guard: a two-byte tag of 0x0101 is NOT arm 1, so the arm's entry does not fire",
     );
 
@@ -1939,9 +1354,9 @@ fn the_guard_is_the_whole_tag() {
     let named: [u8; 6] = [0x01, 0x00, 0xAA, 0xBB, 0xCC, 0xDD];
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &named, &mut image, &mut report);
+    let ran = tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &named, &mut image, &mut report);
     check(
-        image == [0xAA, 0xBB, 0xCC, 0xDD] && !report.damaged,
+        image == [0xAA, 0xBB, 0xCC, 0xDD] && ran,
         "the guard: 0x0001 at two bytes IS arm 1, and the entry fires",
     );
 
@@ -1963,10 +1378,10 @@ fn the_guard_is_the_whole_tag() {
         argw: 4,
         arg: 1,
     };
-    tblfu1::table_fixed_run(&[entry], &[past], &[], &body, &mut image, &mut report);
+    let ran = tblfu1::table_fixed_run(&[entry], &[past], &[], &body, &mut image, &mut report);
     check(
-        report.damaged && image == [0u8; 4],
-        "the guard: a tag whose width runs past the record is malformed and lands nothing",
+        !ran && image == [0u8; 4],
+        "the guard: a tag whose width runs past the record stops the run (the load refuses it wire_damaged) and lands nothing",
     );
 }
 
@@ -2045,7 +1460,7 @@ fn the_declared_range() {
         tabledemo::ranged_signed_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
     check(n == Some(1), "the range: the clean record reads");
     check(
-        back[0].i8_inside == 5 && !report.refused && !report.damaged,
+        back[0].i8_inside == 5 && !report.refused,
         "NEGATIVE CONTROL: a value inside the range lands untouched and refuses NOTHING",
     );
 
@@ -2064,7 +1479,7 @@ fn the_declared_range() {
     );
     check(n.is_none(), "the range: the forged record refuses (strict-only)");
     check(
-        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange && !report.damaged,
+        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange,
         "the range: a value under the declared min refuses as out_of_range, not damage",
     );
 
@@ -2139,7 +1554,7 @@ fn the_declared_width() {
     let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
     check(n.is_none(), "the width: the forged record refuses (strict-only)");
     check(
-        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange && !report.damaged,
+        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange,
         "the width: a value past 2^N-1 refuses as out_of_range, not damage",
     );
 
@@ -2198,7 +1613,7 @@ fn the_text_content_rule(dir: &str) {
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
     check(
-        n == Some(2) && !report.damaged && !report.refused,
+        n == Some(2) && !report.refused,
         "NEGATIVE CONTROL: the reference's own text is well formed and raises nothing",
     );
     check(
@@ -2217,7 +1632,7 @@ fn the_text_content_rule(dir: &str) {
         n.is_none()
             && report.refused
             && report.reason == tblfx1::TableFixedReason::TextIllFormed
-            && !report.damaged,
+           ,
         "the content rule: a lone continuation byte is DAMAGE and REFUSES BY NAME — text_ill_formed",
     );
     check(
@@ -2246,16 +1661,15 @@ fn the_text_content_rule(dir: &str) {
 
     // AND THE SLACK IS DEAD, AND DEAD BYTES ARE ZERO (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5): the same byte PAST the used length is
-    // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD, leaving
-    // every row at its declared default (R4). The verdict is the contract, not its
-    // name: this leg reports a dead byte as damage.
+    // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD as
+    // wire_damaged, leaving every row at its declared default (R4).
     let mut forged = golden.clone();
     forged[body + 26 + 5] = 0x80; // past `label_length` of 3
     let mut report = tblfx1::TableFixedReport::default();
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        n.is_none() && (report.refused || report.damaged),
+        n.is_none() && report.refused && report.reason == tblfx1::TableFixedReason::WireDamaged,
         "the content rule: a nonzero byte past the USED LENGTH is a dead byte and refuses the whole load",
     );
     check(
@@ -2270,7 +1684,7 @@ fn the_text_content_rule(dir: &str) {
     let mut report = tblfx1::TableFixedReport::default();
     tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        !report.damaged && !report.refused && values[0].blob[0] == 0x80,
+        !report.refused && values[0].blob[0] == 0x80,
         "the content rule: a `bytes(N)` has NO content rule — the same byte is data",
     );
 }
@@ -2319,7 +1733,7 @@ fn the_hostile_sweep(dir: &str) {
     // THE SWEEP: the reference's own poison set, every offset of the whole file.
     const POISON: [u8; 6] = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
     let mut refused: u32 = 0;
-    let mut damaged: u32 = 0;
+    let mut wire_damaged: u32 = 0;
     let mut landed: u32 = 0;
     for at in 0..golden.len() {
         for &p in &POISON {
@@ -2327,27 +1741,27 @@ fn the_hostile_sweep(dir: &str) {
             hit[at] = p;
             let mut report = tblfx1::TableFixedReport::default();
             let n = tblfx1::fx_root_fixed_load(&mut values, &hit, &mut plan, &mut remap, &mut report);
-            // THREE ANSWERS NEVER A FOURTH. A panic is the fourth: it unwinds
-            // out of the load and fails the whole binary, so reaching here IS
-            // the sanitizer's verdict for this mutation.
+            // TWO ANSWERS NEVER A THIRD (§5.3: this form's report has no
+            // malformed flag, so damage is a refusal by name). A panic is the
+            // third: it unwinds out of the load and fails the whole binary, so
+            // reaching here IS the sanitizer's verdict for this mutation.
             let named = n.is_none()
                 && report.refused
-                && report.reason != tblfx1::TableFixedReason::None
-                && !report.damaged;
-            let hurt = report.damaged && !report.refused;
-            let clean = n.is_some() && !report.refused && !report.damaged;
+                && report.reason != tblfx1::TableFixedReason::None;
+            let clean = n.is_some() && !report.refused;
             if named {
                 refused += 1;
-            } else if hurt {
-                damaged += 1;
+                if report.reason == tblfx1::TableFixedReason::WireDamaged {
+                    wire_damaged += 1;
+                }
             } else if clean {
                 landed += 1;
             } else {
                 check(
                     false,
                     &format!(
-                        "P3 hostile sweep: byte {at} poison 0x{p:02x} is a fourth answer (n={n:?} refused={} malformed={})",
-                        report.refused, report.damaged,
+                        "P3 hostile sweep: byte {at} poison 0x{p:02x} is a third answer (n={n:?} refused={} reason={})",
+                        report.refused, report.reason.name(),
                     ),
                 );
             }
@@ -2355,30 +1769,30 @@ fn the_hostile_sweep(dir: &str) {
     }
     let total = (golden.len() * POISON.len()) as u32;
     check(
-        refused + damaged + landed == total,
+        refused + landed == total,
         &format!(
-            "P3 hostile sweep: all {total} mutations answered, none a fourth (refused={refused} malformed={damaged} landed={landed})",
+            "P3 hostile sweep: all {total} mutations answered, none a third (refused={refused} landed={landed})",
         ),
     );
     check(
-        refused > 0 && damaged > 0 && landed > 0,
+        refused > 0 && wire_damaged > 0 && landed > 0,
         &format!(
-            "P3 hostile sweep: all three answers fired, never only one (refused={refused} malformed={damaged} landed={landed})",
+            "P3 hostile sweep: both answers fired, and damage refused by name (refused={refused} wire_damaged={wire_damaged} landed={landed})",
         ),
     );
 
     // AND THE LENGTH IS STRANGER-CONTROLLED TOO: one byte off the end is a
-    // ragged tail — `malformed`, never a silent short read.
+    // ragged tail — refused `truncated` (§5.3 step 9), never a silent short read.
     let mut short = golden.clone();
     short.pop();
     let mut report = tblfx1::TableFixedReport::default();
     let n = tblfx1::fx_root_fixed_load(&mut values, &short, &mut plan, &mut remap, &mut report);
     check(
-        n.is_none() && report.damaged && !report.refused,
-        "P3 hostile sweep: a one-byte-short file is DAMAGE, not a short read",
+        n.is_none() && report.refused && report.reason == tblfx1::TableFixedReason::Truncated,
+        "P3 hostile sweep: a one-byte-short file is refused truncated, not a short read",
     );
     println!(
-        "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} malformed={damaged} landed={landed}, three answers never a fourth",
+        "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} (wire_damaged={wire_damaged}) landed={landed}, two answers never a third",
         golden.len(),
     );
 }
@@ -2423,36 +1837,6 @@ fn the_prefill_holes(dir: &str) {
         let mut out = vec![0u8; tblfx1::fx_root_fixed_measure(n)];
         tblfx1::fx_root_fixed_save(&values[..n], &mut out);
         check(out == golden, "identity dirty dest: holes empty, so the plan overwrites everything");
-    }
-
-    // COMPILED MISSING FIELD KEEPS THE DECLARED DEFAULT, and the dest was
-    // poisoned so leftover dest cannot stand in for the hole.
-    if !retired(
-        "the_prefill_holes' compiled missing-field block",
-        "FX2 reading FX1's file is a forward read through a stranger's layout, which this reader now answers `layout_newer` on a generated build the CLI hands no lineage",
-        LINEAGE,
-    ) {
-        let golden = slurp(dir, "fx1.bin");
-        let mut values = [tblfx2::FxRootRow::default(); 8];
-        for v in &mut values {
-            v.added = 999;
-            v.extra.x = 77;
-            v.extra.y = 88;
-        }
-        let mut plan = [tblfx2::TableFixedEntry::default(); 512];
-        let mut remap = [0u16; 512];
-        let mut report = tblfx2::TableFixedReport::default();
-        let n = tblfx2::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
-        check(n == Some(2), "compiled missing field: both records load");
-        check(
-            values[0].added == 11,
-            "compiled missing field: a field the writer does not carry keeps its declared default",
-        );
-        check(
-            values[0].extra.x == 0 && values[0].extra.y == 0,
-            "compiled missing field: a whole nested type the writer does not carry keeps its defaults",
-        );
-        check(values[0].keep == 4242, "compiled missing field: an unmoved field still lands");
     }
 
     // NEGATIVE CONTROL: a sabotaged identity plan that leaves a hole must take
@@ -2631,11 +2015,7 @@ fn main() {
     the_write_slack();
     the_compiled_plan(&dir);
     the_prefill_holes(&dir);
-    an_older_writer(&dir);
-    a_newer_writer(&dir);
-    an_optional(&dir);
     the_bench_corpus(&bench);
-    the_ordinal_slide();
     the_text_under_an_arm();
     the_enum_extent();
     the_negative_controls(&dir);
@@ -2655,6 +2035,6 @@ fn main() {
         exit(1);
     }
     println!(
-        "rust fixed form: the bytes are the C++ reference's — the union corpus with them — and the versioned path is the path"
+        "rust fixed form: the bytes are the C++ reference's — the union corpus with them — and a compiled plan over its own block lands what the identity plan lands"
     );
 }
