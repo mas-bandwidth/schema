@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -151,5 +152,95 @@ func TestGoNeedsSelectByPackageAndWholeTestName(t *testing.T) {
 		if _, err := LoadGoNeeds(path); err == nil || !strings.Contains(err.Error(), ":1:") {
 			t.Errorf("%q: %v, want a refusal naming line 1", bad, err)
 		}
+	}
+}
+
+// TestEveryModuleBuiltAgainstBuildIsDeclared: a nested Go module whose go.mod
+// replaces an import with a directory under build/ compiles only once that
+// tree is written, so every package of it that holds tests has a
+// GoNeedsPath line. Undeclared, fullrun's go -C run failed at setup
+// ("replacement directory ../../../build/tables-generated-go/block does not
+// exist": 69 reds in fullrun e38eafd02b retest-1).
+func TestEveryModuleBuiltAgainstBuildIsDeclared(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "..")
+	needs, err := LoadGoNeeds(filepath.Join(root, GoNeedsPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := map[string]bool{}
+	for _, n := range needs {
+		declared[n.Package] = true
+	}
+	intoBuild := regexp.MustCompile(`(?m)^\s*replace\s+\S+(\s+\S+)?\s+=>\s+(\.\./)+build/`)
+	var modules []string // module dirs, relative to root
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch rel {
+			case "build", "dist", "generated", ".git", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != "go.mod" || rel == "go.mod" {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if intoBuild.Match(src) {
+			modules = append(modules, filepath.Dir(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(modules) == 0 {
+		t.Fatal("found no nested module built against build/: the scan reads nothing")
+	}
+	var missing []string
+	for _, m := range modules {
+		err := filepath.WalkDir(filepath.Join(root, m), func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if path != filepath.Join(root, m) {
+					if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+						return filepath.SkipDir // a module of its own, scanned by itself
+					}
+				}
+				return nil
+			}
+			if !strings.HasSuffix(d.Name(), "_test.go") {
+				return nil
+			}
+			rel, err := filepath.Rel(root, filepath.Dir(path))
+			if err != nil {
+				return err
+			}
+			pkg := "./" + filepath.ToSlash(rel)
+			if !declared[pkg] {
+				missing = append(missing, pkg+" (module "+filepath.ToSlash(m)+")")
+				declared[pkg] = true // once
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Fatalf("%s declares no build for these packages of modules built against build/:\n%s", GoNeedsPath, strings.Join(missing, "\n"))
 	}
 }

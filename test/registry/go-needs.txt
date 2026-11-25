@@ -33,3 +33,11 @@ needs ./internal/fixedvector .* tables-fixedform-corpus
 
 # the all-port differential's answer tree, build/conformance-differential
 needs ./internal/ci TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-harness
+
+# Nested modules whose go.mod replaces its imports with generated trees under
+# build/ (fullrun runs them with go -C <module>): the build that writes those
+# trees. build/conformance-go is every tree test/conformance/go builds
+# against (the generated tables, the framing, r19 and announce modules, cards).
+needs ./test/conformance/go .* build/conformance-go
+needs ./test/conformance/go/rows .* build/conformance-go
+needs ./test/go-tables .* build/tables-generated-go/.stamp
