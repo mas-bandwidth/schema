@@ -364,8 +364,8 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 29/76 | 3 | 50.2 |
 | `none` | 30/76 | 18 | 50.8 |
 | `none` | 31/76 | 89 | 49.7 |
-| `none` | 32/76 | 25 | 50.9 |
-| `none` | 33/76 | 46 | 50.5 |
+| `none` | 32/76 | 26 | 50.9 |
+| `none` | 33/76 | 45 | 50.5 |
 | `none` | 34/76 | 86 | 58.7 |
 | `none` | 35/76 | 19 | 56.8 |
 | `none` | 36/76 | 18 | 57.1 |
@@ -390,12 +390,12 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 55/76 | 66 | 53.5 |
 | `none` | 56/76 | 95 | 44.0 |
 | `none` | 57/76 | 2 | 56.0 |
-| `none` | 58/76 | 117 | 43.6 |
-| `none` | 59/76 | 107 | 57.0 |
+| `none` | 58/76 | 118 | 47.3 |
+| `none` | 59/76 | 106 | 53.3 |
 | `none` | 60/76 | 33 | 59.0 |
 | `none` | 61/76 | 2 | 47.8 |
-| `none` | 62/76 | 3 | 43.1 |
-| `none` | 63/76 | 8 | 42.6 |
+| `none` | 62/76 | 4 | 44.1 |
+| `none` | 63/76 | 7 | 41.6 |
 | `none` | 64/76 | 1 | 38.5 |
 | `none` | 65/76 | 1 | 38.5 |
 | `none` | 66/76 | 1 | 38.5 |
@@ -404,12 +404,12 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 69/76 | 1 | 38.5 |
 | `none` | 70/76 | 1 | 38.5 |
 | `none` | 71/76 | 1 | 38.5 |
-| `none` | 72/76 | 17 | 51.5 |
-| `none` | 73/76 | 43 | 52.0 |
-| `none` | 74/76 | 39 | 41.9 |
-| `none` | 75/76 | 35 | 57.7 |
-| `none` | 76/76 | 60 | 56.8 |
-| **every row** | **364 jobs** | **49668** | **18639.4** |
+| `none` | 72/76 | 18 | 52.5 |
+| `none` | 73/76 | 45 | 52.0 |
+| `none` | 74/76 | 36 | 40.8 |
+| `none` | 75/76 | 36 | 58.7 |
+| `none` | 76/76 | 59 | 58.3 |
+| **every row** | **364 jobs** | **49668** | **18641.9** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

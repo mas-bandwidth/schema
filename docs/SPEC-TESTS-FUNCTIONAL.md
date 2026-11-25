@@ -5305,15 +5305,15 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.inputaccount.conformance-cpp` | `make` | inputaccount -family conformance-corpus -leg cpp -check-extra and -canary wrong (the input-family-cpp-conformance step) | `file: make/lint-fast.mk`<br>`target: check-inputaccount-cpp` | the target exits 0 with no skip in its log | `make/lint-fast.mk:37` |
+| `none.functional.tooling.inputaccount.conformance-cpp` | `make` | python3 make/conformance-handoff.py consume the same-run cpp-conformance archive, then inputaccount -family conformance-corpus -leg cpp -check-extra and -canary wrong (the input-family-cpp-conformance step) | `file: make/lint-fast.mk`<br>`target: check-inputaccount-cpp` | the target exits 0 with no skip in its log | `make/lint-fast.mk:32` |
 
 #### `tooling` family `lint-fast`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.lint-fast.bench-run-sh` | `make` | bash -n bench/run.sh accepts the script (the ci-policy bench step) | `file: make/lint-fast.mk`<br>`target: check-bench-run-sh` | the target exits 0 with no skip in its log | `make/lint-fast.mk:33` |
-| `none.functional.tooling.lint-fast.go-mod-tidy` | `make` | go mod tidy -diff reports no change (the lint-fast tidy step) | `file: make/lint-fast.mk`<br>`target: check-go-mod-tidy` | the target exits 0 with no skip in its log | `make/lint-fast.mk:16` |
-| `none.functional.tooling.lint-fast.wiredtargets` | `make` | go run ./tools/wiredtargets finds every test target wired (the lint-fast wiredtargets step) | `file: make/lint-fast.mk`<br>`target: check-wiredtargets` | the target exits 0 with no skip in its log | `make/lint-fast.mk:29` |
+| `none.functional.tooling.lint-fast.bench-run-sh` | `make` | bash -n bench/run.sh accepts the script (the ci-policy bench step) | `file: make/lint-fast.mk`<br>`target: check-bench-run-sh` | the target exits 0 with no skip in its log | `make/lint-fast.mk:28` |
+| `none.functional.tooling.lint-fast.go-mod-tidy` | `make` | go mod tidy -diff reports no change (the lint-fast tidy step) | `file: make/lint-fast.mk`<br>`target: check-go-mod-tidy` | the target exits 0 with no skip in its log | `make/lint-fast.mk:11` |
+| `none.functional.tooling.lint-fast.wiredtargets` | `make` | go run ./tools/wiredtargets finds every test target wired (the lint-fast wiredtargets step) | `file: make/lint-fast.mk`<br>`target: check-wiredtargets` | the target exits 0 with no skip in its log | `make/lint-fast.mk:24` |
 
 #### `tooling` family `memceiling`, 2 tests
 
@@ -5381,7 +5381,7 @@ generated or runtime code is clean under the language's strict analyser.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.lint.lint-fast.gofmt` | `make` | gofmt -l . lists no file (the lint-fast gofmt step) | `file: make/lint-fast.mk`<br>`target: check-gofmt` | the target exits 0 with no skip in its log | `make/lint-fast.mk:7` |
-| `none.functional.lint.lint-fast.modernize` | `make` | modernize 0.23.0 ./... reports nothing (the lint-fast modernize step) | `file: make/lint-fast.mk`<br>`target: check-modernize` | the target exits 0 with no skip in its log | `make/lint-fast.mk:20` |
+| `none.functional.lint.lint-fast.modernize` | `make` | modernize 0.23.0 ./... reports nothing (the lint-fast modernize step) | `file: make/lint-fast.mk`<br>`target: check-modernize` | the target exits 0 with no skip in its log | `make/lint-fast.mk:15` |
 
 #### `lint` family `make-c`, 1 test
 
