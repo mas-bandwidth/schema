@@ -857,6 +857,11 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		"  producers:\n    runs-on: x\n    strategy:\n      matrix:\n        include: [{\"name\":\"lint-c\",\"target\":\"tables-c-clean-inputs\"}]\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
 		"  producecheck:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: tables-c-clean\n" +
 		"  producematrix:\n    runs-on: x\n    strategy:\n      matrix:\n        include: [{\"name\":\"c\",\"target\":\"tables-c-clean\"}]\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
+		"  produceblock:\n    runs-on: x\n    strategy:\n      matrix:\n        target:\n          - tables-c-clean\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
+		"  producedynamic:\n    runs-on: x\n    strategy:\n      matrix:\n        include: ${{ fromJSON(needs.plan.outputs.rows) }}\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
+		"  produceunwritten:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
+		"  produceblockmixed:\n    runs-on: x\n    strategy:\n      matrix:\n        include: [{\"name\":\"lint-c\",\"target\":\"tables-c-clean-inputs\"}]\n        target:\n          - tables-c-clean\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
+		"  producedynamicmixed:\n    runs-on: x\n    strategy:\n      matrix: ${{ fromJSON(needs.plan.outputs.rows) }}\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: tables-c-clean-inputs\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
 		"  local:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/eslint\n      - run: go run ./tools/fullrun merge\n"
 	res, err := Extract(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", ".github/workflows/n.yml": wf}))
 	if err != nil {
@@ -867,7 +872,7 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		got = append(got, it.Name)
 	}
 	sort.Strings(got)
-	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "local", "mixed", "producecheck", "producematrix", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
+	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "local", "mixed", "produceblock", "produceblockmixed", "producecheck", "producedynamic", "producedynamicmixed", "producematrix", "produceunwritten", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }

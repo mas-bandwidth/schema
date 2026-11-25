@@ -310,26 +310,47 @@ var setRE = regexp.MustCompile(`^set(\s+[-+][a-zA-Z]+(\s+pipefail)?)+\s*$`)
 // `target: x` inside braces).
 var targetRE = regexp.MustCompile(`(?:^|[\s{,-])"?target"?\s*:\s*("[^"]*"|'[^']*'|\$\{\{[^}]*\}\}|[^\s,}]+)`)
 
+// bareTargetRE is a target key with no value on its line (a block sequence
+// of targets below it, which targetRE does not read).
+var bareTargetRE = regexp.MustCompile(`(?:^|[\s{,-])"?target"?\s*:\s*(#.*)?$`)
+
+// dynamicMatrixRE is a matrix (or its include) given as an expression: its
+// targets are not in the file.
+var dynamicMatrixRE = regexp.MustCompile(`(?:^|[\s{,-])"?(matrix|include)"?\s*:\s*\$\{\{`)
+
 // targetsAreProducers reports whether every target the job's lines name is
-// the matrix's own (${{ matrix.target }}) or a producer's (testreg.Producers).
+// a producer's (testreg.Producers), or the matrix's own (${{ matrix.target }})
+// when the job's matrix is written out and every target in it was read and
+// is a producer's. A target key with its values on the lines below, or a
+// matrix given as an expression, is not read: the job is not driver-only.
 func targetsAreProducers(lines []string) bool {
 	producers := map[string]bool{}
 	for _, p := range testreg.Producers {
 		producers[p.Target] = true
 	}
+	literal, fromMatrix := 0, 0
 	for _, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		for _, m := range targetRE.FindAllStringSubmatch(line, -1) {
-			v := strings.Trim(m[1], `"'`)
-			if strings.Join(strings.Fields(v), " ") == "${{ matrix.target }}" || producers[v] {
-				continue
-			}
+		if bareTargetRE.MatchString(line) || dynamicMatrixRE.MatchString(line) {
 			return false
 		}
+		for _, m := range targetRE.FindAllStringSubmatch(line, -1) {
+			v := strings.Trim(m[1], `"'`)
+			switch {
+			case strings.Join(strings.Fields(v), " ") == "${{ matrix.target }}":
+				fromMatrix++
+			case producers[v]:
+				literal++
+			default:
+				return false
+			}
+		}
 	}
-	return true
+	// ${{ matrix.target }} with no target written in the job's matrix
+	// takes its targets from somewhere this check does not read
+	return fromMatrix == 0 || literal > 0
 }
 
 // driverCommands are the commands a driver-only job's steps may run.
