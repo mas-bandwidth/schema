@@ -287,7 +287,9 @@ func makefileFiles(t *testing.T, root string) map[string]string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files[rel] = string(data)
+		// the go test a recipe runs through tools/gotestrun ($(GO_TEST), and
+		// $(GO_TEST_RED) for a control) is the same go test: read it as one
+		files[rel] = makeGoTest.Replace(string(data))
 	}
 	return files
 }

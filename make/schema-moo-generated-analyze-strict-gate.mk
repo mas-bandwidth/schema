@@ -113,7 +113,7 @@ packet-wire-moo-emitter-negative-control: toolchain-moo-dist
 		-out $(MOO_WIRE_NC_DIR)/wire.gotext internal/codegen/moo/wire.go
 	@printf '{"Replace":{"%s/internal/codegen/moo/wire.go":"%s/$(MOO_WIRE_NC_DIR)/wire.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(MOO_WIRE_NC_DIR)/overlay.json
-	@if go test -overlay=$(MOO_WIRE_NC_DIR)/overlay.json -count=1 -v ./internal/codegen/moo \
+	@if $(GO_TEST_RED) -overlay=$(MOO_WIRE_NC_DIR)/overlay.json -count=1 -v ./internal/codegen/moo \
 			-run '^TestMooTypeWireWritesTheGoldens$$' > $(MOO_WIRE_NC_DIR)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the moo golden gate stayed green with the bool written twice'; \
 		cat $(MOO_WIRE_NC_DIR)/log; exit 1; fi

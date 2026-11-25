@@ -3,7 +3,7 @@
 // internal/testreg), and every name in the list runs and passes or fails
 // (docs/TEST-REGISTRY.md).
 //
-//	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n]
+//	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update] [--report FILE]
 //	schema-test list [the same]
 //	schema-test coverage
 //	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
@@ -47,6 +47,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
+// now is the clock a run's default seed is read from; a test sets --seed.
+var now = time.Now
+
 // usageError is a command line schema-test cannot run; it exits 2.
 type usageError struct{ msg string }
 
@@ -57,7 +60,7 @@ func main() {
 }
 
 const usage = `usage:
-  schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n]
+  schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update] [--report FILE]
   schema-test list [the same]
   schema-test coverage
   schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
@@ -67,8 +70,13 @@ const usage = `usage:
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
   --shard i/n       the i-th of n parts of the expanded list
+  --update          run: re-pin the named goldens from their writers (goldens only)
+  --report FILE     run: also write the run's report (every outcome and run-level problem) to FILE as JSON
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
+  --seed N          the run's seed, handed to every adapter as SCHEMA_TEST_SEED
+                    (default: the UTC date as YYYYMMDD, printed before the run);
+                    a red fuzz row re-runs by name with the seed its run printed
   --write-seconds   record each passing test's measured seconds in the registry,
                     which --shard weighs it by (run it on a fleet runner)
 `
@@ -162,7 +170,10 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	shard := fs.String("shard", "", "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	timeout := fs.Duration("timeout", 90*time.Second, "")
+	update := fs.Bool("update", false, "")
+	report := fs.String("report", "", "")
 	writeSeconds := fs.Bool("write-seconds", false, "")
+	seedFlag := fs.String("seed", "", "")
 	// flags may come before or after the names
 	rest := args[1:]
 	for {
@@ -175,12 +186,18 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 		q.Names = append(q.Names, fs.Arg(0))
 		rest = fs.Args()[1:]
 	}
+	if *update && sub != "run" {
+		return usageError{"--update is a run that re-pins goldens"}
+	}
+	if *report != "" && sub != "run" {
+		return usageError{"--report writes a run's report"}
+	}
 	reg, err := testreg.Load(*path)
 	if err != nil {
 		return err
 	}
-	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout)}
-	withPlant(ads, rn)
+	rn := &testreg.Runner{Reg: reg, Adapters: ads, Context: testreg.WithTimeout(*timeout), Now: time.Now}
+	withRunner(ads, rn)
 	if sub == "coverage" {
 		if !q.Empty() || *group != "" || *shard != "" {
 			return usageError{"coverage takes no query: it is every test times every language"}
@@ -246,14 +263,45 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if _, err := io.WriteString(stdout, names.String()); err != nil || sub == "list" {
 		return err
 	}
+	if *update {
+		if err := goldenOnly(instances); err != nil {
+			return err
+		}
+		ctx = withUpdate(ctx)
+	}
 	plan := rn.Plan(instances)
 	if _, err := fmt.Fprintf(stdout, "schema-test run: %s\n", plan); err != nil {
+		return err
+	}
+	// the run's seed: --seed, or the UTC date; every adapter is handed it
+	// (testreg.SeedEnv), and it is printed so a red fuzz row re-runs by name
+	// with it
+	// with the clock read only when no --seed names it
+	var seed uint64
+	if *seedFlag != "" {
+		if seed, err = testreg.ParseSeed(*seedFlag); err != nil {
+			return usageError{"--seed: " + err.Error()}
+		}
+	} else {
+		seed = testreg.DateSeed(now())
+	}
+	ctx = testreg.WithEnv(ctx, map[string]string{testreg.SeedEnv: strconv.FormatUint(seed, 10)})
+	if _, err := fmt.Fprintf(stdout, "schema-test run: seed %d (a red fuzz row re-runs with: schema-test run NAME --seed %d)\n", seed, seed); err != nil {
 		return err
 	}
 	rep := rn.Run(ctx, instances)
 	rep.Unrep = sel.Unrep
 	if err := rep.Print(stdout); err != nil {
 		return err
+	}
+	if *report != "" {
+		data, err := json.Marshal(rep)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(*report, data, 0o644); err != nil {
+			return fmt.Errorf("--report: %w", err)
+		}
 	}
 	if *writeSeconds {
 		if err := recordSeconds(stdout, *path, instances, rep); err != nil {
@@ -267,7 +315,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 }
 
 // passLine is a run's line for an instance that passed, with its seconds.
-var passLine = regexp.MustCompile(`(?:^|\s)PASS (\S+) \(([0-9.]+)s\)$`)
+var passLine = regexp.MustCompile(`(?:^|\s)PASS (\S+) \(([0-9.]+)s\)(?:: .*)?$`)
 
 // secondsCmd is "schema-test seconds LOG...": every passing instance a log
 // names with its seconds has them recorded on its test's registry line, the

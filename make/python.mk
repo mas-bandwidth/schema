@@ -28,7 +28,7 @@ python-ci-support-list:
 	@printf '%s\n' $(PYTHON_CI_SUPPORT_GROUPS) python-ci-compiler
 python-ci-core: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 python-ci-packages:
-	go test -timeout 0 -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
+	$(GO_TEST) -timeout 0 -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 python-ci-compiler:
 	sel=$$(go run ./tools/gotestselect -tags schema_leg_python -run 'Python' -not '^TestPythonRequiredPublicShapes$$' ./compiler) || exit 1; sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python -run "$$sel" ./compiler -count=1
 python-ci-compiler-coverage:
@@ -44,7 +44,7 @@ update-goldens-python: ;
 # to find the write-back marker red. It is a Go test under the slow gate,
 # because the probe runs under both pinned interpreters.
 python-packet-core-negative-control: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run TestPythonPacketCoreNegativeControl ./internal/codegen/python/
 
 # packet-finite-python: test/packet-finite, SPEC §4.3's finite floats, on the
 # Python packet wire. test/packet-finite/python/main.py runs every bare-float
@@ -124,14 +124,14 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 # pins, so test-python depends on it and it is registered in
 # make/negative-controls.json as a gate test-python runs.
 python-table-core-negative-control:
-	go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
+	$(GO_TEST) -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 # The map cell's negative controls: the map runtime's writer sort is removed,
 # then the reader's duplicate check, then its descending check, then the
 # ascending order the save numbers a map's nodes in, each in a copy, and the
 # pinned probe must go red under each.
 python-table-maps-negative-control:
-	go test -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
+	$(GO_TEST) -tags schema_leg_python -run 'TestPythonVtMapsNegativeControl' ./internal/codegen/pythontable/ -count=1
 
 # The widening cell: TestPythonVtWidening holds every manifest report row the
 # Go engine widens (the field, union arm, array element and map key sites) and
@@ -141,9 +141,9 @@ python-table-maps-negative-control:
 # requires its rows red by name.
 python-ci-vt-widening: python-vt-widening python-vt-widening-negative-control
 python-vt-widening: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWidening$$' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWidening$$' ./internal/codegen/pythontable/
 python-vt-widening-negative-control: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideningNegativeControl$$' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonVtWideningNegativeControl$$' ./internal/codegen/pythontable/
 
 generated/bench/tables/python/.stamp: ;
 
@@ -158,20 +158,20 @@ GOLDENS_LEGS          += update-goldens-python
 # shared-stream multi-root pins, and analyzes the complete generated corpus.
 .PHONY: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
 python-packet-close: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketClose$$' ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketClose$$' ./internal/codegen/python/
 python-packet-close-negative-control: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseNegativeControl$$' ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseNegativeControl$$' ./internal/codegen/python/
 python-packet-analyzer: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzer$$' ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzer$$' ./internal/codegen/python/
 python-packet-analyzer-negative-control: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCloseAnalyzerNegativeControl$$' ./internal/codegen/python/
 python-ci-close: python-packet-close python-packet-close-negative-control python-packet-analyzer python-packet-analyzer-negative-control
 
 .PHONY: packet-defaults-python packet-defaults-python-negative-control
 packet-defaults-python: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaults$$' ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaults$$' ./internal/codegen/python/
 packet-defaults-python-negative-control: python-toolchain-check
-	go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaultsNegativeControl$$' ./internal/codegen/python/
+	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketDefaultsNegativeControl$$' ./internal/codegen/python/
 python-ci-defaults: packet-defaults-python packet-defaults-python-negative-control
 
 generated/bench/python/.stamp: bin/schema $(SCHEMAS_BENCH)
@@ -205,13 +205,13 @@ python-ci-hosted: python-hosted-packet-text python-hosted-packet-text-negative-c
 # Run every packet pin on both interpreters, partitioned for per-commit CI.
 .PHONY: $(PYTHON_PACKET_CORE_SHARDS)
 $(PYTHON_PACKET_CORE_SHARDS): python-ci-packet-core-%:
-	PYTHON_PACKET_CORE_SHARD=$* go test -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCore$$' ./internal/codegen/python/
+	PYTHON_PACKET_CORE_SHARD=$* $(GO_TEST) -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonPacketCore$$' ./internal/codegen/python/
 
 .PHONY: python-ci-packet-core-coverage
 python-ci-packet-core-coverage:
-	go test -count=1 -run '^TestPythonPacketCoreCIPlan$$' ./internal/ci/
+	$(GO_TEST) -count=1 -run '^TestPythonPacketCoreCIPlan$$' ./internal/ci/
 .PHONY: python-ci-map-bench-current python-ci-map-bench-floor python-ci-map-bench-coverage
 python-ci-map-bench-current python-ci-map-bench-floor: python-ci-map-bench-%:
-	PYTHON_MAP_BENCH_PIN=$* go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMapShapeBench$$' ./internal/codegen/pythontable/
+	PYTHON_MAP_BENCH_PIN=$* $(GO_TEST) -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonMapShapeBench$$' ./internal/codegen/pythontable/
 python-ci-map-bench-coverage:
-	go test -count=1 -run '^TestPythonMapBenchCIPlan$$' ./internal/ci/
+	$(GO_TEST) -count=1 -run '^TestPythonMapBenchCIPlan$$' ./internal/ci/

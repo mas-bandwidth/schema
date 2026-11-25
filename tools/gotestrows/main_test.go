@@ -353,6 +353,9 @@ func TestEveryRideRunsInItsLegsRow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the recipes run go test through the Makefile's wrappers (tools/gotestrun);
+	// $(GO_TEST) and $(GO_TEST_RED) are the go test they run
+	mk = []byte(strings.NewReplacer("$(GO_TEST_RED)", "go test", "$(GO_TEST)", "go test").Replace(string(mk)))
 	n := 0
 	for pkg, rides := range tb.rides {
 		for _, r := range rides {

@@ -72,7 +72,7 @@ toolchain-moo-dist: $(if $(filter command line,$(origin MOO)),,$(MOO_DIST)/PIN)
 # network: inputs go in as source.
 .PHONY: test-moo update-goldens-moo
 test-moo: toolchain-moo
-	go test -count=1 ./internal/codegen/moo/...
+	$(GO_TEST) -count=1 ./internal/codegen/moo/...
 update-goldens-moo: ;
 
 TEST_LEGS          += test-moo
