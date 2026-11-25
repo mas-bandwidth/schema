@@ -173,10 +173,10 @@ func TestRunHostileReadsEachCaseFromItsRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) < 3 {
-		t.Fatal("the corpus has fewer than three cases")
+	if len(cases) < 4 {
+		t.Fatal("the corpus has fewer than four cases")
 	}
-	a, b, c := cases[0].Name, cases[1].Name, cases[2].Name
+	a, b, c, d := cases[0].Name, cases[1].Name, cases[2].Name, cases[3].Name // d is never asked
 	ranAll := func(except ...string) string {
 		var s strings.Builder
 		for _, k := range cases {
@@ -212,7 +212,10 @@ func TestRunHostileReadsEachCaseFromItsRun(t *testing.T) {
 		{name: "carried-finding", out: "FIX-CARD: slug: inputs/x.bin\n" + ranAll() + "hostile-ledger end\n", want: []string{"fail", "fail", "fail"}, reasonA: "no case's verdict"},
 		{name: "ledger-did-not-close", out: ranAll() + "FAIL c hostile-corpus ledger: short\nhostile-ledger end\n", want: []string{"fail", "fail", "fail"}, reasonA: "no case's verdict"},
 		{name: "unregistered-case", out: "hostile-ledger ran no-such-case\n" + ranAll() + "hostile-ledger end\n", want: []string{"fail", "fail", "fail"}, reasonA: "no case's verdict"},
-		{name: "exit-with-every-case-green", out: ranAll() + "hostile-ledger end\n", exit: errors.New("exit status 2"), want: []string{"pass", "pass", "pass"}, errHas: "failed with every case passing"},
+		{name: "exit-with-every-case-green", out: ranAll() + "hostile-ledger end\n", exit: errors.New("exit status 2"), want: []string{"pass", "pass", "pass"}, errHas: "failed with no case failing by name"},
+		// a case not asked gave no verdict and no line names a failure: the
+		// target failed in something no case shows, which is the run's
+		{name: "exit-with-an-unasked-case-silent", out: ranAll(d) + "hostile-ledger end\n", exit: errors.New("exit status 2"), want: []string{"pass", "pass", "pass"}, errHas: "1 registered cases gave no verdict"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var argv []string

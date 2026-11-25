@@ -370,10 +370,10 @@ func (s hostileSet) runWith(ctx context.Context, run func(context.Context, []str
 			res = append(res, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "make " + target + " gave the case no verdict: no line says it ran"})
 		}
 	}
-	if runErr != nil && len(v.Failed) == 0 && unanswered == 0 {
-		// every case ran and none failed, and the target failed: its
+	if runErr != nil && len(v.Failed) == 0 {
+		// no case failed by name, and the target failed: its
 		// failure is in something no case shows, which is the run's
-		return res, fmt.Errorf("make %s failed with every case passing: %w\n%s", target, runErr, tail(out, 30))
+		return res, fmt.Errorf("make %s failed with no case failing by name (%d registered cases gave no verdict): %w\n%s", target, unanswered, runErr, tail(out, 30))
 	}
 	return res, nil
 }
