@@ -798,6 +798,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	covered, p := CoveredIn(res, reg)
 	problems = append(problems, p...)
+	problems = append(problems, MakeSourceProblems(res, reg)...)
 	runs := Runs(res, reg)
 	exists := map[string]bool{}
 	goTests := map[string]Item{}
@@ -1005,6 +1006,37 @@ func DroppedMakeTargets(before, res *Result) []string {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf("make target %s (%s) is a test on main and no longer one here, though its rule stands: give it its registry row back, or remove the rule", it.Name, it.Dir))
+	}
+	return problems
+}
+
+// MakeSourceProblems holds each make row's source to the line its target's
+// rule is written on in the make file it names: the first line a rule of
+// that name starts on, the line the extract gives the target. A row whose
+// source names no line, another line, or a file other than its own is stale,
+// and is named with the line to set. A row naming a per-language target
+// ({lang}) or a rule no make file writes is CoveredIn's to name.
+func MakeSourceProblems(res *Result, reg *testreg.Registry) []string {
+	var problems []string
+	for _, t := range reg.Tests {
+		if t.Adapter != "make" {
+			continue
+		}
+		var in struct {
+			File   string `json:"file"`
+			Target string `json:"target"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil || in.File == "" || in.Target == "" || strings.Contains(in.Target, testreg.LangPlaceholder) {
+			continue
+		}
+		line, ok := res.RuleLines[RuleID(in.File, in.Target)]
+		if !ok {
+			continue
+		}
+		want := fmt.Sprintf("%s:%d", in.File, line)
+		if t.Source != want {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s source is %q, and %s is written at %s: set source to %q", reg.Path, t.Line, t.Key, t.Source, in.Target, want, want))
+		}
 	}
 	return problems
 }

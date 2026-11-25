@@ -30,8 +30,8 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3154 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4867 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `unit` | 3156 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4868 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
 | `nightly` | 2520 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
@@ -373,7 +373,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 2/80 | 20 | 51.4 |
 | `none` | 3/80 | 123 | 58.7 |
 | `none` | 4/80 | 3 | 55.0 |
-| `none` | 5/80 | 118 | 58.9 |
+| `none` | 5/80 | 119 | 58.9 |
 | `none` | 6/80 | 55 | 51.8 |
 | `none` | 7/80 | 394 | 51.2 |
 | `none` | 8/80 | 66 | 29.0 |
@@ -417,8 +417,8 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 46/80 | 70 | 59.0 |
 | `none` | 47/80 | 269 | 53.3 |
 | `none` | 48/80 | 14 | 57.6 |
-| `none` | 49/80 | 33 | 47.1 |
-| `none` | 50/80 | 24 | 54.6 |
+| `none` | 49/80 | 34 | 48.9 |
+| `none` | 50/80 | 23 | 52.8 |
 | `none` | 51/80 | 50 | 51.8 |
 | `none` | 52/80 | 228 | 55.0 |
 | `none` | 53/80 | 230 | 58.9 |
@@ -446,10 +446,10 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 75/80 | 12 | 45.8 |
 | `none` | 76/80 | 6 | 58.6 |
 | `none` | 77/80 | 14 | 48.3 |
-| `none` | 78/80 | 26 | 47.7 |
-| `none` | 79/80 | 62 | 48.1 |
-| `none` | 80/80 | 78 | 48.2 |
-| **every row** | **404 jobs** | **51575** | **20518.9** |
+| `none` | 78/80 | 27 | 48.7 |
+| `none` | 79/80 | 64 | 48.4 |
+| `none` | 80/80 | 77 | 47.9 |
+| **every row** | **404 jobs** | **51578** | **20519.9** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3152.
+Unit tests every language answers: 2. Language-free tests: 3154.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1929,7 +1929,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 260 tests
+#### `tooling` family `ci`, 261 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2036,6 +2036,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.luau-replay-corpus-is-registered` | `gotest` | Go test TestLuauReplayCorpusIsRegistered in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauReplayCorpusIsRegistered` | the Go test passes | `internal/ci/schema_luau_replay_registry_test.go:69` |
 | `none.unit.tooling.ci.main-nightlies-gate-inputs-agree` | `gotest` | Go test TestMainNightliesGateInputsAgree in ./internal/ci | `package: ./internal/ci`<br>`test: TestMainNightliesGateInputsAgree` | the Go test passes | `internal/ci/main_nightlies_green_test.go:22` |
 | `none.unit.tooling.ci.main-reds-pins-match-ci-full` | `gotest` | Go test TestMainRedsPinsMatchCIFull in ./internal/ci | `package: ./internal/ci`<br>`test: TestMainRedsPinsMatchCIFull` | the Go test passes | `internal/ci/mainreds_pins_test.go:39` |
+| `none.unit.tooling.ci.make-job-counts-honour-cpu-affinity` | `gotest` | Go test TestMakeJobCountsHonourCPUAffinity in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakeJobCountsHonourCPUAffinity` | the Go test passes | `internal/ci/cpu_count_affinity_test.go:35` |
 | `none.unit.tooling.ci.make-variable-checker-catches-a-planted-redefinition` | `gotest` | Go test TestMakeVariableCheckerCatchesAPlantedRedefinition in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakeVariableCheckerCatchesAPlantedRedefinition` | the Go test passes | `internal/ci/makevars_test.go:171` |
 | `none.unit.tooling.ci.makefile-portability` | `gotest` | Go test TestMakefilePortability in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakefilePortability` | the Go test passes | `internal/ci/makefile_portability_test.go:777` |
 | `none.unit.tooling.ci.makefile-portability-negative-controls` | `gotest` | Go test TestMakefilePortabilityNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestMakefilePortabilityNegativeControls` | the Go test passes | `internal/ci/makefile_portability_test.go:800` |
@@ -3453,7 +3454,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 32 tests
+#### `tooling` family `testreg-extract`, 33 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3463,6 +3464,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-golden-covers-a-case-only-when-it-pins-every-file` | `gotest` | Go test TestAGoldenCoversACaseOnlyWhenItPinsEveryFile in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAGoldenCoversACaseOnlyWhenItPinsEveryFile` | the Go test passes | `internal/testreg/extract/extract_test.go:250` |
 | `none.unit.tooling.testreg-extract.a-make-go-test-row-credits-only-the-test-it-names` | `gotest` | Go test TestAMakeGoTestRowCreditsOnlyTheTestItNames in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeGoTestRowCreditsOnlyTheTestItNames` | the Go test passes | `internal/testreg/extract/makegotest_test.go:19` |
 | `none.unit.tooling.testreg-extract.a-make-rows-reads-cover-the-cases-it-runs` | `gotest` | Go test TestAMakeRowsReadsCoverTheCasesItRuns in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeRowsReadsCoverTheCasesItRuns` | the Go test passes | `internal/testreg/extract/extract_test.go:332` |
+| `none.unit.tooling.testreg-extract.a-make-rows-source-is-held-to-its-rules-line` | `gotest` | Go test TestAMakeRowsSourceIsHeldToItsRulesLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeRowsSourceIsHeldToItsRulesLine` | the Go test passes | `internal/testreg/extract/extract_test.go:987` |
 | `none.unit.tooling.testreg-extract.a-make-target-that-stops-being-a-test-is-named` | `gotest` | Go test TestAMakeTargetThatStopsBeingATestIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMakeTargetThatStopsBeingATestIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:433` |
 | `none.unit.tooling.testreg-extract.a-malformed-make-row-is-named` | `gotest` | Go test TestAMalformedMakeRowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAMalformedMakeRowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:432` |
 | `none.unit.tooling.testreg-extract.a-model-check-row-covers-its-config` | `gotest` | Go test TestAModelCheckRowCoversItsConfig in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAModelCheckRowCoversItsConfig` | the Go test passes | `internal/testreg/extract/extract_test.go:267` |
