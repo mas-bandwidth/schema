@@ -308,8 +308,14 @@ jobs:
             gates)
               # test-lobster's prerequisites as make reads them, less the
               # rows above and the nightly pair
-              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
-              all=$( { make -pq test-lobster 2>/dev/null || true; } | sed -n '/^test-lobster: /{s///p;q;}')
+              # make -q exits 1 for a target that is out of date: 0 and 1 are answers,
+              # any other status is make failing. The database goes to a file, so no
+              # early-quitting reader can SIGPIPE make.
+              db="$RUNNER_TEMP/test-lobster-db.txt"
+              rc=0
+              make -pq test-lobster >"$db" 2>/dev/null || rc=$?
+              [ "$rc" -le 1 ] || { echo "::error::make -pq test-lobster exited $rc"; exit 1; }
+              all=$(sed -n '/^test-lobster: /{s///p;q;}' "$db")
               [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
               rest=""
               for t in $all; do
