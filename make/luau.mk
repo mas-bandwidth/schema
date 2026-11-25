@@ -47,7 +47,7 @@ toolchain-luau:
 # interpreter. The luautable tests read the fixed-form corpus, the conformance
 # driver's generated modules and the Go runtime, so the leg BUILDS them first
 # (docs/PORT-LUAU.md, THE HARNESS): CI and a clean checkout do not stage them.
-# the rule that nothing skips turns a missing oracle into a failure, and the runtime
+# A missing oracle is a failure that names it (docs/rulings.json no-skips), and the runtime
 # reaches the probes as an absolute path whichever checkout the Makefile
 # resolved.
 .PHONY: test-luau update-goldens-luau
@@ -134,10 +134,9 @@ test-luau: tables-luau-json-walk tables-luau-json-walk-negative-control \
 # manifest, the floor, the hash, lineage_merge and the families
 # (internal/codegen/luautable/fixedversioning_*_test.go).
 #
-# `go test ./...` ASSERTS NOTHING HERE: the harness skips without the corpus,
-# which is right for a bare run and is how a §5 regression would ride into a
-# green. So each target builds the oracle first and sets the rule that nothing skips,
-# under which the skip is a FAILURE.
+# EACH TARGET BUILDS THE ORACLE FIRST: the harness fails by name without the
+# corpus (docs/rulings.json no-skips), so a §5 regression can never ride into
+# a green on a tree that never built it.
 
 .PHONY: tables-luau-fixed-form tables-luau-versioning
 tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod

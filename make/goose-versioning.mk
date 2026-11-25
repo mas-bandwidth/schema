@@ -15,8 +15,8 @@
 # on the file's hash alone, writing nothing. Then the floor's three, the hash
 # cases, the lineage merge, and §5.8's probes (rows 4, 9, 11, 12).
 #
-# the rule that nothing skips turns the suite's corpus skip into a FAILURE, so the
-# gate cannot pass on a tree that never built the oracle.
+# The suite fails by name without the corpus (docs/rulings.json no-skips), so
+# the gate cannot pass on a tree that never built the oracle.
 .PHONY: tables-goose-versioning
 tables-goose-versioning: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose

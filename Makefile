@@ -4342,7 +4342,7 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	# and the Go test that holds the same map-holding cook
 	# (internal/tablecook/list_test.go) reads it here, the one place it is
 	go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/
-	# written: under the rule that nothing skips an absent cook fails, never skips.
+	# written: an absent cook fails by name (docs/rulings.json no-skips).
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
 	fi
@@ -6683,7 +6683,7 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 # compiler's Moo tests, the moo table descriptors load under the pinned
 # interpreter, and the harness's tagged-admission test under each tag.
 # The compiler smoke reads the C++ reference's byte oracle (TestMooReadsTheLockedOlderLayout),
-# which is a failure, never a skip, when missing on CI under the rule that nothing skips, so it builds it.
+# and fails by name when that oracle is missing (docs/rulings.json no-skips), so it builds it.
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo build/fixedform-corpus/.stamp
 	go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
@@ -7068,8 +7068,8 @@ test: tables-fixedform
 # THE C++ LEG'S FIELD-EVOLUTION ROWS (cpp/E8, cpp/R19). The OLD file is built
 # in Go from the same IR the emitter lays down (fixedroadmap_t18_test.go), so
 # this gate needs build/fixedform-corpus NOT AT ALL: it compiles and runs the
-# generated C++ through the leg's own probe. Under the rule that nothing skips the
-# compiler-absent skip is a FAILURE, and the -v transcript names cpp/E8, cpp/R19
+# generated C++ through the leg's own probe. A missing compiler is a FAILURE
+# that names it (docs/rulings.json no-skips), and the -v transcript names cpp/E8, cpp/R19
 # and each of the five appended kinds.
 .PHONY: tables-cpp-fixed-t18
 tables-cpp-fixed-t18:

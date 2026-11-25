@@ -100,8 +100,8 @@ test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-contro
 # (internal/tabletext, internal/tablepack) writes its own text from the leg's
 # wire, byte-compared, and packs the leg's text back to wire, byte-compared.
 # The control caps the emitted float32 writer at six significant digits in
-# memory and must go red on the text comparison. the rule that nothing skips makes
-# a missing C++ compiler a FAILURE rather than a skip.
+# memory and must go red on the text comparison. A missing C++ compiler is a
+# FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-cpp-text-differential tables-cpp-text-differential-negative-control
 tables-cpp-text-differential:
 	go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
@@ -353,9 +353,9 @@ tables-cpp-release-flags-negative-control:
 # listed one that no longer occurs fails until its line is deleted. The packet
 # emitter's files carry on the warning list only the two kinds that cannot
 # be cleared without altering the packet wire (see the list's own header) and
-# are on the format list never. Where the tool is absent the gate SKIPS, except
-# under the rule that nothing skips (CI sets both):
-# a gate that always skips is no gate.
+# are on the format list never. Where a tool is absent the gate fails naming
+# it (docs/rulings.json no-skips): a gate that passes without its tool is no
+# gate.
 CLANGXX ?= clang++
 CPP_CLEAN_TREES := build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp
 CPP_CLEAN_STAMPS := build/tables-generated/.stamp generated/cpp/.stamp generated/cpp/ludicrous/.stamp generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp generated/bench/paired/cpp/.stamp

@@ -835,13 +835,9 @@ tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixe
 # counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
 # file's hash alone (§5.3).
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
-# SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
-# `go test ./...` on a tree that never built the oracle — and is exactly how a §5
-# regression rides into a green CI, since the go-test job runs nothing but
-# `go test ./...`. So the target BUILDS THE ORACLE FIRST (the reference's own
-# dump) and then sets the rule that nothing skips, which turns that skip into a
-# FAILURE: under this name a missing corpus can never pass silently. It is the
+# THE TARGET BUILDS THE ORACLE FIRST (the reference's own dump): the harness
+# fails by name when build/fixedform-corpus is absent (docs/rulings.json
+# no-skips), so under this name a missing corpus can never pass silently. It is the
 # Java twin of `tables-go-versioning` (make/go.mk) and it is hung off the same
 # job, for the same reason.
 .PHONY: tables-java-versioning
@@ -884,8 +880,8 @@ tables-java-fixed-roadmap: tables-fixedform-corpus
 # the generated load and compares value for value; P3 sweeps every byte of a
 # record, one bit at a time, demanding each load refuse, read malformed, or
 # land values — never a fourth answer; P4 feeds a record body the wrong compiled
-# plan and demands the read go red. This target sets the rule that nothing skips
-# so a missing oracle turns the skip into a FAILURE.
+# plan and demands the read go red. A missing oracle is a FAILURE that names it
+# (docs/rulings.json no-skips).
 .PHONY: tables-java-fixed-t18
 tables-java-fixed-t18: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
@@ -899,8 +895,8 @@ tables-java-fixed-t18: tables-fixedform-corpus
 # red until that target is run by hand. `test-java` does depend on the corpus but
 # runs only named -run subsets, never the whole package; card gates and the
 # heavy reads run the whole package, and this is the one target that builds the
-# corpus first and then runs it all with the rule that nothing skips, so a missing
-# oracle can never pass silently.
+# corpus first and then runs it all; a missing oracle fails by name
+# (docs/rulings.json no-skips) and can never pass silently.
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
@@ -929,8 +925,8 @@ tables-java-t14:
 # leg's fromJson reads the engine's text back to the same wire
 # (TestTextDifferentialJava). The control, run inside this target, caps the
 # emitted float32 window at six significant digits in memory and must go red on
-# the TEXT comparison (TestTextDifferentialJavaNegativeControl).
-# the rule that nothing skips makes a missing JDK a FAILURE rather than a skip.
+# the TEXT comparison (TestTextDifferentialJavaNegativeControl). A missing JDK
+# is a FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
@@ -971,8 +967,8 @@ test-java: tables-java-block-build
 # arrays of scalars/strings/enums, arrays of pointers and pointers outside a
 # list element, the 64-bit id-table wire refusing the held kind 31 (R17) and the
 # §16.7 sharing text.
-# the rule that nothing skips turns a missing-oracle skip into a FAILURE, so under
-# this name a missing oracle can never pass silently.
+# A missing oracle is a FAILURE that names it (docs/rulings.json no-skips), so
+# under this name it can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
@@ -1028,8 +1024,8 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 # every keyed unit generated keyed and with its keys lowered to `[E.Max]T`,
 # both compiled, one corpus through each, the fixed bodies byte-identical and
 # cross-decoding, and each form's message and the keyed variable wire held
-# byte for byte to the Go codec's encoding of the same value. Under
-# the rule that nothing skips a missing JDK is a failure, not a skip, and EACH test
+# byte for byte to the Go codec's encoding of the same value. A missing JDK
+# is a failure that names it (docs/rulings.json no-skips), and EACH test
 # must run to its own PASS: a name the -run pattern no longer matches would
 # otherwise leave the gate green having run nothing.
 .PHONY: tables-java-keyed tables-java-keyed-negative-control
@@ -1113,8 +1109,8 @@ test-java: tables-java-deprecated-write
 # check. Its NEGATIVE CONTROL removes each check from the generated code in turn
 # (the variable read, the retained unknown, the message read, the fixed read,
 # the variable writer, the accessor) and requires exactly that check's lines
-# red and every other line green. Under the rule that nothing skips a missing JDK
-# is a failure, not a skip.
+# red and every other line green. A missing JDK is a failure that names it,
+# never a skip (docs/rulings.json no-skips).
 .PHONY: tables-java-finite-float tables-java-finite-float-negative-control
 tables-java-finite-float:
 	@mkdir -p build/java-finite
@@ -1142,7 +1138,8 @@ tables-java-finite-float-negative-control:
 # retention store emptied. The gate is TestDamageDiscardsTheWholeLoadJava; its
 # NEGATIVE CONTROL removes the discard from the generated load, the text read
 # and the retaining load in turn and requires the gate red on exactly that
-# entry point. Under the rule that nothing skips a missing JDK is a failure.
+# entry point. A missing JDK is a failure that names it (docs/rulings.json
+# no-skips).
 .PHONY: tables-java-discard tables-java-discard-negative-control
 tables-java-discard:
 	@mkdir -p build/java-discard

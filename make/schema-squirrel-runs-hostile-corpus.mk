@@ -20,12 +20,11 @@ GO ?= go
 # port's generated reader, the planted-bad-pattern control, and the workflow's
 # own fleet/fork guard.
 #
-# THE SLOW GATE. The two interpreter-driven tests skip at internal/slowtest.Gate
-# in a plain `go test ./internal/ci/` (a machine without dist/squirrel-3.2/bin/sq
-# must stay green). These targets build the interpreter first and run through
-# test/slowgate/proof, which sets the rule that nothing skips, refuses a gate skip and
-# requires each named test's own --- PASS line, so a missing interpreter is red
-# and a run that tested nothing is refused, never a vacuous pass.
+# THE SLOW GATE. The two interpreter-driven tests fail by name on a machine
+# without dist/squirrel-3.2/bin/sq (docs/rulings.json no-skips). These targets
+# build the interpreter first and run through test/slowgate/proof, which
+# refuses a SKIP in the log and requires each named test's own --- PASS line,
+# so a run that tested nothing is refused, never a vacuous pass.
 schema-squirrel-runs-hostile-corpus: dist-squirrel
 	sh test/slowgate/proof schema-squirrel-runs-hostile-corpus \
 		'TestSquirrelRunsHostileCorpus TestSquirrelRunsHostileCorpusPlant TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly TestSquirrelHostileScorerOutcomes' \

@@ -5,8 +5,8 @@
 # each reversed witness is also registered in make/negative-controls.json.
 #
 # The gates run through test/slowgate/proof where the Go test shells out to the
-# pinned toolchain (it sets the rule that nothing skips, refuses a gate skip and requires a
-# named --- PASS), and as a plain go test where the test is pure Go.
+# pinned toolchain (proof refuses a SKIP in the log and requires a named
+# --- PASS), and as a plain go test where the test is pure Go.
 
 # M5: the key accessor of an enum-keyed array (keyed_test.go): None, a key past
 # Max and a negative key refused by name with asserts compiled away; the

@@ -7,8 +7,8 @@
 #
 # The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. The
 # corpus is not on this BASE yet (it arrives through
-# lua-base-forward-merge-schema-go-r), so the rule that nothing skips makes an
-# absent corpus a named failure rather than a silent pass.
+# lua-base-forward-merge-schema-go-r), and an absent corpus is a named failure
+# rather than a silent pass (docs/rulings.json no-skips).
 .PHONY: schema-lua-runs-hostile-corpus
 schema-lua-runs-hostile-corpus: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \

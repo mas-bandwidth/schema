@@ -846,9 +846,9 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 # SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
 # `go test ./...` on a tree that never built the oracle — and is exactly how a §5
 # regression would ride into CI green. So the target BUILDS THE ORACLE FIRST
-# (`tables-fixedform-corpus`, the reference's own dump, about 25 s) and then sets
-# the rule that nothing skips, which turns that skip into a FAILURE: under this name a
-# missing corpus can never pass silently.
+# (`tables-fixedform-corpus`, the reference's own dump, about 25 s); a missing
+# corpus fails by name (docs/rulings.json no-skips), so under this name it can
+# never pass silently.
 #
 # ONE ASSEMBLY, ONE BUILD, ONE RUN. The harness generates fifty-seven probes —
 # one per row per COLUMN (§5.9 #18) — into ONE project, each in the namespace its
@@ -910,11 +910,11 @@ tables-cs-fixed-roadmap:
 
 # THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
 # message-form ledger steps close against it. Every C# fixed-roadmap test and
-# the held message form run once here with DOTNET and
-# the rule that nothing skips, so a bare `go test` can never report green over C#
-# that never ran. The oracle is built first (tables-fixedform-corpus) because
-# t01's framing rows read the C++ reference's bytes; under
-# the rule that nothing skips a missing corpus is a failure, not a skip. The
+# the held message form run once here with DOTNET, and a missing SDK fails by
+# name (docs/rulings.json no-skips), so no run can report green over C# that
+# never ran. The oracle is built first (tables-fixedform-corpus) because
+# t01's framing rows read the C++ reference's bytes; a missing corpus is a
+# failure, not a skip. The
 # -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
 # row added later without being named here goes red. The graph connection
 # links the actual packet runtime and verifies its pinned announcement bytes;
@@ -1120,8 +1120,8 @@ define cs_clean_check
 	test $$st -eq 0 && echo "$(1): dotnet format and the analyzers clean over $(3)"
 endef
 
-# The SDK probe both gates share: a dotnet not on PATH SKIPS cleanly, and under
-# the rule that nothing skips that skip is a FAILURE (the corpus legs' idiom).
+# The SDK probe both gates share: a dotnet not on PATH is a FAILURE that names
+# it (docs/rulings.json no-skips).
 define cs_clean_probe
 	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
 		echo "FAIL $(1): $(DOTNET) is not installed"; exit 1; \
@@ -1132,7 +1132,7 @@ endef
 .PHONY: tables-cs-clean
 tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean)
-# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
+# loud-ok: the probe line above fails by name on a missing SDK (docs/rulings.json no-skips)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-run; fi
 
 .PHONY: tables-cs-clean-run
@@ -1156,7 +1156,7 @@ TABLES_CS_CLEAN_NEG := build/tables-cs-clean-negative
 .PHONY: tables-cs-clean-negative-control
 tables-cs-clean-negative-control: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean-negative-control)
-# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
+# loud-ok: the probe line above fails by name on a missing SDK (docs/rulings.json no-skips)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
 
 .PHONY: tables-cs-clean-negative-control-run
@@ -1193,7 +1193,7 @@ PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generate
 .PHONY: packet-clean-cs
 packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
 	$(call cs_clean_probe,packet-clean-cs)
-# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
+# loud-ok: the probe line above fails by name on a missing SDK (docs/rulings.json no-skips)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory packet-clean-cs-run; fi
 
 .PHONY: packet-clean-cs-run
