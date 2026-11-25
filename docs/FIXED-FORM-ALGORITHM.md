@@ -1008,6 +1008,10 @@ EMIT(te, their_at, me, my_at, guard, arg):
     15 union:    a writer arm no reader arm names (by id): UNLAWFUL ; return      -- an arm REMOVED (§5.1)
                  their_tag := te.size - widest arm ; my_tag := me.size - widest arm
                  FIRST, UNGUARDED: `const 0` of my_tag bytes into the reader's tag -- None, and it stands when no arm matches
+                      -- it LANDS my_tag bytes; a leg that also reads the writer's raw tag beside it (to check the
+                      -- tag) reads it at THE WRITER'S TAG WIDTH, their_tag bytes, never my_tag: its source reach
+                      -- is src + their_tag, inside the writer's record, so a grown tag compiles whole and the tag
+                      -- never swallows the arm's payload (Rust, 306e734396; 2026-11-25)
                  per reader arm, matched to the writer's arm by id:
                    `const` of the READER's ordinal (position from 1), guarded by THE WRITER'S TAG OFFSET,
                       at the writer's tag WIDTH, with the writer's ordinal as the guard value
