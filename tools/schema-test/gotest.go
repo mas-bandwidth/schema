@@ -74,6 +74,10 @@ func newGoTestAdapterBuilding(log io.Writer, root string, jobs int, build func(c
 type goTestInputs struct {
 	Package string `json:"package"`
 	Test    string `json:"test"`
+	// Subtest is one t.Run name of Test. Empty means the whole test, and
+	// goTestResults is unchanged. Set, the row's verdict is that subtest's
+	// own (gotest_case.go).
+	Subtest string `json:"subtest,omitempty"`
 	// Files are the committed data files the test reads (a case folder it
 	// replays): the registry indexes them where they are
 	// (internal/testreg/extract, Indexed).
@@ -100,6 +104,9 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	}
 	if in.Make != "" && !makeTarget.MatchString(in.Make) {
 		return in, fmt.Errorf("inputs: make wants one make target, got %q", in.Make)
+	}
+	if in.Subtest != "" && (strings.TrimSpace(in.Subtest) != in.Subtest || strings.ContainsAny(in.Subtest, "/\r\n")) {
+		return in, fmt.Errorf("inputs: subtest wants one Go subtest name, got %q", in.Subtest)
 	}
 	return in, nil
 }
@@ -191,6 +198,7 @@ func (a *goTestAdapter) moduleOf(pkg string) (string, string, error) {
 
 func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
 	calls := goTestCalls{}
+	var cases []goTestCase
 	var absent []testreg.Result // rows naming a data file the tree does not hold
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
@@ -201,10 +209,15 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 			absent = append(absent, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
+		if in.Subtest != "" {
+			cases = append(cases, goTestCase{in: in, inst: inst})
+			continue
+		}
 		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
 	}
 	res, err := a.runCalls(ctx, calls)
-	return append(res, absent...), err
+	cres, cerr := a.runGoTestCases(ctx, cases)
+	return append(append(res, cres...), absent...), errors.Join(err, cerr)
 }
 
 // goTestPackage is one go test invocation's package and its build tags.

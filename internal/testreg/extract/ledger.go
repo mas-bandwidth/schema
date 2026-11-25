@@ -172,12 +172,20 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		}
 		switch t.Adapter {
 		case "gotest":
-			var in struct{ Package, Test string }
+			var in struct{ Package, Test, Subtest string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			if in.Subtest != "" && (strings.TrimSpace(in.Subtest) != in.Subtest || strings.ContainsAny(in.Subtest, "/\r\n")) {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s names subtest %q, which is not one Go subtest name", reg.Path, t.Line, t.Key, in.Subtest))
+				continue
+			}
+			name := in.Test
+			if in.Subtest != "" {
+				name = in.Test + "/" + in.Subtest
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: name}, in.Package+" "+name)
 		case "model-check":
 			// a TLC run of tla/<config>; the controls row runs no config
 			var in struct{ Config string }
@@ -504,6 +512,24 @@ func Runs(res *Result, reg *testreg.Registry) map[string]string {
 	return covered
 }
 
+// goTestParentID is the top-level Go test a subtest claim names, or ""
+// when id is not one. id is "go-test <dir> <name>" and dir holds no spaces.
+func goTestParentID(id string) string {
+	kind, rest, ok := strings.Cut(id, " ")
+	if !ok || kind != KindGoTest {
+		return ""
+	}
+	dir, name, ok := strings.Cut(rest, " ")
+	if !ok {
+		return ""
+	}
+	parent, sub, ok := strings.Cut(name, "/")
+	if !ok || parent == "" || sub == "" {
+		return ""
+	}
+	return Item{Kind: KindGoTest, Dir: dir, Name: parent}.ID()
+}
+
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
@@ -538,9 +564,16 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	var gone []string
 	for id, key := range covered {
-		if !exists[id] {
-			gone = append(gone, fmt.Sprintf("registry row %s runs %s, which the repository does not hold", key, id))
+		if exists[id] {
+			continue
 		}
+		// Extract lists top-level Go tests. A per-case row claims Test/sub,
+		// which the repository holds when that Test does. The parent row
+		// still claims Test, so the two do not collide.
+		if parent := goTestParentID(id); parent != "" && exists[parent] {
+			continue
+		}
+		gone = append(gone, fmt.Sprintf("registry row %s runs %s, which the repository does not hold", key, id))
 	}
 	sort.Strings(gone)
 	problems = append(problems, gone...)

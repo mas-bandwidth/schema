@@ -418,19 +418,23 @@ func TestJavaRefusesAClassNameJavacCannotTake(t *testing.T) {
 		t.Errorf("%s/refused holds %d files, the table names %d", javaPlatformDir, len(paths), len(javaClassNamesRefused))
 	}
 	for _, p := range paths {
-		want, ok := javaClassNamesRefused[filepath.Base(p)]
-		if !ok {
-			t.Errorf("%s: no expected refusal in javaClassNamesRefused", p)
-			continue
-		}
-		_, _, err := generateJavaUnit([]string{p})
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%s: want the refusal %q, got %v", p, want, err)
-		}
+		t.Run(filepath.Base(p), func(t *testing.T) {
+			want, ok := javaClassNamesRefused[filepath.Base(p)]
+			if !ok {
+				t.Errorf("%s: no expected refusal in javaClassNamesRefused", p)
+				return
+			}
+			_, _, err := generateJavaUnit([]string{p})
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: want the refusal %q, got %v", p, want, err)
+			}
+		})
 	}
-	if _, _, err := generateJavaUnit([]string{filepath.Join(javaPlatformDir, "accepted")}); err != nil {
-		t.Errorf("accepted/ (the control): %v", err)
-	}
+	t.Run("Game.schema", func(t *testing.T) {
+		if _, _, err := generateJavaUnit([]string{filepath.Join(javaPlatformDir, "accepted")}); err != nil {
+			t.Errorf("accepted/ (the control): %v", err)
+		}
+	})
 }
 
 // The Java emitter's own guard for a type named java or permits holds behind
@@ -521,5 +525,29 @@ func TestJavaUnitsNamedLikePlatformTypesCompile(t *testing.T) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
+	}
+}
+
+// TestJavaPlatformFiles is one subtest per committed file the Java platform
+// scan and compile read as a group, so a registry row can run that file by
+// name. Those two tests are unchanged and still run the group.
+func TestJavaPlatformFiles(t *testing.T) {
+	t.Parallel()
+	t.Run("java-lang.txt", func(t *testing.T) {
+		javaLangTypes(t)
+	})
+	t.Run("Wire.schema", func(t *testing.T) {
+		_, _, err := generateJavaUnit([]string{filepath.Join(javaPlatformDir, "nested", "Wire.schema")})
+		if err != nil {
+			t.Errorf("nested/Wire.schema: %v", err)
+		}
+	})
+	for _, p := range javaSiblingPaths(t) {
+		t.Run(filepath.Base(p), func(t *testing.T) {
+			_, _, err := generateJavaUnit([]string{p})
+			if err != nil {
+				t.Errorf("%s: %v", p, err)
+			}
+		})
 	}
 }
