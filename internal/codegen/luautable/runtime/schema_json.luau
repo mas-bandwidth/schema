@@ -3374,16 +3374,12 @@ function J.FromJson(root: string, text: buffer, report: any): any
   rep.unknown, rep.kindMismatch, rep.clamped, rep.widened, rep.duplicate = 0, 0, 0, 0, 0
   rep.missingRequired, rep.nonFinite, rep.blobShared = 0, 0, 0
   rep.reason = nil
+  -- the walk is the one place the strict refusal lives: it names the reason
+  -- and hands back no value past any refusing counter
   local v = J.fromJsonWalk(root, text, rep)
   if v == nil then
     if rep.reason == nil then rep.reason = "malformed" end
     return nil
-  end
-  for _, k in STRICT do
-    if (rep[k[1]] or 0) > 0 then
-      rep.reason = k[2]
-      return nil
-    end
   end
   return v
 end
