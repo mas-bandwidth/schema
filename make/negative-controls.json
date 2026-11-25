@@ -3651,7 +3651,7 @@
     },
     {
       "target": "tables-cs-block-compile-negative-control",
-      "reason": "the C# block-pair compile control (make/cs-block-compile.mk): it plants both defects (#4843, #4854) into the C# emitter through go build -overlay and requires the three-unit C# block-pair build to fail on each by name. Its registry row (plant.make-cs-block-compile.tables-cs-block-compile-negative-control, nightly, the row test/registry/retired.tsv maps the retired nightly-fast row to) runs it on a runner with the pinned dotnet. A group would run it a second time."
+      "reason": "the C# block-pair compile control (make/cs-block-compile.mk): it plants both defects (#4843, #4854) into the C# emitter through go build -overlay and requires the three-unit C# block-pair build to fail on each by name. It was ci-fast.yml's nightly-fast row cs-block-compile-negative-control, a per-PR check, so its registry row (plant.make-cs-block-compile.tables-cs-block-compile-negative-control, the row test/registry/retired.tsv maps that row to) is tier functional and the pr group runs it on every pull request, on the language-free row, which carries the fleet SDK's dotnet and the pinned serialize.cs sibling. 3.8 s wall from an empty build directory on amd-3 (2026-11-25). A group would run it a second time."
     }
   ]
 }

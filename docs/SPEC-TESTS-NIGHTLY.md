@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1084. Language-free tests: 1352.
+Nightly tests every language answers: 1084. Language-free tests: 1351.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -3289,12 +3289,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-cs.tables-cs-wire-fuzz-dead-bytes-negative-control` | `make` | make tables-cs-wire-fuzz-dead-bytes-negative-control (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-wire-fuzz-dead-bytes-negative-control` | the target exits 0 with no skip in its log | `make/cs.mk:980` |
-
-#### `plant` family `make-cs-block-compile`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-cs-block-compile.tables-cs-block-compile-negative-control` | `plant` | negative control tables-cs-block-compile-negative-control (excluded from the groups of make/negative-controls.json, its reason there): the cook row naming a table-only tag enum and a Begin overload naming a table storage class, planted in the C# emitter, each fail the C# block-pair build by name | `file: make/cs-block-compile.mk`<br>`group: (excluded)`<br>`make: tables-cs-block-compile-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3653` |
 
 #### `plant` family `make-cs-cook-write`, 1 test
 
