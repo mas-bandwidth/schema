@@ -13,13 +13,16 @@
 #
 #   $(call hostile_ledgered,<port>,<log file>,<runner command>,<corpus folder>,<hostileledger flags>)
 #
-# runs the command with its output captured and shown, keeps the command's own
-# exit status, and then checks the ledger. The registered count is read from
+# runs the command with its output captured and shown, then hands its exit
+# status to the ledger (-runner-exit): every case the run left unanswered is
+# printed as that case's FAIL, a failed run is red, and a failed run whose log
+# names no case's failure is red as a defect of the runner (every failure
+# names its case). A run that exited 0 then has its ledger checked. The registered count is read from
 # the folder on every run; no recipe carries a number.
 define hostile_ledgered
 	@mkdir -p $(dir $(2))
-	@rc=0; if { $(3); } > $(2) 2>&1; then :; else rc=$$?; fi; cat $(2); [ $$rc -eq 0 ] || exit $$rc; \
-	go run ./tools/hostileledger -port $(1) -corpus "$(4)" -log $(2) $(5)
+	@rc=0; if { $(3); } > $(2) 2>&1; then :; else rc=$$?; fi; cat $(2); \
+	go run ./tools/hostileledger -port $(1) -corpus "$(4)" -log $(2) -runner-exit $$rc $(5)
 endef
 
 # THE LEDGER'S OWN CORPUS (tools/hostileledger/testdata/ledger-corpus): committed

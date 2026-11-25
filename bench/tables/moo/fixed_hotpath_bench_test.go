@@ -118,7 +118,7 @@ func (g *generatedUnit) requireAll() string {
 // benchProgram loads (or saves) the corpus's batch `iters` times. The root
 // descriptor is discovered from the generated module rather than named here.
 func benchProgram(g *generatedUnit, op string, iters int) string {
-	return "--!strict\nlocal F = require(\"./table_fixed\")\n" + g.requireAll() + fmt.Sprintf(`local T = require("./FixedTableTable")
+	return "--!strict\nlocal F = require(\"./table_fixed\")\nlocal inputs: any = require(\"./inputs\")\n" + g.requireAll() + fmt.Sprintf(`local T = require("./FixedTableTable")
 local d: any, fixed: any
 for name, value in pairs(T) do
 	if string.sub(name, -10) == "Descriptor" then

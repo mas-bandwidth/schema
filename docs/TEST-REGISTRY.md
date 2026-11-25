@@ -340,16 +340,15 @@ ruling, 2026-11-25, easy for Glenn to overrule):
 
 Every case of the shared hostile corpus (internal/ci/hostilecorpus/corpus,
 docs/HOSTILE-CORPUS.md) is one registry test per language:
-`<type>.hostile.<case>` for manifest.tsv, and
-`<type>.hostile-number-token.<case>` for number-token.tsv (the wide integers
-written as bare number tokens, which each port reads once its own reader
-refuses them). The type is load-refusal for a refuse verdict and decode for
+`<type>.hostile.<case>` for manifest.tsv, the corpus's one manifest. The
+copies of the wide integers written as bare number tokens
+(testdata/conformance/tables/JSON-HOSTILE-NUMBER-TOKEN.txt) are cases of it
+like any other. The type is load-refusal for a refuse verdict and decode for
 an accept. The rows are nightly: each needs the language's toolchain, and
 each run is the whole manifest (tools/schema-test/hostile.go).
 
-- A language's instances of a family are answered by one run of the family's
-  make target for that language (`make schema-<lang>-runs-hostile-corpus`,
-  `make schema-<lang>-runs-hostile-number-token`), which runs every case once.
+- A language's instances are answered by one run of its make target
+  (`make schema-<lang>-runs-hostile-corpus`), which runs every case once.
   The run prints a block of verdict lines (`FAIL <case> ...`,
   `hostile-ledger ran <case>`, `hostile-ledger end`); a runner written as a Go
   test writes the same lines to the file `$SCHEMA_HOSTILE_VERDICTS` names
@@ -365,9 +364,9 @@ each run is the whole manifest (tools/schema-test/hostile.go).
   their inputs name the Go test a Go-written target runs (`go_tests`), so
   `schema-test extract` counts the target and the test as the rows'.
 - `TestTheRegistryHoldsEveryHostileCase` holds the rows to the manifests field
-  for field (`-update-hostile` rewrites them). A number-token row names the
-  conformance tree its case copies (`files`), so the tree is a data case the
-  registry reads.
+  for field (`-update-hostile` rewrites them). A row whose case copies a
+  bare number-token tree names that tree (`files`), so the tree is a data
+  case the registry reads (`TestNumberTokenCasesAreRowsThatReadTheirTrees`).
 - Retired with this: the per-language schema-<lang>-runs-hostile-corpus.yml
   workflows and schema-shared-hostile-corpus.yml; each control is its own
   registry row.

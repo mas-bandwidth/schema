@@ -4794,6 +4794,10 @@ var tableGeneratedVerbs = []string{
 	// per-declaration for the same reason the identity plan is: a lineage
 	// belongs to one table and a unit can declare several.
 	"FixedKnown", "FixedFloor", "FixedLineagePlans",
+	// and the JavaScript leg's one DataView per lineage entry over the lock's
+	// layout bytes, made once at module load beside <Name>FixedKnown (R23):
+	// per-declaration module data on the same rule.
+	"FixedKnownViews",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no

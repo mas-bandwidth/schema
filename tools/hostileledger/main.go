@@ -37,6 +37,7 @@ func main() {
 	logPath := flag.String("log", "", "the runner's captured output")
 	runs := flag.Int("runs", 1, "how many times the runner goes over the corpus")
 	rows := flag.String("rows", "", "the rows a case of a carrier owes, each by its id suffix: <carrier>=<row>,<row>,... (a row prints as <case>@<row>)")
+	runnerExit := flag.Int("runner-exit", -1, "the runner's exit status: name every case it left unanswered as FAIL, and refuse a failed runner whose log names no case's failure")
 	ledgerCorpus := flag.String("ledger-corpus", "", "replay this committed corpus of ledger cases and exit (testdata/ledger-corpus)")
 	flag.Parse()
 	if *ledgerCorpus != "" {
@@ -59,6 +60,20 @@ func main() {
 	if *port == "" || *logPath == "" || flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "usage: hostileledger -port <port> -log <runner output> [-corpus dir] [-runs n] [-rows carrier=row,row]")
 		os.Exit(2)
+	}
+	if *runnerExit >= 0 {
+		lines, err := guard(*corpus, *logPath, *runnerExit)
+		for _, line := range lines {
+			fmt.Println(line)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: HOSTILE RUNNER DEFECT: %v\n", *port, err)
+			os.Exit(1)
+		}
+		if *runnerExit != 0 {
+			fmt.Fprintf(os.Stderr, "%s: the hostile-corpus runner exited %d\n", *port, *runnerExit)
+			os.Exit(1)
+		}
 	}
 	out, err := check(*port, *corpus, *logPath, *runs, *rows)
 	fmt.Print(out)
@@ -127,4 +142,20 @@ func check(port, corpus, logPath string, runs int, rowsSpec string) (string, err
 	}
 	out += fmt.Sprintf("%s hostile-corpus ledger negative controls: %s dropped is red by name; %s run under an unregistered name (the same count) is red by name\n", port, victim, victim)
 	return out, nil
+}
+
+// guard names every case the runner's log left unanswered as that case's
+// FAIL (hostilecorpus.NameUnanswered), so a runner that stops, or never
+// reads a carrier, fails case by case; and it refuses a runner that exited
+// non-zero with no case failing by name.
+func guard(corpus, logPath string, exit int) ([]string, error) {
+	cases, err := hostilecorpus.Registered(corpus)
+	if err != nil {
+		return nil, err
+	}
+	log, err := os.ReadFile(logPath)
+	if err != nil {
+		return nil, err
+	}
+	return hostilecorpus.NameUnanswered(cases, string(log), exit)
 }
