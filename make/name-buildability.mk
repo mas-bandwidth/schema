@@ -29,7 +29,7 @@ name-buildability: dist-lua dist-luau dist-moo dist-squirrel dist-goose dist-lob
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" SQ="$(SQ)" LOBSTER="$(LOBSTER)" GOOSE="$(GOOSE)" \
 	SERIALIZE="$(abspath $(SERIALIZE))" SERIALIZE_C="$(abspath $(SERIALIZE_C))" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" \
 	SERIALIZE_GO="$(abspath $(SERIALIZE_GO))" SERIALIZE_RS="$(abspath $(SERIALIZE_RS))" \
-	go test -count=1 -timeout=0 -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability$$' ./tools/namebuild || status=$$?; \
+	$(GO_TEST) -count=1 -timeout=0 -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability$$' ./tools/namebuild || status=$$?; \
 	if [ -f $(NAME_BUILDABILITY_SUMMARY) ]; then cat $(NAME_BUILDABILITY_SUMMARY); \
 	else echo "NAME-BUILDABILITY FAILED: no summary at $(NAME_BUILDABILITY_SUMMARY) (the run stopped before its last line)"; status=1; fi; \
 	exit $$status

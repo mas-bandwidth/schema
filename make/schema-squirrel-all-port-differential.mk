@@ -41,14 +41,14 @@ schema-squirrel-all-port-differential: build/conformance-harness build/conforman
 	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK) \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 	@SCHEMA_REQUIRE_CORPUS=1 SCHEMA_SQUIRREL_DIFFERENTIAL_WORK=$(SQUIRREL_DIFFERENTIAL_WORK) \
-		nice -n 19 go test -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_TEST)
+		nice -n 19 $(GO_TEST) -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_TEST)
 
 # The fast half: the comparison and its planted-bad-pattern control, on a
 # t.TempDir() tree, with no toolchain and no corpus. This is what the push
 # trigger runs.
 .PHONY: schema-squirrel-all-port-differential-fast
 schema-squirrel-all-port-differential-fast:
-	@nice -n 19 go test -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_FAST)
+	@nice -n 19 $(GO_TEST) -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_FAST)
 
 # THE PLANTED-BAD-PATTERN CONTROL. A scratch copy of the answer tree gets one
 # byte of Squirrel's wire answer changed; the comparison must go red and name
@@ -56,6 +56,6 @@ schema-squirrel-all-port-differential-fast:
 # Registered in make/negative-controls.json (group squirrel).
 .PHONY: schema-squirrel-all-port-differential-negative-control
 schema-squirrel-all-port-differential-negative-control:
-	@nice -n 19 go test -count=1 -timeout 600s ./internal/ci \
+	@nice -n 19 $(GO_TEST) -count=1 -timeout 600s ./internal/ci \
 		-run '^TestSquirrelAllPortDifferentialDetectsADivergence$$'
 	@echo 'squirrel all-port differential negative control: the planted wire byte is caught and named'

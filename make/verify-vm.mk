@@ -543,7 +543,7 @@ GOOSE_FUZZ_BASE := verify-toolchain-goose build/conformance-harness-vm build/con
 _verify-goose-fuzz: _verify-goose-fuzz-race _verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-json _verify-goose-fuzz-message
 
 _verify-goose-fuzz-race:
-	go test -race -count=1 ./test/conformance/goose/wirefuzzdispatch
+	$(GO_TEST) -race -count=1 ./test/conformance/goose/wirefuzzdispatch
 
 _verify-goose-fuzz-plain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify

@@ -37,8 +37,7 @@ const passAndSlowSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"pass","Package":"p/a"}
 `
 
-// a skip for another reason (a missing tool) is the skip ledger's business,
-// not this one.
+// a skip for another reason (a missing tool): nothing is ever skipped.
 const passAndToolSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"pass","Package":"p/a","Test":"TestFast"}
 {"Action":"run","Package":"p/a","Test":"TestCargo"}
@@ -58,7 +57,7 @@ func TestVerdict(t *testing.T) {
 	}{
 		{"a SCHEMA_SLOW skip beside a pass is red and named", 0, passAndSlowSkip, false, false, 1, "SKIPPED-SLOW: 1 test(s)"},
 		{"SKIP_SLOW_OK=1 accepts the slow skip", 0, passAndSlowSkip, false, true, 0, ""},
-		{"a non-slow skip beside a pass stays green", 0, passAndToolSkip, false, false, 0, ""},
+		{"a non-slow skip beside a pass is red", 0, passAndToolSkip, false, false, 1, "SKIPPED: 1 test(s)"},
 		{"matched nothing is red though go test said ok", 0, noMatch, false, false, 1, "ran NO test"},
 		{"one test passed", 0, onePass, false, false, 0, ""},
 		{"empty stream is red", 0, "", false, false, 1, "ran NO test"},
@@ -89,7 +88,7 @@ func TestReadPassesTextThrough(t *testing.T) {
 }
 
 func TestRunRefusesNoArgumentsAndForeignFlags(t *testing.T) {
-	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-v", "./x"}, {"-list", "X", "./x"}} {
+	for _, args := range [][]string{{}, {"-each"}, {"-json", "./x"}, {"-c", "./x"}, {"-exec", "x", "./x"}} {
 		var out, errb bytes.Buffer
 		if code := run(args, &out, &errb); code != 2 {
 			t.Errorf("run(%q) = %d, want 2", args, code)
@@ -101,5 +100,55 @@ func TestReadNamesSlowSkips(t *testing.T) {
 	tl := read(strings.NewReader(passAndSlowSkip+passAndToolSkip), &bytes.Buffer{})
 	if len(tl.slowSkipped) != 1 || tl.slowSkipped[0] != "p/a TestDriver" {
 		t.Errorf("slowSkipped = %q, want [\"p/a TestDriver\"]", tl.slowSkipped)
+	}
+}
+
+// a negative control's run that went red as it should: a test failed.
+const oneFail = `{"Action":"run","Package":"p/a","Test":"TestX"}
+{"Action":"output","Package":"p/a","Test":"TestX","Output":"--- FAIL: TestX\n"}
+{"Action":"fail","Package":"p/a","Test":"TestX"}
+{"Action":"output","Package":"p/a","Output":"FAIL\tp/a\t0.010s\n"}
+{"Action":"fail","Package":"p/a"}
+`
+
+// TestRedVerdict: a negative control's go test is red only when a test
+// failed and none skipped; a pass, a skip beside the failure, or a run with
+// no test (a build that broke) is green, so the control that wanted red
+// fails loudly.
+func TestRedVerdict(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		exit   int
+		stream string
+		code   int
+		say    string
+	}{
+		{"a test failed", 1, oneFail, 1, ""},
+		{"every test passed", 0, onePass, 0, "NOT RED: no test failed"},
+		{"a test skipped beside the failure", 1, oneFail + passAndToolSkip, 0, "NOT RED: 1 test(s) skipped"},
+		{"the build broke: no test ran", 1, "# p/a\nx.go:1: syntax error\n", 0, "NOT RED: no test ran"},
+	} {
+		tl := read(strings.NewReader(c.stream), &bytes.Buffer{})
+		code, why := redVerdict(c.exit, tl)
+		if code != c.code || !strings.Contains(why, c.say) {
+			t.Errorf("%s: redVerdict = %d %q, want %d containing %q", c.name, code, why, c.code, c.say)
+		}
+	}
+}
+
+// TestAResultLineIsMarkedAsReadFromJSON: a package's result line carries
+// the mark, so a log of bare go test output is told from this one; a test's
+// own output is written unchanged.
+func TestAResultLineIsMarkedAsReadFromJSON(t *testing.T) {
+	var text bytes.Buffer
+	read(strings.NewReader(onePass+oneFail), &text)
+	for _, want := range []string{
+		"--- PASS: TestX\n",
+		"?   \tp/b\t[no test files] (go test -json, read by gotestrun)\n",
+		"FAIL\tp/a\t0.010s (go test -json, read by gotestrun)\n",
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("text %q holds no %q", text.String(), want)
+		}
 	}
 }

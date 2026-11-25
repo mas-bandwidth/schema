@@ -65,7 +65,7 @@ VERIFY_FUZZ_DEPS_java   := toolchain-java build-conformance-java
 VERIFY_FUZZ_DEPS_dart   := toolchain-dart build/conformance-dart
 VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build-conformance-elixir
 
-VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/golang
+VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 $(GO_TEST) -count=1 ./internal/codegen/golang
 
 define verify_compiled_fuzz_rules
 .PHONY: _verify-$(1)-fuzz _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message verify-$(1)-fuzz
@@ -202,7 +202,7 @@ _verify-unity-conformance: toolchain-unity build/conformance-harness build/confo
 	./build/conformance-harness run --only unity --claims --work build/verify/conformance-unity --results $(VERIFY_RESULTS_DIR)/unity.json
 
 _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-unity-conformance packet-defaults-unity packet-utf8-unity
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
+	SCHEMA_SLOW=1 $(GO_TEST) -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
 
 # ---- go ----
 
@@ -268,7 +268,7 @@ verify-rust-conformance-and-driver-fuzz:
 # -rides-out; TestEveryRideRunsInItsLegsRow holds this recipe to that line).
 .PHONY: _verify-rust-driver-write-refusal
 _verify-rust-driver-write-refusal: build/conformance-rust
-	PATH="$(RUSTUP_BIN):$$PATH" go test -count=1 -run '^TestRustDriverAnswersWriteRefusal$$' ./test/conformance/harness
+	PATH="$(RUSTUP_BIN):$$PATH" $(GO_TEST) -count=1 -run '^TestRustDriverAnswersWriteRefusal$$' ./test/conformance/harness
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
 _verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust

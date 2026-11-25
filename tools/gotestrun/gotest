@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# $(GO_TEST) of the make files (Makefile): a recipe's go test, run as
+# go test -json and read back by tools/gotestrun, so a skip is never read as
+# a pass. It runs from whatever directory the recipe cd'd into (-dir), with
+# gotestrun built from the checkout this script is in.
+set -euo pipefail
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+exec go run -C "$root" ./tools/gotestrun -dir "$PWD" "$@"

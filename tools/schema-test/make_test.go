@@ -471,6 +471,7 @@ func TestGoTestPlainOutputInTheLogFails(t *testing.T) {
 		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n":                           true,
 		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/internal/x","Elapsed":0.1}` + "\n": false,
 		"ok, every row checked\n": false,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s (go test -json, read by gotestrun)\n": false,
 	} {
 		r, _ := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, gateDatabase("\ttrue"), log)
 		if got := r.Verdict == testreg.Fail; got != fails {

@@ -419,7 +419,7 @@ var goTestPlain = regexp.MustCompile(`^(ok|\?)\s+\S+\s+(\d+(\.\d+)?s|\(cached\)|
 // or "".
 func plainGoTest(lines []string) string {
 	for _, l := range lines {
-		if goTestPlain.MatchString(l) {
+		if goTestPlain.MatchString(l) && !strings.Contains(l, "(go test -json, read by gotestrun)") {
 			return l
 		}
 	}
