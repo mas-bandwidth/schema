@@ -21,7 +21,7 @@
 //   2. THE RUN-TIME WALK OF A STRANGER'S LAYOUT — the layout bytes are a
 //      compile-time constant, identical to the known list's, and the load
 //      path does a byte comparison against them, not a walk. A file whose
-//      hash is unknown is refused layout_newer; one whose hash is known but
+//      hash is unknown is refused layout_unknown; one whose hash is known but
 //      whose layout bytes differ is refused layout_malformed.
 //
 // The control: break one byte of the generated metaFixedLayout or metaFixedHash
@@ -200,7 +200,7 @@ void main() {
     );
   }
 
-  // ASSERTION: UNKNOWN hash → layout_newer.
+  // ASSERTION: UNKNOWN hash → layout_unknown.
   // This proves there is no run-time walk of a stranger's layout: the
   // hash is looked up in the known list, and an unknown hash is refused
   // by name without parsing the layout bytes.
@@ -223,8 +223,8 @@ void main() {
     );
     check(
       result == -1 &&
-          report.refused == TableFixedRefusal.layoutNewer,
-      'unknown hash → layout_newer (result=$result, '
+          report.refused == TableFixedRefusal.layoutUnknown,
+      'unknown hash → layout_unknown (result=$result, '
       'refused=${TableFixedRefusal.name(report.refused)}) — '
       'no run-time walk of a stranger\'s layout',
     );
