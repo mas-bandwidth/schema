@@ -239,7 +239,7 @@ func (r *Registry) Select(q Query) (Selection, error) {
 		return Selection{}, fmt.Errorf("query %s matches 0 tests", q)
 	}
 	if len(q.Names) == 0 {
-		for _, u := range r.Unreps {
+		for _, u := range r.Declared() {
 			if t, ok := r.Test(u.Test); ok && keep(u.Lang, t) {
 				sel.Unrep++
 			}

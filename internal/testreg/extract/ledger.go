@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -142,6 +144,23 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			out[id] = t.Key
 			continue
 		}
+		if tests, ok, err := testreg.GoTestsOf(t); ok {
+			// a union row: each language's own Go test for the case
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %v", reg.Path, t.Line, err))
+				continue
+			}
+			for _, lang := range slices.Sorted(maps.Keys(tests)) {
+				g := tests[lang]
+				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(g.Package, "./"), Name: g.Test}.ID()
+				if prev, dup := out[id]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s for %s, which %s already runs", reg.Path, t.Line, t.Key, g.Package, g.Test, lang, prev))
+					continue
+				}
+				out[id] = t.Key
+			}
+			continue
+		}
 		if t.Adapter != "gotest" && t.PerLang() {
 			var in struct{ Package, Test string }
 			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
@@ -149,6 +168,11 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 			for _, l := range reg.Langs {
 				if l.Name == testreg.LangFree {
+					continue
+				}
+				// a language declared unrepresentable has no instance, so
+				// the row runs no test of its; the test stays to be counted
+				if _, unrep := reg.Unrepresentable(t.Key, l.Name); unrep {
 					continue
 				}
 				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
