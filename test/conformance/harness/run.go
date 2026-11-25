@@ -1100,6 +1100,16 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err := deriveJSONReadManifest(legDerived, legJSONRead, m, omit); err != nil {
 			return false, err
 		}
+		// a scoped run hands those manifests only their asked rows: a row
+		// of its own the leg answered unasked would be a stray (scope.go)
+		if scope != nil {
+			if err := scopeOwnManifest(legRewrite, "rewrite", scope, own); err != nil {
+				return false, fmt.Errorf("%s: %w", d.lang, err)
+			}
+			if err := scopeOwnManifest(legJSONRead, "json-read", scope, own); err != nil {
+				return false, fmt.Errorf("%s: %w", d.lang, err)
+			}
+		}
 		runs := map[string]*surfaceRun{}
 		var active []*surfaceRun
 		for _, s := range surfaces {

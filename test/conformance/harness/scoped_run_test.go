@@ -114,3 +114,90 @@ func TestHostileSavesAreReadOnlyWhenTheBatteryCanRun(t *testing.T) {
 		}
 	}
 }
+
+// TestAScopedRunHandsItsOwnManifestsOnlyTheAskedRows: rewrite rows and
+// authored json-read texts ride manifests of their own (ownManifestCases),
+// and a driver answers every row it is handed. Asked one rewrite row and one
+// json-read instance, the scoped run hands those manifests the asked rows
+// alone (scopeOwnManifest), so the unasked rewrite row and the authored text
+// are never answered, never read as strays, and the asked cases pass as they
+// would in a whole run.
+func TestAScopedRunHandsItsOwnManifestsOnlyTheAskedRows(t *testing.T) {
+	needShell(t)
+	c := newFakeCorpus(t)
+	dir := filepath.Dir(c.manifest)
+	// a rewrite input whose first byte is no form-1 table, so no row is framed
+	rw := filepath.Join(dir, "rw.bin")
+	writeFile(t, rw, "\x00\x09")
+	for _, name := range []string{"rw1", "rw2"} {
+		writeFile(t, RewriteCanonical(c.jsonDir, name), "\x00\x09")
+	}
+	writeFile(t, filepath.Join(c.jsonDir, "at1.json"), "{\"alpha\":1}\n")
+	writeFile(t, c.manifest, "unit u tables/examples\ninstance alpha u Root alpha.bin\nrewrite rw1 u Root rw.bin\nrewrite rw2 u Root rw.bin\nauthored-text at1 u Root alpha.bin\n")
+	m, err := ReadManifest(c.manifest, c.jsonDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Instances[0].Wire = c.wire
+	for i := range m.Rewrites {
+		m.Rewrites[i].Wire = rw
+	}
+	m.JSONTexts[0].Wire = c.wire
+	c.m = m
+	// a driver that answers every instance line of the manifest it is handed
+	driverDir := t.TempDir()
+	writeFile(t, filepath.Join(driverDir, "rw.bin"), "\x00\x09")
+	writeFile(t, filepath.Join(driverDir, "alpha.bin"), "\x01\x02\x03\x04")
+	writeFile(t, filepath.Join(driverDir, "alpha.json"), "{\"alpha\":1}\n")
+	var list strings.Builder
+	for _, s := range surfaces {
+		list.WriteString("\techo " + s + "\n")
+	}
+	writeExec(t, filepath.Join(driverDir, "driver"), `#!/bin/sh
+here=$(dirname "$0")
+surface="$2"
+out="$3"
+if [ "$surface" = list ]; then
+`+list.String()+`	exit 0
+fi
+case "$surface" in
+wire|json-read)
+	grep '^instance ' "$1" | while read -r _ name _; do
+		case "$name" in
+		rw*) cp "$here/rw.bin" "$out/$name" ;;
+		*) cp "$here/alpha.bin" "$out/$name" ;;
+		esac
+	done ;;
+json-write) cp "$here/alpha.json" "$out/alpha.json" ;;
+esac
+exit 0
+`)
+	t.Chdir(driverDir)
+	drivers := filepath.Join(driverDir, "drivers.txt")
+	writeFile(t, drivers, "port ./driver\n")
+	run, work := c.scopedRun(t, drivers, map[caseKey]bool{{"rewrite", "rw1"}: true, {"json-read", "alpha"}: true})
+	for _, s := range []string{"rewrite", "json-read"} {
+		r := run.results[s]
+		if r == nil {
+			t.Fatalf("the %s surface did not run", s)
+		}
+		if len(r.failures) != 0 {
+			t.Errorf("the %s surface failed: %q", s, r.failures)
+		}
+	}
+	if v := run.results["rewrite"].cases["rw1"]; v != "pass" {
+		t.Errorf("rewrite/rw1 is %q, want pass", v)
+	}
+	if v := run.results["json-read"].cases["alpha"]; v != "pass" {
+		t.Errorf("json-read/alpha is %q, want pass", v)
+	}
+	for file, unasked := range map[string]string{"manifest-rewrite-port.txt": "instance rw2 ", "manifest-json-read-port.txt": "instance at1 "} {
+		text, err := os.ReadFile(filepath.Join(work, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(text), unasked) {
+			t.Errorf("%s hands the leg the unasked row %q:\n%s", file, strings.TrimSpace(unasked), text)
+		}
+	}
+}

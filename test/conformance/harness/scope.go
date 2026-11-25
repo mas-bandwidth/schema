@@ -260,3 +260,26 @@ func hostileRuns(opts runOptions) bool {
 	}
 	return false
 }
+
+// scopeOwnManifest cuts a manifest of a surface's own (ownManifestCases) to
+// the scope, in place: an instance line that is one of that surface's own
+// cases stays only when the scope asks it. Every other line stays, the
+// derived rows a json-read manifest begins with among them (they were cut
+// with the derived manifest). Unasked, such a row would be answered and read
+// as a stray answer, failing the surface its asked cases are on.
+func scopeOwnManifest(path, surface string, scope, own map[caseKey]bool) error {
+	text, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var b strings.Builder
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(text), "\n"), "\n") {
+		if f := strings.Fields(line); len(f) > 1 && f[0] == "instance" {
+			if k := (caseKey{surface, f[1]}); own[k] && !scope[k] {
+				continue
+			}
+		}
+		b.WriteString(line + "\n")
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
