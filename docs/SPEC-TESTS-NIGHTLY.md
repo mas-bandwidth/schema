@@ -3290,6 +3290,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-cs.tables-cs-wire-fuzz-dead-bytes-negative-control` | `make` | make tables-cs-wire-fuzz-dead-bytes-negative-control (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-wire-fuzz-dead-bytes-negative-control` | the target exits 0 with no skip in its log | `make/cs.mk:980` |
 
+#### `plant` family `make-cs-block-compile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.make-cs-block-compile.tables-cs-block-compile-negative-control` | `plant` | negative control tables-cs-block-compile-negative-control (excluded from the groups of make/negative-controls.json, its reason there): the cook row naming a table-only tag enum and a Begin overload naming a table storage class, planted in the C# emitter, each fail the C# block-pair build by name | `file: make/cs-block-compile.mk`<br>`group: (excluded)`<br>`make: tables-cs-block-compile-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3653` |
+
 #### `plant` family `make-cs-cook-write`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5174,12 +5180,6 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-cs.cards-cs-test` | `make` | make cards-cs-test (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: cards-cs-test` | the target exits 0 with no skip in its log | `make/cs.mk:1388` |
 | `none.nightly.harness-run.make-cs.tables-cs-leg` | `make` | make tables-cs-leg (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-leg` | the target exits 0 with no skip in its log | `make/cs.mk:642` |
 | `none.nightly.harness-run.make-cs.tables-cs-leg-debug` | `make` | make tables-cs-leg-debug (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-leg-debug` | the target exits 0 with no skip in its log | `make/cs.mk:646` |
-
-#### `harness-run` family `make-cs-block-compile`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.harness-run.make-cs-block-compile.tables-cs-block-compile-negative-control` | `make` | make tables-cs-block-compile-negative-control (make/cs-block-compile.mk) exits 0 | `file: make/cs-block-compile.mk`<br>`target: tables-cs-block-compile-negative-control` | the target exits 0 with no skip in its log | `make/cs-block-compile.mk:46` |
 
 #### `harness-run` family `make-dart`, 4 tests
 

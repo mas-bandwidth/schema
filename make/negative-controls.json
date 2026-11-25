@@ -3648,6 +3648,10 @@
     {
       "target": "roadmap-check-negative-control",
       "reason": "the roadmap gate's drift control (tools/roadmap/roadmap.mk): it needs SBCL and full git history for $(ROADMAP_BASE), which the shared negative-control rows on hosted ubuntu-latest runners neither install nor clone, so running it there would refuse at the missing tool before the control ran. It runs in its own gate, .github/workflows/roadmap.yml's `roadmap` job, which fetches full history and checks that sbcl is present before running `make roadmap-check-negative-control` beside the roadmap-check and roadmap-test gates on the fleet runner, on every push to main and on every pull request that touches the roadmap files."
+    },
+    {
+      "target": "tables-cs-block-compile-negative-control",
+      "reason": "the C# block-pair compile control (make/cs-block-compile.mk): it plants both defects (#4843, #4854) into the C# emitter through go build -overlay and requires the three-unit C# block-pair build to fail on each by name. Its registry row (plant.make-cs-block-compile.tables-cs-block-compile-negative-control, nightly, the row test/registry/retired.tsv maps the retired nightly-fast row to) runs it on a runner with the pinned dotnet. A group would run it a second time."
     }
   ]
 }
