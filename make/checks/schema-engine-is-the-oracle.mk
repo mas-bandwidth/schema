@@ -8,4 +8,4 @@
 
 .PHONY: schema-engine-is-the-oracle
 schema-engine-is-the-oracle:
-	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 go test -count=1 -timeout 600s ./internal/ci/ -run ^TestSchemaEngineIsTheOracle -v
+	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 $(GO_TEST) -count=1 -timeout 600s ./internal/ci/ -run ^TestSchemaEngineIsTheOracle

@@ -40,7 +40,6 @@ func emptySelection(all string) map[string]string {
 		"input_rows":            "[]",
 		"corpus_shards":         "[]",
 		"newleg":                "no",
-		"pins":                  "no",
 		"rows":                  "[]",
 		"packages":              "",
 	}
@@ -111,11 +110,11 @@ func TestNoFastJobSkipsOnAMainPush(t *testing.T) {
 	}
 
 	// the selector, as a push to main with a diff that touches no rule
-	verdict := `printf '%s|%s|%s|%s|%s|%s|%s|%s' "$all" "$verify_legs_json" "$lint_rows" "$clean_legs_json" "$lints_json" "$codegen_touched" "$pins" "${packages:+packages}"`
+	verdict := `printf '%s|%s|%s|%s|%s|%s|%s' "$all" "$verify_legs_json" "$lint_rows" "$clean_legs_json" "$lints_json" "$codegen_touched" "${packages:+packages}"`
 	got := runSelector(t, wf, []string{"README.md"}, verdict, "EVENT=push", "REF=refs/heads/main")
 	f := strings.Split(got, "|")
-	if len(f) != 8 || f[0] != "yes" || f[1] == "[]" || f[2] == "[]" || f[3] == "[]" || f[4] == "[]" || f[5] != "yes" || f[6] != "yes" || f[7] != "packages" {
-		t.Errorf("a push to main must select every matrix (all|verify|lint rows|clean|lints|codegen|pins|packages), got %q", got)
+	if len(f) != 7 || f[0] != "yes" || f[1] == "[]" || f[2] == "[]" || f[3] == "[]" || f[4] == "[]" || f[5] != "yes" || f[6] != "packages" {
+		t.Errorf("a push to main must select every matrix (all|verify|lint rows|clean|lints|codegen|packages), got %q", got)
 	}
 	for _, leg := range []string{"cpp", "c", "go", "rust", "js", "cs", "unity", "java", "dart", "elixir", "lua", "luau", "moo", "squirrel", "goose", "lobster", "python", "ruby"} {
 		if !strings.Contains(f[1], `"`+leg+`"`) {
@@ -201,7 +200,7 @@ func runOmissionLog(t *testing.T, block, all, unmapped string) (string, bool) {
 	cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+tmp, "ALL="+all,
 		"LINT_ROWS=[]", "CODEGEN=no", "CLEAN=[]", "LINTS=[]", "NIGHTLY=[]", "VERIFY=[]",
 		"DART_CORPUS=false", "CPP_CORPUS=false", "ELIXIR_CORPUS=false", "INPUT_ROWS=[]",
-		"CORPUS_SHARDS=[]", "NEWLEG=no", "ROWS=[]", "PACKAGES=", "PINS=no", "ROWS_LEGS=[]", "ROWS_ELIXIR=no")
+		"CORPUS_SHARDS=[]", "NEWLEG=no", "ROWS=[]", "PACKAGES=", "ROWS_LEGS=[]", "ROWS_ELIXIR=no")
 	out, err := cmd.CombinedOutput()
 	return string(out), err == nil
 }

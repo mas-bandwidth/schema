@@ -619,6 +619,7 @@ type ciEvent struct {
 	PlanRows         string   // needs.plan.outputs.rows
 	PlanResult       string   // needs.plan.result, success when omitted
 	GoCorpusResult   string   // needs.go-fixed-corpus.result, success when omitted
+	ProduceResult    string   // needs.produce.result, success when omitted
 	PRPins           string   // needs.pr-select.outputs.pins (ci-full.yml)
 	PRCS             string   // needs.pr-select.outputs.cs (ci-full.yml)
 	// PlanOutputs, when set, answers needs.plan.outputs.<name> for every
@@ -1037,6 +1038,11 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return ev.GoCorpusResult, nil
 		}
 		return "success", nil
+	case "needs.produce.result":
+		if ev.ProduceResult != "" {
+			return ev.ProduceResult, nil
+		}
+		return "success", nil
 	case "needs.plan.outputs.rows":
 		if ev.PlanRows != "" {
 			return ev.PlanRows, nil
@@ -1066,7 +1072,7 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return "yes", nil
 		}
 		return "no", nil
-	case "needs.plan.outputs.codegen_touched", "needs.plan.outputs.pins":
+	case "needs.plan.outputs.codegen_touched":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
 				return "yes", nil
@@ -1289,7 +1295,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1322,7 +1328,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "block-gate", "go-test-touched"} {
+	for _, job := range []string{"plan", "lint-fast", "schema-test", "schema-test-pr", "ci-policy", "go-test-touched"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
@@ -1452,7 +1458,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:test",
 		"certify.yml:verdict",
 		"certify.yml:vuln",
-		"ci-fast.yml:block-gate",
 		"ci-fast.yml:build-cpp-conformance-account",
 		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:conformance-rows",
@@ -1471,10 +1476,11 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:nightly-fast",
-		"ci-fast.yml:pins",
 		"ci-fast.yml:plan",
+		"ci-fast.yml:produce",
 		"ci-fast.yml:schema-test",
 		"ci-fast.yml:schema-test-pr",
+		"ci-fast.yml:stage-compiler",
 		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-cpp-conformance",
 		"ci-fast.yml:verify-dart-conformance",
