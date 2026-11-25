@@ -23,6 +23,7 @@ import (
 //	schema-test extract --json             every test, one JSON line each
 //	schema-test extract --write-ledger     rewrite the ledger to what is unmoved now
 //	schema-test extract --shrinks-from F   also hold the ledger to F (main's), which it may not exceed
+//	schema-test extract --since DIR        also name each test DIR (main's tree) lacks that has no row
 func extractCmd(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("schema-test extract", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -31,6 +32,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 	asJSON := fs.Bool("json", false, "")
 	write := fs.Bool("write-ledger", false, "")
 	shrinks := fs.String("shrinks-from", "", "")
+	since := fs.String("since", "", "")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
@@ -59,8 +61,16 @@ func extractCmd(args []string, stdout io.Writer) error {
 	}
 	ledgerPath := filepath.Join(*root, extract.LedgerPath)
 	if *write {
+		// the unmoved lines are counted again; the skip-red lines are
+		// measurements, not counts, so they carry over as they are
+		lines := extract.Ledger(res, reg, plan(reg))
+		if old, err := extract.LoadLedger(ledgerPath); err == nil {
+			lines = append(lines, extract.SkipReds(old)...)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 		var b bytes.Buffer
-		if err := extract.WriteLedger(&b, ledgerHeader, extract.Ledger(res, reg, plan(reg))); err != nil {
+		if err := extract.WriteLedger(&b, ledgerHeader, lines); err != nil {
 			return err
 		}
 		return os.WriteFile(ledgerPath, b.Bytes(), 0o644)
@@ -79,6 +89,14 @@ func extractCmd(args []string, stdout io.Writer) error {
 			return err
 		}
 		problems = append(problems, extract.Shrinks(old, ledger)...)
+		problems = append(problems, extract.KeepsSkipReds(old, ledger, res)...)
+	}
+	if *since != "" {
+		before, err := extract.Extract(*since)
+		if err != nil {
+			return fmt.Errorf("--since %s: %w", *since, err)
+		}
+		problems = append(problems, extract.NewWithoutRows(before, res, reg)...)
 	}
 	if len(problems) > 0 {
 		var b strings.Builder
@@ -110,7 +128,13 @@ func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger
 		}
 	}
 	waiting := map[string]int{}
+	redTests, redSkips := 0, 0
 	for _, l := range ledger {
+		if l.Kind == extract.KindSkipRed {
+			redTests++
+			redSkips += l.Count
+			continue
+		}
 		waiting[l.Kind] += l.Count
 	}
 	var b strings.Builder
@@ -128,6 +152,7 @@ func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger
 	for _, k := range keys {
 		fmt.Fprintf(&b, "    %-30s %6d\n", k, gated[k])
 	}
+	fmt.Fprintf(&b, "  skips that hide a red (%s lines): %d tests, %d skip sites\n", extract.KindSkipRed, redTests, redSkips)
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -138,6 +163,9 @@ const ledgerHeader = `# The unmoved ledger: the tests the repository holds that 
 # gets a registry row, never a ledger line. Each line names the layer that
 # moves its tests in (docs/TEST-REGISTRY.md, "Every test is in the registry").
 # Regenerate with: go run ./tools/schema-test extract --write-ledger
+# A skip-red line is one Go test ("<package dir>:<TestName>") whose skip
+# hides a red, measured: its count is the test's Skip sites, and it stays
+# until the skip is gone. --write-ledger carries those lines over as they are.
 # kind	place	count	layer	reason
 `
 

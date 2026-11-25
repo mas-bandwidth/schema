@@ -6,7 +6,7 @@
 //	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n]
 //	schema-test list [the same]
 //	schema-test coverage
-//	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER]
+//	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
 //
 // extract finds every test the repository holds (internal/testreg/extract)
 // and holds each to the registry or the unmoved ledger.
@@ -47,7 +47,7 @@ const usage = `usage:
   schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n]
   schema-test list [the same]
   schema-test coverage
-  schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER]
+  schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group")
   --shard i/n       the i-th of n parts of the expanded list

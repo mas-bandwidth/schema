@@ -217,11 +217,22 @@ and the reason they wait. Two checks hold this:
   - a `gotest` row naming a test that does not exist;
   - a file that does not parse.
 - The `schema-test` job of ci-fast.yml holds the ledger to main's copy, and it
-  only shrinks. A new test gets a registry row, never a ledger line.
+  only shrinks. A new test gets a registry row, never a ledger line. The job
+  also extracts main's tree (`--since`), so a new test without a row is red
+  by its own name, not only by its place's count.
+
+A skip that hides a red is in the ledger too. A `skip-red` line names one Go
+test (`<package dir>:<TestName>`). Its count is the number of `Skip` sites the
+extract finds in that test. Its reason names the red the skip hides and the run
+that measured it. Check holds the count to the extract, so the line must
+shrink as the test's skips go, and be deleted when the last one goes. Against
+main's ledger, a `skip-red` line may not be added or grow, and it may not leave
+while its test still skips. A skip that hides a red is therefore never a silent
+pass.
 
 `schema-test extract --json` prints every test, one JSON line each.
-`--write-ledger` rewrites the ledger to what is unmoved now. Use it only when
-tests move in or go away.
+`--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
+`skip-red` line as it is. Use it only when tests move in or go away.
 
 ## Adding a test
 
