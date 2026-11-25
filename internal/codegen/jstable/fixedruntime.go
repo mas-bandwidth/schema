@@ -612,7 +612,11 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
           // refuses BY NAME, never a silent oor count.
           if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
-        for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
+        // A CONST OF WIDTH 8 IS TWO u32 LANES (§5.9 #34): an unsigned shift is MOD 32
+        // in JavaScript, so byte 4 took byte 0 again and an 8-byte tag const of
+        // 1 landed 0x100000001 (test/conformance/js/rows/R14.mjs). The value is
+        // an ordinal in one int32 lane, so every byte past the fourth is zero.
+        for (let k = 0; k < size; k++) { dst[d + k] = k < 4 ? (v >>> (8 * k)) & 0xff : 0; }
         break;
       }
       case TableFixedOpDeadAbsent: {
@@ -1057,6 +1061,18 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
     if (op === TableFixedOpDeadText) { reach = src + 4 + size; }
     if (op === TableFixedOpDeadCounted) { reach = src + 4 + size * aux; }
     if (op === TableFixedOpDeadUnion) { reach = src + (aux > size ? aux : size); }
+    if (op === TableFixedOpConst) {
+      // A CONST READS NO RECORD BYTE — its size is the width it LANDS in my
+      // storage — EXCEPT THE UNION'S None CONST (aux 0, the writer's arm count
+      // in meta), which reads the writer's raw tag AT THE WRITER'S TAG WIDTH
+      // (meta >>> 8), exactly as the run loop reads it. Its reach is src +
+      // their_tag, never src + my_tag: a tag grown 1 -> 8 compiles whole, and
+      // the reach never swallows the arm's payload into the tag
+      // (docs/FIXED-FORM-ALGORITHM.md §5.2 EMIT kind 15;
+      // test/conformance/js/rows/R14.mjs).
+      const tagW = (meta >>> 8) !== 0 ? (meta >>> 8) : size;
+      reach = (aux === 0 && (meta & 0xff) !== 0) ? src + tagW : src;
+    }
     if (reach > plan.record) { plan.hostile = true; return; }
   }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
