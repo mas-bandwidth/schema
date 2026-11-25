@@ -242,12 +242,6 @@ type cppVersionRow struct {
 	// widens is a row that grows a WIDTH, so `widened` moves at least once;
 	// every other row is an APPEND and owes all six counters at zero (§5.9 #10).
 	widens bool
-	// unported is a row this leg's harness cannot probe, cited by name (§5.9
-	// #44): the nil-lock sibling convention has no DISTINCT VOLD_ endpoint to
-	// compile against, so the row is skipped BY NAME, never green and never
-	// red — a green folds an unrun row into a pass, a red blames the row for
-	// the harness. A reader may not read either as "this row passed".
-	unported string
 }
 
 var cppVersionRows = []cppVersionRow{
