@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3197.
+Unit tests every language answers: 2. Language-free tests: 3198.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2320,7 +2320,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.editors-vscode.grammar-samples` | `gotest` | Go test TestGrammarSamples in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarSamples` | the Go test passes | `editors/vscode/grammar_test.go:596` |
 | `none.unit.tooling.editors-vscode.grammar-timestamp-type-versus-name` | `gotest` | Go test TestGrammarTimestampTypeVersusName in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarTimestampTypeVersusName` | the Go test passes | `editors/vscode/grammar_test.go:653` |
 
-#### `tooling` family `fixedtwin`, 19 tests
+#### `tooling` family `fixedtwin`, 20 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2343,6 +2343,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fixedtwin.planted-divergence-reds` | `gotest` | Go test TestPlantedDivergenceReds in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestPlantedDivergenceReds` | the Go test passes | `tools/fixedtwin/twin_test.go:158` |
 | `none.unit.tooling.fixedtwin.read-header-splices-the-data-header` | `gotest` | Go test TestReadHeaderSplicesTheDataHeader in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestReadHeaderSplicesTheDataHeader` | the Go test passes | `tools/fixedtwin/splice_test.go:14` |
 | `none.unit.tooling.fixedtwin.runtime-extraction-ends-before-separate-integrity` | `gotest` | Go test TestRuntimeExtractionEndsBeforeSeparateIntegrity in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestRuntimeExtractionEndsBeforeSeparateIntegrity` | the Go test passes | `tools/fixedtwin/twin_test.go:205` |
+| `none.unit.tooling.fixedtwin.the-c-reason-restatement-is-dropped-with-layout-unknown` | `gotest` | Go test TestTheCReasonRestatementIsDroppedWithLayoutUnknown in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestTheCReasonRestatementIsDroppedWithLayoutUnknown` | the Go test passes | `tools/fixedtwin/reasons_test.go:14` |
 
 #### `tooling` family `fixedunlawful`, 4 tests
 

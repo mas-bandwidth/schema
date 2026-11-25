@@ -76,7 +76,7 @@ behaviour.
 | `SCHEMA_TABLE_STATIC_ASSERT(tag, cond, msg)` | `static_assert(cond, msg)` | `static_assert` |
 | `/* … */` | `// …` | stripped |
 | trailing commas in enumerators | trailing commas | dropped |
-| C restates the refusal names inside the runtime (`SCHEMA_TABLE_MESSAGE_REASONS` and the form-3 reason enum) because it has no `TableMessageReason` in scope yet | those names live above the runtime | dropped from the C runtime extract |
+| C restates the refusal names inside the runtime (`SCHEMA_TABLE_MESSAGE_REASONS` and the form-3 reason enum, which ends at `text_ill_formed = 20`, or at `SCHEMA_TABLE_LAYOUT_UNKNOWN = 22` since the C load answers §5.3 step 5 by that name) because it has no `TableMessageReason` in scope yet | those names live above the runtime | dropped from the C runtime extract |
 | restrict / force-inline feature tests | restrict / force-inline feature tests | dropped; the names they define are mapped |
 
 A line the map rewrites to equality is not a remaining difference.
