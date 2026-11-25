@@ -306,6 +306,32 @@ One process per surface, so a runtime starts once rather than once per case.
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
+**THE HARNESS ALSO SCORES ONE SURFACE NO DRIVER LISTS: `rewrite`** (docs/SPEC-TABLES.md
+§22, test/conformance/harness/rewrite.go). A leg that lists `wire` is handed a
+second manifest, the units and one `instance <case> <unit> <root> <input> no-text`
+line per `rewrite` row of the corpus, and runs its own `wire` surface over it
+(Load the input, Save, the bytes). **A rewrite row whose input is the form-`1`
+wire of a FIXED root is FRAMED**: no read at a fixed root reads form `1`, so
+the corpus reads it only through the root's variable twin, on the framing
+surface (below), and the leg's answer is its own framing write-back,
+`<case>.wire`; it is not on the second manifest. A framed row with no framing
+row that reads is an error by name. Every other rewrite row, a variable
+root's framing input included, is answered by the leg's `wire` surface.
+Each answer is held to `rewrite/<case>.bin`, the canonical bytes the oracle
+writes for the value the read leaves, and `make conformance-generate` requires a
+framed row's save-wire to be those same bytes. A driver needs nothing new: the
+inputs are reading wires that are not canonical (an evolution wire, a framing
+vector that reads, a reordering, the §22.7 edge vectors), so a leg whose Save is
+not the §22 write algorithm answers them wrong, by name.
+
+**THE `json-read` SURFACE ALSO READS THE HAND-AUTHORED TEXTS** (`authored-text` rows,
+testdata/conformance/tables/FORMAT.md, test/conformance/harness/jsontext.go): a
+leg's `json-read` runs on its manifest plus one `instance` line per such row,
+whose text in `json/<case>.json` arrives out of canonical order, so a leg whose
+builder keeps insertion order answers it wrong while every instance stays green
+(docs/SPEC-TABLES.md §22.7). `harness cross-read` re-reads a leg's answer to each
+such row as it does an instance's (crossread.go).
+
 **FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §7):
 
 - **The `framing` surface reads its root through the root's VARIABLE TWIN.**

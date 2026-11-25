@@ -774,7 +774,7 @@ jobs:
 
       - name: go test the Luau emitter packages, row 2 of 2
         if: matrix.group == 'unit-codegen-luau-2'
-        run: sel=$(go run ./tools/gotestselect -tier all -not '^TestLuauFixedHotPathBenchEvidence$' ./internal/codegen/luautable) || exit 1; go test -v -run "$sel" ./internal/codegen/luautable
+        run: make build/luaufuzzhost/luaufuzzhost || exit 1; sel=$(go run ./tools/gotestselect -tier all -not '^TestLuauFixedHotPathBenchEvidence$' ./internal/codegen/luautable) || exit 1; go test -v -run "$sel" ./internal/codegen/luautable
 
       - name: go test the Moo emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-moo-1'

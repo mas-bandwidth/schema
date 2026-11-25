@@ -64,6 +64,8 @@
 // the SHAPES unit (test/tables/shapes): bounds a float32 cannot hold exactly,
 // -0, counted arrays with a Min, a degenerate fixed field, scalar union arms
 #include "ShapesTable.h"
+// FL-19's map form (test/tables/moodmap), opted in by `list` below
+#include "MoodMapTable.h"
 // an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
 #include "PacketUnionsTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
@@ -462,6 +464,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
+    VARCODEC( "tblmoodmap", tblmoodmap, MoodMap ),
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
@@ -3088,7 +3091,7 @@ int main( int argc, char ** argv )
         printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
                 "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
-        printf( "unit shapes\n" );
+        printf( "unit shapes\nunit tblmoodmap\n" );
         return 0;
     }
     if ( argc < 4 )

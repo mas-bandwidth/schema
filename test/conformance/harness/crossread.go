@@ -184,6 +184,25 @@ func crossCases(m *Manifest, surface, dir string, want []expectation) ([]crossCa
 				out:  inst.Name,
 			})
 		}
+		if surface == "json-read" {
+			// THE HAND-AUTHORED TEXTS (jsontext.go) are json-read cases too:
+			// the port's answer is wire bytes, and the reference re-reads them
+			// as an instance of the text's unit and root
+			for _, jt := range m.JSONTexts {
+				path, ok, err := answered(jt.Name)
+				if err != nil {
+					return nil, err
+				}
+				if !ok {
+					continue
+				}
+				out = append(out, crossCase{
+					name: jt.Name, file: path, want: wantBy[jt.Name],
+					line: fmt.Sprintf("instance %s %s %s %s", jt.Name, jt.Unit, jt.Root, repoRelative(path)),
+					out:  jt.Name,
+				})
+			}
+		}
 	case "message":
 		for _, msg := range m.Messages {
 			path, ok, err := answered(msg.Name)

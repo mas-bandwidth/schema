@@ -26,11 +26,17 @@ import (
 	"sync/atomic"
 )
 
+// harnessSurfaces are the surfaces the harness scores that no driver lists:
+// each rides a surface the driver does list (rewrite rides wire, run.go), so
+// the README's surfaces table, which drivers hold their `list` to, leaves
+// them out and names them below it.
+var harnessSurfaces = []string{"rewrite"}
+
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
+	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "rewrite"}
 
 // shapeLegs are the legs whose writers refuse in every build (docs/SPEC.md
 // §5.1): each OWES every `write-refusal-shape` case, so a surface it leaves
@@ -504,6 +510,16 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: i.Name, want: want})
 		}
+		if surface == "json-read" {
+			// the hand-authored texts (jsontext.go): each owes its wire
+			for _, jt := range m.JSONTexts {
+				want, err := os.ReadFile(jt.Wire)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, expectation{name: jt.Name, want: want})
+			}
+		}
 	case "message":
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
 		// against the connection's announced table and write it back. The
@@ -748,6 +764,16 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap" || r.Form == "retain-fixed"})
 		}
+	case "rewrite":
+		// THE REWRITE SURFACE (rewrite.go): the leg's wire surface over the
+		// rewrite rows, each owing the canonical bytes the oracle writes
+		for _, rw := range m.Rewrites {
+			want, err := os.ReadFile(rw.Canonical)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite %s: the canonical bytes: %w — run: make conformance-generate", rw.Name, err)
+			}
+			out = append(out, expectation{name: rw.Name, want: want})
+		}
 	case "json-write-into":
 		for _, j := range m.JSONWriteIntos {
 			inst, err := m.LookupInstance(j.Instance)
@@ -921,6 +947,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := materialise(m, work); err != nil {
 		return false, err
 	}
+	// the framed rewrite rows (rewrite.go), the same for every leg
+	framed, err := framedRewrites(newUnits(m), m)
+	if err != nil {
+		return false, err
+	}
 	derived := filepath.Join(work, "manifest.txt")
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
@@ -982,6 +1013,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
+		// the rewrite surface is the wire surface over the rewrite rows
+		// (rewrite.go): a leg that lists wire is asked it, when the manifest
+		// has rewrite rows (a manifest with none, such as the BOM entry
+		// gate's, asks no rewrite surface rather than a surface of 0 rows)
+		listed["rewrite"] = listed["wire"] && len(m.Rewrites) > 0
 		// rows on an opt-in unit the leg does not name are not asked (optin.go)
 		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
 		if err != nil {
@@ -1001,6 +1037,24 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			stderr  string
 			err     error
 			aborted bool
+		}
+		// the rewrite rows a leg is handed: those on units it is asked
+		// (an opt-in unit it does not name is not, and its rows count absent)
+		legRewrite := filepath.Join(work, "manifest-rewrite-"+d.lang+".txt")
+		omit := map[string]bool{}
+		for key := range m.OptIn {
+			if !listed["unit "+key] {
+				omit[key] = true
+			}
+		}
+		if err := deriveRewriteManifest(m, legRewrite, omit, framed); err != nil {
+			return false, err
+		}
+		// and its json-read surface runs on its manifest plus the authored-text
+		// rows on units it is asked (jsontext.go)
+		legJSONRead := filepath.Join(work, "manifest-json-read-"+d.lang+".txt")
+		if err := deriveJSONReadManifest(legDerived, legJSONRead, m, omit); err != nil {
+			return false, err
 		}
 		runs := map[string]*surfaceRun{}
 		var active []*surfaceRun
@@ -1047,7 +1101,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
-						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						switch sr.surface {
+						case "rewrite":
+							sr.code, sr.stderr, sr.err = runDriver(d, legRewrite, "wire", sr.out)
+						case "json-read":
+							sr.code, sr.stderr, sr.err = runDriver(d, legJSONRead, "json-read", sr.out)
+						default:
+							sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						}
 						if failFast {
 							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
 								failed.Store(true)
@@ -1071,11 +1132,26 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			}
 			wg.Wait()
 		}
+		// the framed rewrite rows are answered by the leg's own framing
+		// write-back (rewrite.go, framedRewrites)
+		if sr := runs["rewrite"]; sr != nil && !sr.aborted {
+			if fr := runs["framing"]; fr != nil {
+				if err := answerFramedRewrites(framed, fr.out, sr.out); err != nil {
+					return false, err
+				}
+			}
+		}
 		for _, s := range surfaces {
 			if opts.only != nil && !opts.only[s] {
 				continue
 			}
 			legWant := want[s]
+			if len(legWant) == 0 && slices.Contains(harnessSurfaces, s) {
+				// a surface the HARNESS derives (rewrite) from rows this manifest
+				// does not have (the BOM entry gate's has none) is not a surface
+				// of this run: no leg lists it, and there is nothing to ask
+				continue
+			}
 			var exemptions []string
 			if s == "json-hostile" {
 				legWant, exemptions = hostileExpectations(m, d.lang)

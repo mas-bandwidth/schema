@@ -4759,3 +4759,7 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 ## Declared unrepresentable
 
 None: every language answers every test of tier `nightly`.
+
+## Intrinsic to one language
+
+None of tier `nightly`.

@@ -67,11 +67,20 @@ func TestReadmeSurfacesAreTheHarnessSurfaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	table := readmeSurfaceTable(t, string(data))
-	if missing := surfaceSetDiff(surfaces, table); len(missing) > 0 {
+	listed := slices.DeleteFunc(slices.Clone(surfaces), func(s string) bool { return slices.Contains(harnessSurfaces, s) })
+	if missing := surfaceSetDiff(listed, table); len(missing) > 0 {
 		t.Errorf("the harness runs %v, which the README's surfaces table does not name", missing)
 	}
-	if extra := surfaceSetDiff(table, surfaces); len(extra) > 0 {
-		t.Errorf("the README's surfaces table names %v, which the harness does not run", extra)
+	if extra := surfaceSetDiff(table, listed); len(extra) > 0 {
+		t.Errorf("the README's surfaces table names %v, which the harness does not run or no driver lists", extra)
+	}
+	for _, s := range harnessSurfaces {
+		if !slices.Contains(surfaces, s) {
+			t.Errorf("harnessSurfaces names %q, which the harness does not run", s)
+		}
+		if !strings.Contains(string(data), "THE HARNESS ALSO SCORES ONE SURFACE NO DRIVER LISTS: `"+s+"`") {
+			t.Errorf("the README does not say the harness scores %q, a surface no driver lists", s)
+		}
 	}
 	for _, s := range table {
 		if slices.Contains(retiredSurfaces, s) {

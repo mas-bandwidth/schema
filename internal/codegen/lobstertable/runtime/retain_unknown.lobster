@@ -319,14 +319,29 @@ class RetainCaptureImpl : RetainCapture
         truncate(built_slots, at)
         truncate(built_recs, at)
 
-// load_retain is load with retention on (docs/SPEC-TABLES.md §6.6): it reads
-// exactly what load reads and reports exactly what load reports, and beside
-// that keeps the fields this build cannot name in the caller's Retain.
-def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record?:
-    read_reset(report)
+// retain_drop empties the store: the bytes it counts, the ids it interned,
+// and the retained fields themselves. Those ride on the records that hold
+// them (Record.retained), so dropping only the holders list would leave an
+// earlier read's fields on its records, and a later save_retain of such a
+// record would write them back through a store that no longer holds them.
+def retain_drop(retain:Retain) -> void:
+    for(retain.holders) h:
+        h.retained = []
     retain.used = 0
     retain.ids = []
     retain.holders = []
+
+// load_retain is load with retention on (docs/SPEC-TABLES.md §6.6): it reads
+// exactly what load reads and reports exactly what load reports, and beside
+// that keeps the fields this build cannot name in the caller's Retain.
+// "A retention buffer belongs to one loaded region, and the next LoadRetain
+// into it resets both stores" (§6.6): the earlier read's retained fields are
+// dropped first, refused or not, and a refused read drops its own partial
+// captures too, so the store comes back holding nothing
+// (test/conformance retain-refusal).
+def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record?:
+    read_reset(report)
+    retain_drop(retain)
     retain.known = []
     if table_of(root).fixed:
         read_refuse(report, "fixed_class_no_retention")
@@ -337,9 +352,7 @@ def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> R
     let rec = load(root, data, report)
     truncate(retain_captures, mark)
     if not rec:
-        retain.used = 0
-        retain.ids = []
-        retain.holders = []
+        retain_drop(retain)
     return rec
 
 // An Emitter writes one retained field back onto the wire: every resolved id

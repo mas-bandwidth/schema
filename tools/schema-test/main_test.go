@@ -255,7 +255,7 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 		"name-buildability":     "name-buildability",
 		"no-such-family":        "",
 	} {
-		h, ok := harnessFor(fam)
+		h, ok := harnessFor(testreg.Test{Family: fam})
 		if (want != "") != ok || h.Name != want {
 			t.Errorf("harnessFor(%s) = %q %v, want %q", fam, h.Name, ok, want)
 		}

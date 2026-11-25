@@ -21484,6 +21484,15 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 | `cook-write` | every instance's wire | `Cook`, both byte orders | `schema cook`'s bytes |
 | `json-read` | every instance's text, and one HAND-AUTHORED text (`edge_map_keys_unsorted`) whose map keys arrive out of order, so a leg's BUILDER sort is what lands the bytes | `Save` of the value | the instance's wire |
 
+**A REWRITE ROW WHOSE INPUT IS FORM `1` AT A DECLARED FIXED ROOT IS ANSWERED
+BY THE FRAMING WRITE-BACK**: no read at a fixed root reads form `1` (The three
+wires, "A reader that expects a fixed table refuses every other form, by
+name"), and the `framing` surface reads every form-`1` vector at a declared
+fixed root through its variable twin and writes the fixed root's bytes back
+(The three wires, "The `framing` battery is no exception"), so that write-back,
+held to the same canonical bytes, is the row's `rewrite` answer; every other
+rewrite row, a variable root's form-`1` input included, is read on `wire`.
+
 **THE GATE'S EXCEPTIONS, NAMED.** A value no writer can write is not a
 rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
 save by every writer, so its instances answer the named refusal on `wire` and

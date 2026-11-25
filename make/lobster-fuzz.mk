@@ -24,14 +24,11 @@
 #
 # The leg releases every graph it loads (schema_rt.release), and a variable
 # load unlinks the node records its root does not reach, so a cyclic graph
-# leaks nothing; the VM's exit-time leak report fails the leg unless
-# test/conformance/lobster/wirefuzz-known-leaks.txt (empty) names the unit,
-# and a listed unit that stops leaking fails it too.
+# leaks nothing; the VM's exit-time leak report fails the leg, naming the unit.
 
 LOBSTER_WIRE_FUZZ_N    ?= 200
 LOBSTER_WIRE_FUZZ_SEED ?= $(SEED)
-LOBSTER_WIRE_FUZZ_LEAKS := test/conformance/lobster/wirefuzz-known-leaks.txt
-LOBSTER_WIRE_FUZZ_HOST  = build/lobster-wirefuzzhost --known-leaks $(LOBSTER_WIRE_FUZZ_LEAKS)
+LOBSTER_WIRE_FUZZ_HOST  = build/lobster-wirefuzzhost
 
 # THE PINNED ILL-FORMED-TEXT VECTOR follows the golden it is a twin of
 # (testdata/wire/tables/fuzz-vectors/INDEX.txt): store_full_message with the
