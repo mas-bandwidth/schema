@@ -419,8 +419,8 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 		},
 		GoStrings: map[string]map[string]bool{
 			"internal/check":         {"../../testdata/name-buildability": true, "..": true, "testdata": true, "wire": true, "json-integers": true},
-			"internal/codegen/table": {"../../testdata/wire/json-integers/wide.json": true, "../../testdata/wire/json-integers/pair.bin": true},
-			"internal/lone":          {"": true, ".": true, "..": true, "../..": true},
+			"internal/codegen/table": {"../../testdata/wire/json-integers/wide.json": true, "../../testdata/wire/json-integers/pair.bin": true, "../../testdata/wire/json-integers/pair.json": true},
+			"internal/lone":          {"": true, ".": true, "/": true, `\`: true, "..": true, "../..": true},
 		},
 		MakeText: StripMakeComments("packet-end-rust-test:\n\tcd test/packet-end/rust && cargo test\n" +
 			"# test/packet-end-x is read by nobody\n" +
@@ -432,21 +432,24 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 		Inputs: []byte(`{"package":"./internal/check","test":"TestNameBuildabilityCorpus","reads":["testdata/name-buildability/..."]}`)}
 	file := testreg.Test{Key: "roundtrip.wire-json-integers.wide", Line: 3,
 		Inputs: []byte(`{"tests":{"go":{"package":"./internal/codegen/table","test":"TestWide"}},"reads":["testdata/wire/json-integers/wide.json"]}`)}
-	covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, corpus, file}})
+	// a row reading both files of a two-file case credits it once
+	both := testreg.Test{Key: "roundtrip.wire-json-integers.pair", Adapter: "gotest", Line: 4,
+		Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestPair","reads":["testdata/wire/json-integers/pair.bin","testdata/wire/json-integers/pair.json"]}`)}
+	covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, corpus, file, both}})
 	if len(p) != 0 {
 		t.Fatalf("problems: %v", p)
 	}
 	want := map[string]string{
 		drv.ID(): mk.Key, cargo.ID(): mk.Key,
 		nb.ID(): corpus.Key, tsv.ID(): corpus.Key,
-		one.ID(): file.Key,
+		one.ID(): file.Key, pair.ID(): both.Key,
 	}
 	for id, key := range want {
 		if covered[id] != key {
 			t.Errorf("%s is credited to %q, want %s", id, covered[id], key)
 		}
 	}
-	for _, it := range []Item{vec, sib, nbInner, nbInnerData, pair} {
+	for _, it := range []Item{vec, sib, nbInner, nbInnerData} {
 		if k, ok := covered[it.ID()]; ok {
 			t.Errorf("%s is below or beside the read directory, under a driver of its own, or not read whole, and is credited to %s", it.ID(), k)
 		}
@@ -471,6 +474,8 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 			"k.j reads internal/lone/, which no string in the source of internal/lone names as a whole path"},
 		"a Go read named only by steps up": {testreg.Test{Key: "k.k", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/lone","test":"TestX","reads":["internal/"]}`)},
 			"k.k reads internal/, which no string in the source of internal/lone names as a whole path"},
+		"a negative control's Go reads": {testreg.Test{Key: "k.l", Type: "plant", Adapter: "gotest", Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestX","reads":["testdata/wire/json-integers/wide.json"]}`)},
+			"k.l reads [testdata/wire/json-integers/wide.json], and a negative control (type plant) is red by design"},
 		"a negative control's reads": {testreg.Test{Key: "k.i", Type: "plant", Adapter: "make", Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/Cargo.toml","test/packet-end/rust/Cargo.lock"]}`)},
 			"k.i reads [test/packet-end/rust/Cargo.toml test/packet-end/rust/Cargo.lock], and a negative control (type plant) is red by design"},
 	} {
@@ -483,6 +488,12 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 				t.Errorf("%s: credits %s", name, id)
 			}
 		}
+	}
+	// two make rows that each read one file of a two-file case run none of it whole
+	half1 := testreg.Test{Key: "k.m", Adapter: "make", Line: 6, Inputs: []byte(`{"file":"m.mk","target":"a","reads":["testdata/wire/json-integers/pair.bin"]}`)}
+	half2 := testreg.Test{Key: "k.n", Adapter: "make", Line: 7, Inputs: []byte(`{"file":"m.mk","target":"b","reads":["testdata/wire/json-integers/pair.json"]}`)}
+	if covered, _ := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{half1, half2}}); covered[pair.ID()] != "" {
+		t.Errorf("a case two make rows each read half of is credited to %s", covered[pair.ID()])
 	}
 	// a second read of what the first row already holds credits nothing
 	again := testreg.Test{Key: "k.g", Adapter: "make", Line: 5, Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/"]}`)}
@@ -527,15 +538,22 @@ func TestNamesPathAndNamesBareDir(t *testing.T) {
 		`cc test/rust\x`:                    {false, false},
 		"test/rust: x":                      {true, true},
 		// a comment after a word, or carried on by a backslash, names nothing
-		"\ttrue # cd test/rust":              {false, false},
-		"foo: bar # test/rust is here":       {false, false},
-		"V := 1 # test/rust":                 {false, false},
-		"# a remark \\\ncd test/rust":        {false, false},
-		"\t@# a remark \\\n\tcd test/rust":   {false, false},
-		"V := \\# test/rust":                 {true, true},
-		"\techo hi\n\tcd test/rust # remark": {true, true},
+		"\ttrue # cd test/rust":            {false, false},
+		"foo: bar # test/rust is here":     {false, false},
+		"V := 1 # test/rust":               {false, false},
+		"# a remark \\\ncd test/rust":      {false, false},
+		"\t@# a remark \\\n\tcd test/rust": {false, false},
+		"foo: \\# test/rust":               {true, true},
+		// a directory a variable is given is worked on bare only where it is used bare
+		"X := test/rust\n\tcat $(X)/a.schema": {false, false},
+		"X := test/rust\n\tcd $(X) && make":   {true, true},
+		"X = test/rust\nY := $(X)\n\tcd ${Y}": {true, true},
+		"\tD=test/rust; cat $$D/a.schema":     {true, false},
+		"$(addsuffix /a.schema,test/rust)":    {true, false},
+		"tool --root=test/rust":               {true, false},
+		"\techo hi\n\tcd test/rust # remark":  {true, true},
 	} {
-		text = StripMakeComments(text)
+		text = ExpandMakeText(StripMakeComments(text))
 		if got := NamesPath(text, "test/rust"); got != want[0] {
 			t.Errorf("NamesPath(%q, test/rust) = %v, want %v", text, got, want[0])
 		}
@@ -571,6 +589,16 @@ var c = filepath.Join(root, "testdata", "wire", "fixed", name)
 		if strings.HasPrefix(l, "testdata/") && l != "testdata/wire/fixed" {
 			t.Errorf("a join with a variable is recorded as %q", l)
 		}
+	}
+	// the words of a run are the run's, not paths of their own; a lone
+	// literal beside a variable is still itself
+	for _, w := range []string{"..", "wire", "fixed", "name-buildability"} {
+		if set[w] {
+			t.Errorf("a word of a literal run is recorded alone: %q", w)
+		}
+	}
+	if !set["testdata"] || !set["x"] {
+		t.Errorf("a lone literal in a join is not recorded: %v", set)
 	}
 }
 

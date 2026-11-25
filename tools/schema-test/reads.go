@@ -334,7 +334,8 @@ func regenerateReads(src, path string, res *extract.Result, db *makeDB) (map[str
 		if err := json.Unmarshal(t.Inputs, &in); err != nil {
 			return nil, nil, "", fmt.Errorf("%s: inputs: %w", t.Key, err)
 		}
-		r := newMakeReach(db.reach(in.Target))
+		files, _, named := db.reach(in.Target)
+		r := newMakeReach(files, named)
 		reach[t.Key] = r
 		for _, x := range in.Reads {
 			if readHolds(res, r, x) {

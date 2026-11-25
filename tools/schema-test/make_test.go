@@ -453,6 +453,23 @@ func TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare(t *testing.T) {
 			t.Errorf("%q: %+v, ran %v, want a fail saying %q before the target runs", c.recipe, r, ran, c.says)
 		}
 	}
+	// a directory a variable holds is worked on bare only where the
+	// recipe uses the variable bare, never by the variable's value alone
+	for _, c := range []struct {
+		recipe string
+		pass   bool
+	}{
+		{"\tcd $(FIXTURE) && ./build/bin", true},
+		{"\t./build/bin $(FIXTURE)/a.schema", false},
+	} {
+		db := fakeDatabase("GO_TEST_JSON = go test -json\nFIXTURE := test/tables\n",
+			"build/objs/%.o: test/tables/%.cpp build/gen/.stamp\n\t$(CXX) -c $< -o $@\n",
+			"gate-check: build/bin\n"+c.recipe+"\n\nbuild/bin: build/objs/main.o\n\nbuild/gen/.stamp: bin/schema test/tables/VNEW_a.schema\n\t./bin/schema generate $^\n\nbuild/objs/main.o:\n#  Implicit rule search has not been done.\n")
+		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/tables/"}}, db, "")
+		if c.pass != (r.Verdict == testreg.Pass && ran) {
+			t.Errorf("%q with FIXTURE := test/tables: %+v, ran %v, want pass %v", c.recipe, r, ran, c.pass)
+		}
+	}
 	_, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","reads":["test/tables/..."]}`))
 	if err == nil || !strings.Contains(err.Error(), "a make row reads one directory, written with one trailing /, never a tree") {
 		t.Errorf("a make row's tree read: %v, want it refused", err)

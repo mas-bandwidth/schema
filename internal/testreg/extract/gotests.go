@@ -241,17 +241,25 @@ func (s *scan) goStrings(dir string, f *ast.File) {
 // addLiterals records f's string literals, and the path each run of
 // string literals side by side in a filepath.Join or path.Join call makes,
 // as one literal: filepath.Join("..", "testdata", "x") names ../testdata/x,
-// and filepath.Join(root, "testdata", "x", name) names testdata/x.
+// and filepath.Join(root, "testdata", "x", name) names testdata/x. The words
+// of such a run are not recorded alone: "testdata" there names no path.
 func addLiterals(set map[string]bool, f *ast.File) {
+	inRun := map[*ast.BasicLit]bool{}
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch n := n.(type) {
 		case *ast.BasicLit:
-			if v, ok := stringLit(n); ok {
+			// a literal in a run of a Join is a word of the path the
+			// run makes, not a path of its own
+			if v, ok := stringLit(n); ok && !inRun[n] {
 				set[v] = true
 			}
 		case *ast.CallExpr:
-			for _, v := range literalJoins(n) {
+			paths, lits := literalJoins(n)
+			for _, v := range paths {
 				set[v] = true
+			}
+			for _, l := range lits {
+				inRun[l] = true
 			}
 		}
 		return true
@@ -269,31 +277,37 @@ func stringLit(e ast.Expr) (string, bool) {
 }
 
 // literalJoins is the path each run of two or more string literals side
-// by side makes in a filepath.Join or path.Join call.
-func literalJoins(c *ast.CallExpr) []string {
+// by side makes in a filepath.Join or path.Join call, and the literals of
+// those runs.
+func literalJoins(c *ast.CallExpr) ([]string, []*ast.BasicLit) {
 	sel, ok := c.Fun.(*ast.SelectorExpr)
 	if !ok || sel.Sel.Name != "Join" {
-		return nil
+		return nil, nil
 	}
 	if x, ok := sel.X.(*ast.Ident); !ok || x.Name != "filepath" && x.Name != "path" {
-		return nil
+		return nil, nil
 	}
-	var out, run []string
+	var out []string
+	var lits []*ast.BasicLit
+	var run []string
+	var runLits []*ast.BasicLit
 	flush := func() {
 		if len(run) > 1 {
 			out = append(out, path.Join(run...))
+			lits = append(lits, runLits...)
 		}
-		run = nil
+		run, runLits = nil, nil
 	}
 	for _, a := range c.Args {
 		if v, ok := stringLit(a); ok {
 			run = append(run, v)
+			runLits = append(runLits, a.(*ast.BasicLit))
 			continue
 		}
 		flush()
 	}
 	flush()
-	return out
+	return out, lits
 }
 
 // goSourceStrings adds to each test package's strings those of its own

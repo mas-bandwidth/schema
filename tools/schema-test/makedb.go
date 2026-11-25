@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testreg/extract"
 )
 
 // makeDB is what make's own database (make -p) says of the checkout's make
@@ -162,10 +164,16 @@ var makeVarRef = regexp.MustCompile(`\$[({](?:call\s+)?([A-Za-z_][A-Za-z0-9_]*)`
 // reach is everything make would make for target: its prerequisites, all
 // the way down, through the pattern rules and the targets its recipes make
 // again by $(MAKE); and the text of every recipe it would run, with the
-// value of every variable those recipes expand, all the way down.
-func (db *makeDB) reach(target string) (files map[string]bool, text []string) {
+// value of every variable those recipes expand, all the way down. named is
+// what those recipes name as make runs them: each recipe with the
+// variables it expands put in place (extract.SubstMakeVars), and the body
+// of each function it calls so; never a variable's value on its own,
+// where a directory that only starts a longer path (X := test/x, used as
+// $(X)/a.schema) would read as a word of its own.
+func (db *makeDB) reach(target string) (files map[string]bool, text, named []string) {
 	files = map[string]bool{}
 	seenVar := map[string]bool{}
+	seenCall := map[string]bool{}
 	var expand func(s string)
 	expand = func(s string) {
 		text = append(text, s)
@@ -173,6 +181,19 @@ func (db *makeDB) reach(target string) (files map[string]bool, text []string) {
 			if v, ok := db.vars[m[1]]; ok && !seenVar[m[1]] {
 				seenVar[m[1]] = true
 				expand(v)
+			}
+		}
+	}
+	var name func(s string)
+	name = func(s string) {
+		named = append(named, extract.SubstMakeVars(s, db.vars))
+		for _, m := range makeVarRef.FindAllStringSubmatch(s, -1) {
+			if !strings.Contains(m[0], "call") {
+				continue
+			}
+			if v, ok := db.vars[m[1]]; ok && !seenCall[m[1]] {
+				seenCall[m[1]] = true
+				name(v)
 			}
 		}
 	}
@@ -198,6 +219,7 @@ func (db *makeDB) reach(target string) (files map[string]bool, text []string) {
 		recipe := strings.Join(r.recipe, "\n")
 		if recipe != "" {
 			expand(recipe)
+			name(recipe)
 			next = append(next, remade(recipe, db)...)
 		}
 		for _, p := range next {
@@ -207,7 +229,7 @@ func (db *makeDB) reach(target string) (files map[string]bool, text []string) {
 			}
 		}
 	}
-	return files, text
+	return files, text, named
 }
 
 func slices0(s []string) []string { return append([]string(nil), s...) }

@@ -413,7 +413,6 @@ data-case	test/js-hostile	1	L4	corpus data and harnesses: each language's adapte
 data-case	test/js/binding-names	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/message-one-encoding	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/non-canonical	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/packet-cfloat-endpoints/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-finite/goose	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-finite/lua	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/packet-finite/luau	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -489,7 +488,6 @@ data-case	testdata/conformance/feature-witnesses/unbounded-text/cross-file	2	L4	
 data-case	testdata/conformance/feature-witnesses/unbounded-text/list	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/feature-witnesses/unbounded-text/map	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/r19	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/table-write-bounds/expected	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/wire	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/jsontestsuite	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -761,6 +759,8 @@ driver	test/conformance/ruby/surfaces	1	L4	corpus data and harnesses: each langu
 driver	test/conformance/rust/rows	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/conformance/unity/unit	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/cpp-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+driver	test/cpp-hostile/bounds	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+driver	test/cpp-hostile/contract	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/cpp-tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/cs-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/dart-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

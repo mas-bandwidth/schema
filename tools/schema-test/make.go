@@ -385,8 +385,8 @@ func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 	if err != nil {
 		return fmt.Sprintf("make %s cannot be read before it runs: %v", in.Target, err), nil
 	}
-	files, text := db.reach(in.Target)
-	reach := newMakeReach(files, text)
+	files, text, named := db.reach(in.Target)
+	reach := newMakeReach(files, named)
 	var why []string
 	for _, r := range in.Reads {
 		if extract.IsDirRead(r) {

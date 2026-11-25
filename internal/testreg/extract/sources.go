@@ -184,13 +184,17 @@ func (s *scan) registryMakeTargets() map[string]bool {
 func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 	sort.Strings(files)
 	seen := map[string]bool{}
+	// the make files as make runs them: comments dropped, and every
+	// variable put in place where it is used, across the files together
+	var raw strings.Builder
+	defer func() { s.res.MakeText += ExpandMakeText(raw.String()) }()
 	for _, rel := range files {
 		data, err := os.ReadFile(filepath.Join(s.root, rel))
 		if err != nil {
 			s.fail(rel, "read: %v", err)
 			continue
 		}
-		s.res.MakeText += StripMakeComments(string(data)) + "\n"
+		raw.WriteString(StripMakeComments(string(data)) + "\n")
 		sc := bufio.NewScanner(bytes.NewReader(data))
 		sc.Buffer(make([]byte, 1<<20), 1<<24)
 		n := 0

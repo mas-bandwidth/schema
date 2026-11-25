@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -303,7 +304,8 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
 	out, problems := Covered(reg)
 	problems = append(problems, perLangClaims(res, reg, out)...)
-	named := map[string]bool{}
+	pinned := map[string]bool{}            // a file some golden row pins
+	readBy := map[string]map[string]bool{} // the files each make row reads
 	held := map[string]bool{}
 	for _, files := range res.CaseFiles {
 		for _, f := range files {
@@ -321,24 +323,38 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 			continue // Covered named it
 		}
 		for _, f := range in.Files {
-			named[f] = true
+			pinned[f] = true
 		}
 		for _, f := range in.Reads {
 			if IsDirRead(f) {
 				continue // a directory: readCredits holds it
 			}
-			named[f] = true
+			if readBy[t.Key] == nil {
+				readBy[t.Key] = map[string]bool{}
+			}
+			readBy[t.Key][f] = true
 			if !held[f] && isDataPath(f) {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which the repository does not hold", reg.Path, t.Line, t.Key, f))
 			}
 		}
 	}
-	for id := range out {
+	// each file of a case is pinned or read: a case credited to a make row
+	// is read whole by that row (with what golden rows pin), since two make
+	// rows that each read half of a case run none of it whole; a case
+	// credited to a golden row may have the rest of its files read by a
+	// make row
+	readAny := map[string]bool{}
+	for _, fs := range readBy {
+		for f := range fs {
+			readAny[f] = true
+		}
+	}
+	for id, key := range out {
 		if !strings.HasPrefix(id, KindDataCase+" ") {
 			continue
 		}
 		for _, f := range res.CaseFiles[id] {
-			if !named[f] {
+			if !pinned[f] && !readBy[key][f] && (readBy[key] != nil || !readAny[f]) {
 				delete(out, id)
 				break
 			}
@@ -436,14 +452,22 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []st
 		for _, f := range files {
 			read[f] = true
 		}
+		// each case once: the second file of a case read whole is the
+		// same credit as the first, not another row's
+		type tally struct{ held, n int }
+		byCase := map[string]*tally{}
 		for _, f := range files {
 			dir, name := path.Split(f)
 			id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
-			held, n := 0, 0
-			if cf := res.CaseFiles[id]; slices.Contains(cf, f) && !slices.ContainsFunc(cf, func(g string) bool { return !read[g] }) {
-				take(t, id, &held, &n)
+			c, seen := byCase[id]
+			if !seen {
+				c = &tally{}
+				byCase[id] = c
+				if cf := res.CaseFiles[id]; slices.Contains(cf, f) && !slices.ContainsFunc(cf, func(g string) bool { return !read[g] }) {
+					take(t, id, &c.held, &c.n)
+				}
 			}
-			verdict(t, f, held, n)
+			verdict(t, f, c.held, c.n)
 		}
 	}
 	for _, t := range reg.Tests {
@@ -478,6 +502,10 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []st
 				Reads   []string
 			}
 			if json.Unmarshal(t.Inputs, &in) != nil || len(in.Reads) == 0 {
+				continue
+			}
+			if t.Type == "plant" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %v, and a negative control (type plant) is red by design, so its reads credit nothing: drop them", reg.Path, t.Line, t.Key, in.Reads))
 				continue
 			}
 			var pkgs []string
@@ -590,18 +618,26 @@ func NamesPath(text, p string) bool {
 // argument. A path of one file in it names that file, not d, and a word
 // make or the shell builds on test/x/ (test/x/$(F).c, test/x/%.c,
 // $(addprefix test/x/,a.c)) names no directory.
+//
+// A directory a variable is given (D=test/x, X := test/x) or a make
+// function is handed to build on ($(addsuffix /a.c,test/x)) is not worked
+// on bare: what is done with it is a longer path, so a word after = or
+// before a closing bracket names no directory.
 func NamesBareDir(text, d string) bool {
-	return namesAt(text, d, func(end int) bool {
-		if pathEnd(text, end) {
+	end := func(i int) bool {
+		return pathEnd(text, i) && (i == len(text) || text[i] != ')' && text[i] != '}')
+	}
+	return namesAtFrom(text, d, func(at int) bool { return pathStart(text, at) && (at == 0 || text[at-1] != '=') }, func(i int) bool {
+		if end(i) {
 			return true
 		}
-		if text[end] != '/' {
+		if text[i] != '/' {
 			return false
 		}
 		// after d/, a word ends, or a glob in d starts; a quote here
 		// starts a name in d (test/x/"a b"), so it names no directory
-		end++
-		return end == len(text) || text[end] == '*' || text[end] != '"' && text[end] != '\'' && pathEnd(text, end)
+		i++
+		return i == len(text) || text[i] == '*' || text[i] != '"' && text[i] != '\'' && end(i)
 	})
 }
 
@@ -618,6 +654,11 @@ func pathEnd(text string, i int) bool {
 // namesAt reports whether text holds p at a whole-path start, with after
 // judging what follows it.
 func namesAt(text, p string, after func(end int) bool) bool {
+	return namesAtFrom(text, p, func(at int) bool { return pathStart(text, at) }, after)
+}
+
+// namesAtFrom is namesAt with start judging where p may start.
+func namesAtFrom(text, p string, start func(at int) bool, after func(end int) bool) bool {
 	if p == "" {
 		return false
 	}
@@ -627,11 +668,74 @@ func namesAt(text, p string, after func(end int) bool) bool {
 			return false
 		}
 		at := i + j
-		if pathStart(text, at) && after(at+len(p)) {
+		if start(at) && after(at+len(p)) {
 			return true
 		}
 		i = at + 1
 	}
+}
+
+// makeAssign is a make variable assignment: a line that is no recipe's,
+// its name, and its value.
+var makeAssign = regexp.MustCompile(`^(?:override\s+|export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(\+=|\?=|::=|:=|!=|=)\s*(.*)$`)
+
+// makeRef is a reference to a variable by its plain name, $(NAME) or
+// ${NAME}.
+var makeRef = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// SubstMakeVars is s with each $(NAME) or ${NAME} that vars defines put in
+// place, and again in what that gives, a few levels deep: the words make
+// runs, so a variable holding a directory names that directory only where
+// it is used bare.
+func SubstMakeVars(s string, vars map[string]string) string {
+	for range 8 {
+		t := makeRef.ReplaceAllStringFunc(s, func(m string) string {
+			if v, ok := vars[m[2:len(m)-1]]; ok {
+				return strings.TrimSpace(v)
+			}
+			return m
+		})
+		if t == s {
+			break
+		}
+		s = t
+	}
+	return s
+}
+
+// ExpandMakeText is make file text as make runs it, for what it names: the
+// variables its assignments set (each line that is no recipe's and sets
+// one, backslash continuations joined) put in place where they are used,
+// and the assignments themselves dropped, since a value names nothing until
+// it is used.
+func ExpandMakeText(text string) string {
+	var lines []string
+	for _, l := range strings.Split(text, "\n") {
+		if n := len(lines); n > 0 && strings.HasSuffix(lines[n-1], `\`) && !strings.HasPrefix(lines[n-1], "\t") {
+			lines[n-1] = strings.TrimSuffix(lines[n-1], `\`) + " " + strings.TrimSpace(l)
+			continue
+		}
+		lines = append(lines, l)
+	}
+	vars := map[string]string{}
+	var rest []string
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "\t") {
+			if m := makeAssign.FindStringSubmatch(strings.TrimSpace(l)); m != nil {
+				if m[2] == "+=" && vars[m[1]] != "" {
+					vars[m[1]] += " " + m[3]
+				} else {
+					vars[m[1]] = m[3]
+				}
+				continue
+			}
+		}
+		rest = append(rest, l)
+	}
+	for i, l := range rest {
+		rest[i] = SubstMakeVars(l, vars)
+	}
+	return strings.Join(rest, "\n")
 }
 
 // pathStart reports whether a repository path may start at text[at]: at
@@ -765,8 +869,8 @@ func sourceNames(lits map[string]bool, pkg, p string) bool {
 		for strings.HasPrefix(up, "../") {
 			up = up[3:]
 		}
-		if c == "." || up == ".." {
-			continue // "", "." or only steps up: a place, never a path it names
+		if c == "." || up == ".." || path.IsAbs(c) {
+			continue // "", ".", "/" or only steps up: a place or a separator, never a path it names
 		}
 		if c == p || path.Join(pkg, c) == p {
 			return true
