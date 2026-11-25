@@ -5779,7 +5779,7 @@ tables-cpp-names-negative-control:
 # A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
-CPP_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+CPP_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) -j$(CPP_RELEASE_JOBS) $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
@@ -7773,7 +7773,7 @@ release-binaries:
 # runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_FLAGS ?=
-RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+RELEASE_DIFFERENTIAL_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # THE JUDGE CORPUS (tools/releasediff/testdata/judge-corpus): committed cases,
 # each two listings of what the packet drivers wrote and the verdict the
 # release owes on them, replayed through the differential's own Judge. The

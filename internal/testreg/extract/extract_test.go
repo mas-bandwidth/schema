@@ -977,3 +977,48 @@ func TestAGoTestSubtestRowClaimsTheSubtest(t *testing.T) {
 		t.Fatalf("slash: %v", p)
 	}
 }
+
+// TestAMakeRowsSourceIsHeldToItsRulesLine: a make row's source is the file
+// and the first line its target's rule is written on; a source on another
+// line, with no line, or in another file is named with the line to set, and
+// a row naming the right line, a per-language row and a rule no make file
+// writes are not named here. Planted: without MakeSourceProblems in Check, a
+// stale line passes.
+func TestAMakeRowsSourceIsHeldToItsRulesLine(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixture)
+	res, err := Extract(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := func(key, target, source string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Source: source, Inputs: []byte(`{"file":"Makefile","target":"` + target + `"}`)}
+	}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
+		row("a.right", "prep", "Makefile:7"),
+		row("a.stale", "prep", "Makefile:8"),
+		row("a.noline", "quoted", "Makefile"),
+		row("a.elsewhere", "build", "make/x.mk:4"),
+		row("a.none", "no-such-rule", "Makefile:1"),
+		{Key: "a.perlang", Adapter: "make", Source: "Makefile:99", Inputs: []byte(`{"file":"Makefile","target":"runs-{lang}-x"}`)},
+	}}
+	got := MakeSourceProblems(res, reg)
+	want := []string{
+		`r.jsonl:0: a.stale source is "Makefile:8", and prep is written at Makefile:7: set source to "Makefile:7"`,
+		`r.jsonl:0: a.noline source is "Makefile", and quoted is written at Makefile:10: set source to "Makefile:10"`,
+		`r.jsonl:0: a.elsewhere source is "make/x.mk:4", and build is written at Makefile:4: set source to "Makefile:4"`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("make row sources:\n  %s\nwant:\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
+	}
+	// Check carries them: the stale row is named by Check
+	found := false
+	for _, p := range Check(res, reg, nil) {
+		if strings.Contains(p, "a.stale source is") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Check does not name a make row whose source line is stale")
+	}
+}

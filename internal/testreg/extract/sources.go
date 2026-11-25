@@ -223,6 +223,12 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 					s.res.Rules = map[string]bool{}
 				}
 				s.res.Rules[RuleID(rel, name)] = true
+				if s.res.RuleLines == nil {
+					s.res.RuleLines = map[string]int{}
+				}
+				if _, ok := s.res.RuleLines[RuleID(rel, name)]; !ok {
+					s.res.RuleLines[RuleID(rel, name)] = n
+				}
 				if name == ".PHONY" || strings.HasPrefix(name, ".") || nc[name] || seen[name] || !checkTarget.MatchString(name) && !ci[name] {
 					continue
 				}
