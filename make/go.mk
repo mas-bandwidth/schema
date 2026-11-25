@@ -110,7 +110,14 @@ test-go: tables-go-shared-runtime
 # two halves by count. A row added is a row run, and the run-proof requires a
 # `--- PASS` for each. (The hand-copied halves this replaced listed 46 of the
 # 47 rows; TestRowR20FloatWidensExactly was in neither.)
-GO_ROWS        := $(sort $(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/conformance/go/rows/*_test.go))
+#
+# A row the registry holds on its own (a gotest row naming this package and the
+# test, test/registry/registry.jsonl) runs through schema-test, and is read off
+# the registry just as the names are read off the directory: it is left out of
+# the halves, or it would run twice, once here and once as its registry row
+# (TestRowR14GrownTagReadsTheWritersTagWidth did). Each row runs exactly once.
+GO_ROWS_REGISTERED := $(shell sed -n 's/.*"package":"\.\/test\/conformance\/go\/rows","test":"\(TestRow[A-Za-z0-9_]*\)".*/\1/p' test/registry/registry.jsonl)
+GO_ROWS        := $(sort $(filter-out $(GO_ROWS_REGISTERED),$(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/conformance/go/rows/*_test.go)))
 GO_ROWS_N      := $(words $(GO_ROWS))
 GO_ROWS_HALF   := $(shell expr \( $(GO_ROWS_N) + 1 \) / 2)
 GO_ROWS_A      := $(wordlist 1,$(GO_ROWS_HALF),$(GO_ROWS))
