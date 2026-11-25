@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2959.
+Unit tests every language answers: 2. Language-free tests: 2966.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -37,13 +37,14 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 generated source compiles and is clean.
 
-#### `codegen` family `cpptable`, 3 tests
+#### `codegen` family `cpptable`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.codegen.cpptable.conformance-driver-units-read-the-makefile-list` | `gotest` | Go test TestConformanceDriverUnitsReadTheMakefileList in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestConformanceDriverUnitsReadTheMakefileList` | the Go test passes | `internal/codegen/cpptable/conformance_driver_sources_test.go:127` |
 | `none.unit.codegen.cpptable.cpp-block-float-range-ends-are-held-at-the-field-width` | `gotest` | Go test TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` | the Go test passes | `internal/codegen/cpptable/block_range_limits_test.go:65` |
 | `none.unit.codegen.cpptable.cpp-conformance-driver-registers-every-family` | `gotest` | Go test TestCppConformanceDriverRegistersEveryFamily in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppConformanceDriverRegistersEveryFamily` | the Go test passes | `internal/codegen/cpptable/conformance_driver_sources_test.go:96` |
+| `none.unit.codegen.cpptable.cpp-table-inline-macro-is-a-hook` | `gotest` | Go test TestCppTableInlineMacroIsAHook in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppTableInlineMacroIsAHook` | the Go test passes | `internal/codegen/cpptable/inline_hook_test.go:13` |
 
 #### `codegen` family `ctable`, 1 test
 
@@ -300,12 +301,16 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.cmd-schema.stale-cleanup-never-removes-what-this-run-wrote` | `gotest` | Go test TestStaleCleanupNeverRemovesWhatThisRunWrote in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestStaleCleanupNeverRemovesWhatThisRunWrote` | the Go test passes | `cmd/schema/generatedspelling_test.go:294` |
 | `none.unit.compiler.cmd-schema.wire-form-lines-report-a-refusal` | `gotest` | Go test TestWireFormLinesReportARefusal in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestWireFormLinesReportARefusal` | the Go test passes | `cmd/schema/checkexit_test.go:12` |
 
-#### `compiler` family `codegen-ccommon`, 2 tests
+#### `compiler` family `codegen-ccommon`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.compiler.codegen-ccommon.header-guard-distinct` | `gotest` | Go test TestHeaderGuardDistinct in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestHeaderGuardDistinct` | the Go test passes | `internal/codegen/ccommon/guard_test.go:26` |
 | `none.unit.compiler.codegen-ccommon.header-guard-spelling` | `gotest` | Go test TestHeaderGuardSpelling in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestHeaderGuardSpelling` | the Go test passes | `internal/codegen/ccommon/guard_test.go:7` |
+| `none.unit.compiler.codegen-ccommon.packed-initializer-edges` | `gotest` | Go test TestPackedInitializerEdges in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestPackedInitializerEdges` | the Go test passes | `internal/codegen/ccommon/packed_test.go:29` |
+| `none.unit.compiler.codegen-ccommon.packed-initializer-shape` | `gotest` | Go test TestPackedInitializerShape in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestPackedInitializerShape` | the Go test passes | `internal/codegen/ccommon/packed_test.go:12` |
+| `none.unit.compiler.codegen-ccommon.single-pass-conditionals` | `gotest` | Go test TestSinglePassConditionals in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestSinglePassConditionals` | the Go test passes | `internal/codegen/ccommon/singlepass_test.go:12` |
+| `none.unit.compiler.codegen-ccommon.single-pass-conditionals-refuses` | `gotest` | Go test TestSinglePassConditionalsRefuses in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestSinglePassConditionalsRefuses` | the Go test passes | `internal/codegen/ccommon/singlepass_test.go:62` |
 
 #### `compiler` family `codegen-cfmt`, 6 tests
 
@@ -1789,7 +1794,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 255 tests
+#### `tooling` family `ci`, 256 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1850,6 +1855,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.every-test-child-is-bounded-corpus` | `gotest` | Go test TestEveryTestChildIsBoundedCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTestChildIsBoundedCorpus` | the Go test passes | `internal/ci/test_children_bounded_corpus_test.go:28` |
 | `none.unit.tooling.ci.every-test-child-is-bounded-negative-control` | `gotest` | Go test TestEveryTestChildIsBoundedNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTestChildIsBoundedNegativeControl` | the Go test passes | `internal/ci/test_children_bounded_test.go:110` |
 | `none.unit.tooling.ci.every-test-child-is-bounded-policy-corpus` | `gotest` | Go test TestEveryTestChildIsBoundedPolicyCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTestChildIsBoundedPolicyCorpus` | the Go test passes | `internal/ci/test_children_bounded_test.go:150` |
+| `none.unit.tooling.ci.format-gates-hold-the-cpu-limit` | `gotest` | Go test TestFormatGatesHoldTheCPULimit in ./internal/ci | `package: ./internal/ci`<br>`test: TestFormatGatesHoldTheCPULimit` | the Go test passes | `internal/ci/format_gate_cpu_limit_test.go:27` |
 | `none.unit.tooling.ci.gate-scans-prove-they-ran` | `gotest` | Go test TestGateScansProveTheyRan in ./internal/ci | `package: ./internal/ci`<br>`test: TestGateScansProveTheyRan` | the Go test passes | `internal/ci/gate_scans_prove_they_ran_test.go:23` |
 | `none.unit.tooling.ci.gate-scans-prove-they-ran-negative-control` | `gotest` | Go test TestGateScansProveTheyRanNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestGateScansProveTheyRanNegativeControl` | the Go test passes | `internal/ci/gate_scans_prove_they_ran_test.go:50` |
 | `none.unit.tooling.ci.generated-current-emits-standalone-bench-trees` | `gotest` | Go test TestGeneratedCurrentEmitsStandaloneBenchTrees in ./internal/ci | `package: ./internal/ci`<br>`test: TestGeneratedCurrentEmitsStandaloneBenchTrees` | the Go test passes | `internal/ci/generatedcurrentstandalone_test.go:73` |
@@ -2140,7 +2146,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.editors-vscode.grammar-samples` | `gotest` | Go test TestGrammarSamples in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarSamples` | the Go test passes | `editors/vscode/grammar_test.go:596` |
 | `none.unit.tooling.editors-vscode.grammar-timestamp-type-versus-name` | `gotest` | Go test TestGrammarTimestampTypeVersusName in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarTimestampTypeVersusName` | the Go test passes | `editors/vscode/grammar_test.go:653` |
 
-#### `tooling` family `fixedtwin`, 18 tests
+#### `tooling` family `fixedtwin`, 19 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2161,6 +2167,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fixedtwin.owed-c-leg-renamed-member-reds` | `gotest` | Go test TestOwedCLegRenamedMemberReds in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestOwedCLegRenamedMemberReds` | the Go test passes | `tools/fixedtwin/twin_test.go:134` |
 | `none.unit.tooling.fixedtwin.paired-headers-agree` | `gotest` | Go test TestPairedHeadersAgree in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestPairedHeadersAgree` | the Go test passes | `tools/fixedtwin/twin_test.go:171` |
 | `none.unit.tooling.fixedtwin.planted-divergence-reds` | `gotest` | Go test TestPlantedDivergenceReds in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestPlantedDivergenceReds` | the Go test passes | `tools/fixedtwin/twin_test.go:158` |
+| `none.unit.tooling.fixedtwin.read-header-splices-the-data-header` | `gotest` | Go test TestReadHeaderSplicesTheDataHeader in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestReadHeaderSplicesTheDataHeader` | the Go test passes | `tools/fixedtwin/splice_test.go:14` |
 | `none.unit.tooling.fixedtwin.runtime-extraction-ends-before-separate-integrity` | `gotest` | Go test TestRuntimeExtractionEndsBeforeSeparateIntegrity in ./tools/fixedtwin | `package: ./tools/fixedtwin`<br>`test: TestRuntimeExtractionEndsBeforeSeparateIntegrity` | the Go test passes | `tools/fixedtwin/twin_test.go:205` |
 
 #### `tooling` family `fixedunlawful`, 4 tests
