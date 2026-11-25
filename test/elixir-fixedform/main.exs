@@ -60,41 +60,7 @@ defmodule Leg do
     :persistent_term.put({__MODULE__, :fails}, [name | :persistent_term.get({__MODULE__, :fails})])
   end
 
-  # RETIRED BY §5.6, AND THE RETIREMENT IS A FAILURE (§5.9 #23): a case not run
-  # is never a pass, and a case is left out only at the root. A retired case is
-  # named HERE, AT ITS CALL SITE, as a FAIL, with §5.6 and where the coverage is owed — and the
-  # function itself stays in the tree and stays compiling. A deleted test is a
-  # coverage claim nobody can audit.
-  def retired(name, owed) do
-    fail(name, "RETIRED by docs/FIXED-FORM-ALGORITHM.md §5.6 and not run; #{owed}")
-
-    :persistent_term.put(
-      {__MODULE__, :retired},
-      [name | :persistent_term.get({__MODULE__, :retired}, [])]
-    )
-  end
-
-  defp retired_count, do: length(:persistent_term.get({__MODULE__, :retired}, []))
-
-  defp retired_line do
-    case retired_count() do
-      0 ->
-        :ok
-
-      n ->
-        IO.puts(
-          "\nretired by §5.6 and owed again: #{n} sections, each named above — a fixed " <>
-            "table reads BACKWARD and never forward, so every case that walked a stranger's " <>
-            "layout at run time or read FORWARD is held by the lineage harness, " <>
-            "internal/codegen/elixirtable/fixedversioning_test.go, and §1.1's seven rules " <>
-            "by the LOCK's validation of what it records"
-        )
-    end
-  end
-
   def verdict do
-    retired_line()
-
     case :persistent_term.get({__MODULE__, :fails}) do
       [] ->
         IO.puts("\nfixed form: the Elixir leg matches the C++ reference")
@@ -380,190 +346,13 @@ Leg.eq("pack[0].reserves", length(p0.reserves), 2)
 Leg.eq("pack[0].reserves[1].display_name", Enum.at(p0.reserves, 1).display_name, "spare-b")
 Leg.eq("pack[1].settings.difficulty = Easy", p1v.settings.difficulty, :easy)
 
-# ---------------------------------------------------------------------------
-# THE READ: ANOTHER WRITER'S LAYOUT, through a plan compiled from it
-# ---------------------------------------------------------------------------
+# §5.6 RETIRED THE READ OF ANOTHER WRITER'S LAYOUT (FX2 over FX1, P1 over P3 and
+# back): those reads are held by the lineage harness,
+# internal/codegen/elixirtable/fixedversioning_test.go, which plays the lock.
 
-# RETIRED BY §5.6: EVERY READ BELOW WALKS A STRANGER'S LAYOUT.
-#
-# FX2 over an FX1 file, FX1 over an FX2 file, P1 over P3's and P3 over P1's —
-# four files whose header hash is in no lineage this build laid down, which §5.3
-# answers at step 5, `layout_newer`, BEFORE a record and before any walk. The
-# cached plan and the `:persistent_term` plan key go with them: a plan is the
-# BUILD'S now, one per lineage entry at module load, and nothing on a load path
-# compiles one (§5.9 #3).
-#
-# WHERE THE COVERAGE IS OWED: the lineage harness,
-# internal/codegen/elixirtable/fixedversioning_test.go, which plays the lock and
-# hands the reader the older generation's entry — every row of §5.7 in both
-# columns, NEW-READS-OLD and OLD-REFUSES-NEW, over the C++ reference's own bytes.
-# The function stays in the tree and stays compiling (§5.9 #23).
-plan_path = fn ->
-  Leg.section("the plan path: §4's evolution table, and what each edit costs")
-
-  # AN FX2 READER OVER AN FX1 FILE. Every edit FX1.schema names lands here:
-  #   narrow   uint16 there, uint32 here — a WIDENED field, counting `widened`
-  #   renamed  arrives under `was = "renamed"` and resolves like any other id
-  #   gone     a field this reader cannot name — one `unknown`, stepped over
-  #   added    a field the writer does not carry — this reader's declared default
-  #   extra    a whole nested TYPE the writer does not carry — the default too
-  {:ok, [n0, n1], newer} = Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"))
-  Leg.eq("newer over older: keep", n0.keep, 4242)
-  Leg.eq("newer over older: narrow WIDENED u16 -> u32", n0.narrow, 40000)
-  Leg.eq("newer over older: renamed arrives under `was`", n0.renamed_to, 321)
-  Leg.eq("newer over older: added takes its declared default", n0.added, 11)
-  Leg.eq("newer over older: an unknown TYPE leaves its default", {n0.extra.x, n0.extra.y}, {0, 0})
-  Leg.eq("newer over older: nested", {n0.nested.a, n0.nested.b}, {111, 222})
-  Leg.eq("newer over older: blob[0] matches identity", n0.blob, a.blob)
-  Leg.eq("newer over older: blob[1] matches identity", n1.blob, b.blob)
-  Leg.eq("newer over older: the second record too", {n1.narrow, n1.renamed_to}, {2, 3})
-  Leg.eq("newer over older: one `unknown`, counted ONCE per writer", newer.unknown, 1)
-  Leg.eq("newer over older: one `widened` per record", newer.widened, 2)
-  Leg.eq("newer over older: nothing else moved", {newer.retained, newer.retain_lost}, {0, 0})
-
-  # AN FX1 READER OVER AN FX2 FILE. Coming back DOWN the ladder is a kind that
-  # MOVED and is reported rather than reinterpreted (§4).
-  {:ok, [o0], older} = Tblfx1.FX1Fixed.fx_root_fixed_load(read.("fx2.bin"))
-  Leg.eq("older over newer: keep", o0.keep, 5150)
-  Leg.eq("older over newer: u32 -> u16 is a kind that MOVED", o0.narrow, 3)
-  Leg.eq("older over newer: the rename resolves both ways", o0.renamed, 808)
-  Leg.eq("older over newer: a field the writer dropped defaults", o0.gone, 9)
-  Leg.eq("older over newer: nested", {o0.nested.a, o0.nested.b}, {33, 44})
-  Leg.eq("older over newer: `added` and `extra` are two `unknown`", older.unknown, 2)
-
-  # AN OPTIONAL AGAINST A VALUE. §2.3 makes `?T` and a plain `T` wire-identical in
-  # form 1; ON THIS FORM THEY ARE ONE BYTE APART, and the layout's kind 35 is what
-  # lets a reader SEE the edit — it reads as `kind_mismatch` and the field takes
-  # its declared default, rather than every byte after it sliding by one.
-  {:ok, [v0, _v1], value_side} = Tblp1.P1Fixed.chain_fixed_load(read.("p3.bin"))
-  Leg.eq("value reader over an optional writer: name still lands", v0.name, "present")
-  Leg.eq("value reader over an optional writer: the payload defaults", v0.link.value, 0)
-  Leg.eq("value reader over an optional writer: one `unknown`", value_side.unknown, 1)
-
-  {:ok, [w0], opt_side} = Tblp3.P3Fixed.chain_fixed_load(read.("p1.bin"))
-  Leg.eq("optional reader over a value writer: name still lands", w0.name, "chain-one")
-  Leg.eq("optional reader over a value writer: absent", w0.link_present, false)
-  Leg.eq("optional reader over a value writer: one `unknown`", opt_side.unknown, 1)
-
-  # THE PLAN IS COMPILED ONCE PER PEER AND CACHED BY HASH, and the second read of
-  # the same peer's file has to answer the same thing out of the cache.
-  {:ok, [again | _], _} = Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"))
-  Leg.eq("the cached plan reads the same", {again.narrow, again.renamed_to}, {40000, 321})
-
-  Leg.check(
-    "the plan is held by hash in :persistent_term",
-    :persistent_term.get(
-      {Tblfx2.FX2Fixed, :fixed_plan, Tblfx1.FX1Fixed.fx_root_fixed_hash()},
-      nil
-    ) !=
-      nil
-  )
-end
-
-Leg.retired(
-  "the plan path: §4's evolution table, and what each edit costs",
-  "four forward reads of a layout no lineage holds; owed on the lineage harness, " <>
-    "internal/codegen/elixirtable/fixedversioning_test.go"
-)
-
-_ = plan_path
-
-# ---------------------------------------------------------------------------
-# THE PLAN CACHE IS BOUNDED, AND A CACHED PLAN IS HELD TO THE CALLER'S CAPACITY
-# ---------------------------------------------------------------------------
-#
-# A LAYOUT COMES FROM A PEER, so an unbounded cache is a peer's lever on this
-# node: every new layout is one `:persistent_term.put/2`, and every put makes
-# EVERY PROCESS IN THE VM scan its heap. The cache fills once and then stops —
-# past the bound a new peer's plan is compiled per load and written nowhere, so
-# minting layouts buys an attacker no global scans at all.
-# RETIRED BY §5.6: THERE IS NO RUN-TIME PLAN CACHE TO BOUND.
-#
-# The cache was the answer to a peer minting layouts, because a peer's layout
-# used to be compiled on the load path. §5 removes the lever instead of bounding
-# it: a plan is built ONCE PER LINEAGE ENTRY at module load from the LOCK's own
-# bytes (§5.9 #3), a layout a file carries is never parsed, and a hash the
-# lineage does not hold is `layout_newer` before any work at all. `forget/1` and
-# `plan_cache_max/0` remain the runtime's API — §5.6 retires MECHANISMS and not
-# API (§5.9 #16) — and the capacity refusal they guarded is owed where a
-# COMPILED lane still exists: the lineage harness, as `plan_too_large` over an
-# entry the lock handed in (§5.9 #39, #45). The function stays in the tree.
-plan_cache = fn ->
-  Leg.section("the plan cache: bounded, forgettable, and held to the caller's capacity")
-
-  Leg.eq(
-    "the cache states its bound",
-    is_integer(Tblfx2.FixedRuntime.plan_cache_max()) and Tblfx2.FixedRuntime.plan_cache_max() > 0,
-    true
-  )
-
-  # MINT MORE LAYOUTS THAN THE BOUND, each a real one this reader will compile
-  # against: FX1's own layout with the ROOT'S NOTE-FREE id left alone and one
-  # entry's id moved, which is a layout that parses and compiles to a plan.
-  fx1_layout = Tblfx1.FX1Fixed.fx_root_fixed_layout()
-
-  mint = fn i ->
-    # entry 1's id lives at 4 (the header) + 17 (the root entry), eight bytes wide
-    <<head::binary-size(21), _id::little-unsigned-64, tail::binary>> = fx1_layout
-    <<head::binary, 0xF000 + i::little-unsigned-64, tail::binary>>
-  end
-
-  Tblfx2.FixedRuntime.forget(Tblfx2.FX2Fixed)
-
-  Leg.eq(
-    "forget/1 empties the module's cache",
-    :persistent_term.get({Tblfx2.FX2Fixed, :fixed_plans}, []),
-    []
-  )
-
-  records = fn layout ->
-    IO.iodata_to_binary([
-      Tblfx1.FixedRuntime.file_header(Tblfx1.FixedRuntime.hash(layout), byte_size(layout)),
-      layout,
-      <<Tblfx1.FixedRuntime.hash(layout)::little-unsigned-64,
-        0::size(Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())-unit(8)>>
-    ])
-  end
-
-  bound = Tblfx2.FixedRuntime.plan_cache_max()
-
-  for i <- 1..(bound + 8) do
-    {:ok, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_load(records.(mint.(i)))
-  end
-
-  Leg.eq(
-    "a peer minting layouts fills the cache and no further",
-    length(:persistent_term.get({Tblfx2.FX2Fixed, :fixed_plans}, [])),
-    bound
-  )
-
-  # AND A READ PAST THE BOUND STILL ANSWERS: the plan is compiled per load and
-  # written nowhere, so the cost is an attacker's and never this node's memory.
-  {:ok, [past | _], past_report} = Tblfx2.FX2Fixed.fx_root_fixed_load(records.(mint.(9_999)))
-  Leg.eq("a read past the bound still lands its values", past.keep, 7)
-  Leg.eq("and moves no `unknown`", past_report.unknown, 0)
-
-  Tblfx2.FixedRuntime.forget(Tblfx2.FX2Fixed)
-
-  # A CACHED PLAN IS REFUSED BY THE NUMBER THE COMPILER MEASURED, not by the
-  # length of the coalesced list — which is smaller, and would admit a caller
-  # that compiling fresh would have been told `plan_too_large`.
-  {:ok, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"))
-
-  Leg.eq(
-    "a cached plan is held to THIS caller's capacity",
-    Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"), plan_capacity: 1) |> elem(1),
-    :plan_too_large
-  )
-end
-
-Leg.retired(
-  "the plan cache: bounded, forgettable, and held to the caller's capacity",
-  "a peer's layout is never compiled on a load path under §5; the capacity refusal " <>
-    "moves with it to the lineage harness, TestFixedVersioningPlanTooLarge (§5.9 #39, #45)"
-)
-
-_ = plan_cache
+# §5.6 RETIRED THE RUN-TIME PLAN CACHE (a plan is built once per lineage entry
+# at module load); the capacity refusal it guarded is held by the lineage
+# harness, TestFixedVersioningPlanTooLarge (§5.9 #39, #45).
 
 # ---------------------------------------------------------------------------
 # WHAT A LOADED VALUE HOLDS: `copy: true` detaches a record from its file
@@ -832,92 +621,9 @@ Leg.eq(
   w14_body
 )
 
-# AN ORDINAL SLIDE, which is the one edit a record's bytes cannot show.
-#
-# FE2 inserts `Electrum` between Bronze and Silver, so Gold's ORDINAL slides
-# from 3 to 4; and it inserts the `shield` arm between `boost` and `ward`, so
-# `ward`'s tag slides from 2 to 3 and the arm behind the tag moves with it. A
-# reader that took the number for its own would read Gold as Silver and a ward
-# as a shield. THE PLAN REMAPS BOTH: the `ordinal` op resolves a variant through
-# the plan's own table, and a union's tag is written as MY ordinal under THEIR
-# tag's guard.
-# RETIRED BY §5.6: BOTH DIRECTIONS READ A LAYOUT NO LINEAGE HOLDS.
-#
-# FE2 over FE1's record is a BACKWARD read §5 keeps — but only where the LOCK
-# handed FE1's entry to FE2, and these two units are generated apart with no
-# lock, so FE1's hash is in no lineage of FE2's and the file is `layout_newer`.
-# FE1 over FE2's record is a FORWARD read, which §5.6 retires outright: "the
-# remap of an unknown variant to None" is named there by name.
-#
-# WHERE THE COVERAGE IS OWED: the lineage harness's `enum_append`,
-# `union_append` and `keyed_array_enum_append` rows, which are the same edit with
-# the lock played — the ordinal slide read through an entry the build was handed,
-# and the forward direction refused `layout_newer` by name (§5.7's two columns).
-ordinal_slide = fn ->
-  Leg.section("the ordinal slide: an enum and a union that both gained a variant in the middle")
-
-  slide =
-    Tblfe1.FE1Fixed.fe_root_fixed_save([
-      %Tblfe1.FeRoot{
-        grade: :gold,
-        effect: {:ward, %Tblfe1.Ward{charge: 41}},
-        tail: 99
-      },
-      %Tblfe1.FeRoot{
-        grade: :bronze,
-        effect: {:boost, %Tblfe1.Boost{power: 17}},
-        tail: 100
-      }
-    ])
-
-  {:ok, [s0, s1], slide_report} = Tblfe2.FE2Fixed.fe_root_fixed_load(slide)
-  Leg.eq("the enum's Gold slid 3 -> 4 and was REMAPPED", s0.grade, :gold)
-  Leg.eq("the union's ward tag slid 2 -> 3", elem(s0.effect, 0), :ward)
-  Leg.eq("and the arm behind the slid tag landed", elem(s0.effect, 1).charge, 41)
-
-  Leg.eq(
-    "Bronze did not slide, and neither did the boost arm",
-    {s1.grade, elem(s1.effect, 0)},
-    {:bronze, :boost}
-  )
-
-  Leg.eq("the arm's payload", elem(s1.effect, 1).power, 17)
-  Leg.eq("the tail past the union is undisturbed", {s0.tail, s1.tail}, {99, 100})
-  Leg.eq("a slide moves no `widened`", slide_report.widened, 0)
-
-  Leg.eq(
-    "`shield` is a field this writer does not carry, so nothing counts",
-    slide_report.unknown,
-    0
-  )
-
-  Leg.eq("a slide moves no `retained`", slide_report.retained, 0)
-
-  # and BACK: FE1 reading FE2. Electrum and shield are variants this reader has no
-  # name for, so the ordinal resolves to NONE and the arm is simply never a source.
-  back =
-    Tblfe2.FE2Fixed.fe_root_fixed_save([
-      %Tblfe2.FeRoot{
-        grade: :electrum,
-        effect: {:shield, %Tblfe2.Shield{plating: 5}},
-        tail: 8
-      }
-    ])
-
-  {:ok, [b0], back_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(back)
-  Leg.eq("a variant this reader cannot name resolves to None", b0.grade, :none)
-  Leg.eq("an arm this reader cannot name leaves the tag at None", b0.effect, nil)
-  Leg.eq("and the tail past it still lands", b0.tail, 8)
-  Leg.eq("nothing was retained coming back", back_report.retained, 0)
-end
-
-Leg.retired(
-  "the ordinal slide: an enum and a union that both gained a variant in the middle",
-  "a cross-generation read with no lineage; owed on the lineage harness's enum_append, " <>
-    "union_append and keyed_array_enum_append rows"
-)
-
-_ = ordinal_slide
+# §5.6 RETIRED THE ORDINAL SLIDE ACROSS UNLOCKED UNITS (FE1 and FE2 are generated
+# apart, so neither holds the other's hash); it is held by the lineage
+# harness's enum_append, union_append and keyed_array_enum_append rows.
 
 # TEXT INSIDE A UNION ARM, read BOTH WAYS (docs/SPEC-TABLES.md §3.4, §15).
 #
@@ -954,12 +660,9 @@ fu =
     }
   ])
 
-# THE SPLIT (§5.6, §5.9 #23, and the JS leg's precedent in #922): this section
-# MIXED an identity half with a compiled half, and a skip over the whole of it
-# would take down assertions §5 does not touch — FU1 reading its OWN file through
-# its OWN identity plan, where the `string(8)` under the second arm, the int16 it
-# sits beside and a NEGATIVE ZERO all land.
-# THE IDENTITY HALF RUNS, HERE. The compiled half is retired below it, by name.
+# THE IDENTITY HALF (§5.6): FU1 reading its OWN file through its OWN identity
+# plan, where the `string(8)` under the second arm, the int16 it sits beside and
+# a NEGATIVE ZERO all land. The compiled half lives on the lineage harness, below.
 {:ok, [i_arm2, i_arm1], fu_ident} = Tblfu1.FU1Fixed.fu_root_fixed_load(fu)
 
 # THE SECOND ARM, field by field. `lead` and `trail` sit either side of the
@@ -990,56 +693,8 @@ Leg.eq(
 
 Leg.eq("the identity read widens nothing", fu_ident.widened, 0)
 
-# RETIRED BY §5.6: THE COMPILED HALF READS FU1's FILE UNDER FU2 WITH NO LINEAGE.
-#
-# FU2 inserts an arm in the middle, so FU1's hash is in no lineage FU2's build
-# laid down and the file comes back `layout_newer` — the forward/strange-layout
-# read §5.3 answers at step 5. The coverage is HELD, not dropped: the lineage
-# harness's TestFixedVersioningUnionArmText reads UT1's file under UT2 with UT1's
-# entry HANDED IN as the lock, which is the same two facts under one plan entry —
-# which arm's tag guards the text and which flavour of text it is — with the
-# guard and the flavour pulled apart by a generation that MOVED the arm.
-union_arm_text_compiled = fn fu ->
-  {:ok, [c_arm2, c_arm1], fu_comp} = Tblfu2.FU2Fixed.fu_root_fixed_load(fu)
-
-  Leg.eq("arm 2, compiled: the tag", elem(c_arm2.pick, 0), :labelled)
-  Leg.eq("arm 2, compiled: lead before the text", elem(c_arm2.pick, 1).lead, 5)
-  Leg.eq("arm 2, compiled: the text's length", byte_size(elem(c_arm2.pick, 1).label), 5)
-  Leg.eq("arm 2, compiled: the text", elem(c_arm2.pick, 1).label, "hello")
-  Leg.eq("arm 2, compiled: trail after the text", elem(c_arm2.pick, 1).trail, 9)
-  Leg.eq("arm 2, compiled: the tail past the union", c_arm2.tail, 3)
-  # a field the writer does not carry has no plan entry, so the PREFILL lands it
-  Leg.eq("arm 2, compiled: `extra` takes its declared default", c_arm2.extra, 11)
-
-  Leg.eq("arm 1, compiled", {c_arm1.pick, c_arm1.tail}, {{:plain, %Tblfu1.Plain{n: 7}}, 4})
-  Leg.eq("arm 1, compiled: `extra` takes its declared default", c_arm1.extra, 11)
-
-  Leg.eq("text under an arm moves no counter, compiled", fu_comp.unknown, 0)
-  Leg.eq("nothing was retained either way", fu_comp.retained, 0)
-
-  # THE SIGNED WIDENING RUNG (SPEC §4). FU1 declares `mark` an `int16` and FU2 an
-  # `int32`, so FU2's COMPILED plan reads the writer's two bytes SIGN-EXTENDED and
-  # re-images them at four. A NEGATIVE value is the whole test: an unsigned read of
-  # the same two bytes lands 53_191 and a rung that only carried positives would
-  # never say so.
-  Leg.eq("the signed rung, compiled: int16 -> int32 keeps the SIGN", c_arm2.mark, -12_345)
-  Leg.eq("the signed rung: and a positive value is unmoved", c_arm1.mark, 12_345)
-  # TWO RUNGS, TWO RECORDS: the signed one and the float one below, each counted.
-  Leg.eq("a rung is COUNTED, once per rung per record", fu_comp.widened, 4)
-
-  # AND THE FLOAT RUNG, f32 into f64: every finite f32 widens exactly through
-  # the ordinary conversion (§3.3), a negative zero keeping its sign.
-  Leg.eq("the float rung, compiled: -0 widens to -0", <<c_arm2.heat::float>>, <<-0.0::float>>)
-  Leg.eq("the float rung: a finite value widens exactly", c_arm1.heat, 1.5)
-end
-
-Leg.retired(
-  "text under a union arm: the COMPILED read (the identity half above RUNS)",
-  "FU1's file under FU2 with no lineage; HELD on the lineage harness, " <>
-    "TestFixedVersioningUnionArmText, which reads UT1's file under UT2 with UT1's entry handed in"
-)
-
-_ = union_arm_text_compiled
+# The compiled half (FU1's file under FU2) is held by the lineage harness,
+# TestFixedVersioningUnionArmText (§5.6).
 
 # ---------------------------------------------------------------------------
 # WHAT A HOSTILE ORDINAL, A HOSTILE FLAG AND A HOSTILE BOOL LAND AS
@@ -1083,23 +738,8 @@ Leg.eq(
   {nil, 99, 1, false}
 )
 
-# RETIRED BY §5.6: the COMPILED half of this pair reads FE1's file under FE2,
-# whose lineage does not hold FE1's hash, so the file is `layout_newer` before a
-# record. The identity half above is FE1 over FE1's own hash and RUNS. What a
-# tag matching no arm OF THE WRITER'S lands is owed on the lineage harness's
-# `union_append` row, where the lock hands the older entry in.
-compiled_tag_past_the_last_arm = fn ->
-  {:ok, [t1], compiled_tag} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
-  Leg.eq("compiled: a tag matching no arm of the writer's lands None", t1.effect, nil)
-  Leg.eq("compiled: and fires no entry, so nothing is counted", compiled_tag.unknown, 0)
-end
-
-Leg.retired(
-  "compiled: a tag past the last arm",
-  "FE1's file under FE2 with no lineage; owed on the lineage harness's union_append row"
-)
-
-_ = compiled_tag_past_the_last_arm
+# The compiled half (FE1's file under FE2) is held by the lineage harness's
+# union_append row (§5.6).
 
 # AN ENUM ORDINAL PAST THE LAST VARIANT lands 0 (None) and counts one
 # `clamped`, on BOTH paths — the identity plan holds it against the variant
@@ -1120,23 +760,8 @@ Leg.eq(
   {:none, 41, 1, false}
 )
 
-# AND THE SAME SPLIT FOR THE ENUM (§5.6): the identity half above holds the
-# ordinal against the variant count the plan was built from and RUNS; the
-# compiled half below reads FE1's file under FE2 with no lineage for its hash,
-# and the clamp against A WRITER'S OWN table is owed on the harness's
-# `enum_append` and `enum_width` rows.
-compiled_enum_past_the_last_variant = fn ->
-  {:ok, [e1], compiled_enum} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
-  Leg.eq("compiled: an ordinal past the last variant lands None", e1.grade, :none)
-  Leg.eq("compiled: and COUNTS one unknown", compiled_enum.unknown, 1)
-end
-
-Leg.retired(
-  "compiled: an ordinal past the last variant",
-  "FE1's file under FE2 with no lineage; owed on the lineage harness's enum_append and enum_width rows"
-)
-
-_ = compiled_enum_past_the_last_variant
+# The compiled half (FE1's file under FE2) is held by the lineage harness's
+# enum_append and enum_width rows (§5.6).
 
 # ORDINAL 0 IS None AND IS NOT A CLAMP, which is what keeps the counter honest.
 # THE ARM UNDER TAG 0 IS DEAD, so the record carries zeros there: a non-zero
@@ -1724,30 +1349,9 @@ Leg.eq(
   :layout_newer
 )
 
-# A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE: THE CONTROL MOVED WITH THE CASE
-# IT WATCHED (§5.9 #39). With plans STATIC — one per lineage entry, built at
-# module load — and a stranger's file refused at step 5, there is no compiled
-# lane on this gate for a one-entry capacity to be too small for: every unit here
-# is generated apart, so every lineage is of ONE and every read is the identity
-# lane. The name is still owed by every leg (§5.9 #45) and it is asserted where a
-# COMPILED lane exists: the lineage harness's TestFixedVersioningPlanTooLarge,
-# which hands the reader the older generation's entry and then hands the load a
-# capacity of one.
-plan_past_the_callers_capacity = fn ->
-  Leg.eq(
-    "a plan past the caller's capacity is `plan_too_large`",
-    Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"), plan_capacity: 1) |> elem(1),
-    :plan_too_large
-  )
-end
-
-Leg.retired(
-  "a plan past the caller's capacity is `plan_too_large`",
-  "unreachable on this gate with plans static and a stranger's file refused first; " <>
-    "MOVED to the lineage harness, TestFixedVersioningPlanTooLarge (§5.9 #39, #45)"
-)
-
-_ = plan_past_the_callers_capacity
+# A plan past the caller's capacity (`plan_too_large`) is held where a compiled
+# lane exists, the lineage harness's TestFixedVersioningPlanTooLarge (§5.9 #39,
+# #45).
 
 # BYTES LEFT OVER ARE `malformed`: the two ends of the file have met.
 Leg.eq(
