@@ -104,10 +104,10 @@ test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-contro
 # FAILURE that names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-cpp-text-differential tables-cpp-text-differential-negative-control
 tables-cpp-text-differential:
-	go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
+	$(GO_TEST) ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
 	@echo 'tables C++ text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-cpp-text-differential-negative-control:
-	go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
+	$(GO_TEST) ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
 	@echo 'tables C++ text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C++ TABLES SOAK (docs/PORTING.md I9, issue #416's C++ half). The one-shot
@@ -361,12 +361,24 @@ CPP_CLEAN_TREES := build/tables-generated generated/cpp generated/bench/cpp gene
 CPP_CLEAN_STAMPS := build/tables-generated/.stamp generated/cpp/.stamp generated/cpp/ludicrous/.stamp generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp generated/bench/paired/cpp/.stamp
 CPP_FORMAT_ALLOW := make/cpp-format-allow.txt
 CPP_WARN_ALLOW   := make/cpp-warn-allow.txt
+# EACH GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
+# row may set CPP_FORMAT_SHARD or CPP_WARN_SHARD=K/N, so N rows judge
+# every file once (the warnings gate in whole directories: a header's
+# findings come from the files of its directory that include it).
+CPP_FORMAT_SHARD ?=
+CPP_WARN_SHARD   ?=
 
 .PHONY: tables-cpp-clean tables-cpp-format tables-cpp-warnings tables-cpp-clean-census
 tables-cpp-clean: tables-cpp-format tables-cpp-warnings
 
 # the two halves are separate targets so a parallel make runs them together;
 # $(MAKE) -j runs them and each fans out over the cores itself
+# tables-cpp-clean-inputs builds the trees tables-cpp-format and
+# tables-cpp-warnings read, and nothing else: a producer job can build
+# it once and hand the trees to every shard.
+.PHONY: tables-cpp-clean-inputs
+tables-cpp-clean-inputs: $(CPP_CLEAN_STAMPS)
+
 tables-cpp-format: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW)
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
 		echo "tables-cpp-format FAILED: $(CLANG_FORMAT) is not installed"; exit 1; \
@@ -375,14 +387,14 @@ tables-cpp-format: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-format.sh $(CPP_FOR
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-cpp-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	OUT=build/cpp-clean-format LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) check $(CPP_CLEAN_TREES)
+	SHARD=$(CPP_FORMAT_SHARD) OUT=build/cpp-clean-format LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) check $(CPP_CLEAN_TREES)
 
 tables-cpp-warnings: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-warnings.sh make/checks/cpp-clean-one.sh $(CPP_WARN_ALLOW)
 	@if ! $(CLANGXX) --version 2>/dev/null | grep -i clang >/dev/null; then \
 		echo "tables-cpp-warnings FAILED: $(CLANGXX) is not a clang (-Weverything is clang's)"; exit 1; \
 	fi; \
 	test -f $(SERIALIZE)/serialize.h || { echo "tables-cpp-clean: $(SERIALIZE)/serialize.h not found (SERIALIZE names the serialize checkout)"; exit 1; }; \
-	OUT=build/cpp-clean-warn CLANGXX=$(CLANGXX) SERIALIZE_DIR=$(SERIALIZE) sh make/checks/cpp-clean-warnings.sh $(CPP_WARN_ALLOW) check $(CPP_CLEAN_TREES)
+	SHARD=$(CPP_WARN_SHARD) OUT=build/cpp-clean-warn CLANGXX=$(CLANGXX) SERIALIZE_DIR=$(SERIALIZE) sh make/checks/cpp-clean-warnings.sh $(CPP_WARN_ALLOW) check $(CPP_CLEAN_TREES)
 
 # what the two ratchets should hold today (a maintainer's tool, never a gate)
 tables-cpp-clean-census: $(CPP_CLEAN_STAMPS)

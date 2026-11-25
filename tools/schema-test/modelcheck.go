@@ -23,13 +23,25 @@ type modelCheckAdapter struct {
 // tlcrunBin is the harness, built once per run.
 const tlcrunBin = "build/tlcrun"
 
+// tlcrunBuild builds it.
+var tlcrunBuild = []string{"go", "build", "-o", tlcrunBin, "./tools/tlcrun"}
+
 func (modelCheckAdapter) Answers(t testreg.Test) bool {
 	return t.Scope == testreg.LangFree && (t.Type == "model" || t.Type == "plant" && t.Adapter == "model-check")
 }
 
 func (a modelCheckAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	if err := a.build.run(ctx, []string{"go", "build", "-o", tlcrunBin, "./tools/tlcrun"}); err != nil {
+	if err := a.build.run(ctx, tlcrunBuild); err != nil {
 		return nil, err
 	}
 	return runHarness(ctx, []string{"./" + tlcrunBin, "-adapter", "-tla", "tla"}, instances, a.log)
+}
+
+// Serial: the harness build takes the checkout (testreg.Serial).
+func (modelCheckAdapter) Serial() bool { return true }
+
+// Prepare builds the harness once, before any call's deadline starts
+// (testreg.Preparer); Run's own build step then finds it built.
+func (a modelCheckAdapter) Prepare(ctx context.Context, _ string, _ []testreg.Instance) error {
+	return a.build.run(ctx, tlcrunBuild)
 }

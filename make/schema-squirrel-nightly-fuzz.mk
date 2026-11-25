@@ -64,7 +64,7 @@ schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_
 	SCHEMA_SQUIRREL_FUZZ_CORPUS=$$PWD/$(SQUIRREL_FUZZ_CORPUS_FILE) \
 	SCHEMA_SQUIRREL_FUZZ_MUTANTS=$(SQUIRREL_FUZZ_MUTANTS) \
 	SCHEMA_SQUIRREL_FUZZ_SEED=$(SQUIRREL_FUZZ_SEED) \
-	nice -n 19 go test -count=1 -timeout $(SQUIRREL_FUZZ_SECONDS)s ./internal/codegen/squirreltable \
+	nice -n 19 $(GO_TEST) -count=1 -timeout $(SQUIRREL_FUZZ_SECONDS)s ./internal/codegen/squirreltable \
 		-run '^TestSquirrelNightlyFuzz($$|Strict$$|TextJSON$$)' -v
 
 # THE NEGATIVE CONTROL (STEP 5): the existing red is reused rather than
@@ -74,5 +74,5 @@ schema-squirrel-nightly-fuzz: schema-squirrel-nightly-fuzz-toolchain $(SQUIRREL_
 # sides. Registered in make/negative-controls.json's nightly group.
 .PHONY: schema-squirrel-nightly-fuzz-negative-control
 schema-squirrel-nightly-fuzz-negative-control: schema-squirrel-nightly-fuzz-toolchain
-	nice -n 19 go test -count=1 -timeout 600s ./internal/codegen/squirreltable \
+	nice -n 19 $(GO_TEST) -count=1 -timeout 600s ./internal/codegen/squirreltable \
 		-run '^TestSquirrelWireFuzzNegativeControl$$' -v

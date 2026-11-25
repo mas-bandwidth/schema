@@ -12,12 +12,12 @@ test-python: python-reflection-core python-reflection-negative-control $(PYTHON_
 python-reflection: python-reflection-core $(PYTHON_REFLECTION_STRICT_ROWS)
 
 python-reflection-core: python-toolchain-check
-	sel=$$(go run ./tools/gotestselect -run '^TestPythonReflection' -not '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/) || exit 1; go test -count=1 -timeout 600s -run "$$sel" ./internal/codegen/pythontable/
-	go test -count=1 -timeout 600s -run '^TestPythonReflectionDriver' ./compiler/
+	sel=$$(go run ./tools/gotestselect -run '^TestPythonReflection' -not '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/) || exit 1; $(GO_TEST) -count=1 -timeout 600s -run "$$sel" ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestPythonReflectionDriver' ./compiler/
 
 $(PYTHON_REFLECTION_STRICT_ROWS): python-ci-reflection-strict-%: python-toolchain-check
-	PYTHON_REFLECTION_STRICT_SHARD=$* go test -v -count=1 -timeout 600s -run '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/
+	PYTHON_REFLECTION_STRICT_SHARD=$* $(GO_TEST) -v -count=1 -timeout 600s -run '^TestPythonReflectionStrictTypes$$' ./internal/codegen/pythontable/
 
 python-reflection-negative-control: python-toolchain-check
-	go test -count=1 -timeout 600s -run '^TestPythonReflection(CorpusNegativeControl|KindHoleNegativeControl|VocabularyNegativeControl|FieldVocabularyNegativeControl|LayoutNegativeControl|ResetLargeArraysNegativeControl|AccessorNegativeControl|AnnotationAgreementNegativeControl|DescriptorDocsNegativeControl)' ./internal/codegen/pythontable/
-	go test -count=1 -timeout 600s -run '^TestPythonReflectionDriver(NegativeControl|PacketUnionNegativeControl)' ./compiler/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestPythonReflection(CorpusNegativeControl|KindHoleNegativeControl|VocabularyNegativeControl|FieldVocabularyNegativeControl|LayoutNegativeControl|ResetLargeArraysNegativeControl|AccessorNegativeControl|AnnotationAgreementNegativeControl|DescriptorDocsNegativeControl)' ./internal/codegen/pythontable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestPythonReflectionDriver(NegativeControl|PacketUnionNegativeControl)' ./compiler/

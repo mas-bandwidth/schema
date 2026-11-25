@@ -7,16 +7,22 @@ package main
 // <type>.conformance-<surface>.<case>, and every language answers it through
 // its own conformance driver. `harness adapter --lang L` is the harness the
 // driver's corpus family calls: it reads the registry's request lines on its
-// standard input, runs L's leg over every surface exactly as `harness run
-// --only L --claims` scores it, and writes one result line per request. The
+// standard input, runs L's leg over the asked cases exactly as `harness run
+// --only L --claims` scores them, and writes one result line per request. The
 // corpus files stay where they are: a row's inputs name its surface and the
 // file the driver writes for the case, and the harness holds the expectation.
 //
-// A leg runs whole on every call, whichever of its cases were asked for: a
-// refusal row is credited only beside its lawful twin, which may sit on
-// another surface (discriminate.go), so a run over a subset of surfaces would
-// score a case differently from the full run. A leg's run is seconds once its
-// driver is built; the build is the cost, and it is paid once either way.
+// A call runs the cases it is asked, never the whole leg: a per-PR shard
+// holds a minute of test time, and a leg run whole on every call cost every
+// shard the leg. The run is scoped to the asked cases and to every case their
+// verdicts depend on (scope.go: a refusal pair's other half, a must-refuse
+// row's lawful twins on any surface), so each case's verdict is the one the
+// whole leg's run gives it. Building the leg's driver is not the call's:
+// schema-test deps builds it once per job, before the shard runs.
+//
+// Each result carries its case's seconds: the driver's time on the case's
+// surface shared among the cases asked there, which `schema-test seconds`
+// records in the registry for the sharder to weigh.
 //
 // `harness registry-rows` prints the rows; TestTheRegistryHoldsEveryConformanceCase
 // holds test/registry/registry.jsonl to them, so a corpus case with no row,
@@ -32,6 +38,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -74,6 +81,7 @@ var surfaceTypes = map[string]string{
 	"announce":              "encode",
 	"read-into":             "decode",
 	"json-write-into":       "encode",
+	"rewrite":               "roundtrip",
 }
 
 // surfaceChecks says in one line what a row of each surface proves; the
@@ -108,6 +116,7 @@ var surfaceChecks = map[string]string{
 	"announce":              "the announcement is written as pinned",
 	"read-into":             "a read into an existing value leaves the oracle's value",
 	"json-write-into":       "a text write into an existing buffer gives the canonical text",
+	"rewrite":               "the input read and written back gives the oracle's canonical bytes (SPEC-TABLES §22)",
 }
 
 // corpusInputs is a conformance row's inputs: the surface, the case as the
@@ -152,6 +161,25 @@ func caseSlug(name string) string {
 // corpusRows is every case of every surface the harness scores, as registry
 // rows, sorted by key.
 func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpusRow, error) {
+	return corpusRowsAs(m, reports, jsonDir, "", defaultManifest)
+}
+
+// THE BOM ENTRY GATE (testdata/conformance/tables/bom-entry/MANIFEST.txt,
+// docs/SPEC-TABLES.md §16.3) is a manifest of its own, four json-hostile rows
+// on the whole-text entry, run by test/conformance/bom-entry. Its rows are one
+// family, bom-entry, so they never share a key with the corpus's own
+// json-hostile rows; their inputs are the same {surface, case}, which the
+// harness's adapter mode answers from a run over that manifest.
+const (
+	bomFamily   = "bom-entry"
+	bomManifest = "testdata/conformance/tables/bom-entry/MANIFEST.txt"
+	bomJSONDir  = "testdata/conformance/tables/bom-entry/json"
+)
+
+// corpusRowsAs is corpusRows for any manifest: family, when set, is every
+// row's family (and so its key's middle), and source is the manifest the rows
+// come from.
+func corpusRowsAs(m *Manifest, reports map[string]string, jsonDir, family, source string) ([]corpusRow, error) {
 	files, err := caseFiles(m)
 	if err != nil {
 		return nil, err
@@ -192,18 +220,21 @@ func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpu
 				return nil, fmt.Errorf("surface %s: cases %q and %q are both the registry case %q", s, prev, name, slug)
 			}
 			seen[slug] = name
-			family := corpusFamilyPrefix + s
+			rowFamily := corpusFamilyPrefix + s
+			if family != "" {
+				rowFamily = family
+			}
 			out = append(out, corpusRow{
 				Rec:    "test",
-				Key:    typ + "." + family + "." + slug,
+				Key:    typ + "." + rowFamily + "." + slug,
 				Type:   typ,
-				Family: family,
+				Family: rowFamily,
 				Case:   slug,
 				Tier:   "functional",
 				Checks: "conformance " + s + " " + name + ": " + checks,
-				Inputs: corpusInputs{Surface: s, Case: name, Files: filesOf(files, name), Driver: corpusDriver},
+				Inputs: corpusInputs{Surface: s, Case: name, Files: rowFiles(filesOf(files, name), source, s), Driver: corpusDriver},
 				Expect: "the leg's answer equals the corpus's expectation (test/conformance/README.md)",
-				Source: defaultManifest,
+				Source: source,
 			})
 		}
 	}
@@ -214,13 +245,21 @@ func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpu
 // caseFiles is, for each name the manifest gives a case, the committed files
 // the manifest names for it: every field of the case's line that is a path
 // in the working tree (a directory stands for every file under it), the
-// schema files of the unit it names, and the files of the line its Base
+// schema files of the unit it names, the wire and schema files of a
+// connection it names, and the files of the line its Base
 // names (a forgery's fixture). A line's name is its Name, Case or Instance
 // field. Paths under build/ are what the run materialises, not the corpus.
 func caseFiles(m *Manifest) (map[string][]string, error) {
 	units := map[string][]string{}
 	for _, u := range m.Units {
 		units[u.Key] = u.Paths
+	}
+	// a connection key in a case's line (a message row's unit column, a
+	// drift's peer) stands for the connection's announcement wire and its
+	// unit's schema files
+	conns := map[string][]string{}
+	for _, c := range m.Connections {
+		conns[c.Key] = append([]string{c.Wire}, units[c.Unit]...)
 	}
 	out := map[string]map[string]bool{}
 	bases := map[string][]string{}
@@ -268,6 +307,16 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 			if name == "" {
 				continue
 			}
+			// the files a case owes that live by its name rather than in a
+			// field: an announce or read-into golden, a retain-refusal's two
+			// saves, a message batch's wire (caseGoldens)
+			for _, method := range caseGoldens {
+				if fn := e.MethodByName(method); fn.IsValid() {
+					if err := add(name, fn.Call(nil)[0].String()); err != nil {
+						return nil, err
+					}
+				}
+			}
 			for k := 0; k < e.NumField(); k++ {
 				v := e.Field(k)
 				switch field := e.Type().Field(k).Name; {
@@ -279,6 +328,14 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 				}
 				switch v.Kind() {
 				case reflect.String:
+					if paths, ok := conns[v.String()]; ok {
+						for _, p := range paths {
+							if err := add(name, p); err != nil {
+								return nil, err
+							}
+						}
+						continue
+					}
 					if e.Type().Field(k).Name == "Unit" {
 						for _, p := range units[v.String()] {
 							if err := add(name, p); err != nil {
@@ -324,9 +381,26 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 	return files, nil
 }
 
+// caseGoldens are the methods a manifest line's type has that name a file the
+// case owes by its name: AnnounceCase.Golden and ReadInto.Golden, and
+// RetainRefusal.Before and After, and MessageBatch.Wire.
+var caseGoldens = []string{"Golden", "Before", "After", "Wire"}
+
 // filesOf is the files of the line a case answers: json-write's case is the
 // instance's name with ".json", and cook-write's big-endian case is the
 // instance's with "-be".
+// rowFiles is what a row reads beyond its case's own files: the manifest
+// that names it, every row; and the pinned read reports (reports.txt) for a
+// report row, whose verdict lives there. Sorted, as caseFiles's are.
+func rowFiles(own []string, source, surface string) []string {
+	out := append([]string{source}, own...)
+	if surface == "report" {
+		out = append(out, defaultReports)
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
+}
+
 func filesOf(files map[string][]string, name string) []string {
 	for _, n := range []string{name, strings.TrimSuffix(name, ".json"), strings.TrimSuffix(name, "-be")} {
 		if f, ok := files[n]; ok {
@@ -371,13 +445,22 @@ type legRun struct {
 // not list and a case the harness does not have are each a failure that says
 // which.
 func adapterResults(lang string, reqs []testreg.Request, run legRun) []testreg.Result {
-	out := make([]testreg.Result, 0, len(reqs))
-	for _, q := range reqs {
-		res := testreg.Result{Instance: q.Instance, Verdict: testreg.Fail}
-		var in corpusInputs
+	// a surface's time is shared among the cases asked on it
+	inputs := make([]corpusInputs, len(reqs))
+	errs := make([]error, len(reqs))
+	asked := map[string]int{}
+	for i, q := range reqs {
 		d := json.NewDecoder(bytes.NewReader(q.Inputs))
 		d.DisallowUnknownFields()
-		switch err := d.Decode(&in); {
+		if errs[i] = d.Decode(&inputs[i]); errs[i] == nil && q.Lang == lang {
+			asked[inputs[i].Surface]++
+		}
+	}
+	out := make([]testreg.Result, 0, len(reqs))
+	for i, q := range reqs {
+		res := testreg.Result{Instance: q.Instance, Verdict: testreg.Fail}
+		in := inputs[i]
+		switch err := errs[i]; {
 		case err != nil:
 			res.Reason = fmt.Sprintf("inputs are not {surface, case}: %v", err)
 		case q.Lang != lang:
@@ -386,6 +469,9 @@ func adapterResults(lang string, reqs []testreg.Request, run legRun) []testreg.R
 			res.Reason = caseReason(in, run)
 			if res.Reason == "" {
 				res.Verdict = testreg.Pass
+			}
+			if r, ok := run.results[in.Surface]; ok && r.seconds > 0 {
+				res.Seconds = r.seconds / float64(asked[in.Surface])
 			}
 		}
 		out = append(out, res)
@@ -443,9 +529,26 @@ func firstTextLine(s string) string {
 	return line
 }
 
+// askedCases is the cases the requests ask of the leg, as the driver answers
+// them. A request it cannot read, or one for another leg, asks nothing: its
+// result says why (adapterResults).
+func askedCases(lang string, reqs []testreg.Request) map[caseKey]bool {
+	cases := map[caseKey]bool{}
+	for _, q := range reqs {
+		var in corpusInputs
+		d := json.NewDecoder(bytes.NewReader(q.Inputs))
+		d.DisallowUnknownFields()
+		if d.Decode(&in) == nil && q.Lang == lang {
+			cases[caseKey{in.Surface, in.Case}] = true
+		}
+	}
+	return cases
+}
+
 // adapterMain is `harness adapter --lang L`: the requests on in, the result
-// lines on out, the run's own matrix on log.
-func adapterMain(in io.Reader, out, log io.Writer, m *Manifest, lang string, legRunner func(lang string) (legRun, error)) error {
+// lines on out, the run's own matrix on log. The leg runs the asked cases
+// (scope.go), never the whole leg.
+func adapterMain(in io.Reader, out, log io.Writer, m *Manifest, lang string, legRunner func(lang string, cases map[caseKey]bool) (legRun, error)) error {
 	reqs, err := testreg.DecodeRequests(in)
 	if err != nil {
 		return err
@@ -453,15 +556,36 @@ func adapterMain(in io.Reader, out, log io.Writer, m *Manifest, lang string, leg
 	if len(reqs) == 0 {
 		return fmt.Errorf("adapter --lang %s: no request on standard input: a call that asks for nothing runs nothing", lang)
 	}
-	run, err := legRunner(lang)
+	cases := askedCases(lang, reqs)
+	if len(cases) == 0 {
+		// every request is one the leg cannot read: each result says why
+		_, err = io.WriteString(out, formatResults(adapterResults(lang, reqs, legRun{})))
+		return err
+	}
+	run, err := legRunner(lang, cases)
 	if err != nil {
 		return err
 	}
+	_, err = io.WriteString(out, formatResults(adapterResults(lang, reqs, run)))
+	return err
+}
+
+// formatResults is the result lines, one per result.
+func formatResults(results []testreg.Result) string {
 	var b strings.Builder
-	for _, res := range adapterResults(lang, reqs, run) {
+	for _, res := range results {
 		b.WriteString(testreg.FormatResult(res))
 		b.WriteByte('\n')
 	}
-	_, err = io.WriteString(out, b.String())
-	return err
+	return b.String()
+}
+
+// rowsFamilyNamed refuses registry rows for a manifest other than the corpus's
+// with no --family: they would take the corpus's families and keys, and two
+// manifests' rows would collide.
+func rowsFamilyNamed(manifest, family string) error {
+	if family == "" && manifest != defaultManifest {
+		return fmt.Errorf("registry-rows: --manifest %s is not the corpus's, so --family names its rows' family", manifest)
+	}
+	return nil
 }

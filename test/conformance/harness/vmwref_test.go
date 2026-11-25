@@ -63,12 +63,10 @@ func TestVMDriversSetWriteRefusalValuesExactly(t *testing.T) {
 					listed[s] = true
 				}
 			}
-			raw, err := os.ReadFile(manifest)
-			if err != nil {
-				t.Fatal(err)
-			}
+			// the manifest a run hands the driver: the derived one, which
+			// legManifest then filters to the units the leg opts into
 			copied := filepath.Join(t.TempDir(), "manifest.txt")
-			if err := os.WriteFile(copied, raw, 0o644); err != nil {
+			if err := deriveManifest(m, copied); err != nil {
 				t.Fatal(err)
 			}
 			legManifestPath, _, _, err := legManifest(m, copied, leg, listed)

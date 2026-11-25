@@ -7,6 +7,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -96,7 +98,9 @@ func TestTheCorpusAdapterAnswersEveryRequestOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	runner := func(string) (legRun, error) {
+	var gotCases map[caseKey]bool
+	runner := func(_ string, cases map[caseKey]bool) (legRun, error) {
+		gotCases = cases
 		return legRun{results: map[string]*result{"wire": {cases: map[string]string{"ok": outcomePass, "bad": outcomeFail}}}}, nil
 	}
 	var out bytes.Buffer
@@ -110,10 +114,14 @@ func TestTheCorpusAdapterAnswersEveryRequestOnce(t *testing.T) {
 	if len(results) != 2 || results[0].Instance != "a" || results[0].Verdict != testreg.Pass || results[1].Instance != "b" || results[1].Verdict != testreg.Fail {
 		t.Errorf("results %+v, want a pass then b fail", results)
 	}
+	// the leg is asked the requested cases, never run whole
+	if want := map[caseKey]bool{{"wire", "ok"}: true, {"wire", "bad"}: true}; !reflect.DeepEqual(gotCases, want) {
+		t.Errorf("the leg was asked %v, want the two requested cases %v", gotCases, want)
+	}
 	if err := adapterMain(strings.NewReader(""), &out, &bytes.Buffer{}, nil, "go", runner); err == nil {
 		t.Error("a call with no request ran")
 	}
-	broken := func(string) (legRun, error) { return legRun{}, errors.New("no driver") }
+	broken := func(string, map[caseKey]bool) (legRun, error) { return legRun{}, errors.New("no driver") }
 	in.Reset()
 	if err := enc.Encode(corpusReq("a", "go", "wire", "ok")); err != nil {
 		t.Fatal(err)
@@ -199,12 +207,18 @@ func registryCorpusLines(t *testing.T, path string) map[string]string {
 	return got
 }
 
+// measuredSeconds is a row's measured run time as `schema-test seconds`
+// writes it (testreg.WriteSeconds): the line's last field. It is measured,
+// not the corpus's, so the comparison sets it aside.
+var measuredSeconds = regexp.MustCompile(`,"seconds":[0-9.e+-]+\}$`)
+
 // compareCorpusRows names every disagreement between the corpus's rows and
-// the registry's, by key.
+// the registry's, by key. A registry row's measured seconds are not compared.
 func compareCorpusRows(want, got map[string]string) []string {
 	var out []string
 	for k, w := range want {
 		g, ok := got[k]
+		g = measuredSeconds.ReplaceAllString(g, "}")
 		switch {
 		case !ok:
 			out = append(out, k+": a corpus case with no registry row: run `build/conformance-harness-vm registry-rows` and put its line in test/registry/registry.jsonl")
@@ -228,9 +242,10 @@ func TestTheRegistryCheckGoesRedOnEachDrift(t *testing.T) {
 		got  map[string]string
 		says string
 	}{
-		"a case with no row": {map[string]string{"a": `{"k":"a"}`}, "b: a corpus case with no registry row"},
-		"a row with no case": {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`, "c": `{}`}, "c: a registry row whose case"},
-		"a row that differs": {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"B"}`}, "b: the registry row is not the corpus's"},
+		"a case with no row":                    {map[string]string{"a": `{"k":"a"}`}, "b: a corpus case with no registry row"},
+		"a row with no case":                    {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`, "c": `{}`}, "c: a registry row whose case"},
+		"a row that differs":                    {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"B"}`}, "b: the registry row is not the corpus's"},
+		"a row that differs beside its seconds": {map[string]string{"a": `{"k":"a"}`, "b": `{"k":"B","seconds":0.5}`}, "b: the registry row is not the corpus's"},
 	} {
 		problems := compareCorpusRows(want, c.got)
 		if len(problems) != 1 || !strings.Contains(problems[0], c.says) {
@@ -239,5 +254,82 @@ func TestTheRegistryCheckGoesRedOnEachDrift(t *testing.T) {
 	}
 	if p := compareCorpusRows(want, map[string]string{"a": `{"k":"a"}`, "b": `{"k":"b"}`}); len(p) != 0 {
 		t.Errorf("an exact registry: %q", p)
+	}
+	if p := compareCorpusRows(want, map[string]string{"a": `{"k":"a","seconds":0.01}`, "b": `{"k":"b","seconds":2.72}`}); len(p) != 0 {
+		t.Errorf("a registry that differs only in measured seconds: %q", p)
+	}
+}
+
+// TestEachCaseCarriesItsShareOfItsSurfaceTime: a case's seconds are the
+// driver's time on its surface shared among the cases asked there, which is
+// what schema-test seconds records and the sharder weighs (adapter.go). A
+// surface the leg did not run gives its cases no time.
+func TestEachCaseCarriesItsShareOfItsSurfaceTime(t *testing.T) {
+	run := legRun{results: map[string]*result{
+		"wire":  {seconds: 6, cases: map[string]string{"a": outcomePass, "b": outcomePass, "c": outcomeFail}},
+		"block": {seconds: 1.5, cases: map[string]string{"x": outcomePass}},
+		"cook":  {absent: true, cases: map[string]string{"k": outcomeAbsent}},
+	}}
+	reqs := []testreg.Request{
+		corpusReq("a", "go", "wire", "a"), corpusReq("b", "go", "wire", "b"), corpusReq("c", "go", "wire", "c"),
+		corpusReq("x", "go", "block", "x"), corpusReq("k", "go", "cook", "k"),
+	}
+	want := map[string]float64{"a": 2, "b": 2, "c": 2, "x": 1.5, "k": 0}
+	for _, res := range adapterResults("go", reqs, run) {
+		if res.Seconds != want[res.Instance] {
+			t.Errorf("%s: %v seconds, want %v", res.Instance, res.Seconds, want[res.Instance])
+		}
+	}
+}
+
+// THE BOM ENTRY GATE IS IN THE REGISTRY, ROW FOR ROW (adapter.go, bomFamily):
+// every case of testdata/conformance/tables/bom-entry/MANIFEST.txt is one
+// bom-entry row, field for field, and the registry holds no bom-entry row the
+// manifest does not.
+func TestTheRegistryHoldsEveryBOMEntryCase(t *testing.T) {
+	chdirRepoRoot(t)
+	m, err := ReadManifest(bomManifest, bomJSONDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reports, err := readReports(defaultReports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := corpusRowsAs(m, reports, bomJSONDir, bomFamily, bomManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("the BOM entry gate has %d rows, want its four cases", len(rows))
+	}
+	want := map[string]string{}
+	for _, r := range rows {
+		if r.Family != bomFamily || r.Source != bomManifest || r.Inputs.Surface != "json-hostile" {
+			t.Errorf("%s: family %q, source %q, surface %q: want %s, %s, json-hostile", r.Key, r.Family, r.Source, r.Inputs.Surface, bomFamily, bomManifest)
+		}
+		b, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[r.Key] = string(b)
+	}
+	data, err := os.ReadFile(filepath.FromSlash(testreg.DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var head struct {
+			Rec    string `json:"rec"`
+			Key    string `json:"key"`
+			Family string `json:"family"`
+		}
+		if json.Unmarshal([]byte(line), &head) == nil && head.Rec == "test" && head.Family == bomFamily {
+			got[head.Key] = line
+		}
+	}
+	for _, problem := range compareCorpusRows(want, got) {
+		t.Error(problem)
 	}
 }

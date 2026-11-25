@@ -5,8 +5,9 @@ package ci
 // process time and cannot ride the pull request; this is the half that can.
 // It holds the three things a nightly that ran nowhere would still look green
 // without: the target and its time budget, the corpus file's provenance from
-// the Makefile's own SCHEMAS_* variables, and a workflow whose fuzz job is
-// nightly and dispatch only, never per push or pull request. Each property is checked by the same function
+// the Makefile's own SCHEMAS_* variables, and the control the campaign is
+// held to. The campaign runs as a nightly registry row
+// (TestRetiredWorkflowsAreRegistryRows). Each property is checked by the same function
 // that a planted copy must FAIL, so the gate is shown capable of going red.
 
 import (
@@ -17,11 +18,10 @@ import (
 )
 
 const nightlyFuzzMake = "make/schema-squirrel-nightly-fuzz.mk"
-const nightlyFuzzWorkflow = ".github/workflows/schema-squirrel-nightly-fuzz.yml"
 
 // nightlyFuzzProblems is the gate. An empty result is a pass; every string is
 // one broken property, named.
-func nightlyFuzzProblems(mk, wf string) []string {
+func nightlyFuzzProblems(mk string) []string {
 	var bad []string
 	want := func(body, needle, what string) {
 		if !strings.Contains(body, needle) {
@@ -39,15 +39,6 @@ func nightlyFuzzProblems(mk, wf string) []string {
 	want(mk, "TextJSON", "the text/JSON reader kind is not driven")
 	want(mk, "tool missing: sq", "a missing interpreter would not be named")
 	want(mk, "schema-squirrel-nightly-fuzz-negative-control", "the control is not defined")
-	// THE WORKFLOW: nightly and dispatch only (the owner, 2026-11-15: "I want
-	// everything that is not light moved to nightly test now." "no
-	// exceptions."); no push and no pull request starts it, and the campaign
-	// job is confined to the nightly triggers.
-	want(wf, "schedule:", "the workflow has no schedule trigger")
-	want(wf, "workflow_dispatch:", "the workflow has no dispatch trigger")
-	want(wf, "make schema-squirrel-nightly-fuzz\n", "the workflow does not run the campaign")
-	want(wf, "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "the campaign is not confined to the nightly triggers")
-	bad = append(bad, nightlyOnlyTriggerProblems(wf)...)
 	return bad
 }
 
@@ -58,32 +49,24 @@ func TestSquirrelNightlyFuzz(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf, err := os.ReadFile(filepath.Join(root, nightlyFuzzWorkflow))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bad := nightlyFuzzProblems(string(mk), string(wf)); len(bad) > 0 {
+	if bad := nightlyFuzzProblems(string(mk)); len(bad) > 0 {
 		t.Fatalf("the squirrel nightly-fuzz harness is incomplete:\n  %s", strings.Join(bad, "\n  "))
 	}
 
-	// THE PLANTED PATTERNS. A copy with the budget, the corpus provenance or
-	// the nightly trigger removed must be refused; a copy with the plant out
+	// THE PLANTED PATTERNS. A copy with the budget, the corpus provenance or a
+	// reader kind removed must be refused; a copy with the plant out
 	// must pass. This is the gate's red line, kept in the test.
 	plants := []struct {
-		name, mk, wf string
-		needle       string // the line the plant removes
+		name, mk string
+		needle   string // the line the plant removes
 	}{
-		{"no time budget", strings.Replace(string(mk), "SQUIRREL_FUZZ_SECONDS ?= 540", "", 1), string(wf), "time-budget"},
-		{"no corpus provenance", strings.Replace(string(mk), "$(SCHEMAS_TABLES)", "", 1), string(wf), "corpus"},
-		{"no strict reader", strings.Replace(string(mk), "Strict", "", 1), string(wf), "strict"},
-		{"no text/json reader", strings.Replace(string(mk), "TextJSON", "", 1), string(wf), "text/json"},
-		{"no schedule", string(mk), strings.Replace(string(wf), "schedule:", "", 1), "schedule"},
-		{"campaign unguarded", string(mk), strings.Replace(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "", 1), "trigger"},
-		{"pull request restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  pull_request:\n", 1), "pull_request"},
-		{"push restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  push:\n", 1), "push"},
+		{"no time budget", strings.Replace(string(mk), "SQUIRREL_FUZZ_SECONDS ?= 540", "", 1), "time-budget"},
+		{"no corpus provenance", strings.Replace(string(mk), "$(SCHEMAS_TABLES)", "", 1), "corpus"},
+		{"no strict reader", strings.Replace(string(mk), "Strict", "", 1), "strict"},
+		{"no text/json reader", strings.Replace(string(mk), "TextJSON", "", 1), "text/json"},
 	}
 	for _, p := range plants {
-		bad := nightlyFuzzProblems(p.mk, p.wf)
+		bad := nightlyFuzzProblems(p.mk)
 		if len(bad) == 0 {
 			t.Fatalf("PLANTED PATTERN %q left the gate GREEN: %s", p.name, p.needle)
 		}

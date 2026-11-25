@@ -185,7 +185,7 @@ func trackedDirs(root string) (map[string]bool, error) {
 	}
 	out, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
 	if err != nil {
-		return nil, fmt.Errorf("listing the files %s tracks: %v", root, err)
+		return nil, fmt.Errorf("listing the files %s tracks: %w", root, err)
 	}
 	dirs := map[string]bool{}
 	for _, f := range strings.Split(string(out), "\x00") {
@@ -219,7 +219,7 @@ func noSkipsSkipsDir(rel, name string, tracked map[string]bool) bool {
 }
 
 var (
-	// a skip or lane variable: what a gate read, or a lane promised
+	// a skip or lane variable: what a gate read, or a lane promised.
 	skipVar = regexp.MustCompile(`\b(SCHEMA_SLOW|SCHEMA_REQUIRE_[A-Z0-9_]+|SCHEMA_SKIP[A-Z0-9_]*|SKIP_SLOW_OK|SCHEMA_[A-Z0-9_]*ALLOC_ANY[A-Z0-9_]*)\b`)
 	orTrue  = regexp.MustCompile(`\|\|\s*(true|:|exit\s+0)\b|\|\|\s*:\s*$|\|\|\s*:\s*[;)]`)
 	contErr = regexp.MustCompile(`^\s*-?\s*continue-on-error\s*:`)
@@ -227,44 +227,44 @@ var (
 	branch  = regexp.MustCompile(`startsWith\(\s*github\.(head_ref|ref_name|ref)\s*,\s*'(refs/heads/)?sprint/'\s*\)`)
 	goTest  = regexp.MustCompile(`\bgo\s+test\b.*\s-(skip|test\.skip|short)(=|\s|$)`)
 	// an announcement that something is being skipped; a message that a
-	// skip happened and is a failure ("a test SKIPPED", exit 1) is a refusal
+	// skip happened and is a failure ("a test SKIPPED", exit 1) is a refusal.
 	echo = regexp.MustCompile(`\b(echo|printf)\b.*(\b(?i:skipping)\b|\b(?i:skip):)`)
-	// a driver's verdict word for a row it did not run
+	// a driver's verdict word for a row it did not run.
 	verdict = regexp.MustCompile(`["'](SKIP|SKIPPED|skip|skipped)["']|["'](?i:skipping|skipped)\b[^"']*["']|\bSKIP:`)
 	ledger  = regexp.MustCompile(`(?i)(^|[-_/])(known-)?skips?(-ledger)?\.(tsv|txt)$`)
-	// a variable named for skipping, set or read in a script
+	// a variable named for skipping, set or read in a script.
 	skipAssign = regexp.MustCompile(`\b[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*=|\$\{?[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\b|^\s*-?\s*[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\s*:`)
-	// success on a missing tool: `exit 0` beside a probe for one
+	// success on a missing tool: `exit 0` beside a probe for one.
 	exitZero  = regexp.MustCompile(`\bexit\s+0\b`)
 	toolProbe = regexp.MustCompile(`\bcommand\s+-v\b|\bwhich\s|\bhash\s|\btype\s+-[pP]\b|\[\s+!\s+-[xfed]\s`)
-	// make's ignore-errors: a recipe line under `-`, or .IGNORE
+	// make's ignore-errors: a recipe line under `-`, or .IGNORE.
 	makeIgnore = regexp.MustCompile(`^\t[@+]*-[^-]|^\.IGNORE\s*:`)
-	// a workflow job or step run or not by a variable
+	// a workflow job or step run or not by a variable.
 	ifVar = regexp.MustCompile(`^\s*-?\s*if\s*:.*\b(vars|env)\.`)
 	// a test run's failure turned into a message: `go test ... || echo ...`
-	// with no exit after
+	// with no exit after.
 	orEcho = regexp.MustCompile(`\b(go\s+test|ctest|cargo\s+test|dotnet\s+test|npm\s+test|pytest|mix\s+test|dart\s+test)\b[^|]*\|\|\s*(echo|printf)\b[^;}]*$`)
-	// errors no longer stop the script
+	// errors no longer stop the script.
 	setPlusE = regexp.MustCompile(`(^|[;&|]\s*)set\s+\+[a-zA-Z]*e`)
-	// a compiled test binary told to skip
+	// a compiled test binary told to skip.
 	binSkip = regexp.MustCompile(`\s-test\.(skip|short)\b`)
-	// a selection computed inline: if it fails, go test runs everything
+	// a selection computed inline: if it fails, go test runs everything.
 	inlineSelect = regexp.MustCompile(`-run\s+"\$\$?\(`)
-	// a recipe chosen by whether a tool is on PATH
+	// a recipe chosen by whether a tool is on PATH.
 	makeProbe = regexp.MustCompile(`\$\(if\s+\$\(shell\s+(command\s+-v|which)\b`)
-	// a script run by a harness language's interpreter
+	// a script run by a harness language's interpreter.
 	driverShebang = regexp.MustCompile(`python|node|ruby|perl|lua|elixir|dart|deno|bun|php`)
 	// a workflow job or step run or not by which repository it is in: a
-	// name compared with a literal is false on this repository or on a fork
+	// name compared with a literal is false on this repository or on a fork.
 	repoGate = regexp.MustCompile(`\bgithub\.repository(_owner)?\s*[!=]=\s*['"]|['"]\s*[!=]=\s*github\.repository(_owner)?\b|\bgithub\.repository(_owner)?\s*,\s*['"]|contains\(\s*['"][^'"]*['"]\s*,\s*github\.repository`)
-	// a Go string that announces a skip
+	// a Go string that announces a skip.
 	goSkipNotice = regexp.MustCompile(`\b(?i:skipp(?:ed|ing))\b|\bSKIP(PED)?\b`)
 	goSkipWords  = regexp.MustCompile(`\b(?i:skipp(?:ed|ing))\b`)
-	// a test framework's own skip
+	// a test framework's own skip.
 	nativeSkip = regexp.MustCompile(`\b(it|test|describe|context)\.skip\b|\bx(it|describe|test)\s*\(|#\[ignore\b|\bSkip\s*=\s*"|@tag\s+:?skip\b|@moduletag\s+:?skip\b|\bunittest\.skip|\bpytest\.mark\.skip|@Disabled\b|@Ignore\b|\bskip_if\b|\bskipTest\(`)
 )
 
-// script-like files: their lines are commands
+// script-like files: their lines are commands.
 func scriptKind(rel string, head []byte) string {
 	base := filepath.Base(rel)
 	switch {
@@ -421,7 +421,7 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %v", rel, err)
+		return nil, fmt.Errorf("%s: %w", rel, err)
 	}
 	var out []string
 	hit := func(pos token.Pos, rule, what string) {
@@ -539,8 +539,7 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 			}
 		}
 	}
-	var visitFunc func(params *ast.FieldList, results *ast.FieldList, body *ast.BlockStmt, name string)
-	visitFunc = func(params, results *ast.FieldList, body *ast.BlockStmt, name string) {
+	visitFunc := func(params, results *ast.FieldList, body *ast.BlockStmt, name string) {
 		takesT := false
 		for _, p := range params.List {
 			if isTesting(p.Type) {
@@ -966,7 +965,7 @@ func goProbeIndex(root string, files []string) (*probeIndex, error) {
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), nil, parser.SkipObjectResolution)
 		if err != nil {
-			per[i].err = fmt.Errorf("%s: %v", rel, err)
+			per[i].err = fmt.Errorf("%s: %w", rel, err)
 			return
 		}
 		per[i].dir, per[i].pkg = path.Dir(rel), f.Name.Name
@@ -1437,7 +1436,7 @@ func announcesSkip(call *ast.CallExpr) bool {
 	}
 	for _, a := range call.Args {
 		// a raw string over lines is a program the test generates, not a line
-		if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING && !(lit.Value[0] == '`' && strings.Contains(lit.Value, "\n")) {
+		if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING && (lit.Value[0] != '`' || !strings.Contains(lit.Value, "\n")) {
 			if v, err := strconv.Unquote(lit.Value); err == nil && goSkipNotice.MatchString(v) {
 				return true
 			}

@@ -24,13 +24,20 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
+
+// harnessSurfaces are the surfaces the harness scores that no driver lists:
+// each rides a surface the driver does list (rewrite rides wire, run.go), so
+// the README's surfaces table, which drivers hold their `list` to, leaves
+// them out and names them below it.
+var harnessSurfaces = []string{"rewrite"}
 
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"}
+	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "rewrite"}
 
 // shapeLegs are the legs whose writers refuse in every build (docs/SPEC.md
 // §5.1): each OWES every `write-refusal-shape` case, so a surface it leaves
@@ -90,6 +97,10 @@ type result struct {
 	// (tools/matrix proof) reads it from the --results file, so a cell can name
 	// the exact case that holds it and the exact case that is still absent.
 	cases map[string]string
+	// seconds is how long the leg's driver took over the surface, on the
+	// clock: what the corpus adapter shares among the cases it was asked on
+	// the surface (adapter.go), so the registry can weigh each case.
+	seconds float64
 }
 
 // The four things a case can come to.
@@ -504,6 +515,16 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: i.Name, want: want})
 		}
+		if surface == "json-read" {
+			// the hand-authored texts (jsontext.go): each owes its wire
+			for _, jt := range m.JSONTexts {
+				want, err := os.ReadFile(jt.Wire)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, expectation{name: jt.Name, want: want})
+			}
+		}
 	case "message":
 		// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): read the message
 		// against the connection's announced table and write it back. The
@@ -748,6 +769,16 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			}
 			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap" || r.Form == "retain-fixed"})
 		}
+	case "rewrite":
+		// THE REWRITE SURFACE (rewrite.go): the leg's wire surface over the
+		// rewrite rows, each owing the canonical bytes the oracle writes
+		for _, rw := range m.Rewrites {
+			want, err := os.ReadFile(rw.Canonical)
+			if err != nil {
+				return nil, fmt.Errorf("rewrite %s: the canonical bytes: %w — run: make conformance-generate", rw.Name, err)
+			}
+			out = append(out, expectation{name: rw.Name, want: want})
+		}
 	case "json-write-into":
 		for _, j := range m.JSONWriteIntos {
 			inst, err := m.LookupInstance(j.Instance)
@@ -827,6 +858,11 @@ type runOptions struct {
 	// failures once the run is scored: the corpus adapter (adapter.go) reads
 	// each case's verdict from it.
 	capture func(results map[string]map[string]*result, legFailures map[string][]string)
+	// cases, when set, is the cases this run asks: the corpus adapter's
+	// requests (adapter.go). Each leg is handed a manifest of the rows that
+	// carry them and the rows their verdicts depend on (scope.go), runs the
+	// surfaces those rows sit on and no other, and is scored on them alone.
+	cases map[caseKey]bool
 }
 
 // parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
@@ -921,6 +957,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := materialise(m, work); err != nil {
 		return false, err
 	}
+	// the framed rewrite rows (rewrite.go), the same for every leg
+	framed, err := framedRewrites(newUnits(m), m)
+	if err != nil {
+		return false, err
+	}
+	// the cases sent on a manifest of their own, which a scoped cut of the
+	// derived manifest leaves alone (scope.go)
+	own := ownManifestCases(m)
 	derived := filepath.Join(work, "manifest.txt")
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
@@ -982,6 +1026,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
 		}
+		// the rewrite surface is the wire surface over the rewrite rows
+		// (rewrite.go): a leg that lists wire is asked it, when the manifest
+		// has rewrite rows (a manifest with none, such as the BOM entry
+		// gate's, asks no rewrite surface rather than a surface of 0 rows)
+		listed["rewrite"] = listed["wire"] && len(m.Rewrites) > 0
 		// rows on an opt-in unit the leg does not name are not asked (optin.go)
 		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
 		if err != nil {
@@ -989,6 +1038,36 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 		if len(notOptedIn) > 0 {
 			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
+		}
+		// each surface's rows as this leg is asked them: the json-hostile
+		// battery's verdicts are the leg's own (hostileExpectations)
+		legWants := map[string][]expectation{}
+		exemptions := map[string][]string{}
+		for _, s := range surfaces {
+			legWants[s] = want[s]
+			// a run that cannot reach the battery does not read its saves
+			if s == "json-hostile" && hostileRuns(opts) {
+				legWants[s], exemptions[s] = hostileExpectations(m, d.lang)
+				if err := attachHostileSaves(m, legWants[s]); err != nil {
+					return false, err
+				}
+			}
+		}
+		// a run asked for some cases runs only the surfaces and rows they and
+		// their verdicts need (scope.go)
+		only := opts.only
+		var scope map[caseKey]bool
+		if opts.cases != nil {
+			scope = closeScope(opts.cases, legWants, disc, wireRefusals, framed)
+			only = map[string]bool{}
+			for key := range scope {
+				if opts.only == nil || opts.only[key.surface] {
+					only[key.surface] = true
+				}
+			}
+			if legDerived, err = scopeManifest(legDerived, d.lang, scope, only, legWants, notAsked, own); err != nil {
+				return false, fmt.Errorf("%s: %w", d.lang, err)
+			}
 		}
 		sent, err := sentRows(legDerived)
 		if err != nil {
@@ -1001,11 +1080,40 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			stderr  string
 			err     error
 			aborted bool
+			seconds float64
+		}
+		// the rewrite rows a leg is handed: those on units it is asked
+		// (an opt-in unit it does not name is not, and its rows count absent)
+		legRewrite := filepath.Join(work, "manifest-rewrite-"+d.lang+".txt")
+		omit := map[string]bool{}
+		for key := range m.OptIn {
+			if !listed["unit "+key] {
+				omit[key] = true
+			}
+		}
+		if err := deriveRewriteManifest(m, legRewrite, omit, framed); err != nil {
+			return false, err
+		}
+		// and its json-read surface runs on its manifest plus the authored-text
+		// rows on units it is asked (jsontext.go)
+		legJSONRead := filepath.Join(work, "manifest-json-read-"+d.lang+".txt")
+		if err := deriveJSONReadManifest(legDerived, legJSONRead, m, omit); err != nil {
+			return false, err
+		}
+		// a scoped run hands those manifests only their asked rows: a row
+		// of its own the leg answered unasked would be a stray (scope.go)
+		if scope != nil {
+			if err := scopeOwnManifest(legRewrite, "rewrite", scope, own); err != nil {
+				return false, fmt.Errorf("%s: %w", d.lang, err)
+			}
+			if err := scopeOwnManifest(legJSONRead, "json-read", scope, own); err != nil {
+				return false, fmt.Errorf("%s: %w", d.lang, err)
+			}
 		}
 		runs := map[string]*surfaceRun{}
 		var active []*surfaceRun
 		for _, s := range surfaces {
-			if opts.only != nil && !opts.only[s] {
+			if only != nil && !only[s] {
 				continue
 			}
 			if !listed[s] {
@@ -1047,7 +1155,16 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
-						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						began := time.Now()
+						switch sr.surface {
+						case "rewrite":
+							sr.code, sr.stderr, sr.err = runDriver(d, legRewrite, "wire", sr.out)
+						case "json-read":
+							sr.code, sr.stderr, sr.err = runDriver(d, legJSONRead, "json-read", sr.out)
+						default:
+							sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						}
+						sr.seconds = time.Since(began).Seconds()
 						if failFast {
 							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
 								failed.Store(true)
@@ -1055,10 +1172,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 								// Check surface answers read-only so legs that report a bad
 								// canary input as an absence or diff with exit 0 still stop early.
 								probe := &result{total: len(want[sr.surface])}
-								for _, e := range want[sr.surface] {
-									if notAsked.has(sr.surface, e.name) {
-										continue
-									}
+								for _, e := range probeCases(sr.surface, want[sr.surface], notAsked, scope, framed) {
 									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
 								}
 								if len(probe.failures) > 0 || probe.missing > probe.named {
@@ -1071,17 +1185,30 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			}
 			wg.Wait()
 		}
-		for _, s := range surfaces {
-			if opts.only != nil && !opts.only[s] {
-				continue
-			}
-			legWant := want[s]
-			var exemptions []string
-			if s == "json-hostile" {
-				legWant, exemptions = hostileExpectations(m, d.lang)
-				if err := attachHostileSaves(m, legWant); err != nil {
+		// the framed rewrite rows are answered by the leg's own framing
+		// write-back (rewrite.go, framedRewrites)
+		if sr := runs["rewrite"]; sr != nil && !sr.aborted {
+			if fr := runs["framing"]; fr != nil {
+				if err := answerFramedRewrites(framed, fr.out, sr.out); err != nil {
 					return false, err
 				}
+			}
+		}
+		for _, s := range surfaces {
+			if only != nil && !only[s] {
+				continue
+			}
+			legWant := legWants[s]
+			if len(legWant) == 0 && slices.Contains(harnessSurfaces, s) {
+				// a surface the HARNESS derives (rewrite) from rows this manifest
+				// does not have (the BOM entry gate's has none) is not a surface
+				// of this run: no leg lists it, and there is nothing to ask
+				continue
+			}
+			if scope != nil {
+				legWant = slices.DeleteFunc(slices.Clone(legWant), func(e expectation) bool {
+					return !scope[caseKey{s, e.name}]
+				})
 			}
 			r := &result{total: len(legWant)}
 			results[d.lang][s] = r
@@ -1114,6 +1241,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if err != nil {
 				return false, err
 			}
+			r.seconds = sr.seconds
 			if code == 2 {
 				if why := crashNotAbsence(out, stderr); why != "" {
 					// EXIT 2 IS ALSO HOW A GO PANIC ENDS. An absence says it
@@ -1160,7 +1288,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					describeExit(code), len(unanswered), len(legWant), nameRows(unanswered), indent(stderr, "    ")))
 				continue
 			}
-			for _, line := range exemptions {
+			for _, line := range exemptions[s] {
 				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			// A SURFACE A LEG LISTS AND RUNS OVER NO ROWS IS A FAILURE, NOT A
@@ -1239,8 +1367,13 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	// A run that selected no row, or ran no leg on any surface, proved nothing
 	// either: --surfaces naming surfaces that hold no expectation, or --only
 	// naming a leg that answers none of them. It must not print a green matrix.
-	if err := emptySelection(results, only, opts.only); err != nil {
-		return false, err
+	// A run scoped to asked cases (the corpus adapter) answers each of them
+	// instead: an asked case the leg answered absent is MISSING by name, and
+	// one the corpus does not have is a stale row by name (adapter.go).
+	if opts.cases == nil {
+		if err := emptySelection(results, only, opts.only); err != nil {
+			return false, err
+		}
 	}
 	proveRan(langs, results)
 
@@ -2152,4 +2285,23 @@ func firstNames(names []string, n int) string {
 		return strings.Join(names, ", ")
 	}
 	return strings.Join(names[:n], ", ") + fmt.Sprintf(", and %d more", len(names)-n)
+}
+
+// probeCases are the rows the fail-fast probe scores as soon as a surface's
+// run returns: the rows the leg was handed and the scope asks, but not a
+// framed rewrite row, whose answer is the leg's framing write-back, copied in
+// only once every surface has run (answerFramedRewrites). Scored before
+// then, a framed row reads as unanswered and stops the leg on a pass.
+func probeCases(surface string, want []expectation, unsent notAsked, scope map[caseKey]bool, framed map[string]FramingCase) []expectation {
+	var out []expectation
+	for _, e := range want {
+		if unsent.has(surface, e.name) || (scope != nil && !scope[caseKey{surface, e.name}]) {
+			continue
+		}
+		if _, ok := framed[e.name]; ok && surface == "rewrite" {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }

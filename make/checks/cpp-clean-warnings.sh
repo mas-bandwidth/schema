@@ -18,7 +18,9 @@
 # no longer occurs fails until its line is edited. The ratchet only shrinks.
 #
 # usage: cpp-clean-warnings.sh <ratchet-file> <census|check> <tree>...
-# env:   CLANGXX, SERIALIZE_DIR, JOBS, OUT (scratch dir)
+# env:   CLANGXX, SERIALIZE_DIR, JOBS, OUT (scratch dir), SHARD (K/N: judge
+#        only the directories make/checks/shard-filter.sh puts in shard K of
+#        N, and only their ratchet lines; empty: every file)
 set -eu -o pipefail
 # Byte order for every sort and comm here: files.txt is compared with Go's
 # slices.Sort, and a locale such as en_US.UTF-8 collates Wides.h after WidesBlock.h.
@@ -49,7 +51,19 @@ incs="$incs -Itest/tables"
 incs="$incs -isystem test"
 export CLANGXX SERIALIZE_DIR OUT incs
 
-find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/files.txt"
+shard=${SHARD-}
+# A SHARD IS WHOLE DIRECTORIES. A diagnostic lands in the file it points
+# into, and a header's findings are the union over every file that includes
+# it: a template a .cpp instantiates warns in the header. Every generated
+# include names a file of its own directory (the runtime and the user's
+# headers are -isystem, never judged), so a shard of whole directories
+# compiles every file that includes each of its headers and sees every
+# finding the whole gate sees there. A finding in a directory of another
+# shard would break that, and fails the gate below by name.
+find "$@" \( -name '*.h' -o -name '*.cpp' \) | sort > "$OUT/all.txt"
+sed 's#/[^/]*$##' "$OUT/all.txt" | sort -u > "$OUT/dirs.txt"
+sh "$here/shard-filter.sh" "$shard" "$OUT/dirs.txt" < "$OUT/dirs.txt" > "$OUT/shard-dirs.txt"
+sh "$here/shard-filter.sh" "$shard" "$OUT/dirs.txt" dir < "$OUT/all.txt" > "$OUT/files.txt"
 if [ ! -s "$OUT/files.txt" ]; then echo "tables-cpp-clean: no generated C++ under $*"; exit 1; fi
 
 # three families are dropped, each for a stated reason; CPATH is unset so the
@@ -90,7 +104,16 @@ cat "$OUT"/logs/* | awk '
 	/: warning: / && match($0, /\[-W[A-Za-z0-9+_-]+\]$/) {
 		path = $0; sub(/:[0-9]+:[0-9]+: warning: .*/, "", path)
 		if (path ~ /^(build|generated)\//) print path, substr($0, RSTART + 3, RLENGTH - 4)
-	}' | sort -u > "$OUT/found.txt"
+	}' | sort -u > "$OUT/found.all"
+# a finding in a directory of the corpus that is not this shard's: an include
+# crossed directories, so whole directories no longer see whole findings
+awk 'FNR == NR { mine[$0] = 1; next } FILENAME ~ /dirs.txt$/ { all[$0] = 1; next } { d = $1; sub(/\/[^\/]*$/, "", d); if ((d in all) && !(d in mine)) print }' "$OUT/shard-dirs.txt" "$OUT/dirs.txt" "$OUT/found.all" > "$OUT/crossed.txt"
+if [ -s "$OUT/crossed.txt" ]; then
+	echo "tables-cpp-clean: shard $shard reports findings in another shard's directory (an include crossed directories, so a shard of whole directories no longer sees whole findings):"
+	sed -n '1,20s/^/  /p' "$OUT/crossed.txt"
+	exit 1
+fi
+sh "$here/shard-filter.sh" "$shard" "$OUT/dirs.txt" dir < "$OUT/found.all" > "$OUT/found.txt"
 
 # fold to one `<path> kind,kind` line per file
 awk '{ k[$1] = ($1 in k) ? k[$1] "," $2 : $2 } END { for (p in k) print p, k[p] }' "$OUT/found.txt" | sort > "$OUT/observed.txt"
@@ -102,7 +125,7 @@ fi
 
 # the ratchet, kinds sorted per line so the comparison is order-free
 norm() { awk '!/^#/ && NF { n = split($2, a, ","); for (i = 1; i <= n; i++) print $1, a[i] }' "$1" | sort -u; }
-norm "$ratchet" > "$OUT/allowed.txt"
+norm "$ratchet" | sh "$here/shard-filter.sh" "$shard" "$OUT/dirs.txt" dir > "$OUT/allowed.txt"
 bad=0
 # observed and not allowed
 comm -13 "$OUT/allowed.txt" "$OUT/found.txt" > "$OUT/new.txt"
@@ -136,4 +159,4 @@ if [ -s "$OUT/gone.txt" ]; then
 	bad=1
 fi
 [ $bad -eq 0 ] || exit 1
-echo "C++: clang++ -Weverything (less the c++98-compat family) over $* : $(wc -l < "$OUT/files.txt" | tr -d ' ') files, $(wc -l < "$OUT/observed.txt" | tr -d ' ') still on the ratchet"
+echo "C++: clang++ -Weverything (less the c++98-compat family) over $*${shard:+ (shard $shard)} : $(wc -l < "$OUT/files.txt" | tr -d ' ') files, $(wc -l < "$OUT/observed.txt" | tr -d ' ') still on the ratchet"

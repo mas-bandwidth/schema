@@ -57,7 +57,7 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 	$(LUAU_CONFORMANCE_DRIVER)/units.luau \
 	$(SERIALIZE_GO_RUNTIME)/go.mod
 	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
-		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
+		$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 
 # THE STRICT TEXT READ (docs/SPEC-TABLES.md §6.5, §2.3): J.FromJson is the one
@@ -141,11 +141,11 @@ test-luau: tables-luau-json-walk tables-luau-json-walk-negative-control \
 .PHONY: tables-luau-fixed-form tables-luau-versioning
 tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
 	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
-	go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal|TestLuauFixedPlainReadIsStrict|TestLuauFixedByteArrays|TestLuauFixedByteArraysNegativeControl|TestLuauFixedStrictBounds|TestLuauFixedStrictBoundsNegativeControl|TestLuauFixedEvolution.*)$$'
+	$(GO_TEST) ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal|TestLuauFixedPlainReadIsStrict|TestLuauFixedByteArrays|TestLuauFixedByteArraysNegativeControl|TestLuauFixedStrictBounds|TestLuauFixedStrictBoundsNegativeControl|TestLuauFixedEvolution.*)$$'
 	@echo 'tables Luau fixed form: every corpus root on the C++ reference bytes, every refusal by name'
 
 tables-luau-versioning: toolchain-luau tables-fixedform-corpus
-	go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedVersioning.*|TestLuauFixedCompiledPlanTagPastArmSet)$$'
+	$(GO_TEST) ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedVersioning.*|TestLuauFixedCompiledPlanTagPastArmSet)$$'
 	@echo 'tables Luau versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # THE TWO GATES' NEGATIVE CONTROLS (§5.9 #11: a gate nobody has watched fail may
@@ -168,7 +168,7 @@ tables-luau-fixed-form-negative-control: toolchain-luau tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-fixed-nc/schema_fixed.luau"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-fixed-nc/overlay.json
-	@if go test -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
+	@if $(GO_TEST_RED) -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
 			-count=1 -run '^TestLuauFixedFormAgreesWithTheByteOracle$$' > build/luau-fixed-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a text length one off left the fixed form green"; \
 		cat build/luau-fixed-nc/log; exit 1; \
@@ -187,7 +187,7 @@ tables-luau-versioning-negative-control: toolchain-luau tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-versioning-nc/schema_fixed.luau"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-versioning-nc/overlay.json
-	@if go test -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
+	@if $(GO_TEST_RED) -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
 			-count=1 -run '^TestLuauFixedVersioningOldRefusesNew$$' > build/luau-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/luau-versioning-nc/log; exit 1; \

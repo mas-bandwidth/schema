@@ -319,11 +319,13 @@ func TestGoJsonWalkIsOneGenericRuntime(t *testing.T) {
 }
 
 // TestJsonWalkGeneratedGoTables holds the same property over every unit of
-// the generated Go tables tree, build/tables-generated-go, which `make
-// tables-go-json-walk` builds before it runs this test by name (it names the
-// tree in SCHEMA_GO_JSON_WALK_DIR, and SCHEMA_GO_JSON_WALK_OUT is where the
-// extracted walkers go). It is functional, and a run without the tree fails
-// naming it (docs/rulings.json no-skips).
+// the generated Go tables tree, build/tables-generated-go. Its registry row
+// names build/tables-generated-go/.stamp as the make target the driver makes
+// first, and `make tables-go-json-walk` builds the tree before it runs this
+// test by name (it names the tree in SCHEMA_GO_JSON_WALK_DIR, and
+// SCHEMA_GO_JSON_WALK_OUT is where the extracted walkers go). It is
+// functional, and a run without the tree fails naming it (docs/rulings.json
+// no-skips).
 func TestJsonWalkGeneratedGoTables(t *testing.T) {
 	t.Parallel()
 	genDir := os.Getenv("SCHEMA_GO_JSON_WALK_DIR")
