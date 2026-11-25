@@ -18,6 +18,13 @@ const imp = (p) => import(pathToFileURL(resolve(generated, p)).href);
 const v1Table = await imp("v1/Tblv1Table.js");
 const v1 = await imp("v1/V1Table.js");
 const v2 = await imp("v2/V2Table.js");
+// V1L is V1 with only its UNLAWFUL edits taken back (test/tables/lawful/v1l):
+// the lawful older writer for V2. V1 itself is an unlawful lineage entry for
+// V2 (V2 removes `b`, moves `a` and `ledger` off every ladder), and since
+// jstable 8265da2bd2 its compile lays NO plan (-4, layout_malformed, §5.2
+// MATCH/EMIT, §5.4, §5.9 #30) — so a partition read off it is a partition of
+// nothing, and this row's negative controls passed on an empty plan.
+const v1l = await imp("lawful/v1l/V1LTable.js");
 
 // THE DST ROWS THROUGH THE MODULE'S OWN EXPORT. This row once parsed them out
 // of the source text as `new Int32Array([`, a spelling the emitter left for
@@ -47,6 +54,7 @@ function requireDst(mod, name, where) {
 const v1CellDst = requireDst(v1, "Cell", "v1/V1Table.js");
 const v1CfgDst = requireDst(v1, "Cfg", "v1/V1Table.js");
 const v2CfgDst = requireDst(v2, "Cfg", "v2/V2Table.js");
+requireDst(v1l, "Cfg", "lawful/v1l/V1LTable.js");
 
 // THE ENTRY WIDTH IS THE RUNTIME'S OWN (TableFixedLanes): an entry grew two lanes,
 // the guard chain's count and offset (§4.1), after this row hard-coded nine, so
@@ -142,27 +150,27 @@ function validatePlanPartition(plan) {
   return true;
 }
 
-// The law: V1/V2 CfgFixedLayout carries both unguarded fields and union-guarded fields.
+// The law: a lawful V1L/V2 Cfg plan carries both unguarded fields and union-guarded fields.
 // Assert plan.split > 0, plan.count > plan.split, coalescing inside unguarded half,
 // and strictly no merging across the split boundary.
 function testPartitionWithGuardedAndUnguarded() {
-  // 1. Forward direction: V1 wire compiled against V2 reader
+  // 1. Forward direction: the LAWFUL older writer V1L compiled against the V2 reader
   const theirsV1 = new v1Table.TableFixedLayoutView();
-  v1Table.TableFixedParseLayout(v1.CfgFixedLayoutCopy(), 0, v1.CfgFixedLayoutCopy().length, theirsV1);
+  v1Table.TableFixedParseLayout(v1l.CfgFixedLayoutCopy(), 0, v1l.CfgFixedLayoutCopy().length, theirsV1);
   const planFwd = new v1Table.TableFixedPlan(1024, v2.CfgFixedBodyBytes, 1024);
   const reportFwd = new v1Table.TableFixedReport();
   const countFwd = v1Table.TableFixedCompile(theirsV1, v2.CfgFixedLayoutCopy(), v2CfgDst, planFwd, reportFwd);
 
   if (countFwd !== planFwd.count || countFwd <= 0) {
-    console.log(`FAIL: V1->V2 compile failed (count=${countFwd})`);
+    console.log(`FAIL: V1L->V2 compile failed (count=${countFwd})`);
     return false;
   }
   if (planFwd.split <= 0 || planFwd.split >= planFwd.count) {
-    console.log(`FAIL: V1->V2 expected 0 < split < count, got split=${planFwd.split}, count=${planFwd.count}`);
+    console.log(`FAIL: V1L->V2 expected 0 < split < count, got split=${planFwd.split}, count=${planFwd.count}`);
     return false;
   }
   if (!validatePlanPartition(planFwd)) {
-    console.log("FAIL: V1->V2 plan failed partition validation");
+    console.log("FAIL: V1L->V2 plan failed partition validation");
     return false;
   }
 
@@ -192,27 +200,48 @@ function testPartitionWithGuardedAndUnguarded() {
     return false;
   }
 
-  // 2. Reverse direction: V2 wire compiled against V1 reader
+  // 2. V2's own layout through the COMPILER (not the baked identity plan): a
+  // second lawful plan with both halves, partitioned the same way.
   const theirsV2 = new v1Table.TableFixedLayoutView();
   v1Table.TableFixedParseLayout(v2.CfgFixedLayoutCopy(), 0, v2.CfgFixedLayoutCopy().length, theirsV2);
-  const planRev = new v1Table.TableFixedPlan(1024, v1.CfgFixedBodyBytes, 1024);
+  const planRev = new v1Table.TableFixedPlan(1024, v2.CfgFixedBodyBytes, 1024);
   const reportRev = new v1Table.TableFixedReport();
-  const countRev = v1Table.TableFixedCompile(theirsV2, v1.CfgFixedLayoutCopy(), v1CfgDst, planRev, reportRev);
+  const countRev = v1Table.TableFixedCompile(theirsV2, v2.CfgFixedLayoutCopy(), v2CfgDst, planRev, reportRev);
 
   if (countRev !== planRev.count || countRev <= 0) {
-    console.log(`FAIL: V2->V1 compile failed (count=${countRev})`);
+    console.log(`FAIL: V2->V2 compile failed (count=${countRev})`);
     return false;
   }
   if (planRev.split <= 0 || planRev.split >= planRev.count) {
-    console.log(`FAIL: V2->V1 expected 0 < split < count, got split=${planRev.split}, count=${planRev.count}`);
+    console.log(`FAIL: V2->V2 expected 0 < split < count, got split=${planRev.split}, count=${planRev.count}`);
     return false;
   }
   if (!validatePlanPartition(planRev)) {
-    console.log("FAIL: V2->V1 plan failed partition validation");
+    console.log("FAIL: V2->V2 plan failed partition validation");
     return false;
   }
 
-  console.log(`PASS: V1/V2 Cfg partition holds: split=${planFwd.split} of count=${planFwd.count}, coalescing verified inside partition, no merge across boundary`);
+  // 3. The UNLAWFUL pairs lay no plan, in either direction: V1 into V2 (a
+  // removed field and two kinds off every ladder) and V2 into V1 (a field V1
+  // names nowhere). -4, count 0, split 0, layout_malformed — never a
+  // partition of a plan that should not exist.
+  const unlawful = [
+    ["V1->V2", v1.CfgFixedLayoutCopy(), v2.CfgFixedLayoutCopy(), v2CfgDst, v2.CfgFixedBodyBytes],
+    ["V2->V1", v2.CfgFixedLayoutCopy(), v1.CfgFixedLayoutCopy(), v1CfgDst, v1.CfgFixedBodyBytes],
+  ];
+  for (const [what, theirLayout, myLayout, myDst, myBody] of unlawful) {
+    const view = new v1Table.TableFixedLayoutView();
+    v1Table.TableFixedParseLayout(theirLayout, 0, theirLayout.length, view);
+    const p = new v1Table.TableFixedPlan(1024, myBody, 1024);
+    const r = new v1Table.TableFixedReport();
+    const got = v1Table.TableFixedCompile(view, myLayout, myDst, p, r);
+    if (got !== -4 || p.count !== 0 || p.split !== 0 || r.refused !== v1Table.TableFixedRefusal.LayoutMalformed) {
+      console.log(`FAIL: ${what} is unlawful and must lay no plan: got ${got}, count=${p.count}, split=${p.split}, refused=${r.refused}`);
+      return false;
+    }
+  }
+
+  console.log(`PASS: V1L->V2 and V2->V2 Cfg partition holds, V1<->V2 lays no plan: split=${planFwd.split} of count=${planFwd.count}, coalescing verified inside partition, no merge across boundary`);
   return true;
 }
 
@@ -304,11 +333,17 @@ function testCoalescingWithinPartitionsAndNotAcrossSplit() {
 // Negative controls: corrupted plan partitions MUST fail validation
 function testNegativeControls() {
   const theirs = new v1Table.TableFixedLayoutView();
-  v1Table.TableFixedParseLayout(v1.CfgFixedLayoutCopy(), 0, v1.CfgFixedLayoutCopy().length, theirs);
+  v1Table.TableFixedParseLayout(v1l.CfgFixedLayoutCopy(), 0, v1l.CfgFixedLayoutCopy().length, theirs);
   const lawfulPlan = new v1Table.TableFixedPlan(1024, v2.CfgFixedBodyBytes, 1024);
   const report = new v1Table.TableFixedReport();
-  v1Table.TableFixedCompile(theirs, v2.CfgFixedLayoutCopy(), v2CfgDst, lawfulPlan, report);
+  const lawfulCount = v1Table.TableFixedCompile(theirs, v2.CfgFixedLayoutCopy(), v2CfgDst, lawfulPlan, report);
 
+  // A CONTROL ON AN EMPTY PLAN PROVES NOTHING: every corruption below needs
+  // both halves to corrupt, so the lawful plan must have them.
+  if (lawfulCount <= 0 || lawfulPlan.split <= 0 || lawfulPlan.split >= lawfulPlan.count) {
+    console.log(`FAIL: the controls' lawful plan has no two halves (count=${lawfulCount}, split=${lawfulPlan.split})`);
+    return false;
+  }
   if (!validatePlanPartition(lawfulPlan)) {
     console.log("FAIL: lawful plan failed partition validation");
     return false;

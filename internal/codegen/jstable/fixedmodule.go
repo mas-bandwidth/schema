@@ -93,7 +93,9 @@ type fixedModule struct {
 	messageClosure []*ir.Struct
 	gen            fixedGen
 	probeSeq       int
-	body           strings.Builder
+	// msgSlots is the message vocabulary indexed once per module (messageSlots)
+	msgSlots *messageSlotTable
+	body     strings.Builder
 }
 
 func (g *fixedModule) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
