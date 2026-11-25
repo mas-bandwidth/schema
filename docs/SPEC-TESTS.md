@@ -14,8 +14,8 @@ The registry and the driver are described in [TEST-REGISTRY.md](TEST-REGISTRY.md
 
 | tier | page | what the tier is | tests every language answers | language-free tests |
 |---|---|---|---|---|
-| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 0 | 72 |
-| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 36 | 2 |
+| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 0 | 89 |
+| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 2145 | 4 |
 | `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 0 | 0 |
 
 ## Names
@@ -31,24 +31,24 @@ The registry's language rows, in its order. The list is only ever read from the 
 
 | language | write rule | adapter |
 |---|---|---|
-| `c` | `assert` | none yet: every instance is MISSING |
-| `cpp` | `assert` | none yet: every instance is MISSING |
-| `cs` | `assert` | none yet: every instance is MISSING |
-| `unity` | `assert` | none yet: every instance is MISSING |
-| `go` | `refuse` | `go` |
-| `rust` | `assert` | none yet: every instance is MISSING |
-| `java` | `assert` | none yet: every instance is MISSING |
-| `dart` | `assert` | none yet: every instance is MISSING |
-| `elixir` | `refuse` | none yet: every instance is MISSING |
-| `js` | `refuse` | none yet: every instance is MISSING |
-| `python` | `refuse` | none yet: every instance is MISSING |
-| `ruby` | `refuse` | none yet: every instance is MISSING |
-| `lua` | `refuse` | `lua` |
-| `luau` | `refuse` | none yet: every instance is MISSING |
-| `squirrel` | `refuse` | none yet: every instance is MISSING |
-| `moo` | `refuse` | none yet: every instance is MISSING |
-| `goose` | `refuse` | none yet: every instance is MISSING |
-| `lobster` | `refuse` | none yet: every instance is MISSING |
+| `c` | `assert` | `corpus` |
+| `cpp` | `assert` | `corpus` |
+| `cs` | `assert` | `corpus` |
+| `unity` | `assert` | `corpus` |
+| `go` | `refuse` | `corpus` |
+| `rust` | `assert` | `corpus` |
+| `java` | `assert` | `corpus` |
+| `dart` | `assert` | `corpus` |
+| `elixir` | `refuse` | `corpus` |
+| `js` | `refuse` | `corpus` |
+| `python` | `refuse` | `corpus` |
+| `ruby` | `refuse` | `corpus` |
+| `lua` | `refuse` | `corpus` |
+| `luau` | `refuse` | `corpus` |
+| `squirrel` | `refuse` | `corpus` |
+| `moo` | `refuse` | `corpus` |
+| `goose` | `refuse` | `corpus` |
+| `lobster` | `refuse` | `corpus` |
 
 A write rule of `assert` means a bad write is refused by a debug assert, in a debug build; `refuse` means it is refused in every build. Loading hostile bytes is refused in every build, in every language.
 

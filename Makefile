@@ -6795,6 +6795,22 @@ conformance: build/conformance-harness build/conformance-cpp build/schema_test_c
 		--results build/conformance/results.json \
 		$(if $(SKIPPED_LEGS),--skip $(subst $(skip_space),$(skip_comma),$(strip $(SKIPPED_LEGS))))
 
+# ONE LEG'S CONFORMANCE BUILD, for the test registry's corpus adapter
+# (docs/TEST-REGISTRY.md; test/conformance/harness/adapter.go). tools/schema-test
+# runs `make conformance-leg-<lang>` before `build/conformance-harness-vm
+# adapter --lang <lang>`: the harness built with every leg's tag, so --claims
+# resolves every target's carries, and exactly what `make conformance` builds
+# for that one leg (every other leg is on SCHEMA_SKIP_LEGS, so it drops off
+# CONFORMANCE_LEGS). The reference leg, cpp, is not on CONFORMANCE_LEGS: the
+# conformance rule names its driver and cook itself, and so does this one.
+.PHONY: conformance-leg-% conformance-leg-built
+conformance-leg-%: bin/schema
+	@$(if $(filter $*,$(SCHEMA_PORTS)),,$(error conformance-leg-$*: $* is not a port (SCHEMA_PORTS: $(SCHEMA_PORTS))))
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory SCHEMA_SKIP_LEGS="$(subst $(skip_space),$(skip_comma),$(strip $(filter-out $*,$(SCHEMA_PORTS))))" CONFORMANCE_LEG=$* build/conformance-harness-vm conformance-leg-built
+
+conformance-leg-built: $(CONFORMANCE_LEGS) $(if $(filter cpp,$(CONFORMANCE_LEG)),build/conformance-cpp build/schema_test_cook)
+	@echo "conformance-leg-$(CONFORMANCE_LEG): built $(strip $(CONFORMANCE_LEGS) $(if $(filter cpp,$(CONFORMANCE_LEG)),build/conformance-cpp build/schema_test_cook))"
+
 # THE TABLES BENCH PASS (bench/tables/README.md): every leg under
 # bench/tables/*/leg, results under bench/tables/results/. A PUBLISHABLE
 # number is a box sitting under the estate's bench rules — core 15, server

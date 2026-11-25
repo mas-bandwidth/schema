@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,25 +17,54 @@ import (
 // harness is a program that runs one family's instances for any language it
 // is given: it reads request lines on its standard input and writes one
 // result line per request (internal/testreg's protocol). Build is what has to
-// exist before it runs; Cmd is its command line for a language.
+// exist before it runs for a language; Cmd is its command line for one.
 type harness struct {
-	Build [][]string
+	Name  string
+	Build func(lang string) [][]string
 	Cmd   func(lang, work string) []string
 }
 
-// harnesses are the families a harness exists for, by family. Which
-// languages answer a family is the adapters' list below, never the harness's.
-var harnesses = map[string]harness{
-	// test/verify-bitphase --adapter: the align-arrays family's driver for
-	// every leg, reading its rows from the requests (alignarrays.go).
-	"align-arrays": {
-		Build: [][]string{{"make", "bin/schema", "build/verify-bitphase-bin"}},
-		Cmd: func(lang, work string) []string {
-			return []string{"./build/verify-bitphase-bin", "--adapter", "--lang", lang,
-				"--schema", "./bin/schema", "--schema-moo", "./build/schema-moo",
-				"--work", work}
-		},
+// alignArrays is test/verify-bitphase --adapter: the align-arrays family's
+// driver for every leg, reading its rows from the requests (alignarrays.go).
+var alignArrays = harness{
+	Name:  "align-arrays",
+	Build: func(string) [][]string { return [][]string{{"make", "bin/schema", "build/verify-bitphase-bin"}} },
+	Cmd: func(lang, work string) []string {
+		return []string{"./build/verify-bitphase-bin", "--adapter", "--lang", lang,
+			"--schema", "./bin/schema", "--schema-moo", "./build/schema-moo",
+			"--work", work}
 	},
+}
+
+// conformanceFamilyPrefix starts every family of the tables conformance
+// corpus: conformance-<surface>, one test per case of the surface.
+const conformanceFamilyPrefix = "conformance-"
+
+// conformance is the tables conformance harness's adapter mode
+// (test/conformance/harness/adapter.go): it builds the one leg's driver
+// (make conformance-leg-<lang>), runs the leg over every surface as
+// `harness run --only <lang> --claims` scores it, and answers each requested
+// case from that run.
+var conformance = harness{
+	Name: "conformance",
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "conformance-leg-" + lang}}
+	},
+	Cmd: func(lang, work string) []string {
+		return []string{"./build/conformance-harness-vm", "adapter", "--lang", lang, "--work", work}
+	},
+}
+
+// harnessFor is the harness that runs a family, if one does. Which languages
+// answer a family is the registry's (its owed lines), never the harness's.
+func harnessFor(family string) (harness, bool) {
+	switch {
+	case family == alignArrays.Name:
+		return alignArrays, true
+	case strings.HasPrefix(family, conformanceFamilyPrefix):
+		return conformance, true
+	}
+	return harness{}, false
 }
 
 // adapters are the adapters a language row may name: the families each
@@ -51,8 +79,10 @@ var harnesses = map[string]harness{
 func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
-		"go":     &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
-		"lua":    &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
+		// every language row names corpus: one adapter routes each family
+		// to its harness for any language, and what a language does not
+		// answer yet is an owed line of the registry, MISSING by name
+		"corpus": &harnessAdapter{build: b, log: log},
 		"gotest": goTestAdapter{log: log},
 	}
 }
@@ -94,32 +124,35 @@ const workRoot = "build/schema-test-work"
 
 // harnessAdapter runs a language's instances through each family's harness.
 type harnessAdapter struct {
-	families []string
-	build    *builder
-	log      io.Writer
+	build *builder
+	log   io.Writer
 }
 
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
-	_, ok := harnesses[t.Family]
-	return ok && t.PerLang() && slices.Contains(a.families, t.Family)
+	_, ok := harnessFor(t.Family)
+	return ok && t.PerLang()
 }
 
 func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testreg.Instance) ([]testreg.Result, error) {
-	byFamily := map[string][]testreg.Instance{}
-	var families []string
+	// one call per harness: the conformance harness scores every surface
+	// of a leg in one run, so its families go to it together
+	byHarness := map[string][]testreg.Instance{}
+	var names []string
 	for _, inst := range instances {
-		if _, ok := byFamily[inst.Test.Family]; !ok {
-			families = append(families, inst.Test.Family)
+		h, ok := harnessFor(inst.Test.Family)
+		if !ok {
+			return nil, fmt.Errorf("%s: no harness for family %s", inst.Full, inst.Test.Family)
 		}
-		byFamily[inst.Test.Family] = append(byFamily[inst.Test.Family], inst)
+		if _, seen := byHarness[h.Name]; !seen {
+			names = append(names, h.Name)
+		}
+		byHarness[h.Name] = append(byHarness[h.Name], inst)
 	}
 	var all []testreg.Result
-	for _, fam := range families {
-		h, ok := harnesses[fam]
-		if !ok {
-			return all, fmt.Errorf("no harness for family %s", fam)
-		}
-		for _, step := range h.Build {
+	for _, name := range names {
+		h, _ := harnessFor(byHarness[name][0].Test.Family)
+		fam := h.Name
+		for _, step := range h.Build(lang) {
 			if err := a.build.run(ctx, step); err != nil {
 				return all, err
 			}
@@ -133,7 +166,7 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 		if err != nil {
 			return all, err
 		}
-		res, err := runHarness(ctx, h.Cmd(lang, work), byFamily[fam], a.log)
+		res, err := runHarness(ctx, h.Cmd(lang, work), byHarness[name], a.log)
 		if rmErr := os.RemoveAll(work); rmErr != nil && err == nil {
 			err = rmErr
 		}

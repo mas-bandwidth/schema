@@ -846,6 +846,10 @@ type runOptions struct {
 	// absence of any grain fails it, and the success footer never prints
 	// beside one (docs/SPEC-CONFORMANCE.md §2: an absence is never a pass).
 	complete bool
+	// capture, when set, is handed every leg's surface results and leg
+	// failures once the run is scored: the corpus adapter (adapter.go) reads
+	// each case's verdict from it.
+	capture func(results map[string]map[string]*result, legFailures map[string][]string)
 }
 
 // parseSurfaces reads --surfaces: a comma-separated subset of surfaces, or
@@ -1270,6 +1274,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if err := writeResults(opts.results, langs, results); err != nil {
 			return false, err
 		}
+	}
+	if opts.capture != nil {
+		opts.capture(results, legFailures)
 	}
 	var ok bool
 	if opts.complete {

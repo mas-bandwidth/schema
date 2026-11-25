@@ -92,6 +92,15 @@ func usage() {
              fixed and variable roots, run the compiler engine as oracle, and
              verify FromJson verdict, canonical ToJson, Save wire, and
              Load(wire) -> ToJson across matching drivers in two batched calls.
+  registry-rows
+             print every case of every surface as a test registry row
+             (adapter.go); test/registry/registry.jsonl holds exactly these.
+
+  adapter    the test registry's corpus harness (docs/TEST-REGISTRY.md): read
+             request lines on stdin, run --lang's leg over every surface as
+             run --only <lang> --claims scores it, and write one
+             SCHEMA_TEST_RESULT line per request on stdout.
+
   cook-differential
              cook every cook-write row's wire with the tool's engine and
              with the C++ reference driver (--driver, default its committed
@@ -328,6 +337,43 @@ func main() {
 		}
 		if !ok {
 			os.Exit(1)
+		}
+	case "registry-rows":
+		reps, err := readReports(*reports)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		rows, err := corpusRows(m, reps, *jsonDir)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeRegistryRows(os.Stdout, rows); err != nil {
+			fatalf("%v", err)
+		}
+	case "adapter":
+		if *lang == "" {
+			fatalf("adapter: --lang names the leg whose instances are on standard input")
+		}
+		legRunner := func(lang string) (legRun, error) {
+			set, err := claimsFor(m, *drivers, lang, true)
+			if err != nil {
+				return legRun{}, err
+			}
+			var got legRun
+			opts := runOptions{claims: set, strictRows: true, capture: func(results map[string]map[string]*result, legFailures map[string][]string) {
+				got = legRun{results: results[lang], legFailures: legFailures[lang]}
+			}}
+			// the matrix is the run's log: on stderr, never the protocol
+			if _, err := runWith(os.Stderr, m, *manifest, *jsonDir, *reports, *drivers, *work, lang, "", opts); err != nil {
+				return legRun{}, err
+			}
+			if got.results == nil {
+				return legRun{}, fmt.Errorf("adapter: the run scored no surface of the %s leg", lang)
+			}
+			return got, nil
+		}
+		if err := adapterMain(os.Stdin, os.Stdout, os.Stderr, m, *lang, legRunner); err != nil {
+			fatalf("%v", err)
 		}
 	case "cross-read":
 		if *lang == "" || *writes == "" {
