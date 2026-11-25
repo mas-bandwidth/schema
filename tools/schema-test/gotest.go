@@ -47,6 +47,13 @@ type goTestAdapter struct {
 
 	// goTest runs go test; nil is execGoTest (a test stands in for it)
 	goTest func(ctx context.Context, dir string, args []string, stdout, stderr io.Writer) error
+
+	// build runs the builds the tests read (goneeds.go); nil is one of the
+	// adapter's own
+	build      *builder
+	needsOnce  sync.Once
+	needsTable []testreg.GoNeed
+	needsErr   error
 }
 
 func newGoTestAdapter(log io.Writer, root string, jobs int) *goTestAdapter {
@@ -135,15 +142,32 @@ func (a *goTestAdapter) moduleOf(pkg string) (string, string, error) {
 }
 
 func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	calls := goTestCalls{}
-	for _, inst := range instances {
+	ins := make([]goTestInputs, len(instances))
+	refs := make([]goTestRef, len(instances))
+	for i, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", inst.Full, err)
 		}
-		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
+		ins[i], refs[i] = in, goTestRef{in.Package, in.Test}
 	}
-	return a.runCalls(ctx, calls)
+	// what the tests read is built first (goneeds.go); Prepare has built it,
+	// and the builder answers a step it ran at once
+	failed, err := a.buildNeeds(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+	var out []testreg.Result
+	calls := goTestCalls{}
+	for i, inst := range instances {
+		if why := a.needsFailure(failed, refs[i]); why != "" {
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+			continue
+		}
+		calls.add(goTestPackage{pkg: ins[i].Package}, ins[i].Test, inst, a.callBudget())
+	}
+	res, err := a.runCalls(ctx, calls)
+	return append(out, res...), err
 }
 
 // goTestPackage is one go test invocation's package and its build tags.

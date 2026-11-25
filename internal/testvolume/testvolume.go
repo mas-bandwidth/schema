@@ -102,7 +102,7 @@ func Folds(dir string) error {
 		return err
 	}
 	if lerr != nil {
-		return fmt.Errorf("%w: %v", errApart, lerr)
+		return fmt.Errorf("%w: %w", errApart, lerr)
 	}
 	if !os.SameFile(made, other) {
 		return errApart

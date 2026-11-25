@@ -34,11 +34,20 @@ SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci -run '^TestSquirrelAllPortDifferenti
 # recipe runs, after every file is read: it holds every registered leg. It runs
 # after the prerequisites above are done, so no target is built by two makes at
 # once, and the legs already built are up to date and cost nothing.
-.PHONY: schema-squirrel-all-port-differential
-schema-squirrel-all-port-differential: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
+#
+# THE HARNESS HALF IS ITS OWN TARGET: schema-squirrel-all-port-differential-
+# harness writes the answer tree and nothing else. It is the build
+# TestSchemaSquirrelAllPortDifferential reads, declared in
+# test/registry/go-needs.txt, so whatever runs that test (schema-test in
+# Prepare, tools/fullrun) builds it first;
+# the whole lens is the harness, then the test.
+.PHONY: schema-squirrel-all-port-differential schema-squirrel-all-port-differential-harness
+schema-squirrel-all-port-differential-harness: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
 	$(if $(strip $(CONFORMANCE_LEGS)),@$(MAKE) --no-print-directory $(CONFORMANCE_LEGS))
 	@rm -rf $(SQUIRREL_DIFFERENTIAL_WORK)
 	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK)
+
+schema-squirrel-all-port-differential: schema-squirrel-all-port-differential-harness
 	@SCHEMA_SQUIRREL_DIFFERENTIAL_WORK=$(SQUIRREL_DIFFERENTIAL_WORK) \
 		nice -n 19 $(GO_TEST) -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_TEST)
 

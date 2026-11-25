@@ -24,7 +24,9 @@ var goUnion = harness{
 	Name:  "go-union",
 	Build: func(string) [][]string { return nil },
 	Run: func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
-		return newGoTestAdapter(log, ".", goTestJobs()).runUnion(ctx, lang, instances)
+		a := newGoTestAdapter(log, ".", goTestJobs())
+		a.build = builderFrom(ctx) // the corpus adapter's, which Prepare built with
+		return a.runUnion(ctx, lang, instances)
 	},
 }
 
@@ -38,6 +40,11 @@ func isUnion(t testreg.Test) bool {
 func (a *goTestAdapter) runUnion(ctx context.Context, lang string, instances []testreg.Instance) ([]testreg.Result, error) {
 	var out []testreg.Result
 	calls := goTestCalls{}
+	// what the tests read is built first (goneeds.go)
+	failed, err := a.buildNeeds(ctx, unionRefs(lang, instances))
+	if err != nil {
+		return nil, err
+	}
 	for _, inst := range instances {
 		tests, ok, err := testreg.GoTestsOf(inst.Test)
 		if !ok || err != nil {
@@ -50,6 +57,10 @@ func (a *goTestAdapter) runUnion(ctx context.Context, lang string, instances []t
 		}
 		if !a.declared(g.Package)[g.Test] {
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("MISSING: %s answers %s with %s %s, which its package's source does not declare", lang, inst.Test.Key, g.Package, g.Test)})
+			continue
+		}
+		if why := a.needsFailure(failed, goTestRef{g.Package, g.Test}); why != "" {
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
 		calls.add(goTestPackage{pkg: g.Package, tags: g.Tags}, g.Test, inst, a.callBudget())

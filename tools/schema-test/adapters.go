@@ -114,7 +114,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// to its harness for any language, and a case a language does not
 		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
-		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
+		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
@@ -204,11 +204,19 @@ func (a *harnessAdapter) Prepare(ctx context.Context, lang string, instances []t
 				return err
 			}
 		}
+		// the builds the union rows' Go tests read (goneeds.go); one that
+		// fails fails the rows that read it, in Run
+		if h.Name == goUnion.Name {
+			if _, err := newGoTestAdapterBuilding(a.log, ".", 1, a.build).buildNeeds(ctx, unionRefs(lang, instances)); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
 func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testreg.Instance) ([]testreg.Result, error) {
+	ctx = withBuilder(ctx, a.build)
 	// one call per harness: the conformance harness scores every surface
 	// of a leg in one run, so its families go to it together
 	byHarness := map[string][]testreg.Instance{}
