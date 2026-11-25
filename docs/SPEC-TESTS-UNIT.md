@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2888.
+Unit tests every language answers: 2. Language-free tests: 2889.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1628,12 +1628,13 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tablewire.writers-refuse-values-negative-control` | `gotest` | Go test TestWritersRefuseValuesNegativeControl in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestWritersRefuseValuesNegativeControl` | the Go test passes | `internal/tablewire/writerrefusal_test.go:134` |
 | `none.unit.compiler.tablewire.writers-refuse-values-outside-their-declaration` | `gotest` | Go test TestWritersRefuseValuesOutsideTheirDeclaration in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestWritersRefuseValuesOutsideTheirDeclaration` | the Go test passes | `internal/tablewire/writerrefusal_test.go:59` |
 
-#### `compiler` family `testselect`, 4 tests
+#### `compiler` family `testselect`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.compiler.testselect.a-name-nightly-in-one-package-only-fails` | `gotest` | Go test TestANameNightlyInOnePackageOnlyFails in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestANameNightlyInOnePackageOnlyFails` | the Go test passes | `internal/testselect/testselect_test.go:103` |
-| `none.unit.compiler.testselect.an-empty-selection-fails` | `gotest` | Go test TestAnEmptySelectionFails in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestAnEmptySelectionFails` | the Go test passes | `internal/testselect/testselect_test.go:92` |
+| `none.unit.compiler.testselect.a-name-nightly-in-one-package-only-fails` | `gotest` | Go test TestANameNightlyInOnePackageOnlyFails in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestANameNightlyInOnePackageOnlyFails` | the Go test passes | `internal/testselect/testselect_test.go:135` |
+| `none.unit.compiler.testselect.a-per-language-rows-go-tests-are-nightly` | `gotest` | Go test TestAPerLanguageRowsGoTestsAreNightly in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestAPerLanguageRowsGoTestsAreNightly` | the Go test passes | `internal/testselect/testselect_test.go:94` |
+| `none.unit.compiler.testselect.an-empty-selection-fails` | `gotest` | Go test TestAnEmptySelectionFails in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestAnEmptySelectionFails` | the Go test passes | `internal/testselect/testselect_test.go:124` |
 | `none.unit.compiler.testselect.names-are-what-go-test-runs` | `gotest` | Go test TestNamesAreWhatGoTestRuns in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestNamesAreWhatGoTestRuns` | the Go test passes | `internal/testselect/testselect_test.go:46` |
 | `none.unit.compiler.testselect.select-is-the-complement-less-nightly` | `gotest` | Go test TestSelectIsTheComplementLessNightly in ./internal/testselect | `package: ./internal/testselect`<br>`test: TestSelectIsTheComplementLessNightly` | the Go test passes | `internal/testselect/testselect_test.go:61` |
 
