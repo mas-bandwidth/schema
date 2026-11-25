@@ -19,10 +19,15 @@ var builtReads = map[string]string{
 }
 
 // TestEveryBuiltReadIsDeclared: a package whose Go tests open a build output
-// by path has a GoNeedsPath line naming the target that writes it. Undeclared,
-// the read passed or failed by which unit had run in the checkout before it
-// (fullrun ab1e1e195a: javatable red "no fixed-form corpus", the other corpus
-// readers green behind a unit that happened to build it).
+// by path has a GoNeedsPath line naming the target that writes it, and a line
+// whose tests are named reads it from one of them. A package reads an output
+// when any of its files names it by path (a helper beside its tests counts).
+// A helper package that reads it for its callers (internal/fixedproof) is not
+// followed: importing one is not reading through it (internal/ci takes only
+// its case list), so its callers are held by their own lines. Undeclared, the read passed or failed by
+// which unit had run in the checkout before it (fullrun ab1e1e195a:
+// javatable red "no fixed-form corpus", the other corpus readers green
+// behind a unit that happened to build it).
 func TestEveryBuiltReadIsDeclared(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..")
@@ -35,7 +40,17 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 		declared[n.Package+" "+n.Target] = true
 	}
 	self := filepath.Join("internal", "testreg", "goneeds_test.go")
-	want := map[string]string{} // "pkg target" -> a file that reads it
+	type pkgInfo struct {
+		reads    map[string]string // target -> a file that names its output
+		hasTests bool
+	}
+	pkgs := map[string]*pkgInfo{} // "./dir"
+	info := func(pkg string) *pkgInfo {
+		if pkgs[pkg] == nil {
+			pkgs[pkg] = &pkgInfo{reads: map[string]string{}}
+		}
+		return pkgs[pkg]
+	}
 	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -51,12 +66,17 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, "_test.go") || rel == self {
+		if !strings.HasSuffix(path, ".go") || rel == self {
 			return nil
 		}
 		src, err := os.ReadFile(path)
 		if err != nil {
 			return err
+		}
+		pkg := "./" + filepath.ToSlash(filepath.Dir(rel))
+		p := info(pkg)
+		if strings.HasSuffix(path, "_test.go") {
+			p.hasTests = true
 		}
 		lits := stringLiterals(src)
 		for i, lit := range lits {
@@ -66,7 +86,7 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 			}
 			for frag, target := range builtReads {
 				if readsBuilt(prev, lit, frag) {
-					want["./"+filepath.ToSlash(filepath.Dir(rel))+" "+target] = rel
+					p.reads[target] = rel
 				}
 			}
 		}
@@ -75,11 +95,23 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	want := map[string]string{} // "pkg target" -> why it reads it
+	for pkg, p := range pkgs {
+		if !p.hasTests {
+			continue
+		}
+		for target, file := range p.reads {
+			want[pkg+" "+target] = file + " reads its output"
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("found no Go test that reads a build output: the scan reads nothing")
+	}
 	var missing []string
-	for k, file := range want {
+	for k, why := range want {
 		if !declared[k] {
 			pkg, target, _ := strings.Cut(k, " ")
-			missing = append(missing, "needs "+pkg+" <its tests> "+target+"   ("+file+" reads its output)")
+			missing = append(missing, "needs "+pkg+" <its tests> "+target+"   ("+why+")")
 		}
 	}
 	sort.Strings(missing)
@@ -90,7 +122,8 @@ func TestEveryBuiltReadIsDeclared(t *testing.T) {
 
 // readsBuilt reports whether a string literal names the build output frag as
 // a path a test opens: the element after "build" (filepath.Join(..,
-// "build", frag)), or a relative path to it ("../../../build/" + frag). A
+// "build", frag)), or a relative path to it or into it
+// ("../../../build/" + frag, "../../build/" + frag + "/manifest.txt"). A
 // literal that only mentions it inside other text (a workflow line, a fake
 // script) or under another directory is not a read.
 func readsBuilt(prev, lit, frag string) bool {
@@ -101,7 +134,7 @@ func readsBuilt(prev, lit, frag string) bool {
 	for strings.HasPrefix(p, "../") {
 		p = p[len("../"):]
 	}
-	return p == "build/"+frag
+	return p == "build/"+frag || strings.HasPrefix(p, "build/"+frag+"/")
 }
 
 // stringLiterals is every string literal in a Go file, between its quotes.

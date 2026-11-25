@@ -67,7 +67,7 @@ func TestAUnitBuildsWhatItsTestsReadFirst(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(out, logsDir), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		r := &Runner{M: Manifest{Run: "r", Shard: "s"}, Out: out, Cmd: cmd, Now: time.Now, Log: &bytes.Buffer{}}
+		r := &Runner{M: Manifest{Run: "r", Shard: "s"}, Out: out, Cmd: cmd, Now: func() time.Time { return time.Unix(0, 0) }, Log: &bytes.Buffer{}}
 		u := Unit{ID: "gotest/internal/x/001", Kind: KindGoTest, Dir: "./internal/x", Args: []string{"TestA"},
 			Names: []Name{{Name: "unmoved/go-test/internal/x/TestA", Pkg: "./internal/x", Test: "TestA"}}, Needs: []string{"corpus"}}
 		res, err := r.runUnit(context.Background(), u, nil, filepath.Join(logsDir, "u.log"))
@@ -86,5 +86,37 @@ func TestAUnitBuildsWhatItsTestsReadFirst(t *testing.T) {
 		if len(ran) != 2 || ran[1][0] != "go" || res[0].Verdict != Pass {
 			t.Errorf("a needs build that passed: ran %v, verdict %+v", ran, res[0])
 		}
+	}
+}
+
+// TestANeedsBuildRunsForTheBench: a unit whose tests build for another OS
+// (GOOS) builds what they read for the bench it runs on: the make carries no
+// GOOS, or every go build in it would cross-compile the clone's own tools,
+// while the unit's go test carries it.
+func TestANeedsBuildRunsForTheBench(t *testing.T) {
+	t.Parallel()
+	goos := map[string]string{}
+	cmd := func(_ context.Context, argv []string, env map[string]string, out io.Writer) error {
+		goos[argv[0]] = env["GOOS"]
+		if argv[0] == "go" {
+			_, _ = io.WriteString(out, `{"Action":"pass","Test":"TestA"}`+"\n")
+		}
+		return nil
+	}
+	out := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(out, logsDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{M: Manifest{Run: "r", Shard: "s"}, Out: out, Cmd: cmd, Now: func() time.Time { return time.Unix(0, 0) }, Log: &bytes.Buffer{}}
+	u := Unit{ID: "gotest/internal/x/001", Kind: KindGoTest, Dir: "./internal/x", GOOS: "windows", Args: []string{"TestA"},
+		Names: []Name{{Name: "unmoved/go-test/internal/x/TestA", Pkg: "./internal/x", Test: "TestA"}}, Needs: []string{"corpus"}}
+	if _, err := r.runUnit(context.Background(), u, map[string]string{"HOME": "/h"}, filepath.Join(logsDir, "u.log")); err != nil {
+		t.Fatal(err)
+	}
+	if g, ran := goos["make"]; !ran || g != "" {
+		t.Errorf("the needs build ran with GOOS=%q (ran %v), want the bench's own", g, ran)
+	}
+	if goos["go"] != "windows" {
+		t.Errorf("the unit's go test ran with GOOS=%q, want windows", goos["go"])
 	}
 }

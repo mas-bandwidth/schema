@@ -405,6 +405,7 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	bench := env // the needs build runs for the bench, never under the unit's GOOS
 	argv, env := unitArgv(u, r.SchemaTest, env)
 	switch u.Kind {
 	case KindRegistry, KindGoTest, KindGoBench:
@@ -421,7 +422,7 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 		logf(f, "# %s\n", strings.Join(mk, " "))
 		var out bytes.Buffer
 		start := r.Now()
-		err := r.Cmd(ctx, mk, env, io.MultiWriter(f, &out))
+		err := r.Cmd(ctx, mk, bench, io.MultiWriter(f, &out))
 		secs := r.Now().Sub(start).Seconds()
 		logf(f, "\n# exit: %v, %.1fs\n", err, secs)
 		if ctx.Err() != nil {

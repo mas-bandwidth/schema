@@ -9,7 +9,7 @@
 #   needs ./<package> <top-level test regexp, whole name> <make target>
 
 # the C++ reference's fixed-form byte oracle, build/fixedform-corpus
-needs ./compiler TestMooShipsTheLockLineage tables-fixedform-corpus
+needs ./compiler Test(Moo|Goose)ReadsTheLockedOlderLayout tables-fixedform-corpus
 needs ./internal/codegen/cpptable .* tables-fixedform-corpus
 needs ./internal/codegen/cstable .* tables-fixedform-corpus
 needs ./internal/codegen/ctable .* tables-fixedform-corpus

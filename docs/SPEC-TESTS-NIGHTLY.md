@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 200. Language-free tests: 1356.
+Nightly tests every language answers: 200. Language-free tests: 1357.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -3818,6 +3818,12 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 ### Type `tooling`
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
+
+#### `tooling` family `ci`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:120` |
 
 #### `tooling` family `makefile`, 4 tests
 

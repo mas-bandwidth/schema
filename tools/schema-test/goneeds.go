@@ -102,8 +102,12 @@ func (a *goTestAdapter) Prepare(ctx context.Context, _ string, instances []testr
 		}
 		refs = append(refs, goTestRef{in.Package, in.Test})
 	}
-	_, err := a.buildNeeds(ctx, refs)
-	return err
+	if _, err := a.buildNeeds(ctx, refs); err != nil {
+		return err
+	}
+	// a build its deadline cut short is the deadline's, named as such by the
+	// run, never a build failure answered from the builder's record
+	return ctx.Err()
 }
 
 // unionRefs is the Go tests a language's union instances run.

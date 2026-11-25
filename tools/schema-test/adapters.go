@@ -210,6 +210,9 @@ func (a *harnessAdapter) Prepare(ctx context.Context, lang string, instances []t
 			if _, err := newGoTestAdapterBuilding(a.log, ".", 1, a.build).buildNeeds(ctx, unionRefs(lang, instances)); err != nil {
 				return err
 			}
+			if err := ctx.Err(); err != nil {
+				return err // the deadline's, never a build failure
+			}
 		}
 	}
 	return nil

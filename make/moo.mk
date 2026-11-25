@@ -40,7 +40,8 @@ dist-moo:
 # source, and a sandboxed bench job has no network to fetch it. An SDK build
 # whose PIN is MOO_PIN and whose moo answers is linked into dist/moo, so every
 # path is unchanged; with none, dist-moo builds the pin from source.
-$(MOO_DIST)/PIN:
+# make/moo.mk holds MOO_PIN: a pin moved there restages dist/moo.
+$(MOO_DIST)/PIN: make/moo.mk
 	@for pin in $(wildcard $(NOVA_SDK)/moo-*/bin/PIN); do \
 		d=$$(dirname "$$pin"); \
 		if [ "$$(cat "$$pin")" = "$(MOO_PIN)" ] && "$$d/moo" --version >/dev/null 2>&1 && [ -x "$$d/moo-analyze" ]; then \

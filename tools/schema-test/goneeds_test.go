@@ -174,3 +174,18 @@ func writeNoNeeds(t *testing.T, root string) {
 		t.Fatal(err)
 	}
 }
+
+// TestAPrepareCutShortByItsDeadlineSaysSo: a needs build that the Prepare
+// deadline ended is the deadline's: Prepare returns the context's error, so
+// the run names the timeout, never the killed build's own failure.
+func TestAPrepareCutShortByItsDeadlineSaysSo(t *testing.T) {
+	t.Parallel()
+	root := needsRoot(t)
+	a := newGoTestAdapterBuilding(io.Discard, root, 1, plantedBuilder("corpus", errors.New("build step: signal: killed")))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	inst := testreg.Instance{Full: "none.unit.g.TestReads", Test: testreg.Test{Seconds: 10, Inputs: []byte(`{"package":"./g","test":"TestReads"}`)}}
+	if err := a.Prepare(ctx, "", []testreg.Instance{inst}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Prepare under an ended deadline: %v, want the context's error", err)
+	}
+}

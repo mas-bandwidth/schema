@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2919.
+Unit tests every language answers: 2. Language-free tests: 2921.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2165,7 +2165,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fixedunlawful.judge-refuses-a-hollow-driver` | `gotest` | Go test TestJudgeRefusesAHollowDriver in ./internal/fixedunlawful | `package: ./internal/fixedunlawful`<br>`test: TestJudgeRefusesAHollowDriver` | the Go test passes | `internal/fixedunlawful/fixedunlawful_test.go:110` |
 | `none.unit.tooling.fixedunlawful.unanswered-refuses` | `gotest` | Go test TestUnansweredRefuses in ./internal/fixedunlawful | `package: ./internal/fixedunlawful`<br>`test: TestUnansweredRefuses` | the Go test passes | `internal/fixedunlawful/fixedunlawful_test.go:78` |
 
-#### `tooling` family `fullrun`, 39 tests
+#### `tooling` family `fullrun`, 40 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2173,6 +2173,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.fullrun.a-bench-that-stops-answering-is-a-dead-shard` | `gotest` | Go test TestABenchThatStopsAnsweringIsADeadShard in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestABenchThatStopsAnsweringIsADeadShard` | the Go test passes | `tools/fullrun/fullrun_test.go:846` |
 | `none.unit.tooling.fullrun.a-dead-shard-is-a-red-and-runs-again` | `gotest` | Go test TestADeadShardIsARedAndRunsAgain in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestADeadShardIsARedAndRunsAgain` | the Go test passes | `tools/fullrun/fullrun_test.go:416` |
 | `none.unit.tooling.fullrun.a-go-test-unit-takes-the-builds-its-tests-read` | `gotest` | Go test TestAGoTestUnitTakesTheBuildsItsTestsRead in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAGoTestUnitTakesTheBuildsItsTestsRead` | the Go test passes | `tools/fullrun/needs_test.go:20` |
+| `none.unit.tooling.fullrun.a-needs-build-runs-for-the-bench` | `gotest` | Go test TestANeedsBuildRunsForTheBench in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestANeedsBuildRunsForTheBench` | the Go test passes | `tools/fullrun/needs_test.go:96` |
 | `none.unit.tooling.fullrun.a-nested-module-test-runs-in-its-module` | `gotest` | Go test TestANestedModuleTestRunsInItsModule in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestANestedModuleTestRunsInItsModule` | the Go test passes | `tools/fullrun/fullrun_test.go:1221` |
 | `none.unit.tooling.fullrun.a-part-holds-no-unit-its-runner-cannot-run` | `gotest` | Go test TestAPartHoldsNoUnitItsRunnerCannotRun in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestAPartHoldsNoUnitItsRunnerCannotRun` | the Go test passes | `tools/fullrun/fullrun_test.go:1407` |
 | `none.unit.tooling.fullrun.a-registry-row-the-extract-cannot-read-is-a-red` | `gotest` | Go test TestARegistryRowTheExtractCannotReadIsARed in ./tools/fullrun | `package: ./tools/fullrun`<br>`test: TestARegistryRowTheExtractCannotReadIsARed` | the Go test passes | `tools/fullrun/fullrun_test.go:961` |
@@ -2967,7 +2968,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 92 tests
+#### `tooling` family `schema-test`, 93 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3003,6 +3004,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-plant-red-for-another-reason-fails` | `gotest` | Go test TestAPlantRedForAnotherReasonFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantRedForAnotherReasonFails` | the Go test passes | `tools/schema-test/main_test.go:95` |
 | `none.unit.tooling.schema-test.a-plant-result-carries-its-measured-seconds` | `gotest` | Go test TestAPlantResultCarriesItsMeasuredSeconds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantResultCarriesItsMeasuredSeconds` | the Go test passes | `tools/schema-test/plant_test.go:483` |
 | `none.unit.tooling.schema-test.a-plant-whose-planted-run-had-problems-fails` | `gotest` | Go test TestAPlantWhosePlantedRunHadProblemsFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantWhosePlantedRunHadProblemsFails` | the Go test passes | `tools/schema-test/main_test.go:292` |
+| `none.unit.tooling.schema-test.a-prepare-cut-short-by-its-deadline-says-so` | `gotest` | Go test TestAPrepareCutShortByItsDeadlineSaysSo in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPrepareCutShortByItsDeadlineSaysSo` | the Go test passes | `tools/schema-test/goneeds_test.go:181` |
 | `none.unit.tooling.schema-test.a-reason-echoed-by-a-broken-build-is-not-the-plants` | `gotest` | Go test TestAReasonEchoedByABrokenBuildIsNotThePlants in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReasonEchoedByABrokenBuildIsNotThePlants` | the Go test passes | `tools/schema-test/plant_test.go:217` |
 | `none.unit.tooling.schema-test.a-recipe-that-runs-go-test-without-json-fails` | `gotest` | Go test TestARecipeThatRunsGoTestWithoutJSONFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARecipeThatRunsGoTestWithoutJSONFails` | the Go test passes | `tools/schema-test/make_test.go:434` |
 | `none.unit.tooling.schema-test.a-row-whose-go-test-is-gone-is-missing` | `gotest` | Go test TestARowWhoseGoTestIsGoneIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARowWhoseGoTestIsGoneIsMissing` | the Go test passes | `tools/schema-test/gotest_test.go:56` |
@@ -3175,11 +3177,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-intrinsic-test-has-one-instance` | `gotest` | Go test TestAnIntrinsicTestHasOneInstance in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnIntrinsicTestHasOneInstance` | the Go test passes | `internal/testreg/gotests_test.go:76` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:408` |
 | `none.unit.tooling.testreg.each-writer-and-plant-is-a-call-of-its-own` | `gotest` | Go test TestEachWriterAndPlantIsACallOfItsOwn in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEachWriterAndPlantIsACallOfItsOwn` | the Go test passes | `internal/testreg/run_test.go:625` |
-| `none.unit.tooling.testreg.every-built-read-is-declared` | `gotest` | Go test TestEveryBuiltReadIsDeclared in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryBuiltReadIsDeclared` | the Go test passes | `internal/testreg/goneeds_test.go:25` |
+| `none.unit.tooling.testreg.every-built-read-is-declared` | `gotest` | Go test TestEveryBuiltReadIsDeclared in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryBuiltReadIsDeclared` | the Go test passes | `internal/testreg/goneeds_test.go:31` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
-| `none.unit.tooling.testreg.every-module-built-against-build-is-declared` | `gotest` | Go test TestEveryModuleBuiltAgainstBuildIsDeclared in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryModuleBuiltAgainstBuildIsDeclared` | the Go test passes | `internal/testreg/goneeds_test.go:164` |
+| `none.unit.tooling.testreg.every-module-built-against-build-is-declared` | `gotest` | Go test TestEveryModuleBuiltAgainstBuildIsDeclared in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryModuleBuiltAgainstBuildIsDeclared` | the Go test passes | `internal/testreg/goneeds_test.go:197` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:188` |
-| `none.unit.tooling.testreg.go-needs-select-by-package-and-whole-test-name` | `gotest` | Go test TestGoNeedsSelectByPackageAndWholeTestName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestGoNeedsSelectByPackageAndWholeTestName` | the Go test passes | `internal/testreg/goneeds_test.go:126` |
+| `none.unit.tooling.testreg.go-needs-select-by-package-and-whole-test-name` | `gotest` | Go test TestGoNeedsSelectByPackageAndWholeTestName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestGoNeedsSelectByPackageAndWholeTestName` | the Go test passes | `internal/testreg/goneeds_test.go:160` |
 | `none.unit.tooling.testreg.load-accepts-a-union-row` | `gotest` | Go test TestLoadAcceptsAUnionRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsAUnionRow` | the Go test passes | `internal/testreg/gotests_test.go:14` |
 | `none.unit.tooling.testreg.load-accepts-the-fixture` | `gotest` | Go test TestLoadAcceptsTheFixture in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsTheFixture` | the Go test passes | `internal/testreg/registry_test.go:56` |
 | `none.unit.tooling.testreg.load-refuses-a-bad-intrinsic` | `gotest` | Go test TestLoadRefusesABadIntrinsic in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesABadIntrinsic` | the Go test passes | `internal/testreg/gotests_test.go:109` |
