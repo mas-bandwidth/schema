@@ -538,6 +538,7 @@ func (p laneProof) covers(dir string) bool {
 }
 
 var (
+	makeGoTest     = strings.NewReplacer("$(GO_TEST_RED)", "go test", "$(GO_TEST)", "go test")
 	skipMakeTarget = regexp.MustCompile(`^([A-Za-z0-9_.%-]+(?:[ \t]+[A-Za-z0-9_.%-]+)*)[ \t]*:([^=]|$)`)
 	skipTagsFlag   = regexp.MustCompile(`-tags[ =]+["']?([A-Za-z0-9_, ]+?)["']?(\s+-|\s+\./|\s*$)`)
 	skipPkgToken   = regexp.MustCompile(`(^|\s)(\./[A-Za-z0-9_./-]*)`)
@@ -682,6 +683,9 @@ func laneProofs(root string) ([]laneProof, error) {
 		rel, _ := filepath.Rel(root, mf)
 		var targets []string
 		for i, line := range strings.Split(string(b), "\n") {
+			// the Makefile's go test runs through tools/gotestrun (GO_TEST, and
+			// GO_TEST_RED for a control): the same go test, read from its -json
+			line = makeGoTest.Replace(line)
 			if !strings.HasPrefix(line, "\t") {
 				if m := skipMakeTarget.FindStringSubmatch(line); m != nil && !strings.HasPrefix(line, ".PHONY") {
 					targets = strings.Fields(m[1])

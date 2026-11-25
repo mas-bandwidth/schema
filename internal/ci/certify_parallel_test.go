@@ -173,7 +173,7 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 			"$(MAKE) test-core-tables-2",
 			"$(MAKE) test-core-tables-3",
 			"TEST_LEGS_LOOP",
-			"go test ./...",
+			"$(GO_TEST) ./...",
 		}
 		if !slices.Equal(recipeCmds, wantCmds) {
 			errs = append(errs, fmt.Sprintf("Makefile test: recipe commands = %q, want exact sharded delegation %q", recipeCmds, wantCmds))
@@ -366,7 +366,7 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 		{
 			name: "unsharded recipe line added to Makefile test:",
 			cf:   certifyYAML,
-			mk:   strings.Replace(makefile, "\tgo test ./...\n", "\tgo test ./...\n\t$(MAKE) unsharded-new-gate\n", 1),
+			mk:   strings.Replace(makefile, "\t$(GO_TEST) ./...\n", "\t$(GO_TEST) ./...\n\t$(MAKE) unsharded-new-gate\n", 1),
 		},
 		{
 			name: "monolithic make test reintroduced into inline-gate",
