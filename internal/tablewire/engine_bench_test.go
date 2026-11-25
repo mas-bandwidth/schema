@@ -29,7 +29,7 @@ table Bench {
 }
 `
 
-const engineBenchText = `{"id":42,"x":1.5,"y":-2.25,"z":3.75,"name":"the quick brown fox","flags":123456789}`
+const engineBenchText = `{"id":42,"x":1.5,"y":-2.25,"z":3.75,"name":"the quick brown fox","flags":"123456789"}`
 
 func engineBenchModel(b *testing.B) *tabletext.Model {
 	b.Helper()
