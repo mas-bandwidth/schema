@@ -144,7 +144,7 @@ func proofRefsFromRecipes(recipes []recipe) (refs []proofRef, unread []string) {
 			// stale only if it is read off the package's own test files, so
 			// that is what is required of it; a list computed from anything
 			// else is a list this audit cannot check.
-			rest := r.cmd[strings.Index(r.cmd, "test/slowgate/proof"):]
+			_, rest, _ := strings.Cut(r.cmd, "test/slowgate/proof")
 			if own := strings.TrimPrefix(pkg, "./") + "/*_test.go"; !strings.Contains(rest, own) {
 				unread = append(unread, where+": "+label+" computes its required names with $(shell ...) from something other than "+pkg+"'s own _test.go files, so they are checked against nothing")
 			}
