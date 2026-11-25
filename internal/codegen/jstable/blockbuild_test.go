@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -37,7 +36,6 @@ import (
 // half of the same probe (docs/SPEC-TABLES.md §7.6) is tablecook.Cook's bytes
 // in both orders, and a buffer one byte short of the measure is left alone.
 func TestBlockBuildAndCookWriteJavaScript(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	node := jsNode(t)

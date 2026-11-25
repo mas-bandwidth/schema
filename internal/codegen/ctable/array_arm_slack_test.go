@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -28,7 +27,6 @@ import (
 // goes red.
 func TestPinnedArrayArmSlackC(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "cc (it compiles and runs the generated array-arm slack probe)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

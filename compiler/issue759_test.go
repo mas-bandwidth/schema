@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -130,7 +128,6 @@ func TestIssue759PacketBoolUnchangedWhenATableIsAdded(t *testing.T) {
 
 func issue759SyntaxCheckWire(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("generated C syntax check requires cc")

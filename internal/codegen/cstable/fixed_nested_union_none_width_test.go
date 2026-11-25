@@ -11,7 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -55,7 +54,6 @@ func nestedUnionNoneWidthSchema() string {
 // SCHEMA_REQUIRE_CORPUS.
 func cppNestedUnionNoneWidthBytes(t *testing.T, src string) (body, layout []byte) {
 	t.Helper()
-	slowtest.Gate(t, "an external toolchain")
 
 	u := unitFrom(t, src)
 	files, err := cpp.Generate(u)

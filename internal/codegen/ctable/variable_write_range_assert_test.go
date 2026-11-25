@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -96,7 +95,6 @@ func TestCVariableWriteRangeAssert(t *testing.T) {
 // build stops on the assert (exit 3) before a byte is written.
 func TestCVariableWriteRangeAssertCompiled(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("no C compiler on PATH")

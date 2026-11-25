@@ -37,7 +37,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -148,7 +147,6 @@ func sqVectorVerdictOf(t *testing.T, c sqVectorCase, plant bool, wire []byte) st
 
 func TestSquirrelPinnedVectorsAgreeWithTheGoEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	for _, c := range sqVectorCases {
 		t.Run(c.vector, func(t *testing.T) {
 			t.Parallel()
@@ -161,7 +159,6 @@ func TestSquirrelPinnedVectorsAgreeWithTheGoEngine(t *testing.T) {
 
 func TestSquirrelPinnedVectorsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	for _, c := range sqVectorCases {
 		if c.file == "" {
 			continue

@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -128,7 +127,6 @@ func TestJavaCountBelowMinRefused(t *testing.T) {
 	}
 
 	t.Run("jdk", func(t *testing.T) {
-		slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 		javac, java := javaTools(t)
 		packet, err := javacodegen.Generate(reader)
 		if err != nil {

@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -275,7 +274,6 @@ func checkLuauCardsSurfaceExpected(surface string, rows [][]string, outputs map[
 
 func TestLuauCardsConformanceStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and luau-analyze")
 	facade := luauCardsSources(t)
 	if bad := luauCardsStrictCheck(facade); len(bad) != 0 {
 		t.Fatalf("Luau cards sources are not on the strict read:\n%s", strings.Join(bad, "\n"))
@@ -320,7 +318,6 @@ func TestLuauCardsConformanceStrict(t *testing.T) {
 
 func TestLuauCardsConformanceStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and luau-analyze")
 	sabotages := []struct {
 		name, file, from, to string
 	}{

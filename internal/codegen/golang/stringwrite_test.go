@@ -78,7 +78,6 @@ func generatedFunc(t *testing.T, files map[string][]byte, decl string) string {
 // Go toolchain.
 func runStringWriteRefusalProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 
 	const probe = `package note
 

@@ -29,7 +29,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -263,7 +262,6 @@ func luaVTCellFailures(t *testing.T, c luaVTCell, mutate func(*testing.T, map[st
 // Functional (luaBinary): run with SCHEMA_SLOW=1.
 func TestLuaVariableTableCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted table runtime)")
 	for _, c := range luaVTCells {
 		t.Run(c.row, func(t *testing.T) {
 			t.Parallel()
@@ -289,7 +287,6 @@ func TestLuaVariableTableCells(t *testing.T) {
 // Functional (luaBinary): run with SCHEMA_SLOW=1.
 func TestLuaVariableTableCellsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted table runtime)")
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			src := string(files[file])

@@ -3,8 +3,6 @@ package mootable_test
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE TEXT THE WRITER REFUSES (docs/SPEC-TABLES.md §16.3, §16.14 W0): a
@@ -43,7 +41,6 @@ func textRefusalRun(t *testing.T, sabotage func(string) string) string {
 
 // TestMooJsonWriterRefusesIllFormedText: both damaged records refuse (-1).
 func TestMooJsonWriterRefusesIllFormedText(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	if got := textRefusalRun(t, nil); got != "ok\n-1" {
 		t.Fatalf("moo's ToJsonMeasure over the well-formed, ill-formed and unpaired records: %q, want ok, -1, -1", got)
@@ -53,7 +50,6 @@ func TestMooJsonWriterRefusesIllFormedText(t *testing.T) {
 // TestMooJsonWriterRefusesIllFormedTextNegativeControl plants each refusal
 // out of json.moo in turn and requires exactly that record to write a text.
 func TestMooJsonWriterRefusesIllFormedTextNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	for _, c := range []struct {
 		name, site string

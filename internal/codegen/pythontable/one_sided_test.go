@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -27,7 +26,6 @@ table Root {
 
 func TestPythonOneSidedRange(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python one-sided integer range")
 	writer, reader := loadUnit(t, oneSidedWriter), loadUnit(t, oneSidedReader)
 	files, err := Generate(reader)
 	if err != nil {
@@ -98,7 +96,6 @@ for field, bad in (("lower", 4), ("upper", 10)):
 
 func TestPythonOneSidedRangeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python one-sided integer range negative control")
 	writer, reader := loadUnit(t, oneSidedWriter), loadUnit(t, oneSidedReader)
 	wire := wideEngineWire(t, writer, "Root", `{"lower":4,"upper":9}`)
 	files, err := Generate(reader)

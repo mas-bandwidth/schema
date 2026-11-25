@@ -140,7 +140,6 @@ extension on Uint8List {
 // builder is emitted from, and against the leg's own reader.
 func TestBlockBuildAndCookWriteDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	t.Run("go-builder-over-blockdemo", blockBuildMatchesTheGoBuilderOverBlockdemo)
 
 	u := unitFrom(t, blockBuildSchema)

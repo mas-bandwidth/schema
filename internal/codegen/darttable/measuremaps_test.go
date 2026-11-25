@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -37,7 +36,6 @@ type measureRootCase struct {
 // oracle on the four roots of the cause.
 func TestWireMeasureMixedAndMapRootsDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	dart := dartBinary(t)
 
 	repo := filepath.Join("..", "..", "..")

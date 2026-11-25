@@ -3,7 +3,6 @@ package cstable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 )
 
 func TestDeclaredFormsCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	for mask := range 8 {
 		forms := []string{"wire"}
 		for i, name := range []string{"json", "cook", "block"} {
@@ -86,7 +84,6 @@ func TestDeclaredFormsCSharp(t *testing.T) {
 }
 
 func TestDeclaredFormsCSharpMixedClosure(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t15RunCS(t, `package probe
 table Child | forms = "wire" { value int32 }
 table Root | forms = "wire,json,cook" {

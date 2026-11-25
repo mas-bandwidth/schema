@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -16,7 +15,6 @@ import (
 )
 
 func TestRustUnboundedTextNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (unbounded UTF-8 text extents)")
 	keyedRequireRustc(t)
 	schema, e := os.ReadFile("../../../testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema")
 	if e != nil {

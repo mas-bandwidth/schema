@@ -269,7 +269,6 @@ func knownLiteral(oracle []byte) string {
 // as layout_unknown, reporting the file's hash.
 func TestLuauFixedFormVersioning(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oldOracle, err := os.ReadFile(filepath.Join(corpus, "fu1.bin"))
 	if err != nil {
@@ -387,7 +386,6 @@ func forgedFile(hash uint64, entries [][4]uint64) []byte {
 // docs/SPEC-TABLES.md §3).
 func TestLuauFixedFormRefusals(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {
@@ -469,7 +467,6 @@ if F.read(T.FxRootDescriptor, fixed, inputs.oracle, report) ~= nil then print("r
 // the oracle comparison must then go red.
 func TestLuauFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {

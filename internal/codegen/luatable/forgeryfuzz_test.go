@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -465,7 +464,6 @@ func fnv64(s string) uint64 {
 
 func TestLuaForgeryFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaForgeryCost)
 	seed, n := luaForgeryKnobs(t)
 	t.Logf("Lua forgery fuzz: SEED=%#x N=%d per image", seed, n)
 	res := runLuaForgeryFuzz(t, seed, n, nil)
@@ -508,7 +506,6 @@ func luaForgeryEdit(t *testing.T, files map[string][]byte, name, old, repl strin
 // cook-check as a Check that opened what the tool refuses.
 func TestLuaForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaForgeryCost)
 	seed, n := luaForgeryKnobs(t)
 	t.Run("block extent bounds removed", func(t *testing.T) {
 		t.Parallel()

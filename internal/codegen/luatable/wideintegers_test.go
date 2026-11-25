@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luaJsonIntegersSchema is the unit the json-integers vectors read.
@@ -114,7 +113,6 @@ end
 // byte (plus the form's own trailing line feed).
 func TestLuaJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
 	rows := luaIntegerVectors(t, dir, "MANIFEST.tsv")
 	ordinaryRows := len(rows)

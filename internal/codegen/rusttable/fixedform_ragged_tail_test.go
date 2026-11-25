@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,7 +33,6 @@ import (
 // off a file with a byte too many, and REPORTS SUCCESS (malformed false).
 
 func TestFixedFormRaggedTail(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 

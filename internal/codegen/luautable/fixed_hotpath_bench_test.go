@@ -36,7 +36,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauFixedHotPathBenchEvidence measures the actual fixed runtime under
@@ -46,7 +45,6 @@ import (
 // 16-byte baseline.
 func TestLuauFixedHotPathBenchEvidence(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and live C++ fixed-form oracle")
 
 	const iters = 100000
 	const pairs = 8

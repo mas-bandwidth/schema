@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -90,7 +89,6 @@ void main() {
 // written.
 func TestDartBlockBuildRefusesDeprecatedVariant(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	dartBin := dartBinary(t)
 	u := unitFrom(t, deprecatedBlockSchema)
 	files, err := dart.Generate(u)

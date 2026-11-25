@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -204,7 +203,6 @@ func javaIdOrderAnswers(t *testing.T, mutate bool) map[string]string {
 	return answers
 }
 func TestJavaTransportIDFirstUse(t *testing.T) {
-	slowtest.Gate(t, "generated Java transport ID order")
 	got := javaIdOrderAnswers(t, false)
 	allIdOrderCases := idOrderCases(t)
 	if len(allIdOrderCases) == 0 {
@@ -224,7 +222,6 @@ func TestJavaTransportIDFirstUse(t *testing.T) {
 	}
 }
 func TestJavaTransportIDNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "generated Java transport ID negative control")
 	got := javaIdOrderAnswers(t, true)
 	allIdOrderCases := idOrderCases(t)
 	if len(allIdOrderCases) == 0 {

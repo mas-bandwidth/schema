@@ -728,7 +728,6 @@ func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLinea
 // compiles the lot with this leg's own toolchain. One `javac` per row; the column
 // is still the unit (§5.9 #18).
 func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaBuild, string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, _ := javaTools(t)
@@ -775,7 +774,6 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 }
 
 func runProbe(t *testing.T, classes, class, file string) probeRun {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	_, javaBin := javaTools(t)
@@ -1226,7 +1224,6 @@ func TestFixedVersioningTextUnderArmTrueBytes(t *testing.T) {
 }
 
 func runFixedVersioningTextUnderArm(t *testing.T, trueBytes bool) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	corpus := corpusDir(t)
@@ -1499,7 +1496,6 @@ public final class ArmProbe {
 // poisoned row handed in back at its declared default, while the same file
 // reads cleanly at sufficient capacity.
 func TestFixedVersioningPlanTooLarge(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := corpusDir(t)
 	fu1Bin := filepath.Join(corpus, "fu1.bin")

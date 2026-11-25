@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // readBack names each single-instance golden and the type that reads it.
@@ -43,7 +42,6 @@ func goldens(t testing.TB, names ...string) map[string][]byte {
 // byte, zero padding), writes the value back and requires the same bytes: the
 // reader recovers every field the writer is held to byte for byte.
 func TestMooTypeWireReadsTheGoldens(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromDir(t, repo("examples")))
 	var names []string
@@ -81,7 +79,6 @@ func TestMooTypeWireReadsTheGoldens(t *testing.T) {
 // short at every byte: each read refuses (or its serializeEnd does), and
 // none raises — hostile bytes never trap a reader.
 func TestMooTypeWireRefusesTruncation(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromDir(t, repo("examples")))
 	var names []string
@@ -114,7 +111,6 @@ func TestMooTypeWireRefusesTruncation(t *testing.T) {
 // (false, unlatched), a ranged int past its range (value_out_of_range), an
 // enum above max, a string with a zero byte (embedded_nul).
 func TestMooTypeWireRefusesHostileValues(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromDir(t, repo("examples")))
 	probe := `--!strict
@@ -194,7 +190,6 @@ end
 // contract makes the write return false before anything rides, unlatched,
 // and never traps (docs/PORT-MOO.md, THE WIRE).
 func TestMooTypeWireWriteRefusesOutOfContract(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromDir(t, repo("examples")))
 	probe := expandMacros(t, `--!strict

@@ -3,8 +3,6 @@ package javatable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestJavaReportResetDamageReasonAndCookCycle holds three Java ports to Go:
@@ -15,7 +13,6 @@ import (
 //   - cookMeasure and cookFrom REFUSE a cyclic pointer graph as data_cycle in
 //     every build (SPEC-TABLES.md §6.5): a read-of-input check, not an assert.
 func TestJavaReportResetDamageReasonAndCookCycle(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	const schema = `package probe
 

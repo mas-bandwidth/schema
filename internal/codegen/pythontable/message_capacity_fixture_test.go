@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestPythonMessageLoadCapacityFixture reads the committed capacity fixture,
@@ -22,7 +21,6 @@ import (
 // row runs here, in the leg's own tests, never in the shared suites.
 func TestPythonMessageLoadCapacityFixture(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreter")
 	root := filepath.Join("..", "..", "..")
 	u := loadUnitPaths(t, filepath.Join(root, "tables", "backend", "Backend.schema"))
 	files, err := Generate(u)

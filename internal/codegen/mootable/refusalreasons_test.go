@@ -22,8 +22,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // reasonRow is one pinned file.
@@ -122,7 +120,6 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 }
 
 func TestMooLoadRefusalReasons(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	rows := reasonRows(t)
 	answered := map[string]bool{}
@@ -145,7 +142,6 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 //   - the refusing counters (a value out of range, a kind mismatch). Damage
 //     is the walk's own discard, held by TestMooDamageDiscardNegativeControls.
 func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	for _, ctl := range []struct {
 		name, from, to string

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -93,7 +92,6 @@ func TestJsMessageNamedIntegerHeldWhole(t *testing.T) {
 	}
 
 	t.Run("node", func(t *testing.T) {
-		slowtest.Gate(t, "node (it runs the generated message read)")
 		node := jsNode(t)
 		dir := t.TempDir()
 		base, err := js.Generate(reader)

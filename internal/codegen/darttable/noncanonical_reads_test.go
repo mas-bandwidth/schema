@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -203,7 +202,6 @@ void main() {
 
 func TestDartReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 
 	repo := filepath.Join("..", "..", "..")
 	vector := filepath.Join(repo, "testdata", "wire", "non-canonical")

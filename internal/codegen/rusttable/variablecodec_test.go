@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -47,7 +46,6 @@ func cardsUnit(t *testing.T) *ir.Unit {
 // values card-populated.json names and re-saves it byte for byte, so a Rust
 // program reads and writes a card exactly as the Go, C, C++ and C# backends do.
 func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

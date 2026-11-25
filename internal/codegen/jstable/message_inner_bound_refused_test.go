@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -68,7 +67,6 @@ func TestJsMessageInnerBoundRefused(t *testing.T) {
 	}
 
 	t.Run("node", func(t *testing.T) {
-		slowtest.Gate(t, "node (it runs the generated reads)")
 		node := jsNode(t)
 		dir := t.TempDir()
 		base, err := js.Generate(u)

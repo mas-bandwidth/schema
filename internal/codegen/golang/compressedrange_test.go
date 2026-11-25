@@ -127,7 +127,6 @@ func cfloatValueExpr(v string) string {
 // writes every shared case through both paths, requiring each verdict.
 func runCompressedRangeProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 
 	var cases strings.Builder
 	for _, c := range cfloatCases(t) {

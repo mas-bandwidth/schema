@@ -12,8 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -87,7 +85,6 @@ int main( int argc, char ** argv )
 // debug assert to fire for each out-of-range 64-bit value, and an in-range
 // write to go through.
 func TestCppRangeAssertWideStorage(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated range-assert unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

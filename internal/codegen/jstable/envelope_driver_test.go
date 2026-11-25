@@ -9,15 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // Both the wire registry and report reader must reach the variable envelope,
 // while the original fixed ToolMessage keeps its previous-form refusal.
 func TestJavaScriptDriverToolEnvelope(t *testing.T) {
-	slowtest.Gate(t, "node and the shipped JavaScript generator")
 	node := jsNode(t)
 	repo := jsStrictRepo(t)
 	tree := t.TempDir()

@@ -93,7 +93,6 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 // GenerateLineage with a nil lock, exactly the way the compiler driver merges
 // the two.
 func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

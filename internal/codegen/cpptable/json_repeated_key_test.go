@@ -10,12 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 func TestCPPJsonRepeatedKeyEveryObject(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	u := loadHeldUnitPaths(t, "../../..", []string{"tables/examples/Tables.schema"})
 	model := tabletext.NewModel(u)

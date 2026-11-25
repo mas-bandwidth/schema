@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +19,6 @@ import (
 // counter zero, and every one of the eight rows handed in, poisoned to 0x5A, holds its
 // declared default in every field (R4).
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()

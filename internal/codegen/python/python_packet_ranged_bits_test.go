@@ -618,7 +618,6 @@ var rangedBitsCases = []rangedBitsCase{
 // back with the generated Go reader), and returns each case's bytes.
 func rangedBitsGoReference(t *testing.T, u *ir.Unit, root string) map[string][]byte {
 	t.Helper()
-	slowtest.Gate(t, "the generated Go reference")
 	files, err := golang.Generate(u)
 	if err != nil {
 		t.Fatalf("the Go emitter refused the fixture: %v", err)

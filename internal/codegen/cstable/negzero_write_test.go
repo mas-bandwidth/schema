@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -26,7 +25,6 @@ import (
 // writer. A plain float keeps its -0 (the control rows).
 func TestCSharpVariableWriterStoresCompressedNegZeroAsPositive(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# writer)")
 	schema, rows := csNegZeroWitness(t)
 	out, err := csNegZeroWriteRun(t, schema, csNegZeroWriteMain(rows))
 	if err != nil {

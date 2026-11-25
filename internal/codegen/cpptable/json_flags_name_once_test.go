@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -87,7 +86,6 @@ func cppJsonFlagsNameOnceUnitFile(t *testing.T, unit, root string) string {
 
 func TestCPPJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (c++)")
 
 	rows := cppJsonFlagsNameOnceRows(t)
 	unit, root := rows[0].unit, rows[0].root

@@ -21,8 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type mooF32EndsRow struct {
@@ -143,7 +141,6 @@ end
 `
 
 func TestMooCompressedF32EndsCorpus(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	rows := mooF32EndsRows(t)
 	src, err := os.ReadFile(filepath.Join(mooF32EndsCorpusDir, "Probe.schema"))

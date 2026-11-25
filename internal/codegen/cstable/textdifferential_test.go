@@ -40,7 +40,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -320,7 +319,6 @@ func runCsTextDifferential(t *testing.T, tc csTextDiffToolchain, edit func(map[s
 // instances, in both directions.
 func TestCsTextDifferential(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet (it compiles and runs a C# probe over the generated unit)")
 	tc := csTextDiffDiscover(t)
 	out, err := runCsTextDifferential(t, tc, nil)
 	if err != nil {
@@ -336,7 +334,6 @@ func TestCsTextDifferential(t *testing.T) {
 // failure.
 func TestCsTextDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet (it compiles and runs a C# probe over the generated unit)")
 	tc := csTextDiffDiscover(t)
 	out, err := runCsTextDifferential(t, tc, func(files map[string][]byte) {
 		total := 0

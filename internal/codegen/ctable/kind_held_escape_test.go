@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -19,7 +18,6 @@ import (
 // every load reads, so the framing of the vectors is not what refuses. Red on
 // the old escape, which skipped an unnamed 31 by its L and counted it unknown.
 func TestCKindHeldEscapeRefuses(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	unknown, named := ir.TableWireId("zzz"), ir.TableWireId("a")
 	cases := []struct {

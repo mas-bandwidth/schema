@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -147,7 +146,6 @@ check(reader.wireBadPointerIndex()==%t,'%s: bad pointer index');}
 
 func TestDartWireWalksReadLebAsTheLoad(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, wireLebSchema)
 	cases := buildWireLebCases(t, u)
 	files, err := Generate(u)
@@ -165,7 +163,6 @@ func TestDartWireWalksReadLebAsTheLoad(t *testing.T) {
 // probe red on the wires the one rule holds.
 func TestDartWireWalksReadLebAsTheLoadNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, wireLebSchema)
 	cases := buildWireLebCases(t, u)
 	files, err := Generate(u)

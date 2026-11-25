@@ -45,7 +45,6 @@ func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 	}
 
 	t.Run("wire", func(t *testing.T) {
-		slowtest.Gate(t, "node (it compiles and runs the generated flat codec)")
 		node := jsFlatNode(t)
 		for _, tc := range cases {
 			for _, production := range []bool{false, true} {

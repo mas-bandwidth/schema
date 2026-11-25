@@ -28,7 +28,6 @@ type Sabotage struct {
 // a control can never pass by patching nothing.
 func RunSabotaged(t *testing.T, root, pkg, run string, sabotages ...Sabotage) (out string, failed bool) {
 	t.Helper()
-	Gate(t, "the Go toolchain (it rebuilds the package with a sabotaged file)")
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		t.Fatal(err)

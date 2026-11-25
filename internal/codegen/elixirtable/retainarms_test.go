@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -17,7 +16,6 @@ import (
 
 func TestRetainedContainerUnionArmsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir container union arms retain their nested body records")
 	u := unitFrom(t, `package armretain
  enum Mode { A, B }
  type Inner { value int32 }
@@ -93,7 +91,6 @@ IO.puts("RETAINED_CONTAINER_ARM_OK")
 
 func TestPinnedNestedUnionRetainElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir nested union retention replays the permanent corpus vector")
 	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin")

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -15,7 +14,6 @@ import (
 // The measure walk cannot decide a load verdict: it does not earn prefix
 // counters and can inspect a map value whose key prevents admission.
 func TestCountCapPreservesLogicalPrefixCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	schema := "package probe\ntable Child { items []int32 }\nunion Pick { child Child }\ntable Root {\n inner Child\n objects map[int32]Child\n choices []Pick\n}\n"
 	u := unitFrom(t, schema)
 	m := tabletext.NewModel(u)

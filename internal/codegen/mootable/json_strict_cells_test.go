@@ -30,8 +30,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type textStrictCell struct {
@@ -121,7 +119,6 @@ func textStrictCellFailures(t *testing.T, c textStrictCell, runtime map[string][
 }
 
 func TestMooTextFormStrictCells(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	for _, c := range textStrictCells {
 		t.Run(c.row, func(t *testing.T) {
@@ -145,7 +142,6 @@ func TestMooTextFormStrictCells(t *testing.T) {
 // strict read, the writer plant the byte-for-byte write-back), and every
 // plant must turn some row red: no row's gate is green by holding nothing.
 func TestMooTextFormStrictCellsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	plant := func(name, from, to string) struct {
 		name    string

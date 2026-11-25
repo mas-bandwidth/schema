@@ -6,14 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestTextTotalConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir text-list total over-bound and discarded-tail refusals")
 	source := elixirTextListSource + `
  table Totals {
  a [..3]string(5) | total=5

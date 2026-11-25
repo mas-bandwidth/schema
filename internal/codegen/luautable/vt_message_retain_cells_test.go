@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // moduleList returns the unit's <Base>Table.luau module names, in sorted
@@ -71,7 +70,6 @@ func damageIdTableFraming(wire []byte) []byte {
 }
 
 func TestLuauVtMessageRetainCells(t *testing.T) {
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
 
 	t.Run("LoadMessages holds the strict read over the message form", func(t *testing.T) {
@@ -133,7 +131,6 @@ func TestLuauVtMessageRetainCells(t *testing.T) {
 }
 
 func TestLuauVtMessageRetainCellsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
 
 	t.Run("message form: the sabotage exposes partial bodies", func(t *testing.T) {

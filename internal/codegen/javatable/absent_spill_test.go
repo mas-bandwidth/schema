@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -74,7 +73,6 @@ func TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters(t *testing.T) {
 // is the wire-refused row's answer, never a failed case.
 func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	build := t.TempDir()
 	classes := filepath.Join(build, "classes")

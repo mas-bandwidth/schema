@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -635,7 +634,6 @@ func luaFuzzSummary(r luaFuzzResult) string {
 // §4.2).
 func TestLuaWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaFuzzCost)
 	res := runLuaFuzzDifferential(t, nil)
 	t.Log(luaFuzzSummary(res))
 	if res.roots == 0 || res.mutants == 0 {
@@ -671,7 +669,6 @@ const luaFuzzControlAnchor = `  elseif s == "string" then
 // red on exactly that.
 func TestLuaWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaFuzzCost)
 	sabotaged := strings.Replace(luaFuzzControlAnchor, "report.damaged = true\n", "", 1)
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luaFuzzControlAnchor); n != 1 {

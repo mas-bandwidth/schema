@@ -24,7 +24,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -234,7 +233,6 @@ func luauCutClone(b []byte) []byte { return append([]byte(nil), b...) }
 // controls drop the widened count and zero-extend the int16.
 func TestLuauFixedEvolutionNumericWidening(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	older := luauCutSource(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int16 = 0\n    f float32 = 0.0\n    trail uint32 = 2\n}\n")
 	newer := luauCutSource(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int32 = 0\n    f float64 = 0.0\n    trail uint32 = 2\n    added int32 = 77\n}\n")
 	eo := luauCutEntry(t, older, "N")
@@ -277,7 +275,6 @@ func TestLuauFixedEvolutionNumericWidening(t *testing.T) {
 // three records to land.
 func TestLuauFixedEvolutionReports(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := luauCutGen(t, luauCutSource(t, "package probe\nfixed table R\n{\n    a int8 = 0 | min = -128, max = 127\n    b uint8\n}\n"), nil)
 	if src := string(g.files["schema_fixed.luau"]); strings.Contains(src, "repeatedKey") || strings.Contains(src, "duplicate") {
 		t.Errorf("E9: the fixed runtime counts a repeated key")
@@ -335,7 +332,6 @@ end
 // negative control bounds the count by the reader's 8.
 func TestLuauFixedEvolutionArrayBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	older := luauCutCorpus(t, "VOLD_array_bounded_grow")
 	newer := luauCutCorpus(t, "VNEW_array_bounded_grow")
 	base := luauCutGen(t, older, nil).save(t, "ArrayBoundedGrow", "local v = T.NewArrayBoundedGrow(); v.Lead = 1; v.Vals = { 10, 20, 30, 0 }; v.ValsCount = 3; v.Trail = 2; values[1] = v")
@@ -378,7 +374,6 @@ func TestLuauFixedEvolutionArrayBounds(t *testing.T) {
 // negative control drops the UTF-8 check.
 func TestLuauFixedEvolutionText(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := luauCutGen(t, luauCutSource(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n"), nil)
 	clean := g.save(t, "T", "local v = T.NewT(); buffer.writestring(v.S, 0, \"ab\"); v.SLength = 2; values[1] = v")
 	body := len(clean) - 8
@@ -417,7 +412,6 @@ func TestLuauFixedEvolutionText(t *testing.T) {
 // drop the integer bound and the 128-bit bound.
 func TestLuauFixedEvolutionScalarBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	u := luauCutSource(t, "package probe\nfixed table T\n{\n    x int32 = 0 | min = -5, max = 5\n    s int128 = 0 | min = -500, max = 500\n    u uint16 = 10 | min = 10, max = 1000\n}\n")
 	e := luauCutEntry(t, u, "T")
 	body := func(x int32, s int64, v uint16) []byte {
@@ -508,7 +502,6 @@ const luauCutOrdinalOld = "package probe\nenum Tier { Bronze, Silver }\nunion Pi
 // each plan and the enum check.
 func TestLuauFixedEvolutionOrdinals(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	uOld := luauCutSource(t, luauCutOrdinalOld)
 	uNew := luauCutSource(t, strings.Replace(strings.Replace(luauCutOrdinalOld, "Silver }", "Silver, Gold }", 1), "    b int32\n", "    b int32\n    c int32\n", 1))
 	eo := luauCutEntry(t, uOld, "Lineage")
@@ -553,7 +546,6 @@ func TestLuauFixedEvolutionOrdinals(t *testing.T) {
 // negative control drops the byte check.
 func TestLuauFixedEvolutionNormalization(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := luauCutGen(t, luauCutSource(t, "package probe\nfixed table T\n{\n    flag bool\n    opt ?int32\n}\n"), nil)
 	file := g.save(t, "T", "local v = T.NewT(); v.Opt = 99; v.OptPresent = true; values[1] = v")
 	body := len(file) - 6
@@ -639,7 +631,6 @@ print(bad, cases)
 // sweep to find out-of-bound values.
 func TestLuauFixedEvolutionHostileInput(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	u := luauCutSource(t, luauCutHostSchema)
 	record := luauCutEntry(t, u, "Host").Record
 	g := luauCutGen(t, u, nil)

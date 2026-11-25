@@ -4,13 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestSparseDefaultsKeepDeclarationIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	source := filepath.Join(t.TempDir(), "Defaults.schema")
 	const schema = `package defaultidentity
 table First { count int32 = 3 | min = 2, max = 4 }

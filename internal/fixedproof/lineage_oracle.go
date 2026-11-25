@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -44,7 +43,6 @@ func (v CppVerdict) String() string {
 // answers the reference's own verdict on every lineage entry, lawful or not.
 func CppLineageReader(t *testing.T, id string, u *ir.Unit, root string, older []LineageEntry, capacity int) func(candidate []byte) CppVerdict {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler")
 	own, ok := LineageEntryOf(u, root)
 	if !ok {
 		t.Fatalf("%s: no fixed root %s", id, root)

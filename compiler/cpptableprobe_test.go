@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -20,7 +18,6 @@ import (
 // assertion.
 func runCppTableProbe(t *testing.T, files map[string][]byte, source string) {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("generated C++ execution requires c++")

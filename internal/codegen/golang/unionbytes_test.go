@@ -30,7 +30,6 @@ func TestGoUnionThenFixedByteArrayWire(t *testing.T) {
 // Behind slowtest.Gate — it shells out to the Go toolchain.
 func runUnionThenByteArrayProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 	const probe = `package t
 
 import (

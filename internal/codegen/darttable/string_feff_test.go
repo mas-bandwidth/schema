@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -88,7 +87,6 @@ func runFeffProbe(t *testing.T, files map[string][]byte, source string) error {
 
 func TestDartWireStringKeepsLeadingFeff(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	files, source := feffProbe(t)
 	if err := runFeffProbe(t, files, source); err != nil {
 		t.Fatal(err)
@@ -97,7 +95,6 @@ func TestDartWireStringKeepsLeadingFeff(t *testing.T) {
 
 func TestDartWireStringKeepsLeadingFeffNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	files, source := feffProbe(t)
 	const fixed = "v.name = _decodeText(r.data, r.pos, r.pos + keep)"
 	const reverted = "v.name = utf8.decode(r.data.sublist(r.pos, r.pos + keep))"

@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestElixirSaveMessagesRefusesCountOffShape(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 
 	u := unitFrom(t, `package messagecount
 

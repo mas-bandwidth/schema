@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // nameCapSchema is the small unit the read-closed vectors read
@@ -74,7 +73,6 @@ var nameCapRows = map[string]bool{
 // is the contract, so no reason is compared.
 func TestLuaJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-read-closed")
 	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))
 	if err != nil {

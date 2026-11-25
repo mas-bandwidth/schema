@@ -9,14 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestRustRequiredDefaultWritersNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (sixteen Required default writers)")
 	keyedRequireRustc(t)
 	fixture := "../../../testdata/conformance/feature-witnesses/required/default-writers/"
 	src, e := os.ReadFile(fixture + "Probe.schema")

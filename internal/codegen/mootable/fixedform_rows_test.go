@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -33,7 +32,6 @@ func analyzeSilent(t *testing.T, g *generatedUnit) {
 // corpus schemas and every versioning pair, each with its lineage — passes
 // moo-analyze with no output, the table runtime included.
 func TestMooFixedUnitsAnalyzeSilent(t *testing.T) {
-	slowtest.Gate(t, "moo-analyze (it loads the generated fixed-form modules)")
 	t.Parallel()
 	for _, v := range fixedOracleVectors {
 		t.Run(v.file, func(t *testing.T) {
@@ -55,7 +53,6 @@ func TestMooFixedUnitsAnalyzeSilent(t *testing.T) {
 // after the merge BOTH pre-merge files read on the merged build, the lineage
 // being the base and the two branches (the name-subset rule).
 func TestMooFixedVersioningLineageMerge(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	manifest := readFixedManifest(t, corpus)
@@ -89,7 +86,6 @@ func TestMooFixedVersioningLineageMerge(t *testing.T) {
 // nothing landed; the older reader, whose own entry it is, reads the same
 // three records whole.
 func TestMooFixedVersioningUnknownCensusMany(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_unknown_census"), readTestSchema(t, "VNEW_unknown_census")
@@ -118,7 +114,6 @@ func TestMooFixedVersioningUnknownCensusMany(t *testing.T) {
 // forged ordinal read by the identity plan and a compiled one REFUSES THE
 // WHOLE LOAD out_of_range on both, nothing landed; the unforged file lands.
 func TestMooFixedForgedOrdinalBothPlans(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_enum_append"), readTestSchema(t, "VNEW_enum_append")
@@ -153,7 +148,6 @@ func TestMooFixedForgedOrdinalBothPlans(t *testing.T) {
 // inside the new reader's) lands whole; the past file (aim 5.0, outside the
 // reader's range too) refuses the whole load out_of_range.
 func TestMooFixedVersioningCfloatRangeWidenBounds(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	manifest := readFixedManifest(t, corpus)
@@ -207,7 +201,6 @@ print(table.concat(parts))
 // counted, on the identity plan and on a compiled one; the same record with
 // those bytes 0 and 1 lands.
 func TestMooFixedHostileBoolBytes(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	older, newer := readTestSchema(t, "VOLD_hostile_bool"), readTestSchema(t, "VNEW_hostile_bool")
 	file := hostileBoolFile(t, older)
@@ -248,7 +241,6 @@ func cleanBoolFile(file []byte) []byte {
 // and requires the hostile file to land: the 0-or-1 test is what the gate
 // holds.
 func TestMooFixedHostileBoolNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	older := readTestSchema(t, "VOLD_hostile_bool")
 	file := hostileBoolFile(t, older)
@@ -280,7 +272,6 @@ func TestMooFixedHostileBoolNegativeControl(t *testing.T) {
 // strict moo read refuses it whole; the untouched instance it was cut from
 // lands.
 func TestMooFixedCfgPresentByteMutant(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	mutant, err := os.ReadFile(filepath.Join("testdata", "fixed_cfg_present_mutant.bin"))
 	if err != nil {
@@ -324,7 +315,6 @@ func TestMooFixedCfgPresentByteMutant(t *testing.T) {
 // the moo fixed read skipped before the strict cut (a present byte was read as
 // `~= 0`).
 func TestMooFixedCfgPresentByteMutantNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	mutant, err := os.ReadFile(filepath.Join("testdata", "fixed_cfg_present_mutant.bin"))
 	if err != nil {

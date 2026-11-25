@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -377,7 +376,6 @@ func t08P1(t *testing.T) {
 // the first finding abort, which is what P3's sweep needs. A compile or a
 // non-zero exit fails the test, so a probe cannot pass by not running.
 func t08Probe(t *testing.T, units []*ir.Unit, probe string, asan bool) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

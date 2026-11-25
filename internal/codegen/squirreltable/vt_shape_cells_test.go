@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -233,7 +232,6 @@ func vtShapeWant(t *testing.T) string {
 
 func TestSquirrelVtShapeCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	got := vtShapeSuite(t, nil)
 	if want := vtShapeWant(t); got != want {
 		t.Fatalf("the strict read's verdicts:\n%s\nwant\n%s", got, want)
@@ -242,7 +240,6 @@ func TestSquirrelVtShapeCells(t *testing.T) {
 
 func TestSquirrelVtShapeCellsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	// both repeated-slot judges: the wire-alone check and the decode walk
 	anchors := []string{
 		`if (key in f.seen) return wcDamage(c);`,

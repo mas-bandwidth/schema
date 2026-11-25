@@ -352,7 +352,6 @@ type bigInt = big.Int
 
 func luauFixedCorpus(t *testing.T) string {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	dir := filepath.Join(root, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
 		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS:

@@ -213,7 +213,6 @@ func runFixedFormHarnessScript(t *testing.T, root, elixirBin, otpPath, ebin, cor
 }
 
 func TestElixirFixedFormHarnessStrict(t *testing.T) {
-	slowtest.Gate(t, "the Elixir fixed-form harness (it compiles and runs test/elixir-fixedform/main.exs)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	elixircBin := elixircBinary(t, elixirBin)
@@ -236,7 +235,6 @@ func TestElixirFixedFormHarnessStrict(t *testing.T) {
 }
 
 func TestElixirFixedFormHarnessStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Elixir fixed-form harness negative control")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	elixircBin := elixircBinary(t, elixirBin)

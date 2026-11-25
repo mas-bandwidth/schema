@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -68,7 +67,6 @@ func rowWire(t *testing.T, row reportRow) []byte {
 // §3.1, §4). The verdict is the whole contract: no counter or reason is
 // compared (docs/rulings.json refusal-verdict-only).
 func TestMooTableLoadMatchesTheReports(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted load.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	rows := manifestRows(t)
@@ -122,7 +120,6 @@ func TestMooTableLoadMatchesTheReports(t *testing.T) {
 // one. The control patches the emitted load.moo (one anchor, matched exactly
 // once) so the repeat is not seen, and requires the same wire to read.
 func TestMooTableLoadNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted load.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Dup.schema": "package dup\ntable Box\n{\n    m map[uint8]uint8\n}\n"})
 	wire := duplicateMapWire()

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -19,7 +18,6 @@ import (
 // Min elements at their defaults (SPEC.md §4.2), as the engine's model does.
 func TestPythonForm1ArrayPresentMinimum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	cases := []struct{ name, writer, reader, input, check string }{
 		{"pointer_under", "[..4]*Leaf", "[2..4]*Leaf", `{"items":[{"n":7}]}`, "refuse"},
 		{"pointer_min", "[..4]*Leaf", "[2..4]*Leaf", `{"items":[{"n":7},null]}`, "read2"},

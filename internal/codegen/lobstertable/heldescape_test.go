@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLobsterKindHeldEscapeRefuses (R17: the newer reader reads old data,
@@ -17,7 +16,6 @@ import (
 // its L and read the file.
 func TestLobsterKindHeldEscapeRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain (it runs the generated unit)")
 	paths, err := compiler.GatherPaths([]string{filepath.Join(root, "test", "tables", "varevo", "VarEvo1.schema")})
 	if err != nil {
 		t.Fatal(err)

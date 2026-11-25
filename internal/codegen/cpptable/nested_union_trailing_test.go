@@ -32,7 +32,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -113,8 +112,6 @@ func TestNestedUnionArmTrailingBytesRefused(t *testing.T) {
 	if !strings.Contains(text, rule) {
 		t.Fatalf("the generated strict walk does not carry the arm rule the Go oracle holds:\n    %s", rule)
 	}
-
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 
 	out, err := runNestedTrailProbe(t, files, "NestTrailTable.h")
 	if err != nil {

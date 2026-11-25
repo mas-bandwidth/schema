@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -22,7 +21,6 @@ import (
 // unnamed string, reads, so the probe can tell a read from a refusal.
 func TestUnityHeldKind31RefusesTheLoad(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect kind 31 refusal")
 	u := fixedproof.ParseCheckUnit(t, unityHeldEscapeSchema)
 	files, err := unityGenerateFiles(u, nil)
 	if err != nil {

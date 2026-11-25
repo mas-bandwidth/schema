@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -150,7 +149,6 @@ func runAnnounceCrate(t *testing.T, bin string, modules map[string][]byte, runti
 }
 
 func TestRustAnnouncementIdTableBound(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

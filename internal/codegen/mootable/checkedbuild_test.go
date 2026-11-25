@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // checkedUnits are the two units this gate emits: a pointer graph and a
@@ -48,7 +47,6 @@ func (g *generatedUnit) runCheckedErr(t *testing.T, main string, inputs map[stri
 // both, whose output must be identical.
 func TestMooTableRuntimeLoadsUnderACheckedBuild(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the checked moo interpreter (it loads the emitted table runtime)")
 	units := map[string]*generatedUnit{}
 	for _, key := range []string{"pointers", "messages"} {
 		g := generateUnit(t, checkedUnits, key)
@@ -88,7 +86,6 @@ func TestMooTableRuntimeLoadsUnderACheckedBuild(t *testing.T) {
 // able to fail.
 func TestMooTableRuntimeLoadsUnderACheckedBuildNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the checked moo interpreter (it loads the emitted table runtime)")
 	g := generateUnit(t, checkedUnits, "pointers")
 	if g.err != nil {
 		t.Fatalf("unit pointers is refused: %v", g.err)

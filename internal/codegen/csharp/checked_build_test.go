@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -22,7 +20,6 @@ import (
 // an OverflowException and round-trip.
 func TestCSharpPacketCheckedBuild(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# packet probe)")
 	files := packetCheckedBuildFiles(t)
 	out, code := runPacketCheckedBuild(t, files, true)
 	for _, row := range []string{
@@ -44,7 +41,6 @@ func TestCSharpPacketCheckedBuild(t *testing.T) {
 // to be able to fail.
 func TestCSharpPacketCheckedBuildNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# packet probe)")
 	files := packetCheckedBuildFiles(t)
 	const site = "value.I64 = unchecked((long)rawValue);"
 	const bare = "value.I64 = (long)rawValue;"

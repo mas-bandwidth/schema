@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -22,7 +21,6 @@ import (
 // probe is built with debug assertions on so the asserts fire. No real time,
 // no sockets: the generated unit is built in a temporary directory.
 func TestRustCarriesAndHoldsACountedArmMinimum(t *testing.T) {
-	slowtest.Gate(t, "rustc (the generated counted-minimum probe)")
 	u := unitFrom(t, `package armmin
 
 union Pick

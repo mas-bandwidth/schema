@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -22,7 +21,6 @@ import (
 // without that variable and without Elixir it skips by name (elixirBinary).
 func TestElixirBitsPastWidthRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := bitsPastWidthProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -40,7 +38,6 @@ func TestElixirBitsPastWidthRefuses(t *testing.T) {
 // page. A missing anchor fails the test.
 func TestElixirBitsPastWidthRefusesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := bitsPastWidthProbe(t)
 	elixirPatch(t, files, bitsJSONClampAnchor, "      {v, report}")

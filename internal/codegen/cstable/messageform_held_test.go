@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -103,7 +102,6 @@ func csHeldRun(t *testing.T) ([]byte, error) {
 }
 
 func csHeldBuild(t *testing.T) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
@@ -201,7 +199,6 @@ func csDotnet() string {
 // assemblies and its runtime version, all as siblings of the resolved dotnet
 // host, so no CLI command is run and no package is restored.
 func csDotnetToolchain(t *testing.T) (csc string, refs []string, runtime string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	path, err := exec.LookPath(csDotnet())

@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirMessageElementKindRefusesTheBatch pins docs/SPEC-TABLES.md §3.3
@@ -28,7 +26,6 @@ import (
 // It runs elixir, so it is a functional test behind slowtest.Gate.
 func TestElixirMessageElementKindRefusesTheBatch(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

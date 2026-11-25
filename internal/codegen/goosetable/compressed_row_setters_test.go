@@ -22,7 +22,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // rowSetterSchema: Cell's c and xs are compressed, p and q plain; Frame is a
@@ -134,7 +133,6 @@ fn main() {
 
 func TestGooseCompressedRowSetters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it runs the cooked-row and block setters)")
 	files := probeFiles(t, probeUnit(t, rowSetterSchema), nil)
 	files["main.goose"] = []byte(probePrelude + rowSetterMain)
 	dir := t.TempDir()

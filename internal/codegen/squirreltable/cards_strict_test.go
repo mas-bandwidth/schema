@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -263,7 +262,6 @@ func checkSquirrelCardsSurfaceExpected(root, surface string, rows [][]string, ou
 }
 
 func TestSquirrelCardsConformance(t *testing.T) {
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
 	if err != nil {
@@ -303,7 +301,6 @@ func TestSquirrelCardsConformance(t *testing.T) {
 }
 
 func TestSquirrelCardsConformanceNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	t.Parallel()
 	root, err := sqrun.RepoRoot()
 	if err != nil {

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
@@ -30,7 +29,6 @@ import (
 // network repository is named as a path that does not exist.
 func TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make and git (a local fetch of the Go runtime)")
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("the runtime rule gate shells out to make: %v", err)
 	}

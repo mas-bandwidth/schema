@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -181,7 +180,6 @@ end
 // store empty.
 func TestLuaRetainMessage(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	newerFiles, olderFiles, probe, inputs := retainMessageSetup(t)
 	normal := runRetainProbe(t, newerFiles, olderFiles, probe, inputs)
 	allRetainMessageCases := retainMessageCases()
@@ -211,7 +209,6 @@ func TestLuaRetainMessage(t *testing.T) {
 // and verifies that TestLuaRetainMessage's probe turns red on the targeted case.
 func TestLuaRetainMessageNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	newerFiles, olderFiles, probe, inputs := retainMessageSetup(t)
 	for _, bug := range []struct {
 		name, from, to, caught string

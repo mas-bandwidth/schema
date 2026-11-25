@@ -37,7 +37,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -351,7 +350,6 @@ func writeOtherBuildAnnouncement(t *testing.T, u *ir.Unit, file string) {
 // `file` is the absolute path of the announcement under test; the forged
 // goldens live beside it in testdata/wire/tables.
 func runMessageProbe(t *testing.T, u *ir.Unit, file, body string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	elixirBin := elixirBinary(t)

@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // rubyCorpusRows reads one committed cases.tsv: every row that is not blank
@@ -109,7 +107,6 @@ func TestRubyCompressedFloatFloat32Ends(t *testing.T) {
 	}
 
 	t.Run("ruby", func(t *testing.T) {
-		slowtest.Gate(t, "both pinned Ruby interpreters")
 		dir := t.TempDir()
 		writeTree(t, dir, files)
 		out := runBothRubyPins(t, dir, "probe.rb", map[string][]byte{"probe.rb": []byte(probe.String())})

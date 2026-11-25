@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestPythonPackageNameCollisions checks that a public class or union keeps
 // its spelling while an unrelated module remains available as a module.
 func TestPythonPackageNameCollisions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and strict analyzer")
 	src := t.TempDir()
 	for name, text := range map[string]string{
 		"Save.schema":   "package collision\ntable Save { x int32 }\n",

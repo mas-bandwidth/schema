@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const lfrSchema = `package probe
@@ -91,7 +90,6 @@ end
 
 func TestLuaLoadHoldsCompressedFloatRange(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 	tmp := t.TempDir()
 	schemaPath := filepath.Join(tmp, "probe.schema")
 	if err := os.WriteFile(schemaPath, []byte(lfrSchema), 0o644); err != nil {

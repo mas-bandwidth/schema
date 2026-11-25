@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -89,7 +88,6 @@ public final class NegZeroProbe {
 
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it runs the generated load over the vector)")
 	corpus := corpusDir(t)
 	javac, javaBin := javaToolsRequired(t)
 

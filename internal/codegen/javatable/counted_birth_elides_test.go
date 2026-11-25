@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -150,7 +149,6 @@ func checkCountedBirth(t *testing.T, out string, want map[string]string) {
 // counted array at its birth value and with one live element (F-115).
 func TestJavaCountedBirthElides(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac")
 	want := countedBirthWant(t)
 	_, out := compileAndRunJavaProbe(t, countedBirthSchema, "probe", countedBirthDriver)
 	checkCountedBirth(t, out, want)

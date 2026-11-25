@@ -11,14 +11,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // The per-commit rows must cover the same namespace as the unsplit aggregate,
 // exactly once. Deleting a row is a control for the coverage check itself.
 func TestPythonCompilerCIShardCoverage(t *testing.T) {
-	slowtest.Gate(t, "Go compiler tests and Python CI planner")
 	root := repoRoot(t)
 	run := func(name string, args ...string) []byte {
 		t.Helper()

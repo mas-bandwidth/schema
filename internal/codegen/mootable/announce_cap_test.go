@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -16,7 +15,6 @@ import (
 // vocabulary has 4097, and both write the one with exactly 4096, which
 // AnnounceRead accepts. Red when the refusal is removed.
 func TestMooAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table modules)")
 	t.Parallel()
 	for _, row := range []struct {
 		entries int

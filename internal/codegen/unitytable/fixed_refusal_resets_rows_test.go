@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestUnityFixedRefusalResetsEveryRow is the R4 ruling for the C# (unity)
@@ -17,7 +16,6 @@ import (
 // rows.
 func TestUnityFixedRefusalResetsEveryRow(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect fixed refusal rows")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table G {\n    lead uint32 = 1\n    vals [..4]int32\n    trail uint32 = 2\n}\n")
 	files, err := unityGenerateFiles(u, nil)
 	if err != nil {

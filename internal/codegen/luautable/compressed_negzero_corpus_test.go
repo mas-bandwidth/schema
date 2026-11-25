@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -190,7 +189,6 @@ end
 // TestLuauCompressedNegZeroCorpus runs the corpus on the Luau leg.
 func TestLuauCompressedNegZeroCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	paths, err := compiler.GatherPaths([]string{filepath.Join(luauNegZeroCorpusDir, "Probe.schema")})
 	if err != nil {
 		t.Fatal(err)

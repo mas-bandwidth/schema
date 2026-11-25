@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // firstDiffOffset names the first offset where two hex strings differ, or
@@ -46,7 +45,6 @@ func itoa(n int) string {
 // other instances.
 func TestLuauJsonMapOfBoundedArrayAgreesWithTheCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 
 	units, _ := readManifest(t)
 	for _, caseName := range []string{"map_crews", "map_runs"} {

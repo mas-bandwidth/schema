@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luauDamageUnit emits the tblr1 unit with Cfg read as the VARIABLE root the
@@ -99,7 +98,6 @@ end
 }
 
 func TestLuauDamageDiscardsFileAndRetainingLoads(t *testing.T) {
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
 	for _, file := range []string{"frame_slack_after_terminator", "nested_terminator_early"} {
 		t.Run(file, func(t *testing.T) {
@@ -111,7 +109,6 @@ func TestLuauDamageDiscardsFileAndRetainingLoads(t *testing.T) {
 }
 
 func TestLuauDamageDiscardNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
 	for _, row := range []struct{ file, sabotage string }{{"frame_slack_after_terminator", "early"}, {"nested_terminator_early", "final"}} {
 		t.Run(row.sabotage, func(t *testing.T) {
@@ -163,7 +160,6 @@ func TestLuauDamageDiscardNegativeControls(t *testing.T) {
 // into one diagnostic. The unopened cases previously returned wire_damaged;
 // the successfully opened field case retains its malformed witness.
 func TestLuauDamagePreservesStrictDiagnostics(t *testing.T) {
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	for _, tc := range []struct{ unit, root, file, want string }{

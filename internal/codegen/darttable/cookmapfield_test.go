@@ -81,7 +81,6 @@ func TestCookMapFieldExposesItsEntriesLikeGo(t *testing.T) {
 
 	t.Run("dart reads every entry the go cook wrote", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "dart and the Go toolchain (the Go cook is the oracle)")
 		dart := dartBinary(t)
 		for _, c := range []struct {
 			name    string

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -101,7 +100,6 @@ exit 0
 }
 
 func pgoRun(t *testing.T, root string, env []string, args ...string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	// testinputs:none — runs the copy of bench/run.sh that pgoFixture read through os, which go test records

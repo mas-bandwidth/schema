@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -20,7 +18,6 @@ import (
 // rustc fails it by name rather than skipping the run it was asked to make.
 func TestUsageRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs docs/USAGE.md's Rust example)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		t.Fatalf("rustc is not on PATH, so docs/USAGE.md's Rust example cannot be built or run: %v", err)
 	}

@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -692,7 +691,6 @@ func unionFailures(t *testing.T, u *ir.Unit, mutate func(map[string][]byte) erro
 // Functional (python pins): run with SCHEMA_SLOW=1.
 func TestPythonVtUnions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters (it runs the emitted table runtime)")
 	u := loadUnit(t, unionsSchema)
 	for _, f := range unionFailures(t, u, nil) {
 		t.Error(f)
@@ -748,7 +746,6 @@ var unionControls = []struct {
 // Functional (python pins): run with SCHEMA_SLOW=1.
 func TestPythonVtUnionsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters (it runs the emitted table runtime)")
 	u := loadUnit(t, unionsSchema)
 	want := unionWant(t, u)
 	seen := map[string]bool{}
@@ -814,7 +811,6 @@ func TestPythonVtUnionsNegativeControl(t *testing.T) {
 // TestPythonUnionCountedBirth compares construction and write-back with the engine.
 func TestPythonUnionCountedBirth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	const schema = `package unionbirth
 union Pick { number int32 }
 table Root { least [2..4]Pick }
@@ -858,7 +854,6 @@ print('ok')
 // TestPythonUnionCountedBirthNegativeControl removes birth allocation from generated code.
 func TestPythonUnionCountedBirthNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	const schema = `package unionbirth
 union Pick { number int32 }
 table Root { least [2..4]Pick }

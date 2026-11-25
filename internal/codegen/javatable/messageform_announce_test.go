@@ -29,7 +29,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -89,7 +88,6 @@ func loadUnitDir(t *testing.T, root, dir string) *ir.Unit {
 // the form-1 reader's own open (docs/SPEC-TABLES.md §3.3), so the whole unit is
 // compiled, TableVariable included.
 func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, javaBin := javaTools(t)

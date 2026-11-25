@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -157,7 +155,6 @@ int main(void) {
 	})
 
 	t.Run("go", func(t *testing.T) {
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated reader)")
 		// this test compiles a unit of its own; it pins the reader's defaults,
 		// not the runtime packaging (docs/SPEC-TABLES.md §8.4)
 		files, err := c.Generate(u, "go", Options{"runtime": "standalone"})
@@ -209,7 +206,6 @@ func TestIssue715(t *testing.T) {
 	})
 
 	t.Run("cs", func(t *testing.T) {
-		slowtest.Gate(t, "dotnet")
 		dotnet := findDotnet()
 		if dotnet == "" {
 			// Without dotnet on PATH, this behavioral test covers C++, C, and Go (3 languages); CI runs all 4.
@@ -322,7 +318,6 @@ func findDotnet() string {
 
 func issue715CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	t.Helper()
-	slowtest.Gate(t, "a C/C++ compiler")
 	if _, err := exec.LookPath(compiler); err != nil {
 		t.Skipf("%s unavailable: %v", compiler, err)
 	}

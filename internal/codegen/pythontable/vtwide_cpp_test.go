@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -111,7 +110,6 @@ assert value.n == (1 << 128) - 1`,
 // with the engine and with Python's strict load/save under both pinned versions.
 func TestPythonVtWideCppOracle(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	for _, c := range wideVTConstructs {
 		t.Run(c.name, func(t *testing.T) {
 			checks, ok := wideDecodedChecks[c.name]

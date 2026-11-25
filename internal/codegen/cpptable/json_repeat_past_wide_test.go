@@ -50,7 +50,6 @@ var cppRepeatCases = []cppRepeatCase{
 
 func TestCppJsonRepeatRefusedPastWideTable(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

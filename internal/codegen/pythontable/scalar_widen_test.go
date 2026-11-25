@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -74,7 +73,6 @@ func TestPythonScalarWidenShardPlan(t *testing.T) {
 }
 
 func TestPythonScalarWidenHistorical(t *testing.T) {
-	slowtest.Gate(t, "historical scalar widening on both Python pins")
 	shard, err := scalarWidenShard(os.Getenv("PYTHON_SCALAR_WIDEN_SHARD"))
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +141,6 @@ print(v.save().hex())
 }
 
 func TestPythonScalarWidenRefusals(t *testing.T) {
-	slowtest.Gate(t, "scalar widening refusals and report atomicity")
 	for _, tc := range []struct{ name, old, new, value, reason string }{
 		{"narrow", "int32", "int16", "100", "kind_mismatch"},
 		{"signedness", "int8", "uint16", "100", "kind_mismatch"},
@@ -189,7 +186,6 @@ else: raise AssertionError("accepted")
 }
 
 func TestPythonScalarWidenDamageAndControl(t *testing.T) {
-	slowtest.Gate(t, "scalar widening malformed input and planted control")
 	writer := loadUnit(t, "package scalarwiden\ntable Root { value int16 }\n")
 	reader := loadUnit(t, "package scalarwiden\ntable Root { value int32 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"value":1234}`)
@@ -246,7 +242,6 @@ with open("wire", "rb") as f: Root.load(f.read())
 
 // Map keys count once per map; widened value fields count per entry.
 func TestPythonScalarWidenMapInteraction(t *testing.T) {
-	slowtest.Gate(t, "scalar values and map keys widen independently")
 	writer := loadUnit(t, "package probe\ntable Root { values map[int8]int8 }\n")
 	reader := loadUnit(t, "package probe\ntable Root { values map[int32]int32 }\n")
 	text := `{"values":{"-3":4,"2":5}}`
@@ -256,7 +251,6 @@ func TestPythonScalarWidenMapInteraction(t *testing.T) {
 }
 
 func TestPythonScalarWidenNonFinite(t *testing.T) {
-	slowtest.Gate(t, "non-finite widened float and atomic report")
 	writer := loadUnit(t, "package scalarwiden\ntable Root { value float32 }\n")
 	reader := loadUnit(t, "package scalarwiden\ntable Root { value float64 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"value":1.5}`)
@@ -295,7 +289,6 @@ else: raise AssertionError("accepted non-finite float")
 }
 
 func TestPythonOptionalScalarWiden(t *testing.T) {
-	slowtest.Gate(t, "historical optional scalar widening")
 	writer := loadUnit(t, "package scalarwiden\ntable Root { value ?int8 }\n")
 	reader := loadUnit(t, "package scalarwiden\ntable Root { value ?int32 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"value":7}`)

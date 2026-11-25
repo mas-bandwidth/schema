@@ -14,8 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -227,7 +225,6 @@ func TestIssue710TableRecovery(t *testing.T) {
 
 func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	t.Helper()
-	slowtest.Gate(t, "a C/C++ compiler")
 	if _, err := exec.LookPath(compiler); err != nil {
 		t.Skipf("%s unavailable: %v", compiler, err)
 	}

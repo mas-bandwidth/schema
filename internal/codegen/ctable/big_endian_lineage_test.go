@@ -217,7 +217,6 @@ func bigEndianLineageCC(t *testing.T) string {
 }
 
 func TestCBigEndianFormThreeLineageStores(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	cc := bigEndianLineageCC(t)
 	ctx, cancel := slowtest.ProbeContext(t)

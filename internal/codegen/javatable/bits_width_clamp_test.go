@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -22,7 +21,6 @@ import (
 // (docs/plans/strict-only.md) a wire value above (1<<N)-1 REFUSES the whole
 // load, on the plain and the retain read alike, at every site on its own.
 func TestBitsFieldAndArrayWidthClampJava(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	build := t.TempDir()

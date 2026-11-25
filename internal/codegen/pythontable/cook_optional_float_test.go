@@ -3,7 +3,6 @@ package pythontable
 import (
 	"encoding/hex"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -19,7 +18,6 @@ const cookOptionalFloatSchema = `package optfloat
 
 func TestPythonCookOptionalFloat(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, cookOptionalFloatSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -81,7 +79,6 @@ for order in (1,2): print(cook.cook(r, order).hex())
 
 func TestPythonCookOptionalFloatWire(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, cookOptionalFloatSchema)
 	files, err := Generate(u)
 	if err != nil {

@@ -2,7 +2,6 @@ package luatable
 
 import (
 	"bytes"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -22,7 +21,6 @@ import (
 // generated tests have to go red.
 func TestLuaTestgenWritesPassingTests(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "examples"))
 	tests, err := Testgen(u)

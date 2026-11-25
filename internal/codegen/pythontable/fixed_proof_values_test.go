@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -78,19 +77,16 @@ with open("saved", "wb") as f:
 
 func TestPythonFixedProofValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python and the C++ fixed oracle")
 	fixedproof.RunValueRows(t, pythonScalarValueRunner{}, pythonFixedValueRows...)
 }
 
 func TestPythonFixedProofValuesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python and the C++ fixed oracle")
 	fixedproof.RunNegativeControlRows(t, pythonFixedProofRunner{}, pythonFixedValueRows...)
 }
 
 func TestPythonFixedProofValuesTypes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned mypy")
 	allCases := fixedproof.Cases()
 	if len(allCases) == 0 {
 		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
@@ -121,7 +117,6 @@ func TestPythonFixedProofValuesTypes(t *testing.T) {
 // the strict read and exercises each check's own mutated runtime copy.
 func TestPythonFixedProofValuesReadRules(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python and the C++ fixed oracle")
 	cases := []struct {
 		name, schema string
 		body         int64
@@ -259,7 +254,6 @@ else:
 // non-finite wire values, including a control that removes both validations.
 func TestPythonFixedProofValuesFloatBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python and the C++ fixed oracle")
 	var row fixedproof.RowCase
 	for _, tc := range fixedproof.Cases() {
 		if tc.ID == "compressed-floats" {

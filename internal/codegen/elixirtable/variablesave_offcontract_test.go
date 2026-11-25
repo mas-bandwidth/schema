@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirVariableSaveRefusesOffContract pins docs/SPEC.md §5.1 on the
@@ -28,7 +26,6 @@ import (
 // It runs elixir, so it is a functional test behind slowtest.Gate.
 func TestElixirVariableSaveRefusesOffContract(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := variableSaveProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -42,7 +39,6 @@ func TestElixirVariableSaveRefusesOffContract(t *testing.T) {
 // on the ranged int row.
 func TestElixirVariableSaveRefusesOffContractNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := variableSaveProbe(t)
 	elixirPatch(t, files, "%{min: lo, max: hi} when is_number(v) and (v < lo or v > hi) -> throw(:invalid_value)", "%{min: lo, max: hi} when is_number(v) and lo > hi -> throw(:invalid_value)")

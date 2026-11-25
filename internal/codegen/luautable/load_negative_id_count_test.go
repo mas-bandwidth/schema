@@ -16,7 +16,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -77,7 +76,6 @@ table Box
 // for a count of -1, a count with its high bit set, and a count one past what
 // len/8 can hold; each must agree and raise no interpreter error.
 func TestLuauLoadRefusesNegativeIdCount(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Carton.schema")

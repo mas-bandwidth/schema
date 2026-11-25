@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +18,6 @@ import (
 // The control, an unnamed string, reads, so the driver can tell a read from a
 // refusal.
 func TestHeldKind31RefusesTheLoadJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaTools(t)

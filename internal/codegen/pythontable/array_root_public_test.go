@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -25,7 +24,6 @@ table Holder {
 
 func TestPythonArrayRootAgainstEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python array root and nested JSON")
 	u := loadUnit(t, arrayRootSchema)
 	model := tabletext.NewModel(u)
 	files, err := Generate(u)
@@ -85,7 +83,6 @@ for cls,text,reason in ((Numbers,'{"values":[1]}',"json_root_not_array"), (Numbe
 
 func TestPythonArrayRootNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python array-root negative controls")
 	u := loadUnit(t, arrayRootSchema)
 	for _, tc := range []struct{ name, path, anchor, replacement, probe, failure string }{
 		{"root", "arrayprobe/_schema/json_table.py", `if descriptor.json_array:`, `if False:`, `from arrayprobe import Numbers

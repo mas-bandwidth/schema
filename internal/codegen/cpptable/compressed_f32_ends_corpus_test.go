@@ -147,7 +147,6 @@ int main( int argc, char ** argv )
 // refusal. Each row runs in its own child, so an assert ends only that row.
 func TestCppCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C++ compiler (it runs the generated code over the corpus)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

@@ -34,7 +34,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const (
@@ -546,7 +545,6 @@ func TestSchemaLuaHostileScorerOutcomes(t *testing.T) {
 // carried finding whose fix card and actual verdict are pinned here.
 func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
@@ -578,7 +576,6 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 // it out. The red line is kept in the failure message.
 func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)

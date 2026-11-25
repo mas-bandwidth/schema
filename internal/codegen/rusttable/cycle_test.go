@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -30,7 +29,6 @@ import (
 // guard slots are refused while their acyclic twins load clean.
 func TestCyclicWireIsDamageRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
@@ -49,7 +47,6 @@ func TestCyclicWireIsDamageRust(t *testing.T) {
 // red while leaving the acyclic rows green.
 func TestCyclicWireIsDamageRustNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)

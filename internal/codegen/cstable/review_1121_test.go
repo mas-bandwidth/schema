@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE 2026-11-21 REVIEW'S C# (modern) READ RULES, driven through the generated
@@ -329,7 +328,6 @@ func csReview1121Run(t *testing.T) ([]byte, error) {
 }
 
 func csReview1121Build(t *testing.T) ([]byte, error) {
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# reader)")
 	t.Helper()
 	dir := t.TempDir()
 	var sources []string

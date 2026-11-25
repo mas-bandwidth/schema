@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -343,7 +342,6 @@ func strictGateWrite(t *testing.T, generated []map[string][]byte) (string, []str
 // through the moo leg, plus the vendored runtime, and moo-analyze
 // --mode=strict SILENT over all of it.
 func TestMooGeneratedAnalyzeStrictGate(t *testing.T) {
-	slowtest.Gate(t, "moo-analyze (the pinned analyzer, over the whole corpus)")
 	t.Parallel()
 	analyze := strictGateAnalyzer(t)
 
@@ -414,7 +412,6 @@ func TestMooGeneratedAnalyzeStrictGate(t *testing.T) {
 // exactly one diagnostic, on the planted line, of its own kind. The second is
 // why the gate reads output rather than the exit code.
 func TestMooGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
-	slowtest.Gate(t, "moo-analyze (the pinned analyzer, over the whole corpus)")
 	t.Parallel()
 	analyze := strictGateAnalyzer(t)
 	u, err := strictGateLoad(t, []string{"examples"})
@@ -491,7 +488,6 @@ func TestMooGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 // <prefix>). A PIN beside the analyzer decides even over a true one in the
 // prefix, and an analyzer with no PIN in either place is refused.
 func TestMooGeneratedAnalyzeStrictGatePinNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo-analyze (the pinned analyzer, over the whole corpus)")
 	t.Parallel()
 	analyze := strictGateAnalyzer(t)
 	src := filepath.Dir(analyze)

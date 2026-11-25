@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -23,7 +22,6 @@ import (
 // the Python runner and the C++ fixed-form corpus.
 func TestPythonFixedProofEvolution(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form corpus")
 	fixedproof.RunEvolutionRows(t, filepath.Join("..", "..", ".."), pythonFixedProofRunner{},
 		"field-evolution", "retirement", "retired-runtime", "plan-execution", "interoperability", "file-envelope")
 }
@@ -32,7 +30,6 @@ func TestPythonFixedProofEvolution(t *testing.T) {
 // independently generated C++ files and detects a changed signed widening plan.
 func TestPythonFixedProofEvolutionNumeric(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	oldSchema := "package probe\nfixed table T {\n v int16\n f float32\n}\n"
 	newSchema := "package probe\nfixed table T {\n v int32\n f float64\n added int32 = 77\n}\n"
 	setup := "value[0].v = -7; value[0].f = 1.5f;"
@@ -149,7 +146,6 @@ else:
 // that disabling the emitted boolean guard is detected.
 func TestPythonFixedProofEvolutionHostile(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	u, files, oracle, verify := pythonFixedMixed(t)
 	_, _, cppLoad := fixedproof.CppOracleWithLoadVerdict(t, fixedproof.RowCase{ID: "hostile-mixed-loader", Root: "T", Body: ir.TableFixedTypeBytes(u.Tables["T"]), Count: 2}, u)
 	dir := pythonFixedTree(t, files)
@@ -235,7 +231,6 @@ with open('saved','wb') as f:
 // verdicts with Python across file framing and body validation boundaries.
 func TestPythonFixedProofEvolutionHostileEnvelope(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ fixed reader")
 	schema := "package probe\nfixed table T {\n flag bool\n n int8 | min = 0, max = 10\n s string(4)\n}\n"
 	tc := fixedproof.RowCase{ID: "hostile-envelope", Schema: schema, Root: "T", Body: 10, Count: 1, CppSetup: "value[0].flag = true; value[0].n = 5; value[0].s_length = 1; value[0].s[0] = 'a';"}
 	u := fixedproof.ParseCheckUnit(t, schema)
@@ -373,7 +368,6 @@ print("hostile-envelope", len(cases))
 // composite fixed records against independent C++ load verdicts.
 func TestPythonFixedProofEvolutionHostileShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ fixed reader")
 	schema := "package probe\nenum E { one, two }\nunion Choice { small uint8\n large int16 }\nfixed table T { a [..2]int16\n o ?int16\n e E\n u Choice\n f float32\n b bytes(3) }\n"
 	u := fixedproof.ParseCheckUnit(t, schema)
 	tc := fixedproof.RowCase{ID: "hostile-shapes", Schema: schema, Root: "T", Body: 26, Count: 1}
@@ -498,7 +492,6 @@ print("hostile-shapes", len(cases))
 // checks every accepted value is in range and round-trips without repair.
 func TestPythonFixedProofEvolutionHostileSweep(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	schema := "package probe\nfixed table T {\n flag bool\n n int8 | min = 0, max = 10\n s string(4)\n}\nfixed table B { p int16 }\n"
 	tc := fixedproof.RowCase{ID: "hostile-sweep", Schema: schema, Root: "T", Body: 10, Count: 1,
 		CppSetup: "value[0].flag = true; value[0].n = 5; value[0].s_length = 1; value[0].s[0] = 'a';"}
@@ -569,7 +562,6 @@ print('hostile-sweep', count)
 // against new readers using the actual old declarations as writer snapshots.
 func TestPythonFixedProofEvolutionWideningCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form corpus")
 	repo := filepath.Join("..", "..", "..")
 	for _, tc := range []struct {
 		row, check, setup string
@@ -693,7 +685,6 @@ if Root.fixed_save(rows) != expected:
 // bounds on the C++ corpus and checks the guards with emitted-runtime faults.
 func TestPythonFixedProofEvolutionWriterBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form corpus")
 	repo := filepath.Join("..", "..", "..")
 	for _, tc := range []struct {
 		row, anchor string
@@ -771,7 +762,6 @@ func pythonStringList(values []string) string {
 // retirement floor refuses a known old writer and that removing it is detected.
 func TestPythonFixedProofEvolutionRetirementControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	oldSchema := "package probe\nfixed table T {\n x int32\n}\n"
 	newSchema := "package probe\nfixed table T {\n x int32\n y int32 = 55\n}\n"
 	old := fixedproof.ParseCheckUnit(t, oldSchema)
@@ -867,7 +857,6 @@ func init() {
 // C++ writer in both directions.
 func TestPythonFixedProofEvolutionValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	fixedproof.RunValueRows(t, pythonFixedProofRunner{}, "retirement", "retired-runtime", "field-evolution", "plan-execution", "interoperability", "file-envelope")
 }
 
@@ -875,7 +864,6 @@ func TestPythonFixedProofEvolutionValues(t *testing.T) {
 // independently for each selected row.
 func TestPythonFixedProofEvolutionNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and live C++ oracle")
 	fixedproof.RunNegativeControlRows(t, pythonFixedProofRunner{}, "retirement", "retired-runtime", "field-evolution", "plan-execution", "interoperability", "file-envelope")
 }
 
@@ -883,7 +871,6 @@ func TestPythonFixedProofEvolutionNegativeControl(t *testing.T) {
 // shared evolution proof rows with the pinned strict analyzer.
 func TestPythonFixedProofEvolutionStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python strict analyzer")
 	selected := map[string]bool{"retirement": true, "retired-runtime": true, "field-evolution": true, "plan-execution": true, "interoperability": true, "file-envelope": true}
 	allCases := fixedproof.Cases()
 	if len(allCases) == 0 {

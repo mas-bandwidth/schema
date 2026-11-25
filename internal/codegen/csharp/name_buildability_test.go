@@ -16,12 +16,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/nameemit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestNameCorpusBuildsCs(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK and the serialize.cs sibling")
 	runtimeDir := os.Getenv("SERIALIZE_CS")
 	if runtimeDir == "" {
 		runtimeDir = filepath.Join("..", "..", "..", "..", "serialize.cs")

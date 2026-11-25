@@ -726,7 +726,6 @@ func TestPlanPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "plan_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = testDir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -1360,7 +1359,6 @@ func TestArgLane(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "arg_lane_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()

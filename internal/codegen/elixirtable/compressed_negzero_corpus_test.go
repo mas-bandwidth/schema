@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -137,7 +136,6 @@ func negZeroPath(t *testing.T, path string) string {
 
 func TestElixirCompressedNegZeroCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	elixirc := elixircBinary(t, elixirBin)
 	dir, err := filepath.Abs(negZeroCorpusDir)

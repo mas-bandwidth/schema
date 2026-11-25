@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -144,7 +143,6 @@ func review1121JSONWire(t *testing.T, u *ir.Unit, text string) []byte {
 
 func TestDartReview1121Reads(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (it runs the generated variable, JSON and fixed reads)")
 	reader := unitFrom(t, review1121ReadsSchema)
 	writer := unitFrom(t, review1121ReadsWriterSchema)
 	m := tabletext.NewModel(reader)

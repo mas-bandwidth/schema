@@ -65,7 +65,6 @@ func elixirDriverSurface(t *testing.T, root, surface, manifest string) string {
 }
 
 func TestElixirDriverReadsStrictAndWritesBack(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain and the conformance corpus")
 	root := elixirConformanceRoot(t)
 	elixirConformanceBuild(t, root)
 
@@ -140,7 +139,6 @@ func elixirDriverRetain(t *testing.T, root string) {
 }
 
 func TestElixirDriverReadsStrictAndWritesBackNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain and the conformance corpus")
 	root := elixirConformanceRoot(t)
 	elixirConformanceBuild(t, root)
 

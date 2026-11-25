@@ -7,7 +7,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -62,7 +61,6 @@ func compileGiant(t *testing.T, src string) {
 		t.Fatal("Big.java not emitted")
 	}
 
-	slowtest.Gate(t, "javac")
 	javac, _ := compressedFloatJavaTools(t)
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, "src", "giant")

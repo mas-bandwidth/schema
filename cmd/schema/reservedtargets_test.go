@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGenerateChecksEveryLanguagesWords(t *testing.T) {
@@ -138,7 +137,6 @@ func TestGenerateGoRefusesGoReservedWords(t *testing.T) {
 // stub provides.
 func TestGenerateGoCompilesGoOnlyWords(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "one go build per Go-only reserved word")
 	bin := buildCLI(t)
 	work := t.TempDir()
 

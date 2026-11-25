@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -110,7 +109,6 @@ func jsDiscardWire(t *testing.T, writer *ir.Unit, root, text string) (clean, dam
 // under the leg's own node; probe imports the module as `m`.
 func jsDiscardRun(t *testing.T, u *ir.Unit, files map[string][]byte, probe string) {
 	t.Helper()
-	slowtest.Gate(t, "node (it runs the generated module)")
 	gen, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)
@@ -166,7 +164,6 @@ console.log("ok");
 // The message batch's half is TestMessageFormBatchJavaScript/damage: a damaged
 // batch delivers no body. Red if any read hands back what it decoded.
 func TestDamageDiscardsTheWholeLoadJavaScript(t *testing.T) {
-	slowtest.Gate(t, "node (whole read discard)")
 	t.Parallel()
 
 	t.Run("nested", func(t *testing.T) {

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -16,7 +15,6 @@ import (
 
 func TestEnumCollectionReferencesElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir enum collection references distinguish None, foreign ids, and damaged references")
 	const source = `package enumref
  enum Mode { A, B }
  union Pick {
@@ -154,7 +152,6 @@ end
 // an edited surviving array loses only records belonging to removed items.
 func TestRetainedUnionArrayBodiesElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir retaining union arrays preserve and replace nested record paths")
 	u := unitFrom(t, `package unionretain
  table Inner { value int32 }
  union Pick {

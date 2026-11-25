@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -93,7 +92,6 @@ static int failures = 0;
 // byte for byte what the "C" locale gives, and the program's own locale is the
 // same after the call as before it.
 func TestCJsonFloatTextIsLocaleIndependent(t *testing.T) {
-	slowtest.Gate(t, "the C compiler and localedef")
 	if _, err := exec.LookPath("localedef"); err != nil {
 		t.Skip("building a multi-byte-point locale requires localedef")
 	}
@@ -153,7 +151,6 @@ int main( void )
 // left there. (The C writer never put a NUL there; this holds it to that.)
 func TestCJsonToJsonWritesNothingPastTheSize(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	runCJsonFloatProbe(t, cJsonFloatPreamble+`
 int main( void )
 {
@@ -176,7 +173,6 @@ int main( void )
 // its length, on a float64 and on a float32 field.
 func TestCJsonNegativeZeroAnyLength(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	runCJsonFloatProbe(t, cJsonFloatPreamble+`
 static const char * tokens[] = {
     "-0.0",

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -64,7 +63,6 @@ print("cooked {length(cook)}")
 // the program's output and exit code.
 func cookDirectoryRun(t *testing.T, sabotage func(string) string) (string, int) {
 	t.Helper()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g, err := generateLoadUnit(t, []string{writeSchema(t, "Probe", cookDirectorySchema)})
 	if err != nil {
 		t.Fatal(err)

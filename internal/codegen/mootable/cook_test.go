@@ -8,7 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -88,7 +87,6 @@ end
 // variable-form load of the same wire (which TestMooTableLoadMatchesTheReports
 // and the save gate hold to the Go engine).
 func TestMooCookReadAgreesWithTheLoad(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookread.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
@@ -202,7 +200,6 @@ func cookFixture(t *testing.T, caseName, rootName string) []byte {
 // opens or refuses as its verdict says (the verdict is the contract,
 // docs/rulings.json refusal-verdict-only).
 func TestMooCookFixturesAndForgeries(t *testing.T) {
-	slowtest.Gate(t, "moo and go build (it runs the emitted table_cookread.moo over test/cookgen's fixtures)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "graphdemo")
@@ -253,7 +250,6 @@ func TestMooCookFixturesAndForgeries(t *testing.T) {
 // non_finite_float, naming the field. Each is the control of the other's
 // clean read of the same bytes before the NaN is planted.
 func TestMooCookAndBlockRefuseNonFiniteFloats(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted accelerator reads)")
 	t.Parallel()
 	// the cook: the tool cooks 1.5, the float32 0x3fc00000, and the probe
 	// plants a quiet NaN over those bits
@@ -332,7 +328,6 @@ end
 // §2.12), while its sibling that carries the form opens; the sibling is the
 // control.
 func TestMooAcceleratorsHonourForms(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted accelerator reads)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table Open\n{\n    a int32\n}\nfixed table Shut | forms = \"wire\"\n{\n    a int32\n}\n")
 	files, err := generate(u)
@@ -360,7 +355,6 @@ print(try(function() B.BlockOpen(T.ShutBlockInfo, buffer.create(0)) end))
 // read one short (the value comparison), and the byte-order check removed (the
 // cook_byte_order forgeries open).
 func TestMooCookNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "moo and go build (it runs the emitted table_cookread.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	for _, c := range []struct{ name, anchor, repl string }{

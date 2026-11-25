@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // fixedBatchCapacitySchema is one fixed table so a file of five records is
@@ -29,7 +28,6 @@ fixed table Batch
 // is refused at four.
 func TestFixedLuauBatchCapacity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := generateFiles(t, map[string]string{"Batch.schema": fixedBatchCapacitySchema})
 	if g.err != nil {
 		t.Fatalf("the Luau unit does not generate: %v", g.err)

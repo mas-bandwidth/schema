@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -17,7 +16,6 @@ import (
 // These literal audit vectors put the largest signed LEB length after a
 // nonzero cursor. Adding the cursor before checking the extent wraps int64.
 func TestDartWireLengthOverflow(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	schemas, err := filepath.Glob("../../../tables/pointers/*.schema")
 	if err != nil || len(schemas) == 0 {
 		t.Fatalf("pointer fixtures: %v", err)

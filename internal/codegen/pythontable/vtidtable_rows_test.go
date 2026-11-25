@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -230,7 +229,6 @@ func vtIdtableCase(t *testing.T, repo, name string, mutate func(*testing.T, map[
 // Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
 func TestPythonVtIdtableRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +253,6 @@ func TestPythonVtIdtableRows(t *testing.T) {
 // Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
 func TestPythonVtIdtableRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

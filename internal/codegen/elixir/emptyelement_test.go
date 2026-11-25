@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -140,7 +138,6 @@ end
 // otherwise.
 func elixirToolchain(t *testing.T) (elixirBin, elixircBin string) {
 	t.Helper()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	if env := os.Getenv("ELIXIR"); env != "" {
 		if _, err := os.Stat(env); err == nil {

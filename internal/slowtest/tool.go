@@ -1,26 +1,20 @@
 package slowtest
 
 import (
-	"os"
 	"os/exec"
 	"testing"
 )
 
-// A MISSING TOOLCHAIN IS A SKIP WITH A REASON, OR A FAILURE: NEVER A PASS.
+// A MISSING TOOLCHAIN IS A FAILURE THAT NAMES IT: NEVER A SKIP, NEVER A PASS.
 //
-// A test that looks for its toolchain and returns when it is not there
-// prints PASS over a body that did not run. No skip ledger sees it, and
-// SCHEMA_REQUIRE_CORPUS, the promise that a lane has what its tests need,
-// cannot turn it red. internal/codegen/rust's
-// TestAssembleLibExportsUnionModule did exactly that with cargo. Tool and
-// Missing are the two ways a test says "what I need is not here":
-// internal/ci (TestNoTestReturnsQuietlyWhenItsToolchainIsMissing) refuses the
-// quiet return.
+// A test that needs a program is tiered functional (or nightly), so the
+// driver runs it only where its runner carries the toolchain. There, a
+// program that is not found is a fault of the runner, and the test fails
+// saying which program. A test that returned quietly, or skipped, would print
+// a verdict over a body that did not run.
 
-// Tool returns the path of a program the calling test needs. When it is not
-// on PATH the test skips with the reason "no <name> on PATH", which the skip
-// ledger (.github/skip-ledger.txt) reads; under SCHEMA_REQUIRE_CORPUS it
-// fails instead.
+// Tool returns the path of a program the calling test needs, and fails the
+// test naming it when it is not on PATH.
 func Tool(t testing.TB, name string) string {
 	t.Helper()
 	path, err := exec.LookPath(name)
@@ -30,12 +24,8 @@ func Tool(t testing.TB, name string) string {
 	return path
 }
 
-// Missing ends the calling test because something it needs is absent: a
-// failure under SCHEMA_REQUIRE_CORPUS, a skip with the reason otherwise.
+// Missing fails the calling test because something it needs is absent.
 func Missing(t testing.TB, reason string) {
 	t.Helper()
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set, so this lane is meant to have what the test needs: %s", reason)
-	}
-	t.Skip(reason)
+	t.Fatalf("missing what this test needs (its tier is functional or nightly, so its runner must carry it): %s", reason)
 }

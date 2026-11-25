@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -22,7 +20,6 @@ import (
 // The boundary values themselves must be written and round-trip through the
 // module's own reader: a writer that refused everything would fail here.
 func TestJsFixedSaveRefusesOffContract(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	node := jsNode(t)
 	u := unitFrom(t, jsFixedSaveOffContractSchema)

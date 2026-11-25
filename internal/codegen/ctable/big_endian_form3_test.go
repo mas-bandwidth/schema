@@ -209,7 +209,6 @@ func bigEndianForm3Run(t *testing.T, sabotage [2]string) ([]string, string) {
 }
 
 func TestCBigEndianFormThreeRead(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	if fails, out := bigEndianForm3Run(t, [2]string{}); len(fails) != 0 {
 		t.Fatalf("the C big-endian form-3 read does not hold:\n%s", out)
@@ -253,7 +252,6 @@ int main(void)
 // little-endian host the same sabotage is invisible, which is the whole
 // argument for forcing the big-endian path in the probe.
 func TestCBigEndianFormThreeReadNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	sabotage := [2]string{
 		"dst[i + j] = src[i + elem - 1 - j];",

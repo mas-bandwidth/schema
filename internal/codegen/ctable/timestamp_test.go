@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const cTimestampSchema = `package probe
@@ -144,7 +142,6 @@ const cTimestampMessageProbe = `
 
 func TestCTimestampBinaryForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	u := unitFrom(t, cTimestampSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -176,7 +173,6 @@ func TestCTimestampBinaryForms(t *testing.T) {
 
 func TestCTimestampTextStrictRFC3339(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 
 	schema := "package probe\nfixed table Root\n{\n    at timestamp\n}\n"
 	utc := func(y int, mo time.Month, d, h, mi, s, ns int) int64 {

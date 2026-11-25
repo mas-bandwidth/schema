@@ -27,7 +27,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -178,7 +177,6 @@ func announceChecksCases() []struct {
 // the generated Go oracle refuses the same bytes, and the lawful announcement
 // it was built from is accepted by both.
 func TestLuauMessageAnnounceMalformedShapes(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter and the generated Go oracle")
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Root.schema")

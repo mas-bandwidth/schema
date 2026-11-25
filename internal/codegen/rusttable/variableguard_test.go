@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -74,7 +73,6 @@ func TestGuardCondsComposeTheBranchTreeRust(t *testing.T) {
 // by name when SCHEMA_REQUIRE_CORPUS is set.
 func TestGuardAndOptionalEdgesRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated G1 probe)")
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

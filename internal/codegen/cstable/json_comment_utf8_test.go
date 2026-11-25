@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -23,7 +22,6 @@ import (
 // with the vector's manifest verdict.
 func TestCSJsonCommentIsWellFormedUTF8(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 
 	const schemaSrc = `package probe
 table Root {

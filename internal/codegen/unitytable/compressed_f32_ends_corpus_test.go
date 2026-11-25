@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // unityF32EndsCorpusDir is the cross-port corpus for A COMPRESSED FLOAT'S
@@ -155,7 +154,6 @@ static class F32EndsProbe
 // row is skipped.
 func TestUnityCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc (it runs the generated C# (unity) over the compressed-f32-ends corpus)")
 	entries, err := os.ReadDir(unityF32EndsCorpusDir)
 	if err != nil {
 		t.Fatal(err)

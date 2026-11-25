@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestSquirrelJsonWriterRefusesZeroByte holds the Squirrel JSON writer to
@@ -21,7 +20,6 @@ import (
 // writable as a JSON escape.
 func TestSquirrelJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "squirrel")
 
 	const src = `package probe
 table T

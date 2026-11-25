@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -195,7 +194,6 @@ func TestCorpusNonCanonicalSpellings(t *testing.T) {
 	// LEB128, length and count it moves.
 	t.Run("the generator reproduces the committed files", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the Go toolchain (it builds and runs the vector generator)")
 		root, err := filepath.Abs("..")
 		if err != nil {
 			t.Fatal(err)

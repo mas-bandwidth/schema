@@ -14,13 +14,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 func TestPythonHandtextCISelection(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make and Go test listing (hand-text support rows)")
 	run := func(name string, args ...string) string {
 		t.Helper()
 		cmd := exec.Command(name, args...)
@@ -73,7 +71,6 @@ func TestPythonHandtextCISelection(t *testing.T) {
 
 func TestPythonCISupportCoversEveryPrerequisite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make (Python support prerequisite closure)")
 	run := func(args ...string) string {
 		t.Helper()
 		testinputs.Make(t)
@@ -135,7 +132,6 @@ func pythonSupportMissing(db map[string][]string, roots []string) []string {
 
 func TestPythonCIPlannerProvisionsFixedCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Go package listing (Python CI matrix)")
 	out := pythonCIPlan(t)
 	var rows []struct {
 		Target, Package, Test string
@@ -299,7 +295,6 @@ func pythonCIFixedSuiteRows(t *testing.T) []string {
 
 func TestPythonCICorpusProvenanceAndDamageControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "shell (offline corpus artifact and refusal controls)")
 	script := filepath.Join(repoRoot(t), "tools/python-ci-corpus.sh")
 	for _, name := range []string{"round trip", "wrong source", "wrong runtime pin", "wrong producer runtime", "dirty source", "missing archive", "damaged bytes", "damaged generated units"} {
 		t.Run(name, func(t *testing.T) {

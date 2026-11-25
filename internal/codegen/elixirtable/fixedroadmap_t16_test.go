@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -105,7 +104,6 @@ func t16ER31(t *testing.T) {
 	t06Has(t, runtime, ":plan_too_large",
 		"R31 a variant count past the uint16 length word refuses as :plan_too_large (FIXED-FORM-ALGORITHM.md §5.2)")
 
-	slowtest.Gate(t, "the Elixir toolchain (it compiles and runs the generated unit)")
 	writerHex := t16ELayoutHex(t, t16EWriterSchema())
 	overflowHex := t16ELayoutHex(t, t16EOverflowSchema())
 	body := make([]byte, 19)

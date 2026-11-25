@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirWriteContractRefuses pins docs/SPEC.md §5.1 on the Elixir leg,
@@ -23,7 +21,6 @@ import (
 // by name (elixirBinary), and SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
 func TestElixirWriteContractRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := writeContractProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -37,7 +34,6 @@ func TestElixirWriteContractRefuses(t *testing.T) {
 // the message bits(6) row, the first integer row past its domain.
 func TestElixirWriteContractRefusesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := writeContractProbe(t)
 	elixirPatch(t, files, "check(is_integer(value) and value >= lo and value <= hi)", "check(is_integer(value) and lo <= hi)")
@@ -159,7 +155,6 @@ fixed table Order
 // past the cap and graph_chain_text answered absent.
 func TestElixirJSONDepthCountsContainers(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := jsonDepthProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -172,7 +167,6 @@ func TestElixirJSONDepthCountsContainers(t *testing.T) {
 // which counts every value: the chain at the cap must then refuse.
 func TestElixirJSONDepthCountsContainersNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := jsonDepthProbe(t)
 	elixirPatch(t, files, "<<c, _::binary>> when c in [?{, ?[] and depth > 128 -> :error", "_ when depth > 128 -> :error")

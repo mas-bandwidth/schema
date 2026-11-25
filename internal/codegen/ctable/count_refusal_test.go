@@ -249,7 +249,6 @@ int main(void) {
 }
 
 func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cCountRefusalSchema)
 	model := tabletext.NewModel(u)
@@ -418,7 +417,6 @@ table GraphLeaf { a int32 = 0
 `
 
 func TestJsonLeadingBOMBoundaryC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cBomBoundarySchema)
 	model := tabletext.NewModel(u)

@@ -125,7 +125,6 @@ func nodeBinary(t *testing.T) string {
 // node.
 func runWriteRefusalPacketJS(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "node (it runs the generated packet writer in both tiers)")
 	node := nodeBinary(t)
 	serialize := serializeJS(t)
 	probe, err := os.ReadFile("writerefusalpacket.mjs")

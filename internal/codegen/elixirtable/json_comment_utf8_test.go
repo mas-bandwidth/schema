@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -25,7 +24,6 @@ import (
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
 func TestElixirJsonCommentIsWellFormedUTF8(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

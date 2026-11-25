@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -161,7 +160,6 @@ public final class F32EndsDriver {
 // the JDK (gated).
 func TestJavaCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	rows := corpusRows(t, filepath.Join(javaF32EndsDir, "cases.tsv"), 8)
 	u := unitFromPath(t, filepath.Join(javaF32EndsDir, "Probe.schema"))
 	files, err := Generate(u)

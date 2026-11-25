@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -24,7 +23,6 @@ import (
 // preserving U+FEFF inside string values (docs/SPEC-TABLES.md §16.2, §16.12).
 func TestJsonLeadingBOMBoundaryJava(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 
 	const schemaSrc = `package probe
 table Sub {

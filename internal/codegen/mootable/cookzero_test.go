@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cookZeroProbe loads inputs.wire through table_load.moo (table_fixed.moo for
@@ -66,7 +64,6 @@ end
 // equals the committed cook-write fixture byte for byte, and every byte the
 // fixture holds zero is zero.
 func TestMooCookWriteZeroesDeadAndAbsentBytes(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
 	want := map[string]bool{"keyed_config": true, "root_full": true}
 	units, _ := readManifest(t)

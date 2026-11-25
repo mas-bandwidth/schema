@@ -37,7 +37,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -109,7 +108,6 @@ func wideValues(t *testing.T) []wideValue {
 // one Wide with values and prints the announcement and the one-body batch as
 // hex, and returns both.
 func cppWideReference(t *testing.T, values []wideValue) (announce, message []byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	ser, err := filepath.Abs("../../../../serialize")
@@ -227,7 +225,6 @@ func dartWideLiteral(v wideValue) string {
 // TestMessageFormWideScalarsMatchTheCppReferenceDart pins the 128-bit
 // message-form bytes against the C++ reference, both directions.
 func TestMessageFormWideScalarsMatchTheCppReferenceDart(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

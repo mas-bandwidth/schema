@@ -349,7 +349,6 @@ var fixedOracleVectors = []struct{ file, schema, root string }{
 // Every float in the corpus is finite (SPEC-TABLES §3.3): fu1 and fu2 carry a
 // subnormal and a -0 in `heat`, the values a wrong widening would move.
 func TestMooFixedFormAgreesWithTheByteOracle(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	manifest := readFixedManifest(t, corpus)
@@ -379,7 +378,6 @@ func TestMooFixedFormAgreesWithTheByteOracle(t *testing.T) {
 // table_fixed.moo — an integer's store skipped — and requires fx1's byte
 // comparison to go red.
 func TestMooFixedFormByteOracleNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	g := fixedUnit(t, unitFromPath(t, "test/tables/FX1.schema"), nil)
@@ -491,7 +489,6 @@ func lineageOf(t *testing.T, older []*ir.Unit, retire int) map[string][]mootable
 // exactly four per record). A deliberately UNLAWFUL pair (a dropped field) is
 // refused layout_malformed, never counted (§5.9 #30).
 func TestMooFixedVersioningNewReadsOld(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	manifest := readFixedManifest(t, corpus)
@@ -537,7 +534,6 @@ func TestMooFixedVersioningNewReadsOld(t *testing.T) {
 // signalling NaN, and the newer reader refuses the file as non_finite_float,
 // naming the field, before it widens anything.
 func TestMooFixedFormRefusesTheForgedNaN(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older := readTestSchema(t, "VOLD_float_widen")
@@ -563,7 +559,6 @@ func TestMooFixedFormRefusesTheForgedNaN(t *testing.T) {
 // whose edit moved no layout byte and no digest byte, which READS in both
 // directions (§5.7).
 func TestMooFixedVersioningOldRefusesNew(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	for _, r := range mooVersionRows {
@@ -616,7 +611,6 @@ func newerWriterFile(t *testing.T, newer *ir.Unit, rootName string) []byte {
 // array (§5.2): a file below it refuses layout_unsupported with its hash, one
 // at or above it reads.
 func TestMooFixedVersioningFloor(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, mid, newer := readTestSchema(t, "VOLD_floor"), readTestSchema(t, "VMID_floor"), readTestSchema(t, "VNEW_floor")
@@ -677,7 +671,6 @@ func fx1Offsets(oracle []byte) (layoutLen, rec int) {
 // where §5.3 sets it, the layout refusals reporting the file's hash, and
 // every refusal total (nothing lands). The control, the uncut file, reads.
 func TestMooFixedFormRefusesByName(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	oracle := corpusFile(t, corpus, "fx1.bin")
@@ -722,7 +715,6 @@ func TestMooFixedFormRefusesByName(t *testing.T) {
 // the CRC-32C trailer (hash/crc32's Castagnoli table is the independent sum)
 // and reads it back; one flipped byte refuses integrity_mismatch.
 func TestMooFixedFormIntegrity(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table Sealed | integrity = \"crc32c\"\n{\n    id uint32 = 7\n    name string(8)\n}\n")
 	g := fixedUnit(t, u, nil)
@@ -757,7 +749,6 @@ print(table.concat(parts))
 // field refuses the save as non_finite_float, naming the field (§3.3); the
 // control, a finite value, saves.
 func TestMooFixedFormRefusesNonFiniteOnWrite(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table Heat\n{\n    a float32\n    b float64\n}\n")
 	g := fixedUnit(t, u, nil)
@@ -783,7 +774,6 @@ print(try(0x3F800000, 0, 0x3FF00000))
 // any other byte by direction; a variable root reads form 1 and refuses form
 // 3 as newer_form.
 func TestMooReadStrictDispatchesTheForm(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table Fx\n{\n    a uint32 = 3\n}\ntable Vx\n{\n    a uint32 = 3\n}\n")
 	g := fixedUnit(t, u, nil)
@@ -814,7 +804,6 @@ print(read("Vx", buffer.fromstring("\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00")))
 // a field of this reader's — and requires a NEW-READS-OLD row the gate holds
 // green to go red: the plan's matching is what the versioning gate measures.
 func TestMooFixedVersioningNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	older, newer := readTestSchema(t, "VOLD_field_append"), readTestSchema(t, "VNEW_field_append")

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -73,7 +71,6 @@ func TestDartDescriptorsAreConstants(t *testing.T) {
 
 	t.Run("dart", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "dart")
 		dart := dartBinary(t)
 		if out, err := runDescriptorProbe(t, dart, files, packetFiles(t, u), nil); err != nil {
 			t.Fatalf("the descriptor probe failed: %v\n%s", err, out)

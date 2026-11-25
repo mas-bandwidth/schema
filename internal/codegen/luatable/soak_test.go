@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE SOAK, GATED ON THE ALLOCATION COUNT (docs/PORTING.md I9). A soak that
@@ -132,7 +130,6 @@ func soakRun(t *testing.T, b builtUnit, files map[string][]byte, passes int) (sa
 
 func TestLuaLoadSoak(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	if !pinned(t) {
 		return
 	}
@@ -157,7 +154,6 @@ func TestLuaLoadSoak(t *testing.T) {
 // goes red. A soak that watched drift alone would pass it.
 func TestLuaLoadSoakNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	if !pinned(t) {
 		return
 	}

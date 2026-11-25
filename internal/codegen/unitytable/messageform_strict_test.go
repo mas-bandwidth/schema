@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestUnityMessageFormStrict holds the generated C# (unity) announcement read
@@ -21,7 +20,6 @@ import (
 // another build version.
 func TestUnityMessageFormStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect strict announcement")
 	const schema = `package probe
 
 fixed table Root {

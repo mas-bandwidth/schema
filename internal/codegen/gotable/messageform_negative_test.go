@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE MESSAGE FORM's NEGATIVE CONTROLS (docs/SPEC-TABLES.md §3.3). Each gate of
@@ -86,7 +84,6 @@ func messageGoldenRow(t *testing.T, name string) (string, func(func(map[string][
 // the probe reads).
 func TestGoMessageFormGoldensNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated goldens)")
 	t.Run("write", func(t *testing.T) {
 		t.Parallel()
 		_, run := messageGoldenRow(t, "login_full")

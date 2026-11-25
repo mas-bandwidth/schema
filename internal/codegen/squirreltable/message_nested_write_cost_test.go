@@ -25,7 +25,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const nestedWriteLevels = 13
@@ -45,7 +44,6 @@ func nestedWriteSchema() string {
 
 func TestSquirrelMessageNestedWriteIsLinearInDepth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	src := nestedWriteSchema()
 	ast, perrs := parser.Parse("NestWork.schema", []byte(src))
 	if len(perrs) > 0 {

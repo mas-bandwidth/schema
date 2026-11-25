@@ -10,17 +10,14 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGooseRetainingFuzzDriver(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	out := gooseRetainingFuzzProbe(t, nil)
 	checkGooseRetainingReplies(t, out, 9)
 }
 
 func TestGooseRetainingFuzzNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	checkGooseRetainingReplies(t, gooseRetainingFuzzProbe(t, nil), 9)
 	// A real runtime counter defect must survive the driver and reach its reply.
 	src := string(goosetable.Runtime()["wire_retain.goose"])
@@ -172,7 +169,6 @@ fn conformance_message_framed_fuzz(root: const u8[:], ann: const u8[:], has_ann:
 // committed vector carries ill-formed text in a key and a second occurrence
 // of the map field; "damage only" cuts the second occurrence out.
 func TestGooseRetainingMapReplacement(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	allGooseRetainingMapReplay := gooseRetainingMapReplay(t, nil)
 	if len(allGooseRetainingMapReplay) == 0 {
 		t.Fatal("gooseRetainingMapReplay(t, nil) is empty: the loop below would check nothing")
@@ -188,7 +184,6 @@ func TestGooseRetainingMapReplacement(t *testing.T) {
 // the body-damage return, the repeated-field verdict and load_error): both
 // reads must then keep a value, so the test above is held by them.
 func TestGooseRetainingMapReplacementNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the retaining fuzz driver)")
 	override := sabotageAll(t, "wire_load.goose", ctlWireWalk, ctlNoWalk, ctlBodyDmg, "",
 		"    if report.repeated > 0 {", "    if false {", ctlEndRefuse, ctlEndOk)
 	allGooseRetainingMapReplay := gooseRetainingMapReplay(t, override)

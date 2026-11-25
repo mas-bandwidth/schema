@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -246,7 +245,6 @@ func (r pythonFixedProofRunner) SaveMutated(t *testing.T, tc fixedproof.RowCase,
 // shared oracle suite. Value/evolution proof cards add their own row files.
 func TestPythonFixedProofSuite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins and the C++ fixed-form corpus")
 	fixedproof.RunEvolutionRows(t, filepath.Join("..", "..", ".."), pythonFixedProofRunner{},
 		"fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection",
 		"compiled-plans", "definition-hash", "fixed-closure", "live-extents", "writing")
@@ -255,7 +253,6 @@ func TestPythonFixedProofSuite(t *testing.T) {
 // Functional: real monotonic time measures the already oracle-gated codec.
 func TestPythonFixedFormBenchFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and C++ oracle")
 	tc := fixedproof.RowCase{ID: "python-fixed-bench", Schema: "package probe\nfixed table T { x int32 = 1; y int32 = 2 }\n", Root: "T", Body: 8, Count: 1}
 	tc.Schema = strings.ReplaceAll(tc.Schema, ";", "\n")
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)

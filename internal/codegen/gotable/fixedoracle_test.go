@@ -95,7 +95,6 @@ func TestGoFixedSharedByteOracleAndHostileInput(t *testing.T) {
 // t09Run does for a 128-bit store.
 func fixedOracleRun(t *testing.T, schema, probe string) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	u := unitFrom(t, schema)
 	files := map[string][]byte{}
 	packet, err := golang.Generate(u)

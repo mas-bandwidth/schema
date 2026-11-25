@@ -172,7 +172,6 @@ var deprecatedStored = map[string]struct {
 // exactly as the writer stored them (`expect=` is `values=`).
 func TestDeprecatedFieldVectors(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ reference's corpus (make tables-fixedform-corpus)")
 	corpus := builtCorpus(t)
 	lines := manifestLines(t, corpus)
 	for _, vec := range DeprecatedField {
@@ -271,7 +270,6 @@ func field(line, key string) string {
 }
 func TestDeadBytesVectors(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the fixed-form corpus")
 	corpus := fixedCorpus(t)
 	files := map[string]bool{}
 	names := map[string]bool{}

@@ -15,11 +15,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestMooReadStrictFixedRootAsksForOneRecord(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 
 	src, ok := mootable.Runtime()["table_refusal.moo"]

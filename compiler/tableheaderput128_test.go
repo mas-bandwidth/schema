@@ -438,7 +438,6 @@ int main()
 // carry 128-bit fields under every framing the emitter has for them.
 func TestCppTableHeaderAndPut128Bytes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated save path is C++: no c++ on PATH")

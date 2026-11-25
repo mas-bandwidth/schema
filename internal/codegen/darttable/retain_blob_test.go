@@ -3,7 +3,6 @@ package darttable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"maps"
@@ -12,7 +11,6 @@ import (
 )
 
 func TestDartRetainingBlobReachability(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Child { data *bytes
  caption *string }

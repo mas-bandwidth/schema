@@ -10,7 +10,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -24,7 +23,6 @@ import (
 // string values is preserved.
 func TestJsonLeadingBOMBoundaryRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated JSON BOM boundary probe)")
 
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

@@ -44,7 +44,6 @@ func TestWriteRefusalPacketLuaSurface(t *testing.T) {
 
 func runWriteRefusalPacketLua(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Lua interpreter (it runs the generated packet writer)")
 	root := "../../.."
 	rows := wrpacket.Rows(t, root)
 	dir := wrpacket.Generate(t, root, "lua", compiler.Options{})

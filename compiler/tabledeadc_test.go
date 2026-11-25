@@ -67,7 +67,6 @@ fixed table Outer
 
 func compileAndRunC(t *testing.T, u *ir.Unit, mainSource string) {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("generated C execution requires cc")

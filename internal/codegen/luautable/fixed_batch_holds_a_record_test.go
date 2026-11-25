@@ -15,12 +15,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestLuauFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted fixed reader and writer)")
 
 	u, err := compiler.New().Load([]string{filepath.Join(root, "test", "fixed-empty-batch", "Batch.schema")})
 	if err != nil {

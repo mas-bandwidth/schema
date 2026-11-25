@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -23,7 +22,6 @@ import (
 // the driver must not write one for this row.
 func TestLuaDriverAnswersAWireRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned lua")
 	root := repoRoot(t)
 	u := luarun.LoadUnit(t, filepath.Join(root, "test", "tables", "shapes"))
 	files, err := Generate(u)

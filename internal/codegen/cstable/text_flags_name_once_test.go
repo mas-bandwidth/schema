@@ -21,7 +21,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -134,7 +133,6 @@ func csJsonFlagsNameOnceOracle(t *testing.T, rows []csJsonFlagsNameOnceRow) []st
 
 func TestCSJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 
 	rows := csJsonFlagsNameOnceRows(t)
 	want := csJsonFlagsNameOnceOracle(t, rows)

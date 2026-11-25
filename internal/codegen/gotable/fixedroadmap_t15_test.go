@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -83,7 +82,6 @@ const t15GoRunDepth = 8
 
 func TestFixedRoadmapGoT15GuardChain(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rows := []struct {
 		id  string
 		run func(t *testing.T)

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -60,7 +59,6 @@ func tableH(t *testing.T, src string) string {
 // a caller evaluates it as an argument before the probe helper's own gate.
 func identityCCFlags(t testing.TB) []string {
 	t.Helper()
-	slowtest.Gate(t, "an external toolchain")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"
@@ -286,7 +284,6 @@ func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 }
 
 func TestIdentityHeldRoundTripAndClamp(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	runCGenerated(t, identityHeldSchema, `#include "ProbeTable.h"
 #include <stdio.h>
@@ -338,7 +335,6 @@ int main(void)
 }
 
 func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	runCGenerated(t, identityFlatSchema, `#include "ProbeTable.h"
 #include <stdio.h>

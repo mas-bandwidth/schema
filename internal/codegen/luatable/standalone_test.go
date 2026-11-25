@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -28,7 +27,6 @@ import (
 // must NOT load, so the probe is shown to see a dependency outside the unit
 // (a probe that loaded the missing module from anywhere else would pass it).
 func TestLuaUnitStandsAlone(t *testing.T) {
-	slowtest.Gate(t, "the pinned lua")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))

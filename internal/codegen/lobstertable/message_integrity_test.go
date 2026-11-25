@@ -10,14 +10,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestLobsterMessageIntegrity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lobster message integrity")
 	path := filepath.Join(t.TempDir(), "Batch.schema")
 	const src = `package integritybatch
 fixed table Checked | integrity="crc32c" {

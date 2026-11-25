@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -32,7 +31,6 @@ table Envelope { child ?Child }
 
 func TestPythonRequiredNestedDefaults(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "C++ and both pinned Python interpreters")
 	u := loadUnit(t, requiredNestedSchema)
 	model := tabletext.NewModel(u)
 	encode := func(root, text string) []byte {

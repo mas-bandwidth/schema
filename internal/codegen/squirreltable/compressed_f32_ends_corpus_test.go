@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // f32EndsCorpusDir is the cross-port corpus for A COMPRESSED FLOAT'S RANGE IS
@@ -82,7 +81,6 @@ foreach (line in split(text(I.cases), "\n")) {
 // range at float32, in the variable, fixed and JSON forms, and the saves match
 // the reference byte for byte.
 func TestSquirrelCompressedF32EndsCorpus(t *testing.T) {
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sqrun.Require(t)
 	t.Parallel()
 	inputs, rows := f32EndsCorpus(t)

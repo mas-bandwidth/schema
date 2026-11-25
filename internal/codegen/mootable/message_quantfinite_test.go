@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -175,7 +174,6 @@ func quantFiniteMoo(t *testing.T, row quantFiniteRow, files map[string][]byte) s
 }
 
 func TestMooMessageQuantizedFloatIsFinite(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	allQuantFiniteRows := quantFiniteRows(t)
 	if len(allQuantFiniteRows) == 0 {
@@ -203,7 +201,6 @@ func TestMooMessageQuantizedFloatIsFinite(t *testing.T) {
 // out of the emitted runtime and requires the top step past the largest
 // float32 to stop refusing.
 func TestMooMessageQuantizedFloatIsFiniteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	const anchor = "\tif not V.finite32(bits) then\n\t\tt.report.nonFinite += 1\n"
 	allQuantFiniteRows := quantFiniteRows(t)

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -60,7 +59,6 @@ fixed[need - 8] |= 4;
 `
 
 func TestJsFlagsPastWidthRefuse(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	node := jsNode(t)
 	newer := unitFrom(t, strings.Replace(jsFlagsWidthReader, "Jump, Fly", "Jump, Fly, Swim", 1))

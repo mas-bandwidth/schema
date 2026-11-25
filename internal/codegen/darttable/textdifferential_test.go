@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -175,7 +174,6 @@ var dartTextDifferentialSeeds = []uint64{
 // divergence messages and a non-nil error when any instance differs.
 func runDartTextDifferential(t *testing.T, schema string, seed uint64, n int, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "dart")
 	dart := dartBinary(t)
 	u := buildUnit(t, schema)
 	files, err := Generate(u)

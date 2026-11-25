@@ -154,7 +154,6 @@ func t12R27(t *testing.T) {
 // and round-trips through the fixed form's writer, identity plan and compiled
 // plan at non-default and boundary values.
 func t12UnionFieldArms(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain (it compiles and runs the generated module)")
 	oldSchema := `package probe
 
 union Pick
@@ -248,7 +247,6 @@ fixed table Root
 // reads back with its tag ordinal intact and `clamped == 0` (never falling into
 // the out-of-range `_ ->` clamp clause).
 func t12PayloadFreeArms(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain (it compiles and runs the generated module)")
 	u := unitFrom(t, `package probe
 
 union Pick

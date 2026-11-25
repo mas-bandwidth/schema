@@ -59,7 +59,6 @@ func TestGoFlatCompressedFloatClampsTopStep(t *testing.T) {
 // max. Behind slowtest.Gate — it shells out to the Go toolchain.
 func runFlatCompressedClampProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 
 	const probe = `package t
 

@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -50,7 +49,6 @@ func (r cJsonNumberRow) text() string {
 // running the probe makes this a functional test.
 func TestCJsonNumberAnyLength(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

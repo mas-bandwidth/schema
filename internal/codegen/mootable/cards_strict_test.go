@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -274,7 +273,6 @@ func checkMooCardsSurfaceExpected(surface string, rows [][]string, outputs map[s
 }
 
 func TestMooCardsReadThenWrite(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted cards facade)")
 	t.Parallel()
 	facade := mooCardsSources(t)
 	if bad := mooCardsStrictCheck(facade); len(bad) != 0 {
@@ -321,7 +319,6 @@ func TestMooCardsReadThenWrite(t *testing.T) {
 }
 
 func TestMooCardsReadThenWriteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted cards facade)")
 	t.Parallel()
 	sabotages := []struct {
 		name, file, from, to string

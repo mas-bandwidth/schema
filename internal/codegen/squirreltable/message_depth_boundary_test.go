@@ -24,7 +24,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -240,7 +239,6 @@ local check = function(name, wire, expectOK) {
 
 func TestSquirrelMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out := runDepthBoundaryProbe(t, u, ann, cases, nil)
 	for _, c := range cases {

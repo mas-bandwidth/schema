@@ -35,7 +35,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -302,7 +301,6 @@ func t04GoE8(t *testing.T) {
 // default" — and the title's "moves no counter at all" is asserted on the
 // running read.
 func t04GoR19(t *testing.T) {
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated clean pair)")
 	rows := []string{"field_append", "enum_append", "flags_append", "keyed_array_enum_append"}
 	root := t.TempDir()
 	var imports, requires, replaces, bodies []string

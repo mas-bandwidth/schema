@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A counted [A..B] holds A inside a union arm (ruling R10; SPEC.md §5.1 row
@@ -16,7 +15,6 @@ import (
 // reads are the conformance rows arm-min-fix-* and armmin_fix_count_*.
 func TestPythonUnionArmCountedMinimumWrite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, "package armmin\nunion Pick\n{\n    few [2..4]uint32\n    other int32\n}\nfixed table Root { pick Pick }\ntable Var { pick Pick }\n")
 	files, err := Generate(u)
 	if err != nil {

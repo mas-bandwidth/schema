@@ -22,7 +22,6 @@ import (
 )
 
 func TestDartRequiredNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	schema := `package probe
 table Root {}
 table RequiredValue { a int32 | required
@@ -271,7 +270,6 @@ func requiredDartGoPins(t *testing.T, u *ir.Unit, roots []string) map[string]str
 }
 
 func TestDartRequiredSharedPins(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/required"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
 	if err != nil {

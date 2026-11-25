@@ -48,7 +48,6 @@ func rustConstructProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
 // input is encoded from a range-free schema, so the decoder's own bound check
 // is exercised: a value past its bound refuses the whole read (strict-only).
 func TestRustOneSidedRangeNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (native one-sided integer bounds and cook)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/one-sided-range")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))

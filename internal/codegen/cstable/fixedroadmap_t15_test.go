@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -137,7 +136,6 @@ fixed table Root
 
 func TestFixedRoadmapCSharpT15GuardChain(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	rows := []struct {
 		id  string
 		run func(t *testing.T)

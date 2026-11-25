@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -23,7 +22,6 @@ import (
 // A FUNCTIONAL TEST: it runs the generated Dart, behind slowtest.Gate.
 func TestDartWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, tablewire.IdCapSchema())
 	files, err := dart.Generate(u)
 	if err != nil {

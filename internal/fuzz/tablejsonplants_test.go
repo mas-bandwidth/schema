@@ -460,7 +460,6 @@ func runJsonPlantsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (une
 // under recover and -race, plus one sabotaged negative-control run.
 func TestRandomTableJsonPlants(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
 	from, to := slowtest.EnvSeedRange(t, 0, 4)
 	for _, c := range expectedClasses {
 		t.Logf("expected class owned by %s: %s", c.id, c.why)

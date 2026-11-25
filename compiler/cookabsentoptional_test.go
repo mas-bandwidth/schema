@@ -17,7 +17,6 @@ import (
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	ctable "github.com/mas-bandwidth/schema/v2/internal/codegen/ctable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
@@ -65,7 +64,6 @@ int main( void )
 `
 
 func TestCookAbsentOptionalPayloadZero(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFromSource(t, absentOptionalPayloadSchema)
 
 	// the GO cook, in both byte orders, of the value whose optional is absent

@@ -133,7 +133,6 @@ int main(void) {
 
 func TestCNodeRecordEndsAtTerminator(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFrom(t, cNodeRecordTerminatorSchema)
 	body := fmt.Sprintf(`
     int failures = 0;
@@ -176,7 +175,6 @@ func TestCNodeRecordEndsAtTerminator(t *testing.T) {
 
 func TestCNodeRecordEndsAtTerminatorNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFrom(t, cNodeRecordTerminatorSchema)
 	body := fmt.Sprintf(`
     int failures = 0;

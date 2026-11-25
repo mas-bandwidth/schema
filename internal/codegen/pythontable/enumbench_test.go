@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const enumBenchSchema = `package enumbench
@@ -43,7 +42,6 @@ table Many
 // Functional (pythonBinary): run with SCHEMA_SLOW=1.
 func TestPythonEnumLookupBench(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it times the emitted table runtime)")
 	u := loadUnit(t, enumBenchSchema)
 	files, err := Generate(u)
 	if err != nil {

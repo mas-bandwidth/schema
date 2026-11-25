@@ -5,8 +5,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A malformed read returns no records and resets caller storage. A named
@@ -15,7 +13,6 @@ import (
 // turns a later valid read into damage nor survives it.
 func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated fixed-load probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatal(err)

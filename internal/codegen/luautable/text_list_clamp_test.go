@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -17,7 +16,6 @@ import (
 // internal/tabletext and internal/tablewire, never typed by hand.
 func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := generateFiles(t, map[string]string{"Lists.schema": textListsSchema})
 	m := textListModel(t)
 

@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -53,7 +52,6 @@ fn row(name: &str, why: Option<String>) { match why { None => println!("ROW {nam
 // TestRustCompressedF32EndsCorpus runs every cases.tsv row through the
 // generated Rust and reads one verdict line per row back.
 func TestRustCompressedF32EndsCorpus(t *testing.T) {
-	slowtest.Gate(t, "rustc (it compiles and runs the compressed-f32-ends corpus probe)")
 	keyedRequireRustc(t)
 	file := func(name string) []byte {
 		t.Helper()

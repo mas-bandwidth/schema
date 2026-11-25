@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonIntegersSchema is the unit the json-integers vectors read: an int32, an
@@ -54,7 +53,6 @@ local jwide = function(unit, mod, root, key) {
 // is refused.
 func TestSquirrelJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 
 	root, err := sqrun.RepoRoot()
 	if err != nil {

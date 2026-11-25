@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -24,7 +23,6 @@ import (
 // of the same text in this test.
 func TestRustJsonSkippedValueIsWellFormed(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated JSON skipped-value probe)")
 
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

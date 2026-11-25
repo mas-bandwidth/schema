@@ -4,14 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Each nested loop must retain its enclosing element offset during CHECK, and (R4)
 // the refused read hands the row back at its declared default.
 func TestJavaScriptFixedNestedArrayCheck(t *testing.T) {
-	slowtest.Gate(t, "node (nested fixed CHECK offsets)")
 	for _, outer := range []string{"[2]", "[..2]", "[Key]"} {
 		for _, inner := range []string{"[2]", "[..2]", "[Key]"} {
 			for _, shared := range []bool{false, true} {

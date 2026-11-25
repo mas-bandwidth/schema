@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
@@ -93,7 +92,6 @@ func TestCookWriteEveryConstructDart(t *testing.T) {
 	for _, fam := range cookEveryFamilies {
 		t.Run(fam.name, func(t *testing.T) {
 			t.Parallel()
-			slowtest.Gate(t, "dart")
 			fu := unitFrom(t, "package probe\nenum Tier { flash, pro, heavy, frontier }\n"+fam.schema)
 			files, err := dart.Generate(fu)
 			if err != nil {

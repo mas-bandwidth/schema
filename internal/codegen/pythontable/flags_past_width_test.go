@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -19,7 +18,6 @@ import (
 // trip never writes what its own reader refuses. Under the old rule (a mask's
 // range was the u64's own) every refusal here read.
 func TestPythonFlagsPastWidthRefuse(t *testing.T) {
-	slowtest.Gate(t, "a flags mask past the reader's width, both pins")
 	reader := loadUnit(t, "package flagspast\nflags Cap { Trace, Verbose }\ntable Root { cap Cap }\n")
 	newer := loadUnit(t, "package flagspast\nflags Cap { Trace, Verbose, Extra }\ntable Root { cap Cap }\n")
 	narrow := loadUnit(t, "package flagspast\ntable Root { cap uint8 }\n")

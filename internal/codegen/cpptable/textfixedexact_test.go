@@ -103,7 +103,6 @@ int main( void )
 // value agree with internal/tabletext for the same token.
 func TestCppTextFixedPointTokenExact(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -72,7 +70,6 @@ void main() {
 
 func TestDartJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 
 	u := buildUnit(t, dartJsonZeroSchema)
 	files, err := Generate(u)

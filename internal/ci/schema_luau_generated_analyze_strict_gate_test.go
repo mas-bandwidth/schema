@@ -19,7 +19,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luauCorpusDirs are the schema directories the Makefile's generate targets
@@ -76,7 +75,6 @@ var luauKnownRefusals = map[string]string{}
 // directive would only be linted.
 func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau-analyze (the pinned release)")
 	root := repoRoot(t)
 	analyze := luauAnalyzer(t, root)
 
@@ -205,7 +203,6 @@ func TestLuauGeneratedAnalyzeStrictGate(t *testing.T) {
 // The plants live only in the scratch copies.
 func TestLuauGeneratedAnalyzeStrictGatePlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau-analyze (the pinned release)")
 	root := repoRoot(t)
 	analyze := luauAnalyzer(t, root)
 

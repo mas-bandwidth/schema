@@ -70,7 +70,6 @@ var subsetForms = []struct {
 // generated-compile tests in this package resolve it.
 func TestGoTableCompilesWithAnySubsetOfItsForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

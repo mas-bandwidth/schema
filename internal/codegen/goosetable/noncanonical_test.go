@@ -36,7 +36,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -133,7 +132,6 @@ func gooseNonCanonicalExpected(t *testing.T, vectorDir string, row gooseNonCanon
 
 func TestGooseReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it reads every shared non-canonical vector)")
 
 	rows := readGooseNonCanonicalManifest(t)
 	reached := map[string]bool{}

@@ -20,8 +20,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -123,7 +121,6 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 // control expects one).
 func RunErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned moo interpreter")
 	moo, why := Interpreter()
 	if moo == "" {
 		t.Fatalf("moorun: the moo interpreter does not resolve: %s", why)
@@ -146,7 +143,6 @@ func RunChecked(t testing.TB, dir, main string, inputs map[string][]byte) []byte
 // negative control expects one).
 func RunCheckedErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the checked moo interpreter")
 	moo, why := CheckedInterpreter()
 	if moo == "" {
 		t.Fatalf("moorun: the checked moo interpreter does not resolve: %s", why)
@@ -174,7 +170,6 @@ func runInterpreter(t testing.TB, moo, dir, main string, inputs map[string][]byt
 // caller asserts, because moo-analyze exits 0 on a lint warning.
 func Analyze(t testing.TB, dir string, files ...string) string {
 	t.Helper()
-	slowtest.Gate(t, "moo-analyze")
 	analyze, why := Analyzer()
 	if analyze == "" {
 		t.Fatalf("moorun: moo-analyze does not resolve: %s", why)

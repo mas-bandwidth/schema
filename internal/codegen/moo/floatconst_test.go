@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooFloatConstOneValue: a float const holds the one value every language
@@ -22,7 +21,6 @@ import (
 // included.
 func TestMooFloatConstOneValue(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 
 	f32 := []float64{1.0 / 3.0, 0.1, float64(math.SmallestNonzeroFloat32), math.MaxFloat32}
 	f64 := []float64{1.0 / 3.0, 0.1, math.SmallestNonzeroFloat64, math.MaxFloat64}

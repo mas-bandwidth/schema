@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -18,7 +17,6 @@ import (
 
 func TestKeyedElementWideningElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir keyed scalar elements widen once per field at incoming width")
 	u := unitFrom(t, `package keyedwiden
  enum Slot { A, B }
  table Root {
@@ -111,7 +109,6 @@ end
 
 func TestPinnedKeyedElementWideningElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir keyed element widening replays the enumerated corpus failure")
 	paths, e := filepath.Glob("../../../tables/examples/*.schema")
 	if e != nil || len(paths) == 0 {
 		t.Fatalf("examples unit: %v", e)

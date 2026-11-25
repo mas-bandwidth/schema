@@ -13,7 +13,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"math"
 	"os"
@@ -297,7 +296,6 @@ func strictLuaAnswers(t *testing.T, u *ir.Unit, cases []strictCase) map[string]s
 
 func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	repo := "../../.."
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)

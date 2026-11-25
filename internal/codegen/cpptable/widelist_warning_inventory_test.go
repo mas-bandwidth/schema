@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -20,7 +19,6 @@ import (
 // warning inventory. Exercise actual emission and the production scanner so
 // an omitted file or unrecorded inherited warning cannot look like a pass.
 func TestCppWidelistWarningInventory(t *testing.T) {
-	slowtest.Gate(t, "clang++ (wide-list generated warning inventory)")
 	clang := os.Getenv("CLANGXX")
 	if clang == "" {
 		clang = "clang++"

@@ -118,7 +118,6 @@ type csNonCanonicalUnit struct {
 // field written with arm reference 0 stays refused (§3.3 (c)).
 func TestCSharpReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 
 	repo := filepath.Join("..", "..", "..")
 	vector := filepath.Join(repo, "testdata", "wire", "non-canonical")

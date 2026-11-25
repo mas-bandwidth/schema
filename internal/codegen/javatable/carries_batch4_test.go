@@ -8,13 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaCarriesTextList(t *testing.T) {
-	slowtest.Gate(t, "compiles and runs generated Java text-list codecs")
 	t.Parallel()
 
 	const schema = `package probe
@@ -226,7 +224,6 @@ public final class Main {
 }
 
 func TestJavaCarriesTextListTotal(t *testing.T) {
-	slowtest.Gate(t, "compiles and runs generated Java text-list-total codecs")
 	t.Parallel()
 
 	const totalsSchema = `package probe
@@ -410,7 +407,6 @@ public final class Main {
 }
 
 func TestJavaCarriesUnboundedText(t *testing.T) {
-	slowtest.Gate(t, "compiles and runs generated Java unbounded-text codecs")
 	t.Parallel()
 
 	const schema = `package probe
@@ -580,7 +576,6 @@ public final class Main {
 }
 
 func TestJavaCarriesRequiredNestedGuards(t *testing.T) {
-	slowtest.Gate(t, "compiles and runs generated Java nested guard required checks")
 	t.Parallel()
 
 	const schema = `package probe
@@ -653,7 +648,6 @@ public final class Main {
 
 func TestJavaPopulatedFeatureWitnesses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 
 	const schema = `package featurewitnesses
 

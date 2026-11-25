@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -185,7 +184,6 @@ func textNumberRed(got, want []string) []string {
 }
 
 func TestDartTextNumberTokensLandAsTheEngine(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 	got, want := textNumberRun(t, nil), textNumberOracle(t)
 	texts := textNumberTexts()
@@ -209,7 +207,6 @@ func plant(t *testing.T, src, anchor, planted string) string {
 }
 
 func TestDartTextNegativeZeroNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 	got := textNumberRun(t, func(src string) string {
 		return plant(t, src, "if (token != '-0' && !token.contains('.')", "if (!token.contains('.')")
@@ -238,7 +235,6 @@ const textInt64DoubleCompare = `int _jsonWideIntField(dynamic val, TableTextRepo
 int _jsonWideIntFieldExact(`
 
 func TestDartTextInt64DoubleCompareNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 	got := textNumberRun(t, func(src string) string {
 		return plant(t, src, "int _jsonWideIntField(", textInt64DoubleCompare)

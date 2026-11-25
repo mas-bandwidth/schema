@@ -52,7 +52,6 @@ func TestWriteRefusalPacketPythonSurface(t *testing.T) {
 
 func runWriteRefusalPacketPython(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Python interpreter (it runs the generated packet writer)")
 	t.Chdir("../../..")
 	python := pyrun.Interpreter(t)
 	rows := wrpacket.Rows(t, ".")

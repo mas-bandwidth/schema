@@ -199,7 +199,6 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 // Behind slowtest.Gate — it shells out to the Go toolchain.
 func runWriteRefusalPacket(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated packet writer)")
 	t.Chdir("../../..")
 
 	c := compiler.New()

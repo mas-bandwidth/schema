@@ -42,7 +42,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -406,7 +405,6 @@ func pyKeyedRowsFailures(t *testing.T, jobs []pyKeyedRowsJob, mutate func(*testi
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtKeyedRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 
 	// THE COMPLETENESS CHECK. Every manifest instance or report row whose
 	// root reaches a keyed array is named in pyKeyedRowCases, so a corpus
@@ -464,7 +462,6 @@ func TestPythonVtKeyedRows(t *testing.T) {
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtKeyedRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const fixedRead = `        values = [_decode(elem, data, at + index * elem["size"]) for index in range(n)]`
 	for _, ctl := range []struct {
 		name    string

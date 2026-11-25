@@ -26,7 +26,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -52,7 +51,6 @@ type blobKindRow struct {
 
 func TestGoPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit)")
 	root := filepath.Join("..", "..", "..")
 
 	readerUnit := loadUnitPaths(t, root, []string{blobKindUnit})

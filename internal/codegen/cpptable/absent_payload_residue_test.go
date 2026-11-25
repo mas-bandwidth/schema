@@ -34,7 +34,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -422,7 +421,6 @@ using namespace absentresidue;
 }
 
 func TestCppAbsentPayloadResidueNotCopied(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	out, err := cppAbsentPayloadResidueRun(t, nil)
 	if err != nil {
@@ -431,7 +429,6 @@ func TestCppAbsentPayloadResidueNotCopied(t *testing.T) {
 }
 
 func TestCppAbsentPayloadResidueNotCopiedNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	const guard = "if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }"
 	undermine := func(files map[string][]byte) {
@@ -463,7 +460,6 @@ func TestCppAbsentPayloadResidueNotCopiedNegativeControl(t *testing.T) {
 // probe must go red on the union-bearing optional, because the arm entries then
 // run after the defaults and answer the wire's residue.
 func TestCppAbsentPayloadResidueNotCopiedOrderingNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	undermine := func(files map[string][]byte) {
 		found := false

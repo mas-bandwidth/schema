@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -146,7 +145,6 @@ func TestCVariableTestsStrictApi(t *testing.T) {
 	// The strict read itself, run in C: a clean wire reads whole through
 	// the region and builder names; damage, an out-of-range value and a
 	// truncated wire each refuse whole and land nothing.
-	slowtest.Gate(t, "the C compiler (cc)")
 	reader := unitFrom(t, vtStrictSchema)
 	clean := vtStrictWire(t, vtStrictSchema, `{"a":5,"score":7,"inner":{"n":3},"next":{"a":6}}`)
 	damaged := bytes.Clone(clean)

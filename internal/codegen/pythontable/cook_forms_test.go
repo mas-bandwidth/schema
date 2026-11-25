@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonCookForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package cookforms
  table Inner | forms = "wire" { value int32 }
  table Root | forms = "wire,cook" { nested Inner }
@@ -76,7 +74,6 @@ print("ok")
 
 func TestPythonCookSurfaceSelection(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters and surface selection")
 	u := loadUnit(t, `package cookselect
  table Root { value int32 }
 `)

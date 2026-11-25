@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -110,7 +109,6 @@ func depthNestedUnion(levels int) []byte {
 
 func TestRustUnknownFieldBinaryDepthBound(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (the generated plain load's unknown-field walk)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the unknown-field depth bound cannot be built or run: %v", err)

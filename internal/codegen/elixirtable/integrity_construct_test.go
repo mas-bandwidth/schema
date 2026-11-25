@@ -8,14 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestIntegrityConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir CRC-32C file fixed message and retaining surfaces")
 	const src = `package probe
  fixed table Reading | integrity="crc32c" { x int32
  y int16
@@ -163,7 +161,6 @@ const elixirIntegrityPlainFixedGolden = "03000000000000008384e3e565538d434800000
 
 func TestIntegritySingleRootElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir integrity-only closure warning-clean generation")
 	for _, decl := range []string{"table", "fixed table", "wire-only"} {
 		t.Run(decl, func(t *testing.T) {
 			source := "package probe\n" + decl + ` R | integrity="crc32c" { x int32 }`

@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -159,7 +158,6 @@ end
 // and a plain float32 or float64 -0 keeps its sign.
 func TestLuauJsonRangedFloatHeld(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
 	path := filepath.Join(t.TempDir(), "Ranged.schema")
 	if err := os.WriteFile(path, []byte(jsonRangedFloatSchema), 0o644); err != nil {
 		t.Fatal(err)

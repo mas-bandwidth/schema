@@ -25,8 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -146,7 +144,6 @@ func TestRustWireFuzzVerdictPipe(t *testing.T) {
 	if err := rustWireFuzzVerdictMakefileCheck(string(mk)); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "rustc (it builds and runs the generated card codec over the wire-fuzz verdict pipe)")
 	harness := rustWireFuzzHarness(t, repo)
 	leg := rustWireFuzzLeg(t, repo, rustWireFuzzCardModules(t, repo), nil)
 	for _, retain := range []bool{false, true} {
@@ -181,7 +178,6 @@ func TestRustWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		t.Fatal("NEGATIVE CONTROL FAILED: dropping cards-rust-wire-fuzz left the makefile check green")
 	}
 
-	slowtest.Gate(t, "rustc (it builds and runs the generated card codec over the wire-fuzz verdict pipe negative controls)")
 	harness := rustWireFuzzHarness(t, repo)
 	modules := rustWireFuzzCardModules(t, repo)
 

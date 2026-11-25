@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -129,7 +128,6 @@ func unitFromDir(t *testing.T, dir string) *ir.Unit {
 // roundTripVariable compiles the generated Java beside one driver, then holds
 // the load/save and toJson round trips to the committed reference bytes.
 func roundTripVariable(t *testing.T, javac, javaBin string, files map[string][]byte, pkg, root, wirePath, jsonPath string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

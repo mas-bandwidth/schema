@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -79,7 +77,6 @@ public final class ZeroByteProbe {
 // to the no-zero-byte rule at string values, text-list elements, and map keys.
 func TestJavaJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	files, err := Generate(unitFrom(t, javaJsonZeroByteSchema))

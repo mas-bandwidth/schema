@@ -17,14 +17,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestCppRetainKeepsDepth128(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C++ compiler (it builds and runs the generated C++)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -68,7 +67,6 @@ table FlagSites
 // and the canonical read row is compared with the committed text byte for byte.
 func TestElixirJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, jsonWideIntegersUnit)
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
 	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

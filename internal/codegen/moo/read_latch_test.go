@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -43,7 +42,6 @@ func unitFromSource(t testing.TB, name, src string) *ir.Unit {
 // refusal from inside serialize.moo's stream does. The const and reserved
 // rules stay unlatched, untouched here (docs/PORT-MOO.md, THE WIRE).
 func TestMooTypeWireReadRefusalLatchesTheStream(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromSource(t, "Latch", latchSchema))
 	got := strings.TrimSpace(readLatchProbe(t, dir))
@@ -62,7 +60,6 @@ func TestMooTypeWireReadRefusalLatchesTheStream(t *testing.T) {
 // unlatched return back into the emitted reads and requires the gate red: it
 // sees a refused read whose stream still reports ok.
 func TestMooTypeWireReadRefusalLatchesTheStreamNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, files := generateInto(t, unitFromSource(t, "Latch", latchSchema))
 	latch := string(files["Latch.moo"])

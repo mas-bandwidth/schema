@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -15,7 +13,6 @@ import (
 // this particular unit is scalar. Lint the emitted modules, not just a unit
 // that happens to exercise the text-list branch.
 func TestJavaScriptVariableHelperClosure(t *testing.T) {
-	slowtest.Gate(t, "eslint (generated variable runtime dependencies)")
 	tool := os.Getenv("ESLINT")
 	if tool == "" {
 		tool = "eslint"

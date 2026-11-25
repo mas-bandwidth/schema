@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -21,7 +20,6 @@ import (
 // eight-byte locator, and 7 is written over the count.
 
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 

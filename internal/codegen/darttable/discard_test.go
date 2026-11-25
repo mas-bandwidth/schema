@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -126,7 +125,6 @@ func discardMessages(t *testing.T, u *ir.Unit) []byte {
 // body at its defaults. Red if any read hands back what it decoded.
 func TestDamageDiscardsTheWholeLoadDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	dart := dartBinary(t)
 	u := discardLoadUnit(t)
 	fixed := discardWireDart(t, u, "Root")

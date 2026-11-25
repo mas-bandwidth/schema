@@ -23,7 +23,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -374,7 +373,6 @@ func runSqRetainMessageProbe(t *testing.T, newerFiles, olderFiles map[string][]b
 
 func TestSquirrelRetainOnMessageForm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	newerFiles, olderFiles, probe, inputs := sqRetainMessageSetup(t)
 	normal := runSqRetainMessageProbe(t, newerFiles, olderFiles, probe, inputs)
 	allSqRetainMessageCases := sqRetainMessageCases()
@@ -412,7 +410,6 @@ func TestSquirrelRetainOnMessageForm(t *testing.T) {
 
 func TestSquirrelRetainOnMessageFormNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	newerFiles, olderFiles, probe, inputs := sqRetainMessageSetup(t)
 
 	controls := []struct {

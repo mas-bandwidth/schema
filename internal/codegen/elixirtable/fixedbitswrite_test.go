@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestFixedBitsWriteRefusal pins the Elixir fixed writer to its declared width:
@@ -14,7 +12,6 @@ import (
 // word the binary construction stores it in.
 func TestFixedBitsWriteRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir (native fixed bits(N) write bound)")
 	bin := elixirBinary(t)
 	const schema = "package bitswriteprobe\nfixed table Root { v bits(5)\n wide bits(40)\n w uint8 }"
 	body := `

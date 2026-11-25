@@ -147,7 +147,6 @@ int main( void )
 
 func TestCppJsonKeyMatchesWholeKey(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 
 	cxx := os.Getenv("CXX")
 	if cxx == "" {

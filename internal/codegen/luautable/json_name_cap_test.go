@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonNameCapSchema is the read-closed unit the vectors under
@@ -80,7 +79,6 @@ var jsonNameCapRows = []string{
 // key and a string value are data and are never refused for their length.
 func TestLuauJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 
 	const dir = "../../../testdata/wire/json-read-closed"
 	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

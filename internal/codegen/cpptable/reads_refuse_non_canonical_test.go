@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -103,7 +102,6 @@ func cppMeasureAnswersRefusal(spelling string) bool {
 // reads-refuse-non-canonical over every row in testdata/wire/non-canonical/MANIFEST.tsv.
 func TestCppReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

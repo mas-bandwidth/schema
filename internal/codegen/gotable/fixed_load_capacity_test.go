@@ -6,13 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestGoFixedLoadCapacityWitness(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go compiler")
 	root := filepath.Join("..", "..", "..")
 	read := func(relative string) []byte {
 		t.Helper()

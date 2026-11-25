@@ -1,7 +1,6 @@
 package elixirtable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"strings"
 	"testing"
 )
@@ -11,7 +10,6 @@ import (
 // refuses it malformed (§4: the refusal is the verdict, no counter).
 func TestElixirMapValueShapePreservesPresence(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir map value presence")
 	u := unitFrom(t, `package mapshape
  table Leaf { n int32 }
  table Root {

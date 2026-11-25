@@ -190,7 +190,6 @@ func generateCanonicalJSONCodegenSources(t *testing.T) (rustSrc, jsSrc, elixirSr
 // codegen invariants across the Rust, JavaScript, and Elixir table emitters.
 func TestCanonicalJSONWriterCodegenStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (the JavaScript runtime)")
 	rustSrc, jsSrc, elixirSrc, jsFiles, root := generateCanonicalJSONCodegenSources(t)
 	if err := checkCanonicalJSONWriterCodegenStrict(rustSrc, jsSrc, elixirSrc); err != nil {
 		t.Fatal(err)

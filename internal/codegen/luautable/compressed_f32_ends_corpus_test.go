@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // f32EndsCorpusDir is the cross-port corpus for A COMPRESSED FLOAT'S RANGE IS
@@ -91,7 +90,6 @@ end
 // at float32, in the variable, fixed and JSON forms, and the saves match the
 // reference byte for byte.
 func TestLuauCompressedF32EndsCorpus(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	t.Parallel()
 	inputs, rows := f32EndsCorpus(t)
 	u := review1121Unit(t, filepath.Join(f32EndsCorpusDir, "Probe.schema"))

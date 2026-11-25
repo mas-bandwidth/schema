@@ -61,7 +61,6 @@ func TestGoPacketReadEndsWithEndCheck(t *testing.T) {
 // the nested unit and reads a packet whose inner values are read whole.
 func runPacketEndProbe(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated reader)")
 	const root = "../../../"
 	src, err := os.ReadFile(filepath.Join(root, "test", "packet-end", "PacketEnd.schema"))
 	if err != nil {

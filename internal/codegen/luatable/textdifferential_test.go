@@ -30,7 +30,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
@@ -172,7 +171,6 @@ func runLuaTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte,
 // directions.
 func TestLuaTextDifferential(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaTextDifferentialCost)
 	out, err := runLuaTextDifferential(t, nil)
 	if err != nil {
 		t.Fatalf("text differential: %v\n%s", err, out)
@@ -191,7 +189,6 @@ const luaTextDifferentialAnchor = "local low, high = single and 6 or 15, single 
 // in runLuaTextDifferential and fails this test instead).
 func TestLuaTextDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaTextDifferentialCost)
 	out, err := runLuaTextDifferential(t, func(files map[string][]byte) {
 		src, ok := files["json.lua"]
 		if !ok {
@@ -278,7 +275,6 @@ func compareLuaTextDifferential(m *tabletext.Model, dir string, n int) ([]string
 // arguments, with the whole of package.path luarun.Run gives a probe.
 func luaFuzzCommand(t *testing.T, dir string, args ...string) *testproc.Cmd {
 	t.Helper()
-	slowtest.Gate(t, luaTextDifferentialCost)
 	cmd := testproc.Command(t, luarun.Interpreter(t), append([]string{"main.lua"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUA_PATH="+filepath.Join(dir, "?.lua")+";;", "LUA_INIT=")

@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,7 +17,6 @@ import (
 // refuse the whole batch as out_of_range: nothing lands, no counter moves.
 
 func TestFixedVersioningCountClampEnds(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 

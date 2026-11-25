@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
@@ -22,7 +21,6 @@ import (
 // once with c skipped, where it must not be, while build/conformance-go still
 // is (a skip removes that one leg and nothing else).
 func TestSkippedLegIsNotAConformancePrerequisite(t *testing.T) {
-	slowtest.Gate(t, "make (the conformance registry tool)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

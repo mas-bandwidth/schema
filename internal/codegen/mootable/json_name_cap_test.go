@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonNameCapSchema is the unit testdata/wire/json-read-closed reads: a flags
@@ -71,7 +69,6 @@ var jsonNameCapVectors = []string{
 // length. The verdict is read or refused; the reason is not compared.
 func TestMooJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 
 	dir := filepath.Join(root, "testdata", "wire", "json-read-closed")
 	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

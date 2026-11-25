@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -70,7 +68,6 @@ func TestStrictOnlyJsNoTolerantEntry(t *testing.T) {
 // names the one refusal reason in the precedence the reference legs use.
 func TestStrictReadReasonJavaScript(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (the JavaScript runtime)")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

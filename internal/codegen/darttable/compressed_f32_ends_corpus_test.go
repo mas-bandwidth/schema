@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -221,7 +220,6 @@ final narrowChecks = <String, String Function()>{
 // under the Dart VM (gated).
 func TestDartCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (it runs the generated Dart)")
 	dart := dartBinary(t)
 	u := loadDirUnit(t, dartF32EndsDir)
 	files, err := Generate(u)

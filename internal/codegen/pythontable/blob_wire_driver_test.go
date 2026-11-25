@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // These actual manifest wires owe strict named refusal, not a generated-tree
@@ -120,7 +119,6 @@ print('blob wire contract passed')
 
 func TestPythonWireBlobDriver(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and actual manifest blob wires")
 	files := blobWireDriverFiles(t)
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
 		dir := t.TempDir()
@@ -134,7 +132,6 @@ func TestPythonWireBlobDriver(t *testing.T) {
 
 func TestPythonWireBlobDriverNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and planted read/write/driver faults")
 	original := blobWireDriverFiles(t)
 	for _, tc := range []struct{ name, path, before, after, diagnostic string }{
 		{"reader", "generated/blobdemo/blobdemo/_schema/load.py", "if blob and names[k + 1] > 1:", "if False:", "missing observed blob_shared refusal"},

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -21,7 +20,6 @@ import (
 // line (fixedvector.Expect.Clamped). The landed values are the manifest's
 // `expect=`, which is what the C++ reference's own NEW reader landed.
 func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated NEW reader over the forged file)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {

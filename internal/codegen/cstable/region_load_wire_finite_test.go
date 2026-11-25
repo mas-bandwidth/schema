@@ -14,8 +14,6 @@ import (
 	"math"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const regionFiniteReaderSchema = `package probe
@@ -39,7 +37,6 @@ table Root
 
 func TestCSharpRegionLoadWireFinite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	finite, nan := regionFiniteWires(t)
 	out, err := regionFiniteRun(t, finite, nan, false)
 	t.Logf("probe:\n%s", out)
@@ -50,7 +47,6 @@ func TestCSharpRegionLoadWireFinite(t *testing.T) {
 
 func TestCSharpRegionLoadWireFiniteNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	finite, nan := regionFiniteWires(t)
 	clean, err := regionFiniteRun(t, finite, nan, false)
 	if err != nil {

@@ -92,7 +92,6 @@ func nightlyCorpusFromMake(t *testing.T) string {
 // which names the test, rather than being silently truncated.
 func TestSquirrelNightlyFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Squirrel interpreter and the tables conformance corpus")
 
 	corpus := nightlyCampaign(t)
 	if corpus == "" {

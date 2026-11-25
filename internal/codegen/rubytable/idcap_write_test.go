@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -16,7 +15,6 @@ import (
 // back. The unit is tablewire.IdCapSchema.
 func TestRubyWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	files, err := Generate(loadUnit(t, tablewire.IdCapSchema()))
 	if err != nil {
 		t.Fatal(err)

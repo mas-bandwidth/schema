@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -64,7 +63,6 @@ func TestDartWriteAssertsBitsWidth(t *testing.T) {
 		t.Errorf("writeFullBits asserts a bits(64) whose storage holds exactly 64 bits\n%s", full)
 	}
 
-	slowtest.Gate(t, "the Dart toolchain (it compiles and runs the generated unit)")
 	dartProbeBitsWidth(t, files)
 }
 

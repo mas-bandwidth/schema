@@ -31,7 +31,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -278,7 +277,6 @@ func plantRootClosureRule(t *testing.T, files map[string][]byte) map[string][]by
 
 func TestLuaPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional blob-kind pointer-target probe")
 
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

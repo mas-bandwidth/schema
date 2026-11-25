@@ -14,7 +14,6 @@ import (
 // older records under the newer unit: every grown slot holds its born element.
 func TestRubyFixedFormGrownBound(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and the C++ fixed-form corpus")
 	repo := filepath.Join("..", "..", "..")
 	corpus := filepath.Join(repo, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {

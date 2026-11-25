@@ -23,7 +23,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -157,7 +156,6 @@ func appendBits(dst []byte, bitLen int, value uint64, width int) ([]byte, int) {
 // agrees with the generated Go reader for outer counts 0, 1 and 3.
 func TestLuauMessageNestedArrayElement(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	ann, batches := nestedArrayWires(t)
 
 	dir := t.TempDir()

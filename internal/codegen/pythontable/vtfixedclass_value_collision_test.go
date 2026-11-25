@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestPythonVtFixedClassValueModuleCollision preserves public enum, flags and
 // constant exports when their source modules have the same names.
 func TestPythonVtFixedClassValueModuleCollision(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and strict analyzer")
 	src := t.TempDir()
 	for name, text := range map[string]string{
 		"Shade.schema":  "package collision\nenum Shade { Red, Blue }\n",

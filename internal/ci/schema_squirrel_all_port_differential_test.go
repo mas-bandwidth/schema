@@ -56,8 +56,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // differentialWorkEnv names the harness output tree the corpus test reads.
@@ -549,7 +547,6 @@ func TestSquirrelAllPortDifferentialRequiresComparisons(t *testing.T) {
 // reads its output tree.
 func TestSchemaSquirrelAllPortDifferential(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the generated conformance corpus and every port's conformance driver")
 
 	root := repoRoot(t)
 	work := os.Getenv(differentialWorkEnv)

@@ -31,8 +31,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -88,7 +86,6 @@ fn main() {
 
 func TestRustAnnouncementSkipFieldIsBounded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the announcement skip probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the announcement skip cannot be built or run: %v", err)

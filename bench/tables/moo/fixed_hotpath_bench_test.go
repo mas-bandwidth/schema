@@ -38,7 +38,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -169,7 +168,6 @@ func benchMedian(xs []float64) float64 {
 }
 
 func TestMooFixedHotPathBench(t *testing.T) {
-	slowtest.Gate(t, "the pinned moo interpreter, timed (a fleet bench only)")
 	if os.Getenv("SCHEMA_MOO_FIXED_BENCH") == "" {
 		t.Skip("SCHEMA_MOO_FIXED_BENCH unset: a timed run belongs on a quiet fleet bench")
 	}

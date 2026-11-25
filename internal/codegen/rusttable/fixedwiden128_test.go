@@ -29,7 +29,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -266,7 +265,6 @@ func widen128Probe(t *testing.T, oldU, newU *ir.Unit, lineage map[string][]Fixed
 // build whose overflow checks are on.
 func TestRustFixedWidenTo128IsExact(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated fixed runtime)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the widened fixed read cannot be built or run: %v", err)
@@ -299,7 +297,6 @@ func TestRustFixedWidenTo128IsExact(t *testing.T) {
 // fits the carried type, so the control proves the test watches the rule.
 func TestRustFixedWidenTo128IsExactNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the fault-planted generated fixed runtime)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the negative control cannot be built or run: %v", err)

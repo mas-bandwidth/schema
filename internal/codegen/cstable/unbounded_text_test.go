@@ -27,7 +27,6 @@ table Root {
 `
 
 func TestUnboundedTextCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	long := strings.Repeat("x", 5000)
 	independentInput := fmt.Sprintf(`{"names":["","%s","é😊"],"maybe":[null,"","%s"],"by_name":{"%sa":1,"%sb":2}}`, long, long, long, long)
 	pin := unboundedGoWitness(t, independentInput)

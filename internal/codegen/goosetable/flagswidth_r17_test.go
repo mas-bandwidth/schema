@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -62,7 +61,6 @@ const gooseR17Hex = `fn hexw(b: const u8[:]) -> u8[>..] {
 const gooseR17Sentinel = 0x123456789a
 
 func TestGooseFlagsMaskHeldToItsWidth(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated table readers and writers)")
 	t.Parallel()
 	narrow := reviewUnit(t, strings.Replace(gooseR17Schema, "PERMS", "Read, Write", 1))
 	wide := reviewUnit(t, strings.Replace(gooseR17Schema, "PERMS", "Read, Write, Exec", 1))

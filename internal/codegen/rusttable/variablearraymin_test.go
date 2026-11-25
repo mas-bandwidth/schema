@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -55,7 +54,6 @@ table Root
 // by name when SCHEMA_REQUIRE_CORPUS is set.
 func TestRustVariableCountedArrayMinimum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated [Min..N]T probe)")
 	u := unitFrom(t, variableMinSrc)
 	m := tabletext.NewModel(u)
 	loose := strings.NewReplacer("[2..3]", "[..3]", "[1..2]", "[..2]", "[1..3]", "[..3]").Replace(variableMinSrc)

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/irtest"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -467,7 +466,6 @@ func TestJavaRefusesATypeNameBehindTheChecker(t *testing.T) {
 // bytes, flags and tables, so every emitted support file and table runtime is
 // compiled with the shadowing classes in its package.
 func TestJavaUnitsNamedLikePlatformTypesCompile(t *testing.T) {
-	slowtest.Gate(t, "javac (it compiles three generated units)")
 	javac := os.Getenv("JAVAC")
 	if javac == "" {
 		p, err := exec.LookPath("javac")

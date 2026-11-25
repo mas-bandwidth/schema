@@ -252,7 +252,6 @@ func cPointerView(field string) string {
 // engine's spelling.
 func base64CVerdicts(t *testing.T, u *ir.Unit, p base64Probe, rows []base64Row) []string {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"

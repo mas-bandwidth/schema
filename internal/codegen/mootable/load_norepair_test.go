@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -17,7 +16,6 @@ import (
 // wire carrying each fault kind is refused by the one strict read.
 func TestMooLoadBuildsNoRepairedValue(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 
 	src := string(mootable.Runtime()["table_load.moo"])
 	if src == "" {

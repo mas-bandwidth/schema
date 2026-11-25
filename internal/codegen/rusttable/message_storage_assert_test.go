@@ -22,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -86,7 +85,6 @@ fn main() {
 `
 
 func TestMessageStorageDebugAssertRust(t *testing.T) {
-	slowtest.Gate(t, "rustc (it builds and runs the message storage-assert probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the message storage assert cannot be built or run: %v", err)

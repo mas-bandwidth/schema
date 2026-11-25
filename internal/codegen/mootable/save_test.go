@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // saveProbe is the moo main for one instance: it loads every table module,
@@ -100,7 +98,6 @@ func instanceRows(t *testing.T) map[string][]reportRow {
 // contract and no reason is compared (docs/rulings.json
 // refusal-verdict-only).
 func TestMooTableSaveRoundTripsEveryInstance(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted save.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	rows := instanceRows(t)
@@ -155,7 +152,6 @@ func TestMooTableSaveRoundTripsEveryInstance(t *testing.T) {
 // rather than elided, and requires the byte comparison to go red on an
 // instance that round-trips clean unpatched (docs/SPEC-TABLES.md §3 elision).
 func TestMooTableSaveNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted save.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	rows := instanceRows(t)

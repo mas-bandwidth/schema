@@ -13,11 +13,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedDeprecatedFieldIsCarried(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	for _, vec := range fixedvector.DeprecatedField {

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -278,7 +277,6 @@ func intDomainUnit(t *testing.T) (*generatedUnit, *ir.Unit, []intDomainField) {
 }
 
 func TestMooMessageIntegerHoldsTheReadersKind(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g, u, fields := intDomainUnit(t)
 	allIntDomainCases := intDomainCases()
@@ -315,7 +313,6 @@ const (
 // table_message.moo. The far-outside row must then land: 0 is inside every
 // kind in the batch, so the domain refusal is what holds that row.
 func TestMooMessageIntegerHoldsTheReadersKindNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g, u, fields := intDomainUnit(t)
 	src := string(g.files["table_message.moo"])

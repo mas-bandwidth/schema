@@ -129,7 +129,6 @@ func unknownHashProbe(t *testing.T, reader string, older []string, retire int, t
 			t.Fatal(err)
 		}
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", "-timeout", "600s", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {

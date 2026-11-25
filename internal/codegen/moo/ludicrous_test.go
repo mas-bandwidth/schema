@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooLudicrousWire is test/ludicrous_main.cpp in moo: fixed point,
@@ -15,7 +14,6 @@ import (
 // REJECT, never clamp. A fixed(16, 16) or fixed(48, 16) field is a moo number
 // in whole units (45.5, not its raw 2981888): moo's own Q48.16.
 func TestMooLudicrousWire(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromDir(t, repo("examples128")))
 	writeFile(t, dir, "main.moo", ludicrousProbe)

@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -57,7 +56,6 @@ func mooJsonFlagsNameOnceRows(t *testing.T) []mooJsonFlagsNameOnceRow {
 }
 
 func TestMooJsonFlagsNameOnce(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 
 	rows := mooJsonFlagsNameOnceRows(t)

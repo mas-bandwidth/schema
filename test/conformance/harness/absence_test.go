@@ -14,7 +14,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,7 +158,6 @@ func (c fakeCorpus) runHarnessSkipping(t *testing.T, drivers, skip string) (stri
 }
 
 func needShell(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if _, err := exec.LookPath("sh"); err != nil {

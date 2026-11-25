@@ -3,7 +3,6 @@ package rusttable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -17,7 +16,6 @@ import (
 // Empty records still occupy one byte in the schema C ABI; a Rust zero-sized
 // row cannot represent either an empty node or consecutive empty list slots.
 func TestRustEmptyRecordNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (empty cooked rows and list slots)")
 	keyedRequireRustc(t)
 	u := unitFrom(t, "package probe\ntable Empty {}\ntable Containers {\n values []Empty\n child Empty\n pointer *Empty\n}\n")
 	m := tabletext.NewModel(u)

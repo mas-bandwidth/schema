@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -135,7 +134,6 @@ func cookWriteRows(t *testing.T) []cookWriteRow {
 // file opens and reads back, through table_cookread.moo, to the value that was
 // cooked. Every row of the manifest is answered.
 func TestMooCookWriteMatchesTheTool(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
 	rows := cookWriteRows(t)
 	fails, answered, cache := cookWriteFailures(t, rows, nil)
@@ -335,7 +333,6 @@ const cookConstructsJSON = `{
 // elements inside the extent) cooked by the tool from the text and by the
 // runtime from the wire, byte for byte in both orders.
 func TestMooCookWriteConstructsMatchTheTool(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
 	fails, g := constructFailures(t, nil)
 	for _, f := range fails {
@@ -564,7 +561,6 @@ end
 // order the value holds them in; and a pointer or a map's entries in a dead
 // counted slot are ignored, the cook equal to the value's without them.
 func TestMooCookWriteRefusals(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
 	fails, g := refusalFailures(t, nil)
 	for _, f := range fails {
@@ -588,7 +584,6 @@ func TestMooCookWriteRefusals(t *testing.T) {
 // reader landing a present null slot as absent rather than the empty string.
 // The unsabotaged runs above are each control's reversed witness.
 func TestMooCookWriteNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
 	plant := func(file, anchor, repl string) func(*testing.T, *generatedUnit) {
 		return func(t *testing.T, g *generatedUnit) {
@@ -649,7 +644,6 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 // The span itself is eight-aligned, but a 128-bit element requires a
 // sixteen-aligned node and extent start. Keep both immutable corpus pins.
 func TestMooCookWideListExtent(t *testing.T) {
-	slowtest.Gate(t, "moo (wide list cooked extent alignment)")
 	var rows []cookWriteRow
 	for _, row := range cookWriteRows(t) {
 		if row.row.caseName == "widelist_wide" {

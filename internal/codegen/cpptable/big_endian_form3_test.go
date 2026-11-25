@@ -223,7 +223,6 @@ using namespace beprobe;
 }
 
 func TestCppBigEndianFormThreeRead(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	for _, force := range []bool{true, false} {
 		if fails, out := cppBigEndianForm3Run(t, force, [2]string{}); len(fails) != 0 {
@@ -238,7 +237,6 @@ func TestCppBigEndianFormThreeRead(t *testing.T) {
 // On a little-endian host the same sabotage is invisible, which is the whole
 // argument for forcing the big-endian path in the probe.
 func TestCppBigEndianFormThreeReadNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	sabotage := [2]string{
 		"dst[i + j] = src[i + elem - 1 - j];",

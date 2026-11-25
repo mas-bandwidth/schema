@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -31,7 +30,6 @@ func init() {
 // reader, including independent load values and file/writer negative controls.
 func TestPythonFixedProofShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form oracle")
 	fixedproof.SetMemoryCeiling(t)
 	expected := map[string]map[string]string{
 		"utf8-values":               {"r0.s": `""`, "r1.s": `"hello"`, "r1.s_length": "5"},
@@ -152,7 +150,6 @@ func shapeFixtureControls(t *testing.T, tc fixedproof.RowCase, u *ir.Unit, oracl
 // bytes against a file from the same live C++ reference.
 func TestPythonFixedProofShapesText(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form oracle")
 	tc := fixedproof.RowCase{ID: "shape-text", Schema: "package probe\nfixed table T { s string(8) }\n", Root: "T", Body: 12, Count: 1, CppSetup: `memcpy(value[0].s, "\xc3\xa9", 2); value[0].s_length = 2;`}
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	clean, verify, load := fixedproof.CppOracleWithLoadVerdict(t, tc, u)
@@ -209,7 +206,6 @@ print('writer-refused')
 // reader widened it, alongside the writer's own over-count refusal.
 func TestPythonFixedProofShapesArrayBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form oracle")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..2]uint16 }\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..4]uint16 }\n")
 	tc := fixedproof.RowCase{ID: "bounds-old", Schema: "package probe\nfixed table T { a [..2]uint16 }\n", Root: "T", Body: 8, Count: 1, CppSetup: `value[0].a_count=2; value[0].a[0]=7; value[0].a[1]=9;`}
@@ -267,7 +263,6 @@ else: raise AssertionError('over-count accepted')
 // generated runtime and requires each named probe to detect the fault.
 func TestPythonFixedProofShapesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and C++ fixed-form oracle")
 	cases := []struct {
 		name, schema, setup, anchor, replacement string
 		body, offset                             int

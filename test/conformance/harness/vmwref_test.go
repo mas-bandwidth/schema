@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
@@ -28,7 +27,6 @@ var vmWrefRows = []string{
 // the verdicts the manifest names, the Go engine's (docs/SPEC.md §5.1).
 func TestVMDriversSetWriteRefusalValuesExactly(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make and the pinned Lua, Luau and MOO interpreters (it runs their conformance drivers)")
 	root := conformanceRoot(t)
 	manifest := filepath.Join(root, defaultManifest)
 	m, err := ReadManifest(manifest, filepath.Join(root, defaultJSONDir))

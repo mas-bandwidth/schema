@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -85,7 +84,6 @@ func jsMapRepeatedKeyRun(t *testing.T, mutate func(files map[string][]byte, home
 // both paths.
 func TestJavaScriptMapRepeatedKeyRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	if got := jsMapRepeatedKeyRun(t, nil); got != jsMapRepeatedKeyWant {
 		t.Fatalf("repeated map key:\n%s\nwant\n%s", got, jsMapRepeatedKeyWant)
 	}
@@ -96,7 +94,6 @@ func TestJavaScriptMapRepeatedKeyRefused(t *testing.T) {
 // damaging — and requires the right-kind repeated row to read again.
 func TestJavaScriptMapRepeatedKeyRefusedNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	got := jsMapRepeatedKeyRun(t, func(files map[string][]byte, home string) {
 		src := string(files[home])
 		const from = "else if (rode.includes(ref)) { report.damaged = true; return false; }"

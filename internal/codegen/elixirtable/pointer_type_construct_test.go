@@ -10,14 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPointerTargetKindsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir root closure and exact pointer target ids in plain and retaining reads")
 	dir := "../../../testdata/conformance/feature-witnesses/pointer-targets"
 	source, e := os.ReadFile(filepath.Join(dir, "Probe.schema"))
 	if e != nil {
@@ -126,7 +124,6 @@ end
 
 func TestNodeTableWrongKindElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir reserved node-table kind rejects the pinned enumerated mutant")
 	source, e := os.ReadFile("../../../testdata/conformance/feature-witnesses/full/Features.schema")
 	if e != nil {
 		t.Fatal(e)

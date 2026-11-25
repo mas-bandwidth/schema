@@ -16,7 +16,6 @@ import (
 )
 
 func TestJavaScriptUnboundedTextConstruct(t *testing.T) {
-	slowtest.Gate(t, "native Go and Node (unbounded text wire, cook, region and accessors)")
 	schema := `package probe
  table Where {
  rules []string

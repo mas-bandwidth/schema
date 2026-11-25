@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -21,7 +20,6 @@ import (
 )
 
 func TestDartRetainedInlineReplacement(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	for _, shape := range []string{"table", "union", "fixed_table", "fixed_union", "keyed_table"} {
 		t.Run(shape, func(t *testing.T) {
 			union := strings.Contains(shape, "union")

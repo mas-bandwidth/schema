@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -227,7 +225,6 @@ func runT17TableOnly(t *testing.T, schema, testSource string) {
 			t.Fatal(err)
 		}
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {

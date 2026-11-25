@@ -469,7 +469,6 @@ func TestFixedRoadmapCppT18FieldEvolution(t *testing.T) {
 // cppRunVersionProbe's signature is untouched; this is a second entry point.
 func cppRunVersionProbeLock(t *testing.T, row, olderPath, file, body, forge string) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "a C++ compiler (it builds and runs the generated probe)")
 	t18Compiles <- struct{}{}
 	defer func() { <-t18Compiles }()
 	dir := t.TempDir()
@@ -738,7 +737,6 @@ const t18Read = `
 // TestFixedRoadmapCppT18ExactCounters is cpp/R16: the §5.4 counters, exactly.
 func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c++ compiler (the leg's own toolchain)")
 	t.Run("cpp/R16", func(t *testing.T) {
 		t.Parallel()
 

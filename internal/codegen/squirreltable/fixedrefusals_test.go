@@ -26,7 +26,6 @@ import (
 // FixedReason must equal Go's for every file.
 func TestSquirrelFixedLoadNamesEveryRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +76,6 @@ func TestSquirrelFixedLoadNamesEveryRefusal(t *testing.T) {
 // FixedLoad would answer for those bytes, and a value at the bound is written.
 func TestSquirrelFixedSaveRefusesWhatItsLoadRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

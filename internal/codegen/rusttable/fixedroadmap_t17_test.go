@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -23,7 +21,6 @@ func TestFixedRoadmapRustT17PlanPartition(t *testing.T) {
 	t.Parallel()
 	t.Run("rust/W6", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "rustc (it compiles and runs the generated unit)")
 		if _, err := exec.LookPath("rustc"); err != nil {
 			t.Fatalf("rustc is not on PATH: %v", err)
 		}

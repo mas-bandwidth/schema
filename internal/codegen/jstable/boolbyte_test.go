@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -25,7 +24,6 @@ import (
 // vector is held here, where the emitter lane runs it on every change.
 func TestBoolByteAboveOneIsMalformedJavaScript(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

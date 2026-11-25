@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -369,7 +368,6 @@ func runFiniteFloatProbe(t *testing.T, files map[string][]byte) (map[string]bool
 
 func TestDartFiniteFloatsEveryForm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	verdicts, out := runFiniteFloatProbe(t, finiteFloatFiles(t))
 	if len(verdicts) < len(finiteFloatReadVectors)+8 {
 		t.Fatalf("the probe answered %d vectors:\n%s", len(verdicts), out)
@@ -390,7 +388,6 @@ func TestDartFiniteFloatsEveryForm(t *testing.T) {
 // vectors stay green, so the probe is red for the reason it names.
 func TestDartFiniteFloatNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	files := finiteFloatFiles(t)
 	patched := 0
 	for name, data := range files {

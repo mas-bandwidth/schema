@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -20,7 +18,6 @@ import (
 // count so the refusal is the count's and not the read's.
 func TestElixirPacketReadRefusesNegativeBitCount(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	names, err := committedElixirModules()
 	if err != nil {

@@ -276,7 +276,6 @@ func TestLayoutMalformedResidue(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "layout_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()

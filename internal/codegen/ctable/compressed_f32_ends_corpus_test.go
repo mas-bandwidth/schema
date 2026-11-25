@@ -154,7 +154,6 @@ int main( int argc, char ** argv )
 // refusal. Each row runs in its own child, so an assert ends only that row.
 func TestCCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "cc (the C toolchain)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		var err error

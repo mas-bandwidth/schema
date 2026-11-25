@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirCountedMinimumHoldsOnEveryPath pins docs/SPEC.md section 5.1 row 3
@@ -21,7 +19,6 @@ import (
 // rules: no real time, no socket, no network.
 func TestElixirCountedMinimumHoldsOnEveryPath(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	const source = `package countedmin
 

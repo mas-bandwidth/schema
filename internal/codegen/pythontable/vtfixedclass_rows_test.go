@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -210,7 +209,6 @@ func vtFixedClassRowFailures(t *testing.T, mutate func(*testing.T, map[string][]
 // Functional: it runs the emitted table runtime under the pins.
 func TestPythonVtFixedClassRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	fails, held := vtFixedClassRowFailures(t, nil)
 	for _, f := range fails {
 		t.Error(f)
@@ -228,7 +226,6 @@ func TestPythonVtFixedClassRows(t *testing.T) {
 // Functional: it runs the emitted table runtime under the pins.
 func TestPythonVtFixedClassRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	plant := func(t *testing.T, files map[string][]byte) {
 		var path string
 		for name := range files {

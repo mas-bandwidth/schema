@@ -294,7 +294,6 @@ func cArmMinBuild(t *testing.T, src, shape, probe, name string, flags ...string)
 
 func TestCCountedMinimumHolds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs compiled C probes")
 	for _, c := range []struct{ name, schema, loose, shape string }{
 		{"arm", cArmMinSchema, cArmMinLooseSchema, cArmMinShape},
 		{"plain", cPlainMinSchema, cPlainMinLooseSchema, cPlainMinShape},

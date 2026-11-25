@@ -3,7 +3,6 @@ package cstable
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +10,6 @@ import (
 )
 
 func TestCSharpArrayRootClosureCorpus(t *testing.T) {
-	slowtest.Gate(t, ".NET")
 	base := "../../../testdata/conformance/feature-witnesses/array-root/closure"
 	schema, err := os.ReadFile(filepath.Join(base, "Probe.schema"))
 	if err != nil {

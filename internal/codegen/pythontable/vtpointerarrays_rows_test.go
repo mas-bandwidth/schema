@@ -40,7 +40,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -372,7 +371,6 @@ func ptrRowsFailures(t *testing.T, c ptrRowsCell, mutate func(*testing.T, map[st
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtPointerArraysRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 
 	// THE COMPLETENESS CHECK: every manifest row whose root reaches a
 	// pointer array is held by the pointer-arrays row.
@@ -447,7 +445,6 @@ func ptrRowsEdit(t *testing.T, files map[string][]byte, suffix, from, to string)
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtPointerArraysRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, ctl := range []struct {
 		name    string
 		mutate  func(*testing.T, map[string][]byte)

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -16,7 +15,6 @@ import (
 // These pins are assembled from field identities and the specified wire framing,
 // independently of the neutral encoder, which historically elided required zeroes.
 func TestJavaScriptRequiredConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes required-field presence and refusal)")
 	const src = `package probe
  enum Choice { A, B }
  table Leaf { x int32 }
@@ -188,7 +186,6 @@ expect(wrongShape===null && rr.mismatch===1 && rr.missingRequired===0 && rr.err(
 // Required is forbidden by the checker). The declared fixed table beside it
 // keeps its whole fixed surface.
 func TestJavaScriptRequiredFixedConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes required no-default fixed storage)")
 	const src = `package probe
 table T { n int32 | min=5, required
  wide uint64 | min=9007199254740993, required

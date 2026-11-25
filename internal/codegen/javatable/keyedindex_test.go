@@ -38,7 +38,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -179,7 +178,6 @@ public final class Driver {
 // TestKeyedArrayIndexingJava holds §2.4's accessor at both ends, in the
 // release shape (-da) and the checked one (-ea).
 func TestKeyedArrayIndexingJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	var javac, javaBin string
@@ -689,7 +687,6 @@ public final class KeyedWireDriver {
 // keyedFormJava compiles one form's generated Java beside the driver and
 // answers its class directory.
 func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string][]byte) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	packet, err := javacodegen.Generate(u)
@@ -730,7 +727,6 @@ func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string
 
 // keyedRun runs the driver and answers its lines keyed by "KIND root i".
 func keyedRun(t *testing.T, javaBin, classes, pkg string, args ...string) (map[string]string, string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	cmd := testproc.Command(t, javaBin, append([]string{"-ea", "-cp", classes, pkg + ".KeyedWireDriver"}, args...)...)

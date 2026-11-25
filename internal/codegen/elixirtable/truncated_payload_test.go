@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -20,7 +19,6 @@ import (
 
 func TestTruncatedFieldPayloadElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir nested scalar framing must refuse without decoding a synthetic empty payload")
 	u := unitFrom(t, `package truncated
  table Child {
  flag bool
@@ -82,7 +80,6 @@ end
 
 func TestPinnedNestedFloatFramingElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir nested float framing replays the permanent enumerated mutant")
 	paths, e := filepath.Glob("../../../tables/examples/*.schema")
 	if e != nil || len(paths) == 0 {
 		t.Fatalf("examples schema: %v", e)

@@ -18,14 +18,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJsFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 
 	node := jsNode(t)
 	u := loadUnit(t, "../../../test/fixed-empty-batch/Batch.schema")

@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -73,7 +72,6 @@ func TestJavaCompressedFloatClampsTheTopOfRange(t *testing.T) {
 		}
 	}
 
-	slowtest.Gate(t, "javac")
 	runCompressedFloatProbe(t, text)
 }
 
@@ -363,7 +361,6 @@ func TestJavaBulkBytesAlignmentGuard(t *testing.T) {
 		t.Errorf("readAlignedBits missing runtime (bitsRead & 7) == 0 guard:\n%s", readAligned)
 	}
 
-	slowtest.Gate(t, "javac")
 	runBulkAlignProbe(t, text)
 
 	// Direct guard verification when bulkBytes marks an unaligned [4]uint8 field:

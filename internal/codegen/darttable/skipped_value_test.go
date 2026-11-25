@@ -20,8 +20,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -192,7 +190,6 @@ void main(List<String> args) {
 
 func TestDartSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 
 	rows := dartSkippedValueRows(t)
 	got := dartSkippedValueRun(t, rows)
@@ -317,7 +314,6 @@ const dartSkipRangedBody = `
 // the same shapes without it read.
 func TestDartSkippedKeyedJSONKey(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 
 enum Color { Red, Green }

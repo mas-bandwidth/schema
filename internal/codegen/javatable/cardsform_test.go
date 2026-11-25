@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +54,6 @@ table Card
 // a Java program reads tables/cards/fuzz/card-populated.wire to the values in
 // card-populated.json and re-saves form 1 byte for byte.
 func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaTools(t)
@@ -255,7 +253,6 @@ public final class Driver {
 // and an unknown property, an out-of-range enum and an over-bound string are
 // refused (counted, never truncated).
 func TestCardTextFormMatchesGo(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaTools(t)

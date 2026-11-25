@@ -30,7 +30,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // verdictUnitFiles generates one unit for Goose and the conformance program
@@ -249,7 +248,6 @@ func runVerdictSurface(t *testing.T, key, surface string, files map[string][]byt
 }
 
 func TestGooseDriverVerdictAndWriteBack(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the conformance driver)")
 	c := readWireCorpus(t)
 	totalReads, totalRefusals := 0, 0
 	verify := func(surface, unit string) {
@@ -312,7 +310,6 @@ func TestGooseDriverVerdictAndWriteBack(t *testing.T) {
 }
 
 func TestGooseDriverVerdictAndWriteBackNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the conformance driver)")
 	c := readWireCorpus(t)
 	unit := "tblp2"
 	readRow := ""

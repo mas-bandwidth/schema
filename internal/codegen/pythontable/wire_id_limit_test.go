@@ -8,11 +8,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonWireKnownIDLimit(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	var schema strings.Builder
 	schema.WriteString("package probe\nenum Many { ")
 	for i := 1; i <= 4096; i++ {
@@ -61,7 +59,6 @@ print('known-wire-bound')
 }
 
 func TestPythonWireKnownKeyedIDLimit(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, kind := range []string{"scalar", "table"} {
 		t.Run(kind, func(t *testing.T) {
 			var schema strings.Builder
@@ -129,7 +126,6 @@ print('keyed-bound')
 }
 
 func TestPythonWireFastWriterIDLimit(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	var schema strings.Builder
 	schema.WriteString("package probe\ntable Root {\n")
 	for i := range 4097 {

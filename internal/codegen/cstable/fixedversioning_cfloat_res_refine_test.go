@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +19,6 @@ import (
 // leg lands one ulp off, and `clamped >= 1` / an approximate value would pass
 // the re-landing this row exists to catch.
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()

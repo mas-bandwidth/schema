@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,7 +21,6 @@ import (
 // and an array-root table's JSON text must equal internal/tabletext's, byte
 // for byte.
 func TestSquirrelCarriesTextListsAndArrayRoot(t *testing.T) {
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sqrun.Require(t)
 	t.Parallel()
 	cases := []struct {

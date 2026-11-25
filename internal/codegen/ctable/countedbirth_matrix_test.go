@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -102,7 +101,6 @@ int main( void )
 
 func TestCCountedArrayBornAcrossElementKinds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("no C compiler on PATH")

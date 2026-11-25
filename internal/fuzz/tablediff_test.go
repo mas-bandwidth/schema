@@ -279,7 +279,6 @@ func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[
 		}
 	}
 	if !tableDiffOptedIn(os.Getenv) {
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	}
 	args := append([]string{"test", "-count=1"}, flags...)
 	cmd := exec.Command("go", append(args, ".")...)
@@ -772,7 +771,6 @@ func shorten(s string) string {
 func tableDiffOptIn(t *testing.T) {
 	t.Helper()
 	if !tableDiffOptedIn(os.Getenv) {
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units) and the engine")
 		t.Skip("SCHEMA_TABLE_DIFF: the random-schema table differential is a nightly campaign; run it with make fuzz-tables-diff (it sets SCHEMA_TABLE_DIFF=1)")
 	}
 }
@@ -844,7 +842,6 @@ func integritySeeds(n int) []int {
 // integrity-read-clean.
 func TestRandomTableIntegrityUnits(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units under -race) and the engine")
 	if os.Getenv("CI") != "" && !tableDiffOptedIn(os.Getenv) {
 		t.Skip("the random-schema table differential is nightly only; CI is set and SCHEMA_TABLE_DIFF is not")
 	}

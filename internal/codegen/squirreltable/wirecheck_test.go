@@ -11,8 +11,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const (
@@ -41,7 +39,6 @@ var sqUnreachedTextCase = sqVectorCase{"unreached_text", "graphdemo", "tables/po
 
 func TestSquirrelWireCheckHoldsUnreachedBytes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	wire, err := hex.DecodeString(sqUnreachedTextMutant)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +52,6 @@ func TestSquirrelWireCheckHoldsUnreachedBytes(t *testing.T) {
 // accepts the mutant the engine refuses, and the verdict must go red.
 func TestSquirrelWireCheckNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	wire, err := hex.DecodeString(sqUnreachedTextMutant)
 	if err != nil {
 		t.Fatal(err)

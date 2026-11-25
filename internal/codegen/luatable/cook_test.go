@@ -2,7 +2,6 @@ package luatable
 
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -254,7 +253,6 @@ func cookSlot(t *testing.T, u *ir.Unit, m *tabletext.Model, record, field string
 // check in cook.lua and requires the damaged-cook refusal to go red.
 func TestLuaCookOpenNegativeControlsFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "pointers"))
 	m := tabletext.NewModel(u)

@@ -159,7 +159,6 @@ const (
 // and a non-nil error when any instance differs.
 func runCTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CC")
 	if cxx == "" {
 		cxx = "cc"

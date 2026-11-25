@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -16,7 +15,6 @@ import (
 
 func TestTimestampConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir timestamp RFC3339, wire, message, fixed and cook")
 	base := "../../../testdata/conformance/feature-witnesses/timestamp/rust-boundaries/"
 	source, err := os.ReadFile(base + "Probe.schema")
 	if err != nil {
@@ -139,7 +137,6 @@ IO.puts("TIMESTAMP_OK")
 
 func TestTimestampClosureElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir timestamp collection and kind identity")
 	u := unitFrom(t, `package probe
  enum Key { A, B }
  union When { value Clock }
