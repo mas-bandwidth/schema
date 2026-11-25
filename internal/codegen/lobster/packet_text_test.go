@@ -2,7 +2,7 @@
 // the Lobster rows of the packet-utf8 gate (make/checks/packet-text.mk,
 // test/packet-text/harness). The vectors are the harness's: the shared
 // corpus rows (testdata/conformance/text/string.txt at bound 16 for
-// test/packet-text/Narrow.schema) and every single-bit flip of every
+// test/packet-text/Text.schema) and every single-bit flip of every
 // accepted row. The
 // verdict on each is the one test/packet-text/driver.c prints ("REFUSE", or
 // "OK <consumed> <payload> <written> <canonical bytes>"); the judge is the
