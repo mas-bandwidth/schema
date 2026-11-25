@@ -10,13 +10,12 @@
 # wirefuzz-driver. The in-package differential and its negative control run
 # beside it, over the same corpus and the same pinned interpreter.
 #
-# THE ROOTS THE LEG CANNOT OPEN are held to a pinned list BY NAME, as the
-# Elixir leg holds its own (make/elixir.mk, tables-elixir-wire-fuzz-all): the
-# driver notes each roster entry it answers 0 for into the file LUAUFUZZ_NOTE
-# names (__luaufuzz.note), and the recipe fails on any difference from
-# test/conformance/luau/wire-fuzz-absent.txt and on any count other than
-# LUAU_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved. The absent check
-# runs before the harness status is read, so a red run still names them.
+# A ROOT THE LEG CANNOT OPEN is red, as in the Elixir leg (make/elixir.mk,
+# tables-elixir-wire-fuzz-all): the driver notes each roster entry it answers
+# 0 for into the file LUAUFUZZ_NOTE names (__luaufuzz.note), and the recipe
+# fails on any entry there, naming each root; no list holds one back (the
+# no-skips ruling, docs/rulings.json). The absent check runs before the
+# harness status is read, so a red run still names them.
 #
 # WHERE IT RUNS: the pipe run is the leg's `make test` half (test-luau below,
 # which certify.yml runs nightly), as every port's tables-<lang>-wire-fuzz is;
@@ -33,8 +32,6 @@ LUAU_FUZZ_N    ?= 2000
 # scratch copy with one reader bug planted (tables-luau-release-negative-control)
 LUAU_WIREFUZZ_DRIVER ?= test/conformance/luau/wirefuzz-driver
 
-LUAU_WIRE_FUZZ_ABSENT_COUNT := 0
-LUAU_WIRE_FUZZ_ABSENT_PIN   := test/conformance/luau/wire-fuzz-absent.txt
 LUAU_WIRE_FUZZ_LOG          ?= build/wire-fuzz/luau.log
 LUAU_WIRE_FUZZ_ABSENT       ?= build/wire-fuzz/luau.absent
 LUAU_WIRE_FUZZ_FAILED       ?= build/wire-fuzz/failed-luau.bin
@@ -51,16 +48,12 @@ tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/lu
 		> $(LUAU_WIRE_FUZZ_LOG) 2>&1; \
 		status=$$?; cat $(LUAU_WIRE_FUZZ_LOG); \
 		: >> $(LUAU_WIRE_FUZZ_ABSENT); \
-		sort $(LUAU_WIRE_FUZZ_ABSENT) > $(LUAU_WIRE_FUZZ_ABSENT).sorted; \
-		grep -v '^#' $(LUAU_WIRE_FUZZ_ABSENT_PIN) | sort > $(LUAU_WIRE_FUZZ_ABSENT).pinned; \
-		n=$$(wc -l < $(LUAU_WIRE_FUZZ_ABSENT).sorted | tr -d ' '); \
-		if ! cmp -s $(LUAU_WIRE_FUZZ_ABSENT).sorted $(LUAU_WIRE_FUZZ_ABSENT).pinned || \
-			[ "$$n" -ne $(LUAU_WIRE_FUZZ_ABSENT_COUNT) ]; then \
-			echo "tables-luau-wire-fuzz: $$n roots absent, $(LUAU_WIRE_FUZZ_ABSENT_COUNT) pinned ($(LUAU_WIRE_FUZZ_ABSENT_PIN))"; \
-			comm -23 $(LUAU_WIRE_FUZZ_ABSENT).sorted $(LUAU_WIRE_FUZZ_ABSENT).pinned | sed 's/^/  the leg cannot open: /'; \
-			comm -13 $(LUAU_WIRE_FUZZ_ABSENT).sorted $(LUAU_WIRE_FUZZ_ABSENT).pinned | sed 's/^/  pinned absent but open now (unpin it): /'; \
+		n=$$(sort -u $(LUAU_WIRE_FUZZ_ABSENT) | wc -l | tr -d ' '); \
+		if [ "$$n" -ne 0 ]; then \
+			echo "tables-luau-wire-fuzz: the leg cannot open $$n roots of the roster:"; \
+			sort -u $(LUAU_WIRE_FUZZ_ABSENT) | sed 's/^/  the leg cannot open: /'; \
 			exit 1; fi; \
-		echo "tables-luau-wire-fuzz: $$n roots absent, as pinned"; \
+		echo "tables-luau-wire-fuzz: the leg opens every root of the roster"; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@grep -qE '(^|[^0-9])0 divergences' $(LUAU_WIRE_FUZZ_LOG)
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' $(LUAU_WIRE_FUZZ_LOG)

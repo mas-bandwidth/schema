@@ -1870,14 +1870,12 @@ test-elixir: cards-elixir-retain-fuzz
 # (testdata/conformance/tables/MANIFEST.txt, the default in
 # test/conformance/harness/main.go) rather than the Card manifest: no --manifest,
 # the roster tables-go-wire-fuzz runs. The coverage greps are the card targets',
-# so a roster with no live root fails. The roots the leg cannot open are held to
-# a pinned list BY NAME: the driver writes each roster entry it answers 0 for to
-# $(ELIXIR_WIRE_FUZZ_ABSENT_LOG), and the recipe fails on any difference from
-# test/conformance/elixir/wire-fuzz-absent.txt and on any count other than
-# ELIXIR_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved. The absent check
+# so a roster with no live root fails. The driver writes each roster entry it
+# answers 0 for to $(ELIXIR_WIRE_FUZZ_ABSENT_LOG), and the recipe fails on any
+# entry there, naming each root: every root of the roster runs, and no list
+# holds one back (the no-skips ruling, docs/rulings.json). The absent check
 # runs before the harness status is read, so a red run still names them. The
 # --retain arm of this roster is its own gate.
-ELIXIR_WIRE_FUZZ_ABSENT_COUNT := 0
 ELIXIR_WIRE_FUZZ_ABSENT_LOG = build/tables-elixir-wire-fuzz-all.absent
 # ELIXIR_WIRE_FUZZ_ALL_EBIN lets the control point the gate at a planted reader.
 ELIXIR_WIRE_FUZZ_ALL_EBIN ?= $(CURDIR)/build/elixir-tables-ebin
@@ -1890,16 +1888,12 @@ tables-elixir-wire-fuzz-all: build/conformance-harness build/elixir-tables-ebin/
 		status=$$?; cat build/tables-elixir-wire-fuzz-all.log; \
 		if [ ! -f $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) ]; then \
 			echo "tables-elixir-wire-fuzz-all: the driver wrote no absent-root list"; exit 1; fi; \
-		sort $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) > $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).sorted; \
-		grep -v '^\#' test/conformance/elixir/wire-fuzz-absent.txt | sort > $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).pinned; \
-		n=$$(wc -l < $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).sorted | tr -d ' '); \
-		if ! cmp -s $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).sorted $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).pinned || \
-			[ "$$n" -ne $(ELIXIR_WIRE_FUZZ_ABSENT_COUNT) ]; then \
-			echo "tables-elixir-wire-fuzz-all: $$n roots absent, $(ELIXIR_WIRE_FUZZ_ABSENT_COUNT) pinned (test/conformance/elixir/wire-fuzz-absent.txt)"; \
-			comm -23 $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).sorted $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).pinned | sed 's/^/  the leg cannot open: /'; \
-			comm -13 $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).sorted $(ELIXIR_WIRE_FUZZ_ABSENT_LOG).pinned | sed 's/^/  pinned absent but open now (unpin it): /'; \
+		n=$$(sort -u $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) | wc -l | tr -d ' '); \
+		if [ "$$n" -ne 0 ]; then \
+			echo "tables-elixir-wire-fuzz-all: the leg cannot open $$n roots of the roster:"; \
+			sort -u $(ELIXIR_WIRE_FUZZ_ABSENT_LOG) | sed 's/^/  the leg cannot open: /'; \
 			exit 1; fi; \
-		echo "tables-elixir-wire-fuzz-all: $$n roots absent, as pinned"; \
+		echo "tables-elixir-wire-fuzz-all: the leg opens every root of the roster"; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@grep -q '0 divergences' build/tables-elixir-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-elixir-wire-fuzz-all.log

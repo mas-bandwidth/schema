@@ -200,7 +200,7 @@ the pin's own source, the VM and compiler linked as the CLI links them).
 
 | gate | test / target |
 |---|---|
-| the file form on the pipe; the roots the leg answers 0 for, pinned by name | `tables-moo-wire-fuzz-plain`, `test/conformance/moo/wire-fuzz-absent.txt` |
+| the file form on the pipe; a root the leg answers 0 for is red, by name | `tables-moo-wire-fuzz-plain` |
 | the retaining pair (`--retain`) | `tables-moo-wire-fuzz-retain` |
 | each mutant the leg diverged on, replayed alone | `tables-moo-wire-fuzz-pinned`, `test/conformance/moo/wire-fuzz-pinned.txt` |
 | a string frame past its body not counted malformed goes red | `tables-moo-wire-fuzz-negative-control` |
