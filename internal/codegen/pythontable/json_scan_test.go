@@ -1125,8 +1125,20 @@ func TestPythonJsonConformanceDriver(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeTree(t, filepath.Join(dir, "unit"), files)
-	for _, name := range []string{"_common.py", "_json_common.py", "json-read.py", "json-write.py", "json-hostile.py", "report.py", "write-refusal.py", "write-refusal-json.py"} {
-		data, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "python", "surfaces", name))
+	// the surfaces the probe runs, and every shared helper module (_*.py) of
+	// the driver: a surface imports helpers the driver holds beside it
+	// (write-refusal-json.py imports _mutate), so the copy takes them all
+	surfaces := filepath.Join("..", "..", "..", "test", "conformance", "python", "surfaces")
+	helpers, err := filepath.Glob(filepath.Join(surfaces, "_*.py"))
+	if err != nil || len(helpers) == 0 {
+		t.Fatalf("no helper modules in %s: %v", surfaces, err)
+	}
+	names := []string{"json-read.py", "json-write.py", "json-hostile.py", "report.py", "write-refusal.py", "write-refusal-json.py"}
+	for _, h := range helpers {
+		names = append(names, filepath.Base(h))
+	}
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(surfaces, name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1178,12 +1190,13 @@ assert _json_common.write_wire(LargeFixed, LargeFixed()) == wire
 cls = _common.root_class('unit', 'Root')
 field = next(field for field in cls.descriptor.fields if field.name == 'live')
 field.codec = 'unsupported'
-try:
-    importlib.import_module('json-hostile').run('manifest', 'out')
-except ValueError as error:
-    assert error.reason == 'unsupported'
-else:
-    raise AssertionError('unsupported runtime was counted as a refusal')
+# an unsupported runtime is a driver error, never a refusal: the case is
+# named among the driver errors (the surface then exits non-zero) and no
+# answer is written for it (_common.answering)
+os.remove('out/hostilecase')
+importlib.import_module('json-hostile').run('manifest', 'out')
+assert 'hostilecase' in _common.DRIVER_ERRORS, 'unsupported runtime was not a driver error'
+assert not os.path.exists('out/hostilecase'), 'unsupported runtime was answered'
 print('ok')
 `
 	inputs := map[string][]byte{"main.py": []byte(probe)}

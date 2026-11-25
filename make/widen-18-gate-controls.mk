@@ -46,23 +46,33 @@ VERIFY_GATE_CONTROLS := bitphase canonical tablegen message-fuzz sabotage-packet
 GATECONTROL = go run ./tools/gatecontrol
 
 define verify_gate_control_rules
-.PHONY: $(foreach g,$(VERIFY_GATE_CONTROLS),verify-$(g)-negative-control-$(1))
+.PHONY: $(foreach g,$(VERIFY_GATE_CONTROLS),verify-$(g)-negative-control-$(1)) gate-conformance-$(1)
+# THE LEG'S CONFORMANCE RUN, which the fixed, variable and retain controls
+# plant: the conformance harness over this one leg, in a work directory of
+# its own (the harness clears each surface it writes), as `make conformance
+# CONFORMANCE_ONLY=<leg>` runs it. _verify-<leg>-conformance no longer runs
+# the corpus (that run is the schema-test corpus adapter's now,
+# make/verify-compiled.mk), so a control aimed at it planted an oracle
+# nothing read and stayed green (fullrun ab1e1e195a: "compares nothing" on
+# cpp for all three).
+gate-conformance-$(1): build/conformance-harness build/conformance-cpp build/schema_test_cook $$(CONFORMANCE_OF.$(1))
+	$$(CONFORMANCE_ENV) ./build/conformance-harness run --only $(1) --work build/gate-controls/conformance-$(1)
 verify-bitphase-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant bitphase -target verify-bitphase-$(1) -want 'FAILED: .*(valid_p[0-9]+_v0|hostile_align_p[0-9]+)\.bin' -refuse 'BITPHASE_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant bitphase -target verify-bitphase-$(1) -want 'FAILED: .*(valid_p[0-9]+_v0|hostile_align_p[0-9]+)\.bin' -refuse '(?m)^BITPHASE_OK $(1) '
 verify-sabotage-packet-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant packet -target verify-bitphase-$(1) -want 'FAILED: .*(valid_p[0-9]+_v0|hostile_reserved_p[0-9]+)\.bin' -refuse 'BITPHASE_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant packet -target verify-bitphase-$(1) -want 'FAILED: .*(valid_p[0-9]+_v0|hostile_reserved_p[0-9]+)\.bin' -refuse '(?m)^BITPHASE_OK $(1) '
 verify-canonical-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant canonical -target verify-canonical-$(1) -want 'FAILED: wire ' -refuse 'CANONICAL_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant canonical -target verify-canonical-$(1) -want 'FAILED: wire ' -refuse '(?m)^CANONICAL_OK $(1) '
 verify-tablegen-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant tablegen -target verify-tablegen-$(1) -want 'FAILED: tg[0-9]+:' -refuse 'TABLEGEN_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant tablegen -target verify-tablegen-$(1) -want 'FAILED: tg[0-9]+:' -refuse '(?m)^TABLEGEN_OK $(1) '
 verify-message-fuzz-negative-control-$(1):
 	$$(GATECONTROL) -leg $(1) -plant message-fuzz -target _verify-$(1)-fuzz-message -want 'message-fuzz DIVERGENCE'
 verify-sabotage-fixed-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant fixed -target _verify-$(1)-conformance -want '$(1) / report: fixedevo_v1_as_v3'
+	$$(GATECONTROL) -leg $(1) -plant fixed -target gate-conformance-$(1) -want '$(1) / report: fixedevo_v1_as_v3'
 verify-sabotage-variable-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant variable -target _verify-$(1)-conformance -want '$(1) / report: a1_arm_body_as_a2'
+	$$(GATECONTROL) -leg $(1) -plant variable -target gate-conformance-$(1) -want '$(1) / report: a1_arm_body_as_a2'
 verify-sabotage-retain-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant retain -target _verify-$(1)-conformance -want '$(1) / retain-save: retain_node_record'
+	$$(GATECONTROL) -leg $(1) -plant retain -target gate-conformance-$(1) -want '$(1) / retain-save: retain_node_record'
 endef
 
 $(foreach L,$(VERIFY_ALL_18_LEGS),$(eval $(call verify_gate_control_rules,$(L))))
