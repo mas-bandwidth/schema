@@ -3,45 +3,33 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"go/ast"
-	"go/parser"
-	"go/token"
+	"go/build"
 	"path/filepath"
-	"slices"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
+	"github.com/mas-bandwidth/schema/v2/internal/testselect"
 )
 
 // THE REGISTRY'S GO TESTS RUN THROUGH THE DRIVER, NOT HERE
 // (docs/TEST-REGISTRY.md). A language-free Go test with a gotest row in the
 // test registry runs in ci-fast's schema-test-pr shards (`schema-test run
 // --group pr`), so go-test-touched does not run it a second time: a package
-// whose every test is a registry row leaves the selection, and a package with
-// tests the registry does not run yet gets one row that runs only those.
+// whose every test is a registry row (of any tier: a nightly row runs in the
+// nightly lane) leaves the selection, and a package with tests the registry
+// does not run yet gets one row that runs only those.
 
-// registered is the gotest rows of the registry's pr group: for each
-// ./package, the top-level tests the schema-test-pr shards run. A row of a
-// tier the pr group leaves out (nightly) is not one: go-test-touched keeps
-// running its test on the pull request that touches its package.
+// registered is the registry's gotest rows, of every tier: for each
+// ./package, the top-level tests the driver runs. A unit or functional row
+// runs in the schema-test-pr shards and a nightly row in the nightly lane, so
+// go-test-touched runs neither: a per-change row never runs a nightly test.
 func registered(path string) (map[string]map[string]bool, error) {
 	reg, err := testreg.Load(path)
 	if err != nil {
 		return nil, err
 	}
-	g, ok := reg.Group("pr")
-	if !ok {
-		return nil, fmt.Errorf("%s has no group pr", path)
-	}
-	sel, err := reg.Select(g.Query())
-	if err != nil {
-		return nil, fmt.Errorf("%s: group pr: %w", path, err)
-	}
 	out := map[string]map[string]bool{}
-	for _, inst := range sel.Instances {
-		t := inst.Test
+	for _, t := range reg.Tests {
 		if t.Adapter != "gotest" {
 			continue
 		}
@@ -57,45 +45,13 @@ func registered(path string) (map[string]map[string]bool, error) {
 	return out, nil
 }
 
-// declared is the top-level tests and fuzz targets a package's _test.go
-// files declare, as go test names them: functions, not methods, named Test
-// or Fuzz and then a name not starting lower case, TestMain aside. The files
-// are parsed, so a test written inside a fixture string is not one.
+// declared is the top-level tests, fuzz targets and examples go test runs in
+// a package on this platform (internal/testselect.Names: its build
+// constraints, functions not methods, TestMain aside, a test in a fixture
+// string not one). A test built only for another platform is not declared
+// here, so a row never names a test its runner cannot build.
 func declared(dir string) ([]string, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*_test.go"))
-	if err != nil {
-		return nil, err
-	}
-	fset := token.NewFileSet()
-	var out []string
-	for _, f := range files {
-		file, err := parser.ParseFile(fset, f, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range file.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil {
-				continue
-			}
-			name := fn.Name.Name
-			rest, isTest := strings.CutPrefix(name, "Test")
-			if !isTest {
-				if rest, isTest = strings.CutPrefix(name, "Fuzz"); !isTest {
-					continue
-				}
-			}
-			if name == "TestMain" {
-				continue
-			}
-			if r, _ := utf8.DecodeRuneInString(rest); rest != "" && unicode.IsLower(r) {
-				continue
-			}
-			out = append(out, name)
-		}
-	}
-	slices.Sort(out)
-	return slices.Compact(out), nil
+	return testselect.Names(build.Default, dir)
 }
 
 // unregistered splits pkgs (relative to root) by the registry: kept are the packages

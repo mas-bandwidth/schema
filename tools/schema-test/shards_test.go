@@ -196,7 +196,11 @@ func TestThePRJobsSplitTheGroupByLanguage(t *testing.T) {
 	}
 	// the guard of the run's own step: the last one before the run
 	guard := "        " + prPerLangSkip + "\n"
-	g := strings.LastIndex(wf[:strings.Index(wf, prPerLangRun)], guard)
+	before, _, found := strings.Cut(wf, prPerLangRun)
+	if !found {
+		t.Fatalf("ci-fast.yml has no `%s`", prPerLangRun)
+	}
+	g := strings.LastIndex(before, guard)
 	if g < 0 {
 		t.Fatalf("the plant found no `%s` line to remove", prPerLangSkip)
 	}

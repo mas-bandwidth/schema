@@ -57,13 +57,6 @@ type goTestInputs struct {
 
 var goTestName = regexp.MustCompile(`^(Test|Fuzz)[A-Za-z0-9_]*$`)
 
-// goTestEnv opens every gate the repository's Go tests still carry for the
-// lanes that run them outside the driver (internal/slowtest): under the
-// driver the slow half always runs, and a missing tool or corpus is a
-// failure, never a skip. Which tests run is the query; a test's tier says
-// what it needs.
-var goTestEnv = []string{"SCHEMA_SLOW=1", "SCHEMA_REQUIRE_CORPUS=1"}
-
 // goTestInputsOf reads and checks a row's inputs.
 func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	var in goTestInputs
@@ -205,7 +198,9 @@ func (a *goTestAdapter) runPackage(ctx context.Context, pkg string, tests map[st
 	cmd := exec.CommandContext(ctx, "go", "test", "-count=1", "-json", "-timeout", goTestTimeout(ctx, time.Now()), "-run", "^("+strings.Join(names, "|")+")$", rel)
 	cmd.Dir = dir
 	bound(cmd)
-	cmd.Env = append(os.Environ(), goTestEnv...)
+	// nothing in a test decides whether it runs: which tests run is the
+	// query, and a test's tier says what it needs
+	cmd.Env = os.Environ()
 	for k, v := range testreg.EnvFrom(ctx) {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}

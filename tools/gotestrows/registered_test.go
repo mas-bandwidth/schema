@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -46,10 +47,10 @@ func TestRegisteredTestsLeaveTheSelection(t *testing.T) {
 	}
 }
 
-// TestTheRegistryRowsReadTheirPackages: registered reads the repository's
-// registry's pr group, and every gotest row names a ./package and a test. A
-// nightly row is not in it, so go-test-touched keeps running that test: the
-// plant is a registry whose only compiler row is nightly.
+// TestTheRegistryRowsReadTheirPackages: registered reads every gotest row of
+// the repository's registry, and every one names a ./package and a test. A
+// nightly row is one: the nightly lane runs its test, and go-test-touched,
+// a per-change row, never runs a nightly test.
 func TestTheRegistryRowsReadTheirPackages(t *testing.T) {
 	t.Parallel()
 	reg, err := registered(filepath.Join("..", "..", "test", "registry", "registry.jsonl"))
@@ -78,7 +79,50 @@ func TestTheRegistryRowsReadTheirPackages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got["./a"]["TestUnit"] || got["./a"]["TestNight"] {
-		t.Fatalf("registered %v: want TestUnit (unit) and not TestNight (nightly, which go-test-touched still runs)", got["./a"])
+	if !got["./a"]["TestUnit"] || !got["./a"]["TestNight"] {
+		t.Fatalf("registered %v: want TestUnit (unit) and TestNight (nightly, which the nightly lane runs)", got["./a"])
+	}
+}
+
+// TestAPackageLeftOnlyWithForeignTestsLeavesTheSelection: a package whose
+// tests without a row are each built only for another platform has nothing
+// left for go-test-touched to run, so it leaves the selection rather than
+// becoming a row that selects nothing; a package with a test left keeps only
+// that one. (A nightly row counts as a row: TestTheRegistryRowsReadTheirPackages.)
+func TestAPackageLeftOnlyWithForeignTestsLeavesTheSelection(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	foreign := "plan9"
+	if runtime.GOOS == "plan9" {
+		foreign = "windows"
+	}
+	files := map[string]string{
+		"a/a_test.go":       "package a\n\nimport \"testing\"\n\nfunc TestUnit(t *testing.T) {}\n\nfunc TestNight(t *testing.T) {}\n",
+		"a/other_test.go":   "//go:build " + foreign + "\n\npackage a\n\nimport \"testing\"\n\nfunc TestElsewhere(t *testing.T) {}\n",
+		"b/b_test.go":       "package b\n\nimport \"testing\"\n\nfunc TestUnit(t *testing.T) {}\n\nfunc TestLeft(t *testing.T) {}\n",
+		"b/b_other_test.go": "//go:build " + foreign + "\n\npackage b\n\nimport \"testing\"\n\nfunc TestElsewhere(t *testing.T) {}\n",
+	}
+	for name, body := range files {
+		p := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reg := map[string]map[string]bool{
+		"./a": {"TestUnit": true, "TestNight": true},
+		"./b": {"TestUnit": true},
+	}
+	kept, left, err := unregistered(root, []string{"./a", "./b"}, reg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"./b"}; !reflect.DeepEqual(kept, want) {
+		t.Errorf("kept %v, want %v", kept, want)
+	}
+	if want := map[string][]string{"./b": {"TestLeft"}}; !reflect.DeepEqual(left, want) {
+		t.Errorf("left %v, want %v", left, want)
 	}
 }

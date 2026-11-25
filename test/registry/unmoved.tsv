@@ -11,7 +11,6 @@
 # kind	place	count	layer	reason
 go-test	bench/tables/moo	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	compiler	9	L5	Go tests behind a leg's build tag (schema_leg_<leg>): that language's adapter runs them
-go-test	internal/ci	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/cpp	28	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
 go-test	internal/codegen/cpptable	182	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
@@ -48,9 +47,7 @@ go-test	internal/codegen/squirrel	15	L5	per-language (squirrel) Go tests: squirr
 go-test	internal/codegen/squirreltable	223	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
 go-test	internal/codegen/unity	6	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
 go-test	internal/codegen/unitytable	37	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
-go-test	internal/slowtest	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/tablewire	3	L6	Go benchmarks: the bench adapter runs them
-go-test	internal/testselect	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tables/cards	36	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tables/cards/example	1	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tables/goruntime	3	L5	per-language (go) Go tests: go's adapter runs them when their families move in
@@ -59,7 +56,6 @@ go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs t
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
@@ -71,16 +67,8 @@ go-test	test/conformance/ruby	2	L5	per-language (ruby) Go tests: ruby's adapter 
 go-test	test/conformance/squirrel	2	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
 go-test	test/go-tables	18	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	test/packet-write-bareint/lobster	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
-go-test	test/unity-hostile/gen	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestreport	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrows	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrun	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/hostilecorpusexec	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/hostileledger	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/namebuild	1	L4	the name-buildability build of every target: L4 splits it into one test per target and owns their rows
-go-test	tools/testguard	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner of that platform runs them
-go-test	tools/wirefuzzrelease	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 make-target	Makefile	37	L6	make gates: the make adapter runs them
 make-target	make/bench-check.mk	1	L6	make gates: the make adapter runs them
 make-target	make/c-fixed-default-copy.mk	1	L6	make gates: the make adapter runs them

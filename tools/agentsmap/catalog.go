@@ -217,7 +217,7 @@ var catalog = []Entry{
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
 	e("tools/gotestreport", "go test -json row report; every skip is red", "go test ./tools/gotestreport", "go run ./tools/gotestreport build/go-test-json"),
 	e("tools/errdiscard", "refuses an error dropped in cmd/ or tools/ with no reason", "go test ./internal/errdiscard", "make errdiscard"),
-	e("tools/testguard", "holds a row's test results to its suites, baseline and coverage tables; every skip is red", "go test ./tools/testguard", "go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD..."),
+	e("tools/testguard", "holds a row's test results to its suites, baseline and coverage tables; every skip is red", "go test ./tools/testguard", "go run ./tools/testguard check --config CONFIG.tsv RECORD..."),
 	e("tools/gotestrows", "ci-fast go-test matrix rows", "go test ./tools/gotestrows", "go run ./tools/gotestrows ./..."),
 	e("tools/gotestselect", "prints the -run pattern naming a selection by test name; fails when it names none", "go test ./internal/testselect", "go run ./tools/gotestselect -not X ./pkg"),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),

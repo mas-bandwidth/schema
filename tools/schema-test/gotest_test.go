@@ -110,6 +110,28 @@ func TestAPackageInAModuleOfItsOwnRunsFromThatModule(t *testing.T) {
 	}
 }
 
+// TestAGoTestFamilyNeverTakesTheCorpusPrefix: a family beginning
+// conformance- is a conformance corpus row's, so a Go test package under
+// test/conformance takes its family from the rest of its path, and the
+// registry's Go test rows hold none of the corpus's families.
+func TestAGoTestFamilyNeverTakesTheCorpusPrefix(t *testing.T) {
+	t.Parallel()
+	for dir, want := range map[string]string{"test/conformance/harness": "harness", "test/conformance/packet": "packet", "test/conformance/go/rows": "go-rows"} {
+		if got := familyOf(dir); got != want {
+			t.Errorf("familyOf(%s) = %s, want %s", dir, got, want)
+		}
+	}
+	reg, err := testreg.Load(filepath.Join("..", "..", testreg.DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range reg.Tests {
+		if row.Adapter == "gotest" && strings.HasPrefix(row.Family, corpusFamilyPrefix) {
+			t.Errorf("%s: a Go test row in the corpus's family %s", row.Key, row.Family)
+		}
+	}
+}
+
 // TestRowsAreNamedFromTheirGoTests: a moved Go test's family, case and type
 // come from its package and name.
 func TestRowsAreNamedFromTheirGoTests(t *testing.T) {

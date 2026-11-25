@@ -19,8 +19,8 @@ import (
 // returns how many it moved. Only the kinds the driver has an adapter for
 // move: a language-free Go test becomes a gotest row. A test goTestLayer
 // gives a later layer (a benchmark, a test in a module of its own) stays in
-// the ledger. Its tier is the one its gates give it
-// (functional when it opens the slow gate); a key two tests would share, a
+// the ledger. Its tier is its tier line's (extract.ApplyTiers), else unit;
+// a key two tests would share, a
 // family two packages would share, and a layer with nothing to move are
 // refused by name.
 func moveLayer(root, regPath, layer string, res *extract.Result, reg *testreg.Registry, ledger []extract.LedgerLine) (int, error) {
@@ -147,10 +147,18 @@ func marshal(v any) ([]byte, error) {
 	return bytes.TrimRight(b.Bytes(), "\n"), nil
 }
 
+// corpusFamilyPrefix begins the family of every conformance corpus row, and
+// only theirs (test/conformance/harness/adapter.go's corpusFamilyPrefix):
+// TestTheRegistryHoldsEveryConformanceCase reads every row of such a family
+// as a corpus row.
+const corpusFamilyPrefix = "conformance-"
+
 // familyOf is a package's family: its directory without the leading
-// internal/, tools/ or test/, slashes made dashes.
+// internal/, tools/, test/conformance/ or test/, slashes made dashes. So
+// test/conformance/harness is harness (the family its hand-written rows
+// use), and no Go test family begins with the corpus rows' prefix.
 func familyOf(dir string) string {
-	for _, p := range []string{"internal/", "tools/", "test/"} {
+	for _, p := range []string{"internal/", "tools/", "test/conformance/", "test/"} {
 		if rest, ok := strings.CutPrefix(dir, p); ok {
 			dir = rest
 			break
