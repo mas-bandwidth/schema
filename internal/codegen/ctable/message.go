@@ -2,8 +2,10 @@ package ctable
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -59,29 +61,27 @@ func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
 	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableAnnounceTooLarge=%d, kTableMessageBatchMax=256, kTableMessageSeenRefs=8192 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement), b2i(len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries))
-	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
-	for _, v := range announcement {
-		fmt.Fprintf(&b, "0x%02x,", v)
-	}
-	b.WriteString("};\n")
+	// THE THREE ARRAYS ARE PACKED (ccommon.PackedInitializer), 16 items to a
+	// line with no comma after the last: written with one, cfmt and
+	// clang-format lay them out one item to a line.
+	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={\n")
+	b.WriteString(ccommon.PackedBytes(announcement))
 	// Retain the exact encoded entry identity before resolving quantization
 	// facts: different triples can resolve to the same qmin/delta/count.
-	b.WriteString("static const uint8_t kTableMessageEntryKeyBytes[]={")
-	offsets := []int{0}
+	b.WriteString("static const uint8_t kTableMessageEntryKeyBytes[]={\n")
+	var keyBytes []byte
+	offsets := []string{"0"}
 	for _, e := range entries {
-		for _, v := range []byte(e.Key()) {
-			fmt.Fprintf(&b, "0x%02x,", v)
-		}
-		offsets = append(offsets, offsets[len(offsets)-1]+len(e.Key()))
+		keyBytes = append(keyBytes, e.Key()...)
+		offsets = append(offsets, strconv.Itoa(len(keyBytes)))
 	}
 	if len(entries) == 0 {
-		b.WriteString("0")
+		b.WriteString(ccommon.PackedInitializer([]string{"0"}))
+	} else {
+		b.WriteString(ccommon.PackedBytes(keyBytes))
 	}
-	b.WriteString("};\nstatic const int32_t kTableMessageEntryKeyOffsets[]={")
-	for _, offset := range offsets {
-		fmt.Fprintf(&b, "%d,", offset)
-	}
-	b.WriteString("};\n")
+	b.WriteString("static const int32_t kTableMessageEntryKeyOffsets[]={\n")
+	b.WriteString(ccommon.PackedInitializer(offsets))
 	b.WriteString(`static SCHEMA_UNUSED uint16_t table_message_own_slot(const uint8_t * raw,int64_t length)
 {
  int32_t i;

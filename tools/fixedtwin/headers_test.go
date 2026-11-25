@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,15 +20,15 @@ func twinHeaderPaths(t *testing.T) (cPath, cppPath, root string) {
 func readTwinHeaders(t *testing.T) (cSrc, cppSrc, root string) {
 	t.Helper()
 	cPath, cppPath, root := twinHeaderPaths(t)
-	cBytes, err := os.ReadFile(cPath)
+	cBytes, err := readHeader(cPath)
 	if err != nil {
 		t.Fatalf("the real C twin header is missing: %v", err)
 	}
-	cppBytes, err := os.ReadFile(cppPath)
+	cppBytes, err := readHeader(cppPath)
 	if err != nil {
 		t.Fatalf("the real C++ twin header is missing: %v", err)
 	}
-	return string(cBytes), string(cppBytes), root
+	return cBytes, cppBytes, root
 }
 
 func twinLeftover(t *testing.T, cSrc, cppSrc, root string) []string {
