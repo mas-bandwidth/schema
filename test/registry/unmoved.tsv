@@ -111,7 +111,7 @@ go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs t
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	363	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/conformance/harness	362	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
@@ -1050,20 +1050,20 @@ data-case	test/conformance/cs/rows	1	L4	corpus data and harnesses: each language
 data-case	test/conformance/cs/rows/E5	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/cs/storage-debug	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/dart	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/elixir	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/elixir	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/elixir/case-outcomes	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/framing	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/go	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/goose	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/goose	9	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/java	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/js	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/js/testdata/message-verdict	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/lobster	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/lobster	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/lobster/vectors	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/lua	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/luau	12	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/luau	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/luau/vectors	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/conformance/moo	9	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	test/conformance/moo	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/moo/wire-fuzz-pinned	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/constant-defaults/hexadecimal-addition	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/conformance/packet/testdata/constant-defaults/unsigned-subtraction	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

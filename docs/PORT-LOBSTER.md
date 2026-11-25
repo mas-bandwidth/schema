@@ -533,7 +533,7 @@ as lines (lowercase hex for bytes).**
   message form is fixed roots only, as Go's is (§3.3), so the arm answers 0
   for it. The retain arm and the message batches each have a pinned-vector replay and a
   negative control in `tables-lobster-wire-fuzz-negative-control`.
-  `test/conformance/lobster/wirefuzz-known-leaks.txt` is empty:
+  A leak the VM reports at exit fails the leg, naming the unit:
   a loaded cyclic graph releases every node. The packet wire's hostile bytes
   are `packet-text-fuzz[lobster]`, and the shared hostile corpus runs through
   the port's own readers in `schema-lobster-runs-hostile-corpus`

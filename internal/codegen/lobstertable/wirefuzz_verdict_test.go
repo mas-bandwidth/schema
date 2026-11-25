@@ -223,16 +223,15 @@ func plantGenerated(t *testing.T, path, anchor, repl string) {
 // carries only form 1, retain 0, variable roots.
 func runLobsterWireFuzz(t *testing.T, root, harness, host, units, mode string, extra []string) (string, error) {
 	t.Helper()
-	leaks := filepath.Join(root, "test", "conformance", "lobster", "wirefuzz-known-leaks.txt")
 	args := []string{"wire-fuzz"}
 	var driver string
 	switch mode {
 	case "builder":
 		args = append(args, "--builder")
-		driver = fmt.Sprintf("%s --builder --units %s --known-leaks %s", host, units, leaks)
+		driver = fmt.Sprintf("%s --builder --units %s", host, units)
 	case "retain":
 		args = append(args, "--retain")
-		driver = fmt.Sprintf("%s --units %s --known-leaks %s", host, units, leaks)
+		driver = fmt.Sprintf("%s --units %s", host, units)
 	default:
 		t.Fatalf("unknown wire-fuzz mode %q", mode)
 	}

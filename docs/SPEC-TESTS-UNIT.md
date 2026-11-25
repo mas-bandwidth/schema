@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 143.
+Unit tests every language answers: 0. Language-free tests: 145.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -111,7 +111,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrows.every-ride-runs-in-its-legs-row` | `gotest` | Go test TestEveryRideRunsInItsLegsRow in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestEveryRideRunsInItsLegsRow` | the Go test passes | `tools/gotestrows/main_test.go:342` |
 | `none.unit.tooling.gotestrows.riding-test-runs-in-no-row` | `gotest` | Go test TestRidingTestRunsInNoRow in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestRidingTestRunsInNoRow` | the Go test passes | `tools/gotestrows/main_test.go:304` |
 
-#### `tooling` family `harness`, 5 tests
+#### `tooling` family `harness`, 7 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -120,6 +120,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.plant-expectations-refuses-an-unknown-class` | `gotest` | Go test TestPlantExpectationsRefusesAnUnknownClass in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestPlantExpectationsRefusesAnUnknownClass` | the Go test passes | `test/conformance/harness/plant_test.go:60` |
 | `none.unit.tooling.harness.plant-message-answer-inverts` | `gotest` | Go test TestPlantMessageAnswerInverts in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestPlantMessageAnswerInverts` | the Go test passes | `test/conformance/harness/plant_test.go:72` |
 | `none.unit.tooling.harness.shard-surfaces-partition-the-registry` | `gotest` | Go test TestShardSurfacesPartitionTheRegistry in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestShardSurfacesPartitionTheRegistry` | the Go test passes | `test/conformance/harness/shard_surfaces_test.go:13` |
+| `none.unit.tooling.harness.the-retired-retain-refusal-ledger-is-refused` | `gotest` | Go test TestTheRetiredRetainRefusalLedgerIsRefused in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRetiredRetainRefusalLedgerIsRefused` | the Go test passes | `test/conformance/harness/retainrefusal_test.go:152` |
+| `none.unit.tooling.harness.wire-fuzz-list-roots-is-the-roster` | `gotest` | Go test TestWireFuzzListRootsIsTheRoster in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestWireFuzzListRootsIsTheRoster` | the Go test passes | `test/conformance/harness/wirefuzz_listroots_test.go:12` |
 
 #### `tooling` family `inputaccount`, 3 tests
 

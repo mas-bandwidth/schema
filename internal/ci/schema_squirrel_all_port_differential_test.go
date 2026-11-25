@@ -206,7 +206,6 @@ func normalizeDifferentialAnswer(surface, name string, answer []byte) []byte {
 	return answer
 }
 
-
 // normalizeDifferentialReadAnswer is test/conformance/harness's
 // normalizeReadAnswer and ParseCounts (run.go, wirefuzz.go), which live in a
 // main package this one cannot import. It reports false for an answer the
