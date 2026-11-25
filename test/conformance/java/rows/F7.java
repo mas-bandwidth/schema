@@ -1,7 +1,8 @@
-// RESULT cell-java-f7 -- "malformed, under 20 bytes" (schema#876 F7)
+// RESULT cell-java-f7 -- "truncated, under 20 bytes" (schema#876 F7)
 //
-// Law (docs/FIXED-FORM-ALGORITHM.md:909): a file under 20 bytes answers
-// malformed=true, refused=false, n=-1, all counters zero.
+// Law (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table; no malformed flag on
+// this form's report): a file under 20 bytes refuses truncated, n=-1, all
+// counters zero.
 //
 // The production entrypoint is TableFixed.readHeader (fixedruntime.go:225),
 // called by <Table>Fixed.load() (fixedform.go:1583). This test calls
@@ -33,17 +34,13 @@ public class F7 {
             boolean ret = TableFixed.readHeader(data, head, rep);
 
             if (ret) {
-                System.out.println("FAIL k=" + k + ": readHeader returned true, want false (malformed)");
+                System.out.println("FAIL k=" + k + ": readHeader returned true, want false (truncated)");
                 failed++;
                 continue;
             }
-            if (!rep.damaged) {
-                System.out.println("FAIL k=" + k + ": report.damaged=false, want true");
-                failed++;
-                continue;
-            }
-            if (rep.refused) {
-                System.out.println("FAIL k=" + k + ": report.refused=true, want false (malformed is the other answer)");
+            if (!rep.refused || rep.reason != TableFixed.Reason.truncated) {
+                System.out.println("FAIL k=" + k + ": refused=" + rep.refused + " reason=" + rep.reason
+                        + ", want refused=true reason=truncated");
                 failed++;
                 continue;
             }
@@ -57,11 +54,11 @@ public class F7 {
         TableFixed.Report rep = new TableFixed.Report();
         rep.reset();
         boolean ret = TableFixed.readHeader(full, head, rep);
-        if (rep.damaged) {
-            System.out.println("FAIL k=20: report.damaged=true from a 20-byte file (incorrect)");
+        if (rep.refused && rep.reason == TableFixed.Reason.truncated) {
+            System.out.println("FAIL k=20: refused truncated from a 20-byte file (incorrect)");
             failed++;
         } else {
-            System.out.println("INFO k=20: malformed=" + rep.damaged + " refused=" + rep.refused + " (not under 20; may fail on layout)");
+            System.out.println("INFO k=20: refused=" + rep.refused + " reason=" + rep.reason + " (not under 20; may fail on layout)");
             passed++;
         }
 

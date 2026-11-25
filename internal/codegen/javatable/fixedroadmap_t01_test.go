@@ -68,14 +68,12 @@ func t01Deep(t *testing.T, classes, file string) probeRun {
 }
 
 // requireNamedRefusal is §5.3's first row of the answer table: a refusal BY NAME
-// sets refused and the name, never malformed, returns -1 and moves no counter.
+// sets refused and the name, returns -1 and moves no counter (there is no
+// malformed flag on this form's report).
 func requireNamedRefusal(t *testing.T, what string, r probeRun, reason string) {
 	t.Helper()
 	if !r.refused || r.reason != reason {
 		t.Errorf("%s: refused=%v reason=%s, want a refusal named %s", what, r.refused, r.reason, reason)
-	}
-	if r.damaged {
-		t.Errorf("%s: malformed is set beside a reason; the report is two answers and never both", what)
 	}
 	if r.n != -1 {
 		t.Errorf("%s: n=%d, want -1", what, r.n)
@@ -103,7 +101,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 	env := &t01Env{classes: classes, raw: raw, dir: filepath.Join(dir, "forged")}
 
 	// The unmutated file must read: every refusal below is a refusal OF A MUTATION.
-	if ok := runProbe(t, classes, "Probe_reads", env.forge(t, "intact.bin", func(b []byte) []byte { return b })); ok.n < 1 || ok.refused || ok.damaged {
+	if ok := runProbe(t, classes, "Probe_reads", env.forge(t, "intact.bin", func(b []byte) []byte { return b })); ok.n < 1 || ok.refused {
 		t.Fatalf("the unmutated file does not read: %+v", ok)
 	}
 	if env.recordsAt()+8 > len(raw) || env.layoutLen() < 4+t01EntryBytes {
@@ -158,8 +156,8 @@ func t01F4(t *testing.T, e *t01Env) {
 	}
 	// The boundary: cut exactly after the layout, `20 + L` is the file's end.
 	path := e.forge(t, "exact.bin", func(b []byte) []byte { return b[:at] })
-	if r := runProbe(t, e.classes, "Probe_reads", path); r.reason == "layoutMalformed" || !r.damaged {
-		t.Errorf("a file ending exactly after its layout is `20 + L` inside the file, and must not answer layout_malformed or malformed: %+v", r)
+	if r := runProbe(t, e.classes, "Probe_reads", path); r.reason == "layoutMalformed" || !r.refused || r.reason != "truncated" {
+		t.Errorf("a file ending exactly after its layout is `20 + L` inside the file, and must refuse truncated (no record follows), not layout_malformed: %+v", r)
 	}
 }
 
@@ -167,7 +165,7 @@ func t01F4(t *testing.T, e *t01Env) {
 // layout for a hash already held is refused by name and changes nothing". The
 // header's hash selects a held lineage entry; layout bytes that differ from the
 // lock's (one byte of each field, and a different length) refuse
-// `layout_malformed`, NOT `layout_newer`, with nothing decoded.
+// `layout_malformed`, NOT `layout_unknown`, with nothing decoded.
 func t01F12(t *testing.T, e *t01Env) {
 	count := (e.layoutLen() - 4) / t01EntryBytes
 	offsets := []int{0} // the entry count word
@@ -200,8 +198,8 @@ func t01F12(t *testing.T, e *t01Env) {
 	// The contrast that makes the row discriminating: a hash held by NO entry is
 	// the other name.
 	stranger := e.forge(t, "stranger.bin", func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b })
-	if r := runProbe(t, e.classes, "Probe_reads", stranger); r.reason != "layoutNewer" {
-		t.Errorf("an unheld hash: reason=%s, want layoutNewer, which is not the second-layout name", r.reason)
+	if r := runProbe(t, e.classes, "Probe_reads", stranger); r.reason != "layoutUnknown" {
+		t.Errorf("an unheld hash: reason=%s, want layoutUnknown, which is not the second-layout name", r.reason)
 	}
 }
 
@@ -299,8 +297,7 @@ func t01R9(t *testing.T, e *t01Env) {
 	}
 }
 
-// t01R13 is R13 "REFUSE is total: refused+reason and malformed are never both
-// set, every counter stays zero", and (ruling R4, which replaces "not one
+// t01R13 is R13 "REFUSE is total: every counter stays zero", and (ruling R4, which replaces "not one
 // destination byte is written") every row handed in holds its declared
 // default: ALGORITHM §5.3's answer table. Each refusal by name that a
 // single-record file can earn is read into storage poisoned with 0x5A, and
@@ -310,7 +307,7 @@ func t01R13(t *testing.T, e *t01Env) {
 		mutate func(b []byte) []byte
 		reason string
 	}{
-		"layout_newer":     {func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b }, "layoutNewer"},
+		"layout_unknown":   {func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b }, "layoutUnknown"},
 		"layout_malformed": {func(b []byte) []byte { b[t01HeaderBytes+t01LengthBytes+4] ^= 0xFF; return b }, "layoutMalformed"},
 		"layout_truncated": {func(b []byte) []byte { return b[:e.recordsAt()-1] }, "layoutMalformed"},
 		"no_layout": {func(b []byte) []byte {
@@ -334,12 +331,13 @@ func t01R13(t *testing.T, e *t01Env) {
 	r := t01Deep(t, retired, e.forge(t, "floor.bin", func(b []byte) []byte { return b }))
 	requireNamedRefusal(t, "layout_unsupported", r, "layoutUnsupported")
 	t01RequireDefaults(t, "layout_unsupported", r)
-	// The other answer: a malformed read sets malformed and no refusal, and
+	// The ragged tail refuses by name too (truncated; docs/FIXED-FORM-ALGORITHM.md
+	// §5.3 refusal table, no malformed flag on this form's report), and
 	// resets every row handed in to its declared default too (R4).
 	ragged := e.forge(t, "ragged.bin", func(b []byte) []byte { return append(b, 0) })
 	m := t01Deep(t, e.classes, ragged)
-	if !m.damaged || m.refused || m.n != -1 || m.reason != "none" {
-		t.Errorf("a ragged tail: %+v, want malformed alone and -1", m)
+	if !m.refused || m.n != -1 || m.reason != "truncated" {
+		t.Errorf("a ragged tail: %+v, want a truncated refusal and -1", m)
 	}
 	if m.unknown != 0 || m.widened != 0 {
 		t.Errorf("a ragged tail moved a counter: %+v", m)

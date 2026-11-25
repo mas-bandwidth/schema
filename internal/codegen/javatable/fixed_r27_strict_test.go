@@ -127,14 +127,14 @@ func checkJavaFixedR27HostileCorpus(t *testing.T, skipWriterBound bool, mutate f
 		}
 		res := t18Parse(t, string(out))
 		if tc.wantRefuse {
-			if res.n != -1 || !res.refused || res.damaged || res.reason != "outOfRange" {
-				return fmt.Errorf("%s: got n=%d refused=%v reason=%s damaged=%v, want n=-1 refused=true reason=outOfRange damaged=false",
-					tc.file, res.n, res.refused, res.reason, res.damaged)
+			if res.n != -1 || !res.refused || res.reason != "outOfRange" {
+				return fmt.Errorf("%s: got n=%d refused=%v reason=%s, want n=-1 refused=true reason=outOfRange",
+					tc.file, res.n, res.refused, res.reason)
 			}
 		} else {
-			if res.n != 1 || res.refused || res.damaged {
-				return fmt.Errorf("%s: got n=%d refused=%v reason=%s damaged=%v, want n=1 refused=false damaged=false",
-					tc.file, res.n, res.refused, res.reason, res.damaged)
+			if res.n != 1 || res.refused {
+				return fmt.Errorf("%s: got n=%d refused=%v reason=%s, want n=1 refused=false",
+					tc.file, res.n, res.refused, res.reason)
 			}
 			leaf, found := res.leaves[t18Norm("r0.aim")]
 			if !found || uint32(leaf.bits) != tc.wantAim {
