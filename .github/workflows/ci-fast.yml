@@ -477,6 +477,7 @@ jobs:
               test/slowgate/*) add_reader ./internal/ci ;;
               test/table-base64/*) add_reader ./internal/lockfile; add_reader ./internal/codegen/cstable ;;
               test/testguard/*) add_reader ./tools/testguard; add_reader ./internal/ci ;;
+              test/registry/*) add_reader ./internal/testreg; add_reader ./tools/schema-test ;;
             esac
             # A TOOL'S OWN FILES (2026-11-24). A file under tools/ that is not
             # Go, in a directory of a Go package or below one, is that
