@@ -873,7 +873,7 @@
     },
     {
       "name": "single-pass-equivalence",
-      "when": "pull-request",
+      "when": "nightly",
       "why": "the single-pass equivalence gate's controls (make/c.mk, tables-single-pass-equivalence): a wrong rewrite planted in a copy of internal/codegen/ccommon/singlepass.go under an overlay (tools/sabotage/single_pass.go: one drops each file's first #else branch, one moves a guarded #if ahead of the #define between it and its twin), the paired bench closure generated in C as emitted and with it, and tools/singlepasscheck must go red naming bench-paired-c/BenchTable.h. Go and the host gcc only; about 9 s each on amd-1 (2026-11-25).",
       "targets": [
         "tables-single-pass-drop-else-negative-control",

@@ -2580,18 +2580,25 @@ test-c tables-c: tables-c-retain-hashzero tables-c-retain-hashzero-negative-cont
 # rewrite is held to what it rewrote here, on every file of the six generated
 # table trees: each tree is generated twice into build/single-pass, once as
 # emitted (SCHEMA_CONDITIONALS_AS_EMITTED=1, ccommon.RewriteConditionals) and
-# once rewritten, and tools/singlepasscheck preprocesses both forms of every
-# file under its five configurations (host, MSVC/ARM64, neither compiler,
-# big-endian without atomics, test hooks with NDEBUG) and requires the same
-# tokens, red by file name. Its controls are the two
+# once rewritten (the switch cleared), and tools/singlepasscheck preprocesses
+# both forms of every file under its six configurations (host GCC, MSVC on
+# Windows, neither compiler, big-endian without atomics, test hooks with
+# NDEBUG and every name another header or the build defines, Clang on Apple)
+# and requires the same tokens, red by file name. Every branch of every chain
+# the rewrite took apart must be kept under one of them, or it is named by
+# line as never compared; exactly the six trees must be there, and a tree the
+# rewrite changed nothing in is red. 2209 files, 722 rewritten, about 90 s on
+# amd-1 (2026-11-25): a nightly row, with the rewriter's unit tests on the
+# pull-request tier. Its controls are the two
 # tables-single-pass-*-negative-control targets below.
 SINGLE_PASS_OUT := build/single-pass
+SINGLE_PASS_TREES := tables-c,tables-cpp,bench-tables-c,bench-paired-c,bench-tables-cpp,bench-paired-cpp
 .PHONY: tables-single-pass-equivalence single-pass-generate
 tables-single-pass-equivalence: bin/schema
 	@rm -rf $(SINGLE_PASS_OUT) && mkdir -p $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
 	@SCHEMA_CONDITIONALS_AS_EMITTED=1 $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/before
-	@$(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/after
-	go run ./tools/singlepasscheck $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
+	@env -u SCHEMA_CONDITIONALS_AS_EMITTED $(MAKE) --no-print-directory single-pass-generate SINGLE_PASS_SCHEMA=./bin/schema SINGLE_PASS_SIDE=$(SINGLE_PASS_OUT)/after
+	go run ./tools/singlepasscheck -trees $(SINGLE_PASS_TREES) $(SINGLE_PASS_OUT)/before $(SINGLE_PASS_OUT)/after
 
 # single-pass-generate writes the six trees with SINGLE_PASS_SCHEMA into
 # SINGLE_PASS_SIDE, by the same generate lines their own stamps run; a tree's
@@ -2632,14 +2639,14 @@ single-pass-sabotaged:
 	@test -n "$(SINGLE_PASS_SABOTAGE)" || { echo "single-pass-sabotaged: SINGLE_PASS_SABOTAGE names the sabotage"; exit 1; }
 	@rm -rf $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE) && mkdir -p $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged
 	SCHEMA_CONDITIONALS_AS_EMITTED=1 ./bin/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	./bin/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@go run ./tools/singlepasscheck $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/clean.out 2>&1 || \
+	env -u SCHEMA_CONDITIONALS_AS_EMITTED ./bin/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@go run ./tools/singlepasscheck -trees bench-paired-c $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/after > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/clean.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged rewrite of the paired bench closure is not equivalent, so this control would watch a tree that was red anyway"; cat $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/clean.out; exit 1; }
 	go run ./tools/sabotage -name $(SINGLE_PASS_SABOTAGE) -out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/singlepass.gotext internal/codegen/ccommon/singlepass.go
 	@printf '{"Replace":{"%s/internal/codegen/ccommon/singlepass.go":"%s/$(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/singlepass.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/overlay.json
 	go build -overlay $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/overlay.json -o $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/schema ./cmd/schema
-	$(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-	@if go run ./tools/singlepasscheck $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out 2>&1; then \
+	env -u SCHEMA_CONDITIONALS_AS_EMITTED $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/schema generate --lang c --out $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged/bench-paired-c bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@if go run ./tools/singlepasscheck -trees bench-paired-c $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/before $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/sabotaged > $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(SINGLE_PASS_SABOTAGE) rewrite left the single-pass equivalence check green"; cat $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out; exit 1; \
 	fi
 	@grep -q '^SINGLE-PASS EQUIVALENCE FAILED: bench-paired-c/BenchTable\.h: config ' $(SINGLE_PASS_CONTROL)/$(SINGLE_PASS_SABOTAGE)/red.out || \
