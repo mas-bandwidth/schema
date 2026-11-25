@@ -143,7 +143,8 @@ func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) 
 }
 
 // Covered reports, for each item a registry row runs, the row's key:
-//   - a Go test, by a gotest row whose inputs name its package and test, or
+//   - a Go test, by a gotest row whose inputs name its package and test
+//     (and that subtest, when the row names one), or
 //     by a per-language row whose inputs name its package and a test named
 //     with testreg.LangPlaceholder, which covers that test for every
 //     language the registry lists (tools/namebuild's
@@ -228,12 +229,18 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		}
 		switch t.Adapter {
 		case "gotest":
-			var in struct{ Package, Test string }
+			var in struct{ Package, Test, Subtest string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			// the parent row claims the top-level test. A row that names a
+			// subtest claims that subtest, so the two are not the same run.
+			name := in.Test
+			if in.Subtest != "" {
+				name = in.Test + "/" + in.Subtest
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: name}, in.Package+" "+name)
 		case "model-check":
 			// a TLC run of tla/<config>; the controls row runs no config
 			var in struct{ Config string }
@@ -594,6 +601,28 @@ func Runs(res *Result, reg *testreg.Registry) map[string]string {
 	return covered
 }
 
+// goTestHeld reports whether the extract holds id. A gotest row that names a
+// subtest claims Test/sub; the extract lists the top-level test, and that
+// test holds the claim. A claim whose top-level test is absent does not hold.
+func goTestHeld(id string, exists map[string]bool) bool {
+	if exists[id] {
+		return true
+	}
+	kind, rest, ok := strings.Cut(id, " ")
+	if !ok || kind != KindGoTest {
+		return false
+	}
+	dir, name, ok := strings.Cut(rest, " ")
+	if !ok {
+		return false
+	}
+	top, _, isSub := strings.Cut(name, "/")
+	if !isSub {
+		return false
+	}
+	return exists[kind+" "+dir+" "+top]
+}
+
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
@@ -628,7 +657,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	var gone []string
 	for id, key := range covered {
-		if !exists[id] {
+		if !goTestHeld(id, exists) {
 			gone = append(gone, fmt.Sprintf("registry row %s runs %s, which the repository does not hold", key, id))
 		}
 	}
