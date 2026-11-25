@@ -326,7 +326,13 @@ func scratchDir(prefix string) (string, error) {
 			return "", err
 		}
 	}
-	return os.MkdirTemp(scratchRoot, prefix)
+	dir, err := os.MkdirTemp(scratchRoot, prefix)
+	if err != nil {
+		return "", err
+	}
+	// absolute: TLC runs in the tla/ directory, and a relative path would
+	// name a directory under it that nothing removes
+	return filepath.Abs(dir)
 }
 
 func copyDir(src string) (string, error) {

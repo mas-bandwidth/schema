@@ -213,3 +213,27 @@ func TestTheAdapterRunsConcurrentlyWithoutRacingItsVerdicts(t *testing.T) {
 }
 
 func letter(i int) string { return string(rune('a' + i)) }
+
+// TestAScratchDirectoryIsAbsolute: TLC runs in the tla/ directory, so a
+// scratch path it is handed must not be relative to where tlcrun started,
+// or TLC writes under tla/ where nothing removes it.
+func TestAScratchDirectoryIsAbsolute(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(wd, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := scratchRoot
+	scratchRoot = filepath.Join(rel, "build")
+	defer func() { scratchRoot = old }()
+	dir, err := scratchDir("tla-tlc.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(dir) || !strings.HasPrefix(dir, filepath.Join(wd, rel, "build")) {
+		t.Fatalf("scratch directory %q, want an absolute path under %s", dir, filepath.Join(wd, rel, "build"))
+	}
+}

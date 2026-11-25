@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 80.
+Unit tests every language answers: 0. Language-free tests: 81.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -106,10 +106,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:200` |
 | `none.unit.tooling.testreg-extract.what-git-ignores-is-not-a-test` | `gotest` | Go test TestWhatGitIgnoresIsNotATest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestWhatGitIgnoresIsNotATest` | the Go test passes | `internal/testreg/extract/extract_test.go:398` |
 
-#### `tooling` family `tlcrun`, 7 tests
+#### `tooling` family `tlcrun`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.tlcrun.a-scratch-directory-is-absolute` | `gotest` | Go test TestAScratchDirectoryIsAbsolute in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestAScratchDirectoryIsAbsolute` | the Go test passes | `tools/tlcrun/adapter_test.go:220` |
 | `none.unit.tooling.tlcrun.the-adapter-entry-checks-the-tools-it-runs-with` | `gotest` | Go test TestTheAdapterEntryChecksTheToolsItRunsWith in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterEntryChecksTheToolsItRunsWith` | the Go test passes | `tools/tlcrun/adapter_test.go:175` |
 | `none.unit.tooling.tlcrun.the-adapter-fails-every-instance-naming-the-runner-without-tlc` | `gotest` | Go test TestTheAdapterFailsEveryInstanceNamingTheRunnerWithoutTLC in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterFailsEveryInstanceNamingTheRunnerWithoutTLC` | the Go test passes | `tools/tlcrun/adapter_test.go:70` |
 | `none.unit.tooling.tlcrun.the-adapter-judges-each-requested-config` | `gotest` | Go test TestTheAdapterJudgesEachRequestedConfig in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterJudgesEachRequestedConfig` | the Go test passes | `tools/tlcrun/adapter_test.go:51` |
