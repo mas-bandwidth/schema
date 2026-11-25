@@ -4308,8 +4308,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.nightly.tooling.roadmap.all-targets-complete` | `make` | every target the registry names is complete in all three rendered sections, every required leaf done with evidence | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-all-targets-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
 | `none.nightly.tooling.roadmap.check` | `make` | the roadmap data renders, blocks hold only tables, and the hand text is Glenn's | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
-| `none.nightly.tooling.roadmap.original-nine-complete` | `make` | the original nine are complete in all three rendered sections, every required leaf done with evidence | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-original-nine-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
 | `none.nightly.tooling.roadmap.page-is-the-render` | `make` | the committed roadmap tables are the render of the data | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-page-check` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
 
 ### Type `bench`
