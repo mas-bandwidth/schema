@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -11,16 +14,21 @@ import (
 )
 
 // cliRegistry is the CLI tests' registry, committed and only read: the tests
-// write nothing anywhere.
+// write nothing but their own temp dirs.
 const cliRegistry = "testdata/registry.jsonl"
 
 // envFake passes every instance unless the run's environment carries BREAK,
-// and then fails every one: a build a plant breaks. With redFor set it
-// fails every instance for that reason, BREAK or not: a row red for a cause
-// the plant did not plant (a missing tool).
+// and then fails every one: a build a plant breaks. With breakFor set, a
+// broken build fails for that reason instead: a row red under the plant for
+// a cause the plant did not plant (a missing tool). With redAlways set it
+// fails every instance for that reason, BREAK or not: a row already red.
 type envFake struct {
 	ignoreBreak bool
-	redFor      string
+	breakFor    string
+	redAlways   string
+	// crashWhenBroken reports its results and then an error, under BREAK: a
+	// planted run with a run-level problem
+	crashWhenBroken bool
 }
 
 func (envFake) Answers(t testreg.Test) bool { return t.PerLang() }
@@ -28,14 +36,20 @@ func (envFake) Answers(t testreg.Test) bool { return t.PerLang() }
 func (f envFake) Run(ctx context.Context, _ string, insts []testreg.Instance) ([]testreg.Result, error) {
 	var out []testreg.Result
 	for _, inst := range insts {
-		v, why := testreg.Pass, "broken"
+		v, why := testreg.Pass, "the build is broken"
 		if testreg.EnvFrom(ctx)["BREAK"] != "" && !f.ignoreBreak {
 			v = testreg.Fail
+			if f.breakFor != "" {
+				why = f.breakFor
+			}
 		}
-		if f.redFor != "" {
-			v, why = testreg.Fail, f.redFor
+		if f.redAlways != "" {
+			v, why = testreg.Fail, f.redAlways
 		}
 		out = append(out, testreg.Result{Instance: inst.Full, Verdict: v, Reason: why})
+	}
+	if f.crashWhenBroken && testreg.EnvFrom(ctx)["BREAK"] != "" {
+		return out, errors.New("the fake crashed after its results")
 	}
 	return out, nil
 }
@@ -90,13 +104,13 @@ func TestAPlantPassesOnlyWhenItsTargetGoesRed(t *testing.T) {
 	}
 }
 
-// TestAPlantRedForAnotherReasonFails: a target red for a cause the plant did
-// not plant (here a missing tool, BREAK or not) is not the plant's red: the
-// plant states its reason, and any other red fails it, named.
+// TestAPlantRedForAnotherReasonFails: a target red under the plant for a
+// cause the plant did not plant (here a missing tool) is not the plant's
+// red: the plant states its reason, and any other red fails it, named.
 func TestAPlantRedForAnotherReasonFails(t *testing.T) {
 	t.Parallel()
-	code, out := cli(t, envFake{redFor: "tla2tools.jar is missing"}, "run", "none.functional.plant.fam.one-red")
-	if code != 1 || !strings.Contains(out, `red for another reason than the plant states ("broken"): tla2tools.jar is missing`) {
+	code, out := cli(t, envFake{breakFor: "tla2tools.jar is missing"}, "run", "none.functional.plant.fam.one-red")
+	if code != 1 || !strings.Contains(out, `red for another reason than the plant states ("the build is broken"): tla2tools.jar is missing`) {
 		t.Errorf("the plant passed on a red it did not plant (exit %d):\n%s", code, out)
 	}
 }
@@ -258,5 +272,49 @@ func TestTheAddendaVerbWritesEveryPageAndRemovesTheStale(t *testing.T) {
 	}
 	if err := writeAddenda(&out, files, []string{"docs/SPEC-TESTS-GONE.md"}, write, remove); err == nil || !strings.Contains(err.Error(), "removing docs/SPEC-TESTS-GONE.md: no such page") {
 		t.Errorf("a failed remove: %v", err)
+	}
+}
+
+// TestAPlantOfARowAlreadyRedFails: a target red before the sabotage, even
+// for the stated reason, fails its plant: the red it then sees is not the
+// sabotage's.
+func TestAPlantOfARowAlreadyRedFails(t *testing.T) {
+	t.Parallel()
+	code, out := cli(t, envFake{redAlways: "the build is broken"}, "run", "none.functional.plant.fam.one-red")
+	if code != 1 || !strings.Contains(out, "before the sabotage, the plant's rows are not green") {
+		t.Errorf("a plant passed on a row already red (exit %d):\n%s", code, out)
+	}
+}
+
+// TestAPlantWhosePlantedRunHadProblemsFails: the target red for the stated
+// reason is not enough when the planted run itself had a run-level problem
+// (an adapter crashed): the run the verdict rests on did not finish.
+func TestAPlantWhosePlantedRunHadProblemsFails(t *testing.T) {
+	t.Parallel()
+	code, out := cli(t, envFake{crashWhenBroken: true}, "run", "none.functional.plant.fam.one-red")
+	if code != 1 || !strings.Contains(out, "with run-level problems") || !strings.Contains(out, "the fake crashed after its results") {
+		t.Errorf("a plant passed on a planted run with problems (exit %d):\n%s", code, out)
+	}
+}
+
+// TestARunWritesItsReportWhenAsked: run --report writes every outcome and
+// run-level problem as JSON, which a planted run's parent reads instead of
+// its log; --report outside run is refused.
+func TestARunWritesItsReportWhenAsked(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "report.json")
+	if code, out := cli(t, envFake{}, "run", "go.functional.roundtrip.fam.one", "--report", path); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep testreg.Report
+	if err := json.Unmarshal(data, &rep); err != nil || len(rep.Outcomes) != 1 || rep.Outcomes[0].Full != "go.functional.roundtrip.fam.one" || rep.Outcomes[0].Status != testreg.StatusPass {
+		t.Fatalf("report %s: %v", data, err)
+	}
+	if code, out := cli(t, envFake{}, "list", "*", "--report", path); code != 2 || !strings.Contains(out, "--report writes a run's report") {
+		t.Fatalf("list --report: exit %d:\n%s", code, out)
 	}
 }

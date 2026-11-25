@@ -82,7 +82,18 @@ type Unparsed struct {
 type Result struct {
 	Items    []Item
 	Unparsed []Unparsed
+	// Rules is every rule the make files write, by file and name
+	// (RuleID): a make target that stops being a test while its rule
+	// stands is found against it (DroppedMakeTargets).
+	Rules map[string]bool `json:"-"`
+	// CaseFiles is each data case's files (a case of a .jsonl line has
+	// none), by its ID: a golden row covers a case only when it pins them
+	// all (CoveredIn).
+	CaseFiles map[string][]string `json:"-"`
 }
+
+// RuleID is a make rule's key in Result.Rules.
+func RuleID(file, name string) string { return file + "\x00" + name }
 
 type scan struct {
 	root    string

@@ -573,9 +573,10 @@ whether it is a breaking change for anyone who has already shipped data.
 
 **A golden is written by its generator and never by hand.** Every pin under
 `testdata/` that a generator owns (the `.bin` and `.bits` wire pins, the
-packet-defaults pins, the table and source goldens, the framing vectors, the
-cook dumps) is rewritten from that generator on every pull request, in a copy of the
-tree, and compared byte for byte with your commit: a file that is not exactly
+packet-defaults pins, the table and source goldens, the cook dumps) is rewritten
+from that generator on every pull request, in a copy of the tree, and compared
+byte for byte with your commit (the framing vectors are checked against their
+vector script by the `harness-run.makefile.pins-framing` row): a file that is not exactly
 what its generator writes goes red by its registry name, and a file its writer
 writes that no golden row names fails every row of that writer (the `golden`
 adapter of `tools/schema-test`, one registry row per pinned file; a deleted

@@ -3,7 +3,7 @@
 // internal/testreg), and every name in the list runs and passes or fails
 // (docs/TEST-REGISTRY.md).
 //
-//	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update]
+//	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update] [--report FILE]
 //	schema-test list [the same]
 //	schema-test coverage
 //	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
@@ -27,6 +27,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -49,7 +50,7 @@ func main() {
 }
 
 const usage = `usage:
-  schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update]
+  schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update] [--report FILE]
   schema-test list [the same]
   schema-test coverage
   schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
@@ -58,6 +59,7 @@ const usage = `usage:
   --group G         a stored query of the registry (rec "group")
   --shard i/n       the i-th of n parts of the expanded list
   --update          run: re-pin the named goldens from their writers (goldens only)
+  --report FILE     run: also write the run's report (every outcome and run-level problem) to FILE as JSON
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
 `
@@ -125,6 +127,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	path := fs.String("registry", testreg.DefaultPath, "")
 	timeout := fs.Duration("timeout", 90*time.Second, "")
 	update := fs.Bool("update", false, "")
+	report := fs.String("report", "", "")
 	// flags may come before or after the names
 	rest := args[1:]
 	for {
@@ -139,6 +142,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	if *update && sub != "run" {
 		return usageError{"--update is a run that re-pins goldens"}
+	}
+	if *report != "" && sub != "run" {
+		return usageError{"--report writes a run's report"}
 	}
 	reg, err := testreg.Load(*path)
 	if err != nil {
@@ -214,6 +220,15 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	rep.Unrep = sel.Unrep
 	if err := rep.Print(stdout); err != nil {
 		return err
+	}
+	if *report != "" {
+		data, err := json.Marshal(rep)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(*report, data, 0o644); err != nil {
+			return fmt.Errorf("--report: %w", err)
+		}
 	}
 	if !rep.OK() {
 		return fmt.Errorf("%s", rep.Summary())

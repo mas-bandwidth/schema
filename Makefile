@@ -1823,7 +1823,8 @@ endef
 # rows: tables-block-zero-cost-cpp, tables-block-zero-cost-cs,
 # tables-block-zero-cost-c-heavy, and tables-block-zero-cost-c-rest.
 # The aggregate below still runs every language, which is what
-# `make test` and ci-fast.yml's block-gate ask for. Each target's commands
+# `make test` and the registry's tables-block-zero-cost row (ci-fast.yml's
+# schema-test) ask for. Each target's commands
 # are the same macros the old recipe expanded (tables_generate,
 # tables_generate_cs, tables_generate_c, tables_generate_c_collections), so a
 # unit added to a macro is a unit this gate compares. The symbol greps read

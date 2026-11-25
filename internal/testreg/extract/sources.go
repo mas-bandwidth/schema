@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -124,8 +126,12 @@ func (s *scan) workflowMakeTargets(workflows []string) map[string]bool {
 func (s *scan) registryMakeTargets() map[string]bool {
 	out := map[string]bool{}
 	data, err := os.ReadFile(filepath.Join(s.root, filepath.FromSlash(testreg.DefaultPath)))
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return out // a tree with no registry runs no make rows
+	}
+	if err != nil {
+		s.fail(testreg.DefaultPath, "read: %v", err)
+		return out
 	}
 	for line := range strings.SplitSeq(string(data), "\n") {
 		if !strings.Contains(line, `"adapter":"make"`) {
@@ -138,7 +144,11 @@ func (s *scan) registryMakeTargets() map[string]bool {
 				Target string `json:"target"`
 			} `json:"inputs"`
 		}
-		if json.Unmarshal([]byte(line), &row) == nil && row.Rec == "test" && row.Adapter == "make" && row.Inputs.Target != "" {
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			s.fail(testreg.DefaultPath, "a make row: %v", err)
+			continue
+		}
+		if row.Rec == "test" && row.Adapter == "make" && row.Inputs.Target != "" {
 			out[row.Inputs.Target] = true
 		}
 	}
@@ -170,6 +180,10 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 			// "a b c: deps" names three rules
 			names, _, _ := strings.Cut(sc.Text(), ":")
 			for name := range strings.FieldsSeq(names) {
+				if s.res.Rules == nil {
+					s.res.Rules = map[string]bool{}
+				}
+				s.res.Rules[RuleID(rel, name)] = true
 				if name == ".PHONY" || strings.HasPrefix(name, ".") || nc[name] || seen[name] || !checkTarget.MatchString(name) && !ci[name] {
 					continue
 				}
@@ -228,6 +242,9 @@ func (s *scan) dataCases(files []string) {
 	type group struct{ dir, stem, first string }
 	var groups []group
 	seen := map[string]bool{}
+	if s.res.CaseFiles == nil {
+		s.res.CaseFiles = map[string][]string{}
+	}
 	for _, rel := range files {
 		dir := filepath.ToSlash(filepath.Dir(rel))
 		name := filepath.Base(rel)
@@ -236,6 +253,8 @@ func (s *scan) dataCases(files []string) {
 			continue
 		}
 		stem := DataStem(name)
+		id := Item{Kind: KindDataCase, Dir: dir, Name: stem}.ID()
+		s.res.CaseFiles[id] = append(s.res.CaseFiles[id], filepath.ToSlash(rel))
 		if k := dir + "\x00" + stem; !seen[k] {
 			seen[k] = true
 			groups = append(groups, group{dir, stem, rel})

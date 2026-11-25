@@ -172,6 +172,39 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	return out, problems
 }
 
+// CoveredIn is Covered held to the extract: a golden row covers a data case
+// only when every file of the case is a pin some golden row names. A case
+// with an input beside its pinned expectation is a case the languages still
+// run (L4), so a pin of one of its files leaves it in the ledger, and its
+// language rows will not read as "already runs" against the golden row.
+func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
+	out, problems := Covered(reg)
+	pinned := map[string]bool{}
+	for _, t := range reg.Tests {
+		if t.Adapter != "golden" {
+			continue
+		}
+		var in struct{ Files []string }
+		if json.Unmarshal(t.Inputs, &in) == nil {
+			for _, f := range in.Files {
+				pinned[f] = true
+			}
+		}
+	}
+	for id := range out {
+		if !strings.HasPrefix(id, KindDataCase+" ") {
+			continue
+		}
+		for _, f := range res.CaseFiles[id] {
+			if !pinned[f] {
+				delete(out, id)
+				break
+			}
+		}
+	}
+	return out, problems
+}
+
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
@@ -181,7 +214,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	for _, u := range res.Unparsed {
 		problems = append(problems, fmt.Sprintf("%s: could not be read for tests: %s", u.File, u.Reason))
 	}
-	covered, p := Covered(reg)
+	covered, p := CoveredIn(res, reg)
 	problems = append(problems, p...)
 	exists := map[string]bool{}
 	uncovered := map[string][]Item{}
@@ -268,7 +301,7 @@ func NewWithoutRows(before, res *Result, reg *testreg.Registry) []string {
 	for _, it := range before.Items {
 		old[it.ID()] = true
 	}
-	covered, _ := Covered(reg)
+	covered, _ := CoveredIn(res, reg)
 	var problems []string
 	for _, it := range res.Items {
 		if old[it.ID()] {
@@ -476,7 +509,7 @@ func Shrinks(old, now []LedgerLine) []string {
 // Ledger is the ledger that counts exactly what res holds and reg does not
 // run, each line's layer and reason given by plan(kind, place).
 func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string) (layer, reason string)) []LedgerLine {
-	covered, _ := Covered(reg)
+	covered, _ := CoveredIn(res, reg)
 	count := map[string]int{}
 	var order []string
 	for _, it := range res.Items {
@@ -507,4 +540,24 @@ func WriteLedger(w io.Writer, header string, lines []LedgerLine) error {
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// DroppedMakeTargets is each make target main's tree (before) counts as a
+// test that this tree no longer counts while its rule still stands: a
+// target is a test because a workflow or a registry row runs it, and
+// deleting the row (or the workflow line) is not a way to stop testing it.
+// Remove the rule, or give the target its row back.
+func DroppedMakeTargets(before, res *Result) []string {
+	now := map[string]bool{}
+	for _, it := range res.Items {
+		now[it.ID()] = true
+	}
+	var problems []string
+	for _, it := range before.Items {
+		if it.Kind != KindMakeTarget || now[it.ID()] || !res.Rules[RuleID(it.Dir, it.Name)] {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("make target %s (%s) is a test on main and no longer one here, though its rule stands: give it its registry row back, or remove the rule", it.Name, it.Dir))
+	}
+	return problems
 }

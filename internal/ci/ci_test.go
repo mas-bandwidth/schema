@@ -1039,7 +1039,7 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanDartCorpus, nil
 	case "needs.plan.outputs.cpp_corpus_account":
 		return ev.PlanCppCorpus, nil
-	case "needs.plan.outputs.codegen_touched", "needs.plan.outputs.pins":
+	case "needs.plan.outputs.codegen_touched":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
 				return "yes", nil

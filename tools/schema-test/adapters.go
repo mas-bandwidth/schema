@@ -157,6 +157,9 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 // Its own log lines go to log; a non-zero exit is an error after whatever
 // results it did write.
 func runHarness(ctx context.Context, argv []string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
+	// the harness runs bin/schema and what the build steps made: no make
+	// in the checkout relinks them under it
+	defer holdCheckout()()
 	var in bytes.Buffer
 	if err := testreg.EncodeRequests(&in, instances); err != nil {
 		return nil, err

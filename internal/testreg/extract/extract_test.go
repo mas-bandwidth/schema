@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -243,6 +244,41 @@ func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
 	}
 }
 
+// TestAGoldenCoversACaseOnlyWhenItPinsEveryFile: a case whose expectation is
+// pinned beside an input the languages still run stays in the ledger; a case
+// every file of which is pinned is covered.
+func TestAGoldenCoversACaseOnlyWhenItPinsEveryFile(t *testing.T) {
+	t.Parallel()
+	conf := Item{Kind: KindDataCase, Dir: "testdata/conformance", Name: "c", Source: "testdata/conformance/c.json:1"}
+	pin := Item{Kind: KindDataCase, Dir: "testdata/pins", Name: "p", Source: "testdata/pins/p.h:1"}
+	res := &Result{Items: []Item{conf, pin}, CaseFiles: map[string][]string{
+		conf.ID(): {"testdata/conformance/c.json", "testdata/conformance/c.expect"},
+		pin.ID():  {"testdata/pins/p.h", "testdata/pins/p.cpp"},
+	}}
+	row := func(key, file string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "golden", Inputs: []byte(`{"writer":"pins-x","files":["` + file + `"]}`)}
+	}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{
+		row("golden.c.expect", "testdata/conformance/c.expect"),
+		row("golden.p.h", "testdata/pins/p.h"),
+		row("golden.p.cpp", "testdata/pins/p.cpp"),
+	}}
+	covered, p := CoveredIn(res, reg)
+	if len(p) != 0 {
+		t.Fatalf("problems: %v", p)
+	}
+	if _, ok := covered[conf.ID()]; ok {
+		t.Errorf("a case with an unpinned input is covered by %s", covered[conf.ID()])
+	}
+	if covered[pin.ID()] == "" {
+		t.Errorf("a case every file of which is pinned is not covered")
+	}
+	ledger := Ledger(res, reg, func(string, string) (string, string) { return "L4", "the languages run it" })
+	if len(ledger) != 1 || ledger[0].Dir != "testdata/conformance" || ledger[0].Count != 1 {
+		t.Errorf("the ledger: %+v", ledger)
+	}
+}
+
 // TestTheLedgerOnlyShrinks: against main's ledger, a lower count and a
 // removed line pass; a higher count and a new place fail by name.
 func TestTheLedgerOnlyShrinks(t *testing.T) {
@@ -366,6 +402,66 @@ func TestANewTestWithoutARowIsNamed(t *testing.T) {
 	p := NewWithoutRows(before, now, reg)
 	if len(p) != 1 || !strings.Contains(p[0], "go-test a TestPlanted at a/y_test.go:3 is a new test with no registry row") {
 		t.Fatalf("want exactly TestPlanted named: %v", p)
+	}
+}
+
+// TestAnUnreadableRegistryIsNamed: a registry the scan cannot read is an
+// unparsed file, named, never a tree with no make rows.
+func TestAnUnreadableRegistryIsNamed(t *testing.T) {
+	t.Parallel()
+	files := maps.Clone(fixture)
+	delete(files, testreg.DefaultPath)
+	root := writeFixture(t, files)
+	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(testreg.DefaultPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Extract(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range res.Unparsed {
+		if u.File == testreg.DefaultPath && strings.Contains(u.Reason, "read") {
+			return
+		}
+	}
+	t.Fatalf("an unreadable registry was not named: %+v", res.Unparsed)
+}
+
+// TestAMalformedMakeRowIsNamed: a make row of the registry that is not JSON
+// is named, never read as no row at all.
+func TestAMalformedMakeRowIsNamed(t *testing.T) {
+	t.Parallel()
+	files := maps.Clone(fixture)
+	files[testreg.DefaultPath] = `{"rec":"test","adapter":"make","inputs":{` + "\n"
+	res, err := Extract(writeFixture(t, files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range res.Unparsed {
+		if u.File == testreg.DefaultPath && strings.Contains(u.Reason, "a make row") {
+			return
+		}
+	}
+	t.Fatalf("a malformed make row was not named: %+v", res.Unparsed)
+}
+
+// TestAMakeTargetThatStopsBeingATestIsNamed: a make target main counts as a
+// test that this tree does not, while its rule stands (its row deleted), is
+// named; one whose rule went with it, and one still counted, are not.
+func TestAMakeTargetThatStopsBeingATestIsNamed(t *testing.T) {
+	t.Parallel()
+	before := &Result{Items: []Item{
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-kept"},
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-unrowed"},
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-removed"},
+	}}
+	now := &Result{
+		Items: []Item{{Kind: KindMakeTarget, Dir: "Makefile", Name: "gate-kept"}},
+		Rules: map[string]bool{RuleID("Makefile", "gate-kept"): true, RuleID("Makefile", "gate-unrowed"): true},
+	}
+	p := DroppedMakeTargets(before, now)
+	if len(p) != 1 || !strings.Contains(p[0], "make target gate-unrowed (Makefile) is a test on main and no longer one here") {
+		t.Fatalf("want exactly gate-unrowed named: %v", p)
 	}
 }
 

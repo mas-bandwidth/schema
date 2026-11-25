@@ -271,8 +271,8 @@ func TestATargetSpecificVariableIsNotARule(t *testing.T) {
 	}
 }
 
-// TestEveryMakeInTheCheckoutHoldsIt: a make row's make and a harness's
-// build step each hold the checkout while they run, so the runner's groups,
+// TestEveryMakeInTheCheckoutHoldsIt: a make row's make, a harness's build
+// step and the harness itself each hold the checkout while they run, so the runner's groups,
 // which run side by side, never build one build/ at once. (Not parallel:
 // it reads a count every make in the checkout adds to.)
 func TestEveryMakeInTheCheckoutHoldsIt(t *testing.T) {
@@ -284,8 +284,10 @@ func TestEveryMakeInTheCheckoutHoldsIt(t *testing.T) {
 	if err := b.run(context.Background(), []string{"true"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := checkoutHolds.Load() - before; got != 2 {
-		t.Fatalf("%d holds of the checkout, want one for the make row and one for the build step", got)
+	// the harness speaks no protocol here; its hold is what is counted
+	_, _ = runHarness(context.Background(), []string{"true"}, nil, io.Discard)
+	if got := checkoutHolds.Load() - before; got != 3 {
+		t.Fatalf("%d holds of the checkout, want one for the make row, one for the build step and one for the harness", got)
 	}
 }
 

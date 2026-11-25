@@ -128,33 +128,44 @@ func TestAnEditPlantIsJudgedOnItsTreesRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	const target = "go.functional.roundtrip.fam.one"
-	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "a.go", Anchor: "x", With: "y"}}, Red: []string{target}, Reason: "x is y"})
+	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "a.go", Anchor: "x", With: "y"}}, Red: []string{target}, Reason: "x is y, as planted"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	inst := testreg.Instance{Full: "none.functional.plant.fam.edit", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: in}}
+	red := func(why string) plantRun { return plantRun{status: map[string]outcome{target: {"FAIL", why}}} }
 	for _, c := range []struct {
-		tree    func(context.Context, []plantEdit, []string) (map[string]outcome, string, error)
+		before  envFake
+		tree    func(context.Context, []plantEdit, []string) (plantRun, error)
 		verdict string
 		says    string
 	}{
-		{func(_ context.Context, e []plantEdit, n []string) (map[string]outcome, string, error) {
+		{envFake{}, func(_ context.Context, e []plantEdit, n []string) (plantRun, error) {
 			if len(e) != 1 || len(n) != 1 || n[0] != target {
-				return nil, "", errors.New("the tree was handed the wrong plant")
+				return plantRun{}, errors.New("the tree was handed the wrong plant")
 			}
-			return map[string]outcome{target: {"FAIL", "want x, got y: x is y"}}, "", nil
+			return red("want x, got y: x is y, as planted"), nil
 		}, testreg.Pass, ""},
-		{func(context.Context, []plantEdit, []string) (map[string]outcome, string, error) {
-			return map[string]outcome{target: {"PASS", ""}}, "", nil
+		{envFake{}, func(context.Context, []plantEdit, []string) (plantRun, error) {
+			return plantRun{status: map[string]outcome{target: {"PASS", ""}}}, nil
 		}, testreg.Fail, "names it red"},
-		{func(context.Context, []plantEdit, []string) (map[string]outcome, string, error) {
-			return map[string]outcome{target: {"FAIL", "cannot find tla2tools.jar"}}, "", nil
+		{envFake{}, func(context.Context, []plantEdit, []string) (plantRun, error) {
+			return red("cannot find tla2tools.jar"), nil
 		}, testreg.Fail, "red for another reason"},
-		{func(context.Context, []plantEdit, []string) (map[string]outcome, string, error) {
-			return nil, "", plantEditError{"edit 1: the anchor is not in a.go (0 matches)"}
+		{envFake{}, func(context.Context, []plantEdit, []string) (plantRun, error) {
+			r := red("want x, got y: x is y, as planted")
+			r.problems = []string{"none/fake: adapter fake crashed"}
+			return r, nil
+		}, testreg.Fail, "run-level problems: none/fake: adapter fake crashed"},
+		{envFake{redAlways: "x is y, as planted"}, func(context.Context, []plantEdit, []string) (plantRun, error) {
+			return red("x is y, as planted"), nil
+		}, testreg.Fail, "before the sabotage, the plant's rows are not green"},
+		{envFake{}, func(context.Context, []plantEdit, []string) (plantRun, error) {
+			return plantRun{}, plantEditError{"edit 1: the anchor is not in a.go (0 matches)"}
 		}, testreg.Fail, "0 matches"},
 	} {
-		a := plantAdapter{rn: &testreg.Runner{Reg: reg}, tree: c.tree}
+		rn := &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{"fake": c.before}, Context: testreg.WithTimeout(0)}
+		a := plantAdapter{rn: rn, tree: c.tree}
 		if !a.Answers(inst.Test) {
 			t.Fatal("the edit plant is not answered")
 		}
@@ -170,11 +181,12 @@ func TestAnEditPlantIsJudgedOnItsTreesRun(t *testing.T) {
 func TestPlantInputsAreOneForm(t *testing.T) {
 	t.Parallel()
 	for in, ok := range map[string]bool{
-		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"},"reason":"r"}`:                  true,
+		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"},"reason":"a stated reason, long"}`:                  true,
 		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"}}`:                               false,
-		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"r"}`:               true,
+		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"a stated reason, long"}`:               true,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"]}`:                            false,
-		`{"make":"x-negative-control","file":"Makefile","group":"g","reason":"r"}`:                   false,
+		`{"make":"x-negative-control","file":"Makefile","group":"g","reason":"a stated reason, long"}`:                   false,
+		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"},"reason":"exit status"}`: false,
 		`{"make":"x-negative-control","file":"Makefile","group":"g"}`:                                true,
 		`{"target":"go.functional.roundtrip.fam.one"}`:                                               false,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"x"}],"red":["a"]}`:                            false,
@@ -191,22 +203,6 @@ func TestPlantInputsAreOneForm(t *testing.T) {
 		if got := (plantAdapter{}).Answers(test); got != ok {
 			t.Errorf("%s: answered %v, want %v", in, got, ok)
 		}
-	}
-}
-
-// TestParseOutcomesReadsTheRunsLines: the planted run's printed outcomes
-// give each name's status; the counts line and run-level problems are not
-// names.
-func TestParseOutcomesReadsTheRunsLines(t *testing.T) {
-	t.Parallel()
-	log := "schema-test run a.b.c.d.e: 2 names\n  none.unit.tooling.f.a\nPASS none.unit.tooling.f.a\nFAIL none.unit.tooling.f.b: boom: at x\n  want 3\nPASS some text a harness printed\nFAIL run: expected 2\n  not a reason\nschema-test FAIL: expected 2, ran 2\n"
-	got, err := parseOutcomes(log)
-	if err != nil || len(got) != 2 || got["none.unit.tooling.f.a"].status != "PASS" || got["none.unit.tooling.f.b"] != (outcome{"FAIL", "boom: at x\n  want 3\nPASS some text a harness printed"}) {
-		t.Fatalf("%v %v", err, got)
-	}
-	// a line past the reader's bound is an error, never an outcome dropped
-	if _, err := parseOutcomes("FAIL none.unit.tooling.f.b: " + strings.Repeat("x", 1<<24) + "\n"); err == nil {
-		t.Fatal("a line past the bound was read as a complete run")
 	}
 }
 

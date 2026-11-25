@@ -290,3 +290,40 @@ func TestASeededGoldenReportsWhetherItWasWritten(t *testing.T) {
 		t.Fatal("a golden the writer rewrote with the same bytes is still reported untouched")
 	}
 }
+
+// TestAStrayPinIsJudgedAgainstWhatIsCommitted: a pin the writer writes that
+// sits untracked in the checkout with the same bytes is not committed, and
+// a committed pin no row names that the writer deleted is as stray as one it
+// added: both fail the writer's rows, named.
+func TestAStrayPinIsJudgedAgainstWhatIsCommitted(t *testing.T) {
+	t.Parallel()
+	checkout := memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N", "testdata/g/old.bin": "O"}
+	calls := 0
+	a := goldenFake(checkout, memTree{"testdata/g/a.bin": "AAAA", "testdata/g/new.bin": "N"}, &calls)
+	a.tracked = func(p string) bool { return p != "testdata/g/new.bin" }
+	got := goldenVerdicts(t, a, context.Background(), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"))
+	if got["a"].Verdict != testreg.Fail || !strings.Contains(got["a"].Reason, "testdata/g/new.bin") || !strings.Contains(got["a"].Reason, "testdata/g/old.bin (deleted by the writer)") {
+		t.Fatalf("verdicts %+v", got)
+	}
+}
+
+// TestSeedingAgesTheCommittedGoldens: seedGoldens ages each golden that is
+// in the copy and reports it; one not in the copy is not seeded.
+func TestSeedingAgesTheCommittedGoldens(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "testdata", "g"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "testdata", "g", "a.bin"), []byte("A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seeded, err := seedGoldens(dir, []string{"testdata/g/a.bin", "testdata/g/gone.bin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := seededTree{dirTree(dir), seeded}
+	if len(seeded) != 1 || !tree.Untouched("testdata/g/a.bin") {
+		t.Fatalf("seeded %v: the committed golden is aged and untouched until written", seeded)
+	}
+}
