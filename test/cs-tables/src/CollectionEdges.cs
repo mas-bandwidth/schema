@@ -13,8 +13,14 @@ static partial class Program
         Check(armAt>=0,"map depth fixture carries the named table arm");
         if(armAt>=0)
         {
+            Check(armExtent>0,"map depth fixture measures with its named table arm intact");
+            // the named arm under another framed kind is a kind mismatch (§4): the measure refuses
+            wrongArm[armAt+3]=14;
+            Check(Mapdemo.Schema.DepthLoadMeasure(wrongArm)<0,"a named arm under another kind refuses the measure");
+            // kind 31 is held by name and never written: at an arm it is damage
+            // (docs/SPEC-TABLES.md §3, KIND 31 IS DAMAGE WHEREVER IT IS MET; R17)
             wrongArm[armAt+3]=31;
-            Check(Mapdemo.Schema.DepthLoadMeasure(wrongArm)==armExtent,"named arm framing reserves its extent even when decoding rejects the value kind");
+            Check(Mapdemo.Schema.DepthLoadMeasure(wrongArm)<0,"a named arm under the held kind 31 refuses the measure");
             // an arm under a kind no reader can skip is damage (docs/SPEC-TABLES.md §6.5)
             wrongArm[armAt+3]=0;
             Check(Mapdemo.Schema.DepthLoadMeasure(wrongArm)<0,"an arm under a kind no reader can skip refuses the measure");

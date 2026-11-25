@@ -183,12 +183,16 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 # the two wire rows past a total, wire-text-total-past and
 # wire-text-total-and-count, and on nothing else. Both are taken out because
 # wire-text-total-and-count is past its [..4] bound as well as its total, and
-# under strict-only (docs/plans/strict-only.md) either refuses it.
+# under strict-only (docs/plans/strict-only.md) either refuses it. The bound
+# is taken out ONLY for a field that carries a total: the count bound is one
+# check for every bounded field, and taking it out everywhere also reds the
+# inner-bound rows (inner-variable-loose/tight-bytes-past-capacity), which
+# this control does not own.
 .PHONY: schema-goose-runs-hostile-corpus-total-negative-control
 schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@mkdir -p $(GOOSE_FUZZ_DIR)
-	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& false { // SABOTAGED: the bound keeps nothing out|' \
+	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& d.text_total <= 0 { // SABOTAGED: a list under a total has no bound|' \
 		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-total-plant \
 		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \

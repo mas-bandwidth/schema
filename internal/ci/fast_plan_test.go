@@ -162,6 +162,13 @@ func TestFastPlanCoversEveryBaseAndSelectsRelevantWork(t *testing.T) {
 			want:  `no|./internal/ci|[]`,
 		},
 		{
+			// a directory whose last .go file the diff deleted is no
+			// package: working/ keeps only a note (run 45441757243)
+			name:  "deleted last go file",
+			files: "working/digesthash.go",
+			want:  `no||[]`,
+		},
+		{
 			name:  "check package selects fuzz seeds",
 			files: "internal/check/check.go",
 			want:  `no|./internal/check ./internal/languages ./internal/fuzz|[]`,
