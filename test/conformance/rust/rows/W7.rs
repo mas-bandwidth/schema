@@ -105,7 +105,11 @@ fn arg_and_meta_are_two_lanes() {
     old_guard.arg = 1; // the flavour, stamped over the arm ordinal
     let mut lost = [0u8; 12];
     let mut lost_report = TableFixedReport::default();
-    table_fixed_run(&[text_utf8], &[old_guard], &[], &record, &mut lost, &mut lost_report);
+    let lost_ran = table_fixed_run(&[text_utf8], &[old_guard], &[], &record, &mut lost, &mut lost_report);
+    check(
+        lost_ran && !lost_report.refused,
+        "NEGATIVE CONTROL: the run with the old encoding completes (the guard misses, nothing is damaged)",
+    );
     check(
         lost == [0u8; 12],
         "NEGATIVE CONTROL: flavour in the arg lane does NOT land the string under arm 2",

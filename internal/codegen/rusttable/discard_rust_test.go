@@ -78,8 +78,8 @@ func rustDiscardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 
 // TestDamageDiscardsTheWholeLoadRust is the Rust leg's gate for DAMAGE
 // DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): every public load entry
-// point of the Rust leg, given damaged input, answers no usable value with
-// `malformed` set. The variable wire's tolerant load of a fixed root and of a
+// point of the Rust leg, given damaged input, answers no usable value and
+// says so on its report. The variable wire's tolerant load of a fixed root and of a
 // variable root answers None, the retaining load answers None with both of the
 // retention store's stores empty, the fixed form's load answers None with
 // every caller record back at its declared defaults, the message batch answers

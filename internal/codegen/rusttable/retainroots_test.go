@@ -437,8 +437,10 @@ func buildAllRootsDriver(t *testing.T, repo string, units map[string]*carriedUni
 	// THE DRIVER ALSO NAMES UNITS NO INSTANCE ROW CARRIES: a root the
 	// message-fuzz roster lists and no file seed pins (tbla1.Root) is a
 	// `mod` in wire_fuzz_all.rs all the same, and the driver does not build
-	// without it. The unit list is the one test/conformance/rust/wire-fuzz-all-build
-	// lays out, so this test builds the driver that make target builds.
+	// without it. The extra units come from the list
+	// test/conformance/rust/wire-fuzz-all-build lays out, so every `mod` the
+	// driver declares has its unit here (this build is rustc -O; the script's
+	// is a debug build, and the roster's units come from MANIFEST.txt).
 	for name, paths := range driverBuildUnits(t, repo) {
 		if _, laid := units[name]; laid {
 			continue

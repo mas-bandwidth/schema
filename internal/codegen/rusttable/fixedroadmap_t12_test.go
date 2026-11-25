@@ -75,13 +75,12 @@ func t12RequireRustToolchain(t *testing.T) {
 
 // t12F4 holds rust/F4 to docs/FIXED-FORM-ALGORITHM.md §5.3 step 3 (row 3 of the
 // refusal table): when `20 + L` reaches past the end of the file, the reader
-// refuses `layout_malformed` before any record, with `malformed` false,
-// `layout_hash` zero, every counter zero, and (ruling R4) the `0x5A`-stained row
+// refuses `layout_malformed` before any record, with `layout_hash` zero, every counter zero, and (ruling R4) the `0x5A`-stained row
 // back at its declared default.
 func t12F4(t *testing.T, corpus string) {
 	out := t12ProbeRun(t, corpus)
 	if line := t12Line(out, "F4"); line != "T12 F4 ok" {
-		t.Fatalf("rust/F4: truncated layout was not refused as layout_damaged: %s", line)
+		t.Fatalf("rust/F4: truncated layout was not refused as layout_malformed: %s", line)
 	}
 }
 
