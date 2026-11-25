@@ -181,3 +181,62 @@ func TestARunThatSelectsNothingStillPrintsItsCounts(t *testing.T) {
 		}
 	}
 }
+
+// TestTheAddendaVerbChecksTheCommittedPages runs `schema-test addenda
+// --check` itself: against the repository it is 0, and against a tree with
+// no pages it exits 1 naming the missing page, writing nothing.
+func TestTheAddendaVerbChecksTheCommittedPages(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		root string
+		code int
+		says string
+	}{
+		{"../..", 0, "are what ../../test/registry/registry.jsonl generates"},
+		{"testdata", 1, "docs/SPEC-TESTS.md is missing"},
+	} {
+		var out, errOut bytes.Buffer
+		code := run(context.Background(), []string{"addenda", "--check", "--registry", "../../" + testreg.DefaultPath, "--root", c.root}, &out, &errOut, nil)
+		if all := out.String() + errOut.String(); code != c.code || !strings.Contains(all, c.says) {
+			t.Errorf("addenda --check --root %s: exit %d, want %d saying %q:\n%s", c.root, code, c.code, c.says, all)
+		}
+	}
+	var out, errOut bytes.Buffer
+	if code := run(context.Background(), []string{"addenda", "stray"}, &out, &errOut, nil); code != 2 {
+		t.Errorf("addenda with a name: exit %d, want 2:\n%s", code, errOut.String())
+	}
+}
+
+// TestTheAddendaVerbWritesEveryPageAndRemovesTheStale drives the write mode
+// through an in-memory tree: every generated page is written, a stale page
+// is removed, and a write or remove that fails stops it naming the page.
+func TestTheAddendaVerbWritesEveryPageAndRemovesTheStale(t *testing.T) {
+	t.Parallel()
+	files := []testreg.File{{Path: "docs/SPEC-TESTS.md", Data: []byte("a\n")}, {Path: "docs/SPEC-TESTS-UNIT.md", Data: []byte("b\n")}}
+	tree := map[string]string{"docs/SPEC-TESTS-OLD.md": "old\n"}
+	write := func(p string, d []byte) error { tree[p] = string(d); return nil }
+	remove := func(p string) error {
+		if _, ok := tree[p]; !ok {
+			return errors.New("no such page")
+		}
+		delete(tree, p)
+		return nil
+	}
+	var out bytes.Buffer
+	if err := writeAddenda(&out, files, []string{"docs/SPEC-TESTS-OLD.md"}, write, remove); err != nil {
+		t.Fatal(err)
+	}
+	if len(tree) != 2 || tree["docs/SPEC-TESTS.md"] != "a\n" || tree["docs/SPEC-TESTS-UNIT.md"] != "b\n" {
+		t.Errorf("tree after writing: %q", tree)
+	}
+	if want := "removed docs/SPEC-TESTS-OLD.md\nwrote docs/SPEC-TESTS.md\nwrote docs/SPEC-TESTS-UNIT.md\n"; out.String() != want {
+		t.Errorf("said %q, want %q", out.String(), want)
+	}
+	failWrite := func(p string, _ []byte) error { return errors.New("disk full") }
+	if err := writeAddenda(&out, files, nil, failWrite, remove); err == nil || !strings.Contains(err.Error(), "writing docs/SPEC-TESTS.md: disk full") {
+		t.Errorf("a failed write: %v", err)
+	}
+	if err := writeAddenda(&out, files, []string{"docs/SPEC-TESTS-GONE.md"}, write, remove); err == nil || !strings.Contains(err.Error(), "removing docs/SPEC-TESTS-GONE.md: no such page") {
+		t.Errorf("a failed remove: %v", err)
+	}
+}
