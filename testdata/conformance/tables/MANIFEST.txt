@@ -1587,6 +1587,11 @@ rewrite edge_by_name       featurewitnesses Root    testdata/wire/tables/edge_by
 rewrite edge_graph_diamond graphdemo        Scene   testdata/wire/tables/edge_graph_diamond.bin
 rewrite edge_stream_union  streamdemo       Feed    testdata/wire/tables/edge_stream_union.bin
 rewrite edge_u64_keys      mapdemo          EdgeRow testdata/wire/tables/edge_u64_keys.bin
+# THE BUILDER'S SORT (§22.7, json-read): edge_map_keys as a hand-authored text whose map keys
+# arrive out of canonical order, so a leg whose builder writes insertion order goes red on it
+# while every instance (whose text is already canonical) stays green. Its text is
+# json/edge_map_keys_unsorted.json, and it owes edge_map_keys.bin byte for byte (jsontext.go).
+authored-text edge_map_keys_unsorted mapdemo Fleet testdata/wire/tables/edge_map_keys.bin
 
 # THE WRITE CONTRACT (docs/SPEC.md §5.1): every writer refuses a value its
 # declaration does not admit. Each row loads the root's current-form instance,
@@ -2230,13 +2235,14 @@ rewrite union_chain_unknown_at_bound   tblr1 Cfg testdata/wire/tables/framing/un
 # (SHAPES_WRITE=1), except bounds_octets_below_min.bin, which is
 # `bin/schema pack --root Bounds` of {"octets": [7]} against
 # testdata/conformance/tables/shapes-loose (the same schema with every Min
-# dropped, so the count rides as written).
+# dropped, so the count rides as written). Its line says so (written-by=), and
+# TestShapesLooseWritesTheBelowMinImage holds the image to that pack.
 unit shapes test/tables/shapes
 opt-in shapes
 instance shapes_bounds_ends           shapes Bounds      testdata/wire/tables/shapes/bounds_ends.bin
 instance shapes_bounds_negzero        shapes Bounds      testdata/wire/tables/shapes/bounds_negzero.bin
 instance shapes_bounds_octets_at_min  shapes Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
-instance shapes_bounds_octets_below_min shapes Bounds    testdata/wire/tables/shapes/bounds_octets_below_min.bin no-text wire-refused
+instance shapes_bounds_octets_below_min shapes Bounds    testdata/wire/tables/shapes/bounds_octets_below_min.bin no-text wire-refused written-by=testdata/conformance/tables/shapes-loose
 instance shapes_fixed_ends            shapes FixedBounds testdata/wire/tables/shapes/fixed_ends.bin
 instance shapes_fixed_negzero         shapes FixedBounds testdata/wire/tables/shapes/fixed_negzero.bin
 instance shapes_fixed_octets_at_min   shapes FixedBounds testdata/wire/tables/shapes/fixed_octets_at_min.bin
@@ -2525,6 +2531,16 @@ write-refusal wref_enum_deprecated              tabledemo Moods testdata/conform
 write-refusal wref_enum_deprecated_ok           tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
 write-refusal-fixed fref_enum_deprecated        tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
 write-refusal-fixed fref_enum_deprecated_ok     tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+
+# THE MAP FORM of the deprecated-element rule (FL-19, docs/SPEC-TABLES.md §2.15 and §16.2): a map VALUE
+# naming a deprecated variant reads as the value default, None, as an array element does. Its own unit
+# (test/tables/moodmap), so the root re-locks nothing another case pins; OPT-IN, so a leg that has not
+# registered it counts these rows absent, never pass. The save-wire is the read's canonical write-back,
+# as for the array form, and the instance holds every leg to it on the wire and text surfaces.
+unit tblmoodmap test/tables/moodmap/MoodMap.schema
+opt-in tblmoodmap
+json-hostile sp-enum-elem-deprecated-map        tblmoodmap       MoodMap      testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-map read
+instance sp_enum_mood_map                       tblmoodmap MoodMap  testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-map.bin
 
 # THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
 # deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array

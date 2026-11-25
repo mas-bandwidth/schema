@@ -168,3 +168,34 @@ func TestCrossReadSkipsAbsentCases(t *testing.T) {
 		t.Errorf("the absent case is counted: %+v", r)
 	}
 }
+
+// TestCrossReadReReadsAuthoredTexts: a hand-authored text's json-read answer
+// (jsontext.go) is a cross-read case like an instance's: counted, held to
+// C++'s canonical write, and re-read by the reference. Planted out, the case
+// is never asked and a port's wrong bytes for it leave the cross-read green.
+func TestCrossReadReReadsAuthoredTexts(t *testing.T) {
+	needShell(t)
+	c := newFakeCorpus(t)
+	c.m.JSONTexts = append(c.m.JSONTexts, JSONTextCase{Name: "alpha_unsorted", Unit: "u", Root: "Root", Wire: c.wire, Text: c.json})
+	files := c.faithful(t)
+	files["json-read/alpha_unsorted"] = files["json-read/alpha"]
+	out, ok, rows := c.crossRead(t, fakeReference(t, "", false), portWrites(t, files))
+	if !ok {
+		t.Fatalf("a faithful answer to an authored text was refused:\n%s", out)
+	}
+	if r, found := findRow(rows, "zz", "json-read"); !found || r.Cases != 2 || r.Answered != 2 {
+		t.Errorf("the authored text is not counted on json-read: %+v", r)
+	}
+	files["json-read/alpha_unsorted"] = "\x01\x02\x03\x05"
+	out, ok, _ = c.crossRead(t, fakeReference(t, "", false), portWrites(t, files))
+	if ok {
+		t.Fatalf("a port's wrong bytes for an authored text left the cross-read green:\n%s", out)
+	}
+	mustSay(t, out, []string{"zz / json-read: the port's bytes are not C++'s canonical write: alpha_unsorted: first difference at byte 3"}, nil)
+	files["json-read/alpha_unsorted"] = files["json-read/alpha"]
+	out, ok, _ = c.crossRead(t, fakeReference(t, "alpha_unsorted", false), portWrites(t, files))
+	if ok {
+		t.Fatalf("C++ refusing an authored text's bytes left the cross-read green:\n%s", out)
+	}
+	mustSay(t, out, []string{"zz / json-read: alpha_unsorted: C++ REFUSED the port's bytes"}, nil)
+}
