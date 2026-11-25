@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 209.
+Unit tests every language answers: 0. Language-free tests: 212.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -114,13 +114,16 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrows.every-ride-runs-in-its-legs-row` | `gotest` | Go test TestEveryRideRunsInItsLegsRow in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestEveryRideRunsInItsLegsRow` | the Go test passes | `tools/gotestrows/main_test.go:342` |
 | `none.unit.tooling.gotestrows.riding-test-runs-in-no-row` | `gotest` | Go test TestRidingTestRunsInNoRow in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestRidingTestRunsInNoRow` | the Go test passes | `tools/gotestrows/main_test.go:304` |
 
-#### `tooling` family `gotestrun`, 3 tests
+#### `tooling` family `gotestrun`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.gotestrun.a-result-line-is-marked-as-read-from-json` | `gotest` | Go test TestAResultLineIsMarkedAsReadFromJSON in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestAResultLineIsMarkedAsReadFromJSON` | the Go test passes | `tools/gotestrun/main_test.go:142` |
-| `none.unit.tooling.gotestrun.red-verdict` | `gotest` | Go test TestRedVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRedVerdict` | the Go test passes | `tools/gotestrun/main_test.go:118` |
-| `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:162` |
+| `none.unit.tooling.gotestrun.a-refusal-under-red-is-not-red` | `gotest` | Go test TestARefusalUnderRedIsNotRed in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestARefusalUnderRedIsNotRed` | the Go test passes | `tools/gotestrun/main_test.go:106` |
+| `none.unit.tooling.gotestrun.a-result-line-is-marked-as-read-from-json` | `gotest` | Go test TestAResultLineIsMarkedAsReadFromJSON in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestAResultLineIsMarkedAsReadFromJSON` | the Go test passes | `tools/gotestrun/main_test.go:` |
+| `none.unit.tooling.gotestrun.read-reports-a-stream-it-could-not-finish` | `gotest` | Go test TestReadReportsAStreamItCouldNotFinish in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadReportsAStreamItCouldNotFinish` | the Go test passes | `tools/gotestrun/main_test.go:128` |
+| `none.unit.tooling.gotestrun.red-verdict` | `gotest` | Go test TestRedVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRedVerdict` | the Go test passes | `tools/gotestrun/main_test.go:` |
+| `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:` |
+| `none.unit.tooling.gotestrun.the-wrapper-keeps-the-exit-and-under-red-only-one-is-red` | `gotest` | Go test TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed` | the Go test passes | `tools/gotestrun/main_test.go:151` |
 
 #### `tooling` family `harness`, 6 tests
 
