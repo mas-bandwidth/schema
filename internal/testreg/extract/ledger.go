@@ -90,12 +90,31 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 }
 
 // Covered reports, for each item a registry row runs, the row's key. A Go
-// test is covered by a gotest row whose inputs name its package and test.
+// test is covered by a gotest row whose inputs name its package and test; a
+// TLC configuration by a model-check row whose inputs name it.
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	out := map[string]string{}
 	var problems []string
 	for _, t := range reg.Tests {
+		if t.Adapter == "model-check" {
+			// a TLC run of tla/<config>; the controls row runs no config
+			var in struct{ Config string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a model-check row whose inputs do not read: %v", reg.Path, t.Line, t.Key, err))
+				continue
+			}
+			if in.Config == "" {
+				continue
+			}
+			id := Item{Kind: KindModel, Dir: "tla", Name: in.Config}.ID()
+			if prev, dup := out[id]; dup {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs tla/%s, which %s already runs", reg.Path, t.Line, t.Key, in.Config, prev))
+				continue
+			}
+			out[id] = t.Key
+			continue
+		}
 		if t.Adapter != "gotest" {
 			continue
 		}

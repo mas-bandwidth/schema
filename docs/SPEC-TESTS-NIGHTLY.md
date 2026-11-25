@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 0. Language-free tests: 0.
+Nightly tests every language answers: 0. Language-free tests: 60.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -19,7 +19,133 @@ None.
 
 Each runs once, as `none.nightly.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
-None.
+### Type `plant`
+
+a negative control: a named test run against a deliberately broken build must come out red.
+
+#### `plant` family `model-check`, 4 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.model-check.fault-turned-on-in-a-holding-model` | `plant` | a holding model with a fault turned on: MCCardHops.cfg given CONSTANT EditDropsUnknown = TRUE, so TLC finds NoFieldLost violated | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"CONSTANT EditDropsUnknown = TRUE"}`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red: exit 12 where its row records an exhaustive run | `tools/tlcrun/adapter.go PlantAppendEnv` |
+| `none.nightly.plant.model-check.judge-refuses-three-broken-trees` | `model-check` | tools/tlcrun -controls: the judge refuses another model's violation in a reversed witness, a config error in place of a violation, and a config with no RUNS.tsv row | `controls: true` | each of the three broken copies of tla/ is refused with its named reason | `tools/tlcrun/main.go runControls` |
+| `none.nightly.plant.model-check.no-tlc-jar-on-the-runner` | `plant` | a runner without the TLC jar: the model check fails naming the runner, never skips | `env: {"TLC_JAR":"/nonexistent/tla2tools.jar"}`<br>`target: none.nightly.model.card-hops.holds` | model.card-hops.holds goes red naming the runner and the missing jar | `tools/tlcrun/adapter.go toolProblem` |
+| `none.nightly.plant.model-check.witness-checks-an-undefined-invariant` | `plant` | a reversed witness whose config checks an invariant its module does not define: TLC stops on a config error, not the recorded violation | `env: {"SCHEMA_TEST_TLC_PLANT_APPEND":"INVARIANT NoSuchInvariantInThisModule"}`<br>`target: none.nightly.model.card-hops.divergent-leg` | model.card-hops.divergent-leg goes red: exit 151 where its row records 12 | `tools/tlcrun/adapter.go PlantAppendEnv` |
+
+### Type `model`
+
+a TLA+ model checks under TLC, or a code trace is a behaviour of the spec.
+
+#### `model` family `card-hops`, 5 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.card-hops.divergent-leg` | `model-check` | reversed witness: TLC over tla/MCCardHopsDivergentLeg.cfg (module CardHops), whose config turns a fault on, finds the counterexample | `config: MCCardHopsDivergentLeg.cfg` | TLC exits 12 violating exactly ImplementationsAgree, the tla/RUNS.tsv row | `tla/MCCardHopsDivergentLeg.cfg:1` |
+| `none.nightly.model.card-hops.edit-drops-unknown` | `model-check` | reversed witness: TLC over tla/MCCardHopsEditDropsUnknown.cfg (module CardHops), whose config turns a fault on, finds the counterexample | `config: MCCardHopsEditDropsUnknown.cfg` | TLC exits 12 violating exactly NoFieldLost, the tla/RUNS.tsv row | `tla/MCCardHopsEditDropsUnknown.cfg:1` |
+| `none.nightly.model.card-hops.edit-touches-body` | `model-check` | reversed witness: TLC over tla/MCCardHopsEditTouchesBody.cfg (module CardHops), whose config turns a fault on, finds the counterexample | `config: MCCardHopsEditTouchesBody.cfg` | TLC exits 12 violating exactly BodyUnchanged, the tla/RUNS.tsv row | `tla/MCCardHopsEditTouchesBody.cfg:1` |
+| `none.nightly.model.card-hops.hash-sees-needs` | `model-check` | reversed witness: TLC over tla/MCCardHopsHashSeesNeeds.cfg (module CardHops), whose config turns a fault on, finds the counterexample | `config: MCCardHopsHashSeesNeeds.cfg` | TLC exits 12 violating exactly TaskHashStable, the tla/RUNS.tsv row | `tla/MCCardHopsHashSeesNeeds.cfg:1` |
+| `none.nightly.model.card-hops.holds` | `model-check` | TLC over tla/MCCardHops.cfg (module CardHops) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCCardHops.cfg` | TLC exits 0 with no error and exactly 3175 distinct states, the tla/RUNS.tsv row | `tla/MCCardHops.cfg:1` |
+
+#### `model` family `card-versioning`, 6 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.card-versioning.change-body` | `model-check` | reversed witness: TLC over tla/MCCardVersioningChangeBody.cfg (module CardVersioning), whose config turns a fault on, finds the counterexample | `config: MCCardVersioningChangeBody.cfg` | TLC exits 12 violating exactly BodyUnchanged, the tla/RUNS.tsv row | `tla/MCCardVersioningChangeBody.cfg:1` |
+| `none.nightly.model.card-versioning.drop-retained` | `model-check` | reversed witness: TLC over tla/MCCardVersioningDropRetained.cfg (module CardVersioning), whose config turns a fault on, finds the counterexample | `config: MCCardVersioningDropRetained.cfg` | TLC exits 12 violating exactly NoFieldLost, the tla/RUNS.tsv row | `tla/MCCardVersioningDropRetained.cfg:1` |
+| `none.nightly.model.card-versioning.holds` | `model-check` | TLC over tla/MCCardVersioning.cfg (module CardVersioning) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCCardVersioning.cfg` | TLC exits 0 with no error and exactly 2399 distinct states, the tla/RUNS.tsv row | `tla/MCCardVersioning.cfg:1` |
+| `none.nightly.model.card-versioning.refuse-shipped` | `model-check` | reversed witness: TLC over tla/MCCardVersioningRefuseShipped.cfg (module CardVersioning), whose config turns a fault on, finds the counterexample | `config: MCCardVersioningRefuseShipped.cfg` | TLC exits 12 violating exactly ShippedUpgradeSucceeds, the tla/RUNS.tsv row | `tla/MCCardVersioningRefuseShipped.cfg:1` |
+| `none.nightly.model.card-versioning.suppress-unknown` | `model-check` | reversed witness: TLC over tla/MCCardVersioningSuppressUnknown.cfg (module CardVersioning), whose config turns a fault on, finds the counterexample | `config: MCCardVersioningSuppressUnknown.cfg` | TLC exits 12 violating exactly UnknownIsReported, the tla/RUNS.tsv row | `tla/MCCardVersioningSuppressUnknown.cfg:1` |
+| `none.nightly.model.card-versioning.tolerant-read` | `model-check` | reversed witness: TLC over tla/MCCardVersioningTolerantRead.cfg (module CardVersioning), whose config turns a fault on, finds the counterexample | `config: MCCardVersioningTolerantRead.cfg` | TLC exits 12 violating exactly ReadIsWholeOrRefused, the tla/RUNS.tsv row | `tla/MCCardVersioningTolerantRead.cfg:1` |
+
+#### `model` family `cs-read-report-iso`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.cs-read-report-iso.broken` | `model-check` | reversed witness: TLC over tla/MCCsReadReportIsoBroken.cfg (module CsReadReportIso), whose config turns a fault on, finds the counterexample | `config: MCCsReadReportIsoBroken.cfg` | TLC exits 12 violating exactly CursorBounded, the tla/RUNS.tsv row | `tla/MCCsReadReportIsoBroken.cfg:1` |
+| `none.nightly.model.cs-read-report-iso.holds` | `model-check` | TLC over tla/MCCsReadReportIso.cfg (module CsReadReportIso) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCCsReadReportIso.cfg` | TLC exits 0 with no error and exactly 68 distinct states, the tla/RUNS.tsv row | `tla/MCCsReadReportIso.cfg:1` |
+
+#### `model` family `fixed-batch`, 6 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.fixed-batch.commit-short` | `model-check` | reversed witness: TLC over tla/MCFixedBatchCommitShort.cfg (module FixedBatch), whose config turns a fault on, finds the counterexample | `config: MCFixedBatchCommitShort.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedBatchCommitShort.cfg:1` |
+| `none.nightly.model.fixed-batch.holds` | `model-check` | TLC over tla/MCFixedBatch.cfg (module FixedBatch) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCFixedBatch.cfg` | TLC exits 0 with no error and exactly 299 distinct states, the tla/RUNS.tsv row | `tla/MCFixedBatch.cfg:1` |
+| `none.nightly.model.fixed-batch.no-reset` | `model-check` | reversed witness: TLC over tla/MCFixedBatchNoReset.cfg (module FixedBatch), whose config turns a fault on, finds the counterexample | `config: MCFixedBatchNoReset.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedBatchNoReset.cfg:1` |
+| `none.nightly.model.fixed-batch.no-tail-check` | `model-check` | reversed witness: TLC over tla/MCFixedBatchNoTailCheck.cfg (module FixedBatch), whose config turns a fault on, finds the counterexample | `config: MCFixedBatchNoTailCheck.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedBatchNoTailCheck.cfg:1` |
+| `none.nightly.model.fixed-batch.reset-through-k` | `model-check` | reversed witness: TLC over tla/MCFixedBatchResetThroughK.cfg (module FixedBatch), whose config turns a fault on, finds the counterexample | `config: MCFixedBatchResetThroughK.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedBatchResetThroughK.cfg:1` |
+| `none.nightly.model.fixed-batch.stride-off` | `model-check` | reversed witness: TLC over tla/MCFixedBatchStrideOff.cfg (module FixedBatch), whose config turns a fault on, finds the counterexample | `config: MCFixedBatchStrideOff.cfg` | TLC exits 12 violating exactly ReadsValueBytes, the tla/RUNS.tsv row | `tla/MCFixedBatchStrideOff.cfg:1` |
+
+#### `model` family `fixed-live`, 7 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.fixed-live.bool-normalize` | `model-check` | reversed witness: TLC over tla/MCFixedLiveBoolNormalize.cfg (module FixedLive), whose config turns a fault on, finds the counterexample | `config: MCFixedLiveBoolNormalize.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedLiveBoolNormalize.cfg:1` |
+| `none.nightly.model.fixed-live.check-slack` | `model-check` | reversed witness: TLC over tla/MCFixedLiveCheckSlack.cfg (module FixedLive), whose config turns a fault on, finds the counterexample | `config: MCFixedLiveCheckSlack.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedLiveCheckSlack.cfg:1` |
+| `none.nightly.model.fixed-live.four` | `model-check` | TLC over tla/MCFixedLiveFour.cfg (module FixedLive) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCFixedLiveFour.cfg` | TLC exits 0 with no error and exactly 3119418 distinct states, the tla/RUNS.tsv row | `tla/MCFixedLiveFour.cfg:1` |
+| `none.nightly.model.fixed-live.holds` | `model-check` | TLC over tla/MCFixedLive.cfg (module FixedLive) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCFixedLive.cfg` | TLC exits 0 with no error and exactly 458616 distinct states, the tla/RUNS.tsv row | `tla/MCFixedLive.cfg:1` |
+| `none.nightly.model.fixed-live.inner-guard-only` | `model-check` | reversed witness: TLC over tla/MCFixedLiveInnerGuardOnly.cfg (module FixedLive), whose config turns a fault on, finds the counterexample | `config: MCFixedLiveInnerGuardOnly.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedLiveInnerGuardOnly.cfg:1` |
+| `none.nightly.model.fixed-live.land-during-check` | `model-check` | reversed witness: TLC over tla/MCFixedLiveLandDuringCheck.cfg (module FixedLive), whose config turns a fault on, finds the counterexample | `config: MCFixedLiveLandDuringCheck.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCFixedLiveLandDuringCheck.cfg:1` |
+| `none.nightly.model.fixed-live.loop-to-count` | `model-check` | reversed witness: TLC over tla/MCFixedLiveLoopToCount.cfg (module FixedLive), whose config turns a fault on, finds the counterexample | `config: MCFixedLiveLoopToCount.cfg` | TLC exits 12 violating exactly InsideArray, the tla/RUNS.tsv row | `tla/MCFixedLiveLoopToCount.cfg:1` |
+
+#### `model` family `framing`, 6 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.framing.header-against-parent` | `model-check` | reversed witness: TLC over tla/MCFramingHeaderAgainstParent.cfg (module Framing), whose config turns a fault on, finds the counterexample | `config: MCFramingHeaderAgainstParent.cfg` | TLC exits 12 violating exactly HeaderInsideBody, the tla/RUNS.tsv row | `tla/MCFramingHeaderAgainstParent.cfg:1` |
+| `none.nightly.model.framing.holds` | `model-check` | TLC over tla/MCFraming.cfg (module Framing) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCFraming.cfg` | TLC exits 0 with no error and exactly 172 distinct states, the tla/RUNS.tsv row | `tla/MCFraming.cfg:1` |
+| `none.nightly.model.framing.inert-short-body` | `model-check` | reversed witness: TLC over tla/MCFramingInertShortBody.cfg (module Framing), whose config turns a fault on, finds the counterexample | `config: MCFramingInertShortBody.cfg` | TLC exits 12 violating exactly HeaderInsideBody, the tla/RUNS.tsv row | `tla/MCFramingInertShortBody.cfg:1` |
+| `none.nightly.model.framing.off-by-one-at-l` | `model-check` | reversed witness: TLC over tla/MCFramingOffByOneAtL.cfg (module Framing), whose config turns a fault on, finds the counterexample | `config: MCFramingOffByOneAtL.cfg` | TLC exits 12 violating exactly NoReadPastBuffer, the tla/RUNS.tsv row | `tla/MCFramingOffByOneAtL.cfg:1` |
+| `none.nightly.model.framing.resume-after-damage` | `model-check` | reversed witness: TLC over tla/MCFramingResumeAfterDamage.cfg (module Framing), whose config turns a fault on, finds the counterexample | `config: MCFramingResumeAfterDamage.cfg` | TLC exits 12 violating exactly DamageEndsLoad, the tla/RUNS.tsv row | `tla/MCFramingResumeAfterDamage.cfg:1` |
+| `none.nightly.model.framing.trailing-elements` | `model-check` | reversed witness: TLC over tla/MCFramingTrailingElements.cfg (module Framing), whose config turns a fault on, finds the counterexample | `config: MCFramingTrailingElements.cfg` | TLC exits 12 violating exactly EveryCaseRuled, the tla/RUNS.tsv row | `tla/MCFramingTrailingElements.cfg:1` |
+
+#### `model` family `node-extent`, 6 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.node-extent.children-first` | `model-check` | reversed witness: TLC over tla/MCNodeExtentChildrenFirst.cfg (module NodeExtent), whose config turns a fault on, finds the counterexample | `config: MCNodeExtentChildrenFirst.cfg` | TLC exits 12 violating exactly NoOverlap, the tla/RUNS.tsv row | `tla/MCNodeExtentChildrenFirst.cfg:1` |
+| `none.nightly.model.node-extent.extent-over-record` | `model-check` | reversed witness: TLC over tla/MCNodeExtentExtentOverRecord.cfg (module NodeExtent), whose config turns a fault on, finds the counterexample | `config: MCNodeExtentExtentOverRecord.cfg` | TLC exits 12 violating exactly OutsideRecord, the tla/RUNS.tsv row | `tla/MCNodeExtentExtentOverRecord.cfg:1` |
+| `none.nightly.model.node-extent.floor-only-start` | `model-check` | reversed witness: TLC over tla/MCNodeExtentFloorOnlyStart.cfg (module NodeExtent), whose config turns a fault on, finds the counterexample | `config: MCNodeExtentFloorOnlyStart.cfg` | TLC exits 12 violating exactly AlignedInRegion, the tla/RUNS.tsv row | `tla/MCNodeExtentFloorOnlyStart.cfg:1` |
+| `none.nightly.model.node-extent.holds` | `model-check` | TLC over tla/MCNodeExtent.cfg (module NodeExtent) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCNodeExtent.cfg` | TLC exits 0 with no error and exactly 314928 distinct states, the tla/RUNS.tsv row | `tla/MCNodeExtent.cfg:1` |
+| `none.nightly.model.node-extent.record-aligned-node` | `model-check` | reversed witness: TLC over tla/MCNodeExtentRecordAlignedNode.cfg (module NodeExtent), whose config turns a fault on, finds the counterexample | `config: MCNodeExtentRecordAlignedNode.cfg` | TLC exits 12 violating exactly AlignedInRegion, the tla/RUNS.tsv row | `tla/MCNodeExtentRecordAlignedNode.cfg:1` |
+| `none.nightly.model.node-extent.skip-align` | `model-check` | reversed witness: TLC over tla/MCNodeExtentSkipAlign.cfg (module NodeExtent), whose config turns a fault on, finds the counterexample | `config: MCNodeExtentSkipAlign.cfg` | TLC exits 12 violating exactly AlignedInRegion, the tla/RUNS.tsv row | `tla/MCNodeExtentSkipAlign.cfg:1` |
+
+#### `model` family `p-group`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.p-group.holds` | `model-check` | TLC over tla/MCPGroup.cfg (module PGroup) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCPGroup.cfg` | TLC exits 0 with no error and exactly 30 distinct states, the tla/RUNS.tsv row | `tla/MCPGroup.cfg:1` |
+| `none.nightly.model.p-group.kill-only-leader` | `model-check` | reversed witness: TLC over tla/MCPGroupKillOnlyLeader.cfg (module PGroup), whose config turns a fault on, finds the counterexample | `config: MCPGroupKillOnlyLeader.cfg` | TLC exits 12 violating exactly NoSurvivor, the tla/RUNS.tsv row | `tla/MCPGroupKillOnlyLeader.cfg:1` |
+| `none.nightly.model.p-group.no-grace-kill` | `model-check` | reversed witness: TLC over tla/MCPGroupNoGraceKill.cfg (module PGroup), whose config turns a fault on, finds the counterexample | `config: MCPGroupNoGraceKill.cfg` | TLC exits 13 violating exactly StopEnds, the tla/RUNS.tsv row | `tla/MCPGroupNoGraceKill.cfg:1` |
+
+#### `model` family `read-order`, 10 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.read-order.clamp-out-of-range` | `model-check` | reversed witness: TLC over tla/MCReadOrderClampOutOfRange.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderClampOutOfRange.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCReadOrderClampOutOfRange.cfg:1` |
+| `none.nightly.model.read-order.eager-unreachable` | `model-check` | reversed witness: TLC over tla/MCReadOrderEagerUnreachable.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderEagerUnreachable.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCReadOrderEagerUnreachable.cfg:1` |
+| `none.nightly.model.read-order.evolution-reached` | `model-check` | reversed witness: TLC over tla/MCReadOrderEvolutionReached.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderEvolutionReached.cfg` | TLC exits 12 violating exactly NoEvolutionAccepted, the tla/RUNS.tsv row | `tla/MCReadOrderEvolutionReached.cfg:1` |
+| `none.nightly.model.read-order.graph` | `model-check` | TLC over tla/MCReadOrderGraph.cfg (module ReadOrder) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCReadOrderGraph.cfg`<br>`workers: 4` | TLC exits 0 with no error and exactly 3729668 distinct states, the tla/RUNS.tsv row | `tla/MCReadOrderGraph.cfg:1` |
+| `none.nightly.model.read-order.holds` | `model-check` | TLC over tla/MCReadOrder.cfg (module ReadOrder) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCReadOrder.cfg` | TLC exits 0 with no error and exactly 65569 distinct states, the tla/RUNS.tsv row | `tla/MCReadOrder.cfg:1` |
+| `none.nightly.model.read-order.known-slots-only` | `model-check` | reversed witness: TLC over tla/MCReadOrderKnownSlotsOnly.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderKnownSlotsOnly.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCReadOrderKnownSlotsOnly.cfg:1` |
+| `none.nightly.model.read-order.map-order-on-unknown` | `model-check` | reversed witness: TLC over tla/MCReadOrderMapOrderOnUnknown.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderMapOrderOnUnknown.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCReadOrderMapOrderOnUnknown.cfg:1` |
+| `none.nightly.model.read-order.partial-value` | `model-check` | reversed witness: TLC over tla/MCReadOrderPartialValue.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderPartialValue.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCReadOrderPartialValue.cfg:1` |
+| `none.nightly.model.read-order.unknown-target-refuses` | `model-check` | reversed witness: TLC over tla/MCReadOrderUnknownTargetRefuses.cfg (module ReadOrder), whose config turns a fault on, finds the counterexample | `config: MCReadOrderUnknownTargetRefuses.cfg` | TLC exits 12 violating exactly OneVerdict, the tla/RUNS.tsv row | `tla/MCReadOrderUnknownTargetRefuses.cfg:1` |
+| `none.nightly.model.read-order.wide` | `model-check` | TLC over tla/MCReadOrderWide.cfg (module ReadOrder) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCReadOrderWide.cfg`<br>`workers: 4` | TLC exits 0 with no error and exactly 19098680 distinct states, the tla/RUNS.tsv row | `tla/MCReadOrderWide.cfg:1` |
+
+#### `model` family `wire-align`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.wire-align.holds` | `model-check` | TLC over tla/MCWireAlign.cfg (module WireAlign) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCWireAlign.cfg` | TLC exits 0 with no error and exactly 677886 distinct states, the tla/RUNS.tsv row | `tla/MCWireAlign.cfg:1` |
+| `none.nightly.model.wire-align.variable-as-fixed` | `model-check` | reversed witness: TLC over tla/MCWireAlignVariableAsFixed.cfg (module WireAlign), whose config turns a fault on, finds the counterexample | `config: MCWireAlignVariableAsFixed.cfg` | TLC exits 12 violating exactly AlignedWhereMarked, the tla/RUNS.tsv row | `tla/MCWireAlignVariableAsFixed.cfg:1` |
+
+#### `model` family `wire-check-edges`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.model.wire-check-edges.first-off-by-one` | `model-check` | reversed witness: TLC over tla/MCWireCheckEdgesFirstOffByOne.cfg (module WireCheckEdges), whose config turns a fault on, finds the counterexample | `config: MCWireCheckEdgesFirstOffByOne.cfg` | TLC exits 12 violating exactly RangesHoldTheNodes, the tla/RUNS.tsv row | `tla/MCWireCheckEdgesFirstOffByOne.cfg:1` |
+| `none.nightly.model.wire-check-edges.holds` | `model-check` | TLC over tla/MCWireCheckEdges.cfg (module WireCheckEdges) explores every state: every INVARIANT and PROPERTY of the config holds | `config: MCWireCheckEdges.cfg` | TLC exits 0 with no error and exactly 313344 distinct states, the tla/RUNS.tsv row | `tla/MCWireCheckEdges.cfg:1` |
+| `none.nightly.model.wire-check-edges.stale-tail` | `model-check` | reversed witness: TLC over tla/MCWireCheckEdgesStaleTail.cfg (module WireCheckEdges), whose config turns a fault on, finds the counterexample | `config: MCWireCheckEdgesStaleTail.cfg` | TLC exits 12 violating exactly NamesCountThisFile, the tla/RUNS.tsv row | `tla/MCWireCheckEdgesStaleTail.cfg:1` |
 
 ## Declared unrepresentable
 

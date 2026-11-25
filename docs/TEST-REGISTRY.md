@@ -156,6 +156,7 @@ Built today:
 | `go`, `lua` | per-language rows of family `align-arrays` | `make bin/schema build/verify-bitphase-bin`, then `verify-bitphase --adapter --lang L` |
 | `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -json -run '^(...)$' <package>`, one verdict per top-level test; skip is fail |
 | `plant` | negative controls; inputs `{"target", "env"}` | runs the target by name with `env` set, which breaks what the target checks; passes only when the target runs and fails |
+| `model-check` | TLA+ model checks (type `model`); inputs `{"config", "workers"}`, or `{"controls": true}` | `go build ./tools/tlcrun`, then `tlcrun -adapter`: TLC over `tla/<config>`, judged against its `tla/RUNS.tsv` row (an exhaustive run explores the recorded distinct states with no error; a reversed witness violates exactly the invariant its row names). The controls row runs the judge's three broken-tree controls. No TLC jar or no java fails every instance naming the runner. `SCHEMA_TEST_TLC_PLANT_APPEND` is the plant hook: its text is appended to the config in a scratch copy of `tla/` |
 
 ## How each kind of test fits
 
@@ -173,7 +174,7 @@ adapter step for a named test.
 | fuzz, soak, resource bounds | fuzz, soak, resource-bounds | per language | `fuzz.wire.seed-1` | seeded and bounded by inputs; the seed and budget are inputs, never time |
 | differential | differential | per language or none | `differential.squirrel.all-port` | run both sides, compare |
 | negative control | plant | none | `plant.align-arrays.go-valid-row-run-as-refuse` | `plant`: target name plus the env that breaks it; passes only on the target's red |
-| TLA model check, trace check | model | none | `model.tla.reliable-endpoint` | TLC on the named model and config; a trace check feeds a code trace to TLC; a counterexample fails |
+| TLA model check, trace check | model | none | `model.card-hops.divergent-leg` | `model-check`: TLC on the named config, held to its `tla/RUNS.tsv` row (family: the module; case: the config's variant, `holds` for the exhaustive one); a trace check feeds a code trace to TLC. Nightly: the configs together take minutes, past a two-minute job |
 | benchmarks and timing gates | bench | per language or none | `bench.packet.write-ns` | measure, compare with the recorded bound in inputs |
 | compiler and IR | compiler | none | `compiler.check.reserved-words` | `gotest` |
 | Go tests, subtests, table rows | the test's own type | none | `tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest`, one row per top-level test, or one per subtest with `-run '^T$/^sub$'` |
