@@ -526,9 +526,10 @@ define conformance-negative-control-cpp-wref
 	@grep -rqF '$(4)' build/conformance-negative-cpp-$(1)/generated || \
 		{ echo "NEGATIVE CONTROL FAILED: the $(1) check did not change"; exit 1; }
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(call conformance_driver_objects,build/conformance-negative-cpp-$(1)/driver-objs,$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CURDIR)/build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_INCLUDES))))
 	$(CXX) $(TABLES_CXXFLAGS) \
 		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CURDIR)/build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_INCLUDES))) \
-		$(CONFORMANCE_DRIVER_SOURCES) \
+		$(call conformance_driver_objects_in,build/conformance-negative-cpp-$(1)/driver-objs) \
 		$(subst build/tables-generated/,$(CURDIR)/build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o build/conformance-negative-cpp-$(1)/driver-bin
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/build/conformance-negative-cpp-$(1)" > build/conformance-negative-cpp-$(1)/driver

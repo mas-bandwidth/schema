@@ -5475,6 +5475,19 @@ CONFORMANCE_DRIVER_SOURCES := $(patsubst %,test/conformance/cpp/%.cpp,$(CONFORMA
 CONFORMANCE_DRIVER_HEADERS := test/conformance/cpp/driver.h test/conformance/cpp/manifest.h test/conformance/cpp/block_walk.h
 CONFORMANCE_DRIVER_OBJECTS := $(patsubst %,build/conformance-cpp-objs/driver/%.o,$(CONFORMANCE_DRIVER_TUS))
 
+# $(call conformance_driver_objects,<dir>,<includes>) compiles every driver
+# unit against <includes> into <dir>/<unit>.o, sixteen at a time, for the
+# negative controls that build the driver over planted headers: one compiler
+# call over every source would compile the units one after another. <dir> is
+# made afresh, and xargs fails when any unit fails. The objects are
+# $(call conformance_driver_objects_in,<dir>).
+define conformance_driver_objects
+	@rm -rf $(1) && mkdir -p $(1)
+	printf '%s\n' $(CONFORMANCE_DRIVER_TUS) | xargs -P 16 -I{} \
+		$(CXX) $(TABLES_CXXFLAGS) $(2) -c test/conformance/cpp/{}.cpp -o $(1)/{}.o
+endef
+conformance_driver_objects_in = $(patsubst %,$(1)/%.o,$(CONFORMANCE_DRIVER_TUS))
+
 build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_DRIVER_HEADERS) tools/compile-seconds.pl \
 		build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
@@ -6615,9 +6628,10 @@ conformance-negative-control-cpp: build/conformance-harness
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_CPP)/generated/*/*Table.cpp || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
 	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(call conformance_driver_objects,$(CONFORMANCE_NEGATIVE_CPP)/driver-objs,$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES))))
 	$(CXX) $(TABLES_CXXFLAGS) \
 		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_INCLUDES))) \
-		$(CONFORMANCE_DRIVER_SOURCES) \
+		$(call conformance_driver_objects_in,$(CONFORMANCE_NEGATIVE_CPP)/driver-objs) \
 		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP)/generated/,$(CONFORMANCE_SOURCES)) \
 		-o $(CONFORMANCE_NEGATIVE_CPP)/driver-bin
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP)" > $(CONFORMANCE_NEGATIVE_CPP)/driver
