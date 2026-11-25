@@ -598,7 +598,7 @@ func TestPrepareRunsBeforeAnyCallOutsideItsDeadline(t *testing.T) {
 func TestAFailedPrepareFailsItsGroupByName(t *testing.T) {
 	t.Parallel()
 	log := &eventLog{}
-	rn := stagedRunner(t, log, func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) },
+	rn := stagedRunner(t, log, context.WithCancel,
 		staged{name: "a", log: log, prepErr: errors.New("the leg would not build")}, staged{name: "b", log: log})
 	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
 	wantRed(t, rep, "none.unit.tooling.a.one", "could not prepare none/a", "the leg would not build")
@@ -627,7 +627,7 @@ func TestSerialAdaptersRunOneAfterAnother(t *testing.T) {
 			runtime.Gosched()
 		}
 	}
-	live := func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) }
+	live := context.WithCancel
 	rn := stagedRunner(t, log, live, staged{name: "a", serial: true, log: log, during: during}, staged{name: "b", serial: true, log: log})
 	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
 	if !rep.OK() {
@@ -713,7 +713,7 @@ func TestEachWriterAndPlantIsACallOfItsOwn(t *testing.T) {
 func TestARowsSecondsAreItsCallsShareAndItsPrepares(t *testing.T) {
 	t.Parallel()
 	log := &eventLog{}
-	rn := stagedRunner(t, log, func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) }, staged{name: "a", log: log})
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", log: log})
 	rn.Now = (&stepClock{step: 6 * time.Second}).now
 	one, two, three := freeInstance("a"), freeInstance("a"), freeInstance("a")
 	two.Full, three.Full = "none.unit.tooling.a.two", "none.unit.tooling.a.three"
