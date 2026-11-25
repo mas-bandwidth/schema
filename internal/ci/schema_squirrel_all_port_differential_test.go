@@ -441,7 +441,7 @@ func TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences(t *test
 // answer the harness credits without bytes to exactly its reach: a read-into
 // `unrepresentable` on either side is not compared, while `unrepresentable`
 // on another surface still diverges. Every retain-refusal answer is compared:
-// no ledger excuses a leg's (Glenn, 2026-11-25: no exemptions).
+// no ledger excuses a leg's (2026-11-25, docs/rulings.json no-skips).
 func TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut(t *testing.T) {
 	t.Parallel()
 
