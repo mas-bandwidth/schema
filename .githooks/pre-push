@@ -7,8 +7,9 @@
 # address. In every other clone this hook does nothing, so maintainers and outside
 # contributors are unaffected; the CAA check on GitHub still covers them.
 #
-# Checked range, per pushed ref: <remote sha>..<local sha> less origin/main, or,
-# for a new branch, the commits on no remote ref (git rev-list <sha> --not --remotes).
+# Checked range, per pushed ref: <remote sha>..<local sha> less origin/main and
+# less every commit already on a remote ref, or, for a new branch, the commits on
+# no remote ref (git rev-list <sha> --not --remotes). A pushed commit is not this push.
 set -u
 login=rowan-claude
 email=305107455+rowan-claude@users.noreply.github.com
@@ -34,11 +35,13 @@ while read -r lref lsha rref rsha; do
     range=("$lsha" --not --remotes)
   else
     range=("$rsha".."$lsha")
-    # Commits already on main (merged in to bring a branch current) are not this
+    # Commits already on any remote ref (a lane merged into this branch) are
+    # excluded below (--not --remotes). Commits already on main (merged in to bring a branch current) are not this
     # push's: main's merge commits carry GitHub as committer.
     if git rev-parse -q --verify origin/main >/dev/null; then
       range+=(^origin/main)
     fi
+    range+=(--not --remotes)
   fi
   while IFS=$'\t' read -r sha an ae cn ce; do
     if ! ok "$an" "$ae" || ! ok "$cn" "$ce"; then
