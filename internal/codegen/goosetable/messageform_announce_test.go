@@ -57,6 +57,26 @@ func goAnnounceVerdict(data []byte, maxEntries int) string {
 	return fmt.Sprintf("%d %s %d %d %d %d %016x", ok, reason, mal, rep.Unknown, slots, bits, v.BuildVersion())
 }
 
+// announceRefused says whether a probe line is a refusal: no vocabulary set,
+// and a reason by name or the damage flag.
+func announceRefused(f []string) bool {
+	return len(f) == 7 && f[0] == "0" && (f[1] != "ok" || f[2] == "1")
+}
+
+// announceVerdictsAgree holds the goose line to the Go reference's. An
+// accepted announcement agrees field for field. A refused one agrees on the
+// VERDICT (docs/rulings.json refusal-verdict-only: never the reason name, the
+// damage flag or the counters, which follow each leg's check order) and on
+// what the refusal left in the vocabulary: no entries, the default
+// reference width and the build version kept.
+func announceVerdictsAgree(got, want string) bool {
+	g, w := strings.Fields(got), strings.Fields(want)
+	if !announceRefused(w) {
+		return got == want
+	}
+	return announceRefused(g) && g[4] == w[4] && g[5] == w[5] && g[6] == w[6]
+}
+
 // gooseAnnounceProbe runs announce_read over every case in one program, with
 // `override` replacing generated files.
 func gooseAnnounceProbe(t *testing.T, u *ir.Unit, cases [][]byte, maxEntries int, override map[string][]byte) []string {
@@ -172,7 +192,7 @@ func TestGooseMessageFormAnnounceRead(t *testing.T) {
 		moved := map[string]bool{}
 		for i, c := range cases {
 			want := goAnnounceVerdict(c, bound)
-			if got[i] != want {
+			if !announceVerdictsAgree(got[i], want) {
 				t.Fatalf("bound %d, %s: goose answered %q, the Go reference %q", bound, names[i], got[i], want)
 			}
 			moved[strings.Fields(want)[1]+"/"+strings.Fields(want)[2]] = true
