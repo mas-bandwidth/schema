@@ -210,6 +210,52 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 	}
 }
 
+// TestASubtestRowClaimsItsSubtest: the parent gotest row claims the top-level
+// test and a row that names a subtest claims that subtest, so the two are not
+// "already runs". The extract lists the top-level test, which holds the
+// subtest claim. A second row for the same subtest is refused, and a subtest
+// whose top-level test the repository does not hold is named. The subtest
+// row's files index the data case; the parent, naming none, does not.
+func TestASubtestRowClaimsItsSubtest(t *testing.T) {
+	t.Parallel()
+	top := Item{Kind: KindGoTest, Dir: "internal/baseline", Name: "TestCommittedEditPairs", Source: "internal/baseline/editpairs_test.go:19"}
+	res := &Result{Items: []Item{
+		top,
+		{Kind: KindDataCase, Dir: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded", Name: "want", Source: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded/want.txt:1"},
+	}}
+	parent := gotestRow("tooling.baseline.committed-edit-pairs", "./internal/baseline", "TestCommittedEditPairs")
+	child := testreg.Test{Key: "tooling.baseline.edit-pair-f058-fixed-to-bounded", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/baseline","test":"TestCommittedEditPairs","subtest":"f058-fixed-to-bounded","files":["internal/baseline/testdata/editpairs/f058-fixed-to-bounded/want.txt"]}`)}
+	sib := testreg.Test{Key: "tooling.baseline.edit-pair-f058-control-bounded-to-map", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./internal/baseline","test":"TestCommittedEditPairs","subtest":"f058-control-bounded-to-map"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child, sib}}
+	out, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatalf("parent and its subtests: %v", problems)
+	}
+	if out[top.ID()] != parent.Key {
+		t.Fatalf("parent claim %q, want %s", out[top.ID()], parent.Key)
+	}
+	sub := Item{Kind: KindGoTest, Dir: "internal/baseline", Name: "TestCommittedEditPairs/f058-fixed-to-bounded"}
+	if out[sub.ID()] != child.Key {
+		t.Fatalf("subtest claim %q, want %s", out[sub.ID()], child.Key)
+	}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("the top-level test holds its subtests: %v", p)
+	}
+	if got := Indexed(reg)[Item{Kind: KindDataCase, Dir: "internal/baseline/testdata/editpairs/f058-fixed-to-bounded", Name: "want"}.ID()]; got != child.Key {
+		t.Fatalf("the case file is indexed by %q, want the subtest row", got)
+	}
+	dup := testreg.Test{Key: "tooling.baseline.edit-pair-again", Adapter: "gotest", Inputs: child.Inputs}
+	if _, problems := Covered(&testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{child, dup}}); len(problems) != 1 || !strings.Contains(problems[0], "already runs") {
+		t.Fatalf("two rows for one subtest: %v", problems)
+	}
+	gone := &Result{}
+	p := Check(gone, reg, nil)
+	joined := strings.Join(p, "\n")
+	if !strings.Contains(joined, "tooling.baseline.edit-pair-f058-fixed-to-bounded runs go-test internal/baseline TestCommittedEditPairs/f058-fixed-to-bounded, which the repository does not hold") {
+		t.Fatalf("a subtest whose test is gone:\n%s", joined)
+	}
+}
+
 // TestMakePlantAndGoldenRowsCoverTheirTests: a make row covers its make
 // target, a plant row its negative control, a golden row the data case its
 // files are; each row naming a test the repository does not hold is named.
@@ -813,5 +859,33 @@ func TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed(t *testing.T) {
 	// the pattern rules empty stem is no match: runs--text is not runs-%-texts
 	if makeDefines(map[string]bool{}, []string{"runs-%-text"}, "runs--text") {
 		t.Errorf("an empty stem matched a pattern rule")
+	}
+}
+
+// TestARowNamingAJsonlFileReadsEveryLine: a .jsonl file's lines are cases
+// of their own (dataCases names each for its line), so a row naming the
+// file claims no stem for it; it reads every line, so each line case counts
+// as the row's in Check, and a line case no row's file names is unmoved.
+func TestARowNamingAJsonlFileReadsEveryLine(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line1", Source: "testdata/corpus/cases.jsonl:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line2", Source: "testdata/corpus/cases.jsonl:2"},
+		{Kind: KindDataCase, Dir: "testdata/other", Name: "cases/line1", Source: "testdata/other/cases.jsonl:1"},
+	}}
+	row := testreg.Test{Key: "roundtrip.conformance-wire.cases", Inputs: []byte(`{"surface":"wire","case":"cases","files":["testdata/corpus/cases.jsonl"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{row}}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "testdata/other", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	// the row gone, its two line cases are unmoved again
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("a dropped row: %v", p)
+	}
+	// a row no ready language answers reads nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}}, Tests: []testreg.Test{row}}
+	if p := Check(res, idle, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("an unanswered row: %v", p)
 	}
 }

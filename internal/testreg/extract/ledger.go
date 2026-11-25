@@ -143,7 +143,8 @@ func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) 
 }
 
 // Covered reports, for each item a registry row runs, the row's key:
-//   - a Go test, by a gotest row whose inputs name its package and test, or
+//   - a Go test, by a gotest row whose inputs name its package and test
+//     (and that subtest, when the row names one), or
 //     by a per-language row whose inputs name its package and a test named
 //     with testreg.LangPlaceholder, which covers that test for every
 //     language the registry lists (tools/namebuild's
@@ -228,12 +229,18 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		}
 		switch t.Adapter {
 		case "gotest":
-			var in struct{ Package, Test string }
+			var in struct{ Package, Test, Subtest string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			// the parent row claims the top-level test. A row that names a
+			// subtest claims that subtest, so the two are not the same run.
+			name := in.Test
+			if in.Subtest != "" {
+				name = in.Test + "/" + in.Subtest
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: name}, in.Package+" "+name)
 		case "model-check":
 			// a TLC run of tla/<config>; the controls row runs no config
 			var in struct{ Config string }
@@ -591,7 +598,95 @@ func Runs(res *Result, reg *testreg.Registry) map[string]string {
 			covered[id] = key
 		}
 	}
+	// a .jsonl file's lines are cases of their own (dataCases), so a row
+	// naming the file claims no stem for it (Indexed); it reads every
+	// line, so each line case the extract holds for it is the row's too
+	named := jsonlFiles(reg)
+	for _, it := range res.Items {
+		if it.Kind != KindDataCase {
+			continue
+		}
+		base, _, ok := strings.Cut(it.Name, "/")
+		if !ok {
+			continue
+		}
+		key, is := named[it.Dir+"/"+base+".jsonl"]
+		if !is {
+			continue
+		}
+		if _, held := covered[it.ID()]; !held {
+			covered[it.ID()] = key
+		}
+	}
 	return covered
+}
+
+// goTestHeld reports whether the extract holds id. A gotest row that names a
+// subtest claims Test/sub; the extract lists the top-level test, and that
+// test holds the claim. A claim whose top-level test is absent does not hold.
+func goTestHeld(id string, exists map[string]bool) bool {
+	if exists[id] {
+		return true
+	}
+	kind, rest, ok := strings.Cut(id, " ")
+	if !ok || kind != KindGoTest {
+		return false
+	}
+	dir, name, ok := strings.Cut(rest, " ")
+	if !ok {
+		return false
+	}
+	top, _, isSub := strings.Cut(name, "/")
+	if !isSub {
+		return false
+	}
+	return exists[kind+" "+dir+" "+top]
+}
+
+// jsonlFiles is, for each .jsonl file a registry row names in its inputs'
+// files, the first such row's key, under the rules Indexed indexes by: a
+// per-language row some ready language answers (that does not declare it
+// unrepresentable), or a language-free row of a files-held adapter.
+func jsonlFiles(reg *testreg.Registry) map[string]string {
+	out := map[string]string{}
+	claim := func(f, key string) {
+		if strings.HasSuffix(f, ".jsonl") {
+			if _, ok := out[f]; !ok {
+				out[f] = key
+			}
+		}
+	}
+	for _, t := range reg.Tests {
+		var in struct {
+			Files []string `json:"files"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil {
+			continue
+		}
+		if !t.PerLang() {
+			if !filesHeld[t.Adapter] {
+				continue
+			}
+			for _, f := range in.Files {
+				claim(f, t.Key)
+			}
+			continue
+		}
+		answering := false
+		for _, l := range reg.Langs {
+			if _, unrep := reg.Unrepresentable(t.Key, l.Name); l.Ready() && !unrep {
+				answering = true
+				break
+			}
+		}
+		if !answering {
+			continue
+		}
+		for _, f := range in.Files {
+			claim(f, t.Key)
+		}
+	}
+	return out
 }
 
 // Check holds the extract, the registry and the ledger to each other: every
@@ -628,7 +723,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	var gone []string
 	for id, key := range covered {
-		if !exists[id] {
+		if !goTestHeld(id, exists) {
 			gone = append(gone, fmt.Sprintf("registry row %s runs %s, which the repository does not hold", key, id))
 		}
 	}
