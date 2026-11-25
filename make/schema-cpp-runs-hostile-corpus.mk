@@ -15,10 +15,9 @@
 # A disagreement the port already owes is carried, by name, in
 # test/cpp-hostile/known-findings.tsv, and printed as a FIX-CARD. A disagreement
 # no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a
-# failure too, so the list cannot rot into silence. A skip (a case the port
-# has no API for) is held the same way, by name, in test/cpp-hostile/known-skips.tsv:
-# a skip no line names fails, so a binding dropped from the case binary reads
-# red, and a line whose case answers fails too.
+# failure too, so the list cannot rot into silence. A case the port
+# has no API for is a failure like any other: nothing is skipped, so a binding
+# dropped from the case binary reads red.
 #
 # The planted-verdict control copies the corpus to a scratch directory, flips
 # one accepted case's verdict to a refusal, and requires the runner to go red

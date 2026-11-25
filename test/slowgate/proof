@@ -23,8 +23,10 @@
 # receipt is a count, not a transcript.
 set -e
 
-label="$1"; shift || true
-required="$1"; shift || true
+label="${1-}"
+if [ $# -gt 0 ]; then shift; fi
+required="${1-}"
+if [ $# -gt 0 ]; then shift; fi
 
 if [ -z "$label" ] || [ $# -eq 0 ]; then
 	echo "test/slowgate/proof: usage: proof <label> '<required PASS names>' <go test args...>" >&2

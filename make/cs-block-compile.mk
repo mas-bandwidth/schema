@@ -36,17 +36,11 @@ endef
 
 .PHONY: tables-cs-block-compile
 tables-cs-block-compile: bin/schema
-ifneq ($(filter cs,$(SKIPPED_LEGS)),)
-	@echo "tables-cs-block-compile: FAILED, SCHEMA_SKIP_LEGS names the cs leg and this gate has no other form"; exit 1
-endif
 	$(call cs_block_compile,./bin/schema,$(CS_BLOCK_COMPILE)/gen,$(CS_BLOCK_COMPILE)/artifacts)
 	@echo "cs-block-compile: the C# block and cook pair of tables/examples, block and blockhome compiles with no table source"
 
 .PHONY: tables-cs-block-compile-negative-control
 tables-cs-block-compile-negative-control:
-ifneq ($(filter cs,$(SKIPPED_LEGS)),)
-	@echo "tables-cs-block-compile-negative-control: FAILED, SCHEMA_SKIP_LEGS names the cs leg and this control has no other form"; exit 1
-endif
 	@mkdir -p $(CS_BLOCK_COMPILE)
 	@sed 's|if _, tableOnly := g.unit.TableUnions\[un.Name\]; tableOnly {|if false { // PLANTED: the row names the table-only tag enum again|' \
 		internal/codegen/cstable/cookunion.go > $(CS_BLOCK_COMPILE)/cookunion.gotext
