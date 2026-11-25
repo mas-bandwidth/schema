@@ -16,12 +16,15 @@ import (
 // ran: its key, its tier (unit, functional, nightly) and the make variables
 // the job set on make's command line. seed names the make variable the
 // driver sets to the run's seed, for a fuzz campaign whose job seeded it
-// from the run (github.run_id); "" for a row that takes no seed.
+// from the run (github.run_id); "" for a row that takes no seed. target is
+// the make target the job ran, for a make-gotest row, whose case names the Go
+// test the target runs rather than the target.
 type retiredRow struct {
-	key  string
-	tier string
-	vars map[string]string
-	seed string
+	key    string
+	tier   string
+	vars   map[string]string
+	seed   string
+	target string
 }
 
 // retiredWorkflows is every workflow the test registry's L6b layer retired,
@@ -84,8 +87,8 @@ var retiredWorkflows = map[string][]retiredRow{
 		{key: "resource-bounds.make-schema-luau-resource-bounds.schema-luau-resource-bounds", tier: "functional"},
 	},
 	"schema-python-resource-bounds.yml": {
-		{key: "plant.make-python-hostile.schema-python-resource-bounds-negative-control", tier: "nightly"},
-		{key: "resource-bounds.make-python-hostile.schema-python-resource-bounds", tier: "functional"},
+		{key: "plant.schema-python-resource-bounds-negative-control.python-resource-bounds-planted-pattern", tier: "nightly", target: "schema-python-resource-bounds-negative-control"},
+		{key: "resource-bounds.schema-python-resource-bounds.python-resource-bounds-hostile-shapes", tier: "functional", target: "schema-python-resource-bounds"},
 	},
 	"schema-ruby-resource-bounds.yml": {
 		{key: "resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds", tier: "functional"},
@@ -111,7 +114,7 @@ var retiredWorkflows = map[string][]retiredRow{
 // retiredWorkflowProblems is every way the repository disagrees with the
 // retired workflows' table: a retired workflow file that is back (two
 // harnesses running one gate), and a row that is missing, of another tier,
-// run by an adapter that is not make, plant or gotest, that runs another
+// run by an adapter that is not make, plant, gotest or make-gotest, that runs another
 // target than its job did, or that no longer sets the variables or the seed
 // its job set.
 func retiredWorkflowProblems(root string, reg *testreg.Registry) []string {
@@ -135,9 +138,9 @@ func retiredWorkflowProblems(root string, reg *testreg.Registry) []string {
 				out = append(out, fmt.Sprintf("%s: row %s is tier %s, want %s", wf, want.key, t.Tier, want.tier))
 			}
 			switch t.Adapter {
-			case "make", "plant", "gotest":
+			case "make", "plant", "gotest", "make-gotest":
 			default:
-				out = append(out, fmt.Sprintf("%s: row %s runs on adapter %q, not make, plant or gotest", wf, want.key, t.Adapter))
+				out = append(out, fmt.Sprintf("%s: row %s runs on adapter %q, not make, plant, gotest or make-gotest", wf, want.key, t.Adapter))
 			}
 			var in struct {
 				Target string            `json:"target"`
@@ -152,7 +155,13 @@ func retiredWorkflowProblems(root string, reg *testreg.Registry) []string {
 			// a make row runs its case as its target, and a plant the make control
 			// its case names: what the job ran, by name
 			ran := map[string]string{"make": in.Target, "plant": in.Make}[t.Adapter]
-			if t.Adapter != "gotest" && ran != t.Case {
+			switch {
+			case t.Adapter == "make-gotest":
+				// the case names the Go test; the target is what the job ran
+				if want.target == "" || in.Target != want.target {
+					out = append(out, fmt.Sprintf("%s: row %s runs make %q, want %q as its job did", wf, want.key, in.Target, want.target))
+				}
+			case t.Adapter != "gotest" && ran != t.Case:
 				out = append(out, fmt.Sprintf("%s: row %s runs make %q, want %q as its job did", wf, want.key, ran, t.Case))
 			}
 			for k, v := range want.vars {

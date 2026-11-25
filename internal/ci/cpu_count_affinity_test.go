@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
 // checkJobCountHonoursAffinity: no line of src counts CPUs with
@@ -37,7 +39,7 @@ func TestMakeJobCountsHonourCPUAffinity(t *testing.T) {
 	root := repoRoot(t)
 	var files []string
 	for _, pat := range []string{"Makefile", "make/*.mk", "make/checks/*.sh", "tools/*/*.mk"} {
-		m, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(pat)))
+		m, err := provesran.Glob(filepath.Join(root, filepath.FromSlash(pat)))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -3345,7 +3345,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-dart.packet-write-refusal-dart-negative-control` | `make` | make packet-write-refusal-dart-negative-control (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: packet-write-refusal-dart-negative-control` | the target exits 0 with no skip in its log | `make/dart.mk:2146` |
+| `none.nightly.plant.make-dart.packet-write-refusal-dart-negative-control` | `make` | make packet-write-refusal-dart-negative-control (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: packet-write-refusal-dart-negative-control` | the target exits 0 with no skip in its log | `make/dart.mk:2147` |
 
 #### `plant` family `make-dart-cook-write`, 1 test
 
@@ -5011,8 +5011,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:120` |
-| `none.nightly.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
+| `none.nightly.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci/rubystrict | `package: ./internal/ci/rubystrict`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/rubystrict/ruby_generated_strict_gate_test.go:120` |
+| `none.nightly.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci/squirreldiff | `package: ./internal/ci/squirreldiff`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/squirreldiff/schema_squirrel_all_port_differential_test.go:511` |
 
 #### `tooling` family `makefile`, 4 tests
 
@@ -5418,10 +5418,10 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-dart.cards-dart-test` | `make` | make cards-dart-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: cards-dart-test` | the target exits 0 with no skip in its log | `make/dart.mk:1639` |
-| `none.nightly.harness-run.make-dart.dart-chunk-queue-test` | `make` | make dart-chunk-queue-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: dart-chunk-queue-test` | the target exits 0 with no skip in its log | `make/dart.mk:1881` |
+| `none.nightly.harness-run.make-dart.cards-dart-test` | `make` | make cards-dart-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: cards-dart-test` | the target exits 0 with no skip in its log | `make/dart.mk:1640` |
+| `none.nightly.harness-run.make-dart.dart-chunk-queue-test` | `make` | make dart-chunk-queue-test (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: dart-chunk-queue-test` | the target exits 0 with no skip in its log | `make/dart.mk:1882` |
 | `none.nightly.harness-run.make-dart.tables-dart-fixed-form` | `make` | make tables-dart-fixed-form (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: tables-dart-fixed-form` | the target exits 0 with no skip in its log | `make/dart.mk:885` |
-| `none.nightly.harness-run.make-dart.test-dart-packet` | `make` | make test-dart-packet (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: test-dart-packet` | the target exits 0 with no skip in its log | `make/dart.mk:1476` |
+| `none.nightly.harness-run.make-dart.test-dart-packet` | `make` | make test-dart-packet (make/dart.mk) exits 0 | `file: make/dart.mk`<br>`target: test-dart-packet` | the target exits 0 with no skip in its log | `make/dart.mk:1477` |
 
 #### `harness-run` family `make-elixir`, 5 tests
 
