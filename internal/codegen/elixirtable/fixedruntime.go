@@ -345,6 +345,17 @@ const fixedRuntimeBody = `  @moduledoc """
   def held_min(acc, _v, _min), do: acc
 
   @doc """
+  A COUNTED [A..B]'s COUNT OUTSIDE [A, B] REFUSES BY NAME, count_over_bound,
+  and lands nothing (docs/FIXED-FORM-ALGORITHM.md §4.5 count op: "if v < 0 or
+  v > size then REFUSE count_over_bound"; §5.3 refusal table: "a count past
+  the plan's bound (§4.5) | count_over_bound").
+  """
+  def held_count(_acc, v, min, max) when v < min or v > max,
+    do: throw({:refuse, :count_over_bound})
+
+  def held_count(acc, _v, _min, _max), do: acc
+
+  @doc """
   A string(N)'s OR bytes(N)'s LENGTH PAST ITS CAP, or below zero, REFUSES BY
   NAME, length_over_bound, and lands nothing; nothing is held to the cap
   (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table: "a length past the plan's

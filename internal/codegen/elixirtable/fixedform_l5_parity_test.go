@@ -75,3 +75,44 @@ IO.puts("FIXED_FORM_REFUSAL_NAMES_OK")
 		t.Fatal(out)
 	}
 }
+
+// TestFixedFormCountOverBoundElixir holds the generated fixed-form read to
+// docs/FIXED-FORM-ALGORITHM.md §4.5's `count` op, "if v < 0 or v > size then
+// REFUSE count_over_bound", and its §5.3 refusal table row "a count past the
+// plan's bound (§4.5) | count_over_bound": a counted [A..B]'s count past B,
+// below A or negative refuses BY THAT NAME on the load and on the direct record
+// decode alike, and is never clamped. Until 2026-11-25 this leg clamped it and
+// the load answered out_of_range.
+func TestFixedFormCountOverBoundElixir(t *testing.T) {
+	t.Parallel()
+	u := unitFrom(t, "package lsix\n\nfixed table T\n{\n    vals [1..4]int32\n    n int32\n}\n")
+	probe := `alias Lsix.ProbeFixed, as: F
+v = %Lsix.T{vals: [11, 22], n: 7}
+file = IO.iodata_to_binary(F.t_fixed_save([v]))
+{:ok, [^v], _} = F.t_fixed_load(file)
+# the count is the first four bytes of the body, the last body_bytes of a
+# one-record file. Below Min the elements are zero, so no dead slot is nonzero
+# and the count is the one thing wrong.
+splice = fn f, n ->
+  at = byte_size(f) - F.t_fixed_body_bytes()
+  binary_part(f, 0, at) <> <<n::little-signed-32>> <> binary_part(f, at + 4, byte_size(f) - at - 4)
+end
+zeroes = IO.iodata_to_binary(F.t_fixed_save([%Lsix.T{vals: [0], n: 7}]))
+for {label, bad} <- [{"past Max", splice.(file, 5)}, {"below Min", splice.(zeroes, 0)}, {"negative", splice.(file, -1)}] do
+  got = F.t_fixed_load(bad)
+  unless match?({:error, :count_over_bound, _}, got), do: raise("count " <> label <> " load: want count_over_bound, got " <> inspect(got))
+  body = binary_part(bad, byte_size(bad) - F.t_fixed_body_bytes(), F.t_fixed_body_bytes())
+  dec = try do
+    F.t_fixed_decode(body, 0)
+  catch
+    :throw, {:refuse, why} -> {:refused, why}
+  end
+  unless dec == {:refused, :count_over_bound}, do: raise("count " <> label <> " decode: want a refusal, got " <> inspect(dec))
+end
+IO.puts("FIXED_FORM_COUNT_OVER_BOUND_OK")
+`
+	out := runCompleteUnitProbe(t, u, probe)
+	if !strings.Contains(out, "FIXED_FORM_COUNT_OVER_BOUND_OK") {
+		t.Fatal(out)
+	}
+}
