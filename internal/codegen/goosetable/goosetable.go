@@ -161,15 +161,24 @@ func RegisterModule(name string, fn Module) {
 // modules; a table-free unit gets nothing, so its output is the type
 // surface's alone.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	out, _, err := GenerateClaims(u)
+	return out, err
+}
+
+// GenerateClaims is Generate with the names it claimed in the unit's
+// namespace (goose.Gen.Declare), keyed by name, valued by the declaring
+// module: the claim docs/PORTING.md I6 holds every emitted name to
+// (TestGooseEveryPackageNameIsClaimed).
+func GenerateClaims(u *ir.Unit) (map[string][]byte, map[string]string, error) {
 	if len(u.Tables) == 0 {
-		return map[string][]byte{}, nil
+		return map[string][]byte{}, map[string]string{}, nil
 	}
 	if err := Refuse(u); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	names, err := goose.DeclaredNames(u)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := map[string][]byte{}
 	reach := closure(u)
@@ -183,18 +192,18 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		emitFile(g, reach)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
-				return nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
+				return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
 			}
 		}
 		if err := g.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		out[f.Base+"Table.goose"] = g.Assemble()
 	}
 	for _, m := range modules {
 		side, err := m.fn(u, names)
 		if err != nil {
-			return nil, fmt.Errorf("goose %s: %w", m.name, err)
+			return nil, nil, fmt.Errorf("goose %s: %w", m.name, err)
 		}
 		maps.Copy(out, side)
 	}
@@ -209,20 +218,20 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			surfaces = append(surfaces, p.surface)
 		}
 		if err := p.fn(g); err != nil {
-			return nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
+			return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, g.Module(), err)
 		}
 	}
 	for _, s := range surfaces {
 		g := gens[s]
 		if err := g.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !g.Empty() {
 			out[g.Module()+".goose"] = g.Assemble()
 		}
 	}
 	maps.Copy(out, Runtime())
-	return out, nil
+	return out, names, nil
 }
 
 // Refuse is the constructs this surface refuses before it writes: a module

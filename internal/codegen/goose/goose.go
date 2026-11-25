@@ -98,8 +98,17 @@ func Register(name string, fn Part) {
 // unit, plus the runtime modules. Declarations emit in ir.EmissionOrder per
 // file.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	out, _, err := GenerateClaims(u)
+	return out, err
+}
+
+// GenerateClaims is Generate with the names it claimed in the unit's
+// namespace (goose.Gen.Declare), keyed by name, valued by the declaring
+// module: the claim docs/PORTING.md I6 holds every emitted name to
+// (TestGooseEveryPackageNameIsClaimed).
+func GenerateClaims(u *ir.Unit) (map[string][]byte, map[string]string, error) {
 	if err := CheckUnit(u, Runtime()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	names := map[string]string{}
 	out := map[string][]byte{}
@@ -109,16 +118,16 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.emitFile(f.Base == home)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
-				return nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
+				return nil, nil, fmt.Errorf("goose %s: %s: %w", p.name, f.Base, err)
 			}
 		}
 		if g.err != nil {
-			return nil, g.err
+			return nil, nil, g.err
 		}
 		out[f.Base+"."+ext] = g.Assemble()
 	}
 	maps.Copy(out, Runtime())
-	return out, nil
+	return out, names, nil
 }
 
 // DeclaredNames is every top-level name the type surface declares into the

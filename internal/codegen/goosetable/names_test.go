@@ -22,22 +22,34 @@ import (
 var topLevel = regexp.MustCompile(`(?m)^(?:pub\s+)?(?:recursive\s+)?(?:fn|let|var|struct|enum|union|const|type)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 
 // generateUnit runs both Goose surfaces over one unit, as `schema generate
-// --lang goose` does.
-func generateUnit(paths []string) (map[string][]byte, error) {
-	u, err := compiler.New().Load(paths)
+// --lang goose` does, and answers the names they claimed in the unit's
+// namespace (goose.Gen.Declare, both surfaces). It loads without the OTHER
+// targets' name rules (compiler.LoadWithoutEmitterRules): Goose's own rule,
+// goose.CheckUnit, runs in goose.Generate either way, so a probe refused here
+// is refused by the loader's own rules or by Goose, never by another target's
+// rule that would hide a name Goose writes unclaimed.
+func generateUnit(paths []string) (map[string][]byte, map[string]bool, error) {
+	u, err := compiler.New().LoadWithoutEmitterRules(paths)
 	if err != nil {
-		return nil, fmt.Errorf("load: %w", err)
+		return nil, nil, fmt.Errorf("load: %w", err)
 	}
-	files, err := goose.Generate(u)
+	files, typeClaims, err := goose.GenerateClaims(u)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	tables, err := goosetable.Generate(u)
+	tables, tableClaims, err := goosetable.GenerateClaims(u)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	maps.Copy(files, tables)
-	return files, nil
+	claimed := map[string]bool{}
+	for n := range typeClaims {
+		claimed[n] = true
+	}
+	for n := range tableClaims {
+		claimed[n] = true
+	}
+	return files, claimed, nil
 }
 
 // TestGooseEveryPackageNameIsClaimed is the Goose form of docs/PORTING.md I6
@@ -47,16 +59,25 @@ func generateUnit(paths []string) (map[string][]byte, error) {
 // declarations, and the claim there is goose.Gen.Declare: every name is
 // declared once per unit, and a second declaration of it refuses the unit by
 // name. This holds that claim against the emitted text, for every unit of the
-// conformance manifest: every top-level name of every package module is
-// declared in turn by a schema file added to the unit, and the unit must then
-// refuse (by the loader, for a name the schema already declares or cannot
-// spell, or by Declare). A name the target writes WITHOUT declaring it is a
-// unit that generates two declarations of one name; the test names it.
+// conformance manifest, in two parts:
+//
+//   - EVERY top-level name of every package module is in the set the two
+//     surfaces claimed through Declare (goose.GenerateClaims,
+//     goosetable.GenerateClaims), or else a schema file that declares it is
+//     added to the unit and the loader must refuse the unit (a name the
+//     schema already declares or cannot spell);
+//   - the claim REFUSES: for one claimed name of every declaring module, a
+//     schema file declaring that name is added to the unit and the unit must
+//     refuse.
+//
+// A name the target writes WITHOUT declaring it is a unit that generates two
+// declarations of one name; the test names it. (Probing every claimed name
+// end to end, one whole load and generation each, was some 40,000
+// generations and over ten minutes on a bench slot; a claimed name refuses
+// by the same Declare whichever name it is, which the second part holds
+// module by module.)
 func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 	t.Parallel()
-	// one whole generation per unit per emitted name: 524 s on two cores of a
-	// loaded bench (2026-11-15), past the two-minute push row, so it rides the
-	// slow lane with the toolchain tests
 	units, _ := readManifest(t)
 	runtimeFiles := goosetable.Runtime()
 	maps.Copy(runtimeFiles, goose.Runtime())
@@ -66,7 +87,7 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 	}
 	sort.Strings(keys)
 	var mu sync.Mutex
-	checked := 0
+	checked, probed := 0, 0
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, runtime.NumCPU())
 	for _, key := range keys {
@@ -74,25 +95,32 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
-		files, err := generateUnit(paths)
+		files, claimed, err := generateUnit(paths)
 		if err != nil {
 			continue // a unit the target refuses writes nothing to claim
 		}
-		u, err := compiler.New().Load(paths)
+		u, err := compiler.New().LoadWithoutEmitterRules(paths)
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
 		seen := map[string]bool{}
 		var names []string
-		for file, data := range files {
+		module := map[string]string{} // name -> the package module that writes it first
+		var fileNames []string
+		for file := range files {
+			fileNames = append(fileNames, file)
+		}
+		sort.Strings(fileNames)
+		for _, file := range fileNames {
 			if _, ok := runtimeFiles[file]; ok {
 				continue
 			}
-			for _, m := range topLevel.FindAllSubmatch(data, -1) {
+			for _, m := range topLevel.FindAllSubmatch(files[file], -1) {
 				n := string(m[1])
 				if !seen[n] {
 					seen[n] = true
 					names = append(names, n)
+					module[n] = file
 				}
 			}
 		}
@@ -113,10 +141,27 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 		if err := os.WriteFile(freshProbe, []byte(fmt.Sprintf("package %s\n\ntype ZzFreshProbeName\n{\n    x int32\n}\n", u.Package)), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := generateUnit(append(append([]string{}, paths...), freshProbe)); err != nil {
+		if _, _, err := generateUnit(append(append([]string{}, paths...), freshProbe)); err != nil {
 			t.Fatalf("unit %s: the probe under a fresh name does not generate, so every refusal below would prove nothing: %v", key, err)
 		}
+		// the probes: every unclaimed name, and the first claimed name of
+		// each module that writes one
+		var probes []string
+		sampled := map[string]bool{}
 		for _, n := range names {
+			mu.Lock()
+			checked++
+			mu.Unlock()
+			if !claimed[n] {
+				probes = append(probes, n)
+				continue
+			}
+			if !sampled[module[n]] {
+				sampled[module[n]] = true
+				probes = append(probes, n)
+			}
+		}
+		for _, n := range probes {
 			wg.Add(1)
 			sem <- struct{}{}
 			go func(key, n string) {
@@ -133,20 +178,20 @@ func TestGooseEveryPackageNameIsClaimed(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				if _, err := generateUnit(append(append([]string{}, paths...), probe)); err == nil {
+				if _, _, err := generateUnit(append(append([]string{}, paths...), probe)); err == nil {
 					t.Errorf("unit %s: the target writes %s into namespace %s without claiming it: a schema type of that name generates a second declaration", key, n, goose.Namespace(u))
 				}
 				mu.Lock()
-				checked++
+				probed++
 				mu.Unlock()
 			}(key, n)
 		}
 	}
 	wg.Wait()
-	if checked == 0 {
-		t.Fatal("no name was checked")
+	if checked == 0 || probed == 0 {
+		t.Fatalf("no name was checked (%d) or probed (%d)", checked, probed)
 	}
-	t.Logf("%d package-scope names checked across the manifest's units, each refused when a schema declares it", checked)
+	t.Logf("%d package-scope names checked across the manifest's units against the claimed set, %d probed end to end, each refused when a schema declares it", checked, probed)
 }
 
 // TestGooseNamesScanSeesTheRuntime: the table runtime's modules declare into
