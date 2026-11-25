@@ -76,6 +76,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-write-text/` | packet text write contract fixtures | `go test -run TestSpecPacketWriteChecksText ./compiler/` | `go test -run TestSpecPacketWriteChecksText ./compiler/` |
 | `pointer-target-type/` | pointer target-type fixtures | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` | `go test -run TestSpecPointerTargetTypeChecked ./compiler/` |
 | `proof/` | 3.0.0 proof snapshot (internal gate) | `make proof` | `make proof-write` |
+| `registry/` | the test registry: every test, language, tier, type and stored query | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test coverage` |
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
 | `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |
