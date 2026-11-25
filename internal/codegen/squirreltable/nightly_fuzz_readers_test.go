@@ -169,7 +169,6 @@ func runNightlyReader(t *testing.T, dir, main string, inputs map[string][]byte) 
 
 func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 	t.Parallel()
-	nightlyCampaign(t)
 	dir, mods, seeds := fuzzReaderSeeds(t)
 	mutantsPer := fuzzMutantsPerInstance
 	var p strings.Builder
@@ -202,7 +201,6 @@ func TestSquirrelNightlyFuzzStrict(t *testing.T) {
 
 func TestSquirrelNightlyFuzzTextJSON(t *testing.T) {
 	t.Parallel()
-	nightlyCampaign(t)
 	dir, mods, seeds := fuzzReaderSeeds(t)
 	mutantsPer := fuzzMutantsPerInstance
 	var p strings.Builder

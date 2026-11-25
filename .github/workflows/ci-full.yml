@@ -504,7 +504,7 @@ jobs:
 
       - name: go test the emitter packages (complement)
         if: matrix.group == 'unit-codegen'
-        run: go test -timeout 0 $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
+        run: go test -timeout 0 -run "$(go run ./tools/gotestselect -not '^TestNameCorpusBuilds' $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$'))" $(go list ./internal/codegen/... | grep -v '/elixirtable$' | grep -v '/cpptable$' | grep -v '/javatable$' | grep -v '/pythontable$' | grep -v '/python$' | grep -v '/rusttable$' | grep -v '/gotable$' | grep -v '/gotable/fuzzunit$' | grep -v '/darttable$' | grep -v '/dart$' | grep -v '/goosetable$' | grep -v '/goose$' | grep -v '/ctable$' | grep -v '/cstable$' | grep -v '/rubytable$' | grep -v '/ruby$' | grep -v '/luatable$' | grep -v '/lua$' | grep -v '/luautable$' | grep -v '/luau$' | grep -v '/mootable$' | grep -v '/moo$' | grep -v '/unitytable$' | grep -v '/unity$' | grep -v '/squirreltable$' | grep -v '/squirrel$' | grep -v '/jstable$' | grep -v '/js$' | grep -v '/lobstertable$' | grep -v '/lobster$')
 
       # THE NAME CORPUS (testdata/name-buildability-emit), in a step of its own
       # under the rule that nothing skips: each leg skips without its runtime sibling or
@@ -522,7 +522,7 @@ jobs:
 
       - name: go test the Lobster emitter packages, row 2 of 2
         if: matrix.group == 'unit-codegen-lobster-2'
-        run: go test -v ./internal/codegen/lobstertable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestLobsterForgeryFuzz$' ./internal/codegen/lobstertable)" ./internal/codegen/lobstertable
 
       - name: go test the Java table emitter package, row 1 of 7
         if: matrix.group == 'unit-codegen-java-1'
@@ -550,7 +550,7 @@ jobs:
 
       - name: go test the Java table emitter package, row 7 of 7
         if: matrix.group == 'unit-codegen-java-7'
-        run: go test -v ./internal/codegen/javatable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestJava[A-C]|^TestJava[D-F]|^TestJava[G-L]|^TestJava[M-Z0-9_]|^TestFixed[A-M]|^TestFixed[N-Z0-9_]|^TestFix[^e]' ./internal/codegen/javatable)" ./internal/codegen/javatable
 
       - name: go test the Python emitter packages, row 1 of 16
         if: matrix.group == 'unit-codegen-python-1'
@@ -616,7 +616,7 @@ jobs:
 
       - name: go test the Python emitter packages, row 16 of 16
         if: matrix.group == 'unit-codegen-python-16'
-        run: go test -v ./internal/codegen/pythontable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestPythonReflectionStrictTypes$|^TestPythonWireFuzzVerdictPipe$|^TestPythonWireFuzzVerdictPipeMixedBuilder$|^TestPythonWireFuzzVerdictPipeRetain$|^TestPythonVtPointerArrays$|^TestPythonFixedProofShapes$|^TestPythonFixedProofUnionsOptionals$|^TestPythonFixedProofEvolutionKindPairs$|^TestPython[A-E]|^TestPython[G-M]|^TestPython[N-Q]|^TestPython[S-U]|^TestPythonR[^e]|^TestPythonRe[^f]|^TestPythonRef[^l]|^TestPythonRefl[^e]|^TestPythonRefle[^c]|^TestPythonReflec[^t]|^TestPythonReflect[^i]|^TestPythonReflecti[^o]|^TestPythonReflectio[^n]|^TestPythonReflection[^S]|^TestPythonFixedProofEvolution[^K]|^TestPythonFixedProofEvolutionK[^i]|^TestPythonF[^i]|^TestPythonFi[^x]|^TestPythonFix[^e]|^TestPythonFixe[^d]|^TestPythonFixed[^P]|^TestPythonVtWide|^TestPythonVt[A-L]|^TestPythonVt[M-OQ-U]' ./internal/codegen/pythontable)" ./internal/codegen/pythontable
       - name: go test the Rust table emitter package, row 1 of 4
         if: matrix.group == 'unit-codegen-rust-1'
         run: go test -v ./internal/codegen/rusttable -run '^TestRust[A-F]'
@@ -631,7 +631,7 @@ jobs:
 
       - name: go test the Rust table emitter package, row 4 of 4
         if: matrix.group == 'unit-codegen-rust-4'
-        run: go test -v ./internal/codegen/rusttable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestRust[A-F]|^TestRust[G-L]|^TestRust[M-Z0-9_]' ./internal/codegen/rusttable)" ./internal/codegen/rusttable
 
       - name: go test the Go table emitter fuzzunit package, row 1 of 6
         if: matrix.group == 'unit-codegen-go-1'
@@ -655,7 +655,7 @@ jobs:
 
       - name: go test the Go table emitter package, row 6 of 6
         if: matrix.group == 'unit-codegen-go-6'
-        run: go test -v ./internal/codegen/gotable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestGoSharedRuntimeCoversTheCorpora$|^TestGo[A-Q]|^TestFixe|^TestGoR|^TestGoS[^h]|^TestGoSh[^a]|^TestGoSha[^r]|^TestGoShar[^e]|^TestGoShare[^d]|^TestGoShared[^R]|^TestGo[T-Z0-9_]' ./internal/codegen/gotable)" ./internal/codegen/gotable
 
       - name: go test the C table emitter package, row 1 of 3
         if: matrix.group == 'unit-codegen-c-1'
@@ -667,7 +667,7 @@ jobs:
 
       - name: go test the C table emitter package, row 3 of 3
         if: matrix.group == 'unit-codegen-c-3'
-        run: go test -v ./internal/codegen/ctable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestC|^TestFixe' ./internal/codegen/ctable)" ./internal/codegen/ctable
 
       - name: go test the C# table emitter package, row 1 of 3
         if: matrix.group == 'unit-codegen-cs-1'
@@ -679,7 +679,7 @@ jobs:
 
       - name: go test the C# table emitter package, row 3 of 3
         if: matrix.group == 'unit-codegen-cs-3'
-        run: go test -v ./internal/codegen/cstable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^Test[Cc][Ss]|^TestFixe' ./internal/codegen/cstable)" ./internal/codegen/cstable
 
       - name: go test the Ruby emitter packages, row 1 of 3
         if: matrix.group == 'unit-codegen-ruby-1'
@@ -693,7 +693,7 @@ jobs:
 
       - name: go test the Ruby emitter packages, row 3 of 3
         if: matrix.group == 'unit-codegen-ruby-3'
-        run: go test -v ./internal/codegen/rubytable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestRubyFixedProof(UnionsOptionals|EvolutionNumeric|Shapes|EvolutionKindPairs)$' ./internal/codegen/rubytable)" ./internal/codegen/rubytable
 
       - name: go test the Dart emitter packages, row 1 of 3
         if: matrix.group == 'unit-codegen-dart-1'
@@ -707,7 +707,7 @@ jobs:
 
       - name: go test the Dart emitter packages, row 3 of 3
         if: matrix.group == 'unit-codegen-dart-3'
-        run: go test -v ./internal/codegen/darttable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestDart|^TestFixe' ./internal/codegen/darttable)" ./internal/codegen/darttable
 
       - name: go test the Goose emitter packages, row 1 of 5
         if: matrix.group == 'unit-codegen-goose-1'
@@ -729,7 +729,7 @@ jobs:
 
       - name: go test the Goose emitter packages, row 5 of 5
         if: matrix.group == 'unit-codegen-goose-5'
-        run: go test -v ./internal/codegen/goosetable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]' ./internal/codegen/goosetable)" ./internal/codegen/goosetable
 
       - name: go test the Unity emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-unity-1'
@@ -739,7 +739,7 @@ jobs:
 
       - name: go test the Unity emitter packages, row 2 of 2
         if: matrix.group == 'unit-codegen-unity-2'
-        run: go test -v ./internal/codegen/unitytable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestUnityFixedRow' ./internal/codegen/unitytable)" ./internal/codegen/unitytable
 
       - name: go test the JavaScript emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-js-1'
@@ -749,7 +749,7 @@ jobs:
 
       - name: go test the JavaScript emitter packages, row 2 of 2
         if: matrix.group == 'unit-codegen-js-2'
-        run: go test -v ./internal/codegen/jstable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^Test[Jj][Ss]|^TestJava' ./internal/codegen/jstable)" ./internal/codegen/jstable
 
       - name: go test the Lua emitter packages, row 1 of 3
         if: matrix.group == 'unit-codegen-lua-1'
@@ -763,7 +763,7 @@ jobs:
 
       - name: go test the Lua emitter packages, row 3 of 3
         if: matrix.group == 'unit-codegen-lua-3'
-        run: go test -v ./internal/codegen/luatable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestLuaStrictReadRefusesWhatGoRefuses$|^TestLuaFromJsonIsStrict$' ./internal/codegen/luatable)" ./internal/codegen/luatable
 
       - name: go test the Luau emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-luau-1'
@@ -773,7 +773,7 @@ jobs:
 
       - name: go test the Luau emitter packages, row 2 of 2
         if: matrix.group == 'unit-codegen-luau-2'
-        run: go test -v ./internal/codegen/luautable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestLuauFixedHotPathBenchEvidence$' ./internal/codegen/luautable)" ./internal/codegen/luautable
 
       - name: go test the Moo emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-moo-1'
@@ -787,7 +787,7 @@ jobs:
         if: matrix.group == 'unit-codegen-moo-2'
         env:
           MOO_CHECKED: ${{ github.workspace }}/dist/moo-checked/moo
-        run: go test -v ./internal/codegen/mootable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestMoo[A-L]' ./internal/codegen/mootable)" ./internal/codegen/mootable
 
       - name: go test the Squirrel emitter packages, row 1 of 2
         if: matrix.group == 'unit-codegen-squirrel-1'
@@ -797,7 +797,7 @@ jobs:
 
       - name: go test the Squirrel emitter packages, row 2 of 2
         if: matrix.group == 'unit-codegen-squirrel-2'
-        run: go test -v ./internal/codegen/squirreltable
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^TestSquirrelViewMatchesTheGoView$' ./internal/codegen/squirreltable)" ./internal/codegen/squirreltable
 
       # internal/codegen/cpptable has rows of its own (2026-11-14). It is the
       # heaviest emitter package (about 220 s of CPU on the Studio: some sixty
@@ -810,7 +810,7 @@ jobs:
       # loaded intel-1 (PR #3275), so it is three, packed from a -v timing on
       # hetzner2 (per-test seconds summed): the conformance driver and its
       # control (33 s), the rest of the Cpp/CPP families with Generated and
-      # Message (65 s), and every other test (40 s). Row 3 -skips the other
+      # Message (65 s), and every other test (40 s). Row 3 lists every test but the other
       # two, so a new test lands there with no edit here.
       - name: go test the C++ table emitter package, row 1 of 4
         if: matrix.group == 'unit-codegen-cpp-1'
@@ -820,14 +820,11 @@ jobs:
         if: matrix.group == 'unit-codegen-cpp-2'
         run: go test -v ./internal/codegen/cpptable -run '^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)'
 
-      # Row 3 is every test the other three rows do not name, listed from the
-      # package and selected by name (no -skip: the row chooses what it runs).
+      # Row 3 is every test the other three rows do not name, listed by name
+      # (tools/gotestselect; no -skip: the row chooses what it runs).
       - name: go test the C++ table emitter package, row 3 of 4
         if: matrix.group == 'unit-codegen-cpp-3'
-        run: |
-          names=$(go test -list '^Test' ./internal/codegen/cpptable | grep '^Test' | grep -v -E '^Test(CppDriver)|^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)|^TestEveryGeneratedTableHeaderCompilesStandalone$' | paste -sd'|' -)
-          test -n "$names" || { echo "row 3 of the C++ table emitter package selects no test"; exit 1; }
-          go test -v ./internal/codegen/cpptable -run "^($names)\$"
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^Test(CppDriver)|^Test(Cpp([^D]|D[^r])|CPP|Generated|Message)|^TestEveryGeneratedTableHeaderCompilesStandalone$' ./internal/codegen/cpptable)" ./internal/codegen/cpptable
 
       # THE STANDALONE-HEADER SWEEP has its own row: it compiles every generated
       # header of every manifest unit alone (docs/SPEC-CONFORMANCE.md, "Every
@@ -866,7 +863,7 @@ jobs:
       # halves this replaces were each killed at the per-commit two-minute
       # rule. Rows 1..17 each -run one pattern, an alternation of test-name
       # families (the first CamelCase word after Test, or an exact name when
-      # a family outweighs a row); row 18 -skips all of them, so it is the
+      # a family outweighs a row); row 18 lists every test none of them names, so it is the
       # complement and a new test lands there with no edit here. Row 1 is
       # every test that runs generated Luau or Squirrel, so the two pins are
       # installed on that row and no other. The patterns are spelled out on
@@ -945,7 +942,7 @@ jobs:
 
       - name: go test the compiler package, row 18 of 19
         if: matrix.group == 'unit-compiler-18'
-        run: go test -v ./compiler
+        run: go test -v -run "$(go run ./tools/gotestselect -not '^Test((Lua|Luau|Squirrel|Testgen)([^a-z]|$))|^Test(CppTableRefOrdinalBytes$)|^Test(Blob([^a-z]|$)|CPPRequired([^a-z]|$)|CTablePlain([^a-z]|$)|Carried([^a-z]|$)|Carries([^a-z]|$)|Competition([^a-z]|$)|CppVariableWideAlignment$|Deprecated([^a-z]|$)|Gather([^a-z]|$)|Message([^a-z]|$)|Register([^a-z]|$)|Scalar([^a-z]|$)|Strict([^a-z]|$)|Tutorial([^a-z]|$))|^Test(Optional([^a-z]|$)|Table([^a-z]|$)|Unbounded([^a-z]|$))|^Test(CNo([^a-z]|$)|CTableView([^a-z]|$)|CppTableWidenListWidthFollowsTheCensus$|Cs([^a-z]|$)|Elixir([^a-z]|$))|^Test(CEmits([^a-z]|$)|CPPJSON([A-Z][a-z]|[^A-Za-z]|$)|CPPMap([^a-z]|$)|CPPOne([^a-z]|$)|CTableMessage([^a-z]|$)|CppTableFloatRungIsTheFiniteTestAndTheConversion$|CppTableOmitsEmptyTypeIdSwitch$|Each([^a-z]|$)|Lobster([^a-z]|$)|Map([^a-z]|$)|No([^a-z]|$)|String([^a-z]|$)|Target([^a-z]|$))|^Test(A([A-Z][a-z]|[^A-Za-z]|$)|CPPBlob([^a-z]|$)|CPPUnbounded([^a-z]|$)|CTableBlob([^a-z]|$)|CTableRetain([^a-z]|$)|CppTableRetainFramedDepth$|CppTableWidenSignedFollowsTheCensus$|Fixed([^a-z]|$)|Required([^a-z]|$))|^Test(CBlock([^a-z]|$)|CTableCook([^a-z]|$)|CppTableWidenArmWidthFollowsTheCensus$|Rust([^a-z]|$))|^Test(CPPExact([^a-z]|$)|CPPOptional([^a-z]|$)|CTableAnnouncement([^a-z]|$)|CTableDead([^a-z]|$)|CTableFloat([^a-z]|$)|CTableKeyed([^a-z]|$)|CTableMap([^a-z]|$)|CUfixed([^a-z]|$)|CppCollectionWidening$|CppCookOpenNodeAlignment$|CppTableAnnouncementDistinctQuantizedShapes$|CppTableBlobThunksFollowTheCensus$|CppTableRuntimeNamesAreClaimed$|Emitted([^a-z]|$)|Js([^a-z]|$)|Maps([^a-z]|$)|Packet([^a-z]|$)|Porting([^a-z]|$)|Timestamp([^a-z]|$)|Usage([^a-z]|$))|^Test(CGenerator([^a-z]|$)|CTableWire([^a-z]|$)|CppTableRefOrdinalSharedId$|CppTableWidenUnsignedFollowsTheCensus$|Repeated([^a-z]|$))|^Test(CTableRuntime([^a-z]|$)|Count([^a-z]|$)|CppCookExtentCanonicalAlignment$|Issue([^a-z]|$))|^Test(Java([^a-z]|$))|^Test(CExternals([^a-z]|$)|Go([^a-z]|$)|Refusal([^a-z]|$)|Spec([^a-z]|$))|^Test(CPPFrom([^a-z]|$)|CPPTable([^a-z]|$)|CPPText([^a-z]|$)|CPPTimestamp([^a-z]|$)|CTablePointer([^a-z]|$)|CTableRef([^a-z]|$)|Checked([^a-z]|$)|CppNoPlanClamps$|CppTableFixedClampOmitsEmptyUnionSwitch$|CppTableWidenRuntimeAbsentFromALadderlessUnit$)|^Test(CppTableHeaderAndPut128Bytes$|Integrity([^a-z]|$))|^Test(CTableOpenDistinctnessVerdict$|CppPacketRuntimeNamesAreAccountedFor$|CppRuntimeNameScanGoesRed$|FlagsElementWidening$|SharedS4Gate$)|^Test(CppHiddenUnionExtentRefusal$|CppPortableSigned128Writer$|ListTotalBytesRefusedOffGo$)|^Test(Unity([^a-z]|$))' ./compiler)" ./compiler
 
       - name: go test the compiler package, row 19 of 19
         if: matrix.group == 'unit-compiler-19'
@@ -968,7 +965,7 @@ jobs:
 
       - name: go test internal/fuzz, every other test
         if: matrix.group == 'unit-rest-fuzz-3'
-        run: go test ./internal/fuzz
+        run: go test -run "$(go run ./tools/gotestselect -not '^(TestRapidPropsNegativeControl|FuzzTableFrontEnd)$' ./internal/fuzz)" ./internal/fuzz
 
       - name: go test cmd/schema, the Go reserved-words build
         if: matrix.group == 'unit-rest-cmd-1'
@@ -976,7 +973,7 @@ jobs:
 
       - name: go test cmd/schema, every other test
         if: matrix.group == 'unit-rest-cmd-2'
-        run: go test ./cmd/schema
+        run: go test -run "$(go run ./tools/gotestselect -not '^TestGenerateGoCompilesGoOnlyWords$' ./cmd/schema)" ./cmd/schema
 
       - name: go test internal/goldens
         if: matrix.group == 'unit-rest-goldens'
@@ -993,7 +990,7 @@ jobs:
 
       - name: go test internal/ci, row 2 of 2
         if: matrix.group == 'unit-rest-ci-2'
-        run: go test ./internal/ci
+        run: go test -run "$(go run ./tools/gotestselect -not '^Test[A-P]' ./internal/ci)" ./internal/ci
 
       - name: go test the bench tools and the conformance harnesses
         if: matrix.group == 'unit-rest-tools'
@@ -1056,7 +1053,7 @@ jobs:
       # IN 15 ROWS, because alone it ran past the per-commit two-minute rule
       # (2810 s on a loaded four-thread bench, 2026-11-10). Rows 1..14 each
       # -run an alternation of test-name families packed from the runners'
-      # per-test times; row 15 -skips all of them, so a new test lands there
+      # per-test times; row 15 lists every test none of them names, so a new test lands there
       # with no edit. The tests that run the toolchain each work in a temporary
       # directory of their own and call t.Parallel, so a row runs them side by
       # side; the two driver tests build the shared conformance leg, stay
@@ -1122,7 +1119,7 @@ jobs:
 
       - name: go test the Elixir emitter package, row 15 of 15
         if: matrix.group == 'unit-elixir-15'
-        run: go test -count=1 -v ./internal/codegen/elixirtable
+        run: go test -count=1 -v -run "$(go run ./tools/gotestselect -not '^Test((ElixirDriverReadsStrictAndWritesBack$))|^Test(ElixirDriverReadsStrictAndWritesBackNegativeControl$)|^Test(Alloc([^a-z]|$)|ElixirCellsStrictNegativeControl$|ElixirCookOptionalTextReadsItsLength$|Listdemo([^a-z]|$)|Node([^a-z]|$))|^Test(Arm([^a-z]|$)|Block([^a-z]|$)|Bytes([^a-z]|$)|Drop([^a-z]|$)|ElixirFiniteFloatNegativeControl$|ElixirFixedFormHarnessStrict$|ElixirFixedFormHarnessStrictNegativeControl$|ElixirFixedVersioningProbesStrict$|ElixirFixedVersioningProbesStrictNegativeControl$|FormsAllSubsetsElixir$|FormsConstructElixir$|Generated([^a-z]|$)|Maps([^a-z]|$)|Offsets([^a-z]|$)|PinnedUnion([^a-z]|$)|Table([^a-z]|$))|^Test(Cycle([^a-z]|$)|ElixirCellsStrict$|JSON([A-Z][a-z]|[^A-Za-z]|$)|One([^a-z]|$)|Pointer([^a-z]|$)|Unbounded([^a-z]|$)|Unknown([^a-z]|$))|^Test(ElixirVariableSlowTestsStrictNegativeControl$|PinnedNested([^a-z]|$)|Required([^a-z]|$))|^Test(Cards([^a-z]|$)|Damage([^a-z]|$)|ElixirAllocBudgetPinned$|ElixirAllocBudgetPinnedNegativeControl$|ElixirFixedClassFormThree$|ElixirFixedClassFormThreeNegativeControl$|ElixirMessageBatchTargetRunsUnderTestElixir$|Emit([^a-z]|$)|Identity([^a-z]|$)|No([^a-z]|$)|PinnedMap([^a-z]|$)|Strict([^a-z]|$)|Text([^a-z]|$)|Variable([^a-z]|$))|^Test(Blob([^a-z]|$)|Cyclic([^a-z]|$)|ElixirFiniteFloat$|ElixirVoidUnionNative$|Unit([^a-z]|$))|^Test(Keyed([^a-z]|$)|Retained([^a-z]|$)|Wire([^a-z]|$))|^Test(ElixirBitsPastWidthRefusesNegativeControl$|Enum([^a-z]|$)|Inert([^a-z]|$)|Integrity([^a-z]|$)|Nested([^a-z]|$)|Optional([^a-z]|$)|PinnedKeyed([^a-z]|$)|Region([^a-z]|$)|Retaining([^a-z]|$))|^Test(Card([^a-z]|$))|^Test(Fixed([^a-z]|$))|^Test(ElixirBitsPastWidthRefuses$|FormsCookClosureAcrossFilesElixir$)|^Test(Array([^a-z]|$)|Bounded([^a-z]|$)|Cook([^a-z]|$)|Defaults([^a-z]|$)|ElixirMapValueShapePreservesPresence$|ElixirVariableSlowTestsStrict$|ElixirWasRowsCarried$|Message([^a-z]|$)|PinnedInert([^a-z]|$)|Retention([^a-z]|$)|Scalar([^a-z]|$)|Timestamp([^a-z]|$)|Union([^a-z]|$)|Widening([^a-z]|$))' ./internal/codegen/elixirtable)" ./internal/codegen/elixirtable
 
 
       # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in

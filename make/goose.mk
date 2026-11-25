@@ -74,7 +74,7 @@ test-goose-recipe: toolchain-goose build/fixedform-corpus/.stamp
 	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
 	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
 	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
-	go test -count=1 -timeout 600s ./internal/codegen/goosetable
+	go test -count=1 -timeout 600s -run "$$(go run ./tools/gotestselect -not '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]' ./internal/codegen/goosetable)" ./internal/codegen/goosetable
 update-goldens-goose: ;
 
 # THE FIXED FORM'S NEGATIVE CONTROL (make/negative-controls.json, group

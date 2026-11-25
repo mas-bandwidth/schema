@@ -563,6 +563,7 @@ jobs:
       # The coverage command invokes SBCL itself and records a missing validator
       # as a failed acceptance check, alongside every other missing receipt.
       - name: the coverage table
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           mkdir -p build/nightly/coverage build/nightly/rows

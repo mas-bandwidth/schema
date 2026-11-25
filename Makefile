@@ -8145,7 +8145,8 @@ pins-framing:
 	@# Compare every committed framing pin against its Go vector script and
 	@# reject any hand-written file under testdata/wire/tables/framing, without
 	@# setting FRAMING_WRITE=1 (which slowtest.Rewriting forbids under CI).
-	sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestFramingVectorBytesArePinned TestFramingDirHasNoHandWrittenFiles TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
+	sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestFramingVectorBytesArePinned TestFramingDirHasNoHandWrittenFiles TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness \
+		-run "$$(go run ./tools/gotestselect -run '$(PINS_FRAMING_RUN)' -not '^TestPopulatedFeatureWitnessNativePins$$' ./test/conformance/harness)"
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 
