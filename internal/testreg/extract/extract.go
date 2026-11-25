@@ -108,11 +108,12 @@ func (s *scan) rel(p string) string {
 }
 
 // skipDir is a directory no test lives in: version control, dependencies,
-// build output, and the sibling checkouts and agent scratch kept beside or
-// inside a clone.
+// build output (a dotnet build leaves obj/ beside its project and
+// bin/Debug or bin/Release in it), and the sibling checkouts and agent
+// scratch kept beside or inside a clone.
 func skipDir(rel, name string) bool {
 	switch name {
-	case ".git", "node_modules", "_build", "deps", "target", ".dart_tool", "__pycache__", ".venv":
+	case ".git", "node_modules", "_build", "deps", "target", "obj", "Debug", "Release", ".dart_tool", "__pycache__", ".venv":
 		return true
 	}
 	switch rel {

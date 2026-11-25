@@ -82,6 +82,11 @@ jobs:
             echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
             exit 1
           fi
+      # the language-free Go tests of tier functional and nightly read the
+      # complete fixed corpus (SCHEMA_REQUIRE_CORPUS=1 fails a missing one by
+      # name), as ci-fast.yml's schema-test-pr shards have it
+      - name: produce the complete fixed corpus
+        run: sh tools/go-ci-corpus.sh produce
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
       - name: schema-test run --group nightly

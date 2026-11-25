@@ -17,9 +17,9 @@ import (
 //
 // IT LIVES HERE, NOT IN internal/testinputs, because ci-fast selects go test
 // packages by the diff, and a PR that adds an unregistered child in some other
-// package changes nothing under internal/testinputs. The ci-policy job runs
-// this package on every pull request, whatever the diff (about 5 s, in its
-// `rest` row). testinputs.Check is the reader, and
+// package changes nothing under internal/testinputs. The registry runs
+// this test on every pull request, whatever the diff (a pr-group row
+// the schema-test-pr shards run). testinputs.Check is the reader, and
 // TestEveryInterpreterChildRegistersItsInputsPlants there holds its verdicts.
 func TestEveryInterpreterChildRegistersItsInputs(t *testing.T) {
 	t.Parallel()

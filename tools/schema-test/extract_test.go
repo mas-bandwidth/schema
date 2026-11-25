@@ -171,6 +171,24 @@ func TestWriteLedgerRefusesAnUnreadableTree(t *testing.T) {
 	}
 }
 
+// TestNameBuildabilityIsL4s: the name-buildability build, whole or split by
+// target, is L4's to give rows, so --move L3 never gives it one; the
+// package's other tests are L3's. The plant is the routing removed: the
+// build reads as L3 and is named.
+func TestNameBuildabilityIsL4s(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ name, want string }{
+		{"TestNameBuildability", "L4"},
+		{"TestNameBuildability_rust", "L4"},
+		{"TestPlanCoversTheCorpus", "L3"},
+	} {
+		got, _ := goTestLayer(t.TempDir(), extract.Item{Kind: extract.KindGoTest, Dir: "tools/namebuild", Name: c.name})
+		if got != c.want {
+			t.Errorf("tools/namebuild %s is layer %s, want %s", c.name, got, c.want)
+		}
+	}
+}
+
 // TestExtractRefusesAStaleTierLine: a test renamed without its tier line
 // fails the command: the line names a test the tree does not hold.
 func TestExtractRefusesAStaleTierLine(t *testing.T) {
@@ -188,5 +206,75 @@ func TestExtractRefusesAStaleTierLine(t *testing.T) {
 	err = extractCmd([]string{"--root", root}, &out)
 	if err == nil || !strings.Contains(out.String(), "tier pkg:TestNeeds names a Go test the repository does not hold") {
 		t.Fatalf("a stale tier line passed (err %v):\n%s", err, out.String())
+	}
+}
+
+// TestMoveCarriesTheTierAndDropsItsLine: --move gives a test with a tier line
+// a row of that tier, and the rewritten ledger drops the line, since the row
+// carries the tier from then on; the account passes its own check. The plant
+// is the rewrite carrying every tier line over: Check then names the line.
+func TestMoveCarriesTheTierAndDropsItsLine(t *testing.T) {
+	t.Parallel()
+	root := extractRoot(t)
+	// a second test, with no tier line: its row is unit
+	if err := os.WriteFile(filepath.Join(root, "pkg", "b_test.go"), []byte("package pkg\n\nimport \"testing\"\n\nfunc TestPlainUnit(t *testing.T) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ledgerFile := filepath.Join(root, extract.LedgerPath)
+	if err := os.WriteFile(ledgerFile, []byte("# h\ngo-test\tpkg\t2\tL3\twaits\ntier\tpkg:TestNeeds\t1\tL3\tfunctional: needs cc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// --move gives a Go test outside tools/ the compiler type; the CLI
+	// fixture declares no unit tier
+	regPath := filepath.Join(root, testreg.DefaultPath)
+	regData, err := os.ReadFile(regPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(regPath, append(regData, `{"rec":"type","name":"compiler","what":"the compiler itself"}`+"\n"+`{"rec":"tier","name":"unit","what":"no toolchain"}`+"\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := extractCmd([]string{"--root", root, "--move", "L3"}, &out); err != nil {
+		t.Fatalf("--move L3: %v\n%s", err, out.String())
+	}
+	reg, err := testreg.Load(filepath.Join(root, testreg.DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tiers := map[string]string{}
+	for _, tt := range reg.Tests {
+		for _, name := range []string{"TestNeeds", "TestPlainUnit"} {
+			if strings.Contains(string(tt.Inputs), `"`+name+`"`) {
+				tiers[name] = tt.Tier
+			}
+		}
+	}
+	if tiers["TestNeeds"] != "functional" || tiers["TestPlainUnit"] != "unit" {
+		t.Fatalf("the moved rows' tiers are %v, want TestNeeds functional (its tier line) and TestPlainUnit unit", tiers)
+	}
+	lines, err := extract.LoadLedger(filepath.Join(root, extract.LedgerPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tiers := extract.TierLines(lines); len(tiers) != 0 {
+		t.Fatalf("the moved test's tier line stayed: %+v", tiers)
+	}
+	out.Reset()
+	if err := extractCmd([]string{"--root", root}, &out); err != nil {
+		t.Fatalf("the account after --move fails its own check: %v\n%s", err, out.String())
+	}
+	// the plant: the old tier line carried over beside the row
+	ledger := filepath.Join(root, extract.LedgerPath)
+	data, err := os.ReadFile(ledger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ledger, append(data, "tier\tpkg:TestNeeds\t1\tL3\tfunctional: needs cc\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := extractCmd([]string{"--root", root}, &out); err == nil || !strings.Contains(out.String(), "tier pkg:TestNeeds names a test registry row") {
+		t.Fatalf("a tier line beside its test's row passed (err %v):\n%s", err, out.String())
 	}
 }

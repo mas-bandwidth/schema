@@ -1,6 +1,0 @@
-# testguard config for the ci-policy (python-legs) row of .github/workflows/ci-fast.yml.
-# Every package the row's go test runs is a suite; every test that runs has
-# an empty file under the baseline directory; no test may skip (a test that is not to run is left out at the root).
-# go run ./tools/testguard help check
-suite	github.com/mas-bandwidth/schema/v2/internal/ci
-baseline	test/testguard/ci-policy-python-legs
