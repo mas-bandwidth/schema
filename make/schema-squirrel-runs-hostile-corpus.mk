@@ -27,7 +27,14 @@ GO ?= go
 # build the interpreter first and run through test/slowgate/proof, which
 # refuses a SKIP in the log and requires each named test's own --- PASS line,
 # so a run that tested nothing is refused, never a vacuous pass.
-schema-squirrel-runs-hostile-corpus: dist-squirrel
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-squirrel-runs-hostile-corpus-build
+schema-squirrel-runs-hostile-corpus-build: dist-squirrel
+
+schema-squirrel-runs-hostile-corpus: schema-squirrel-runs-hostile-corpus-build
 	sh test/slowgate/proof schema-squirrel-runs-hostile-corpus \
 		'TestHostileCorpus_squirrel TestSquirrelHostileScorerOutcomes' \
 		./internal/ci -run '^(TestHostileCorpus_squirrel|TestSquirrelHostileScorerOutcomes)$$' -count=1 -timeout 600s

@@ -10,7 +10,14 @@
 # lua-base-forward-merge-schema-go-r), and an absent corpus is a named failure
 # rather than a silent pass (docs/rulings.json no-skips).
 .PHONY: schema-lua-runs-hostile-corpus
-schema-lua-runs-hostile-corpus: toolchain-lua
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-lua-runs-hostile-corpus-build
+schema-lua-runs-hostile-corpus-build: toolchain-lua
+
+schema-lua-runs-hostile-corpus: schema-lua-runs-hostile-corpus-build
 	@if [ ! -x "$(LUA)" ]; then \
 		echo "tool missing: lua (pinned $(LUA_VERSION)) at $(LUA); run make dist-lua"; \
 		exit 1; \

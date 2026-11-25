@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -344,6 +345,62 @@ func TestNumberTokenCasesAreRowsThatReadTheirTrees(t *testing.T) {
 	for v := range vectors {
 		if read[v] == "" {
 			t.Errorf("the number-token vector %s is no case of %s/%s: no port's corpus run answers it", v, hostileCorpus, hostilecorpus.ManifestName)
+		}
+	}
+}
+
+// TestEveryHostileTargetDeclaresItsBuild holds the hostile harness's Build
+// step to the make files: for every registry language, the step is make
+// <target>-build, a rule declares that build target, and the corpus target
+// depends on it. A language whose build is not declared would build inside
+// the run, and a cold sanitizer build would then spend a row's deadline; a
+// harness with no Build step would do the same for every language. Both are
+// red here by language.
+func TestEveryHostileTargetDeclaresItsBuild(t *testing.T) {
+	t.Chdir("../..")
+	reg, err := testreg.Load(testreg.DefaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob("make/*.mk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks, err := filepath.Glob("make/checks/*.mk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prereqs := map[string][]string{} // rule target -> every prerequisite named
+	for _, f := range append(append([]string{"Makefile"}, files...), checks...) {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			head, rest, ok := strings.Cut(line, ":")
+			if !ok || strings.HasPrefix(rest, "=") || strings.ContainsAny(head, " \t$#") || head == "" {
+				continue
+			}
+			prereqs[head] = append(prereqs[head], strings.Fields(rest)...)
+		}
+	}
+	langs := reg.LangNames()
+	if len(langs) == 0 {
+		t.Fatal("the registry names no language")
+	}
+	for _, lang := range langs {
+		target := strings.ReplaceAll(hostileTarget, testreg.LangPlaceholder, lang)
+		build := target + hostileBuildSuffix
+		steps := hostileMain.harness().Build(lang)
+		if len(steps) != 1 || strings.Join(steps[0], " ") != "make -s "+build {
+			t.Errorf("%s: the hostile harness builds %q, want make -s %s", lang, steps, build)
+		}
+		if _, ok := prereqs[build]; !ok {
+			t.Errorf("%s: no make file declares %s, the build of %s", lang, build, target)
+			continue
+		}
+		if !slices.Contains(prereqs[target], build) {
+			t.Errorf("%s: %s does not depend on %s (its prerequisites: %q)", lang, target, build, prereqs[target])
 		}
 	}
 }

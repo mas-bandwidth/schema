@@ -40,6 +40,11 @@ const (
 	hostileFamily = "hostile"
 	// hostileTarget is every language's corpus target.
 	hostileTarget = "schema-" + testreg.LangPlaceholder + "-runs-hostile-corpus"
+	// hostileBuildSuffix names the target that builds everything a
+	// language's corpus target runs: <target>-build, which the target
+	// depends on, declared in the language's make file
+	// (TestEveryHostileTargetDeclaresItsBuild).
+	hostileBuildSuffix = "-build"
 	// hostileNumberTokenTrees holds the bare number-token conformance trees
 	// (JSON-HOSTILE-NUMBER-TOKEN.txt), which only the hostile rows read.
 	hostileNumberTokenTrees = "testdata/conformance/tables/json-hostile-number-token/"
@@ -85,11 +90,17 @@ type hostileInputs struct {
 	Files   []string `json:"files,omitempty"`
 }
 
-// harness is the set's harness: its target builds what it runs.
+// harness is the set's harness. Its Build is the target's declared build
+// (<target>-build), which the driver runs before any row's deadline starts
+// (harnessAdapter.Prepare): a cold sanitizer build is the run's cost, never
+// a case's timeout. The target depends on its build, so a make run on its
+// own still builds first.
 func (s hostileSet) harness() harness {
 	return harness{
-		Name:  s.family,
-		Build: func(string) [][]string { return nil },
+		Name: s.family,
+		Build: func(lang string) [][]string {
+			return [][]string{{"make", "-s", strings.ReplaceAll(s.target, testreg.LangPlaceholder, lang) + hostileBuildSuffix}}
+		},
 		Run: func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
 			return s.runWith(ctx, execMake, workRoot, lang, instances, log)
 		},
