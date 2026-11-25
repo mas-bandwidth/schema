@@ -1,21 +1,27 @@
 package namebuild
 
 import (
-	"fmt"
+	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/internal/testproc"
+	"github.com/mas-bandwidth/schema/v2/internal/languages"
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
 const root = "../.."
 
 var corpus = filepath.Join(root, "testdata", "name-buildability")
+
+var registryPath = filepath.Join(root, "test", "registry", "registry.jsonl")
+
+var update = flag.Bool("update", false, "rewrite the registry's name-buildability rows from cases.tsv")
 
 // TestPlanCoversTheCorpus is the fast half: cases.tsv parses, every row has
 // its directory, and the plan runs every target of every row the checker
@@ -39,220 +45,185 @@ func TestPlanCoversTheCorpus(t *testing.T) {
 	if len(jobs) != accepted*len(Targets) {
 		t.Fatalf("plan has %d jobs, want %d rows x %d targets", len(jobs), accepted, len(Targets))
 	}
-	if len(Targets) != 18 {
-		t.Fatalf("%d targets, want 18", len(Targets))
-	}
 	if accepted == 0 || !slices.ContainsFunc(rows, func(r Row) bool { return r.Case == "ctl" && r.Verdict == Builds }) {
 		t.Fatal("the corpus has no ctl control that builds")
 	}
 }
 
-// TestOwedLedgerIsWellFormed is the ledger's fast half: owed.txt parses, and
-// every line names a target and a builds row (ReadOwed).
-func TestOwedLedgerIsWellFormed(t *testing.T) {
+// TestTargetsAreTheGenerators holds Targets to the generators the compiler
+// registers (internal/languages), so a new generator cannot be left out of
+// the nightly and a retired one cannot stay in it.
+func TestTargetsAreTheGenerators(t *testing.T) {
+	t.Parallel()
+	var want []string
+	for _, l := range languages.All() {
+		want = append(want, l.Target)
+	}
+	got := slices.Clone(Targets)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("Targets %v, but the generators are %v", got, want)
+	}
+}
+
+// TestEveryTargetHasItsTest holds this file to one top-level test per
+// target, TestNameBuildability_<target>, each a call of nameBuildability
+// with its own target: a target with no test is a column of the nightly
+// that never runs, and the registry's rows name these tests.
+func TestEveryTargetHasItsTest(t *testing.T) {
+	t.Parallel()
+	f, err := parser.ParseFile(token.NewFileSet(), "targets_test.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := map[string]string{} // test function -> the target it passes
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || !strings.HasPrefix(fn.Name.Name, TestPrefix) {
+			continue
+		}
+		if len(fn.Body.List) != 1 {
+			t.Errorf("%s: want one statement, nameBuildability(t, %q)", fn.Name.Name, strings.TrimPrefix(fn.Name.Name, TestPrefix))
+			continue
+		}
+		target, ok := targetOf(fn.Body.List[0])
+		if !ok {
+			t.Errorf("%s: want nameBuildability(t, <target>)", fn.Name.Name)
+			continue
+		}
+		calls[fn.Name.Name] = target
+	}
+	for _, tg := range Targets {
+		name := TestName(tg)
+		got, ok := calls[name]
+		switch {
+		case !ok:
+			t.Errorf("target %s has no %s", tg, name)
+		case got != tg:
+			t.Errorf("%s runs target %q, want %q", name, got, tg)
+		}
+		delete(calls, name)
+	}
+	for name, tg := range calls {
+		t.Errorf("%s runs %q, which is no target", name, tg)
+	}
+}
+
+// targetOf reads the target out of `nameBuildability(t, "<target>")`.
+func targetOf(s ast.Stmt) (string, bool) {
+	es, ok := s.(*ast.ExprStmt)
+	if !ok {
+		return "", false
+	}
+	call, ok := es.X.(*ast.CallExpr)
+	if !ok || len(call.Args) != 2 {
+		return "", false
+	}
+	id, ok := call.Fun.(*ast.Ident)
+	if !ok || id.Name != "nameBuildability" {
+		return "", false
+	}
+	lit, ok := call.Args[1].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return "", false
+	}
+	return strings.Trim(lit.Value, `"`), true
+}
+
+// TestRegistryCasesAreDistinct holds the registry spelling of the builds
+// rows (RegistryCase) to one row per case: two case directories that spell
+// the same registry case would be one instance answering for two tests.
+func TestRegistryCasesAreDistinct(t *testing.T) {
 	t.Parallel()
 	rows, err := ReadRows(corpus)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadOwed(corpus, rows); err != nil {
+	if _, err := RegistryRows(rows); err != nil {
 		t.Fatal(err)
+	}
+	// the refusal is real: two spellings of one case are refused by name
+	_, err = RegistryRows([]Row{{Case: "b_probe", Verdict: Builds}, {Case: "b_Probe", Verdict: Builds}})
+	if err == nil || !strings.Contains(err.Error(), "b_probe") || !strings.Contains(err.Error(), "b_Probe") {
+		t.Fatalf("two cases spelled b-probe: %v, want a refusal naming both", err)
 	}
 }
 
-// TestJudgeHoldsTheLedgerExact plants each way a ledger can lie: a stale
-// line (the job passes) and a failure on a job the ledger does not name both
-// fail the run; only a ledgered failure is owed.
-func TestJudgeHoldsTheLedgerExact(t *testing.T) {
+// TestRegistryHoldsEveryBuildsRow holds test/registry/registry.jsonl's
+// name-buildability rows to cases.tsv exactly: one codegen row per builds
+// case, nightly, naming its TestNameBuildability_<lang> subtest. With
+// -update it rewrites them.
+func TestRegistryHoldsEveryBuildsRow(t *testing.T) {
+	rows, err := ReadRows(corpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := RegistryRows(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, have := SplitRegistry(string(src))
+	if *update {
+		out := kept + strings.Join(want, "\n") + "\n"
+		if err := os.WriteFile(registryPath, []byte(out), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		have = want
+	}
+	if !slices.Equal(have, want) {
+		for _, l := range want {
+			if !slices.Contains(have, l) {
+				t.Errorf("registry lacks: %s", l)
+			}
+		}
+		for _, l := range have {
+			if !slices.Contains(want, l) {
+				t.Errorf("registry has, and cases.tsv does not: %s", l)
+			}
+		}
+		t.Fatalf("the registry's %s rows are not cases.tsv's (rewrite them: go test ./tools/namebuild -run TestRegistryHoldsEveryBuildsRow -update)", Family)
+	}
+	reg, err := testreg.Load(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		if r.Verdict != Builds {
+			continue
+		}
+		key := "codegen." + Family + "." + RegistryCase(r.Case)
+		if _, ok := reg.Test(key); !ok {
+			t.Errorf("the registry does not load %s", key)
+		}
+	}
+}
+
+// TestReadRowsRefusesNamesGoTestRenames: a case go test would rename as a
+// subtest (a space, a "/") and a case named twice are refused by line, so a
+// row can never wait on a subtest that runs under another name.
+func TestReadRowsRefusesNamesGoTestRenames(t *testing.T) {
 	t.Parallel()
-	owedJob := Job{Case: "n_x", Target: "dart"}
-	owed := map[Job]Owed{owedJob: {Job: owedJob, Cause: "a planted cause", Line: 3}}
-	broke := fmt.Errorf("error: planted")
-	for _, c := range []struct {
-		name string
-		j    Job
-		err  error
-		want string
-	}{
-		{"pass", Job{Case: "n_x", Target: "cpp"}, nil, Pass},
-		{"ledgered failure is owed", owedJob, broke, OwedRun},
-		{"stale ledger line fails", owedJob, nil, Fail},
-		{"unledgered failure fails", Job{Case: "n_x", Target: "rust"}, broke, Fail},
+	for name, c := range map[string]struct{ tsv, says string }{
+		"a space":   {"b a\tbuilds\t-\tx\n", "cases.tsv:1: case \"b a\" holds a space"},
+		"a slash":   {"ok\tbuilds\t-\tx\nb/a\tbuilds\t-\tx\n", "cases.tsv:2: case \"b/a\" holds"},
+		"a repeat":  {"b_a\tbuilds\t-\tx\nb_a\tbuilds\t-\tx\n", "cases.tsv:2: case b_a again (first at line 1)"},
+		"the clean": {"b_my-file\tbuilds\t-\tx\n", ""},
 	} {
-		got, err := Judge(c.j, c.err, owed)
-		if got != c.want {
-			t.Errorf("%s: verdict %s, want %s", c.name, got, c.want)
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "cases.tsv"), []byte(c.tsv), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		if (got == Fail) != (err != nil) {
-			t.Errorf("%s: verdict %s with error %v", c.name, got, err)
-		}
-		if c.name == "stale ledger line fails" && (err == nil || !strings.Contains(err.Error(), "STALE OWED")) {
-			t.Errorf("stale line: %v, want a STALE OWED error naming the line", err)
-		}
-	}
-}
-
-// TestNameBuildability is the nightly: every builds row generates and builds
-// and loads in all 18 targets. Its last log line is
-// the per-target summary.
-func TestNameBuildability(t *testing.T) {
-	rows, err := ReadRows(corpus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	owed, err := ReadOwed(corpus, rows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sibling := func(name, def string) string {
-		if v := os.Getenv(name); v != "" {
-			p, err := filepath.Abs(v)
-			if err != nil {
-				t.Fatal(err)
-			}
-			return p
-		}
-		return filepath.Join(absRoot, "..", def)
-	}
-	env := Env{
-		Root: absRoot,
-		Tool: func(name, def string) string {
-			if v := os.Getenv(name); v != "" {
-				return v
-			}
-			return def
-		},
-		Serialize:   sibling("SERIALIZE", "serialize"),
-		SerializeC:  sibling("SERIALIZE_C", "serialize.c"),
-		SerializeCS: sibling("SERIALIZE_CS", "serialize.cs"),
-		SerializeGo: slowtest.SerializeGo(t, root),
-		SerializeRS: sibling("SERIALIZE_RS", "serialize.rs"),
-	}
-	for _, d := range []string{env.Serialize, env.SerializeC, env.SerializeCS, env.SerializeRS} {
-		if _, err := os.Stat(d); err != nil {
-			t.Fatalf("serialize runtime %s: %v (clone the pinned sibling, or set its SERIALIZE_* variable)", d, err)
+		_, err := ReadRows(dir)
+		switch {
+		case c.says == "" && err != nil:
+			t.Errorf("%s: %v", name, err)
+		case c.says != "" && (err == nil || !strings.Contains(err.Error(), c.says)):
+			t.Errorf("%s: %v, want %q", name, err, c.says)
 		}
 	}
-
-	work := t.TempDir()
-	schema := filepath.Join(work, "schema")
-	build := testproc.Command(t, "go", "build", "-tags", "schema_leg_moo", "-o", schema, "./cmd/schema")
-	build.Dir = absRoot
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building the compiler: %v\n%s", err, out)
-	}
-
-	run := func(t *testing.T) Runner {
-		return func(dir string, extra []string, name string, args ...string) (string, error) {
-			cmd := testproc.Command(t, name, args...)
-			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), extra...)
-			out, err := cmd.CombinedOutput()
-			return string(out), err
-		}
-	}
-
-	type result struct{ pass, fail, owed int }
-	var mu sync.Mutex
-	summary := map[string]*result{}
-	for _, tg := range Targets {
-		summary[tg] = &result{}
-	}
-	var failures, owedRuns []string
-	// record judges a job against the owed ledger and answers the error the
-	// job's subtest fails on: nil for a pass and for an owed failure
-	record := func(j Job, err error) error {
-		mu.Lock()
-		defer mu.Unlock()
-		verdict, ferr := Judge(j, err, owed)
-		switch verdict {
-		case Pass:
-			summary[j.Target].pass++
-		case OwedRun:
-			summary[j.Target].owed++
-			owedRuns = append(owedRuns, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(err)))
-		default:
-			summary[j.Target].fail++
-			failures = append(failures, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(ferr)))
-		}
-		return ferr
-	}
-	// Unity builds share the dialect's serialize project under test/unity,
-	// so they take turns; every other build owns its directory.
-	var unity sync.Mutex
-
-	t.Run("rows", func(t *testing.T) {
-		for _, j := range Plan(rows) {
-			t.Run(j.Case+"/"+j.Target, func(t *testing.T) {
-				t.Parallel()
-				if err := record(j, runJob(t, run(t), env, schema, work, j, &unity)); err != nil {
-					t.Error(err)
-				}
-			})
-		}
-	})
-
-	var sb strings.Builder
-	sb.WriteString("name-buildability per-target summary (jobs passed / failed / owed in " + OwedFile + "):\n")
-	total := result{}
-	for _, tg := range Targets {
-		r := summary[tg]
-		total.pass += r.pass
-		total.fail += r.fail
-		total.owed += r.owed
-		fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail %4d owed\n", tg, r.pass, r.fail, r.owed)
-	}
-	fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail %4d owed\n", "all", total.pass, total.fail, total.owed)
-	slices.Sort(failures)
-	for _, f := range failures {
-		sb.WriteString("  FAIL " + f + "\n")
-	}
-	slices.Sort(owedRuns)
-	for _, f := range owedRuns {
-		sb.WriteString("  OWED " + f + "\n")
-	}
-	t.Log(sb.String())
-	// NAMEBUILD_SUMMARY names a file the summary is written to as well, so
-	// a run that passes (and so prints no test log) still shows it
-	if p := os.Getenv("NAMEBUILD_SUMMARY"); p != "" {
-		if err := os.WriteFile(p, []byte(sb.String()), 0o644); err != nil {
-			t.Error(err)
-		}
-	}
-}
-
-// runJob generates one builds case in one target and builds and loads it; a
-// refuse-at-check row has no job (Plan), since the checker refuses it.
-func runJob(t *testing.T, run Runner, env Env, schema, work string, j Job, unity *sync.Mutex) error {
-	c, err := ReadCase(filepath.Join(corpus, j.Case))
-	if err != nil {
-		return err
-	}
-	dir := filepath.Join(work, j.Case, j.Target)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	src, err := filepath.Abs(filepath.Join(corpus, j.Case))
-	if err != nil {
-		return err
-	}
-	out, genErr := run(work, nil, schema, "generate", "--lang", j.Target, "--out", dir, src)
-	if genErr != nil {
-		return fmt.Errorf("FAILED: generate --lang %s refused: %w\n%s", j.Target, genErr, out)
-	}
-	if j.Target == "unity" {
-		unity.Lock()
-		defer unity.Unlock()
-	}
-	err = Build(run, env, j.Target, c, dir)
-	if err == nil {
-		// a passing case leaves nothing behind: the Rust targets and the
-		// .NET objects are the bulk of the run's disk
-		_ = os.RemoveAll(dir)
-	}
-	return err
 }

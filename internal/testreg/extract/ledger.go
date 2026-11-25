@@ -114,7 +114,11 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 }
 
 // Covered reports, for each item a registry row runs, the row's key:
-//   - a Go test, by a gotest row whose inputs name its package and test;
+//   - a Go test, by a gotest row whose inputs name its package and test, or
+//     by a per-language row whose inputs name its package and a test named
+//     with testreg.LangPlaceholder, which covers that test for every
+//     language the registry lists (tools/namebuild's
+//     TestNameBuildability_<lang>);
 //   - a make target, by a make row whose inputs name its file and target;
 //   - a negative control, by a plant row whose inputs name its make target
 //     and its group in make/negative-controls.json;
@@ -152,6 +156,23 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		out[id] = t.Key
 	}
 	for _, t := range reg.Tests {
+		if t.Adapter != "gotest" && t.PerLang() {
+			var in struct{ Package, Test string }
+			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
+				continue // a corpus row whose inputs name no per-language Go test
+			}
+			for _, l := range reg.Langs {
+				if l.Name == testreg.LangFree {
+					continue
+				}
+				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
+				// every case row of the family names the same test
+				if _, seen := out[id]; !seen {
+					out[id] = t.Key
+				}
+			}
+			continue
+		}
 		switch t.Adapter {
 		case "gotest":
 			var in struct{ Package, Test string }
@@ -304,8 +325,8 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 // owns.
 //
 // Only what runs counts: a row indexes its files only when some language
-// answers it (a ready language, one with an adapter, that neither owes it nor
-// declares it unrepresentable), and its driver only for those languages. A
+// answers it (a ready language, one with an adapter, that does not declare it
+// unrepresentable), and its driver only for those languages. A
 // row no adapter answers, and the driver of a language with no adapter, stay
 // unmoved.
 func Indexed(reg *testreg.Registry) map[string]string {
@@ -328,9 +349,8 @@ func Indexed(reg *testreg.Registry) map[string]string {
 		}
 		var answering []string
 		for _, l := range reg.Langs {
-			_, owed := reg.OwedBy(t.Key, l.Name)
 			_, unrep := reg.Unrepresentable(t.Key, l.Name)
-			if l.Ready() && !owed && !unrep {
+			if l.Ready() && !unrep {
 				answering = append(answering, l.Name)
 			}
 		}

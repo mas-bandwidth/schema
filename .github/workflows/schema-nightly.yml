@@ -1,0 +1,93 @@
+name: schema nightly
+
+# THE WHOLE TEST SET, EVERY NIGHT, THROUGH THE ONE LAUNCHER (tools/fullrun).
+# Every instance of every tier and language the test registry holds
+# (test/registry/registry.jsonl), and every test the extract finds that is
+# not a registry row yet (test/registry/unmoved.tsv), each by the command
+# that runs it; a ledger line no command runs is a red named
+# "UNRUNNABLE <ledger line>". The owner, 2026-11-25: "run the whole test set
+# in a big long overnight thing. collect the reds", then "you should run this
+# nightly". This workflow calls nothing but the launcher.
+#
+# THE PARTS: each `part` job runs one deterministic part of the plan on the
+# schema runner it lands on (fullrun launch --bench local=2 --part I/24), and
+# uploads its run: the shard logs and the results. The `verdict` job merges
+# every part against the whole plan (fullrun merge): a test no part ran is
+# NOT RUN, a part that uploaded nothing is a red, and the job is red when
+# REDS.tsv holds any red or expected != ran. It uploads REDS.tsv,
+# SUMMARY.txt and results.tsv.
+#
+# A fixer re-runs exactly the reds on a bench with `fullrun retest --reds
+# REDS.tsv` (the reds that went green are FLIPS.tsv). That is a local
+# command, never a workflow.
+#
+# NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16): no job or step here
+# carries timeout-minutes, and no test the launcher runs has a time limit.
+#
+# FORK SAFETY: the runners are self-hosted on the fleet; every job carries the
+# fork guard, and the schedule and workflow_dispatch are the only triggers.
+
+on:
+  schedule:
+    # 01:23 UTC, off the hour
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # the nightly rule in the header: no go test -timeout under tools/pgroup
+  PGROUP_GO_TEST_TIMEOUT: '0'
+
+jobs:
+  part:
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: fullrun launch, part ${{ matrix.part }} of 24
+        run: go run ./tools/fullrun launch --sha "$GITHUB_SHA" --repo https://github.com/mas-bandwidth/schema.git --bench local=2 --part "${{ matrix.part }}/24" --work "$RUNNER_TEMP/fullrun-work" --out "$RUNNER_TEMP/fullrun"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fullrun-part-${{ matrix.part }}
+          path: ${{ runner.temp }}/fullrun
+          if-no-files-found: error
+
+  verdict:
+    needs: part
+    if: always() && !cancelled() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: fullrun-part-*
+          path: ${{ runner.temp }}/parts
+      - name: fullrun merge, red on any red or expected != ran
+        run: go run ./tools/fullrun merge --root . --parts "$RUNNER_TEMP/parts" --out "$RUNNER_TEMP/nightly"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fullrun-nightly
+          path: |
+            ${{ runner.temp }}/nightly/REDS.tsv
+            ${{ runner.temp }}/nightly/SUMMARY.txt
+            ${{ runner.temp }}/nightly/results.tsv
+            ${{ runner.temp }}/nightly/seconds.tsv
+          if-no-files-found: error

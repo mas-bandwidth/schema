@@ -78,9 +78,8 @@ func (r *Registry) Resolve(full string) (Instance, error) {
 // "*.unit.roundtrip.align-arrays.*"); with none, every instance is a
 // candidate. The filters then narrow the candidates: within one filter the
 // values are alternatives, across filters all must hold. Ready keeps only
-// languages whose adapter has landed, less the instances the registry says
-// the language owes (and every language-free test, whose row names its
-// adapter). --lang none selects the language-free tests.
+// languages whose adapter has landed (and every language-free test, whose
+// row names its adapter). --lang none selects the language-free tests.
 type Query struct {
 	Names    []string
 	Langs    []string
@@ -213,8 +212,7 @@ func (r *Registry) Select(q Query) (Selection, error) {
 	in := func(vs []string, v string) bool { return len(vs) == 0 || contains(vs, v) }
 	keep := func(lang string, t Test) bool {
 		l, _ := r.Lang(lang)
-		_, owed := r.OwedBy(t.Key, lang)
-		ready := !t.PerLang() || (l.Ready() && !owed)
+		ready := !t.PerLang() || l.Ready()
 		return in(q.Langs, lang) && in(q.Tiers, t.Tier) && in(q.Types, t.Type) && in(q.Families, t.Family) && (!q.Ready || ready)
 	}
 	var sel Selection

@@ -252,7 +252,8 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 		"align-arrays":          "align-arrays",
 		"conformance-wire":      "conformance",
 		"conformance-json-read": "conformance",
-		"name-buildability":     "",
+		"name-buildability":     "name-buildability",
+		"no-such-family":        "",
 	} {
 		h, ok := harnessFor(fam)
 		if (want != "") != ok || h.Name != want {
@@ -265,13 +266,17 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	if a.Answers(testreg.Test{Family: "conformance-wire", Scope: testreg.LangFree}) {
 		t.Error("the corpus adapter answers a language-free test")
 	}
+	// the toolchains install once per process, before any language runs
+	if got := nameBuild.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make name-buildability-deps" {
+		t.Errorf("name-buildability build for lua: %q", got)
+	}
 	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
 		t.Errorf("conformance build for lua: %q", got)
 	}
 	// an instance routed here with no harness is an error naming it, before
 	// anything builds or runs
-	inst := testreg.Instance{Full: "go.functional.codegen.name-buildability.x", Lang: "go", Test: testreg.Test{Family: "name-buildability"}}
-	if _, err := a.Run(context.Background(), "go", []testreg.Instance{inst}); err == nil || !strings.Contains(err.Error(), "no harness for family name-buildability") {
+	inst := testreg.Instance{Full: "go.functional.codegen.no-such-family.x", Lang: "go", Test: testreg.Test{Family: "no-such-family"}}
+	if _, err := a.Run(context.Background(), "go", []testreg.Instance{inst}); err == nil || !strings.Contains(err.Error(), "no harness for family no-such-family") {
 		t.Errorf("an instance with no harness: %v", err)
 	}
 }

@@ -1043,7 +1043,15 @@ jobs:
       # new package lands in this row with no edit to this file.
       - name: go test everything that is not an emitter package, the compiler, or a package with rows of its own
         if: matrix.group == 'unit-rest'
-        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$' | grep -v '/internal/fuzz$' | grep -v '/cmd/schema$' | grep -v '/internal/goldens$' | grep -v '/internal/ci$' | grep -v '/bench/tools$' | grep -v '/test/conformance/harness$' | grep -v '/test/conformance/packet$' | grep -v '/internal/check$' | grep -v '/internal/docgate$' | grep -v '/internal/lockfile$' | grep -v '/internal/tabletext$' | grep -v '/internal/baseline$')
+        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$' | grep -v '/internal/fuzz$' | grep -v '/cmd/schema$' | grep -v '/internal/goldens$' | grep -v '/internal/ci$' | grep -v '/bench/tools$' | grep -v '/test/conformance/harness$' | grep -v '/test/conformance/packet$' | grep -v '/internal/check$' | grep -v '/internal/docgate$' | grep -v '/internal/lockfile$' | grep -v '/internal/tabletext$' | grep -v '/internal/baseline$' | grep -v '/tools/namebuild$')
+
+      # tools/namebuild's per-target tests are the registry's name-buildability
+      # rows, which schema-test-nightly.yml runs through make
+      # name-buildability-run with every toolchain; here the package's other
+      # tests run, chosen at the root by name (tools/gotestselect)
+      - name: go test tools/namebuild less its nightly rows
+        if: matrix.group == 'unit-rest'
+        run: sel=$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$sel" ./tools/namebuild
 
       # THE ELIXIR EMITTER'S PACKAGE, ALONE. Its allocation test measures heap
       # words and is load-sensitive, so it is not inside the emitter row's

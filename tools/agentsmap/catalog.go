@@ -231,7 +231,7 @@ var catalog = []Entry{
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
 	e("tools/gotestrun", "go test wrapper: refuses a run in which no test ran or passed", "go test ./tools/gotestrun", "make test-run PKG=./pkg RUN='^TestX$'"),
 	e("tools/mustrun", "harness wrapper: exit status plus a registered ran N count", "go test ./tools/mustrun", "build/mustrun -name X -count N -- cmd"),
-	e("tools/namebuild", "name-buildability nightly, all 18 targets", "go test ./tools/namebuild", "make name-buildability"),
+	e("tools/namebuild", "name-buildability nightly, every target", "go test ./tools/namebuild", "make name-buildability"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
 	e("tools/nightlyrows", "ci-fast nightly-fast matrix row selector", "go test ./internal/nightlyrows", "go run ./tools/nightlyrows -files diff-files.txt -broad no"),
 	e("tools/wirefuzzrelease", "release-tier wire-fuzz gate scorer", "go test ./tools/wirefuzzrelease", "go run ./tools/wirefuzzrelease"),

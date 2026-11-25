@@ -188,10 +188,7 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 		}
 		var missing string
 		a, ok := rn.Adapters[adapter]
-		owed, isOwed := rn.Reg.OwedBy(inst.Test.Key, inst.Lang)
 		switch {
-		case isOwed:
-			missing = fmt.Sprintf("%s owes %s: %s", inst.Lang, inst.Test.Key, owed)
 		case adapter == "":
 			missing = fmt.Sprintf("language %s has no adapter", inst.Lang)
 		case !ok:

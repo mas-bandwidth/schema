@@ -23,7 +23,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `matrix/` | 3.0.0 proof gate | `go test ./tools/matrix` | `make proof` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
 | `mustrun/` | harness wrapper: exit status plus a registered ran N count | `go test ./tools/mustrun` | `build/mustrun -name X -count N -- cmd` |
-| `namebuild/` | name-buildability nightly, all 18 targets | `go test ./tools/namebuild` | `make name-buildability` |
+| `namebuild/` | name-buildability nightly, every target | `go test ./tools/namebuild` | `make name-buildability` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
 | `nightlyrows/` | ci-fast nightly-fast matrix row selector | `go test ./internal/nightlyrows` | `go run ./tools/nightlyrows -files diff-files.txt -broad no` |
 | `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |

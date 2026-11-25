@@ -18,11 +18,14 @@ import (
 // harness is a program that runs one family's instances for any language it
 // is given: it reads request lines on its standard input and writes one
 // result line per request (internal/testreg's protocol). Build is what has to
-// exist before it runs for a language; Cmd is its command line for one.
+// exist before it runs for a language; Cmd is its command line for one. A
+// harness with Run answers its instances itself instead of through Cmd
+// (nameBuild: Go subtests run through make), after its Build.
 type harness struct {
 	Name  string
 	Build func(lang string) [][]string
 	Cmd   func(lang, work string) []string
+	Run   func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error)
 }
 
 // alignArrays is test/verify-bitphase --adapter: the align-arrays family's
@@ -64,6 +67,8 @@ func harnessFor(family string) (harness, bool) {
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
+	case family == nameBuild.Name:
+		return nameBuild, true
 	}
 	return harness{}, false
 }
@@ -176,6 +181,14 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 			if err := a.build.run(ctx, step); err != nil {
 				return all, err
 			}
+		}
+		if h.Run != nil {
+			res, err := h.Run(ctx, lang, byHarness[name], a.log)
+			all = append(all, res...)
+			if err != nil {
+				return all, fmt.Errorf("%s harness for %s: %w", fam, lang, err)
+			}
+			continue
 		}
 		// each call has its own work folder: a plant runs its target while
 		// the same language's own instances may be running

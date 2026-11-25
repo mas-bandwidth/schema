@@ -322,3 +322,20 @@ func driverDir(rel string) string {
 	}
 	return strings.Join(parts, "/")
 }
+
+// LangOf is the language a path names: a segment that is a language, or
+// one that starts with it and ends in a known suffix (ctable, gotable,
+// pythonsdk...).
+func LangOf(dir string, langs map[string]bool) string {
+	for seg := range strings.SplitSeq(dir, "/") {
+		if langs[seg] {
+			return seg
+		}
+		for _, suffix := range []string{"table", "tables", "leg", "sdk", "gen", "emit", "view", "runtime"} {
+			if l, ok := strings.CutSuffix(seg, suffix); ok && langs[l] {
+				return l
+			}
+		}
+	}
+	return ""
+}

@@ -87,6 +87,26 @@ func TestSelectIsTheComplementLessNightly(t *testing.T) {
 	}
 }
 
+// TestAPerLanguageNightlyRowLeavesOutEachLanguagesTest: a nightly row of
+// any adapter, one per language, whose test is named Test{lang}, leaves out
+// TestA for the listed language A, and nothing for the language-free none.
+// A row with a scope is not per-language and leaves out nothing.
+func TestAPerLanguageNightlyRowLeavesOutEachLanguagesTest(t *testing.T) {
+	t.Parallel()
+	root, dir := plant(t, "",
+		`{"rec":"lang","name":"none","adapter":"gotest"}`+"\n"+
+			`{"rec":"lang","name":"A","adapter":"corpus"}`+"\n"+
+			`{"rec":"test","key":"k","tier":"nightly","adapter":"corpus","inputs":{"package":"./p","test":"Test{lang}","subtest":"c"}}`+"\n"+
+			`{"rec":"test","key":"s","tier":"nightly","scope":"none","adapter":"corpus","inputs":{"package":"./p","test":"Test{lang}X"}}`+"\n")
+	got, err := Select(linux(), root, []string{dir}, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "^(ExampleD|FuzzC|TestB|TestX)$"; got != want {
+		t.Errorf("select: %q, want %q", got, want)
+	}
+}
+
 // TestAnEmptySelectionFails: a row that would select nothing is an error by
 // name, never a pattern that runs nothing.
 func TestAnEmptySelectionFails(t *testing.T) {
