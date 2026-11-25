@@ -2908,7 +2908,7 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.write-refusal.ctable.c-cook-enum-arm-defines-assert-hook` | `gotest` | Go test TestCCookEnumArmDefinesAssertHook in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCCookEnumArmDefinesAssertHook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
+| `none.functional.write-refusal.ctable.c-cook-enum-arm-defines-assert-hook` | `gotest` | Go test TestCCookEnumArmDefinesAssertHook in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCCookEnumArmDefinesAssertHook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:71` |
 
 #### `write-refusal` family `javatable`, 1 test
 

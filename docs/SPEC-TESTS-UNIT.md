@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3137.
+Unit tests every language answers: 2. Language-free tests: 3140.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -32,6 +32,16 @@ generated source compiles and is clean.
 ## Language-free tests
 
 Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
+
+### Type `write-refusal`
+
+writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
+
+#### `write-refusal` family `ctable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.write-refusal.ctable.c-cook-enum-arm-assert-hook-refuses-no-headers` | `gotest` | Go test TestCCookEnumArmAssertHookRefusesNoHeaders in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCCookEnumArmAssertHookRefusesNoHeaders` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:88` |
 
 ### Type `codegen`
 
@@ -1929,7 +1939,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 261 tests
+#### `tooling` family `ci`, 263 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1944,6 +1954,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.caa-job-starts-only-when-a-step-would-run` | `gotest` | Go test TestCAAJobStartsOnlyWhenAStepWouldRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestCAAJobStartsOnlyWhenAStepWouldRun` | the Go test passes | `internal/ci/cla_job_test.go:60` |
 | `none.unit.tooling.ci.caa-pull-request-target-always-starts-the-required-check` | `gotest` | Go test TestCAAPullRequestTargetAlwaysStartsTheRequiredCheck in ./internal/ci | `package: ./internal/ci`<br>`test: TestCAAPullRequestTargetAlwaysStartsTheRequiredCheck` | the Go test passes | `internal/ci/cla_job_test.go:103` |
 | `none.unit.tooling.ci.caa-self-test-fails-naming-the-missing-token` | `gotest` | Go test TestCAASelfTestFailsNamingTheMissingToken in ./internal/ci | `package: ./internal/ci`<br>`test: TestCAASelfTestFailsNamingTheMissingToken` | the Go test passes | `internal/ci/caa_self_test_token_test.go:1` |
+| `none.unit.tooling.ci.cards-test-runs-no-whole-repo-package` | `gotest` | Go test TestCardsTestRunsNoWholeRepoPackage in ./internal/ci | `package: ./internal/ci`<br>`test: TestCardsTestRunsNoWholeRepoPackage` | the Go test passes | `internal/ci/cards_test_recipe_test.go:18` |
+| `none.unit.tooling.ci.cards-test-whole-repo-package-judge-catches-the-plant` | `gotest` | Go test TestCardsTestWholeRepoPackageJudgeCatchesThePlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestCardsTestWholeRepoPackageJudgeCatchesThePlant` | the Go test passes | `internal/ci/cards_test_recipe_test.go:37` |
 | `none.unit.tooling.ci.case-insensitive-test-collisions` | `gotest` | Go test TestCaseInsensitiveTestCollisions in ./internal/ci | `package: ./internal/ci`<br>`test: TestCaseInsensitiveTestCollisions` | the Go test passes | `internal/ci/caseinsensitive_fs_test.go:302` |
 | `none.unit.tooling.ci.case-insensitive-test-collisions-negative-controls` | `gotest` | Go test TestCaseInsensitiveTestCollisionsNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestCaseInsensitiveTestCollisionsNegativeControls` | the Go test passes | `internal/ci/caseinsensitive_fs_test.go:342` |
 | `none.unit.tooling.ci.certify-release-plan-reads-makes-database` | `gotest` | Go test TestCertifyReleasePlanReadsMakesDatabase in ./internal/ci | `package: ./internal/ci`<br>`test: TestCertifyReleasePlanReadsMakesDatabase` | the Go test passes | `internal/ci/certify_release_plan_test.go:51` |
