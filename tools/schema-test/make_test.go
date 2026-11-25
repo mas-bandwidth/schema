@@ -182,7 +182,7 @@ func TestAMakeRowSetsItsVariablesOnTheCommandLine(t *testing.T) {
 		`{"file":"make/x.mk","target":"a","vars":{"DART":"x\ny"}}`,
 		`{"file":"make/x.mk","target":"a","tools":["/usr/bin/dart"]}`,
 		`{"file":"make/x.mk","target":"a","tools":[""]}`,
-		`{"file":"make/x.mk","target":"a","siblings":["serialize.go"]}`,
+		`{"file":"make/x.mk","target":"a","siblings":["sibling-repo"]}`,
 		`{"file":"make/x.mk","target":"a","siblings":["../a/b"]}`,
 		`{"file":"make/x.mk","target":"a","siblings":["../.."]}`,
 	} {
@@ -197,7 +197,7 @@ func TestAMakeRowSetsItsVariablesOnTheCommandLine(t *testing.T) {
 // runs, naming each lack and the runner; with both there, make runs.
 func TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner(t *testing.T) {
 	t.Parallel()
-	in, err := json.Marshal(makeInputs{File: "make/x.mk", Target: "gate-check", Tools: []string{"dart", "clang-format-18"}, Siblings: []string{"../serialize.go"}})
+	in, err := json.Marshal(makeInputs{File: "make/x.mk", Target: "gate-check", Tools: []string{"dart", "clang-format-18"}, Siblings: []string{"../sibling-repo"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner(t *testing.T) {
 	}{
 		{map[string]bool{"dart": true, "clang-format-18": true}, true, nil},
 		{map[string]bool{"dart": true}, true, []string{"runner bench-7", "the tool clang-format-18 is not on PATH"}},
-		{map[string]bool{"dart": true, "clang-format-18": true}, false, []string{"runner bench-7", "the sibling checkout ../serialize.go is not beside this one"}},
+		{map[string]bool{"dart": true, "clang-format-18": true}, false, []string{"runner bench-7", "the sibling checkout ../sibling-repo is not beside this one"}},
 	} {
 		ran := 0
 		a := makeAdapter{
@@ -222,7 +222,7 @@ func TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner(t *testing.T) {
 				return "", errors.New("not found")
 			},
 			stat: func(p string) (os.FileInfo, error) {
-				if c.sibling && p == filepath.FromSlash("../serialize.go") {
+				if c.sibling && p == filepath.FromSlash("../sibling-repo") {
 					return dirInfo{}, nil
 				}
 				return nil, os.ErrNotExist
