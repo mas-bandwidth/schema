@@ -71,7 +71,7 @@ test-goose: toolchain-goose build/fixedform-corpus/.stamp
 test-goose-recipe: toolchain-goose build/fixedform-corpus/.stamp
 	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goose/...
 	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[A-C]'
-	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
+	sel=$$(go run ./tools/gotestselect -run '^TestGoose[D-E]' ./internal/codegen/goosetable) || exit 1; $(GO_TEST) -count=1 -timeout 600s -run "$$sel" ./internal/codegen/goosetable
 	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
 	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
 	sel=$$(go run ./tools/gotestselect -not '^TestGoose[A-C]|^TestGoose[D-E]|^TestGooseF|^TestGoose[G-P]' ./internal/codegen/goosetable) || exit 1; $(GO_TEST) -count=1 -timeout 600s -run "$$sel" ./internal/codegen/goosetable

@@ -85,11 +85,18 @@ func scanNameUnits(t *testing.T) []nameUnit {
 	out := make([]*nameUnit, len(keys))
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	// every unit's paths are gathered before any goroutine starts, so a
+	// gather failure stops the test with no probe still running
+	gathered := make([][]string, len(keys))
 	for i, key := range keys {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
+		gathered[i] = paths
+	}
+	for i, key := range keys {
+		paths := gathered[i]
 		dir := t.TempDir()
 		wg.Add(1)
 		sem <- struct{}{}
