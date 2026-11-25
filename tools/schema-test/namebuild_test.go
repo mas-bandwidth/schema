@@ -70,6 +70,11 @@ func TestNameBuildPlanSelectsExactlyTheAsked(t *testing.T) {
 			t.Errorf("inputs with %s: no refusal", what)
 		}
 	}
+	dup := []testreg.Instance{nameBuildInstance(t, "rust", "ctl", nil), nameBuildInstance(t, "rust", "ctl", nil)}
+	dup[1].Full = "rust.nightly.codegen.name-buildability.ctl-again"
+	if _, _, err := nameBuildPlan("rust", dup); err == nil || !strings.Contains(err.Error(), "both name TestNameBuildability_rust/ctl") {
+		t.Errorf("two instances naming one subtest: %v", err)
+	}
 	if _, _, err := nameBuildPlan("rust", nil); err == nil {
 		t.Error("no instance: no refusal")
 	}
@@ -97,9 +102,12 @@ func TestNameBuildResultsReadsTheEvents(t *testing.T) {
 		`{"Action":"fail","Test":"TestNameBuildability_go"}`,
 		`{"Action":"output","Output":"name-buildability per-target summary\n"}`,
 	}, "\n")
-	res, err := nameBuildResults(strings.NewReader(events), want)
+	res, other, err := nameBuildResults(strings.NewReader(events), want)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if strings.Join(other, "|") != "name-buildability per-target summary" {
+		t.Errorf("what the rest of the run said: %q", other)
 	}
 	got := map[string]testreg.Result{}
 	for _, r := range res {
@@ -117,7 +125,7 @@ func TestNameBuildResultsReadsTheEvents(t *testing.T) {
 	if r := got["go.nightly.codegen.name-buildability.b-map"]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "skipped") {
 		t.Errorf("b_Map: %+v, want a skip read as a fail", r)
 	}
-	if _, err := nameBuildResults(strings.NewReader("make: not json\n"), want); err == nil {
+	if _, _, err := nameBuildResults(strings.NewReader("make: not json\n"), want); err == nil {
 		t.Error("events that are not go test -json: no error")
 	}
 }
@@ -142,7 +150,18 @@ exit 1
 			verdicts: map[string]string{insts[0].Full: testreg.Pass, insts[1].Full: testreg.Fail},
 		},
 		{name: "no-events", script: "echo 'stand-in: broke before the tests' >&2\nexit 2\n", says: "wrote no events"},
-		{name: "no-answers", script: ": >\"$NAME_BUILDABILITY_JSON\"\nexit 2\n", says: "make name-buildability-run: exit status 2"},
+		{
+			// a setup that failed (a missing sibling runtime) is a parent-test
+			// fatal: no subtest answers, and the error names the cause
+			name: "setup-fails-by-name",
+			script: `printf '%s\n' '{"Action":"output","Test":"TestNameBuildability_go","Output":"serialize runtime ../serialize.go is missing: clone the pinned sibling\n"}' '{"Action":"fail","Test":"TestNameBuildability_go"}' >"$NAME_BUILDABILITY_JSON"
+exit 1
+`,
+			says: "clone the pinned sibling",
+		},
+		{name: "matched-none", script: ": >\"$NAME_BUILDABILITY_JSON\"\n", says: "answered none of the 2 asked"},
+		{name: "not-json", script: "echo 'make: not json' >\"$NAME_BUILDABILITY_JSON\"\n", says: "go test -json"},
+		{name: "plant-env", script: "[ \"$PLANT_X\" = 1 ] || exit 3\n: >\"$NAME_BUILDABILITY_JSON\"\n", says: "answered none"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -153,7 +172,10 @@ exit 1
 			}
 			root := filepath.Join(dir, "work")
 			var log bytes.Buffer
-			res, err := runNameBuildWith(context.Background(), []string{script}, root, "go", insts, &log)
+			ctx := testreg.WithEnv(context.Background(), map[string]string{"PLANT_X": "1"})
+			// through sh: exec of a file just written races the forks of parallel
+			// subtests (text file busy)
+			res, err := runNameBuildWith(ctx, []string{"sh", script}, root, "go", insts, &log)
 			if tc.says != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.says) {
 					t.Errorf("err %v, want one saying %q", err, tc.says)

@@ -37,7 +37,7 @@ name-buildability: $(NAME_BUILDABILITY_DEPS)
 	@rm -f $(NAME_BUILDABILITY_SUMMARY)
 	@status=0; \
 	$(NAME_BUILDABILITY_ENV) NAMEBUILD_SUMMARY="$(abspath $(NAME_BUILDABILITY_SUMMARY))" \
-	go test -count=1 -timeout=0 -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability_' ./tools/namebuild || status=$$?; \
+	go test -count=1 -timeout=0 -tags namebuild_targets -parallel $(NAME_BUILDABILITY_PARALLEL) -run '^TestNameBuildability_' ./tools/namebuild || status=$$?; \
 	if [ -f $(NAME_BUILDABILITY_SUMMARY) ]; then cat $(NAME_BUILDABILITY_SUMMARY); \
 	else echo "NAME-BUILDABILITY FAILED: no summary at $(NAME_BUILDABILITY_SUMMARY) (the run stopped before its last line)"; status=1; fi; \
 	exit $$status
@@ -60,4 +60,4 @@ name-buildability-run:
 		echo "name-buildability-run: NAME_BUILDABILITY_RUN (a go test -run pattern) and NAME_BUILDABILITY_JSON (the events file) are both required" >&2; exit 2; \
 	fi
 	@$(NAME_BUILDABILITY_ENV) \
-	go test -count=1 -timeout=0 -json -parallel $(NAME_BUILDABILITY_PARALLEL) -run "$$NAME_BUILDABILITY_RUN" ./tools/namebuild >"$$NAME_BUILDABILITY_JSON"
+	go test -count=1 -timeout=0 -tags namebuild_targets -json -parallel $(NAME_BUILDABILITY_PARALLEL) -run "$$NAME_BUILDABILITY_RUN" ./tools/namebuild >"$$NAME_BUILDABILITY_JSON"

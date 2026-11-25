@@ -44,6 +44,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -74,7 +75,14 @@ type Row struct {
 	Line    int // its line in cases.tsv
 }
 
-// ReadRows reads dir/cases.tsv.
+// caseName is what go test keeps unchanged as a subtest name: printable
+// ASCII with no space and no "/". A case is a subtest, and go test rewrites
+// a space, splits at "/" and suffixes a repeat, so a name outside it would
+// never match its registry row's subtest.
+var caseName = regexp.MustCompile(`^[\x21-\x2e\x30-\x7e]+$`)
+
+// ReadRows reads dir/cases.tsv. A case name go test would rewrite, and a
+// case named twice, are refused by line.
 func ReadRows(dir string) ([]Row, error) {
 	f, err := os.Open(filepath.Join(dir, "cases.tsv"))
 	if err != nil {
@@ -82,6 +90,7 @@ func ReadRows(dir string) ([]Row, error) {
 	}
 	defer func() { _ = f.Close() }() // read-only: a close error loses nothing
 	var rows []Row
+	seen := map[string]int{}
 	sc := bufio.NewScanner(f)
 	for n := 1; sc.Scan(); n++ {
 		line := sc.Text()
@@ -93,6 +102,13 @@ func ReadRows(dir string) ([]Row, error) {
 			return nil, fmt.Errorf("cases.tsv:%d: %d columns, want 4 (case, verdict, names, note)", n, len(col))
 		}
 		r := Row{Case: col[0], Verdict: col[1], Note: col[3], Line: n}
+		if !caseName.MatchString(r.Case) {
+			return nil, fmt.Errorf("cases.tsv:%d: case %q holds a space, a \"/\" or a byte outside printable ASCII (go test would rename it as a subtest)", n, r.Case)
+		}
+		if prev, dup := seen[r.Case]; dup {
+			return nil, fmt.Errorf("cases.tsv:%d: case %s again (first at line %d)", n, r.Case, prev)
+		}
+		seen[r.Case] = n
 		if col[2] != "-" {
 			r.Names = strings.Split(col[2], ",")
 		}

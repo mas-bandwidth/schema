@@ -38,12 +38,21 @@ env:
 
 jobs:
   nightly:
-    runs-on: [self-hosted, linux, x64, fleet]
+    # the schema label: the runners that carry every language's toolchain
+    # (the name-buildability rows build every target's output)
+    runs-on: [self-hosted, linux, x64, fleet, schema]
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     steps:
+      - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # every language's leg runs here, so every pinned sibling runtime and
       # every interpreter pin is staged: a missing one fails its instances
@@ -65,6 +74,14 @@ jobs:
       - uses: ./.github/actions/python
       - uses: ./.github/actions/ruby
       - uses: ./.github/actions/moo
+      - name: 'Tool presence check: go'
+        run: |
+          want="$(sed -nE 's/^go ([0-9]+\.[0-9]+)$/\1/p' go.mod)"
+          got="$(go version | sed -nE 's/.*go([0-9]+\.[0-9]+).*/\1/p')"
+          if [ -z "$got" ] || [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got ($RUNNER_NAME)"
+            exit 1
+          fi
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
       - name: schema-test run --group nightly

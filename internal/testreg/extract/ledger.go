@@ -119,10 +119,10 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			out[id] = t.Key
 			continue
 		}
-		if t.PerLang() {
+		if t.Adapter != "gotest" && t.PerLang() {
 			var in struct{ Package, Test string }
 			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
-				continue // a row whose inputs name no per-language Go test
+				continue // a corpus row whose inputs name no per-language Go test
 			}
 			for _, l := range reg.Langs {
 				if l.Name == testreg.LangFree {

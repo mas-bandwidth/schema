@@ -664,6 +664,27 @@ func laneProofs(root string) ([]laneProof, error) {
 		flush()
 	}
 	workflows := wfText.String()
+	// THE REGISTRY'S HARNESSES ARE LANES TOO (docs/TEST-REGISTRY.md). A
+	// workflow that runs schema-test runs every make target its harnesses
+	// name (tools/schema-test, e.g. name-buildability-run for the
+	// name-buildability rows), so those sources count as workflow text when
+	// one does.
+	if regexp.MustCompile(`go run \./tools/schema-test run\b`).MatchString(workflows) {
+		srcs, err := provesran.Glob(filepath.Join(root, "tools", "schema-test", "*.go"))
+		if err != nil {
+			return nil, err
+		}
+		for _, src := range srcs {
+			if strings.HasSuffix(src, "_test.go") {
+				continue
+			}
+			b, err := os.ReadFile(src)
+			if err != nil {
+				return nil, err
+			}
+			workflows += "\n" + string(b)
+		}
+	}
 
 	makefiles := []string{filepath.Join(root, "Makefile")}
 	more, err := provesran.Glob(filepath.Join(root, "make", "*.mk"))

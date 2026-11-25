@@ -61,23 +61,28 @@ func nameBuildPlan(lang string, instances []testreg.Instance) (map[string]string
 
 // nameBuildResults reads go test -json events and answers each asked subtest
 // by its pass or fail event; a skip is a failure, and an asked subtest with
-// no verdict is left out, so the run reports it as not reported.
-func nameBuildResults(r io.Reader, want map[string]string) ([]testreg.Result, error) {
+// no verdict is left out, so the run reports it as not reported. other is
+// what the rest of the run said: the parent test's output (a failed setup),
+// the package's (a TestMain failure) and the build's (a test that does not
+// compile), which names the cause when no asked subtest answered.
+func nameBuildResults(r io.Reader, want map[string]string) (out []testreg.Result, other []string, err error) {
 	type event struct {
 		Action, Test, Output string
 	}
 	output := map[string][]string{}
-	var out []testreg.Result
 	dec := json.NewDecoder(r)
 	for {
 		var ev event
 		if err := dec.Decode(&ev); err == io.EOF {
 			break
 		} else if err != nil {
-			return out, fmt.Errorf("go test -json: %w", err)
+			return out, other, fmt.Errorf("go test -json: %w", err)
 		}
 		inst, asked := want[ev.Test]
 		if !asked {
+			if (ev.Action == "output" || ev.Action == "build-output") && ev.Output != "" {
+				other = append(other, strings.TrimRight(ev.Output, "\n"))
+			}
 			continue
 		}
 		switch ev.Action {
@@ -91,7 +96,7 @@ func nameBuildResults(r io.Reader, want map[string]string) ([]testreg.Result, er
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[ev.Test], "\n"), 5)})
 		}
 	}
-	return out, nil
+	return out, other, nil
 }
 
 // runNameBuild runs one language's name-buildability instances.
@@ -122,14 +127,19 @@ func runNameBuildWith(ctx context.Context, argv []string, root, lang string, ins
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	bound(cmd)
 	cmd.Env = append(os.Environ(), "NAME_BUILDABILITY_RUN="+pattern, "NAME_BUILDABILITY_JSON="+events)
+	// a plant's environment, as runHarness hands it to the other harnesses
+	for k, v := range testreg.EnvFrom(ctx) {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	runErr := cmd.Run()
 	f, openErr := os.Open(events)
 	var parseErr error
+	var other []string
 	if openErr == nil {
-		res, parseErr = nameBuildResults(f, want)
+		res, other, parseErr = nameBuildResults(f, want)
 		_ = f.Close() // read-only
 	}
 	if out.Len() > 0 {
@@ -146,8 +156,14 @@ func runNameBuildWith(ctx context.Context, argv []string, root, lang string, ins
 		return res, parseErr
 	case runErr != nil && len(res) == 0:
 		// a failing subtest exits non-zero too, and its event says so; a run
-		// that answered nothing failed before its tests
-		return res, fmt.Errorf("make name-buildability-run: %w", runErr)
+		// that answered nothing failed before its tests, and what the rest of
+		// the run said names why
+		return res, fmt.Errorf("make name-buildability-run: %w\n%s", runErr, tail(strings.Join(other, "\n"), 20))
+	case len(res) == 0:
+		// exit 0 with no verdict: the -run pattern matched no test (a
+		// language with no TestNameBuildability_<lang>, or a build without
+		// -tags namebuild_targets)
+		return res, fmt.Errorf("make name-buildability-run answered none of the %d asked: %s matched no test\n%s", len(want), pattern, tail(strings.Join(other, "\n"), 20))
 	}
 	return res, nil
 }

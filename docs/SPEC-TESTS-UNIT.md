@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 156.
+Unit tests every language answers: 0. Language-free tests: 157.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -130,12 +130,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.inputaccount.merge-reads-the-record-files` | `gotest` | Go test TestMergeReadsTheRecordFiles in ./tools/inputaccount | `package: ./tools/inputaccount`<br>`test: TestMergeReadsTheRecordFiles` | the Go test passes | `tools/inputaccount/shard_test.go:68` |
 | `none.unit.tooling.inputaccount.parse-shard` | `gotest` | Go test TestParseShard in ./tools/inputaccount | `package: ./tools/inputaccount`<br>`test: TestParseShard` | the Go test passes | `tools/inputaccount/shard_test.go:93` |
 
-#### `tooling` family `namebuild`, 5 tests
+#### `tooling` family `namebuild`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.namebuild.every-target-has-its-test` | `gotest` | Go test TestEveryTargetHasItsTest in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestEveryTargetHasItsTest` | the Go test passes | `tools/namebuild/namebuild_test.go:77` |
 | `none.unit.tooling.namebuild.plan-covers-the-corpus` | `gotest` | Go test TestPlanCoversTheCorpus in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestPlanCoversTheCorpus` | the Go test passes | `tools/namebuild/namebuild_test.go:32` |
+| `none.unit.tooling.namebuild.read-rows-refuses-names-go-test-renames` | `gotest` | Go test TestReadRowsRefusesNamesGoTestRenames in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestReadRowsRefusesNamesGoTestRenames` | the Go test passes | `tools/namebuild/namebuild_test.go:209` |
 | `none.unit.tooling.namebuild.registry-cases-are-distinct` | `gotest` | Go test TestRegistryCasesAreDistinct in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryCasesAreDistinct` | the Go test passes | `tools/namebuild/namebuild_test.go:140` |
 | `none.unit.tooling.namebuild.registry-holds-every-builds-row` | `gotest` | Go test TestRegistryHoldsEveryBuildsRow in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryHoldsEveryBuildsRow` | the Go test passes | `tools/namebuild/namebuild_test.go:160` |
 | `none.unit.tooling.namebuild.targets-are-the-generators` | `gotest` | Go test TestTargetsAreTheGenerators in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestTargetsAreTheGenerators` | the Go test passes | `tools/namebuild/namebuild_test.go:59` |
