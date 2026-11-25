@@ -1,0 +1,86 @@
+name: the produced trees
+description: >
+  A producer's built tree (a conformance leg the env plants run), built once
+  per run and shared, never built cold inside a shard. "produce" restores the
+  tree from the runner's cache, keyed by what it is built from
+  (tools/produce.sh identity: the merged tree and the Go toolchain), builds
+  its make target (a no-op on a cache hit), packs it and uploads it; "fetch"
+  downloads every producer's tree and unpacks it, which refuses a tree built
+  from other source by name and stands what it holds newer than this
+  checkout. Runs no test.
+inputs:
+  mode:
+    description: produce or fetch
+    required: true
+  name:
+    description: the producer (produce only)
+    required: false
+    default: ''
+  target:
+    description: the make target that builds it (produce only)
+    required: false
+    default: ''
+  paths:
+    description: what the target makes, space-separated (produce only)
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: what the cache is keyed by
+      if: inputs.mode == 'produce'
+      shell: bash
+      run: echo "PRODUCE_ID=$(sh tools/produce.sh identity | tr ' ' '-')" >> "$GITHUB_ENV"
+    - id: kept
+      if: inputs.mode == 'produce'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          build/produce/${{ inputs.name }}.tgz
+          build/produce/${{ inputs.name }}.id
+        key: produce-${{ inputs.name }}-${{ runner.os }}-${{ env.PRODUCE_ID }}
+    - name: the kept tree, stood newer than this checkout
+      if: inputs.mode == 'produce' && steps.kept.outputs.cache-hit == 'true'
+      shell: bash
+      run: sh tools/produce.sh unpack build/produce
+    - name: make ${{ inputs.target }}
+      if: inputs.mode == 'produce'
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+      run: make -j"$(nproc)" --no-print-directory "$TARGET"
+    - name: pack the tree
+      if: inputs.mode == 'produce'
+      shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        PATHS: ${{ inputs.paths }}
+      run: |
+        # shellcheck disable=SC2086 # one word per path
+        sh tools/produce.sh pack "$NAME" $PATHS
+    - if: inputs.mode == 'produce' && steps.kept.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          build/produce/${{ inputs.name }}.tgz
+          build/produce/${{ inputs.name }}.id
+        key: ${{ steps.kept.outputs.cache-primary-key }}
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: inputs.mode == 'produce'
+      with:
+        name: produce-${{ inputs.name }}-${{ github.run_id }}-${{ github.sha }}
+        path: |
+          build/produce/${{ inputs.name }}.tgz
+          build/produce/${{ inputs.name }}.id
+        if-no-files-found: error
+        retention-days: 1
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      if: inputs.mode == 'fetch'
+      with:
+        pattern: produce-*-${{ github.run_id }}-${{ github.sha }}
+        path: build/produce
+        merge-multiple: true
+    - name: the produced trees, stood newer than this checkout
+      if: inputs.mode == 'fetch'
+      shell: bash
+      run: sh tools/produce.sh unpack build/produce

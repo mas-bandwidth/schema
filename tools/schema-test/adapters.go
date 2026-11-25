@@ -135,7 +135,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// every language row names corpus: one adapter routes each family
 		// to its harness for any language, and a case a language does not
 		// answer yet runs and is red
-		"corpus":      &harnessAdapter{build: b, log: log},
+		"corpus":      newHarnessAdapter(b, log),
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
@@ -198,6 +198,15 @@ const workRoot = "build/schema-test-work"
 type harnessAdapter struct {
 	build *builder
 	log   io.Writer
+	// mk runs a per-language row's make gates (langmake.go); controls runs
+	// the ones that are negative controls, with no -j as their job ran them
+	mk, controls makeAdapter
+}
+
+func newHarnessAdapter(b *builder, log io.Writer) *harnessAdapter {
+	controls := newMakeAdapter()
+	controls.jobs = 0
+	return &harnessAdapter{build: b, log: log, mk: newMakeAdapter(), controls: controls}
 }
 
 // Serial: the harness takes the checkout for its whole run (runHarness), so
@@ -206,6 +215,9 @@ type harnessAdapter struct {
 func (a *harnessAdapter) Serial() bool { return true }
 
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
+	if _, has, err := langMakeGates(t); has {
+		return err == nil
+	}
 	_, ok := harnessFor(t)
 	return ok && t.PerLang()
 }
@@ -235,7 +247,12 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 	// of a leg in one run, so its families go to it together
 	byHarness := map[string][]testreg.Instance{}
 	var names []string
+	var gated []testreg.Instance
 	for _, inst := range instances {
+		if _, has, _ := langMakeGates(inst.Test); has {
+			gated = append(gated, inst)
+			continue
+		}
 		h, ok := harnessFor(inst.Test)
 		if !ok {
 			return nil, fmt.Errorf("%s: no harness for family %s", inst.Full, inst.Test.Family)
@@ -246,6 +263,13 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 		byHarness[h.Name] = append(byHarness[h.Name], inst)
 	}
 	var all []testreg.Result
+	if len(gated) > 0 {
+		res, err := runLangMake(ctx, a.mk, a.controls, lang, gated)
+		all = append(all, res...)
+		if err != nil {
+			return all, err
+		}
+	}
 	for _, name := range names {
 		h, _ := harnessFor(byHarness[name][0].Test)
 		fam := h.Name

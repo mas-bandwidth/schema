@@ -492,12 +492,20 @@ file (`TestWriteSecondsKeepsEveryOtherByte`).
 - `schema-test run --group G --shard i/n` runs part i of n.
 
 **The budget.** A per-PR shard carries at most 60 s of measured tests (the
-two-minute job less its setup). `TestThePRShardsFitTheirJobs` holds ci-fast's
-`schema-test-pr` matrix to exactly 1/N..N/N, with every part within the
-budget, and N is the least count that fits: the same list cut into N-1 parts
-must overflow. When the pr group grows past N parts, add shards; when it
-shrinks or speeds up so that N-1 fit, remove one. Either way the test is red
-until the matrix changes.
+two-minute job less its setup). `schema-test ci` picks each language's N
+from the measured seconds, and `TestTheMatrixIsThePRGroup` holds ci-fast's
+shard matrix to exactly 1/N..N/N per language, with every part within the
+budget. When the pr group grows, `schema-test ci` adds shards. A test with
+no `seconds` weighs 1 s until a run measures it, so a shard of unmeasured
+tests is held to the budget only once they are measured.
+
+**A weight is per test, not per call.** A corpus row's seconds are its
+language leg's wall time divided by the rows the leg answered, and the
+heaviest language sets it. The conformance harness runs a whole leg per call,
+so a shard of a language's corpus rows does not take its share of the leg's
+time: on amd-2 cpp's whole leg took 192 s, and one quarter of its rows,
+with the bench loaded, still ran past the 90 s adapter limit. Until the harness runs only the rows it is
+asked for, a language's corpus shards are not bounded by the budget.
 
 **A test heavier than one shard** is red by its own name. The fix is to split
 it into rows that each fit, such as one row per package or per make target:
@@ -557,23 +565,230 @@ yet is red by name until it does.
 
 ## CI
 
-- Per PR: ci-fast.yml job `plan` reads the matrix (`schema-test langs
-  --ready`); job `schema-test` runs `--group pr --lang L`, one row per ready
-  language, each building only its own leg, and its `none` row prints
-  `coverage` and holds the extract to the ledger. Job `schema-test-pr` is a
-  matrix of shards, each `schema-test run --group pr --lang none --shard i/N`:
-  the language-free tests of tiers unit and functional.
-  `TestThePRShardsFitTheirJobs` holds the matrix to exactly 1/N..N/N, each
-  shard within its 60 s of measured tests. The two jobs together are the `pr`
-  group exactly: every ready language less what it owes, every
-  language-free test. A workflow job that runs the driver is not itself an
+CI is generated from the registry. `schema-test ci` writes
+`.github/workflows/ci-fast.yml` and `docs/CI-TIERS.md`; `schema-test ci
+--check` (and `TestTheCIFilesAreCurrent`) regenerates both and fails, by file
+and line, on any difference, so a hand edit is red.
+
+- Per PR: ci-fast.yml. Job `schema-test` runs `ci --check`, prints `coverage`
+  and runs `extract` against main's ledger. Jobs `schema-test-pr-1`,
+  `schema-test-pr-2`, ... are one matrix cut at GitHub's limit of 256 jobs
+  per matrix (a language's shards kept in one job where they fit;
+  `TestTheShardJobsFitGitHubsMatrixLimit`, and the policy names any inline
+  matrix past the limit by file and line), with one row per language (and
+  `none`) and shard: `schema-test run --group
+  pr --lang L --shard i/N`, N the fewest parts that each carry at most 60 s of
+  measured tests (L3's `Parts`, the one sharder). `TestTheMatrixIsThePRGroup`
+  holds the matrix to the pr group exactly: every name in one job, none
+  twice, no shard past its budget. Two jobs build what the shards read and
+  run no test: `fixed-corpus` (the go fixed corpus, through the
+  `fixed-corpus` setup action) and `produce`, one job per producer (the
+  conformance-leg-go and conformance-leg-goose trees the env plants run),
+  each built once per run through the `produce` setup action, kept in the
+  runner's cache by `tools/produce.sh identity`, and fetched by every shard
+  before its run; a shard needs both green
+  (`TestThePRShardsRunOnTheProducedLegs`). Job `verdict` is green only when
+  every job passed, and the needs hold exactly the shard jobs the registry
+  cuts (`schema-test ci --verdict`,
+  `TestTheVerdictNeedsEveryJobGreen`); each shard's run already fails on
+  expected != ran. A workflow job that runs the driver is not itself an
   unmoved test: its tests are the rows it selects.
-- Nightly: `schema-test-nightly.yml` runs `--group nightly` (every tier, every
-  language, no timeout) and names every MISSING instance red. It is red by
-  intent until every language has an adapter: its MISSING list is the
-  per-language work list that test-registry/ci-through-driver,
-  test-registry/union and test-registry/fix-missing close. Only a red name
-  outside that list is a regression.
+- On pull requests that touch the roadmap, and pushes to main, with history:
+  roadmap.yml runs the one row that reads the commit
+  range (`tooling.roadmap.check`) with full history, because ci-fast's shards
+  check out one commit. The row is tier nightly, so the pr group leaves it to
+  that job; its control and suites are pr-group rows.
+- Nightly: `schema-nightly.yml` (the full-run layer's) runs the nightly group,
+  every tier and every language, as `go run ./tools/fullrun launch` parts
+  and one `fullrun merge` verdict; it replaces schema-test-nightly.yml, which
+  this layer deletes. A language that does not answer a row is an ordinary
+  red row by name (there are no owed records: `Load` refuses one as an
+  exemption list), so its red list is the per-language work list. Only a
+  red name outside that list is a regression.
+- Workflows that run no test: cla.yml, release.yml (its fast lane reads a
+  green ci-fast.yml run at the commit) and promotion-tag.yml, pinned as
+  below.
+
+**Generated or pinned** (`schema-test ci --check`, run by ci-fast.yml;
+`TestEveryGitHubFileIsGeneratedOrPinned`): every file under `.github` is one
+of two.
+- Generated by `schema-test ci`: ci-fast.yml from the registry's pr group,
+  roadmap.yml and schema-nightly.yml from their templates
+  (`tools/schema-test/ci-templates/`) and the registry, and docs/CI-TIERS.md.
+  `ci --check` regenerates each and fails on any difference, by file and
+  line; a change goes through the registry or the template.
+- Pinned in `test/registry/ci-pins.tsv` at its content's sha256: the
+  workflows that run no test, the setup actions and the data files beside
+  them (`pinned`), and the ten test workflows a later layer generates
+  (`not-yet-generated`: certify, ci-full, leg-gates-nightly, leg,
+  lobster-fixed-proof-qualification, nightly-conformance, python-leg-nightly,
+  python-leg, ruby-leg, tla-nightly). A changed pinned file is a reviewed
+  change: `ci --check` names the file, the pin's line and the line to write.
+  The not-yet-generated list only shrinks: `extract --since` holds it to
+  main's (`TestTheNotYetGeneratedListOnlyShrinks`), and a file leaves it by
+  being generated or deleted, never by becoming pinned.
+A file that is neither, a pin of a file that is gone and a pin of a
+generated file are each red by name; so are a pinned workflow that is none
+of the workflows that run no test (nonTestWorkflows), and a not-yet-generated file that is no
+workflow. When main has no ci-pins.tsv yet, extract --since says so aloud.
+
+**The rule the generated workflows keep**
+(`TestEveryWorkflowStepCallsOnlySchemaTest`, file:line on every red): every
+`run:` line is a comment, a shell setting, a plain `echo` or `exit`, or calls
+`go run ./tools/schema-test` (run, ci, coverage or extract) or the full run that
+calls it (`go run ./tools/fullrun launch|merge`), with nothing chained after
+it (`;`, `&&`, `||`, a pipe, a redirect, `$(` or a backtick is red), no GitHub
+expression but a matrix value in the line, and no flag that re-pins, raises
+a limit or points elsewhere (`--update`, `--timeout`, `--registry`, `--root`
+other than `.`, the write flags); the step shell is bash or pgroup; every
+action is checkout, setup-go, the cache and artifact actions or a setup
+action; only schema-nightly.yml has a schedule or a workflow_run trigger,
+and it runs the nightly group. Generation fixes what the files say; this
+holds the templates to the rule. A check that is not a registry row cannot
+run in CI.
+
+## The retired workflows
+
+`test/registry/retired.tsv` names every check a deleted workflow ran and the
+row that runs it now (workflow, job, kind, check, row, language).
+`TestEveryRetiredCheckIsStillRun` holds every line: a row removed, a
+language's gate dropped from a per-language row, a target renamed, a
+retired `go test` step left with no row, or a check that ran on every pull
+request (ci-fast.yml, caa-self-test.yml, roadmap.yml's roadmap job) whose row
+is outside the pr group and run by name by no per-PR workflow, is red by the
+line that names it, so a coverage drop, including a move to the night,
+cannot pass unseen.
+
+A check no row runs yet has a line with row `-`, and the test is red on it
+by name until a row runs it; nothing excuses it. The old ci-fast.yml's own
+jobs (counted per job below) are named this way, because the generated
+ci-fast.yml runs only rows; each layer that gives a check its row shrinks
+the red list. The strict lint gates are rows of tier nightly: their whole
+run is past a pr shard's budget, so they wait on a faster gate to come back
+per PR.
+
+A language that never ran a check before is not left out: the per-language
+row names a gate for every language, and a language with no gate fails its
+instance by name (`langmake`), red in the nightly until a gate answers it.
+
+The counts below compare, at one commit on one bench (amd-2) and with no CI,
+the deleted workflows' own commands with the registry rows that replace
+them. "Checks it ran" counts the old commands' checks; "Registry instances
+now" counts the rows that run them (one row can run several old commands);
+a red in both columns is the same red before and after.
+
+| Workflow | Checks it ran | Passed (its commands) | Registry instances now | Passed (schema-test) | Notes |
+|---|---|---|---|---|---|
+| caa-self-test.yml | 1 | 1 | 1 | 0 | no token on the bench: none.functional.tooling.caa.self-test FAIL naming GITHUB_TOKEN (the shards supply it) |
+| roadmap.yml | 4 | 3 | 4 | 3 | old red: roadmap-test; new red: none.functional.tooling.roadmap.suites FAIL |
+| schema-c-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-cpp-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-cs-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-dart-generated-strict-analyze-gate.yml | 3 | 3 | 2 | 2 |  |
+| schema-dart-nightly-fuzz.yml | 4 | 4 | 4 | 4 |  |
+| schema-dart-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-elixir-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-engine-is-the-oracle.yml | 1 | 1 | 1 | 1 |  |
+| schema-go-generated-golangci-lint-gate.yml | 2 | 1 | 1 | 0 | old red: schema-go-generated-golangci-lint-gate-nightly; new red: go.nightly.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate FAIL |
+| schema-java-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-js-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-lobster-generated-strict-gate.yml | 3 | 3 | 3 | 3 |  |
+| schema-lua-generated-luacheck-gate.yml | 4 | 4 | 3 | 3 |  |
+| schema-lua-nightly-fuzz.yml | 6 | 6 | 5 | 5 |  |
+| schema-lua-resource-bounds.yml | 4 | 4 | 3 | 3 |  |
+| schema-lua-runs-hostile-corpus.yml | 5 | 5 | 3 | 3 |  |
+| schema-lua-version-differential.yml | 4 | 4 | 4 | 4 |  |
+| schema-luau-generated-analyze-strict-gate.yml | 2 | 2 | 2 | 2 |  |
+| schema-luau-nightly-fuzz.yml | 4 | 4 | 3 | 3 |  |
+| schema-luau-resource-bounds.yml | 3 | 3 | 3 | 3 |  |
+| schema-luau-runs-hostile-corpus.yml | 4 | 4 | 3 | 3 |  |
+| schema-moo-generated-analyze-strict-gate.yml | 3 | 3 | 2 | 2 |  |
+| schema-moo-nightly-fuzz.yml | 4 | 4 | 4 | 4 |  |
+| schema-moo-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-python-resource-bounds.yml | 4 | 4 | 3 | 3 |  |
+| schema-python-runs-hostile-corpus.yml | 5 | 5 | 3 | 3 |  |
+| schema-ruby-resource-bounds.yml | 2 | 2 | 2 | 2 |  |
+| schema-ruby-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-rust-runs-hostile-corpus.yml | 2 | 1 | 2 | 1 | the same red: schema-rust-runs-hostile-corpus-negative-control, run as rust.nightly.plant.make-schema-rust-runs-hostile-corpus.schema-rust-runs-hostile-corpus-negative-control |
+| schema-shared-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+| schema-squirrel-all-port-differential.yml | 4 | 4 | 3 | 3 |  |
+| schema-squirrel-nightly-fuzz.yml | 5 | 5 | 5 | 5 |  |
+| schema-squirrel-resource-bounds.yml | 4 | 4 | 3 | 3 |  |
+| schema-squirrel-runs-hostile-corpus.yml | 4 | 3 | 3 | 2 | old red: schema-squirrel-runs-hostile-corpus; new red: the squirrel hostile rows (make schema-squirrel-runs-hostile-corpus) FAIL |
+| schema-unity-runs-hostile-corpus.yml | 2 | 2 | 2 | 2 |  |
+
+Staging retired most of these workflows before L7 (the hostile family and L6b), with rows of its own: one row per make target, and the hostile corpus one row per case. Where L7 had a family row for the same target, the merge kept staging's row and dropped L7's, so each target is run by one row; retired.tsv names the kept row. The make targets are the ones measured above, so the counts stand for the commands; the instance count of a hostile workflow is now its cases.
+
+What does not match yet, and why:
+
+- The hostile-corpus rows of c, cpp, cs, dart, elixir, java, js, rust and
+  unity were red only from `testreg.RefuseSkips` reading the word in lines
+  that report no skip; with that fixed on staging (303142ba49) they match.
+  Re-run at one sha with the 90 s adapter limit: cs, js and unity on
+  hetzner1, and the rest under `nova-reserve run --exclusive` on amd-2 after
+  one warm run, each row at most 30 s there. rust's planted control is red
+  in both columns, the same red.
+- caa self-test: the row (`tooling.caa.self-test`, tier functional, so per
+  PR as caa-self-test.yml ran it) runs `make caa-self-test`, which reads
+  main's tip from GitHub and fails naming `GITHUB_TOKEN` when it is not set.
+  The bench run above had no token, so it failed by that name; ci-fast.yml's
+  pr shards supply `github.token`, as the old workflow did, and with a token
+  the row passes. TestCAASelfTestFailsNamingTheMissingToken holds the
+  recipe to failing by that name before it reads GitHub.
+- schema-squirrel-nightly-fuzz.yml's harness job also ran
+  `TestSquirrelNightlyFuzzTestsStayInTheCampaign`, which held each fuzz test
+  behind its `nightlyCampaign` gate. The no-skip layer (30556c3a36) removed
+  the gate and that test with it, so it has no line: the check it made no
+  longer exists to run.
+- schema-python-nightly-fuzz.yml and schema-ruby-nightly-fuzz.yml are not
+  in the table: the wire-fuzz layer retired them before this one
+  (7002f68d86), with its own counts match, and their streams run as the
+  per-language rows `fuzz.wire-fuzz.plain`, `.mixed` and `.retain`.
+- The old ci-fast.yml's own jobs: the generated ci-fast.yml runs only rows,
+  so every check a removed job ran is a line of `retired.tsv`, mapped to the
+  row that runs it or named red until a pr-group row runs it (row `-`, or a
+  row the pr group does not run: 22 checks map to nightly rows, so they are
+  red by the per-PR rule above, which reads a row's tier and language).
+  The matrices are
+  expanded from their sources (the plan's leg lists, the nightly-fast rows
+  file, the input families' full selection, the unmoved ledger's Go tests):
+
+  | Job | Checks | Run per PR by a row | Named red |
+  |---|---|---|---|
+  | build-cpp-conformance-account | 1 | 0 | 1 |
+  | ci-policy | 2 | 1 | 1 |
+  | conformance-rows | 8 | 0 | 8 |
+  | conformance-rows-elixir | 1 | 0 | 1 |
+  | generated-current | 1 | 0 | 1 |
+  | golangci-lint-fast | 1 | 0 | 1 |
+  | go-test-touched | 64 | 0 | 64 |
+  | input-family | 100 | 0 | 100 |
+  | input-family-cpp-conformance | 1 | 0 | 1 |
+  | input-family-dart-conformance | 1 | 0 | 1 |
+  | input-family-elixir-conformance | 1 | 0 | 1 |
+  | input-family-merge | 1 | 0 | 1 |
+  | lang-clean | 12 | 0 | 12 |
+  | lang-lint | 7 | 7 | 0 |
+  | lint-fast | 5 | 0 | 5 |
+  | newleg-scaffold | 1 | 1 | 0 |
+  | nightly-fast | 52 | 17 | 35 |
+  | verify-cpp-conformance | 2 | 0 | 2 |
+  | verify-dart-conformance | 1 | 0 | 1 |
+  | verify-dart-fuzz | 1 | 0 | 1 |
+  | verify-elixir-conformance | 1 | 0 | 1 |
+  | verify-goose-fuzz | 2 | 0 | 2 |
+  | verify-leg | 67 | 0 | 67 |
+  | vet | 1 | 0 | 1 |
+  | all | 334 | 26 | 308 |
+
+  The jobs that ran no check of their own: plan (it chose the legs),
+  stage-compiler (it built the compiler the cpp legs read) and
+  go-fixed-corpus (now the `fixed-corpus` job). The kept jobs are
+  `schema-test`, the `schema-test-pr-N` shard jobs, `produce` and `verdict`.
+- schema-test-nightly.yml ran one check, `schema-test run --group nightly`;
+  schema-nightly.yml runs the same group through `go run ./tools/fullrun`,
+  so it has no retired line: the check moved, whole, to the workflow that
+  replaces it.
 
 ## What the tracer taught
 
@@ -625,7 +840,11 @@ ledger and into rows:
   corpus families first.
 - **L5:** the per-language Go tests, through each language's adapter.
 - **L6:** plants, make gates, goldens, lint, fuzz, benches and TLC models.
-- **L7:** CI generated from the registry.
+- **L7:** CI generated from the registry (the CI section above). The
+  per-language scheduled workflows are retired into rows; ci-full.yml,
+  certify.yml, the leg workflows and the other nightlies remain until every
+  check they run is a row (`TestEveryWorkflowStepCallsOnlySchemaTest` names
+  each remaining step, by file and line).
 
 An old CI job is retired only after a run at one SHA shows the driver ran
 every test that job ran, in the same tier, with the same count.

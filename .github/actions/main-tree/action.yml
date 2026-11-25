@@ -1,0 +1,33 @@
+name: main's tree
+description: >
+  Exports main's tree beside the checkout for `schema-test extract --since`,
+  and main's unmoved ledger for `--shrinks-from` when main has one. An
+  exported tree, not a worktree: a worktree stays registered in .git on a
+  persistent runner and refuses the next job. Runs no test.
+outputs:
+  tree:
+    description: the directory main's tree is in
+    value: ${{ steps.export.outputs.tree }}
+  ledger:
+    description: main's test/registry/unmoved.tsv, or empty when main has none
+    value: ${{ steps.export.outputs.ledger }}
+runs:
+  using: composite
+  steps:
+    - id: export
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --quiet --depth 1 origin main
+        tree="$RUNNER_TEMP/main-tree"
+        rm -rf "$tree"
+        mkdir -p "$tree"
+        git archive FETCH_HEAD | tar -x -C "$tree"
+        echo "tree=$tree" >> "$GITHUB_OUTPUT"
+        if git cat-file -e FETCH_HEAD:test/registry/unmoved.tsv; then
+          git show FETCH_HEAD:test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"
+          echo "ledger=$RUNNER_TEMP/unmoved-main.tsv" >> "$GITHUB_OUTPUT"
+        else
+          echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
+          echo "ledger=" >> "$GITHUB_OUTPUT"
+        fi

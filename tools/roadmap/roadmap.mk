@@ -24,11 +24,10 @@ ROADMAP_DATA_DIR = build/roadmap-data-check
 # committed page is current, so it is the gate on every pull request and
 # every push to main (.github/workflows/roadmap.yml), and a card naming it in
 # its DONE-WHEN is not red for the page main has yet to re-render.
-# roadmap-data-check is the same target under the name schema#3967 gave it.
 # The page itself is re-rendered on main in one commit (`make roadmap`);
 # `make roadmap-page-check` holds the committed tables to the render, nightly,
 # on dispatch, and for whoever re-renders the page.
-.PHONY: roadmap roadmap-check roadmap-data-check roadmap-page-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
+.PHONY: roadmap roadmap-check roadmap-page-check roadmap-check-negative-control roadmap-original-nine-check roadmap-test
 roadmap:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp ROADMAP.md
@@ -40,15 +39,16 @@ roadmap-page-check:
 	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
 	ROADMAP_PAGE_CHECK=1 go test -count=1 -run '^TestRoadmapIsGeneratedFromTheData$$' ./tools/roadmap/
 
-roadmap-data-check: roadmap-check
-
 roadmap-check:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-check REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	@mkdir -p $(ROADMAP_DATA_DIR)
 	cp ROADMAP.md $(ROADMAP_DATA_DIR)/ROADMAP.md
 	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp $(ROADMAP_DATA_DIR)/ROADMAP.md
 	$(ROADMAP_HANDTEXT) -page ROADMAP.md
-	$(ROADMAP_HANDTEXT) -base $(ROADMAP_BASE)
+	@# a push's before commit is gone after a force-push: the range is then
+	@# the last commit, said aloud (roadmap.yml passes the before commit)
+	@base='$(ROADMAP_BASE)'; if ! git cat-file -e "$$base^{commit}"; then echo "roadmap-check: $$base is not a commit in this checkout; the range is HEAD~1"; base=HEAD~1; fi; \
+	$(ROADMAP_HANDTEXT) -base "$$base"
 
 # The gates fire on an "X update:" paragraph put back: outside the markers by
 # an author other than Glenn, and inside a block by anyone.

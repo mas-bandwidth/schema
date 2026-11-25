@@ -24,7 +24,8 @@ import (
 //	schema-test extract --json             every test, one JSON line each
 //	schema-test extract --write-ledger     rewrite the ledger to what is unmoved now
 //	schema-test extract --shrinks-from F   also hold the ledger to F (main's), which it may not exceed
-//	schema-test extract --since DIR        also name each test DIR (main's tree) lacks that has no row
+//	schema-test extract --since DIR        also name each test DIR (main's tree) lacks that has no row,
+//	                                       and hold ci-pins.tsv's not-yet-generated list to DIR's
 //	schema-test extract --move L           give every unmoved test of layer L's ledger lines its
 //	                                       registry row (the kinds the driver has an adapter for), then
 //	                                       rewrite the ledger
@@ -134,6 +135,16 @@ func extractCmd(args []string, stdout io.Writer) error {
 		}
 		problems = append(problems, extract.NewWithoutRows(before, res, reg)...)
 		problems = append(problems, extract.DroppedMakeTargets(before, res)...)
+		pp, hadMain, err := pinsShrinkSince(*since, *root)
+		if err != nil {
+			return err
+		}
+		if !hadMain {
+			if _, err := fmt.Fprintf(stdout, "schema-test extract: --since %s has no %s: this change brings the not-yet-generated list, so there is nothing to shrink from\n", *since, ciPinsPath); err != nil {
+				return err
+			}
+		}
+		problems = append(problems, pp...)
 	}
 	if *shrinks != "" {
 		old, err := extract.LoadLedger(*shrinks)
@@ -287,4 +298,44 @@ func nestedModule(root, dir string) bool {
 		}
 	}
 	return false
+}
+
+// pinsShrinkSince holds root's not-yet-generated workflows to since's (main's
+// tree): the list only shrinks. A main with no ci-pins.tsv has none to
+// shrink from (hadMain false, which the caller says aloud); a ci-pins.tsv
+// gone from root while main's lists any is red.
+func pinsShrinkSince(since, root string) (problems []string, hadMain bool, err error) {
+	read := func(dir string) ([]ciPin, []string, bool, error) {
+		data, err := os.ReadFile(filepath.Join(dir, ciPinsPath))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, false, nil
+		}
+		if err != nil {
+			return nil, nil, false, err
+		}
+		pins, problems := readPins(data)
+		return pins, problems, true, nil
+	}
+	old, oldProblems, hadOld, err := read(since)
+	if err != nil {
+		return nil, false, err
+	}
+	now, problems, hasNow, err := read(root)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, p := range oldProblems {
+		problems = append(problems, "--since "+since+": "+p)
+	}
+	if !hadOld {
+		return problems, false, nil // main has no list yet: this change brings it
+	}
+	if !hasNow {
+		for _, p := range old {
+			if p.State == pinNotYetGenerated {
+				problems = append(problems, fmt.Sprintf("%s is gone, and main's lists %s as not yet generated: the list only shrinks, by generating", ciPinsPath, p.Path))
+			}
+		}
+	}
+	return append(problems, notYetGeneratedShrinks(old, now)...), true, nil
 }

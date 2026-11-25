@@ -100,9 +100,8 @@ func runMergeMain(t *testing.T, dir, event, base string) (string, error) {
 }
 
 // TestEveryFastCheckoutMergesMain holds every job of ci-fast.yml to the lane
-// merge: the step right after each actions/checkout is merge-main, and the
-// plan diffs a pull request against main. A new job that forgets it is red
-// here by line number.
+// merge: the step right after each actions/checkout is merge-main. A new job
+// that forgets it is red here by line number.
 func TestEveryFastCheckoutMergesMain(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
@@ -131,9 +130,5 @@ func TestEveryFastCheckoutMergesMain(t *testing.T) {
 	}
 	if checkouts == 0 {
 		t.Fatal("ci-fast.yml has no actions/checkout step: the scan matched nothing")
-	}
-	const base = "          BASE: main\n"
-	if !strings.Contains(string(data), base) {
-		t.Errorf("ci-fast.yml's plan does not diff a pull request against main (%q)", base)
 	}
 }

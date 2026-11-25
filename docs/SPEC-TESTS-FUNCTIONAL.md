@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2246.
+Functional tests every language answers: 2468. Language-free tests: 2242.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4771,6 +4771,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.functional.plant.moo.schema-moo-generated-analyze-strict-gate-negative-control` | `plant` | negative control schema-moo-generated-analyze-strict-gate-negative-control (group moo of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`group: moo`<br>`make: schema-moo-generated-analyze-strict-gate-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3142` |
 
+#### `plant` family `roadmap`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.roadmap.update-paragraph-control` | `plant` | the roadmap gate refuses an "X update:" paragraph put back | `file: tools/roadmap/roadmap.mk`<br>`group: (excluded)`<br>`make: roadmap-check-negative-control` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
+
 #### `plant` family `schema-dart-strict-analyze`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5153,7 +5159,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:94` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 60 tests
+#### `tooling` family `caa`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.caa.self-test` | `make` | the CAA allowlist is exactly the linked logins, and main's tip is covered (reads GitHub with GITHUB\_TOKEN) | `file: make/caa-self-test.mk`<br>`target: caa-self-test` | the target exits 0 with no skip in its log | `make/caa-self-test.mk` |
+
+#### `tooling` family `ci`, 52 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5165,11 +5177,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.constrained-test-gate-negative-control` | `gotest` | Go test TestConstrainedTestGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConstrainedTestGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:276` |
 | `none.functional.tooling.ci.dist-python-stages-the-fleet-sdk` | `gotest` | Go test TestDistPythonStagesTheFleetSDK in ./internal/ci | `package: ./internal/ci`<br>`test: TestDistPythonStagesTheFleetSDK` | the Go test passes | `internal/ci/pythonsdk_test.go:23` |
 | `none.functional.tooling.ci.every-run-pattern-matches-a-test` | `gotest` | Go test TestEveryRunPatternMatchesATest in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryRunPatternMatchesATest` | the Go test passes | `internal/ci/runpattern_test.go:612` |
-| `none.functional.tooling.ci.every-tree-path-maps-to-a-job` | `gotest` | Go test TestEveryTreePathMapsToAJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTreePathMapsToAJob` | the Go test passes | `internal/ci/every_job_runs_test.go:304` |
-| `none.functional.tooling.ci.fast-lane-runs-card-added-go-fixed-form-tests` | `gotest` | Go test TestFastLaneRunsCardAddedGoFixedFormTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastLaneRunsCardAddedGoFixedFormTests` | the Go test passes | `internal/ci/fast_go_test.go:34` |
-| `none.functional.tooling.ci.fast-plan-covers-every-base-and-selects-relevant-work` | `gotest` | Go test TestFastPlanCoversEveryBaseAndSelectsRelevantWork in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanCoversEveryBaseAndSelectsRelevantWork` | the Go test passes | `internal/ci/fast_plan_test.go:94` |
-| `none.functional.tooling.ci.fast-plan-diffs-against-main` | `gotest` | Go test TestFastPlanDiffsAgainstMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanDiffsAgainstMain` | the Go test passes | `internal/ci/every_job_runs_test.go:339` |
-| `none.functional.tooling.ci.fast-plan-selects-new-leg-scaffold` | `gotest` | Go test TestFastPlanSelectsNewLegScaffold in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanSelectsNewLegScaffold` | the Go test passes | `internal/ci/newleg_plan_test.go:22` |
 | `none.functional.tooling.ci.go-fixed-corpus-pipeline-keeps-complete-test-recipe` | `gotest` | Go test TestGoFixedCorpusPipelineKeepsCompleteTestRecipe in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoFixedCorpusPipelineKeepsCompleteTestRecipe` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:10` |
 | `none.functional.tooling.ci.golden-rewrite-gate-over-a-fixture-tree` | `gotest` | Go test TestGoldenRewriteGateOverAFixtureTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewriteGateOverAFixtureTree` | the Go test passes | `internal/ci/golden_rewrites_test.go:84` |
 | `none.functional.tooling.ci.lua-allocation-counter-counts` | `gotest` | Go test TestLuaAllocationCounterCounts in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuaAllocationCounterCounts` | the Go test passes | `internal/ci/schema_lua_resource_bounds_test.go:198` |
@@ -5183,8 +5190,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.luau-resource-bounds-planted-pattern` | `gotest` | Go test TestLuauResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_luau_resource_bounds_test.go:217` |
 | `none.functional.tooling.ci.luau-runs-hostile-corpus-planted-pattern` | `gotest` | Go test TestLuauRunsHostileCorpusPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauRunsHostileCorpusPlantedPattern` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:738` |
 | `none.functional.tooling.ci.luau-vocabulary-default-entry-bound` | `gotest` | Go test TestLuauVocabularyDefaultEntryBound in ./internal/ci | `package: ./internal/ci`<br>`test: TestLuauVocabularyDefaultEntryBound` | the Go test passes | `internal/ci/schema_luau_runs_hostile_corpus_test.go:814` |
-| `none.functional.tooling.ci.no-fast-job-skips-on-a-main-push` | `gotest` | Go test TestNoFastJobSkipsOnAMainPush in ./internal/ci | `package: ./internal/ci`<br>`test: TestNoFastJobSkipsOnAMainPush` | the Go test passes | `internal/ci/every_job_runs_test.go:106` |
-| `none.functional.tooling.ci.plan-omission-log-names-every-job` | `gotest` | Go test TestPlanOmissionLogNamesEveryJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestPlanOmissionLogNamesEveryJob` | the Go test passes | `internal/ci/every_job_runs_test.go:231` |
 | `none.functional.tooling.ci.python-and-ruby-wire-fuzz-rows-take-the-runs-seed` | `gotest` | Go test TestPythonAndRubyWireFuzzRowsTakeTheRunsSeed in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonAndRubyWireFuzzRowsTakeTheRunsSeed` | the Go test passes | `internal/ci/wirefuzz_seed_rows_test.go:83` |
 | `none.functional.tooling.ci.python-ci-corpus-provenance-and-damage-controls` | `gotest` | Go test TestPythonCICorpusProvenanceAndDamageControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCICorpusProvenanceAndDamageControls` | the Go test passes | `internal/ci/python_ci_corpus_test.go:296` |
 | `none.functional.tooling.ci.python-ci-planner-provisions-fixed-corpus` | `gotest` | Go test TestPythonCIPlannerProvisionsFixedCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonCIPlannerProvisionsFixedCorpus` | the Go test passes | `internal/ci/python_ci_corpus_test.go:133` |
@@ -5214,7 +5219,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:119` |
 | `none.functional.tooling.ci.squirrel-all-port-differential-leaves-uncomparable-answers-out` | `gotest` | Go test TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:482` |
 | `none.functional.tooling.ci.squirrel-runs-hostile-corpus-plant` | `gotest` | Go test TestSquirrelRunsHostileCorpusPlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelRunsHostileCorpusPlant` | the Go test passes | `internal/ci/schema_squirrel_runs_hostile_corpus_test.go:485` |
-| `none.functional.tooling.ci.touched-leg-reads-its-families-again` | `gotest` | Go test TestTouchedLegReadsItsFamiliesAgain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTouchedLegReadsItsFamiliesAgain` | the Go test passes | `internal/ci/touched_leg_rows_test.go:17` |
 | `none.functional.tooling.ci.vuln-recipe-runs-the-pinned-scanner-singular` | `gotest` | Go test TestVulnRecipeRunsThePinnedScannerSingular in ./internal/ci | `package: ./internal/ci`<br>`test: TestVulnRecipeRunsThePinnedScannerSingular` | the Go test passes | `internal/ci/vuln_test.go:23` |
 | `none.functional.tooling.ci.wide-scalar-probe-module-boundary` | `gotest` | Go test TestWideScalarProbeModuleBoundary in ./internal/ci | `package: ./internal/ci`<br>`test: TestWideScalarProbeModuleBoundary` | the Go test passes | `internal/ci/probe_test.go:21` |
 
@@ -5322,13 +5326,14 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.pgroup.orphan-outlives-a-bare-command` | `gotest` | Go test TestOrphanOutlivesABareCommand in ./tools/pgroup | `package: ./tools/pgroup`<br>`test: TestOrphanOutlivesABareCommand` | the Go test passes | `tools/pgroup/pgroup_test.go:81` |
 | `none.functional.tooling.pgroup.wall-stops-the-group` | `gotest` | Go test TestWallStopsTheGroup in ./tools/pgroup | `package: ./tools/pgroup`<br>`test: TestWallStopsTheGroup` | the Go test passes | `tools/pgroup/pgroup_test.go:97` |
 
-#### `tooling` family `roadmap`, 3 tests
+#### `tooling` family `roadmap`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.tooling.roadmap.lisp-renderer-suite` | `gotest` | Go test TestLispRendererSuite in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestLispRendererSuite` | the Go test passes | `tools/roadmap/tally_test.go:273` |
 | `none.functional.tooling.roadmap.regeneration-keeps-the-hand-text` | `gotest` | Go test TestRegenerationKeepsTheHandText in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRegenerationKeepsTheHandText` | the Go test passes | `tools/roadmap/tally_test.go:376` |
 | `none.functional.tooling.roadmap.roadmap-is-generated-from-the-data` | `gotest` | Go test TestRoadmapIsGeneratedFromTheData in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRoadmapIsGeneratedFromTheData` | the Go test passes | `tools/roadmap/tally_test.go:289` |
+| `none.functional.tooling.roadmap.suites` | `make` | the roadmap renderer and gate suites | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-test` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
 
 #### `tooling` family `schema-test`, 1 test
 
@@ -5593,12 +5598,13 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 |---|---|---|---|---|---|
 | `none.functional.harness-run.make-go.tables-go-fixedform` | `make` | make tables-go-fixedform (make/go.mk) exits 0 | `file: make/go.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-go-fixedform` | the target exits 0 with no skip in its log | `make/go.mk:63` |
 
-#### `harness-run` family `makefile`, 7 tests
+#### `harness-run` family `makefile`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
 | `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
+| `none.functional.harness-run.makefile.python-tooling-tests` | `make` | make python-tooling-tests (Makefile) exits 0: every \*\_test.py outside the vendored trees | `file: Makefile`<br>`target: python-tooling-tests` | the target exits 0 with no skip in its log | `Makefile` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8506` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8515` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8470` |
