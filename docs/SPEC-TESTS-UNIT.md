@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3120.
+Unit tests every language answers: 2. Language-free tests: 3121.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3689,6 +3689,12 @@ performance or timing.
 ### Type `resource-bounds`
 
 memory, allocation and depth limits are held.
+
+#### `resource-bounds` family `jstable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.resource-bounds.jstable.js-message-slots-indexed-once-per-module` | `gotest` | Go test TestMessageSlotsIndexedOncePerModule in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestMessageSlotsIndexedOncePerModule` | the Go test passes | `internal/codegen/jstable/messageslot_builds_test.go:23` |
 
 #### `resource-bounds` family `tabletext`, 1 test
 
