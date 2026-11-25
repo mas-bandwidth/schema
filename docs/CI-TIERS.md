@@ -30,9 +30,9 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3022 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `unit` | 3025 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
 | `functional` | 4710 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 1975 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `nightly` | 2115 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
 
@@ -404,11 +404,11 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 69/75 | 1 | 38.5 |
 | `none` | 70/75 | 1 | 38.5 |
 | `none` | 71/75 | 1 | 38.5 |
-| `none` | 72/75 | 21 | 55.5 |
+| `none` | 72/75 | 22 | 56.5 |
 | `none` | 73/75 | 49 | 56.0 |
 | `none` | 74/75 | 34 | 55.7 |
-| `none` | 75/75 | 83 | 56.0 |
-| **every row** | **363 jobs** | **49722** | **18603.9** |
+| `none` | 75/75 | 85 | 56.3 |
+| **every row** | **363 jobs** | **49725** | **18605.3** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

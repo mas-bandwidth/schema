@@ -222,6 +222,7 @@ The `corpus` adapter's harnesses, by family:
 | `align-arrays` | `verify-bitphase --adapter --lang L` | `make bin/schema build/verify-bitphase-bin` | the row's bytes (alignarrays.go) |
 | `conformance-<surface>` | `build/conformance-harness-vm adapter --lang L` | `make conformance-leg-L` | `surface`, `case` (the file the driver writes), `files` (the corpus files the case reads), `driver` |
 | any family whose rows' inputs carry `tests` (a union row) | `go-union`: L's own Go test, through the `gotest` adapter's calls | none (the runner provides L's toolchain, as the test's tier says) | `tests`: `{"<lang>": {"package", "test", "tags"}}` (`tags` optional) |
+| `tables` | the driver's own generation step (tools/schema-test, tables.go): `bin/schema generate --lang L` for the case's schema (moo through a `schema_leg_moo` build) | `make bin/schema` | `schema`, `files` (the corpus files the case reads), `driver`, `verdict` (the corpus's accept, refuse or present) |
 
 ### The tables conformance corpus
 
@@ -260,6 +261,23 @@ files and the drivers as the registry's, not the ledger's.
   `_verify-<lang>-conformance` (make/verify-compiled.mk, make/verify-vm.mk),
   which ran exactly these cases, leg by leg. The rest of those targets (packet
   wire, defaults, UTF-8) stays in verify-leg until its own family moves in.
+
+### The test/tables corpus
+
+Every data case of `test/tables` and the places under it that the ledger
+counted on layer L4 (the enum-bound shapes, the fnz vectors, `inner`, the
+r14 and r17 documents and the value-default documents) is one registry
+test, `codegen.tables.<case>`, answered by every language. A case's
+answer is its schema generated for the language: a schema the corpus
+holds as valid must generate, and one the enum-bound corpus holds as
+refused must refuse at check, for the reason `internal/check` holds.
+A case that is not itself a schema names the schema it belongs to and
+is answered by that generation with its own file present; the view and
+control sources are answered by their presence, as the file each
+language's own view test reads. `TestTheRegistryHoldsEveryTablesCase`
+holds the registry to the corpus field for field. A language whose
+emitter refuses a valid schema, or accepts a refused one, is red by
+name in the nightly tier.
 
 ### Union rows: the per-language Go tests
 
