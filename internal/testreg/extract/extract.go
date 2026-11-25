@@ -218,7 +218,7 @@ func Extract(root string) (*Result, error) {
 			if notACase(rel, name) {
 				return
 			}
-			if strings.HasPrefix(rel, "test/")&& !strings.Contains("/"+rel, "/testdata/") && codeExt[ext] {
+			if strings.HasPrefix(rel, "test/") && !strings.Contains("/"+rel, "/testdata/") && codeExt[ext] {
 				if ext != ".go" {
 					dir := driverDir(rel)
 					if _, ok := drivers[dir]; !ok {

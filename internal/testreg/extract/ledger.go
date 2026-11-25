@@ -118,7 +118,7 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	// a case is its files (a .cpp and its .h; a .bin and its .bits)
 	goldenCase := map[string]bool{}
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
-	readCase := map[string]string{} // a data case a make row reads, by the first such row
+	readCase := map[string]string{}   // a data case a make row reads, by the first such row
 	var readOrder []string
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()

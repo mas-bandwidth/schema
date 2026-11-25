@@ -412,12 +412,12 @@ func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 	t.Parallel()
 	for plan, says := range map[string]string{
 		"go build ./...\nSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1\n": `runs go test without -json`,
-		"@if go test -count=1 ./x > log 2>&1; then exit 1; fi\n":                       `runs go test without -json`,
+		"@if go test -count=1 ./x > log 2>&1; then exit 1; fi\n":                        `runs go test without -json`,
 		"cd sub && go  test ./...\n":                                                    `runs go test without -json`,
 		"go test -count=1 \\\n\t-json ./internal/x -run '^TestA$$'\n":                   "",
 		"go test -json ./x | tee build/x.json\n":                                        "",
 		"printf 'go test/conformance/go/driver\\n' > build/solo.txt\n":                  "",
-		"echo no go here\n":                                                             "",
+		"echo no go here\n": "",
 	} {
 		r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check"}, plan, nil, "")
 		if says == "" {
@@ -438,9 +438,9 @@ func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 func TestGoTestPlainOutputInTheLogFails(t *testing.T) {
 	t.Parallel()
 	for log, fails := range map[string]bool{
-		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s\n":  true,
-		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t(cached)\n": true,
-		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n": true,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t0.123s\n":                                    true,
+		"ok  \tgithub.com/mas-bandwidth/schema/v2/internal/x\t(cached)\n":                                  true,
+		"?   \tgithub.com/mas-bandwidth/schema/v2/internal/y\t[no test files]\n":                           true,
 		`{"Action":"pass","Package":"github.com/mas-bandwidth/schema/v2/internal/x","Elapsed":0.1}` + "\n": false,
 		"ok, every row checked\n": false,
 	} {
