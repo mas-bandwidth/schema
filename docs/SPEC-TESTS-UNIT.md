@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 686. Language-free tests: 2882.
+Unit tests every language answers: 686. Language-free tests: 2883.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2478,12 +2478,6 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.unit.plant.cpp-discard-controls.discard-controls-current-names-negative-control` | planting a retired spelling in the real recipe, emitter, gate and manifest makes the name gate flag each plant | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/discard_controls_test.go:220` |
 
-#### `plant` family `cpp-standalone-headers`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.unit.plant.cpp-standalone-headers.sweep-count-fires` | the cpp Go test TestStandaloneSweepCountFires passes: the C++ standalone-header sweep's own unit count check fires on a lost unit | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestStandaloneSweepCountFires"}}` | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/standalone_headers_test.go:147` |
-
 #### `plant` family `dart-byteorder`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2635,6 +2629,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.unit.plant.serialize-vendor.vendored-serialize-pin-goes-red` | a changed byte or an unlisted module in the vendored serialize runtime breaks the pin by name | `inputs.tests` (187 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/python/serialize_vendor_test.go:121` |
 
+#### `plant` family `standalone-headers`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.plant.standalone-headers.sweep-count-fires` | the standalone-header sweep counts the units it compiled, and its count check fires when a unit is lost | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestStandaloneSweepCountFires"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/standalone_headers_test.go:147` |
+
 #### `plant` family `strictonly`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2752,7 +2752,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.compiler.go-stringer.enum-and-flags-name-methods` | the go Go test TestEnumAndFlagsNameMethods passes: Go String methods on generated enums, union tags and flags | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:188` |
+| `L.unit.compiler.go-stringer.enum-and-flags-name-methods` | the go Go test TestEnumAndFlagsNameMethods passes: a generated enum and union tag carry a String method returning EnumName, and a flags set's String is FlagNames, so each satisfies fmt.Stringer | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:188` |
 
 #### `compiler` family `go-tidy`, 3 tests
 
@@ -5887,7 +5887,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 98 tests
+#### `tooling` family `schema-test`, 99 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5900,6 +5900,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-fuzz-row-takes-its-runs-seed` | `gotest` | Go test TestAFuzzRowTakesItsRunsSeed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAFuzzRowTakesItsRunsSeed` | the Go test passes | `tools/schema-test/make_seed_test.go:19` |
 | `none.unit.tooling.schema-test.a-go-test-family-never-takes-the-corpus-prefix` | `gotest` | Go test TestAGoTestFamilyNeverTakesTheCorpusPrefix in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestFamilyNeverTakesTheCorpusPrefix` | the Go test passes | `tools/schema-test/gotest_test.go:119` |
 | `none.unit.tooling.schema-test.a-go-test-that-exits-non-zero-fails-its-rows` | `gotest` | Go test TestAGoTestThatExitsNonZeroFailsItsRows in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestThatExitsNonZeroFailsItsRows` | the Go test passes | `tools/schema-test/gotest_test.go:235` |
+| `none.unit.tooling.schema-test.a-go-tests-package-is-named-by-its-module` | `gotest` | Go test TestAGoTestsPackageIsNamedByItsModule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoTestsPackageIsNamedByItsModule` | the Go test passes | `tools/schema-test/make_test.go:628` |
 | `none.unit.tooling.schema-test.a-golden-edited-by-hand-fails` | `gotest` | Go test TestAGoldenEditedByHandFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenEditedByHandFails` | the Go test passes | `tools/schema-test/golden_test.go:81` |
 | `none.unit.tooling.schema-test.a-golden-nothing-writes-fails` | `gotest` | Go test TestAGoldenNothingWritesFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenNothingWritesFails` | the Go test passes | `tools/schema-test/golden_test.go:105` |
 | `none.unit.tooling.schema-test.a-golden-the-writer-left-untouched-was-not-written` | `gotest` | Go test TestAGoldenTheWriterLeftUntouchedWasNotWritten in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAGoldenTheWriterLeftUntouchedWasNotWritten` | the Go test passes | `tools/schema-test/golden_test.go:228` |
@@ -6599,7 +6600,7 @@ Each test's subject exists in one language only (that language's own generated s
 | `compiler.go-godoc.on-every-export` | `go` | Go godoc comment on every exported generated identifier |
 | `compiler.go-initialisms.on-members` | `go` | Go initialism spelling of generated member names |
 | `compiler.go-initialisms.on-top-level-names` | `go` | Go initialism spelling of generated top-level names |
-| `compiler.go-stringer.enum-and-flags-name-methods` | `go` | Go String methods on generated enums, union tags and flags |
+| `compiler.go-stringer.enum-and-flags-name-methods` | `go` | Go's fmt.Stringer interface: the String methods fmt calls on generated enums, union tags and flags; no other language has this interface |
 | `compiler.go-tidy.drops-the-noise` | `go` | the Go source tidy pass drops redundant locals, parentheses and conversions |
 | `compiler.go-tidy.hoist-renames-only-what-collides` | `go` | the Go source tidy pass's block-local renaming |
 | `compiler.go-tidy.leaves-no-bare-blocks` | `go` | the Go source tidy pass leaves no bare blocks |
@@ -6656,7 +6657,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `name-check.ruby-identifier-corpus.identifier-corpus` | `ruby` | Ruby method and constant names (to\_h, public\_send, NAMES) reserved only in Ruby |
 | `plant.c-vt-strict-api.variable-tests-strict-api-negative-control` | `c` | C retired API spelling control |
 | `plant.cpp-discard-controls.discard-controls-current-names-negative-control` | `cpp` | C++ negative-control recipe naming control |
-| `plant.cpp-standalone-headers.sweep-count-fires` | `cpp` | the C++ standalone-header sweep's own unit count check fires on a lost unit |
 | `plant.dart-byteorder.byte-order-is-explicit-negative-control` | `dart` | Reversed witness for the scan of Dart ByteData calls missing their Endian argument, a host-API default no other language has. |
 | `plant.elixir-alloc-budget.alloc-budget-pinned-negative-control` | `elixir` | negative control of the Elixir allocation budget gate |
 | `plant.go-alloc.allocation-gate-can-red` | `go` | control of Go testing.AllocsPerRun and escape analysis |

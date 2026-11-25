@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -369,7 +370,12 @@ func vetRun(t *testing.T, in makeInputs, db string, log string) (testreg.Result,
 	ran := false
 	var asked []string
 	a := makeAdapter{
-		read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
+		read: func(p string) ([]byte, error) {
+			if strings.HasSuffix(p, "go.mod") {
+				return fakeModules(p)
+			}
+			return []byte(fakeRules), nil
+		},
 		plan: func(_ context.Context, argv []string) (string, error) {
 			asked = argv
 			return db, errors.New("exit status 2")
@@ -584,17 +590,25 @@ func TestABuildStepRunsInPrepare(t *testing.T) {
 
 // TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass: a row that
 // names the Go tests of a module of its own (tables/cards) passes only when
-// each reports --- PASS at the top level of the target log; one that
-// does not report, or fails, or passes only as a subtest, fails the row by name.
+// each reports --- PASS at the top level of its own package's output in the
+// target log; one that does not report, or fails, or passes only as a
+// subtest, or passes only in another package the target runs, fails the row
+// by name.
 func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 	t.Parallel()
 	in := makeInputs{File: "make/x.mk", Target: "gate-check", GoTests: []string{"./tables/cards TestA", "./tables/cards TestB"}}
+	const ok = "ok  \tcards-source\t0.21s (go test -json, read by gotestrun)\n"
+	const other = "ok  \tgithub.com/mas-bandwidth/schema/v2/tables\t0.10s (go test -json, read by gotestrun)\n"
 	for log, missing := range map[string]string{
-		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n":     "",
-		"--- PASS: TestA (0.01s)\n":                              "TestB",
-		"--- PASS: TestA (0.01s)\n--- FAIL: TestB (0.01s)\n":     "TestB",
-		"--- PASS: TestA (0.01s)\n    --- PASS: TestB (0.01s)\n": "TestB",
-		"--- PASS: TestAB (0.01s)\n--- PASS: TestB (0.01s)\n":    "TestA",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n" + ok:                                       "",
+		"--- PASS: TestB (0.01s)\n" + other + "--- PASS: TestA (0.01s)\n--- PASS: TestB (0.20s)\n" + ok: "",
+		"--- PASS: TestA (0.01s)\n" + ok:                                                                "./tables/cards TestB",
+		"--- PASS: TestA (0.01s)\n--- FAIL: TestB (0.01s)\n" + ok:                                       "./tables/cards TestB",
+		"--- PASS: TestA (0.01s)\n    --- PASS: TestB (0.01s)\n" + ok:                                   "./tables/cards TestB",
+		"--- PASS: TestAB (0.01s)\n--- PASS: TestB (0.01s)\n" + ok:                                      "./tables/cards TestA",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\n":                                            "./tables/cards TestA",
+		"--- PASS: TestA (0.01s)\n" + ok + "--- PASS: TestB (0.01s)\n" + other:                          "./tables/cards TestB",
+		"--- PASS: TestA (0.01s)\n--- PASS: TestB (0.01s)\nFAIL\tcards-source\t0.2s\n":                  "",
 	} {
 		r, _ := vetRun(t, in, gateDatabase("\ttrue"), log)
 		if missing == "" {
@@ -607,6 +621,42 @@ func TestAMakeRowNamingItsGoTestsPassesOnlyWhenEachReportsAPass(t *testing.T) {
 			t.Errorf("%q: %+v, want a fail naming %s", log, r, missing)
 		}
 	}
+}
+
+// TestAGoTestsPackageIsNamedByItsModule: a go_tests package's import path is
+// the path of the nearest go.mod's module and the directory below it.
+func TestAGoTestsPackageIsNamedByItsModule(t *testing.T) {
+	t.Parallel()
+	for dir, want := range map[string]string{
+		"tables/cards":            "cards-source",
+		"tables/cards/example":    "cardsexample",
+		"tables/cards/sub":        "cards-source/sub",
+		"internal/codegen/golang": "github.com/mas-bandwidth/schema/v2/internal/codegen/golang",
+	} {
+		if got, err := importPath(fakeModules, dir); err != nil || got != want {
+			t.Errorf("%s: %q %v, want %q", dir, got, err, want)
+		}
+	}
+	if got, err := importPath(func(string) ([]byte, error) { return nil, fs.ErrNotExist }, "tables/cards"); err == nil {
+		t.Errorf("a tree with no go.mod named %q", got)
+	}
+	if got, err := importPath(func(string) ([]byte, error) { return []byte("go 1.26\n"), nil }, "tables/cards"); err == nil {
+		t.Errorf("a go.mod with no module directive named %q", got)
+	}
+}
+
+// fakeModules reads the go.mod files of a tree with a root module and the
+// two modules of tables/cards.
+func fakeModules(p string) ([]byte, error) {
+	switch p {
+	case "go.mod":
+		return []byte("module github.com/mas-bandwidth/schema/v2\n\ngo 1.26\n"), nil
+	case "tables/cards/go.mod":
+		return []byte("// the cards source\nmodule cards-source\n"), nil
+	case "tables/cards/example/go.mod":
+		return []byte("module \"cardsexample\"\n"), nil
+	}
+	return nil, fs.ErrNotExist
 }
 
 // TestAMakeRowNamesItsGoTestsWithTheirPackage: tests come with the package

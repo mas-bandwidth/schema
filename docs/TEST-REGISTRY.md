@@ -368,14 +368,14 @@ The language runtime's own memory model: allocation counts and budgets, garbage 
 | python | retain |
 | rust | message-review |
 
-#### Toolchain verdicts on generated code (75 rows)
+#### Toolchain verdicts on generated code (74 rows)
 
 A formatter, linter, analyser or compiler check that exists only for that language (gofmt, vet, clippy, rustfmt, mypy, rubocop, stylua, luau-analyze, dart analyze, google-java-format, compiler warnings).
 
 | language | families (rows) |
 |---|---|
 | c | format (7), matched-width, misc, strict-c11-locale, vt-strict-api |
-| cpp | reasonenum, standalone-headers, widelist-warning-inventory |
+| cpp | reasonenum, widelist-warning-inventory |
 | cs | checked-build (2), cstable |
 | dart | cookarms-analyze, fixedanalyze, int128-table (2), messageform-batch |
 | elixir | emitformat (2), emptyelement, retainpointerwarnings, retainwarnings, specialized-runtime, variableformat |
@@ -390,14 +390,14 @@ A formatter, linter, analyser or compiler check that exists only for that langua
 | ruby | rubytable |
 | rust | arraymin-len-zero, bool-condition-parens, fixedclass, generated-lint, hostile-corpus, message-clippy |
 
-#### Modules, packages and loading (99 rows)
+#### Modules, packages and loading (97 rows)
 
 How the language finds and loads code: module and package names, require paths, imports, include placement, file layout, vendored runtime files.
 
 | language | families (rows) |
 |---|---|
-| c | cook-enum-arm, fixedroadmap-t18, header-guard (2), qualify (4), runtime-header |
-| cpp | misc, nativemapping, review-coverage, review-fixes, spec-agreement, standalone-headers |
+| c | fixedroadmap-t18, header-guard (2), qualify (4), runtime-header |
+| cpp | misc, nativemapping, review-coverage, review-fixes, spec-agreement |
 | cs | leb |
 | elixir | cardsgate-external, filemodule (5) |
 | go | announce-cap-modes, fuzzunit, header, leb, runtimehome, sharedruntime, soak, uncoveredemitters |

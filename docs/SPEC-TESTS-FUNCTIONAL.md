@@ -4626,12 +4626,6 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.builderjsonlocked.builder-from-json-locked-refuses-into-the-report` | reading JSON into a builder on a locked arena resets the report first and then refuses into it by name. | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/builderjsonlocked_test.go:9` |
 
-#### `write-refusal` family `c-cook-enum-arm`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.write-refusal.c-cook-enum-arm.defines-assert-hook` | the c Go test TestCCookEnumArmDefinesAssertHook passes: a C table header defines the schema\_assert macro hook and includes assert.h before its first use | `tests: {"c":{"package":"./internal/codegen/ctable","test":"TestCCookEnumArmDefinesAssertHook"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
-
 #### `write-refusal` family `carries`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5153,6 +5147,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.write-refusal.conformance-writerefusal-int.driver-checks-every-integer-assignment` | a conformance write mutation is checked against the declared integer kind on every path a row can reach an integer: scalar field, array element, channel-array element, map key and value, and nested record field. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/conformance_writerefusal_int_test.go:26` |
+
+#### `write-refusal` family `cook-enum-arm`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.cook-enum-arm.unit-compiles-with-only-the-enum-arm-refusal` | a unit whose only write check is the cook writer's enum refusal (an enum reached through a union arm of a table, the name-buildability probe u\_enum\_arm\_table; SPEC §5.1 row 5) generates source that compiles, with the refusal's assert hook in scope | `tests: {"c":{"package":"./internal/codegen/ctable","test":"TestCCookEnumArmDefinesAssertHook"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
 
 #### `write-refusal` family `cook-write`, 1 test
 
@@ -9080,12 +9080,6 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.functional.codegen.cook-write.cook-region-writer-honours-declared-forms` | a pointered root whose forms declaration includes cook gets the region writer and its layout, and one that does not gets neither. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/cook_write_test.go:403` |
 
-#### `codegen` family `cpp-standalone-headers`, 1 test
-
-| full name | checks | inputs | expected result | source |
-|---|---|---|---|---|
-| `L.functional.codegen.cpp-standalone-headers.every-table-header-compiles-standalone` | the cpp Go test TestEveryGeneratedTableHeaderCompilesStandalone passes: every generated C++ header compiles as a translation unit's first and only include | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
-
 #### `codegen` family `dart-blockbuild-names`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -9671,7 +9665,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.codegen.packet-write-cfloat.packet-write-c-float-range` | a packet write of a float declared as a C float refuses values outside the float range | `inputs.tests` (197 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/packet_write_cfloat_test.go:115` |
+| `L.functional.codegen.packet-write-cfloat.packet-write-c-float-range` | a packet write of a compressed float refuses a NaN, an infinity or a finite value outside its declared \[min, max\] (SPEC §5.1 row 10), by the shared cases in test/packet-write-cfloat | `inputs.tests` (197 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/packet_write_cfloat_test.go:115` |
 
 #### `codegen` family `python-message`, 1 test
 
@@ -9770,6 +9764,12 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.functional.codegen.squirrel-misc.file-names-never-shadow-module-locals` | another file's module is held under a local name that no declared local can equal, so files named like generator locals do not shadow them | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | the squirrel Go test for the case (inputs.tests) passes | `internal/codegen/squirrel/squirrel_test.go:568` |
 | `L.functional.codegen.squirrel-misc.loader-resolves-only-its-directory` | the generated loader resolves every module beside itself, so planted shadow scripts never run and a traversal name is refused | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the squirrel Go test for the case (inputs.tests) passes | `internal/codegen/squirrel/squirrel_test.go:506` |
+
+#### `codegen` family `standalone-headers`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.codegen.standalone-headers.every-table-header-compiles-standalone` | every generated table header of every unit the conformance manifest names (Table, Block, View and packet) compiles as the first and only include of a translation unit, so a header that calls the schema\_assert hook carries it | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/standalone_headers_test.go:31` |
 
 #### `codegen` family `testgenbounds`, 1 test
 
@@ -17657,7 +17657,6 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.c-matched-width.gcc-fortify-silence-follows-gnu-not-the-word-gcc` | `c` | gcc fortify warning silencing |
 | `codegen.c-strict-c11-locale.generated-table-compiles-under-strict11` | `c` | the generated C compiles cleanly under strict C11 compiler flags |
 | `codegen.c-vt-strict-api.variable-tests-strict-api` | `c` | C retired API spelling gate |
-| `codegen.cpp-standalone-headers.every-table-header-compiles-standalone` | `cpp` | every generated C++ header compiles as a translation unit's first and only include |
 | `codegen.dart-blockbuild-names.block-build-count-parameters-do-not-shadow-runtime` | `dart` | Dart local and parameter name collisions in generated Dart |
 | `codegen.dart-cookwrite.cook-write-float-helpers-do-not-claim-table-names` | `dart` | Dart top-level helper names must not collide with schema names |
 | `codegen.dart-rowmembers-native.cook-row-cursor-members-native` | `dart` | Dart row cursor member names versus field accessors, run on the Dart VM |
@@ -17798,4 +17797,3 @@ Each test's subject exists in one language only (that language's own generated s
 | `roundtrip.ruby-fixed-proof-suite.fixed-shape-compare` | `ruby` | timing comparison of Ruby code shapes in the Ruby runtime; no format rule |
 | `roundtrip.squirrel-misc.sqrun-round-trips-inputs` | `squirrel` | the sqrun helper that feeds inputs to the Squirrel interpreter in these tests |
 | `soak.lua-soak.load-soak` | `lua` | Lua GC allocation drift over repeated loads |
-| `write-refusal.c-cook-enum-arm.defines-assert-hook` | `c` | a C table header defines the schema\_assert macro hook and includes assert.h before its first use |

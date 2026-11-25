@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -306,9 +307,9 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		case plain != "":
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
 				Reason: fmt.Sprintf("make %s exited 0, and its log holds go test's plain output, which prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, plain)})
-		case len(unreported(lines, goTestNames(in.GoTests))) > 0:
+		case len(unreported(a.read, lines, in.GoTests)) > 0:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
-				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(lines, goTestNames(in.GoTests)), " "))})
+				Reason: fmt.Sprintf("make %s exited 0, and these of its Go tests did not report --- PASS: %s", in.Target, strings.Join(unreported(a.read, lines, in.GoTests), ", "))})
 		default:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
 		}
@@ -484,32 +485,78 @@ func plainGoTest(lines []string) string {
 // Serial: a make target takes the checkout (testreg.Serial).
 func (makeAdapter) Serial() bool { return true }
 
-// unreported is the tests that do not report "--- PASS: <name> (" at the
-// top level of a go test -v log (a subtest line is indented).
-func unreported(lines, tests []string) []string {
+// unreported is the go_tests entries ("./<dir> <Test>") whose test does not
+// report "--- PASS: <name> (" at the top level (a subtest line is indented)
+// of its own package's output in a go test -v log. go test prints each
+// package's output whole, ending in its result line ("ok  \t<import path>"
+// or "FAIL\t<import path>"), so a pass belongs to the package whose result
+// line follows it, and a test of the same name in another package the target
+// runs does not answer for it. A package's import path is its module's path
+// (the nearest go.mod, read by read) and its directory below the module.
+func unreported(read func(string) ([]byte, error), lines, entries []string) []string {
 	passed := map[string]bool{}
+	var pending []string
 	for _, l := range lines {
 		if rest, ok := strings.CutPrefix(l, "--- PASS: "); ok {
 			if name, _, ok := strings.Cut(rest, " ("); ok {
-				passed[name] = true
+				pending = append(pending, name)
 			}
+			continue
+		}
+		if m := goTestResultLine.FindStringSubmatch(l); m != nil {
+			for _, name := range pending {
+				passed[m[1]+" "+name] = true
+			}
+			pending = nil
 		}
 	}
 	var missing []string
-	for _, t := range tests {
-		if !passed[t] {
-			missing = append(missing, t)
+	for _, g := range entries {
+		dir, name, _ := strings.Cut(g, " ")
+		pkg, err := importPath(read, strings.TrimPrefix(dir, "./"))
+		if err != nil || !passed[pkg+" "+name] {
+			missing = append(missing, g)
 		}
 	}
 	return missing
 }
 
-// goTestNames is the test names of go_tests entries ("<package> <Test>").
-func goTestNames(entries []string) []string {
-	var names []string
-	for _, g := range entries {
-		_, name, _ := strings.Cut(g, " ")
-		names = append(names, name)
+// goTestResultLine is go test's result line for a package, its import path
+// captured: "ok  \t<path>\t0.1s", "FAIL\t<path>\t0.1s" or "FAIL\t<path>
+// [build failed]". A bare "FAIL" and a test's "--- FAIL:" are not one.
+var goTestResultLine = regexp.MustCompile(`^(?:ok|FAIL)\s+(\S+)`)
+
+// importPath is the import path of the package in dir (a repository path):
+// the module path of the nearest go.mod at or above dir, joined with dir's
+// path below that module.
+func importPath(read func(string) ([]byte, error), dir string) (string, error) {
+	for d := dir; ; d = path.Dir(d) {
+		data, err := read(path.Join(d, "go.mod"))
+		if err == nil {
+			mod := modulePath(data)
+			if mod == "" {
+				return "", fmt.Errorf("%s names no module", path.Join(d, "go.mod"))
+			}
+			if d == dir {
+				return mod, nil
+			}
+			return mod + "/" + strings.TrimPrefix(dir, d+"/"), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		if d == "." {
+			return "", fmt.Errorf("no go.mod at or above %s", dir)
+		}
 	}
-	return names
+}
+
+// modulePath is the path of a go.mod's module directive, or "".
+func modulePath(gomod []byte) string {
+	for l := range strings.Lines(string(gomod)) {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(l), "module"); ok && rest != "" && (rest[0] == ' ' || rest[0] == '\t') {
+			return strings.Trim(strings.TrimSpace(rest), `"`)
+		}
+	}
+	return ""
 }
