@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2939.
+Unit tests every language answers: 2. Language-free tests: 2948.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -37,11 +37,13 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 generated source compiles and is clean.
 
-#### `codegen` family `cpptable`, 1 test
+#### `codegen` family `cpptable`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.codegen.cpptable.conformance-driver-units-read-the-makefile-list` | `gotest` | Go test TestConformanceDriverUnitsReadTheMakefileList in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestConformanceDriverUnitsReadTheMakefileList` | the Go test passes | `internal/codegen/cpptable/conformance_driver_sources_test.go:127` |
 | `none.unit.codegen.cpptable.cpp-block-float-range-ends-are-held-at-the-field-width` | `gotest` | Go test TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` | the Go test passes | `internal/codegen/cpptable/block_range_limits_test.go:65` |
+| `none.unit.codegen.cpptable.cpp-conformance-driver-registers-every-family` | `gotest` | Go test TestCppConformanceDriverRegistersEveryFamily in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppConformanceDriverRegistersEveryFamily` | the Go test passes | `internal/codegen/cpptable/conformance_driver_sources_test.go:96` |
 
 #### `codegen` family `ctable`, 1 test
 
@@ -1786,7 +1788,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 276 tests
+#### `tooling` family `ci`, 277 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1882,6 +1884,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.go-release-soak-fits-its-budget` | `gotest` | Go test TestGoReleaseSoakFitsItsBudget in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoReleaseSoakFitsItsBudget` | the Go test passes | `internal/ci/gosoak_test.go:75` |
 | `none.unit.tooling.ci.golangci-lint-cache-isolated-per-workspace` | `gotest` | Go test TestGolangciLintCacheIsolatedPerWorkspace in ./internal/ci | `package: ./internal/ci`<br>`test: TestGolangciLintCacheIsolatedPerWorkspace` | the Go test passes | `internal/ci/setup_rust_hosted_only_test.go:329` |
 | `none.unit.tooling.ci.golden-rewrites-go-through-rewriting` | `gotest` | Go test TestGoldenRewritesGoThroughRewriting in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewritesGoThroughRewriting` | the Go test passes | `internal/ci/golden_rewrites_test.go:70` |
+| `none.unit.tooling.ci.goose-driver-warms-only-the-units-it-answers` | `gotest` | Go test TestGooseDriverWarmsOnlyTheUnitsItAnswers in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseDriverWarmsOnlyTheUnitsItAnswers` | the Go test passes | `internal/ci/goose_batch_warm_test.go:24` |
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
 | `none.unit.tooling.ci.goose-wire-fuzz-arms-come-from-the-corpus` | `gotest` | Go test TestGooseWireFuzzArmsComeFromTheCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseWireFuzzArmsComeFromTheCorpus` | the Go test passes | `internal/ci/goose_wirefuzz_arms_test.go:23` |
 | `none.unit.tooling.ci.harness-lane-is-the-make-it-runs` | `gotest` | Go test TestHarnessLaneIsTheMakeItRuns in ./internal/ci | `package: ./internal/ci`<br>`test: TestHarnessLaneIsTheMakeItRuns` | the Go test passes | `internal/ci/silent_skips_test.go:376` |
@@ -2084,6 +2087,17 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-covers` | `gotest` | Go test TestWideBoundsCorpusCovers in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusCovers` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:32` |
 | `none.unit.tooling.ci-hostilecorpus.wide-bounds-corpus-verify` | `gotest` | Go test TestWideBoundsCorpusVerify in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWideBoundsCorpusVerify` | the Go test passes | `internal/ci/hostilecorpus/wide_corpus_test.go:17` |
 | `none.unit.tooling.ci-hostilecorpus.written-verdicts-read-back-by-case` | `gotest` | Go test TestWrittenVerdictsReadBackByCase in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestWrittenVerdictsReadBackByCase` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:14` |
+
+#### `tooling` family `compilebudget`, 6 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.compilebudget.check-passes-the-recorded-shape` | `gotest` | Go test TestCheckPassesTheRecordedShape in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckPassesTheRecordedShape` | the Go test passes | `tools/compilebudget/main_test.go:86` |
+| `none.unit.tooling.compilebudget.check-reds-a-missing-timing` | `gotest` | Go test TestCheckRedsAMissingTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAMissingTiming` | the Go test passes | `tools/compilebudget/main_test.go:117` |
+| `none.unit.tooling.compilebudget.check-reds-a-unit-over-budget` | `gotest` | Go test TestCheckRedsAUnitOverBudget in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAUnitOverBudget` | the Go test passes | `tools/compilebudget/main_test.go:99` |
+| `none.unit.tooling.compilebudget.check-reds-an-unreadable-timing` | `gotest` | Go test TestCheckRedsAnUnreadableTiming in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestCheckRedsAnUnreadableTiming` | the Go test passes | `tools/compilebudget/main_test.go:129` |
+| `none.unit.tooling.compilebudget.run-exits-by-the-verdict` | `gotest` | Go test TestRunExitsByTheVerdict in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestRunExitsByTheVerdict` | the Go test passes | `tools/compilebudget/main_test.go:150` |
+| `none.unit.tooling.compilebudget.the-recorded-shape-is-the-makefiles` | `gotest` | Go test TestTheRecordedShapeIsTheMakefiles in ./tools/compilebudget | `package: ./tools/compilebudget`<br>`test: TestTheRecordedShapeIsTheMakefiles` | the Go test passes | `tools/compilebudget/main_test.go:69` |
 
 #### `tooling` family `conformancerows`, 7 tests
 
@@ -3193,11 +3207,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-adapter-crash-fails` | `gotest` | Go test TestAnAdapterCrashFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterCrashFails` | the Go test passes | `internal/testreg/run_test.go:218` |
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:146` |
 | `none.unit.tooling.testreg.an-adapter-timeout-fails` | `gotest` | Go test TestAnAdapterTimeoutFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterTimeoutFails` | the Go test passes | `internal/testreg/run_test.go:233` |
-| `none.unit.tooling.testreg.an-env-plants-rows-share-one-shard-by-language` | `gotest` | Go test TestAnEnvPlantsRowsShareOneShardByLanguage in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnEnvPlantsRowsShareOneShardByLanguage` | the Go test passes | `internal/testreg/run_test.go:439` |
 | `none.unit.tooling.testreg.an-instance-with-no-answer-and-no-declaration-fails` | `gotest` | Go test TestAnInstanceWithNoAnswerAndNoDeclarationFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnInstanceWithNoAnswerAndNoDeclarationFails` | the Go test passes | `internal/testreg/run_test.go:155` |
 | `none.unit.tooling.testreg.an-intrinsic-test-has-one-instance` | `gotest` | Go test TestAnIntrinsicTestHasOneInstance in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnIntrinsicTestHasOneInstance` | the Go test passes | `internal/testreg/gotests_test.go:76` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:408` |
 | `none.unit.tooling.testreg.each-writer-and-plant-is-a-call-of-its-own` | `gotest` | Go test TestEachWriterAndPlantIsACallOfItsOwn in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEachWriterAndPlantIsACallOfItsOwn` | the Go test passes | `internal/testreg/run_test.go:625` |
+| `none.unit.tooling.testreg.env-plants-of-one-language-are-cut-like-any-row` | `gotest` | Go test TestEnvPlantsOfOneLanguageAreCutLikeAnyRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEnvPlantsOfOneLanguageAreCutLikeAnyRow` | the Go test passes | `internal/testreg/run_test.go:486` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:188` |
 | `none.unit.tooling.testreg.load-accepts-a-union-row` | `gotest` | Go test TestLoadAcceptsAUnionRow in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsAUnionRow` | the Go test passes | `internal/testreg/gotests_test.go:14` |
