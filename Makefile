@@ -1312,7 +1312,7 @@ tables-cook-fuzz-negative-control:
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/cook-fuzz-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cook-fuzz-control/overlay.json
 	@if SCHEMA_SLOW=1 SEED=$(SEED) N=$(N) $(GO_TEST_RED) -count=1 -overlay=build/cook-fuzz-control/overlay.json \
-			-run 'TestCookCheck' ./internal/tablecook/ > build/cook-fuzz-control/log 2>&1; then \
+			-run 'TestCookCheck' -skip '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/ > build/cook-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the cook battery stayed green with the directory scan removed"; \
 		exit 1; \
 	fi
@@ -4733,7 +4733,7 @@ tables-lists-tool-cook: build/schema_test_listcook
 .PHONY: tables-lists-tool-cook-negative-control
 tables-lists-tool-cook-negative-control:
 	@rm -rf build/list-tool-cook-control && mkdir -p build/list-tool-cook-control
-	@sed -e 's@	c.at = alignUp(c.at, align)@	c.at = c.at // SABOTAGED: the array is laid unaligned@' \
+	@sed -e 's@	c.at = alignUp(c.at, align)@	_ = align // SABOTAGED: the array is laid unaligned@' \
 		internal/tablecook/extent.go > build/list-tool-cook-control/extent.go.txt
 	@cmp -s internal/tablecook/extent.go build/list-tool-cook-control/extent.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the carve sabotage patched nothing"; exit 1; } || true
