@@ -8,16 +8,16 @@ import (
 // THE WRITE COUNTS EVERY CONTAINER THE READ DOES (docs/SPEC-TABLES.md §16.3,
 // §16.14 W2; the oracle's rows in internal/tabletext/depth_write_test.go): a
 // chain of nodes each holding one EMPTY container of one kind (a union's {},
-// an enum-keyed array's object, a counted array's [] and a list's []) writes
-// and reads back when the last node's container sits at depth 128 (127 nodes
-// under the root), and measure and write both refuse (-1) at depth 129 (128
-// nodes). Go refuses in every build. A map is counted in maps.go and covered
-// by the oracle row MapNode; flags are TestGoJsonWriteDepthCountsFlags.
+// an enum-keyed array's object, a map's {}, a counted array's [] and a
+// list's []) writes and reads back when the last node's container sits at
+// depth 128 (127 nodes under the root), and measure and write both refuse (-1)
+// at depth 129 (128 nodes). Go refuses in every build. Flags are
+// TestGoJsonWriteDepthCountsFlags.
 func TestGoJsonWriteDepthCountsEveryContainer(t *testing.T) {
 	t.Parallel()
 	var probe strings.Builder
 	probe.WriteString("package probe\n\nimport (\n\t\"bytes\"\n\t\"testing\"\n)\n")
-	for _, node := range []string{"UnionNode", "KeyedNode", "ArrNode", "ListNode"} {
+	for _, node := range []string{"UnionNode", "KeyedNode", "MapNode", "ArrNode", "ListNode"} {
 		probe.WriteString(strings.ReplaceAll(containerDepthProbe, "NODE", node))
 	}
 	runGenerated(t, `package probe
@@ -44,6 +44,12 @@ table KeyedNode
 {
     next  *KeyedNode
     sides [Side]int32
+}
+
+table MapNode
+{
+    next *MapNode
+    by   map[uint8]int32
 }
 
 table ArrNode
