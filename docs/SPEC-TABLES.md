@@ -17116,8 +17116,9 @@ written as something else.
 - **A compressed or ranged float off its range** — refused per leg as
   docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
   verdict is the contract, the reason name per language.
-- **A graph nested past 128** (§16.2): the writer carries the reader's depth
-  cap, so it never produces a text its own reader would refuse.
+- **A container nested past 128** (§16.2, §16.14 W2): the writer judges the
+  reader's depth cap at every object and array it writes, an empty `[]` or `{}`
+  included, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
@@ -18321,7 +18322,7 @@ length past `N`, an enum ordinal outside its variant set, a union tag outside
 its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
 names, and a compressed or ranged float off its range — and, beside those rows,
 a deprecated enum variant (§2.15), a `required` value outside its declared range
-(§2.3), a text list past its declared total (§2.13), a table value past the
+(§2.3), a text list past its declared total (§2.13), a container past the
 depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
