@@ -140,11 +140,11 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   LayoutTooDeep: 12,
   PlanTooLarge: 13,     // a layout whose compiled plan does not fit the caller's storage
   BatchTooLarge: 14,    // more records than the caller's capacity
-  // 15 IS RESERVED AND NAMES NOTHING: layout_newer is RETIRED
-  // (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3, decided
-  // 2026-11-03): nothing in the lineage proves a hash newer, so no read
-  // answers it, and the name is gone from this table. The ordinal stays
-  // unused so no other number shifts; a step-5 miss is LayoutUnknown, below.
+  // RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3,
+  // decided 2026-11-03): nothing in the lineage proves a hash newer, so no read
+  // answers layout_newer. It keeps its ordinal so no other number shifts; a
+  // step-5 miss is LayoutUnknown, below.
+  LayoutNewer: 15,
   // Below the floor: a layout this build served and has retired — upgrade the
   // client (§5.3 step 6).
   LayoutUnsupported: 16,
@@ -206,6 +206,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutTooDeep: return "layout_too_deep";
     case TableFixedRefusal.PlanTooLarge: return "plan_too_large";
     case TableFixedRefusal.BatchTooLarge: return "batch_too_large";
+    case TableFixedRefusal.LayoutNewer: return "layout_newer";
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";

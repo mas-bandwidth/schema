@@ -521,17 +521,13 @@ func t03JsR15(t *testing.T) {
 	// (§5.6: all four forward reads are now layout_unknown).
 	_, src := t02Table(t, t03Flat)
 	t02Has(t, src, "return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, hashLo, hashHi);", "R15 the four retired forward reads are layout_unknown by name")
-	// AND NEVER layout_newer (§5.3 step 5, decided 2026-11-03): the name is
-	// retired outright. Neither the emitted table module nor the runtime names
-	// it, and its ordinal 15 stays reserved: no key of TableFixedRefusal holds
-	// it, so no read can answer it.
-	for _, s := range []string{src, fixedRuntime} {
-		if strings.Contains(s, "LayoutNewer") || strings.Contains(s, "\"layout_newer\"") {
-			t.Error("R15: the retired layout_newer is still named in the emitted JS")
-		}
-	}
-	if strings.Contains(fixedRuntime, ": 15,") {
-		t.Error("R15: ordinal 15 (the retired layout_newer) is reserved and no TableFixedRefusal key may hold it")
+	// AND NEVER layout_newer (§5.3 step 5, decided 2026-11-03: "layout_newer
+	// keeps its ordinal and no read answers it"): no emitted line of the table
+	// module names the retired refusal except the runtime's name switch, which
+	// keeps spelling the ordinal it holds.
+	named := `case TableFixedRefusal.LayoutNewer: return "layout_newer";`
+	if strings.Count(src, "TableFixedRefusal.LayoutNewer") != strings.Count(src, named) {
+		t.Error("R15: the emitted table module still answers the retired layout_newer")
 	}
 	// The runtime spells the step-5 answer as the C++ reference does.
 	if !strings.Contains(fixedRuntime, `case TableFixedRefusal.LayoutUnknown: return "layout_unknown";`) {

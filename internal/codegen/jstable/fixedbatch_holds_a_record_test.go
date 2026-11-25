@@ -73,7 +73,7 @@ func TestJsFixedBatchHoldsARecord(t *testing.T) {
 	}
 
 	probe := fmt.Sprintf(`import { readFileSync } from "node:fs";
-import { %[1]s, Init%[1]s, TableFixedReport } from "./%[2]sTable.js";
+import { %[1]s, Init%[1]s, TableFixedReport, TableFixedRefusal } from "./%[2]sTable.js";
 import { %[1]sFixedLoad, %[1]sFixedNewPlan, %[1]sFixedSave, %[1]sFixedMeasure } from "./%[3]s.js";
 
 let failures = 0;
@@ -99,7 +99,7 @@ const none = readFileSync("no-record.bin");
   const report = new TableFixedReport();
   const n = %[1]sFixedLoad(back, 1, none, none.length, %[1]sFixedNewPlan(4096, 4096), report);
   if (n !== -1) { fail("a file holding no record was read as a batch of " + n); }
-  if (report.refused === 0 && !("damaged" in report)) { fail("a file holding no record was not refused"); }
+  if (report.refused !== TableFixedRefusal.Truncated || ("damaged" in report)) { fail("a file holding no record was not refused truncated (FIXED-FORM-ALGORITHM §5.3), or the report grew a malformed flag"); }
 }
 
 // A SAVE OF ZERO RECORDS IS REFUSED BEFORE ANY BYTE IS WRITTEN.
