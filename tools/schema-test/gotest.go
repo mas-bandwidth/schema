@@ -100,6 +100,9 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	return in, nil
 }
 
+// The runner calls Prepare only on an adapter that is a Preparer.
+var _ testreg.Preparer = (*goTestAdapter)(nil)
+
 // Prepare makes, once each, the targets the instances' rows name in
 // "make" (testreg.Preparer). A row whose inputs do not read fails in Run,
 // by name; a target that does not make fails the group here, naming it and

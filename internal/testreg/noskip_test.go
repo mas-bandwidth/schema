@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"go/version"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path"
@@ -107,7 +108,7 @@ import (
 // under some of them; a planted fixture there is named in noSkipsExempt.
 // Inside this file, the plants are strings.
 func noSkips(root string) ([]string, error) {
-	tracked, err := trackedDirs(root)
+	tracked, trackedFiles, err := trackedDirs(root)
 	if err != nil {
 		return nil, err
 	}
@@ -122,6 +123,12 @@ func noSkips(root string) ([]string, error) {
 			if rel != "." && noSkipsSkipsDir(rel, d.Name(), tracked) {
 				return filepath.SkipDir
 			}
+			return nil
+		}
+		// under a directory named like build output that the checkout
+		// tracks files in, only the tracked files are source: what sits
+		// beside them untracked is that output
+		if trackedFiles != nil && !trackedFiles[rel] && underOutputName(rel) {
 			return nil
 		}
 		if d.Type().IsRegular() {
@@ -176,27 +183,59 @@ func eachParallel(n int, f func(int)) {
 // tracks, or nil when root is not a checkout (a planted scratch tree, where
 // every directory is scanned). A checkout whose index git cannot list is an
 // error, never a scan that quietly prunes more.
-func trackedDirs(root string) (map[string]bool, error) {
+func trackedDirs(root string) (dirs, files map[string]bool, err error) {
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	out, err := exec.Command("git", "-C", root, "ls-files", "-z").Output()
+	cmd := exec.Command("git", "-C", root, "ls-files", "-z")
+	cmd.Env = gitEnv()
+	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("listing the files %s tracks: %w", root, err)
+		return nil, nil, fmt.Errorf("listing the files %s tracks: %w", root, err)
 	}
-	dirs := map[string]bool{}
+	dirs, files = map[string]bool{}, map[string]bool{}
 	for _, f := range strings.Split(string(out), "\x00") {
-		for d := path.Dir(f); f != "" && d != "." && !dirs[d]; d = path.Dir(d) {
+		if f == "" {
+			continue
+		}
+		files[f] = true
+		for d := path.Dir(f); d != "." && !dirs[d]; d = path.Dir(d) {
 			dirs[d] = true
 		}
 	}
 	if len(dirs) == 0 {
-		return nil, fmt.Errorf("%s is a checkout that tracks no file in a directory", root)
+		return nil, nil, fmt.Errorf("%s is a checkout that tracks no file in a directory", root)
 	}
-	return dirs, nil
+	return dirs, files, nil
+}
+
+// gitEnv is the environment without git's own location variables, so a run
+// from inside a git hook (which sets GIT_DIR and GIT_INDEX_FILE) reads the
+// checkout it names with -C, never the hook's repository.
+func gitEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
+// outputNames are the directory names build and dependency output goes in.
+var outputNames = map[string]bool{"node_modules": true, "_build": true, "deps": true, "target": true, ".dart_tool": true, "__pycache__": true, ".venv": true, ".gradle": true, "obj": true}
+
+// underOutputName is a path with a directory named like build output.
+func underOutputName(rel string) bool {
+	for d := path.Dir(rel); d != "."; d = path.Dir(d) {
+		if outputNames[path.Base(d)] {
+			return true
+		}
+	}
+	return false
 }
 
 // noSkipsSkipsDir is a directory that holds no source of this repository's
@@ -205,10 +244,10 @@ func trackedDirs(root string) (map[string]bool, error) {
 // file: a tracked package under a directory named target, obj or deps is
 // source, and is scanned.
 func noSkipsSkipsDir(rel, name string, tracked map[string]bool) bool {
-	switch name {
-	case ".git":
+	if name == ".git" {
 		return true
-	case "node_modules", "_build", "deps", "target", ".dart_tool", "__pycache__", ".venv", ".gradle", "obj":
+	}
+	if outputNames[name] {
 		return tracked != nil && !tracked[rel]
 	}
 	switch rel {
@@ -256,7 +295,9 @@ var (
 	driverShebang = regexp.MustCompile(`python|node|ruby|perl|lua|elixir|dart|deno|bun|php`)
 	// a workflow job or step run or not by which repository it is in: a
 	// name compared with a literal is false on this repository or on a fork.
-	repoGate = regexp.MustCompile(`\bgithub\.repository(_owner)?\s*[!=]=\s*['"]|['"]\s*[!=]=\s*github\.repository(_owner)?\b|\bgithub\.repository(_owner)?\s*,\s*['"]|contains\(\s*['"][^'"]*['"]\s*,\s*github\.repository`)
+	repoGate = regexp.MustCompile(`\bgithub\.` + repoName + `\s*[!=]=\s*['"]|['"]\s*[!=]=\s*github\.` + repoName + `|\bgithub\.` + repoName + `\s*,\s*['"]|contains\(\s*['"][^'"]*['"]\s*,\s*github\.` + repoName)
+	// the repository a run is in, by any of the names a workflow reads it by.
+	repoName = `(repository(_owner)?|event\.repository\.(full_name|name|owner\.login))\b`
 	// a Go string that announces a skip.
 	goSkipNotice = regexp.MustCompile(`\b(?i:skipp(?:ed|ing))\b|\bSKIP(PED)?\b`)
 	goSkipWords  = regexp.MustCompile(`\b(?i:skipp(?:ed|ing))\b`)
@@ -591,9 +632,23 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 			return true
 		})
 		// the whole rest of the body under a gate: if have { body } as the
-		// last statement, with no else, runs nothing when the gate is shut
-		if k := len(body.List); k > 0 {
-			if ifs, ok := body.List[k-1].(*ast.IfStmt); ok && ifs.Else == nil && g.ifReads(ifs, probeGate) &&
+		// last statement that does work (only logs may follow it), with no
+		// else or an else that only says why, runs nothing when the gate is
+		// shut; an else that fails is the check, not a skip
+		k := len(body.List)
+		for k > 0 && onlyReports(&ast.BlockStmt{List: body.List[k-1 : k]}) && !failsHere(body.List[k-1]) {
+			if _, isIf := body.List[k-1].(*ast.IfStmt); isIf {
+				break
+			}
+			// a return of values after the if hands back what it set, or a
+			// default it kept: the if is not the body's end
+			if r, isReturn := body.List[k-1].(*ast.ReturnStmt); isReturn && len(r.Results) > 0 {
+				break
+			}
+			k--
+		}
+		if k > 0 {
+			if ifs, ok := body.List[k-1].(*ast.IfStmt); ok && elseOnlySaysWhy(ifs) && g.ifReads(ifs, probeGate) &&
 				!onlyReturnsZero(ifs.Body) && !onlyReports(ifs.Body) && !onlyContinues(ifs.Body) && !callsRewriting(ifs) {
 				hit(ifs.Pos(), "go-early-out", name+" runs its body only on a condition: "+text(ifs.Cond))
 			}
@@ -929,7 +984,8 @@ var gateSelectors = map[string]int{
 type probeIndex struct {
 	module string
 	byDir  map[string]map[string]int
-	names  map[string]string // package directory -> its package name
+	direct map[string]map[string]int // byDir before any call through an import
+	names  map[string]string         // package directory -> its package name
 }
 
 // goProbeIndex reads every Go file under root once for its probes.
@@ -969,25 +1025,29 @@ func goProbeIndex(root string, files []string) (*probeIndex, error) {
 			return
 		}
 		per[i].dir, per[i].pkg = path.Dir(rel), f.Name.Name
-		imported := map[string]bool{}
+		// an imported package by the name the file calls it: its directory
+		// under this module, or "" for a package outside it
+		imported := map[string]string{}
 		for _, im := range f.Imports {
 			p, _ := strconv.Unquote(im.Path.Value)
 			name := path.Base(p)
 			if im.Name != nil {
 				name = im.Name.Name
 			}
-			imported[name] = true
+			dir := ""
+			if rest, ok := strings.CutPrefix(p, idx.module); idx.module != "" && ok && (rest == "" || strings.HasPrefix(rest, "/")) {
+				dir = strings.TrimPrefix(rest, "/")
+				if dir == "" {
+					dir = "."
+				}
+			}
+			imported[name] = dir
 		}
-		for _, d := range f.Decls {
-			fd, ok := d.(*ast.FuncDecl)
-			if !ok || fd.Body == nil || fd.Type.Results == nil || len(fd.Type.Results.List) == 0 {
-				continue
-			}
-			p := fn{key: fd.Name.Name}
-			if fd.Recv != nil {
-				p.key = "." + fd.Name.Name
-			}
-			ast.Inspect(fd.Body, func(n ast.Node) bool {
+		// what a body reads and calls: a call into a package of this module
+		// is "@dir|Name", resolved once every package is read
+		probe := func(key string, body ast.Node) fn {
+			p := fn{key: key}
+			ast.Inspect(body, func(n ast.Node) bool {
 				switch x := n.(type) {
 				case *ast.SelectorExpr:
 					if id, ok := x.X.(*ast.Ident); ok {
@@ -998,14 +1058,60 @@ func goProbeIndex(root string, files []string) (*probeIndex, error) {
 					case *ast.Ident:
 						p.calls = append(p.calls, c.Name)
 					case *ast.SelectorExpr:
-						if id, ok := c.X.(*ast.Ident); !ok || !imported[id.Name] {
+						id, ok := c.X.(*ast.Ident)
+						dir, isImport := "", false
+						if ok {
+							dir, isImport = imported[id.Name]
+						}
+						switch {
+						case !isImport:
 							p.calls = append(p.calls, "."+c.Sel.Name)
+						case dir != "":
+							p.calls = append(p.calls, "@"+dir+"|"+c.Sel.Name)
 						}
 					}
 				}
 				return true
 			})
-			per[i].fns = append(per[i].fns, p)
+			return p
+		}
+		for _, d := range f.Decls {
+			switch decl := d.(type) {
+			case *ast.FuncDecl:
+				if decl.Body == nil || decl.Type.Results == nil || len(decl.Type.Results.List) == 0 {
+					continue
+				}
+				key := decl.Name.Name
+				if decl.Recv != nil {
+					key = "." + decl.Name.Name
+				}
+				per[i].fns = append(per[i].fns, probe(key, decl.Body))
+			case *ast.GenDecl:
+				// a package variable holding a function: var have =
+				// sync.OnceValue(func() bool { ... }), or var have = func...
+				if decl.Tok != token.VAR {
+					continue
+				}
+				for _, s := range decl.Specs {
+					vs := s.(*ast.ValueSpec)
+					for j, name := range vs.Names {
+						if j >= len(vs.Values) {
+							break
+						}
+						var lits []ast.Node
+						ast.Inspect(vs.Values[j], func(n ast.Node) bool {
+							if fl, ok := n.(*ast.FuncLit); ok {
+								lits = append(lits, fl.Body)
+								return false
+							}
+							return true
+						})
+						for _, body := range lits {
+							per[i].fns = append(per[i].fns, probe(name.Name, body))
+						}
+					}
+				}
+			}
 		}
 	})
 	calls := map[string]map[string][]string{}
@@ -1029,19 +1135,48 @@ func goProbeIndex(root string, files []string) (*probeIndex, error) {
 		}
 	}
 	// a function that calls a probe of its own package is one
-	for dir, fns := range idx.byDir {
-		for changed := true; changed; {
-			changed = false
-			for key, callees := range calls[dir] {
-				for _, c := range callees {
-					if k := fns[key] | fns[c]; k != fns[key] {
-						fns[key] = k
-						changed = true
+	closeInPackage := func() {
+		for dir, fns := range idx.byDir {
+			for changed := true; changed; {
+				changed = false
+				for key, callees := range calls[dir] {
+					for _, c := range callees {
+						if strings.HasPrefix(c, "@") {
+							continue
+						}
+						if k := fns[key] | fns[c]; k != fns[key] {
+							fns[key] = k
+							changed = true
+						}
 					}
 				}
 			}
 		}
 	}
+	closeInPackage()
+	// what each package answers on its own is what an importer reads its
+	// functions by; a function that calls one of those through an import
+	// is a probe too when it asks outside the tree (the environment, PATH,
+	// the platform), one package away and no further: a loader that stats
+	// the tree's own files is reading data, and a decoder that reaches a
+	// debug knob three packages down is not a gate
+	idx.direct = map[string]map[string]int{}
+	for dir, fns := range idx.byDir {
+		idx.direct[dir] = maps.Clone(fns)
+	}
+	for dir, fns := range idx.byDir {
+		for key, callees := range calls[dir] {
+			for _, c := range callees {
+				if rest, ok := strings.CutPrefix(c, "@"); ok {
+					d, name, _ := strings.Cut(rest, "|")
+					if k := idx.direct[d][name]; k&probeOutside != 0 {
+						fns[key] |= k
+					}
+				}
+			}
+		}
+	}
+	closeInPackage()
 	return idx, nil
 }
 
@@ -1075,8 +1210,8 @@ func newGateReader(idx *probeIndex, f *ast.File, rel string) gateReader {
 		if im.Name != nil {
 			name = im.Name.Name
 		}
-		if name != "" && idx.byDir[dir] != nil {
-			g.imports[name] = idx.byDir[dir]
+		if name != "" && idx.direct[dir] != nil {
+			g.imports[name] = idx.direct[dir]
 		}
 	}
 	return g
@@ -1150,6 +1285,26 @@ func callsRewriting(ifs *ast.IfStmt) bool {
 		return !found
 	})
 	return found
+}
+
+// elseOnlySaysWhy is an if with no else, or an else that only logs or
+// returns: one that fails anywhere is the check's other half.
+func elseOnlySaysWhy(ifs *ast.IfStmt) bool {
+	if ifs.Else == nil {
+		return true
+	}
+	e, ok := ifs.Else.(*ast.BlockStmt)
+	if !ok || !onlyReports(e) {
+		return false
+	}
+	fails := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		if st, ok := n.(ast.Stmt); ok && failsHere(st) {
+			fails = true
+		}
+		return !fails
+	})
+	return !fails
 }
 
 // onlyReports is a block that only fails or says why (t.Fatal, t.Error,
@@ -1289,6 +1444,18 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	{"test/conformance/harness/notice.go", "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc random(n int) {\n\tif n == 0 {\n\t\tfmt.Fprintln(os.Stderr, \"random pass skipped: no manifest seed is live\")\n\t}\n}\n", "go-skip-print"},
 	{"test/conformance/harness/line.go", "package main\n\nimport \"fmt\"\n\nfunc randomLine(pinned int) string {\n\treturn fmt.Sprintf(\"random pass skipped: %d pinned vectors only\", pinned)\n}\n", "go-skip-print"},
 	{"p/w5_test.go", "package p\n\nimport \"testing\"\n\nfunc TestW5(t *testing.T) {\n\tfor _, row := range []string{\"a\"} {\n\t\tt.Logf(\"skipped %s: not carried yet\", row)\n\t}\n}\n", "go-skip-print"},
+	// the body under a gate with an else that only logs, and with a log
+	// after it
+	{"p/w6_test.go", "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestW6(t *testing.T) {\n\tif os.Getenv(\"CI\") != \"\" {\n\t\tx := 1\n\t\tif x != 1 {\n\t\t\tt.Fatal(x)\n\t\t}\n\t} else {\n\t\tt.Log(\"not on CI\")\n\t}\n}\n", "go-early-out"},
+	{"p/w7_test.go", "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestW7(t *testing.T) {\n\tif os.Getenv(\"CI\") != \"\" {\n\t\tx := 1\n\t\tif x != 1 {\n\t\t\tt.Fatal(x)\n\t\t}\n\t}\n\tt.Log(\"done\")\n}\n", "go-early-out"},
+	// a gate behind a cached probe, and behind a helper that asks another
+	// package of the module
+	{"p/w8_test.go", "package p\n\nimport (\n\t\"os/exec\"\n\t\"sync\"\n\t\"testing\"\n)\n\nvar haveCC = sync.OnceValue(func() bool {\n\t_, err := exec.LookPath(\"cc\")\n\treturn err == nil\n})\n\nfunc TestW8(t *testing.T) {\n\tif !haveCC() {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
+	{"p/w9_test.go", "package p\n\nimport (\n\t\"testing\"\n\n\t\"example/lib\"\n)\n\nfunc need() bool { return lib.Have(\"cc\") }\n\nfunc TestW9(t *testing.T) {\n\tif !need() {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
+	// a skip notice built of a literal and a value
+	{"p/w10_test.go", "package p\n\nimport \"testing\"\n\nfunc TestW10(t *testing.T) {\n\twhy := \"no seed\"\n\tt.Log(\"random pass skipped: \" + why)\n}\n", "go-skip-print"},
+	// a job that never runs unless the event names one repository
+	{".github/workflows/co.yml", "jobs:\n  a:\n    if: github.event.repository.full_name == 'someone/else'\n    steps:\n      - run: make check\n", "repo-gate"},
 	// a tracked package under directories named target and deps
 	{"p/target/x_test.go", "package x\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {\n\tt.Skip(\"later\")\n}\n", "go-skip"},
 	{"deps/q/y_test.go", "package q\n\nimport \"testing\"\n\nfunc TestY(t *testing.T) {\n\tt.Skip(\"later\")\n}\n", "go-skip"},
@@ -1331,7 +1498,13 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 		// a count printed before a red exit, and a tool outside test code
 		"q/r_test.go":          "package q\n\nimport (\n\t\"bytes\"\n\t\"fmt\"\n\t\"os\"\n\t\"testing\"\n)\n\nfunc line(out, id string) string {\n\treturn fmt.Sprintf(\"[no SKIP line for %s: %s]\", id, out)\n}\n\nfunc TestR(t *testing.T) {\n\tvar b bytes.Buffer\n\tfmt.Fprintf(&b, \"t.Fatalf(\\\"refused or skipped\\\")\\n\")\n\tif b.Len() == 0 {\n\t\tt.Fatalf(\"a test skipped, and a skip is a failure\")\n\t}\n\tmsg := fmt.Sprintf(\"%s: cancelled or skipped would not turn the run red\", line(\"\", \"x\"))\n\tif msg == \"\" {\n\t\tfmt.Println(\"2 tests skipped\")\n\t\tos.Exit(1)\n\t}\n}\n",
 		"tools/report/main.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Printf(\"%d passed, %d skipped\\n\", 1, 0)\n}\n",
-		// a workflow job kept off fork pull requests compares no literal
+		// the module the plants live in, and a package of it that probes
+		"go.mod":     "module example\n",
+		"lib/lib.go": "package lib\n\nimport \"os/exec\"\n\nfunc Have(tool string) bool {\n\t_, err := exec.LookPath(tool)\n\treturn err == nil\n}\n",
+		// a gated body whose else fails is the check, not a skip
+		"q/s_test.go": "package q\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestS(t *testing.T) {\n\tif os.Getenv(\"HOME\") != \"\" {\n\t\tt.Log(\"home\")\n\t\tx := 1\n\t\t_ = x\n\t} else {\n\t\tt.Fatal(\"HOME is unset\")\n\t}\n}\n",
+		// a workflow job kept off fork pull requests compares no literal;
+		// fork pull requests run the fork lane's job instead (ci-fast.yml)
 		".github/workflows/cn.yml": "jobs:\n  a:\n    if: github.event.pull_request.head.repo.full_name == github.repository\n",
 	}
 	for f, body := range clean {
@@ -1372,12 +1545,15 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 
 // TestNoSkipScansTrackedOutputNames: in a checkout, a directory named like
 // build output (deps, target) is scanned when it holds a tracked file and
-// pruned when it holds none. The old scan pruned both by name.
+// pruned when it holds none, and inside it only the tracked files are read
+// (an untracked file beside a tracked one is that output). The old scan
+// pruned both by name. Git runs with its location variables cleared, as
+// the scan's own git does, so a run from a git hook touches only this tree.
 func TestNoSkipScansTrackedOutputNames(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	skip := "package q\n\nimport \"testing\"\n\nfunc TestY(t *testing.T) {\n\tt.Skip(\"later\")\n}\n"
-	for _, f := range []string{"deps/q/y_test.go", "target/q/y_test.go"} {
+	for _, f := range []string{"deps/q/y_test.go", "deps/q/vendored_test.go", "target/q/y_test.go"} {
 		path := filepath.Join(root, filepath.FromSlash(f))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -1387,7 +1563,9 @@ func TestNoSkipScansTrackedOutputNames(t *testing.T) {
 		}
 	}
 	for _, args := range [][]string{{"init", "-q"}, {"add", "deps/q/y_test.go"}} {
-		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = gitEnv()
+		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
@@ -1396,7 +1574,7 @@ func TestNoSkipScansTrackedOutputNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(found) != 1 || !strings.HasPrefix(found[0], "deps/q/y_test.go:6: go-skip: ") {
-		t.Fatalf("want the tracked deps/q skip alone (target/ holds no tracked file), got %q", found)
+		t.Fatalf("want the tracked deps/q skip alone (target/ holds no tracked file, deps/q/vendored_test.go is untracked), got %q", found)
 	}
 }
 
@@ -1435,24 +1613,43 @@ func announcesSkip(call *ast.CallExpr) bool {
 		return false
 	}
 	for _, a := range call.Args {
-		// a raw string over lines is a program the test generates, not a line
-		if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING && (lit.Value[0] != '`' || !strings.Contains(lit.Value, "\n")) {
-			if v, err := strconv.Unquote(lit.Value); err == nil && goSkipNotice.MatchString(v) {
-				return true
-			}
+		if goSkipNotice.MatchString(literalText(a)) {
+			return true
 		}
 	}
 	return false
+}
+
+// literalText is the string literals an expression is built of, joined
+// (a "+" of literals and other values counts its literals); a raw string
+// over lines is a program a test generates, not a line, and counts nothing.
+func literalText(e ast.Expr) string {
+	switch v := e.(type) {
+	case *ast.BasicLit:
+		if v.Kind != token.STRING || (v.Value[0] == '`' && strings.Contains(v.Value, "\n")) {
+			return ""
+		}
+		s, err := strconv.Unquote(v.Value)
+		if err != nil {
+			return ""
+		}
+		return s
+	case *ast.BinaryExpr:
+		if v.Op == token.ADD {
+			return literalText(v.X) + " " + literalText(v.Y)
+		}
+	case *ast.ParenExpr:
+		return literalText(v.X)
+	}
+	return ""
 }
 
 // announcesSkipInWords is a call whose literal text says skipped or
 // skipping.
 func announcesSkipInWords(call *ast.CallExpr) bool {
 	for _, a := range call.Args {
-		if lit, ok := a.(*ast.BasicLit); ok && lit.Kind == token.STRING {
-			if v, err := strconv.Unquote(lit.Value); err == nil && goSkipWords.MatchString(v) {
-				return true
-			}
+		if goSkipWords.MatchString(literalText(a)) {
+			return true
 		}
 	}
 	return false
@@ -1487,8 +1684,9 @@ func isFailure(call *ast.CallExpr) bool {
 			if len(call.Args) != 1 {
 				return false
 			}
+			// a status the code does not spell may be 0
 			lit, ok := call.Args[0].(*ast.BasicLit)
-			return !ok || lit.Value != "0"
+			return ok && lit.Kind == token.INT && lit.Value != "0"
 		}
 	}
 	return false

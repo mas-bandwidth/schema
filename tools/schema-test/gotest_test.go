@@ -328,11 +328,13 @@ func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
 		t.Fatalf("made %v, want the one target once", made)
 	}
 
+	var tried [][]string
 	broken := newGoTestAdapterBuilding(nil, t.TempDir(), 1, func(_ context.Context, argv []string) error {
+		tried = append(tried, argv)
 		return errors.New("build step failed")
 	})
 	err := broken.Prepare(context.Background(), "", rows)
-	if err == nil || !strings.Contains(err.Error(), "a: build step failed") {
+	if err == nil || !strings.Contains(err.Error(), "a: build step failed") || fmt.Sprint(tried) != "[[make build/tree/.stamp]]" {
 		t.Fatalf("a target that does not make: got %v, want the row named", err)
 	}
 
