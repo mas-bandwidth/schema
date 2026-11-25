@@ -436,7 +436,9 @@ func needsGOOS(gates []string, source string) string {
 				case osTags[tag], archTags[tag]:
 					return false
 				}
-				return set[tag] // a plain tag: set when buildTags passes it
+				// a plain tag: on Linux, set when buildTags passes it; on another
+				// GOOS, as the constraint asks, so "windows && tag" is Windows's
+				return set[tag] || goos != "linux"
 			})
 			if !ok {
 				return false

@@ -722,7 +722,7 @@ var (
 	recipeRE = regexp.MustCompile(`^(g\+\+|gcc|cc|clang|go |cargo |dotnet |mix |dart |javac |java |node |python|ruby |lua|cd |mkdir |cp |rm |printf |echo |\+ )`)
 	// saysNotRE is a line that says, without failRE's words, that
 	// something did not work.
-	saysNotRE = regexp.MustCompile(`(?i)(\bnot\b|incomplete|absent|cannot|differ|undefined|NOT CONFORMING)`)
+	saysNotRE = regexp.MustCompile(`(?i)(\b(did|does|do|was|were|could|can|has|have)( not|n't)\b|incomplete|absent|cannot|differ|undefined|NOT CONFORMING)`)
 	genericRE = regexp.MustCompile(`^(make(\[[0-9]+\])?: \*\*\* |collect2: error: ld returned)`)
 	// warnRE is a warning: "warning: ...", or one a tool names itself or
 	// a place for ("x.c:3:5: warning: ...", "make: warning: ...").

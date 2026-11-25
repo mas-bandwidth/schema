@@ -1290,6 +1290,7 @@ func TestAWindowsTestRunsOnABenchThatRunsWindows(t *testing.T) {
 		{[]string{"build: linux || windows"}, "a/x_test.go:1", ""},
 		{[]string{"build: schema_leg_moo"}, "a/x_test.go:1", ""},
 		{[]string{"build: windows || !schema_leg_moo"}, "a/x_test.go:1", ""},
+		{[]string{"build: windows && schema_leg_moo"}, "a/x_test.go:1", "windows"},
 		{[]string{"build: schema_leg_moo", "build: windows"}, "a/x_test.go:1", "windows"},
 		{nil, "a/windows_test.go:1", ""},
 		{nil, "internal/codegen/js/serialize_js_lookup_test.go:1", ""},
@@ -1385,11 +1386,13 @@ func TestAWarningIsNotTheFirstLineBesideAFailure(t *testing.T) {
 		{[]string{"checking", "warning: go key order: the control failed to go red", "done"}, "warning: go key order: the control failed to go red"},
 		{[]string{"warning: x refused", "# the root refuses form 1, so", "PASS TestRefuseBeforePublishing", "0 Error(s)", "tables conformance: 7 rows FAILED", "make: *** [t] Error 1"}, "tables conformance: 7 rows FAILED"},
 		{[]string{"warning: x refused", "u.c:(.text+0x3a): undefined reference to 'f'", "collect2: error: ld returned 1 exit status", "make: *** [t] Error 1"}, "u.c:(.text+0x3a): undefined reference to 'f'"},
-		{[]string{"warning: x refused", "wire-fuzz roster incomplete: a codec is absent", "echo the roster is not read here", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2", ""}, "wire-fuzz roster incomplete: a codec is absent"},
+		{[]string{"warning: x refused", "wire-fuzz roster incomplete: a codec is absent", "echo the roster was not read here", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2", ""}, "wire-fuzz roster incomplete: a codec is absent"},
 		{[]string{"warning: x refused", "NEGATIVE CONTROL: the sabotage did not apply", "make: *** [t] Error 2"}, "NEGATIVE CONTROL: the sabotage did not apply"},
 		{[]string{"roster built", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2"}, "make[1]: *** [Makefile:9: t] Error 1"},
 		{[]string{"warning: x failed", "./gen --check", "make: *** [t] Error 2"}, "warning: x failed"},
 		{[]string{"u.c: undefined reference to 'f'", "link step over"}, "u.c: undefined reference to 'f'"},
+		{[]string{"warning: y refused", "note: the cache is not warm, rebuilding", "make: *** [check] Error 3"}, "warning: y refused"},
+		{[]string{"generating tables", "note: the cache is not warm, rebuilding", "./gen --check", "make: *** [check] Error 3"}, "make: *** [check] Error 3"},
 	} {
 		if got := firstFailLine(c.lines, "make x: exit status 2"); got != c.want {
 			t.Errorf("firstFailLine(%q) = %q, want %q", c.lines, got, c.want)
