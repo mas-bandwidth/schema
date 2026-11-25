@@ -514,7 +514,7 @@ $(GOOSE_FUZZ_SLICE_SIG):
 
 build/goose-wirefuzz-legs/.verify-stamp: $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
 	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
-	test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-wirefuzz-build.sh \
+	test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz_io.c test/conformance/goose/wirefuzzdispatch/main.go make/goose-wirefuzz-build.sh make/goose-cc-lto.sh \
 	$(GOOSE_FUZZ_SLICE_SIG)
 	@GOOSE_FUZZ_JOBS=$(VERIFY_JOBS) $(MAKE) --no-print-directory build/conformance-goose-wirefuzz
 	@touch $@

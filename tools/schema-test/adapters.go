@@ -158,7 +158,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		"corpus":      newHarnessAdapter(b, log),
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
-		"make-gotest": newMakeGoTestAdapter("."),
+		"make-gotest": newMakeGoTestAdapterBuilding(".", b.run),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
 	}

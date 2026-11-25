@@ -15,7 +15,7 @@ go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs the
 go-test	internal/codegen/cpp	28	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
 go-test	internal/codegen/cpptable	164	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
 go-test	internal/codegen/cstable	152	L5	per-language (cs) Go tests: cs's adapter runs them when their families move in
-go-test	internal/codegen/ctable	168	L5	per-language (c) Go tests: c's adapter runs them when their families move in
+go-test	internal/codegen/ctable	151	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/dart	13	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/darttable	260	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
@@ -1571,23 +1571,6 @@ tier	internal/codegen/ctable:TestFixedRoadmapCT16OrdinalLanes	1	L5	functional: n
 tier	internal/codegen/ctable:TestFixedRoadmapCT18DirectArms	1	L5	functional: needs an external toolchain (was slowtest.Gate)
 tier	internal/codegen/ctable:TestFixedRoadmapCT19PayloadFreeArms	1	L5	functional: needs an external toolchain (was slowtest.Gate)
 tier	internal/codegen/ctable:TestFixedRoadmapT01Framing	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningCfloatRangeWiden	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningCfloatResRefine	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningCountClampEnds	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningFloor	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningForgedOrdinalBothPlans	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningHash	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningLineageMerge	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningNewReadsOld	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningOldRefusesNew	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningRangeWidenHostile	1	L5	functional: needs a C compiler (it runs the generated NEW reader over the forged file); an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningRefuseWritesNothing	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningUnionTagBothPlans	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningUnionUnselectedArm	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningUnknownCensus	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningUnknownCensusManyRecords	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningWriterBoundCount	1	L5	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/codegen/ctable:TestFixedVersioningWriterBoundCountTwoRemotes	1	L5	functional: needs an external toolchain (was slowtest.Gate)
 tier	internal/codegen/ctable:TestGccFortifySilenceFollowsGNUNotTheWordGcc	1	L5	functional: needs an external toolchain (was slowtest.Gate)
 tier	internal/codegen/ctable:TestGeneratedMessageDepthBoundary	1	L5	functional: needs the c compiler (it compiles and runs the generated depth probe) (was slowtest.Gate)
 tier	internal/codegen/ctable:TestGeneratedMessageDepthBoundaryAllRuntimes	1	L5	functional: needs every runtime's toolchain (it compiles and runs the depth probe in all nine) (was slowtest.Gate)

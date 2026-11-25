@@ -58,6 +58,7 @@ const (
 )
 
 func TestFixedVersioningUnknownCensus(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_unknown_census")
 	older := cReadSchema(t, "VOLD_unknown_census")

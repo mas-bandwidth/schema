@@ -11,6 +11,7 @@ import (
 )
 
 func TestFixedFormEmitsSurface(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	files := generate(t, `package probe
 fixed table Point {
     x int32
@@ -98,6 +99,7 @@ fixed table Point {
 // previous_form and reads form 3. The schema says the keyword and the fixture
 // walks the real parser: there is no second way to say the class here.
 func TestFixedFormForm1RefusalLivesInFixedLoad(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	files := generate(t, `package probe
 fixed table Point {
     x int32
@@ -124,6 +126,7 @@ fixed table Point {
 }
 
 func TestFixedFormRoundTrip(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -329,6 +332,7 @@ func TestHashIncludesTheCountWord(t *testing.T) {
 // poison, the "on a POISONED destination it fails louder" of the dead-byte rule.
 // If a byte differs, the failure names which field's span it falls in.
 func TestFixedFormWriteReadWriteIsByteIdentical(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 union Pick
 {
@@ -455,6 +459,7 @@ func fixedBodySpan(off int) string {
 // (519-527). This is that reasoning in the Go leg's generated-probe idiom; the
 // taken-as-given half is also the generator's own §5.3 shape (fixedform.go:750).
 func TestFixedFormHashCheckedLast(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -567,6 +572,7 @@ func TestFixedTableSaveAndLoadAreFormThree(t *testing.T) {
 // the reset is visible, and after the refusal it equals a zero value put
 // through PointReset. Every counter is zero at the same time.
 func TestFixedFormRefuseIsTotal(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -662,6 +668,7 @@ func TestForm1VariableLoad(t *testing.T) {
 // down, and the plan the compiler builds when a writer's layout is not this
 // build's. The control is the same record with every byte 0 or 1, which reads.
 func TestFixedFormHostileBoolByte(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Host {
     on bool
@@ -757,6 +764,7 @@ func TestHostileBoolControl(t *testing.T) {
 // byte in that span refuses the whole load (docs/rulings.json
 // fixed-dead-bytes-are-zero).
 func TestFixedFormHostileUnionTag(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type Hit { damage int32 }
 type Chat { volume int32 }
@@ -860,6 +868,7 @@ func TestTagPastTheArmsRefuses(t *testing.T) {
 // CONTROL 2, below, disconnects the pass from the loop to prove it — and not
 // some other check — is what holds the value back.
 func TestFixedFormHostileByteSweep(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Host {
     small int32 = 5 | min = 0, max = 1000
@@ -1013,6 +1022,7 @@ func TestHostileByteSweep(t *testing.T) {
 // Arg, Meta unused. A compiled text-under-arm-2 read must DROP the string —
 // putting flavour in Arg must not stay green.
 func TestFixedFormArgLaneOldEncodingControl(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type ArmA { n int32 }
 type ArmB { s string(8) }
@@ -1113,6 +1123,7 @@ func TestOldArgLaneControl(t *testing.T) {
 // guarded entry has its split at the END, not at zero. The case runs in the
 // generated probe package because that is where the plan symbols live.
 func TestFixedFormPlanPartition(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type ArmA { n int32 }
 type ArmB {
@@ -1269,6 +1280,7 @@ func TestPlanPartition(t *testing.T) {
 // reader whose field carries a live count subtracts four from zero: the elements
 // land past a record that ends at four.
 func TestFixedFormRecordBound(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Host {
     keep  uint32 = 7
@@ -1424,6 +1436,7 @@ func tableFile(files map[string][]byte) string {
 }
 
 func TestFixedFormBoundsPassShape(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	tagOnly := generate(t, `package probe
 type Boost { power int32 = 0 }
 type Ward { charge float32 = 0.0 }
@@ -1491,6 +1504,7 @@ fixed table Cfg {
 }
 
 func TestFixedFormBoundsLiveCount(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 enum Grade { Bronze, Gold }
 type ArmA { n int32 = 0 | min = 0, max = 10 }
@@ -1699,6 +1713,7 @@ func byteSpell(b []byte) string {
 // (kind 12), so the case tells the two apart and is not matching whatever entry
 // it happens to find first.
 func TestFixedFormBytesIsLayoutKind14(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	u := unitFrom(t, `package probe
 fixed table Carrier {
     tag bytes(6)
@@ -1746,6 +1761,7 @@ fixed table Carrier {
 }
 
 func TestFixedFormLayoutMalformedTruncated(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -1821,6 +1837,7 @@ func TestLayoutMalformedTruncated(t *testing.T) {
 // length standing and the counters silent — a silently WRONG REPORT, measured
 // in CONTROL 2 below.
 func TestFixedFormTextLengthClamp(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Text {
     lead  uint32 = 1
@@ -1906,6 +1923,7 @@ func TestTextLengthClamp(t *testing.T) {
 // unit's locked entry as its lineage, which is the only way a versioned read is
 // reached now (docs/FIXED-FORM-ALGORITHM.md §5.6).
 func TestFixedFormOptionalVersusPlainNesting(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "optional_add.bin")
 	old := readSchema(t, "VOLD_optional_add")
@@ -2123,6 +2141,7 @@ func TestWrongPlanGoesRed(t *testing.T) {
 // wire — so the check is about the flag and not about the writer never having
 // written a payload at all.
 func TestFixedFormAbsentOptionalSkipsStore(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Link
 {
@@ -2210,6 +2229,7 @@ func TestAbsentOptionalSkipsStore(t *testing.T) {
 // (test/tables/fixedform_main.cpp:781-854), whose negative control is the OLD
 // row: the two columns swapped on a copy of this build's own rows.
 func TestFixedFormBytesNTakesTheArrayRow(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Probe
 {
@@ -2281,6 +2301,7 @@ func TestBytesRow(t *testing.T) {
 // what reaches the reader) and the read-side pass over STORAGE is what holds it. The legitimate value the rule admits is the
 // CONTROL and must not move the counter.
 func TestFixedFormBoundsShiftFixedAndBits(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Probe {
     tilt fixed(12, 4) | min = -8, max = 7
@@ -2347,6 +2368,7 @@ func TestShiftAndBits(t *testing.T) {
 // fixture asserts the counters that EXIST on this leg's report, by name, on
 // both the identity plan and the compiled plan path.
 func TestFixedFormDuplicateNeverRaised(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 enum Key { a, b, c }
 fixed table Child {
@@ -2414,6 +2436,7 @@ func TestDuplicateStaysZero(t *testing.T) {
 // garbage in either is refused as wire_damaged and writes nothing; the writer's
 // own zeroed image reads.
 func TestFixedFormNonZeroSlackRefused(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 fixed table Slack {
     label string(8)
@@ -2626,6 +2649,7 @@ func TestWriteSideRefusesByName(t *testing.T) {
 // the two landed values differ (and the counters move), which is exactly what
 // the row exists to catch.
 func TestFixedFormIdentityEqualsCompiled(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 enum Grade { Bronze, Gold }
 fixed table Root {
@@ -2725,6 +2749,7 @@ func TestIdentityEqualsCompiled(t *testing.T) {
 // wide-arm half, whose slot is legitimately full, so the zero check is a fact
 // about the NARROW arm and not a buffer that is universally zero.
 func TestFixedFormZeroBehindNarrowerArm(t *testing.T) {
+	t.Parallel() // its own TempDir and go test; nothing shared (make tables-go-fixedform)
 	runGenerated(t, `package probe
 type NarrowArm { a int8 = 0 }
 type WideArm { b int64 = 0 }

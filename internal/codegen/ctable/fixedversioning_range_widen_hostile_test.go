@@ -19,6 +19,7 @@ import (
 // (compared unsigned). The answer is the manifest's: a line with no `expect=`
 // is the C++ reference's own NEW reader refusing the same bytes.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {
 		t.Run(vec.Name, func(t *testing.T) {

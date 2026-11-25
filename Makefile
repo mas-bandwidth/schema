@@ -143,8 +143,17 @@ all: bin/schema
 VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --dirty 2>/dev/null)
 LDFLAGS := $(if $(VERSION),-X github.com/mas-bandwidth/schema/v2/internal/version.version=$(VERSION),)
 
+# SHARED BUILD PRODUCTS ARE WRITTEN ATOMICALLY: bin/schema,
+# build/schema_test_fixedform_dump, build/fixedform-corpus and
+# build/conformance-c are built under a name of the build's own (the shell's
+# pid) and renamed into place. Two runs in one checkout that both make one
+# (schema-test runs side by side, say) then never write a binary another is
+# executing ("Text file busy") and never hand a reader a half-written file:
+# rename replaces the name whole, and a process already running the old
+# binary keeps its inode. TestSharedBuildProductsAreWrittenAtomically
+# (internal/ci) holds these recipes to it.
 bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
-	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
+	go build -ldflags "$(LDFLAGS)" -o $@.tmp.$$$$ ./cmd/schema && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }
 
 # tools/mustrun is the wrapper a language harness runs under: it fails on a
 # non-zero exit, on a harness that printed no "ran N, failed M" line, on zero
@@ -7277,26 +7286,61 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/vnum \
 	    $(VLISTS_INCLUDES) \
-	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@
+	    -I$(SERIALIZE_RUNTIME) test/tables/fixedform_dump.cpp -o $@.tmp.$$$$ && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }
 
-# The corpus is written beside the live one and swapped in whole, so a reader
-# never sees a directory that is half written.
-build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
-	@rm -rf build/fixedform-corpus.next
-	@mkdir -p build/fixedform-corpus.next
-	./build/schema_test_fixedform_dump build/fixedform-corpus.next
+# The corpus is written beside the live one, under a name of this build's own
+# (the shell's pid: two builds side by side never write into one directory),
+# and swapped in whole, so a reader never sees a directory that is half
+# written. A directory cannot be renamed over a full one, so the swap is two
+# renames (the live one aside, the new one in) with nothing written between;
+# the old one is removed after. A reader that looks in that moment finds no
+# corpus and fails by name, never a half-written one; a run builds the
+# corpus once before its rows (a prepare step), so its rows do not rebuild
+# it. Every rename is rename(2) itself (CORPUS_RENAME), never mv: the live
+# corpus another build already moved aside is no error (ENOENT), and when
+# another build put its corpus in first, mv would move this one INSIDE it,
+# where rename refuses. .stamp holds the cksum of the dump and its inputs,
+# taken before the dump ran: this build keeps another's corpus only when
+# that record is its own, and otherwise sets it aside and tries once more.
+# A failure puts the live corpus back (by rename, never into another's).
+# What a killed build left beside the corpus (over an hour old) is removed.
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
-# emitter to use. Nothing under build/ is committed; the line below only refuses
-# to call the corpus finished when the manifest did not arrive.
-	@test -s build/fixedform-corpus.next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
-	@touch build/fixedform-corpus.next/.stamp
-	@rm -rf build/fixedform-corpus.prev
-	@if test -d build/fixedform-corpus; then mv build/fixedform-corpus build/fixedform-corpus.prev; fi
-	@mv build/fixedform-corpus.next build/fixedform-corpus
-	@rm -rf build/fixedform-corpus.prev
+# emitter to use. Nothing under build/ is committed; the test -s below only
+# refuses to call the corpus finished when the manifest did not arrive.
+#
+# CORPUS_RENAME FROM TO CODE ERRNO...: rename(2) FROM onto TO; a failure
+# with one of the ERRNO names exits CODE (0: no error), any other dies
+# naming both paths and the error.
+CORPUS_RENAME = perl -e 'my ($$f, $$t, $$code, @ok) = @ARGV; exit 0 if rename($$f, $$t); for my $$e (@ok) { exit $$code if $$!{$$e} } die "rename $$f -> $$t: $$!\n"'
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
+	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; live=build/fixedform-corpus; \
+	fail() { rm -rf $$next; \
+	  for p in $$prev.2 $$prev.1; do \
+	    if test -d $$p; then \
+	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST; fi; \
+	      rm -rf $$p; \
+	    fi; \
+	  done; \
+	  echo "corpus: $$1" >&2; exit 1; }; \
+	find build -mindepth 1 -maxdepth 1 -name 'fixedform-corpus.*.*' -mmin +60 -exec rm -rf {} + || fail "cannot sweep what killed builds left"; \
+	sum=$$(cksum build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin) || fail "cannot read the dump's inputs"; \
+	{ rm -rf $$next && mkdir -p $$next; } || fail "cannot make $$next"; \
+	echo "./build/schema_test_fixedform_dump $$next"; \
+	./build/schema_test_fixedform_dump $$next || fail "the dump failed"; \
+	test -s $$next/manifest.txt || fail "manifest.txt missing"; \
+	printf '%s\n' "$$sum" > $$next/.stamp || fail "cannot write $$next/.stamp"; \
+	for try in 1 2; do \
+	  $(CORPUS_RENAME) $$live $$prev.$$try 0 ENOENT || fail "cannot set $$live aside"; \
+	  $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST; rc=$$?; \
+	  if test $$rc = 0; then break; fi; \
+	  test $$rc = 3 || fail "cannot put $$next in as $$live"; \
+	  if test -f $$live/.stamp && test "$$(cat $$live/.stamp)" = "$$sum"; then rm -rf $$next; break; fi; \
+	  test $$try = 1 || fail "another build twice put in a corpus of other inputs"; \
+	done; \
+	rm -rf $$prev.1 $$prev.2
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"

@@ -107,7 +107,16 @@ fi
 } >"$out/conformance_unit.goose"
 cp test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz.build \
 	test/conformance/goose/wirefuzz_io.c "$out"/ || exit 1
-(cd "$out" && "$goose" build -O2 wirefuzz.goose -o wirefuzz) >"$out/build.log" 2>&1 || {
+# A per-commit slice's legs (GOOSE_LEG_LTO=1, set by make/goose-fuzz.mk under
+# GOOSE_FUZZ_SLICE) build with link-time optimization, so the largest units'
+# -O2 work runs over the cores (make/goose-cc-lto.sh says what that changes);
+# the unsliced nightly gate and the negative controls build plain -O2.
+if [ -n "${GOOSE_LEG_LTO:-}" ]; then
+	set -- --cc "$(pwd)/make/goose-cc-lto.sh"
+else
+	set --
+fi
+(cd "$out" && "$goose" build -O2 "$@" wirefuzz.goose -o wirefuzz) >"$out/build.log" 2>&1 || {
 	cat "$out/build.log" >&2
 	exit 1
 }

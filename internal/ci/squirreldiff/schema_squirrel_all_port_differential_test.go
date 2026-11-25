@@ -43,7 +43,7 @@
 // each against the one independent engine (internal/tablewire), which is the
 // cross-port comparison at the mutant grain. It runs in the card's nightly
 // workflow, never per push.
-package ci
+package squirreldiff
 
 import (
 	"bytes"

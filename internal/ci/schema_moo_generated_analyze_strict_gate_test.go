@@ -19,6 +19,20 @@ var mooControls = []string{
 	"schema-moo-generated-analyze-strict-gate-pin-negative-control",
 }
 
+// mooGateToolchain is the toolchain gate a target of the moo strict-analyze
+// fragment sits behind: a control names the pin's tools under MOO_DIST, so it
+// is gated by toolchain-moo-dist, which builds that pin first (make/moo.mk;
+// 466c6f9ba2, "the controls that name dist/moo build it first"); the gate
+// itself runs whatever MOO the runner names, behind toolchain-moo.
+func mooGateToolchain(target string) string {
+	for _, c := range mooControls {
+		if c == target {
+			return "toolchain-moo-dist"
+		}
+	}
+	return "toolchain-moo"
+}
+
 // TestSchemaMooGeneratedAnalyzeStrictGateWiring holds the moo strict-analyze
 // gate (docs/PORT-MOO.md, layer 7) to what makes it a gate rather than a green
 // line: the make targets run their tests through test/slowgate/proof behind the
@@ -41,8 +55,8 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 		return string(body)
 	}
 
-	// THE MAKE FRAGMENT: each target behind toolchain-moo, each through the
-	// proof script naming the tests it proves.
+	// THE MAKE FRAGMENT: each target behind its toolchain gate (mooGateToolchain),
+	// each through the proof script naming the tests it proves.
 	mk := read("make", "schema-moo-generated-analyze-strict-gate.mk")
 	for target, proves := range map[string]string{
 		"schema-moo-generated-analyze-strict-gate":                      "'TestMooGeneratedAnalyzeStrictGate'",
@@ -53,7 +67,7 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 	} {
 		for _, want := range []string{
 			".PHONY: " + target + "\n",
-			"\n" + target + ": toolchain-moo\n",
+			"\n" + target + ": " + mooGateToolchain(target) + "\n",
 			"sh test/slowgate/proof " + target + " \\\n\t\t" + proves + " \\\n\t\t./internal/codegen/moo -run ",
 		} {
 			if !strings.Contains(mk, want) {
@@ -66,7 +80,7 @@ func TestSchemaMooGeneratedAnalyzeStrictGateWiring(t *testing.T) {
 	// red on exactly the goldens that write a bool.
 	for _, want := range []string{
 		".PHONY: packet-wire-moo-emitter-negative-control\n",
-		"\npacket-wire-moo-emitter-negative-control: toolchain-moo\n",
+		"\npacket-wire-moo-emitter-negative-control: " + mooGateToolchain("packet-wire-moo-emitter-negative-control") + "\n",
 		"go run ./tools/sabotage -name packet-wire-moo-bool-twice",
 		"$(GO_TEST_RED) -overlay=$(MOO_WIRE_NC_DIR)/overlay.json",
 		"MOO_WIRE_NC_RED := inputpacket joins probearray rigidbody_at_rest rigidbody_moving shipcreate_flags testdata\n",
