@@ -8348,33 +8348,13 @@ define pins_compile_tables_parts
 	rm -rf "$$objdir" && mkdir -p "$$objdir"; \
 	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
 	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
-	jobs=''; idx=0; shared=''; \
-	for p in $(TABLES_PARTS); do jobs="$$jobs part:$$p"; done; \
-	for src in $(PINS_WIRE_TABLES_SOURCES); do jobs="$$jobs src:$$src"; done; \
-	slot=0; pids=''; fail=0; \
-	for job in $$jobs; do \
-		case "$$job" in \
-			part:*) p=$${job#part:}; \
-				$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -DTABLES_PART=$$p -c test/tables/main.cpp -o "$$objdir/part$$p.o" & ;; \
-			src:*) idx=$$((idx+1)); src=$${job#src:}; shared="$$shared $$objdir/$$idx.o"; \
-				$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) -c "$$src" -o "$$objdir/$$idx.o" & ;; \
-		esac; \
-		pids="$$pids $$!"; \
-		slot=$$((slot+1)); \
-		if [ "$$slot" -ge "$$procs" ]; then \
-			for pid in $$pids; do wait "$$pid" || fail=1; done; \
-			pids=''; slot=0; \
-		fi; \
-	done; \
-	for pid in $$pids; do wait "$$pid" || fail=1; done; \
-	[ "$$fail" = 0 ]; \
-	pids=''; \
-	for p in $(TABLES_PARTS); do \
-		$(CXX) $(TABLES_CXXFLAGS) "$$objdir/part$$p.o" $$shared -o build/schema_test_tables_part$$p & \
-		pids="$$pids $$!"; \
-	done; \
-	for pid in $$pids; do wait "$$pid" || fail=1; done; \
-	[ "$$fail" = 0 ]; \
+	{ for p in $(TABLES_PARTS); do echo "part$$p:test/tables/main.cpp"; done; \
+	  for s in $(PINS_WIRE_TABLES_SOURCES); do echo "shared:$$s"; done; } | \
+	xargs -P "$$procs" -I{} bash -c 'set -eu; name=$${1%%:*}; src=$${1#*:}; \
+		case "$$name" in part*) extra="-DTABLES_PART=$${name#part}"; out="$$2/$$name.o";; *) extra=""; out="$$2/shared-$$(printf %s "$$src" | tr / _).o";; esac; \
+		exec $(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) $$extra -c "$$src" -o "$$out"' _ {} "$$objdir"; \
+	printf '%s\n' $(TABLES_PARTS) | \
+	xargs -P "$$procs" -I{} bash -c 'exec $(CXX) $(TABLES_CXXFLAGS) "$$2/part$$1.o" "$$2"/shared-*.o -o "build/schema_test_tables_part$$1"' _ {} "$$objdir"; \
 	rm -rf "$$objdir"
 endef
 
@@ -8395,6 +8375,27 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	@mkdir -p build/tables-generated testdata/wire/tables
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_WIRE_FORMS_DIRS),wire-forms)
 	@touch build/tables-generated/.stamp
+	@# THE FIVE DRIVERS IN ONE POOL: every translation unit of all five is one job
+	@# in one pool as wide as the cores, instead of five compiles one after
+	@# another each waiting on its own slowest unit. xargs -P is the pool (a slot
+	@# frees as its job ends), and it exits nonzero when any job failed.
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
+	@set -eu; \
+	objdir="build/pins-tmp/wire-forms-objs"; \
+	rm -rf "$$objdir" && mkdir -p "$$objdir/block" "$$objdir/maps" "$$objdir/lists" "$$objdir/arms" "$$objdir/retain"; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	{ for s in test/tables/block_main.cpp $(BLOCK_SOURCES); do echo "block:$$s"; done; \
+	  for s in test/tables/maps_main.cpp $(MAPS_SOURCES); do echo "maps:$$s"; done; \
+	  for s in test/tables/lists_main.cpp $(LISTS_SOURCES); do echo "lists:$$s"; done; \
+	  for s in test/tables/arms_main.cpp $(ARMS_SOURCES); do echo "arms:$$s"; done; \
+	  echo "retain:test/tables/retain_main.cpp"; } | \
+	xargs -P "$$procs" -I{} bash -c 'set -eu; bin=$${1%%:*}; src=$${1#*:}; \
+		case "$$bin" in block) flags="$(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES)";; *) flags="$(TABLES_CXXFLAGS) $(TABLES_INCLUDES)";; esac; \
+		exec $(CXX) $$flags -c "$$src" -o "$$2/$$bin/$$(printf %s "$$src" | tr / _).o"' _ {} "$$objdir"; \
+	printf '%s\n' block maps lists arms retain | \
+	xargs -P "$$procs" -I{} bash -c 'exec $(CXX) $(TABLES_CXXFLAGS) "$$2/$$1"/*.o -o "build/schema_test_$$1"' _ {} "$$objdir"; \
+	rm -rf "$$objdir"
 	$(call pins_compile_cxx,build/schema_test_block,$(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES),test/tables/block_main.cpp $(BLOCK_SOURCES),wire-block)
 	$(call pins_compile_cxx,build/schema_test_maps,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/maps_main.cpp $(MAPS_SOURCES),wire-maps)
 	$(call pins_compile_cxx,build/schema_test_lists,$(TABLES_CXXFLAGS) $(TABLES_INCLUDES),test/tables/lists_main.cpp $(LISTS_SOURCES),wire-lists)
