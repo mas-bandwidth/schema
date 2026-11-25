@@ -527,3 +527,38 @@ func TestTheDatabaseIsReadOncePerRun(t *testing.T) {
 		t.Errorf("the database was read %d times for one run, want once", reads)
 	}
 }
+
+// TestTheCheckoutAdaptersRunOneAfterAnother: every adapter whose calls take
+// the checkout is Serial, so none waits behind another inside its own
+// deadline; the gotest adapter, which does not take it, runs beside them.
+func TestTheCheckoutAdaptersRunOneAfterAnother(t *testing.T) {
+	t.Parallel()
+	ads := adapters(io.Discard)
+	withRunner(ads, &testreg.Runner{})
+	for name, want := range map[string]bool{"make": true, "golden": true, "plant": true, "model-check": true, "gotest": false, "corpus": false} {
+		s, ok := ads[name].(testreg.Serial)
+		if got := ok && s.Serial(); got != want {
+			t.Errorf("adapter %s Serial is %t, want %t", name, got, want)
+		}
+	}
+}
+
+// TestABuildStepRunsInPrepare: the corpus leg's build and the model-check
+// harness's build run in Prepare, before any call's deadline, and a build
+// that fails is Prepare's error. The builder holds a planted failure for
+// each step, so nothing is built.
+func TestABuildStepRunsInPrepare(t *testing.T) {
+	t.Parallel()
+	planted := errors.New("planted: the build failed")
+	b := &builder{log: io.Discard, done: map[string]error{
+		"make\x00conformance-leg-go": planted,
+		strings.Join(tlcrunBuild, "\x00"): planted,
+	}}
+	leg := testreg.Instance{Full: "go.functional.roundtrip.conformance-wire.root-full", Lang: "go", Test: testreg.Test{Family: "conformance-wire"}}
+	if err := (&harnessAdapter{build: b, log: io.Discard}).Prepare(context.Background(), "go", []testreg.Instance{leg}); !errors.Is(err, planted) {
+		t.Errorf("the corpus adapter's Prepare returned %v, want the leg build's failure", err)
+	}
+	if err := (modelCheckAdapter{build: b, log: io.Discard}).Prepare(context.Background(), testreg.LangFree, nil); !errors.Is(err, planted) {
+		t.Errorf("the model-check adapter's Prepare returned %v, want the harness build's failure", err)
+	}
+}

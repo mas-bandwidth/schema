@@ -466,3 +466,6 @@ func goldenOnly(instances []testreg.Instance) error {
 	}
 	return nil
 }
+
+// Serial: a writer takes the checkout (testreg.Serial).
+func (goldenAdapter) Serial() bool { return true }

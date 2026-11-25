@@ -424,3 +424,54 @@ func TestTheCopyIsTheCheckoutAsItStands(t *testing.T) {
 		t.Errorf("the mode: %v %v", info, err)
 	}
 }
+
+// preparing is an adapter that passes everything and records which
+// instances it was asked to prepare.
+type preparing struct{ asked []string }
+
+func (*preparing) Answers(testreg.Test) bool { return true }
+
+func (p *preparing) Prepare(_ context.Context, _ string, instances []testreg.Instance) error {
+	for _, inst := range instances {
+		p.asked = append(p.asked, inst.Full)
+	}
+	return nil
+}
+
+func (*preparing) Run(_ context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
+	var out []testreg.Result
+	for _, inst := range instances {
+		out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
+	}
+	return out, nil
+}
+
+// TestAPlantPreparesTheRowsItRunsInTheCheckout: an env plant's target and
+// an edit plant's rows are built before the plant's call starts, so a cold
+// leg build never runs inside the plant's deadline.
+func TestAPlantPreparesTheRowsItRunsInTheCheckout(t *testing.T) {
+	t.Parallel()
+	reg, err := testreg.Load(cliRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const target = "go.functional.roundtrip.fam.one"
+	for _, in := range []plantInputs{
+		{Env: map[string]string{"X": "y"}, Target: target, Reason: "x is y, as planted"},
+		{Edits: []plantEdit{{File: "a.go", Anchor: "x", With: "y"}}, Red: []string{target}, Reason: "x is y, as planted"},
+	} {
+		raw, err := json.Marshal(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		inst := testreg.Instance{Full: "none.functional.plant.fam.p", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: raw}}
+		p := &preparing{}
+		a := plantAdapter{rn: &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{"fake": p}, Context: testreg.WithTimeout(0)}}
+		if err := a.Prepare(context.Background(), testreg.LangFree, []testreg.Instance{inst}); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(p.asked, ",") != target {
+			t.Errorf("plant %s prepared %q, want its row %s", raw, p.asked, target)
+		}
+	}
+}

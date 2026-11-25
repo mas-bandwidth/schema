@@ -27,6 +27,26 @@ type Adapter interface {
 	Run(ctx context.Context, lang string, instances []Instance) ([]Result, error)
 }
 
+// Preparer is an adapter whose calls need something built first (a leg's
+// driver, a harness). The runner calls Prepare for every group, one after
+// another, before any call starts and outside every call's deadline: a cold
+// checkout's build is the run's cost, paid once, and never eats the deadline
+// of the call that happens to need it first. A shard pays it whole, so the
+// rows that need it are measured cold and kept in one block (unitOf).
+type Preparer interface {
+	Prepare(ctx context.Context, lang string, instances []Instance) error
+}
+
+// Serial is an adapter whose calls take the checkout (make, a writer, a
+// plant's runs): its calls would only wait for each other, so the runner runs
+// every Serial group one after another, each call's deadline starting when
+// that call starts, never while it waits behind another's work. The sharder
+// already weighs a shard as the sum of its rows' seconds, which is what
+// running them one after another costs.
+type Serial interface {
+	Serial() bool
+}
+
 // Verdicts an adapter may report.
 const (
 	Pass = "pass"
@@ -224,25 +244,41 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		err     error
 	}
 	runs := make([]groupRun, len(plan.groups))
+	prepared := rn.prepare(parent, plan.groups)
+	call := func(gi int) {
+		g := plan.groups[gi]
+		if prepared[gi] != nil {
+			runs[gi] = groupRun{nil, prepared[gi]}
+			return
+		}
+		ctx, cancel := rn.Context(parent, g.name)
+		defer cancel()
+		res, err := rn.Adapters[g.adapter].Run(ctx, g.lang, g.instances)
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
+		switch {
+		case timedOut && err == nil:
+			err = fmt.Errorf("adapter %s timed out", g.adapter)
+		case timedOut:
+			err = fmt.Errorf("adapter %s timed out: %w", g.adapter, err)
+		case err != nil:
+			err = fmt.Errorf("adapter %s crashed: %w", g.adapter, err)
+		}
+		runs[gi] = groupRun{res, err}
+	}
+	var serial []int
 	var wg sync.WaitGroup
 	for gi, g := range plan.groups {
-		a := rn.Adapters[g.adapter]
-		wg.Go(func() {
-			ctx, cancel := rn.Context(parent, g.name)
-			defer cancel()
-			res, err := a.Run(ctx, g.lang, g.instances)
-			timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
-			switch {
-			case timedOut && err == nil:
-				err = fmt.Errorf("adapter %s timed out", g.adapter)
-			case timedOut:
-				err = fmt.Errorf("adapter %s timed out: %w", g.adapter, err)
-			case err != nil:
-				err = fmt.Errorf("adapter %s crashed: %w", g.adapter, err)
-			}
-			runs[gi] = groupRun{res, err}
-		})
+		if s, ok := rn.Adapters[g.adapter].(Serial); ok && s.Serial() {
+			serial = append(serial, gi)
+			continue
+		}
+		wg.Go(func() { call(gi) })
 	}
+	wg.Go(func() {
+		for _, gi := range serial {
+			call(gi)
+		}
+	})
 	wg.Wait()
 
 	for gi, g := range plan.groups {
@@ -310,6 +346,29 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("expected %d instances to run, %d ran", rep.Expected, rep.Ran))
 	}
 	return rep
+}
+
+// prepare runs each group's Prepare (Preparer), one after another, under the
+// run's own context and no call's deadline, and returns each group's error.
+func (rn *Runner) prepare(parent context.Context, groups []group) []error {
+	out := make([]error, len(groups))
+	for gi, g := range groups {
+		p, ok := rn.Adapters[g.adapter].(Preparer)
+		if !ok {
+			continue
+		}
+		if err := p.Prepare(parent, g.lang, g.instances); err != nil {
+			out[gi] = fmt.Errorf("adapter %s could not prepare %s: %w", g.adapter, g.name, err)
+		}
+	}
+	return out
+}
+
+// Prepare builds what the instances' calls need (Preparer), as Run does
+// before its first call: a plant prepares the rows it runs before its own
+// call starts.
+func (rn *Runner) Prepare(parent context.Context, instances []Instance) error {
+	return errors.Join(rn.prepare(parent, rn.Plan(instances).groups)...)
 }
 
 func firstLine(s string) string {

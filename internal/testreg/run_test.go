@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -428,6 +430,165 @@ func TestAGoldenWritersRowsShareOneShard(t *testing.T) {
 	}
 	if strings.Join(got, " | ") != "a,w1,w2,w3 | b,v1 | c,d" {
 		t.Fatalf("parts %q, want pins-x's three rows together, and the rest cut by seconds", got)
+	}
+}
+
+// TestAnEnvPlantsRowsShareOneShardByLanguage: the env plants of one
+// language run their target in the checkout after its leg is built, so they
+// are one block, as a golden writer's rows are.
+func TestAnEnvPlantsRowsShareOneShardByLanguage(t *testing.T) {
+	t.Parallel()
+	plant := func(name, target string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "plant", Seconds: 5, Inputs: []byte(`{"env":{"X":"y"},"target":"` + target + `","reason":"r"}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), plant("p1", "go.functional.roundtrip.f.one"), plant("p2", "go.functional.roundtrip.f.two"), plain("b"),
+		plant("p3", "go.functional.roundtrip.f.three"), plant("q1", "lua.functional.roundtrip.f.one"), plain("c"), plain("d")}
+	var got []string
+	for _, p := range Parts(all, 3) {
+		var names []string
+		for _, i := range p {
+			names = append(names, i.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,p1,p2,p3 | b,q1 | c,d" {
+		t.Fatalf("parts %q, want go's three env plants together, and the rest cut by seconds", got)
+	}
+}
+
+// eventLog is what the staged adapters below did, in order.
+type eventLog struct {
+	mu sync.Mutex
+	ev []string
+}
+
+func (l *eventLog) add(s string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.ev = append(l.ev, s)
+}
+
+func (l *eventLog) at(s string) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Index(l.ev, s)
+}
+
+func (l *eventLog) has(s string) bool { return l.at(s) >= 0 }
+
+// staged is an adapter that prepares (Preparer), may be Serial, and logs
+// each step; during, when set, runs inside its call.
+type staged struct {
+	name    string
+	serial  bool
+	prepErr error
+	log     *eventLog
+	during  func()
+}
+
+func (a staged) Answers(Test) bool { return true }
+func (a staged) Serial() bool      { return a.serial }
+
+func (a staged) Prepare(ctx context.Context, _ string, _ []Instance) error {
+	a.log.add(fmt.Sprintf("prepare %s live=%t", a.name, ctx.Err() == nil))
+	return a.prepErr
+}
+
+func (a staged) Run(_ context.Context, _ string, instances []Instance) ([]Result, error) {
+	a.log.add("start " + a.name)
+	if a.during != nil {
+		a.during()
+	}
+	a.log.add("end " + a.name)
+	return passAll(instances), nil
+}
+
+func freeInstance(adapter string) Instance {
+	return Instance{Full: "none.unit.tooling." + adapter + ".one", Lang: LangFree,
+		Test: Test{Key: "tooling." + adapter + ".one", Scope: LangFree, Adapter: adapter, Family: adapter}}
+}
+
+// stagedRunner runs the staged adapters; each call's context is made by
+// deadline, which logs it.
+func stagedRunner(t *testing.T, log *eventLog, deadline func(parent context.Context) (context.Context, context.CancelFunc), ads ...staged) *Runner {
+	m := map[string]Adapter{}
+	for _, a := range ads {
+		m[a.name] = a
+	}
+	return &Runner{Reg: load(t, fixture), Adapters: m, Context: func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		return deadline(parent)
+	}}
+}
+
+// TestPrepareRunsBeforeAnyCallOutsideItsDeadline: a cold build happens
+// once, before the first call, under the run's own context: a call whose
+// deadline has already passed still had its adapter prepared live.
+func TestPrepareRunsBeforeAnyCallOutsideItsDeadline(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	expired := func(parent context.Context) (context.Context, context.CancelFunc) {
+		return context.WithDeadline(parent, time.Unix(0, 0))
+	}
+	rn := stagedRunner(t, log, expired, staged{name: "a", serial: true, log: log}, staged{name: "b", log: log})
+	rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	for _, name := range []string{"a", "b"} {
+		if !log.has("prepare " + name + " live=true") {
+			t.Fatalf("adapter %s was not prepared under the run's live context: %q", name, log.ev)
+		}
+		for _, other := range []string{"a", "b"} {
+			if log.at("prepare "+name+" live=true") > log.at("deadline none/"+other) {
+				t.Fatalf("adapter %s was prepared after none/%s's call began: %q", name, other, log.ev)
+			}
+		}
+	}
+}
+
+// TestAFailedPrepareFailsItsGroupByName: a build that fails fails every
+// row that needed it, saying so, and its call never runs.
+func TestAFailedPrepareFailsItsGroupByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) },
+		staged{name: "a", log: log, prepErr: errors.New("the leg would not build")}, staged{name: "b", log: log})
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "could not prepare none/a", "the leg would not build")
+	if log.has("start a") {
+		t.Fatalf("adapter a's call ran after its prepare failed: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Fatalf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
+	}
+}
+
+// TestSerialAdaptersRunOneAfterAnother: two Serial groups never overlap,
+// and the second's deadline starts only when the first's call is over, so
+// waiting behind it costs the second nothing. The first call yields while
+// it runs, so a second call started beside it would be seen.
+func TestSerialAdaptersRunOneAfterAnother(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	overlap := false
+	during := func() {
+		for range 10000 {
+			if log.has("start b") || log.has("deadline none/b") {
+				overlap = true
+				return
+			}
+			runtime.Gosched()
+		}
+	}
+	live := func(parent context.Context) (context.Context, context.CancelFunc) { return context.WithCancel(parent) }
+	rn := stagedRunner(t, log, live, staged{name: "a", serial: true, log: log, during: during}, staged{name: "b", serial: true, log: log})
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	if overlap || log.at("end a") > log.at("deadline none/b") {
+		t.Fatalf("none/b's call began while none/a's ran: %q", log.ev)
 	}
 }
 

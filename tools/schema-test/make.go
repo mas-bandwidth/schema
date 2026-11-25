@@ -429,3 +429,6 @@ func plainGoTest(lines []string) string {
 	}
 	return ""
 }
+
+// Serial: a make target takes the checkout (testreg.Serial).
+func (makeAdapter) Serial() bool { return true }

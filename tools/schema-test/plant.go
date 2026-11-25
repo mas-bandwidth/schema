@@ -643,3 +643,38 @@ func processAlive(pid int) bool {
 	err = p.Signal(syscall.Signal(0))
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
+
+// Serial: a plant's runs take the checkout (testreg.Serial).
+func (plantAdapter) Serial() bool { return true }
+
+// Prepare builds what the rows a plant runs in the checkout need (the
+// target of an env plant, the rows an edit plant first runs green), before
+// any call's deadline starts (testreg.Preparer). A name that does not resolve
+// is left to Run, which fails the plant naming it.
+func (a plantAdapter) Prepare(ctx context.Context, _ string, instances []testreg.Instance) error {
+	var rows []testreg.Instance
+	for _, inst := range instances {
+		in, form, err := decodePlant(inst.Test.Inputs)
+		if err != nil {
+			continue
+		}
+		var names []string
+		switch form {
+		case "env":
+			names = []string{in.Target}
+		case "edits":
+			if names, err = a.plantNames(inst, in); err != nil {
+				continue
+			}
+		}
+		for _, n := range names {
+			if t, err := a.rn.Reg.Resolve(n); err == nil && t.Test.Type != "plant" {
+				rows = append(rows, t)
+			}
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return a.rn.Prepare(ctx, rows)
+}

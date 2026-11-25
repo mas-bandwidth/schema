@@ -158,6 +158,26 @@ func (a *harnessAdapter) Answers(t testreg.Test) bool {
 	return ok && t.PerLang()
 }
 
+// Prepare runs each harness's build steps for the language once, before any
+// call's deadline starts (testreg.Preparer): a leg built cold is the run's
+// cost, and Run's own build steps then find it built.
+func (a *harnessAdapter) Prepare(ctx context.Context, lang string, instances []testreg.Instance) error {
+	seen := map[string]bool{}
+	for _, inst := range instances {
+		h, ok := harnessFor(inst.Test.Family)
+		if !ok || seen[h.Name] {
+			continue // Run fails a family with no harness, naming it
+		}
+		seen[h.Name] = true
+		for _, step := range h.Build(lang) {
+			if err := a.build.run(ctx, step); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testreg.Instance) ([]testreg.Result, error) {
 	// one call per harness: the conformance harness scores every surface
 	// of a leg in one run, so its families go to it together

@@ -276,18 +276,27 @@ func Weight(inst Instance) float64 {
 // cut must not split, or "" for a row that stands alone. A golden row's
 // writer runs once for all the rows a shard holds of it, and each row's
 // seconds are its share of that run: rows of one writer cut across two
-// shards would cost each shard the writer whole.
+// shards would cost each shard the writer whole. An env plant runs its target
+// row in the checkout, so its shard builds the target language's leg first
+// (Preparer): the env plants of one language are one block, measured cold, so
+// the shard that holds them is weighed with that build once.
 func unitOf(inst Instance) string {
-	if inst.Test.Adapter != "golden" {
-		return ""
-	}
 	var in struct {
-		Writer string `json:"writer"`
+		Writer string          `json:"writer"`
+		Env    json.RawMessage `json:"env"`
+		Target string          `json:"target"`
 	}
-	if json.Unmarshal(inst.Test.Inputs, &in) != nil || in.Writer == "" {
+	if json.Unmarshal(inst.Test.Inputs, &in) != nil {
 		return ""
 	}
-	return "golden " + in.Writer
+	switch {
+	case inst.Test.Adapter == "golden" && in.Writer != "":
+		return "golden " + in.Writer
+	case inst.Test.Adapter == "plant" && len(in.Env) > 0 && in.Target != "":
+		lang, _, _ := strings.Cut(in.Target, ".")
+		return "plant env " + lang
+	}
+	return ""
 }
 
 // blocks is a name list as the units a cut keeps whole (unitOf), in the order

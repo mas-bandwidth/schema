@@ -127,6 +127,10 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | an adapter omits an instance it was asked for, or reports one twice | `TestExpectedNotRanFails`, `TestAResultReportedTwiceFails` |
 | an adapter crashes | `TestAnAdapterCrashFails` |
 | an adapter times out (the deadline is an argument; the test hands in one already past) | `TestAnAdapterTimeoutFails` |
+| a build a call needs (a leg, a harness) runs before any call, outside every deadline (`testreg.Preparer`); a plant prepares the rows it runs | `TestPrepareRunsBeforeAnyCallOutsideItsDeadline`, `TestABuildStepRunsInPrepare`, `TestAPlantPreparesTheRowsItRunsInTheCheckout` |
+| a build that fails fails every row that needed it, by name, and its call never runs | `TestAFailedPrepareFailsItsGroupByName` |
+| the adapters that take the checkout (make, golden, plant, model-check) run one after another, each deadline starting with its own call (`testreg.Serial`) | `TestSerialAdaptersRunOneAfterAnother`, `TestTheCheckoutAdaptersRunOneAfterAnother` |
+| the env plants of one language are one block of a shard, as a golden writer's rows are | `TestAnEnvPlantsRowsShareOneShardByLanguage` |
 | a verdict other than pass or fail: there is no skipped verdict | `TestThereIsNoSkippedVerdict` |
 | a harness that logs a skip | `TestAHarnessSkipLineFails` |
 | a Go test that skips | `TestGoTestEventsGiveOneVerdictEach` |
