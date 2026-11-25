@@ -20,13 +20,16 @@
 # its one driver. An instance passes only when every configuration does.
 
 # The run's seed, as every fuzz row takes it (internal/testreg, SeedEnv):
-# SCHEMA_TEST_SEED when the run hands one in, else the UTC date as YYYYMMDD,
-# fixed once per make process. The registry rows get it from schema-test,
+# SEED when it is given on the make command line, else SCHEMA_TEST_SEED when
+# the run hands one in, else the UTC date as YYYYMMDD, fixed once per make
+# process. The registry rows get it from schema-test,
 # which hands it to the harness for every random pass; the Python and Ruby make rows
-# (make/python-wirefuzz.mk, make/ruby-wirefuzz.mk) run at it and print it,
-# and a red re-runs by name with the seed it printed:
+# (make/python-wirefuzz.mk, make/ruby-wirefuzz.mk) run their whole streams
+# at it and print it, and a red re-runs by name with the seed it printed:
 #   make <row> SCHEMA_TEST_SEED=<seed>
-WIRE_FUZZ_RUN_SEED := $(or $(SCHEMA_TEST_SEED),$(shell date -u +%Y%m%d))
+# Their CI shards (-shard-N, which certify's test-python and test-ruby run)
+# are the gate's fixed partition and stay on the Makefile's SEED.
+WIRE_FUZZ_RUN_SEED := $(if $(filter command line,$(origin SEED)),$(SEED),$(or $(SCHEMA_TEST_SEED),$(shell date -u +%Y%m%d)))
 
 WIRE_FUZZ_REGISTRY_JOBS ?= 4
 

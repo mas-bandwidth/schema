@@ -27,8 +27,10 @@ normal and development modes, and plain, mixed-builder and retaining arms.
 Each stream runs every applicable enumerated mutation and pinned vector plus
 `N` random mutations (default `N=100000`) at the run's seed:
 `SCHEMA_TEST_SEED` when the run hands one in, else the UTC date as
-YYYYMMDD (`WIRE_FUZZ_RUN_SEED`, make/wire-fuzz-rows.mk). Each row prints
-the seed and the line that re-runs a red with it. `make tables-python-wire-fuzz` runs the twelve streams
+YYYYMMDD (`WIRE_FUZZ_RUN_SEED`, make/wire-fuzz-rows.mk); `SEED` given on
+the make command line wins. Each stream prints the seed and the line that
+re-runs a red with it. The CI shards below are certify's fixed partition
+and stay on the Makefile's `SEED` (24845619678). `make tables-python-wire-fuzz` runs the twelve streams
 whole. The pull-request support plan splits each stream by stable mutant
 index into eight shards (`PYTHON_WIRE_FUZZ_CI_SHARDS`), 96 rows in all; the
 shards together keep the roster, seed and `N` of the whole stream. At four
