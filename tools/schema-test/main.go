@@ -6,9 +6,13 @@
 //	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n]
 //	schema-test list [the same]
 //	schema-test coverage
+//	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
 //	schema-test langs [--ready]
-//	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
 //	schema-test addenda [--check] [--root DIR]
+//	schema-test seconds [--registry PATH] LOG...
+//
+// seconds records, in the registry, the measured seconds of every test a
+// run's log (a CI job's, say) shows passing: what --shard weighs it by.
 //
 // extract finds every test the repository holds (internal/testreg/extract)
 // and holds each to the registry or the unmoved ledger.
@@ -34,6 +38,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -55,14 +60,17 @@ const usage = `usage:
   schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n]
   schema-test list [the same]
   schema-test coverage
+  schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
   schema-test langs [--ready]   the registry's languages as a JSON list (a CI matrix)
-  schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
   schema-test addenda [--check] [--root DIR]
+  schema-test seconds [--registry PATH] LOG...
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
   --shard i/n       the i-th of n parts of the expanded list
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
+  --write-seconds   record each passing test's measured seconds in the registry,
+                    which --shard weighs it by (run it on a fleet runner)
 `
 
 type multi []string
@@ -91,6 +99,27 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, ads map[s
 	}
 }
 
+// recordSeconds writes the seconds each passing instance took into its
+// test's registry line; a test with several instances keeps the longest.
+func recordSeconds(stdout io.Writer, path string, instances []testreg.Instance, rep *testreg.Report) error {
+	key := map[string]string{}
+	for _, inst := range instances {
+		key[inst.Full] = inst.Test.Key
+	}
+	seconds := map[string]float64{}
+	for _, o := range rep.Outcomes {
+		if o.Status == testreg.StatusPass && o.Seconds > 0 {
+			seconds[key[o.Full]] = max(seconds[key[o.Full]], o.Seconds)
+		}
+	}
+	n, err := testreg.WriteSeconds(path, seconds)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "schema-test run: wrote the measured seconds of %d tests into %s\n", n, path)
+	return err
+}
+
 func parseShard(s string) (int, int, error) {
 	a, b, ok := strings.Cut(s, "/")
 	i, err1 := strconv.Atoi(a)
@@ -115,6 +144,9 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if sub == "addenda" {
 		return addendaCmd(args[1:], stdout)
 	}
+	if sub == "seconds" {
+		return secondsCmd(args[1:], stdout)
+	}
 	if sub != "run" && sub != "list" && sub != "coverage" {
 		return usageError{fmt.Sprintf("unknown subcommand %q", sub)}
 	}
@@ -130,6 +162,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	shard := fs.String("shard", "", "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	timeout := fs.Duration("timeout", 90*time.Second, "")
+	writeSeconds := fs.Bool("write-seconds", false, "")
 	// flags may come before or after the names
 	rest := args[1:]
 	for {
@@ -222,10 +255,71 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if err := rep.Print(stdout); err != nil {
 		return err
 	}
+	if *writeSeconds {
+		if err := recordSeconds(stdout, *path, instances, rep); err != nil {
+			return err
+		}
+	}
 	if !rep.OK() {
 		return fmt.Errorf("%s", rep.Summary())
 	}
 	return nil
+}
+
+// passLine is a run's line for an instance that passed, with its seconds.
+var passLine = regexp.MustCompile(`(?:^|\s)PASS (\S+) \(([0-9.]+)s\)$`)
+
+// secondsCmd is "schema-test seconds LOG...": every passing instance a log
+// names with its seconds has them recorded on its test's registry line, the
+// longest when a test passed more than once. A log with no such line, and a
+// name that is no instance, are errors.
+func secondsCmd(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("schema-test seconds", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	path := fs.String("registry", testreg.DefaultPath, "")
+	if err := fs.Parse(args); err != nil {
+		return usageError{err.Error()}
+	}
+	if fs.NArg() == 0 {
+		return usageError{"seconds reads the logs of runs: name at least one"}
+	}
+	reg, err := testreg.Load(*path)
+	if err != nil {
+		return err
+	}
+	seconds := map[string]float64{}
+	for _, log := range fs.Args() {
+		data, err := os.ReadFile(log)
+		if err != nil {
+			return err
+		}
+		n := 0
+		for line := range strings.Lines(string(data)) {
+			m := passLine.FindStringSubmatch(strings.TrimRight(line, "\r\n"))
+			if m == nil {
+				continue
+			}
+			inst, err := reg.Resolve(m[1])
+			if err != nil {
+				return fmt.Errorf("%s: %w", log, err)
+			}
+			s, err := strconv.ParseFloat(m[2], 64)
+			if err != nil {
+				return fmt.Errorf("%s: %w", log, err)
+			}
+			seconds[inst.Test.Key] = max(seconds[inst.Test.Key], s)
+			n++
+		}
+		if n == 0 {
+			return fmt.Errorf("%s shows no passing test with its seconds", log)
+		}
+	}
+	n, err := testreg.WriteSeconds(*path, seconds)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "schema-test seconds: wrote the measured seconds of %d tests into %s\n", n, *path)
+	return err
 }
 
 // narrowLangs is a group's languages narrowed by --lang: the named ones, or,

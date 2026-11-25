@@ -39,13 +39,17 @@ type Result struct {
 	Instance string `json:"instance"`
 	Verdict  string `json:"verdict"`
 	Reason   string `json:"reason,omitempty"`
+	// Seconds is how long the instance took, when its adapter measures it
+	// (the gotest adapter reads go test's own clock).
+	Seconds float64 `json:"seconds,omitempty"`
 }
 
 // Outcome is how one instance (or one stray result) ended in a run.
 type Outcome struct {
-	Full   string
-	Status string // PASS, FAIL, MISSING, UNREPRESENTABLE, UNASKED
-	Reason string
+	Full    string
+	Status  string // PASS, FAIL, MISSING, UNREPRESENTABLE, UNASKED
+	Reason  string
+	Seconds float64 // as the adapter measured it, or 0
 }
 
 // Statuses an Outcome can have.
@@ -82,10 +86,14 @@ func (r *Report) Summary() string {
 func (r *Report) Print(out io.Writer) error {
 	var w strings.Builder
 	for _, o := range r.Outcomes {
+		took := ""
+		if o.Seconds > 0 {
+			took = fmt.Sprintf(" (%.2fs)", o.Seconds)
+		}
 		if o.Reason != "" {
-			fmt.Fprintf(&w, "%s %s: %s\n", o.Status, o.Full, o.Reason)
+			fmt.Fprintf(&w, "%s %s%s: %s\n", o.Status, o.Full, took, o.Reason)
 		} else {
-			fmt.Fprintf(&w, "%s %s\n", o.Status, o.Full)
+			fmt.Fprintf(&w, "%s %s%s\n", o.Status, o.Full, took)
 		}
 	}
 	for _, p := range r.Problems {
@@ -168,7 +176,7 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 		if reason, ok := rn.Reg.Unrepresentable(inst.Test.Key, inst.Lang); ok {
 			// Instances never yields one; a caller that builds one by hand
 			// gets a failure, never a quiet pass
-			p.status[inst.Full] = Outcome{inst.Full, StatusFail, "declared unrepresentable, so no such instance exists: " + reason}
+			p.status[inst.Full] = Outcome{Full: inst.Full, Status: StatusFail, Reason: "declared unrepresentable, so no such instance exists: " + reason}
 			continue
 		}
 		name, adapter := inst.Lang, inst.Test.Adapter
@@ -192,7 +200,7 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 			missing = fmt.Sprintf("adapter %s has no instance of %s and %s declares it no unrepresentable", adapter, inst.Test.Key, inst.Lang)
 		}
 		if missing != "" {
-			p.status[inst.Full] = Outcome{inst.Full, StatusMissing, missing}
+			p.status[inst.Full] = Outcome{Full: inst.Full, Status: StatusMissing, Reason: missing}
 			p.Missing++
 			continue
 		}
@@ -250,26 +258,26 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		for _, res := range run.results {
 			switch {
 			case !asked[res.Instance]:
-				rep.Outcomes = append(rep.Outcomes, Outcome{res.Instance, StatusUnasked, fmt.Sprintf("the %s adapter reported an instance it was not asked for", g.adapter)})
+				rep.Outcomes = append(rep.Outcomes, Outcome{Full: res.Instance, Status: StatusUnasked, Reason: fmt.Sprintf("the %s adapter reported an instance it was not asked for", g.adapter)})
 				rep.Problems = append(rep.Problems, fmt.Sprintf("the %s adapter (%s) reported %q, which it was not asked for", g.adapter, g.name, res.Instance))
 			case got[res.Instance]:
 				rep.Problems = append(rep.Problems, fmt.Sprintf("the %s adapter (%s) reported %s twice", g.adapter, g.name, res.Instance))
-				status[res.Instance] = Outcome{res.Instance, StatusFail, "reported twice"}
+				status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: "reported twice"}
 			default:
 				got[res.Instance] = true
 				rep.Ran++
 				switch res.Verdict {
 				case Pass:
-					status[res.Instance] = Outcome{res.Instance, StatusPass, ""}
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Seconds: res.Seconds}
 				case Fail:
 					reason := res.Reason
 					if strings.TrimSpace(reason) == "" {
 						reason = "the adapter gave no reason"
 					}
-					status[res.Instance] = Outcome{res.Instance, StatusFail, reason}
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: reason, Seconds: res.Seconds}
 				default:
 					// there is no skipped verdict: a test passes or fails
-					status[res.Instance] = Outcome{res.Instance, StatusFail, fmt.Sprintf("verdict %q is not pass or fail", res.Verdict)}
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusFail, Reason: fmt.Sprintf("verdict %q is not pass or fail", res.Verdict)}
 				}
 			}
 		}
@@ -281,7 +289,7 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 			if run.err != nil {
 				reason += ": " + firstLine(run.err.Error())
 			}
-			status[inst.Full] = Outcome{inst.Full, StatusFail, reason}
+			status[inst.Full] = Outcome{Full: inst.Full, Status: StatusFail, Reason: reason}
 		}
 		if run.err != nil {
 			rep.Problems = append(rep.Problems, fmt.Sprintf("%s: %v", g.name, run.err))
