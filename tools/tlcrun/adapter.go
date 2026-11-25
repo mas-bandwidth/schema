@@ -144,9 +144,9 @@ func runAdapter(tlaDir string, tlc checker, tools string, parallel int, in io.Re
 		}
 		dir = scratch
 	}
-	var mu sync.Mutex
-	sem := make(chan struct{}, max(parallel, 1))
-	var wg sync.WaitGroup
+	// every verdict reached without TLC is reached here, before any run
+	// starts: the runs below write results under mu, and nothing else does
+	var runs []adapterJob
 	for _, j := range jobs {
 		if _, done := results[j.req.Instance]; done {
 			continue
@@ -155,6 +155,12 @@ func runAdapter(tlaDir string, tlc checker, tools string, parallel int, in io.Re
 			fail(j.req, "tla/%s has no RUNS.tsv row, so no run is recorded for it", j.in.Config)
 			continue
 		}
+		runs = append(runs, j)
+	}
+	var mu sync.Mutex
+	sem := make(chan struct{}, max(parallel, 1))
+	var wg sync.WaitGroup
+	for _, j := range runs {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -196,6 +202,12 @@ func writeResults(out io.Writer, reqs []testreg.Request, results map[string]test
 	}
 	_, err := io.WriteString(out, b.String())
 	return err
+}
+
+// adapterMain is tlcrun -adapter: TLC from jar and java, checked first, so a
+// runner without either fails every requested instance naming the runner.
+func adapterMain(tlaDir, jar, java string, parallel int, in io.Reader, out io.Writer) error {
+	return runAdapter(tlaDir, realTLC{java: java, jar: jar, workers: 4}, toolProblem(jar, java), parallel, in, out)
 }
 
 // defaultParallel is how many TLC processes the harness runs at once: a

@@ -54,14 +54,15 @@ func main() {
 	controls := flag.Bool("controls", false, "prove the runner goes red on three broken copies of tla/")
 	adapter := flag.Bool("adapter", false, "the test registry's harness: requests on stdin, one result line each on stdout")
 	parallel := flag.Int("parallel", defaultParallel(), "with -adapter: how many TLC processes run at once")
+	scratch := flag.String("scratch", "build", "where the scratch copies of tla/ (controls, plants) are made")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "tlcrun: takes no arguments; it runs every config, never a chosen few")
 		os.Exit(2)
 	}
+	scratchRoot = *scratch
 	if *adapter {
-		tlc := realTLC{java: *java, jar: *jar, workers: 4}
-		if err := runAdapter(*tlaDir, tlc, toolProblem(*jar, *java), *parallel, os.Stdin, os.Stdout); err != nil {
+		if err := adapterMain(*tlaDir, *jar, *java, *parallel, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "tlcrun -adapter:", err)
 			os.Exit(1)
 		}
@@ -309,8 +310,18 @@ func wantRefusal(err error, want string) error {
 	return nil
 }
 
+// scratchRoot is where copyDir makes its scratch copies: the system temporary
+// directory by default (a unit test's), and the repository's build/ when the
+// program runs (main), so a run writes only inside its working directory.
+var scratchRoot = ""
+
 func copyDir(src string) (string, error) {
-	dst, err := os.MkdirTemp("", "tla-controls.")
+	if scratchRoot != "" {
+		if err := os.MkdirAll(scratchRoot, 0o755); err != nil {
+			return "", err
+		}
+	}
+	dst, err := os.MkdirTemp(scratchRoot, "tla-scratch.")
 	if err != nil {
 		return "", err
 	}

@@ -2,8 +2,9 @@ name: TLA nightly
 
 # Check that each recorded TLC run still hashes the model and config it
 # measured (internal/ci/strictonly_tla_test.go) and that the runner pairs
-# tla/ with tla/RUNS.tsv. TLC itself runs every config as a registry `model`
-# row in schema-test-nightly.yml (the note after the last step says how).
+# tla/ with tla/RUNS.tsv, then run TLC over every config: each is a registry
+# `model` row, run through tools/schema-test (the note before the TLC step
+# says how).
 #
 # THE SLOT, 04:53 UTC: after the 03:00-04:17 per-language cluster and clear of
 # nightly-conformance.yml (05:41), ci-full.yml (07:10) and certify.yml (09:17).
@@ -64,10 +65,34 @@ jobs:
       - name: the runner and its ledger pairing hold
         run: go test ./tools/tlcrun -count=1
 
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: runner.environment == 'github-hosted'
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: locate the TLC jar
+        run: |
+          set -euo pipefail
+          if [ -f /opt/tla/tla2tools.jar ]; then
+            echo "TLC_JAR=/opt/tla/tla2tools.jar" >> "$GITHUB_ENV"
+          else
+            jar="$RUNNER_TEMP/tla2tools.jar"
+            curl -fsSL -o "$jar" https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar
+            echo "TLC_JAR=$jar" >> "$GITHUB_ENV"
+          fi
+
       # TLC ITSELF RUNS THROUGH THE ONE TEST DRIVER (docs/TEST-REGISTRY.md):
       # every config under tla/ is a `model` row of test/registry/registry.jsonl,
+      # judged against its tla/RUNS.tsv row exactly as tla/run-tlc.sh judged
+      # it (tools/schema-test's model-check adapter, tools/tlcrun -adapter),
       # and the runner's three controls and the model-check plants are `plant`
-      # rows. schema-test-nightly.yml runs them all with --group nightly
-      # (tools/schema-test's model-check adapter, tools/tlcrun -adapter), each
-      # config judged against its tla/RUNS.tsv row exactly as tla/run-tlc.sh
-      # judged it. schema-test extract holds every config to a row.
+      # rows. schema-test extract holds every config to a row. They run here,
+      # so this job is red when, and only when, a model or a control is:
+      # schema-test-nightly.yml runs them too, inside --group nightly, which
+      # is red by intent until every language has an adapter.
+      - name: run TLC over tla/, every config held to its RUNS.tsv row
+        run: go run ./tools/schema-test run --type model --timeout 0
+
+      - name: the runner's controls and the model-check plants go red
+        run: go run ./tools/schema-test run --family model-check --timeout 0

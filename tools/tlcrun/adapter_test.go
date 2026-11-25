@@ -168,3 +168,47 @@ func TestThePlantHookBreaksTheRequestedConfig(t *testing.T) {
 		t.Fatalf("the plant wrote tla/ itself: %q", src)
 	}
 }
+
+// TestTheAdapterEntryChecksTheToolsItRunsWith: tlcrun -adapter (adapterMain)
+// checks the jar and java it will run before any request: with no jar, every
+// instance fails naming the runner, and TLC never starts.
+func TestTheAdapterEntryChecksTheToolsItRunsWith(t *testing.T) {
+	t.Parallel()
+	dir := writeTree(t, adapterTree())
+	jar := filepath.Join(t.TempDir(), "no-tla2tools.jar")
+	var out strings.Builder
+	in := request(t, "model.m.holds", `{"config":"MCM.cfg"}`) + request(t, "plant.m.controls", `{"controls":true}`)
+	if err := adapterMain(dir, jar, "java", 2, strings.NewReader(in), &out); err != nil {
+		t.Fatalf("the harness crashed: %v", err)
+	}
+	results, _, err := testreg.ParseResults(strings.NewReader(out.String()))
+	if err != nil || len(results) != 2 {
+		t.Fatalf("results %v, err %v", results, err)
+	}
+	for _, r := range results {
+		if r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "no TLC jar at "+jar+" on runner") {
+			t.Fatalf("%s with no jar: %v", r.Instance, r)
+		}
+	}
+}
+
+// TestTheAdapterRunsConcurrentlyWithoutRacingItsVerdicts: verdicts reached
+// without TLC (a config with no row) and verdicts of runs in flight land in
+// one map; run under -race, none races another.
+func TestTheAdapterRunsConcurrentlyWithoutRacingItsVerdicts(t *testing.T) {
+	t.Parallel()
+	dir := writeTree(t, adapterTree())
+	var in strings.Builder
+	for i := range 8 {
+		in.WriteString(request(t, "model.m.holds-"+letter(i), `{"config":"MCM.cfg"}`))
+		in.WriteString(request(t, "model.m.gone-"+letter(i), `{"config":"MCGone.cfg"}`))
+	}
+	got := verdicts(t, dir, scripted{"MCM.cfg": {0, logExhaustive}}, "", in.String())
+	for i := range 8 {
+		if got["none.functional.model.m.holds-"+letter(i)].Verdict != testreg.Pass || got["none.functional.model.m.gone-"+letter(i)].Verdict != testreg.Fail {
+			t.Fatalf("verdicts: %v", got)
+		}
+	}
+}
+
+func letter(i int) string { return string(rune('a' + i)) }
