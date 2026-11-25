@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 2850.
+Unit tests every language answers: 0. Language-free tests: 2853.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2910,7 +2910,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 81 tests
+#### `tooling` family `schema-test`, 82 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2940,6 +2940,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-plant-reaches-a-copy-in-another-edited-file` | `gotest` | Go test TestAPlantReachesACopyInAnotherEditedFile in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantReachesACopyInAnotherEditedFile` | the Go test passes | `tools/schema-test/plant_test.go:233` |
 | `none.unit.tooling.schema-test.a-plant-reaches-every-copy` | `gotest` | Go test TestAPlantReachesEveryCopy in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantReachesEveryCopy` | the Go test passes | `tools/schema-test/plant_test.go:71` |
 | `none.unit.tooling.schema-test.a-plant-red-for-another-reason-fails` | `gotest` | Go test TestAPlantRedForAnotherReasonFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantRedForAnotherReasonFails` | the Go test passes | `tools/schema-test/main_test.go:95` |
+| `none.unit.tooling.schema-test.a-plant-result-carries-its-measured-seconds` | `gotest` | Go test TestAPlantResultCarriesItsMeasuredSeconds in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantResultCarriesItsMeasuredSeconds` | the Go test passes | `tools/schema-test/plant_test.go:483` |
 | `none.unit.tooling.schema-test.a-plant-whose-planted-run-had-problems-fails` | `gotest` | Go test TestAPlantWhosePlantedRunHadProblemsFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantWhosePlantedRunHadProblemsFails` | the Go test passes | `tools/schema-test/main_test.go:292` |
 | `none.unit.tooling.schema-test.a-reason-echoed-by-a-broken-build-is-not-the-plants` | `gotest` | Go test TestAReasonEchoedByABrokenBuildIsNotThePlants in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAReasonEchoedByABrokenBuildIsNotThePlants` | the Go test passes | `tools/schema-test/plant_test.go:217` |
 | `none.unit.tooling.schema-test.a-recipe-that-runs-go-test-without-json-fails` | `gotest` | Go test TestARecipeThatRunsGoTestWithoutJSONFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARecipeThatRunsGoTestWithoutJSONFails` | the Go test passes | `tools/schema-test/make_test.go:434` |
@@ -3076,7 +3077,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 54 tests
+#### `tooling` family `testreg`, 56 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3093,6 +3094,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.a-result-nobody-asked-for-fails` | `gotest` | Go test TestAResultNobodyAskedForFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAResultNobodyAskedForFails` | the Go test passes | `internal/testreg/run_test.go:198` |
 | `none.unit.tooling.testreg.a-result-reported-twice-fails` | `gotest` | Go test TestAResultReportedTwiceFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAResultReportedTwiceFails` | the Go test passes | `internal/testreg/run_test.go:208` |
 | `none.unit.tooling.testreg.a-row-added-without-regenerating-is-red` | `gotest` | plant: a registry row added without regenerating makes the drift check fail, naming its tier's page | `package: ./internal/testreg`<br>`test: TestARowAddedWithoutRegeneratingIsRed` | the Go test passes | `internal/testreg/addenda_test.go:98` |
+| `none.unit.tooling.testreg.a-rows-seconds-are-its-calls-share-and-its-prepares` | `gotest` | Go test TestARowsSecondsAreItsCallsShareAndItsPrepares in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestARowsSecondsAreItsCallsShareAndItsPrepares` | the Go test passes | `internal/testreg/run_test.go:664` |
 | `none.unit.tooling.testreg.all-pass-is-green` | `gotest` | Go test TestAllPassIsGreen in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAllPassIsGreen` | the Go test passes | `internal/testreg/run_test.go:69` |
 | `none.unit.tooling.testreg.an-adapter-crash-fails` | `gotest` | Go test TestAnAdapterCrashFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterCrashFails` | the Go test passes | `internal/testreg/run_test.go:218` |
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:146` |
@@ -3100,6 +3102,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-env-plants-rows-share-one-shard-by-language` | `gotest` | Go test TestAnEnvPlantsRowsShareOneShardByLanguage in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnEnvPlantsRowsShareOneShardByLanguage` | the Go test passes | `internal/testreg/run_test.go:439` |
 | `none.unit.tooling.testreg.an-instance-with-no-answer-and-no-declaration-fails` | `gotest` | Go test TestAnInstanceWithNoAnswerAndNoDeclarationFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnInstanceWithNoAnswerAndNoDeclarationFails` | the Go test passes | `internal/testreg/run_test.go:155` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:408` |
+| `none.unit.tooling.testreg.each-writer-and-plant-is-a-call-of-its-own` | `gotest` | Go test TestEachWriterAndPlantIsACallOfItsOwn in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEachWriterAndPlantIsACallOfItsOwn` | the Go test passes | `internal/testreg/run_test.go:625` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:188` |
 | `none.unit.tooling.testreg.load-accepts-the-fixture` | `gotest` | Go test TestLoadAcceptsTheFixture in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadAcceptsTheFixture` | the Go test passes | `internal/testreg/registry_test.go:56` |
