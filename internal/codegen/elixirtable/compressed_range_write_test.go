@@ -14,11 +14,12 @@ import (
 // A COMPRESSED FLOAT'S DECLARED RANGE IS THE FIXED SAVE'S CONTRACT
 // (docs/SPEC-TABLES.md §3.3, §3.4). The Go reference engine refuses a fixed
 // save of a compressed float outside [min, max] (invalid_value) and writes
-// nothing; this leg's write-side checks refuse in every build, and its fixed
-// save refuses a breached contract by raising ArgumentError, the way it
-// already does for a ranged integer (R.ranged) and a count (R.count). Before
-// this, the leaf, array, counted, keyed and union-arm stores went through
-// cf32_bits alone and wrote the out-of-range value.
+// nothing; this leg's write-side checks refuse in every build: its fixed
+// save raises ArgumentError on a breached contract, the way it already does
+// for a ranged integer (R.ranged) and a count (R.count), and Table.save
+// answers that as {:error, :invalid_value}, never a raise (docs/SPEC.md §5.1).
+// Before this, the leaf, array, counted, keyed and union-arm stores went
+// through cf32_bits alone and wrote the out-of-range value.
 //
 // testdata/conformance/feature-witnesses/compressed-range-write names the
 // rows; internal/tablewire's TestCompressedRangeWriteCorpus pins its bytes to
@@ -89,18 +90,20 @@ end
 {:ok, base, _} = mod.from_json("Fix", File.read!([BASE]))
 
 for {name, path, v, expect} <- [ROWS] do
+  # save/2 never raises: a raise is a failure of its own
   got =
     try do
       mod.save("Fix", set.(base, path, v))
     rescue
-      e in ArgumentError -> {:refused, Exception.message(e)}
+      e -> {:raised, e}
     end
 
+  # the refusal is the verdict (docs/SPEC.md §5.1); each refused row's lawful
+  # twin at the same bound writes the reference bytes, so the refusal is the
+  # range's
   case {expect, got} do
-    {:refused, {:refused, why}} ->
-      if String.contains?(why, "outside the declared range"),
-        do: IO.puts("ok #{name}"),
-        else: fail.("#{name}: refused for another reason: #{why}")
+    {:refused, {:error, :invalid_value}} ->
+      IO.puts("ok #{name}")
 
     {:refused, other} ->
       fail.("#{name}: the fixed save of #{v} was not refused: #{inspect(other, limit: 8)}")
