@@ -132,18 +132,30 @@ tables-rust-features: build/tables-generated-rust/.stamp
 
 # RUST_CLIPPY_ROOT is the tree the gate walks; its control hands it a copy.
 RUST_CLIPPY_ROOT ?= build/tables-generated-rust
+# THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
+# registry row sets RUST_CLIPPY_SHARD=K/N and its workspace holds the units
+# whose names land in its shard, so N rows lint every unit once.
+RUST_CLIPPY_SHARD ?=
 .PHONY: tables-rust-clippy
-tables-rust-clippy: build/tables-generated-rust/.stamp
+TABLES_RUST_CLIPPY_INPUTS := build/tables-generated-rust/.stamp
+# tables-rust-clippy-inputs builds what tables-rust-clippy reads and nothing else:
+# ci-fast.yml's produce job builds it once and hands the trees to every shard.
+.PHONY: tables-rust-clippy-inputs
+tables-rust-clippy-inputs: $(TABLES_RUST_CLIPPY_INPUTS)
+
+tables-rust-clippy: $(TABLES_RUST_CLIPPY_INPUTS)
 	@set -e; \
 	root="$(RUST_CLIPPY_ROOT)"; \
 	rm -f "$$root/Cargo.toml" "$$root/Cargo.lock"; \
 	members=""; \
-	for unit in "$$root"/*/; do \
-		[ -f "$$unit/Cargo.toml" ] || continue; \
-		name=$$(basename "$$unit"); \
+	mkdir -p build; \
+	( cd "$$root" && for u in */; do if [ -f "$$u/Cargo.toml" ]; then printf '%s\n' "$${u%/}"; fi; done ) | LC_ALL=C sort > build/rust-clippy-units.txt || { echo "tables-rust-clippy: cannot list the units under $$root" >&2; exit 1; }; \
+	units=$$(cd "$$root" && sh $(CURDIR)/make/checks/shard-filter.sh '$(RUST_CLIPPY_SHARD)' $(CURDIR)/build/rust-clippy-units.txt < $(CURDIR)/build/rust-clippy-units.txt) || { echo "tables-rust-clippy: cannot shard the units under $$root" >&2; exit 1; }; \
+	for name in $$units; do \
 		members="$${members:+$${members}, }\"$$name\""; \
 	done; \
-	[ -n "$$members" ] || { echo "tables-rust-clippy: no Cargo.toml units under $$root" >&2; exit 1; }; \
+	[ -n "$$members" ] || { echo "tables-rust-clippy: no Cargo.toml units under $$root$(if $(RUST_CLIPPY_SHARD), in shard $(RUST_CLIPPY_SHARD))" >&2; exit 1; }; \
+	echo "tables-rust-clippy: $$(printf '%s\n' $$units | wc -l | tr -d ' ') units$(if $(RUST_CLIPPY_SHARD), (shard $(RUST_CLIPPY_SHARD)))"; \
 	printf "[workspace]\nresolver = \"2\"\nmembers = [%s]\n" "$$members" > "$$root/Cargo.toml"; \
 	status=0; \
 	( cd "$$root" && CARGO_TARGET_DIR="$(CURDIR)/build/rust-clippy-target" PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --workspace --quiet -- -D warnings ) || status=$$?; \

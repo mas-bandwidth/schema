@@ -1672,8 +1672,17 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
 C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
+# THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
+# registry row sets C_FORMAT_SHARD=K/N, so N rows judge every file once.
+C_FORMAT_SHARD     ?=
 .PHONY: tables-c-clean
-tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
+TABLES_C_CLEAN_INPUTS := build/tables-generated-c/.stamp cards-c-generate generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
+# tables-c-clean-inputs builds what tables-c-clean reads and nothing else:
+# ci-fast.yml's produce job builds it once and hands the trees to every shard.
+.PHONY: tables-c-clean-inputs
+tables-c-clean-inputs: $(TABLES_C_CLEAN_INPUTS)
+
+tables-c-clean: $(TABLES_C_CLEAN_INPUTS)
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
 		echo "tables-c-clean FAILED: $(CLANG_FORMAT) is not installed"; exit 1; \
 	fi; \
@@ -1681,7 +1690,7 @@ tables-c-clean: build/tables-generated-c/.stamp cards-c-generate generated/c/.st
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-c-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
+	SHARD=$(C_FORMAT_SHARD) CLANG_FORMAT=$(CLANG_FORMAT) OUT=build sh make/checks/c-clean-format.sh make/c-format-allow.txt $(C_FORMAT_TREES)
 test-c: tables-c-clean
 
 # ITS NEGATIVE CONTROL: one struct typedef brace written K&R in the C PACKET

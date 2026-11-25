@@ -126,7 +126,14 @@ $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gat
 # THE GATE. One run over the whole generated corpus and the runtime emitted
 # beside it, with the config above.
 .PHONY: tables-lua-luacheck
-tables-lua-luacheck: toolchain-luacheck $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUACHECK_CONFIG)
+TABLES_LUA_LUACHECK_INPUTS := $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUACHECK_CONFIG)
+# tables-lua-luacheck-inputs builds the corpus tables-lua-luacheck and
+# tables-lua-format read and nothing else: ci-fast.yml's produce job builds it
+# once and hands the trees to every shard.
+.PHONY: tables-lua-luacheck-inputs
+tables-lua-luacheck-inputs: $(TABLES_LUA_LUACHECK_INPUTS)
+
+tables-lua-luacheck: toolchain-luacheck $(TABLES_LUA_LUACHECK_INPUTS)
 	@$(LUACHECK) --config $(LUA_LUACHECK_CONFIG) --no-color --codes $(LUA_LUACHECK_CORPUS)/unique
 	@echo "luacheck-lua gate: the generated Lua and its runtime are clean at luacheck $(LUACHECK_VERSION)"
 
