@@ -8,6 +8,7 @@ package ci
 // group names, or by a workflow run line directly.
 
 import (
+	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
@@ -168,6 +169,26 @@ func TestEveryPythonTestFileIsRunByACITarget(t *testing.T) {
 	var groups strings.Builder
 	for _, v := range readAll(t, filepath.Join(root, "make", "negative-controls.d", "*.json")) {
 		groups.WriteString(v)
+	}
+	// Since registry L7 the workflows reach a make target through a registry
+	// row (adapter make), which tools/schema-test runs; each row's target counts.
+	reg, err := os.ReadFile(filepath.Join(root, "test", "registry", "registry.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	makeRows := 0
+	for line := range strings.SplitSeq(string(reg), "\n") {
+		var row struct {
+			Rec, Adapter string
+			Inputs       struct{ Target string }
+		}
+		if json.Unmarshal([]byte(line), &row) == nil && row.Rec == "test" && row.Adapter == "make" && row.Inputs.Target != "" {
+			groups.WriteString("\n\"" + row.Inputs.Target + "\"\n")
+			makeRows++
+		}
+	}
+	if makeRows == 0 {
+		t.Fatal("the registry holds no make row: the reader is reading the wrong text")
 	}
 	for _, file := range unrunPythonTests(files, makeFiles, workflowFiles, groups.String()) {
 		t.Errorf("%s is run by no CI target: name it in a make recipe whose target a workflow runs "+

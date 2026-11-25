@@ -51,7 +51,7 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || ("damaged" in r) || r.oor !== 0) {
   fail("a forged ordinal past the writer's set refuses out_of_range: n=" + n + " " + reason(r));
 }
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {

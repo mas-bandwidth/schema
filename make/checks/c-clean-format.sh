@@ -6,14 +6,22 @@
 # drifting file not listed fails, and a listed file that is clean now (or is no
 # longer generated) fails until its line is deleted.
 #
-# usage: c-clean-format.sh <ratchet-file> <tree or generated file>...
-# env:   CLANG_FORMAT, OUT (scratch dir), SHARD (K/N: judge only the files
-#        make/checks/shard-filter.sh puts in shard K of N, and only their
-#        ratchet lines; empty: every file)
+# ONE FILE, FILE_SECONDS OF CPU AT MOST. clang-format runs under `ulimit -t
+# $FILE_SECONDS` (CLANG_FORMAT_FILE_SECONDS, make/c.mk, where the measured
+# times are recorded), and a file it cannot finish inside that is red by name
+# whatever its drift: the cure is the emitter's shape, never the number.
+#
+# usage: c-clean-format.sh <ratchet-file> <tree>...
+# env:   CLANG_FORMAT, FILE_SECONDS (required), OUT (scratch dir), SHARD (K/N:
+#        judge only the files make/checks/shard-filter.sh puts in shard K of
+#        N, and only their ratchet lines; empty: every file)
 set -eu -o pipefail
 allow=$1
 [ -r "$allow" ] || { echo "tables-c-clean: the ratchet $allow cannot be read" >&2; exit 1; }
 shift
+case ${FILE_SECONDS-} in
+'' | *[!0-9]* | 0) echo "tables-c-clean: FILE_SECONDS must name the per-file CPU limit in whole seconds (CLANG_FORMAT_FILE_SECONDS, make/c.mk); it is '${FILE_SECONDS-}'" >&2; exit 1 ;;
+esac
 CLANG_FORMAT=${CLANG_FORMAT:-clang-format}
 OUT=${OUT:-build}
 mkdir -p "$OUT"
@@ -30,11 +38,9 @@ rm -rf "$work" && mkdir -p "$work"
 
 # THE GATE PROVES IT RAN. A tree that is not there, or trees that hold no C at
 # all, used to leave the file list empty, skip every check below and print
-# "clean": a gate that looked at nothing. Both are failures by name. A path
-# may name one generated file (tables-c-clean-fast names the announce files
-# it judges one by one); a path that is neither is the same failure.
+# "clean": a gate that looked at nothing. Both are failures by name.
 for t in "$@"; do
-	[ -d "$t" ] || [ -f "$t" ] || { echo "tables-c-clean: $t is not a directory or a file — the gate was pointed at a tree that is not generated"; exit 1; }
+	[ -d "$t" ] || { echo "tables-c-clean: $t is not a directory — the gate was pointed at a tree that is not generated"; exit 1; }
 done
 # find's own status is read (a pipe would hand back sort's), and a tree with
 # no .h or .c is a failure: the gate would otherwise print "clean" over nothing.
@@ -53,22 +59,31 @@ if [ ! -s "$OUT/c-format-files.txt" ]; then
 	exit 1
 fi
 checked=$(wc -l < "$OUT/c-format-files.txt" | tr -d ' ')
-# one file per worker call: the files run from a few hundred bytes to 5 MB
-# (clang-format 0.01 s to 69 s), and a batch of sixteen left one worker
-# holding the big ones while the rest sat idle (93 s of wall for 34 s of
-# even share on amd-2, 2026-11-25)
 if [ -s "$OUT/c-format-files.txt" ]; then
-	xargs -P "$jobs" -n 1 sh -c '
-		cf=$1; st=$2; wk=$3; shift 3
+	# the formatter's own status is read apart from the comparison: killed
+	# by the CPU limit is SLOW (SIGXCPU at the soft limit, 152; SIGKILL at the
+	# hard one, 137, which `ulimit -t` sets to the same number), any other
+	# failure (another signal included) is FAILED, and only a finished run is
+	# held to the file
+	xargs -P "$jobs" -n 16 sh -c '
+		cf=$1; st=$2; wk=$3; secs=$4; shift 4
 		out="$wk/res.$$"
+		tmp="$wk/fmt.$$"
 		for f in "$@"; do
-			if "$cf" --style="$st" "$f" | cmp -s "$f" -; then
+			rc=0
+			( ulimit -c 0; ulimit -t "$secs"; exec "$cf" --style="$st" "$f" ) > "$tmp" || rc=$?
+			if [ "$rc" -eq 152 ] || [ "$rc" -eq 137 ]; then
+				printf "SLOW\t%s\n" "$f" >> "$out"
+			elif [ "$rc" -ne 0 ]; then
+				printf "FAILED\t%s\n" "$f" >> "$out"
+			elif cmp -s "$f" "$tmp"; then
 				printf "CLEAN\t%s\n" "$f" >> "$out"
 			else
 				printf "DRIFT\t%s\n" "$f" >> "$out"
-					fi
+			fi
 		done
-	' _ "$CLANG_FORMAT" "$style" "$work" < "$OUT/c-format-files.txt"
+		rm -f "$tmp"
+	' _ "$CLANG_FORMAT" "$style" "$work" "$FILE_SECONDS" < "$OUT/c-format-files.txt"
 fi
 
 bad=0
@@ -86,7 +101,11 @@ if [ "$found" != "$judged" ]; then
 fi
 if [ -s "$OUT/c-format-results.txt" ]; then
 	while IFS="$(printf '\t')" read -r verdict f; do
-		if [ "$verdict" = "CLEAN" ]; then
+		if [ "$verdict" = "SLOW" ]; then
+			echo "tables-c-clean: clang-format took more than $FILE_SECONDS s of CPU on $f (CLANG_FORMAT_FILE_SECONDS, make/c.mk) — change the emitter's shape, never the limit"; bad=1
+		elif [ "$verdict" = "FAILED" ]; then
+			echo "tables-c-clean: clang-format failed on $f"; bad=1
+		elif [ "$verdict" = "CLEAN" ]; then
 			if grep -Fxq "$f" "$held"; then echo "tables-c-clean: $f is clean now — remove its line from $allow"; bad=1; fi
 		else
 			echo "$f" >> "$seen"
@@ -113,4 +132,4 @@ for f in $(cat "$held"); do
 done
 rm -rf "$work" "$OUT/c-format-files.txt" "$OUT/c-format-results.txt" "$OUT/c-format-all.txt" "$held"
 [ $bad -eq 0 ] || exit 1
-echo "C: clang-format clean over $*${shard:+ (shard $shard)}: $checked files checked, $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"
+echo "C: clang-format clean over $*${shard:+ (shard $shard)}: $checked files checked (each inside $FILE_SECONDS s of CPU), $(wc -l < "$seen" | tr -d ' ') table-emitter files still on the ratchet"

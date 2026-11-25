@@ -43,7 +43,14 @@ JS_HOSTILE_PACKET_ROWS := packet=runtime-development,runtime-production,flat-dev
 # adds a hostile case changes it.
 JS_HOSTILE_ROWS ?= $(shell awk -F'\t' '/^\#/ {next} {n++; if ($$2 == "packet") n += 3} END {print n}' $(JS_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-js-runs-hostile-corpus
-schema-js-runs-hostile-corpus: build/mustrun schema-js-hostile-generate
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-js-runs-hostile-corpus-build
+schema-js-runs-hostile-corpus-build: build/mustrun schema-js-hostile-generate
+
+schema-js-runs-hostile-corpus: schema-js-runs-hostile-corpus-build
 	$(NODE) test/js-hostile/runner.mjs scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,js,$(JS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-js-runs-hostile-corpus -count $(JS_HOSTILE_ROWS) -- $(NODE) test/js-hostile/runner.mjs run "$(JS_HOSTILE_CORPUS)" $(JS_HOSTILE_BUILD)/generated "$(JS_HOSTILE_SERIALIZE)",$(JS_HOSTILE_CORPUS),-rows $(JS_HOSTILE_PACKET_ROWS))
 

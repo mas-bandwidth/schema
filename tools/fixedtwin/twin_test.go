@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -174,19 +173,19 @@ func TestPairedHeadersAgree(t *testing.T) {
 	// Both headers are tracked (make generated/bench/paired/c/.stamp and
 	// generated/bench/paired/cpp/.stamp regenerate them), so a plain clone
 	// carries them and an absent one is a defect, never a skip.
-	cSrc, err := os.ReadFile(cPath)
+	cSrc, err := readHeader(cPath)
 	if err != nil {
 		t.Fatalf("the tracked paired C header is absent (make generated/bench/paired/c/.stamp writes it): %v", err)
 	}
-	cppSrc, err := os.ReadFile(cppPath)
+	cppSrc, err := readHeader(cppPath)
 	if err != nil {
 		t.Fatalf("the tracked paired C++ header is absent (make generated/bench/paired/cpp/.stamp writes it): %v", err)
 	}
-	cPlain, err := dequalifyC(string(cSrc), filepath.Join("..", ".."))
+	cPlain, err := dequalifyC(cSrc, filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
-	left, err := compareHeaders(cPlain, string(cppSrc))
+	left, err := compareHeaders(cPlain, cppSrc)
 	if err != nil {
 		t.Fatal(err)
 	}

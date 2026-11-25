@@ -78,7 +78,7 @@ function readFixed(stem) {
   const r = new t.TableFixedReport();
   const n = p.FFixedLoad([value], 1, data, data.length, p.FFixedNewPlan(4096, 4096), r);
   reason = r.refused === t.TableFixedRefusal.OutOfRange ? "out_of_range" : "fixed refusal " + r.refused;
-  return n === 1 && !r.refused && !r.damaged ? value : null;
+  return n === 1 && !r.refused && !("damaged" in r) ? value : null;
 }
 
 function read(form, root, input, expect) {

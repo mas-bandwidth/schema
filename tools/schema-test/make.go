@@ -46,9 +46,9 @@ import (
 // names the data cases the target runs (test/tables/VNEW_x.schema): each
 // must be among what the target depends on, or the row FAILS, since a row
 // cannot claim a case its target does not touch. A recipe that runs go
-// test without -json FAILS the row: go test's plain output prints nothing for a skipped test,
-// so a skip there would read as a pass, where with -json each skip is an
-// event in the log, which a skip in the log fails. A plain go test summary
+// test outside $(GO_TEST) FAILS the row (goTestOutsideTheWrapper): only
+// through tools/gotestrun is every skip, test not run and run of 0 tests
+// read back and failed. A plain go test summary
 // line in the log (from a script the database cannot see into) fails it
 // the same way.
 //
@@ -366,9 +366,9 @@ func makeRules(data []byte) (map[string]bool, error) {
 }
 
 // vet reads a row's target in make's database before it runs: it must
-// depend on every file the row says it reads, and run no go test without
-// -json. It returns
-// why the row fails, or "", and an error only when the context ended.
+// depend on every file the row says it reads, and run go test only through
+// $(GO_TEST). It returns why the row fails, or "", and an error only when
+// the context ended.
 func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 	if a.plan == nil {
 		return "", errors.New("the make adapter has no way to read make's database")
@@ -387,8 +387,8 @@ func (a makeAdapter) vet(ctx context.Context, in makeInputs) (string, error) {
 			why = append(why, fmt.Sprintf("the row says make %s reads %s, and nothing make %s makes depends on it", in.Target, r, in.Target))
 		}
 	}
-	if line := goTestWithoutJSON(strings.Join(text, "\n")); line != "" {
-		why = append(why, fmt.Sprintf("make %s runs go test without -json, whose plain output prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, line))
+	if line := goTestOutsideTheWrapper(strings.Join(text, "\n")); line != "" {
+		why = append(why, fmt.Sprintf("make %s runs go test outside $(GO_TEST), where a skip, a test that did not run or a run of 0 tests can read as a pass: %q", in.Target, line))
 	}
 	return strings.Join(why, "; "), nil
 }
@@ -426,21 +426,22 @@ func (a makeAdapter) database(ctx context.Context) (*makeDB, error) {
 	return db, err
 }
 
-// goTestCommand is go test run as a command: after the start of a line, a
-// space or an operator, and followed by a space or the end (not "go
-// test/conformance", a path).
-var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])go\s+test(\s|$)`)
+// goTestCommand is go test run as a command, by go, $(GO) or ${GO}: after
+// the start of a line, a space or an operator, and followed by a space or
+// the end (not "go test/conformance", a path).
+var goTestCommand = regexp.MustCompile(`(^|[\s;&|(@])(go|\$\(GO\)|\$\{GO\})\s+test(\s|$)`)
 
-// goTestJSONFlag is -json as a flag of its own, not "-json" inside a path
-// (build/c-json-label-nc/overlay.json) or a file name (x-json.log).
-var goTestJSONFlag = regexp.MustCompile(`(^|\s)--?json(=true)?(\s|$)`)
-
-// goTestWithoutJSON is the first command of recipe text that runs go test
-// without -json, its continuation lines joined, or "".
-func goTestWithoutJSON(recipes string) string {
+// goTestOutsideTheWrapper is the first command of recipe text that runs go
+// test itself, its continuation lines joined, or "". A recipe runs go test
+// through $(GO_TEST) (tools/gotestrun), which runs it as go test -json and
+// reads every event back: a skip, a test that did not run and a run of 0
+// tests fail there. go test run any other way can pass having skipped: its
+// plain output prints nothing for a skipped test, a -json run sent to a
+// file never reaches the log, and nothing counts what ran.
+func goTestOutsideTheWrapper(recipes string) string {
 	joined := strings.ReplaceAll(recipes, "\\\n", " ")
 	for line := range strings.SplitSeq(joined, "\n") {
-		if goTestCommand.MatchString(line) && !goTestJSONFlag.MatchString(line) {
+		if goTestCommand.MatchString(line) {
 			return strings.TrimSpace(line)
 		}
 	}

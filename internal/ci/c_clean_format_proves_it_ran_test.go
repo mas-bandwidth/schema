@@ -52,7 +52,7 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 		testinputs.Files(t, script)
 		cmd := exec.Command("sh", append([]string{script, "allow.txt"}, trees...)...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"))
+		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"), "FILE_SECONDS=5")
 		out, err := cmd.CombinedOutput()
 		return string(out), err
 	}
@@ -73,10 +73,6 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 			tree{"gen/a.h": "int a;\n"}, "tr a-z A-Z", "", []string{"gen"}, "clang-format drift in gen/a.h"},
 		{"a tree that does not exist is red",
 			tree{"gen/a.h": "int a;\n"}, "cat", "", []string{"gen", "moved"}, "moved is not a directory"},
-		{"a file named on its own is judged: drift in it is red",
-			tree{"gen/a.h": "int a;\n", "other/b.h": "int b;\n"}, "tr a-z A-Z", "gen/a.h\n", []string{"gen", "other/b.h"}, "clang-format drift in other/b.h"},
-		{"a file named on its own that is gone is red",
-			tree{"gen/a.h": "int a;\n"}, "cat", "", []string{"gen", "other/gone.h"}, "other/gone.h is not a directory or a file"},
 		{"trees that hold no C are red",
 			tree{"gen/readme.txt": "nothing generated here\n"}, "cat", "", []string{"gen"}, "no .h or .c file under gen"},
 		{"a ratchet line outside every scanned tree is red",

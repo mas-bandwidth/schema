@@ -20,7 +20,7 @@
 ;;;; not have, and it is held to the same rule.
 ;;;;
 ;;;; Usage:
-;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--require-original-nine] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
+;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--require-original-nine | --require-all-targets T1,T2,...] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
 ;;;;   sbcl --script tools/roadmap/render.lisp --test
 
 (defpackage :roadmap-renderer
@@ -583,6 +583,33 @@ once each, none of which carries :text."
 (defun original-nine-problems (sexp table)
   "Every unfinished original-nine cell and leaf, plus missing required page
 sections/columns. TABLE is the validated graph after evidence overlays."
+  (target-completeness-problems sexp table *original-nine-languages*))
+
+(defun split-targets (text)
+  "The comma-separated target names of TEXT, in order, none blank."
+  (let ((out nil) (start 0))
+    (loop for comma = (position #\, text :start start)
+          do (let ((name (string-trim " " (subseq text start comma))))
+               (when (string= name "")
+                 (error "--require-all-targets ~s names a blank target" text))
+               (push name out))
+             (if comma (setf start (1+ comma)) (return)))
+    (nreverse out)))
+
+(defun parse-requirement (flag value)
+  "The acceptance FLAG asks for, as (LABEL LANGUAGES): --require-original-nine
+the nine, --require-all-targets the comma-separated targets VALUE names."
+  (cond ((string= flag "--require-original-nine")
+         (list "original-nine" *original-nine-languages*))
+        ((string= flag "--require-all-targets")
+         (list "all-targets" (split-targets value)))
+        (t (error "~a is no acceptance flag" flag))))
+
+(defun target-completeness-problems (sexp table languages)
+  "Every unfinished cell and leaf of LANGUAGES (every target, for the
+all-targets acceptance), plus missing required page sections and columns.
+TABLE is the validated graph after evidence overlays, whose roadmaps have a
+cell at every row and column."
   (let ((page (validate-page sexp table))
         (memo (make-hash-table :test 'equal))
         (problems nil))
@@ -592,7 +619,7 @@ sections/columns. TABLE is the validated graph after evidence overlays."
       (let ((roadmap (find-reachable-roadmap (getf sexp :root) table id)))
         (if (null roadmap)
             (push (format nil "Missing required reachable roadmap ~s" id) problems)
-            (dolist (lang *original-nine-languages*)
+            (dolist (lang languages)
               (if (not (assoc lang (getf roadmap :columns) :test #'string=))
                   (push (format nil "Missing required language ~s in roadmap ~s" lang id) problems)
                   (dolist (row (getf roadmap :rows))
@@ -755,21 +782,25 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
       (values sexp table files entries))))
 
 (defun render-to-roadmap-file (sexp-path roadmap-path check-only
-                                &optional evidence-dir require-original-nine)
+                                &optional evidence-dir requirement)
+  "REQUIREMENT is nil, or (LABEL LANGUAGES): the acceptance to hold the page
+to, original-nine or all-targets, and the targets it requires."
   (let ((evidence-dir (or evidence-dir (default-evidence-directory sexp-path))))
     (multiple-value-bind (sexp table files entries) (load-work-graph sexp-path evidence-dir)
       (unless (probe-file roadmap-path)
         (error "~a not found: the tables are spliced into the hand-written page, which must exist" roadmap-path))
       (let* ((existing (read-file-to-string roadmap-path))
              (page (splice-page-string existing sexp table sexp-path))
-             (problems (and require-original-nine (original-nine-problems sexp table))))
-        (when require-original-nine
+             (problems (and requirement
+                            (target-completeness-problems sexp table (second requirement)))))
+        (when requirement
           (if problems
               (progn
-                (format *error-output* "INCOMPLETE: original-nine roadmap acceptance failed~%")
+                (format *error-output* "INCOMPLETE: ~a roadmap acceptance failed~%" (first requirement))
                 (dolist (problem problems)
                   (format *error-output* "~a~%" problem)))
-              (format t "OK: original-nine roadmap acceptance (all three sections, all required leaves done with evidence)~%")))
+              (format t "OK: ~a roadmap acceptance (all three sections, all required leaves done with evidence)~%"
+                      (first requirement))))
         (if check-only
             (if (string= existing page)
                 (progn
@@ -818,6 +849,10 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
   (let ((table (build-and-validate-node-table (validate-root sexp) (getf sexp :root))))
     (apply-evidence-overlay table overlays)
     (original-nine-problems sexp table)))
+
+(defun all-targets-test-problems (sexp languages)
+  (let ((table (build-and-validate-node-table (validate-root sexp) (getf sexp :root))))
+    (target-completeness-problems sexp table languages)))
 
 (defun original-nine-test-node (sexp id)
   (find id (getf sexp :nodes) :key (lambda (node) (getf node :id)) :test #'string=))
@@ -937,6 +972,49 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
               (handler-case (original-nine-test-problems sexp)
                 (error () (setf caught t)))
               (unless caught (error "Accepted malformed original-nine input: ~s" fault))))))
+
+      (test "all targets names every target's unfinished cell and leaf"
+        (lambda ()
+          (let ((problems (all-targets-test-problems
+                           (original-nine-test-graph)
+                           (append *original-nine-languages* '("lua")))))
+            (unless (= 6 (length problems))
+              (error "Expected the lua cell and leaf in each of three sections: ~s" problems))
+            (dolist (id '("packet-wire" "fixed-tables" "variable-tables"))
+              (unless (member (format nil "Unfinished cell ~a/feature/lua (work \"~a/lua\")" id id)
+                              problems :test #'string=)
+                (error "Missing unfinished lua cell in ~a: ~s" id problems))))))
+
+      (test "all targets refuses a target the roadmap has no column for"
+        (lambda ()
+          (let ((problems (all-targets-test-problems
+                           (original-nine-test-graph)
+                           (append *original-nine-languages* '("ruby")))))
+            (unless (equal problems
+                           '("Missing required language \"ruby\" in roadmap \"packet-wire\""
+                             "Missing required language \"ruby\" in roadmap \"fixed-tables\""
+                             "Missing required language \"ruby\" in roadmap \"variable-tables\""))
+              (error "A target with no column escaped: ~s" problems)))))
+
+      (test "--require-all-targets requires exactly the targets it is given"
+        (lambda ()
+          (let ((targets '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir" "lua" "ruby")))
+            (unless (equal (parse-requirement "--require-all-targets" "cpp,c,cs,go,rust,java,js,dart,elixir,lua,ruby")
+                           (list "all-targets" targets))
+              (error "The flag does not require its targets: ~s"
+                     (parse-requirement "--require-all-targets" "cpp,c,cs,go,rust,java,js,dart,elixir,lua,ruby"))))
+          (unless (equal (parse-requirement "--require-original-nine" nil)
+                         (list "original-nine" *original-nine-languages*))
+            (error "--require-original-nine misread"))))
+
+      (test "all targets reads the comma-separated targets and refuses a blank one"
+        (lambda ()
+          (unless (equal (split-targets "cpp,c,lua") '("cpp" "c" "lua"))
+            (error "Targets misread: ~s" (split-targets "cpp,c,lua")))
+          (dolist (bad '("" "cpp,,c" "cpp,"))
+            (let ((caught nil))
+              (handler-case (split-targets bad) (error () (setf caught t)))
+              (unless caught (error "Accepted a blank target in ~s" bad))))))
 
       (test "literal EOF keyword is trailing data"
         (lambda ()
@@ -1438,7 +1516,7 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
 (defun main (argv)
   (let ((check-only nil)
         (test-mode nil)
-        (require-original-nine nil)
+        (requirement nil)
         (evidence-dir nil)
         (positional nil))
     (loop while argv do
@@ -1447,7 +1525,22 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
           ((string= arg "--check")
            (setf check-only t))
           ((string= arg "--require-original-nine")
-           (setf require-original-nine t))
+           (when requirement
+             (format *error-output* "one acceptance at a time: --require-original-nine or --require-all-targets~%")
+             (sb-ext:exit :code 2))
+           (setf requirement (parse-requirement arg nil)))
+          ((string= arg "--require-all-targets")
+           (unless argv
+             (format *error-output* "--require-all-targets needs the targets, comma-separated~%")
+             (sb-ext:exit :code 2))
+           (when requirement
+             (format *error-output* "one acceptance at a time: --require-original-nine or --require-all-targets~%")
+             (sb-ext:exit :code 2))
+           (setf requirement
+                 (handler-case (parse-requirement arg (pop argv))
+                   (error (e)
+                     (format *error-output* "~a~%" e)
+                     (sb-ext:exit :code 2)))))
           ((string= arg "--test")
            (setf test-mode t))
           ((string= arg "--evidence")
@@ -1474,7 +1567,7 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
                                                    (pathname (if (char= (char evidence-dir (1- (length evidence-dir))) #\/)
                                                                  evidence-dir
                                                                  (concatenate 'string evidence-dir "/"))))
-                                              require-original-nine)))
+                                              requirement)))
             (sb-ext:exit :code code))
         (error (e)
           (format *error-output* "Error: ~a~%" e)

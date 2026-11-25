@@ -25,7 +25,14 @@ schema-go-hostile-generate: bin/schema tables-go-sibling-runtime
 		echo 'go hostile corpus: the Guarded.schema row no longer names tables/examples/Guarded.schema; re-anchor the locked-unit staging in make/schema-go-runs-hostile-corpus.mk'; exit 1; fi
 	go run ./test/go-hostile/gen -schema=./bin/schema -corpus "$(GO_HOSTILE_STAGE)" -out $(GO_HOSTILE_BUILD) -serialize "$(SERIALIZE_GO)"
 
-schema-go-runs-hostile-corpus: schema-go-hostile-generate
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-go-runs-hostile-corpus-build
+schema-go-runs-hostile-corpus-build: schema-go-hostile-generate
+
+schema-go-runs-hostile-corpus: schema-go-runs-hostile-corpus-build
 	cd $(GO_HOSTILE_BUILD) && go build -mod=mod -o runner .
 	$(GO_HOSTILE_BUILD)/runner scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,go,$(GO_HOSTILE_BUILD)/run.log,$(GO_HOSTILE_BUILD)/runner "$(GO_HOSTILE_STAGE)",$(GO_HOSTILE_CORPUS))

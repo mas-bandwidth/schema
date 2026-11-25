@@ -47,7 +47,7 @@ const READ = (f, wantBits, clamped, tag) => {
   if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
     fail(tag + ": counters moved on a clean read: " + reason(r));
   }
-  if (r.damaged) { fail(tag + ": not malformed: " + reason(r)); }
+  if (("damaged" in r)) { fail(tag + ": not malformed: " + reason(r)); }
   if (r.refused !== 0) { fail(tag + ": not a refusal: " + reason(r)); }
 };
 READ(%[1]q, %[4]d, 0, "old_");
@@ -58,7 +58,7 @@ READ(%[2]q, %[5]d, 0, "hostile_");
   const report = new TableFixedReport(); const r = report;
   const plan = TNewPlan(4096, 4096);
   const n = TLoad(back, back.length, data, data.length, plan, report);
-  if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+  if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || ("damaged" in r) || r.oor !== 0) {
     fail("past_: expected out_of_range refusal: n=" + n + " " + reason(r));
   }
   if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {

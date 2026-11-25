@@ -229,7 +229,7 @@ export async function surfaceReadInto(lines, outDir, load) {
       read = (path) => {
         const bytes = new Uint8Array(readFileSync(path));
         const n = fixedLoad(values, count, bytes, bytes.length, plan, report);
-        return n >= 1 && report.refused === 0 && !report.damaged;
+        return n >= 1 && report.refused === 0 && !("damaged" in report);
       };
     } else if (form === "message") {
       const vocabulary = vocabularyOf(home);

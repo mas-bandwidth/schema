@@ -63,7 +63,8 @@ func t02Header(t *testing.T, u *ir.Unit, lineage map[string][]FixedLineageEntry)
 	}
 	for name, data := range files {
 		if strings.HasSuffix(name, "Table.h") {
-			return string(data)
+			// the header includes <Base>TableData.h, which holds the fixed form's arrays
+			return string(data) + string(files[strings.TrimSuffix(name, ".h")+"Data.h"])
 		}
 	}
 	t.Fatalf("no Table.h was emitted")
