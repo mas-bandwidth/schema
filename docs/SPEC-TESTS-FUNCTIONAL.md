@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 4989. Language-free tests: 484.
+Functional tests every language answers: 4982. Language-free tests: 484.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -7137,13 +7137,11 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.fixedform-identity.fixed-identity-rejects-unrecorded-schemes` | a fixed reader refuses lineage entries whose identity scheme is future, erased or layout-only-v2 | `inputs.tests` (217 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/pythontable/fixedform_identity_test.go:245` |
 
-#### `load-refusal` family `fixedform-ragged-tail`, 3 tests
+#### `load-refusal` family `fixedform-ragged-tail`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedform-ragged-tail.fixed-form-ragged-tail` | a fixed reader answers a record region that is not a whole number of records as malformed, with no named refusal and no value returned | `inputs.tests` (414 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/fixedform_ragged_tail_test.go:29` |
-| `L.functional.load-refusal.fixedform-ragged-tail.ragged-tail-truncated` | a fixed reader answers a record region that is not a whole number of records with the reason truncated and no value returned | `inputs.tests` (248 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cpptable/fixedform_ragged_tail_test.go:30` |
-| `L.functional.load-refusal.fixedform-ragged-tail.ragged-tail-wire-damaged` | a fixed reader refuses a record region that is not a whole number of records as wire\_damaged, with no named reason and no value returned | `inputs.tests` (162 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/ctable/fixedform_ragged_tail_test.go:32` |
+| `L.functional.load-refusal.fixedform-ragged-tail.fixed-form-ragged-tail` | a fixed reader refuses a record region that is not a whole number of records: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (822 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/cstable/fixedform_ragged_tail_test.go:29` |
 
 #### `load-refusal` family `fixedform-refused-hash`, 1 test
 
@@ -7169,7 +7167,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes` | a fixed reader answers a file shorter than the fixed-form header as malformed with nothing landed and no decoded value handed back | `inputs.tests` (753 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
+| `L.functional.load-refusal.fixedform-under-20-bytes.fixed-form-under20-bytes` | a fixed reader refuses a file shorter than the 20-byte fixed-form header: refused, -1 returned, every counter zero and nothing landed (the recommended name is truncated, and the form has no malformed flag) | `inputs.tests` (753 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedform_under_20_bytes_test.go:17` |
 
 #### `load-refusal` family `fixedguard`, 3 tests
 
@@ -7221,12 +7219,11 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.fixedrefusal.fixed-form-record-too-large-refusal-is-named` | a forged fixed record size over the ceiling under a known layout hash refuses as layout malformed without walking the forged size | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/luatable/fixedrefusal_test.go:16` |
 
-#### `load-refusal` family `fixedrefusalnames`, 2 tests
+#### `load-refusal` family `fixedrefusalnames`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.fixedrefusalnames.names-every-refusal-as-reference` | every refusal of the fixed load carries the same name the reference reader gives | `inputs.tests` (284 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedrefusalnames_test.go:13` |
-| `L.functional.load-refusal.fixedrefusalnames.refusals-by-verdict-only` | a fixed reader refuses each hostile file with a named refusal and hands back nothing, without comparing the name | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauFixedLoadNamesEveryRefusal"}}` | refused on load, in every build (verdict only) | `internal/codegen/luautable/fixed_refusal_names_test.go:205` |
+| `L.functional.load-refusal.fixedrefusalnames.fixed-load-names-every-refusal` | a fixed reader refuses each hostile file with a named refusal and hands back nothing (the name is a per-language diagnostic; some legs also compare it with the reference reader's) | `inputs.tests` (378 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixedrefusalnames_test.go:13` |
 
 #### `load-refusal` family `fixedretain`, 2 tests
 
@@ -10631,13 +10628,11 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixedroadmap-t04.fixed-roadmap-t04-versions` | the fixed read procedure handles the required widen-ladder version changes and an optional's present byte, and the writer stores an absent optional's payload never | `inputs.tests` (532 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedroadmap_t04_test.go:546` |
 | `L.functional.evolution.fixedroadmap-t04.fixed-roadmap-t04-versions-evolution` | the generated fixed-table code gives an optional a present byte plain nesting lacks, stores its payload only when present, keeps wire identity across a rename through was, raises no repeated counter, and emits no clamp that cannot fire | `inputs.tests` (192 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t04_test.go:43` |
 
-#### `evolution` family `fixedroadmap-t05`, 3 tests
+#### `evolution` family `fixedroadmap-t05`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.evolution.fixedroadmap-t05.evolution-and-bounds-rows` | a fixed-table reader clamps a text length to its declared capacity, refuses ill-formed used text by name, and keeps the rename, deprecate, append and no-duplicate-counter evolution rules | `inputs.tests` (191 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedroadmap_t05_test.go:377` |
-| `L.functional.evolution.fixedroadmap-t05.text-and-count-clamp-rows` | a fixed-table reader refuses a text length past its capacity as length\_over\_bound, refuses ill-formed used text by name as text\_ill\_formed, and refuses a nonzero byte past the used length | `inputs.tests` (176 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t05_test.go:30` |
-| `L.functional.evolution.fixedroadmap-t05.text-length-refuse` | a fixed-table reader refuses a text length past its declared capacity, refuses ill-formed used text by name, and keeps the rename, deprecate, append and no-duplicate-counter evolution rules | `inputs.tests` (352 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedroadmap_t05_test.go:89` |
+| `L.functional.evolution.fixedroadmap-t05.fixed-roadmap-t05-evolution` | a fixed-table reader refuses a text length past its declared capacity (nothing is clamped) and refuses ill-formed used text by name | `inputs.tests` (717 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedroadmap_t05_test.go:377` |
 
 #### `evolution` family `fixedroadmap-t12`, 2 tests
 
@@ -10665,7 +10660,7 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixedroadmap-t18.fixed-roadmap-t18-exact-counters` | a read counts one widened per widened field or element per record, moves no counter on a clean append, and refuses a count past the writer's bound, a forged ordinal and an unlawful removed-field entry with no counter moved | `inputs.tests` (188 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t18_test.go:729` |
 | `L.functional.evolution.fixedroadmap-t18.fixed-roadmap-t18-field-evolution` | a newer reader reads an older file with a deprecated field and with each appended field kind, landing declared defaults | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestFixedRoadmapCppT18FieldEvolution"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/fixedroadmap_t18_test.go:309` |
 
-#### `evolution` family `fixedversioning`, 19 tests
+#### `evolution` family `fixedversioning`, 17 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -10674,10 +10669,10 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixedversioning.fixed-versioning-floor` | a file at the layout floor reads, a file one below the floor is refused as layout\_unsupported, and raising the floor by one refuses yesterdays file | `inputs.tests` (845 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:373` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-forged-ordinal-both-plans` | a forged enum ordinal past the writers variants is read by both the compiled and the identity plan and both refuse or clamp it identically | `inputs.tests` (1109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:669` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-form-header` | a fixed load reads the form byte before the file length, so each form is named by its own refusal or acceptance | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestFixedVersioningFormHeader"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:590` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-hash` | an unknown layout hash is layout\_newer, a known hash with different bytes is layout\_malformed, and the readers own hash selects the identity plan | `inputs.tests` (414 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:328` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-hash` | a layout hash in no lineage entry is refused as layout\_unknown, a known hash with different bytes as layout\_malformed, and the reader's own hash selects the identity plan | `inputs.tests` (751 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:328` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-lineage-merge` | after two branches append different fields and merge, both pre-merge files read on the merged build | `inputs.tests` (915 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:538` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-new-reads-old` | a new reader reads each old corpus file with nothing refused, unknown at zero, widened at zero for an append and nonzero for a widening row | `inputs.tests` (903 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:155` |
-| `L.functional.evolution.fixedversioning.fixed-versioning-old-refuses-new` | an older reader refuses a newer layout as layout\_newer before any record, reporting the file hash and not malformed, except where the edit moved no layout byte | `inputs.tests` (367 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:239` |
+| `L.functional.evolution.fixedversioning.fixed-versioning-old-refuses-new` | an older reader refuses a newer layout as layout\_unknown before any record, reporting the file hash and nothing else, except where the edit moved no layout byte | `inputs.tests` (833 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_test.go:239` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-plan-too-large` | a plan slice too small for the selected lineage plan is refused as plan\_too\_large with no counter moved, while sufficient capacity reads the same file | `inputs.tests` (187 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedversioning_test.go:1492` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-refuse-writes-nothing` | a read whose per-record hash is forged under the selected lineage entry refuses no\_layout with every counter zero and no value from the file returned | `inputs.tests` (1076 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:731` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-rows` | every versioning row, old to new and new to old, matches the reference engine bytes and values | `tests: {"java":{"package":"./internal/codegen/javatable","test":"TestFixedVersioningRows"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/fixedversioning_test.go:784` |
@@ -10686,8 +10681,6 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixedversioning.fixed-versioning-text-under-arm-true-bytes` | a text field under a union arm reads correctly from noncanonical true bytes through the compiled lineage plan | `inputs.tests` (201 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixedversioning_test.go:314` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-union-arm-text` | a text field under a union arm reads across two generations with the guard holding the writers ordinal | `inputs.tests` (185 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedversioning_test.go:558` |
 | `L.functional.evolution.fixedversioning.fixed-versioning-writer-bound-count` | a count word forged between the writer bound and the reader bound is refused | `inputs.tests` (1043 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:245` |
-| `L.functional.evolution.fixedversioning.refuses-as-unknown` | an older reader refuses a newer layout as layout\_unknown before any record, reporting the file hash and not malformed, except where the edit moved no layout byte | `inputs.tests` (467 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:295` |
-| `L.functional.evolution.fixedversioning.unknown-is-unknown` | an unknown layout hash is layout\_unknown, a known hash with different bytes is layout\_malformed, and the readers own hash selects the identity plan | `inputs.tests` (338 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedversioning_test.go:445` |
 
 #### `evolution` family `fixedversioning-arm-text`, 1 test
 
