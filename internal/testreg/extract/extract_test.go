@@ -193,6 +193,43 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 	}
 }
 
+func modelRow(key, inputs string) testreg.Test {
+	return testreg.Test{Key: key, Adapter: "model-check", Inputs: []byte(inputs)}
+}
+
+// TestAModelCheckRowCoversItsConfig: a model-check row covers the TLC
+// configuration its inputs name, so the model leaves the ledger; a row
+// naming a configuration tla/ does not hold, two rows for one, and inputs
+// that do not read are each named. The controls row names no config and
+// covers nothing.
+func TestAModelCheckRowCoversItsConfig(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindModel, Dir: "tla", Name: "MCA.cfg", Source: "tla/MCA.cfg:1"},
+		{Kind: KindModel, Dir: "tla", Name: "MCB.cfg", Source: "tla/MCB.cfg:1"},
+	}}
+	rows := []testreg.Test{modelRow("model.a.holds", `{"config":"MCA.cfg"}`), modelRow("plant.a.controls", `{"controls":true}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: rows}
+	exact := []LedgerLine{{Kind: KindModel, Dir: "tla", Count: 1}}
+	if p := Check(res, reg, exact); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		rows []testreg.Test
+		says string
+	}{
+		"a row for a config tla/ does not hold": {append(slices.Clone(rows), modelRow("model.a.gone", `{"config":"MCGone.cfg"}`)), "registry row model.a.gone runs model tla MCGone.cfg, which the repository does not hold"},
+		"two rows for one config":               {append(slices.Clone(rows), modelRow("model.a.again", `{"config":"MCA.cfg"}`)), "model.a.again runs tla/MCA.cfg, which model.a.holds already runs"},
+		"inputs that do not read":               {append(slices.Clone(rows), modelRow("model.a.bad", `{"config":7}`)), "model.a.bad is a model-check row whose inputs do not read"},
+		"the covered config left in the ledger": {rows[1:], "model tla counts 1 unmoved tests, and there are 2"},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: c.rows}, exact)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
 // TestTheLedgerOnlyShrinks: against main's ledger, a lower count and a
 // removed line pass; a higher count and a new place fail by name.
 func TestTheLedgerOnlyShrinks(t *testing.T) {

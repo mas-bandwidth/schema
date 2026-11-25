@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 66.
+Unit tests every language answers: 0. Language-free tests: 72.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -83,11 +83,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.unrepresentable-is-data-not-a-name` | `gotest` | Go test TestUnrepresentableIsDataNotAName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnrepresentableIsDataNotAName` | the Go test passes | `internal/testreg/run_test.go:162` |
 | `none.unit.tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest` | Go test TestWildcardsExpandToAnExplicitList in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWildcardsExpandToAnExplicitList` | the Go test passes | `internal/testreg/run_test.go:279` |
 
-#### `tooling` family `testreg-extract`, 11 tests
+#### `tooling` family `testreg-extract`, 12 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:124` |
+| `none.unit.tooling.testreg-extract.a-model-check-row-covers-its-config` | `gotest` | Go test TestAModelCheckRowCoversItsConfig in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAModelCheckRowCoversItsConfig` | the Go test passes | `internal/testreg/extract/extract_test.go:205` |
 | `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:280` |
 | `none.unit.tooling.testreg-extract.a-skip-red-line-stays-while-its-skip-does` | `gotest` | Go test TestASkipRedLineStaysWhileItsSkipDoes in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASkipRedLineStaysWhileItsSkipDoes` | the Go test passes | `internal/testreg/extract/extract_test.go:251` |
 | `none.unit.tooling.testreg-extract.check-holds-the-repository-the-registry-and-the-ledger-exactly` | `gotest` | Go test TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly` | the Go test passes | `internal/testreg/extract/extract_test.go:160` |
@@ -98,6 +99,16 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.read-ledger-refuses-a-bad-line` | `gotest` | Go test TestReadLedgerRefusesABadLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestReadLedgerRefusesABadLine` | the Go test passes | `internal/testreg/extract/extract_test.go:296` |
 | `none.unit.tooling.testreg-extract.skip-red-lines-are-held-to-their-skips` | `gotest` | Go test TestSkipRedLinesAreHeldToTheirSkips in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestSkipRedLinesAreHeldToTheirSkips` | the Go test passes | `internal/testreg/extract/extract_test.go:222` |
 | `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:198` |
+
+#### `tooling` family `tlcrun`, 5 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.tlcrun.the-adapter-fails-every-instance-naming-the-runner-without-tlc` | `gotest` | Go test TestTheAdapterFailsEveryInstanceNamingTheRunnerWithoutTLC in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterFailsEveryInstanceNamingTheRunnerWithoutTLC` | the Go test passes | `tools/tlcrun/adapter_test.go:70` |
+| `none.unit.tooling.tlcrun.the-adapter-judges-each-requested-config` | `gotest` | Go test TestTheAdapterJudgesEachRequestedConfig in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterJudgesEachRequestedConfig` | the Go test passes | `tools/tlcrun/adapter_test.go:51` |
+| `none.unit.tooling.tlcrun.the-adapter-refuses-a-request-it-cannot-read` | `gotest` | Go test TestTheAdapterRefusesARequestItCannotRead in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterRefusesARequestItCannotRead` | the Go test passes | `tools/tlcrun/adapter_test.go:115` |
+| `none.unit.tooling.tlcrun.the-adapter-refuses-an-unpaired-tree-and-an-unrecorded-config` | `gotest` | Go test TestTheAdapterRefusesAnUnpairedTreeAndAnUnrecordedConfig in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestTheAdapterRefusesAnUnpairedTreeAndAnUnrecordedConfig` | the Go test passes | `tools/tlcrun/adapter_test.go:99` |
+| `none.unit.tooling.tlcrun.the-plant-hook-breaks-the-requested-config` | `gotest` | Go test TestThePlantHookBreaksTheRequestedConfig in ./tools/tlcrun | `package: ./tools/tlcrun`<br>`test: TestThePlantHookBreaksTheRequestedConfig` | the Go test passes | `tools/tlcrun/adapter_test.go:151` |
 
 #### `tooling` family `verify-bitphase`, 5 tests
 
