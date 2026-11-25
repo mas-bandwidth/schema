@@ -9,8 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"maps"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -25,6 +28,13 @@ import (
 // writes: a row whose target was renamed or removed is a test that does not
 // exist, and it fails by name instead of running something else. A target
 // whose log reports a skip fails: nothing is ever skipped.
+//
+// A row may also carry what its gate needs from the runner (the lint rows):
+// "vars", make variables set on the command line (DART=dart, CLANG_FORMAT=
+// clang-format-18); "tools", programs that must be on PATH; and "siblings",
+// checkouts beside this one (../serialize.go). A tool not on PATH or a
+// sibling not there FAILS, naming the runner, before make runs: a gate
+// never passes by not finding what it checks with.
 //
 // The targets of one call run one after another, never side by side: they
 // share build/ (bin/schema, the generated trees and their stamps), and two
@@ -41,15 +51,30 @@ type makeAdapter struct {
 	// them (make -j"$(nproc)"); 0 for a negative control, which the
 	// controls job ran with no -j.
 	jobs int
+	// look finds a program on PATH, stat finds a sibling checkout and host
+	// names the runner; a unit test hands in its own.
+	look func(name string) (string, error)
+	stat func(path string) (os.FileInfo, error)
+	host func() (string, error)
 }
 
 type makeInputs struct {
-	File   string `json:"file"`
-	Target string `json:"target"`
+	File     string            `json:"file"`
+	Target   string            `json:"target"`
+	Vars     map[string]string `json:"vars,omitempty"`
+	Tools    []string          `json:"tools,omitempty"`
+	Siblings []string          `json:"siblings,omitempty"`
 }
 
 func newMakeAdapter() makeAdapter {
-	return makeAdapter{exec: execMake, read: func(p string) ([]byte, error) { return os.ReadFile(filepath.FromSlash(p)) }, jobs: runtime.NumCPU()}
+	return makeAdapter{
+		exec: execMake,
+		read: func(p string) ([]byte, error) { return os.ReadFile(filepath.FromSlash(p)) },
+		jobs: runtime.NumCPU(),
+		look: exec.LookPath,
+		stat: os.Stat,
+		host: os.Hostname,
+	}
 }
 
 func execMake(ctx context.Context, argv []string) (string, error) {
@@ -89,6 +114,22 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 	if in.File != "Makefile" && !strings.HasSuffix(in.File, ".mk") || in.File != path.Clean(in.File) || strings.HasPrefix(in.File, "../") || path.IsAbs(in.File) {
 		return in, fmt.Errorf("make file %q is not the Makefile or a .mk file of the repository", in.File)
 	}
+	for k, v := range in.Vars {
+		if !makeVarName.MatchString(k) || strings.ContainsAny(v, "\n\x00") {
+			return in, fmt.Errorf("make variable %q=%q: want an upper-case name and a one-line value", k, v)
+		}
+	}
+	for _, tool := range in.Tools {
+		if tool == "" || strings.ContainsAny(tool, "/\\ \t") {
+			return in, fmt.Errorf("tool %q: want a program name, found on PATH", tool)
+		}
+	}
+	for _, s := range in.Siblings {
+		name, ok := strings.CutPrefix(s, "../")
+		if !ok || name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\") {
+			return in, fmt.Errorf("sibling %q: want ../<checkout>, one directory beside this one", s)
+		}
+	}
 	return in, nil
 }
 
@@ -121,6 +162,10 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 				Reason: fmt.Sprintf("%s writes no rule %q: the target this row runs does not exist", in.File, in.Target)})
 			continue
 		}
+		if why := a.needs(in); why != "" {
+			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+			continue
+		}
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
@@ -128,7 +173,11 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		if a.jobs > 0 {
 			argv = append(argv, fmt.Sprintf("-j%d", a.jobs))
 		}
-		log, err := a.exec(ctx, append(argv, in.Target))
+		argv = append(argv, in.Target)
+		for _, k := range slices.Sorted(maps.Keys(in.Vars)) {
+			argv = append(argv, k+"="+in.Vars[k])
+		}
+		log, err := a.exec(ctx, argv)
 		if ctx.Err() != nil {
 			return out, fmt.Errorf("make %s: %w\n%s", in.Target, ctx.Err(), tail(log, 40))
 		}
@@ -147,9 +196,37 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 	return out, nil
 }
 
+// makeVarName is a make variable a row may set: DART, CLANG_FORMAT.
+var makeVarName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+
+// needs is what the row needs from the runner and the runner lacks, named
+// with the runner, or "".
+func (a makeAdapter) needs(in makeInputs) string {
+	var lack []string
+	for _, tool := range in.Tools {
+		if _, err := a.look(tool); err != nil {
+			lack = append(lack, fmt.Sprintf("the tool %s is not on PATH", tool))
+		}
+	}
+	for _, s := range in.Siblings {
+		if info, err := a.stat(filepath.FromSlash(s)); err != nil || !info.IsDir() {
+			lack = append(lack, fmt.Sprintf("the sibling checkout %s is not beside this one", s))
+		}
+	}
+	if len(lack) == 0 {
+		return ""
+	}
+	host, err := a.host()
+	if err != nil {
+		host = fmt.Sprintf("(name unreadable: %v)", err)
+	}
+	return fmt.Sprintf("make %s needs what runner %s lacks: %s", in.Target, host, strings.Join(lack, "; "))
+}
+
 // makeRules is every rule name a make file writes: "name:" at the start of
 // a line (several names before one colon are several rules), not a variable
-// assignment.
+// assignment and not a target-specific variable ("name: export X = 1",
+// "name: X := 1"), which sets a variable for a rule and writes no rule.
 func makeRules(data []byte) (map[string]bool, error) {
 	out := map[string]bool{}
 	sc := bufio.NewScanner(bytes.NewReader(data))
@@ -160,7 +237,8 @@ func makeRules(data []byte) (map[string]bool, error) {
 			continue
 		}
 		names, rest, ok := strings.Cut(line, ":")
-		if !ok || strings.HasPrefix(rest, "=") || strings.ContainsAny(names, "=$") {
+		deps, _, _ := strings.Cut(rest, ";")
+		if !ok || strings.HasPrefix(rest, "=") || strings.ContainsAny(names, "=$") || strings.Contains(deps, "=") {
 			continue
 		}
 		for name := range strings.FieldsSeq(names) {

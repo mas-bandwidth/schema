@@ -92,22 +92,26 @@ func TestAPlantReachesEveryCopy(t *testing.T) {
 }
 
 // TestASabotageThatReddensAnUnnamedRowFails: the planted run passes only as
-// exactly its named rows red and every other row green.
+// exactly its named rows red for the stated reason and every other row
+// green.
 func TestASabotageThatReddensAnUnnamedRowFails(t *testing.T) {
 	t.Parallel()
 	names := []string{"none.unit.tooling.f.a", "none.unit.tooling.f.b", "none.unit.tooling.f.c"}
 	red := []string{"none.unit.tooling.f.a"}
+	const why = "the reset did not clear"
+	pass := outcome{"PASS", ""}
 	for _, c := range []struct {
-		status map[string]string
+		status map[string]outcome
 		says   string
 	}{
-		{map[string]string{names[0]: "FAIL", names[1]: "PASS", names[2]: "PASS"}, ""},
-		{map[string]string{names[0]: "FAIL", names[1]: "FAIL", names[2]: "PASS"}, "none.unit.tooling.f.b was FAIL, and the plant does not name it"},
-		{map[string]string{names[0]: "PASS", names[1]: "PASS", names[2]: "PASS"}, "none.unit.tooling.f.a was PASS, and the plant names it red"},
-		{map[string]string{names[0]: "MISSING", names[1]: "PASS", names[2]: "PASS"}, "none.unit.tooling.f.a was MISSING"},
-		{map[string]string{names[0]: "FAIL", names[1]: "PASS"}, "none.unit.tooling.f.c did not report"},
+		{map[string]outcome{names[0]: {"FAIL", "at row 3: " + why}, names[1]: pass, names[2]: pass}, ""},
+		{map[string]outcome{names[0]: {"FAIL", why}, names[1]: {"FAIL", why}, names[2]: pass}, "none.unit.tooling.f.b was FAIL, and the plant does not name it"},
+		{map[string]outcome{names[0]: pass, names[1]: pass, names[2]: pass}, "none.unit.tooling.f.a was PASS, and the plant names it red"},
+		{map[string]outcome{names[0]: {"MISSING", why}, names[1]: pass, names[2]: pass}, "none.unit.tooling.f.a was MISSING"},
+		{map[string]outcome{names[0]: {"FAIL", why}, names[1]: pass}, "none.unit.tooling.f.c did not report"},
+		{map[string]outcome{names[0]: {"FAIL", "tla2tools.jar is missing"}, names[1]: pass, names[2]: pass}, `none.unit.tooling.f.a was red for another reason than the plant states ("` + why + `"): tla2tools.jar is missing`},
 	} {
-		got := judgePlant(red, names, c.status)
+		got := judgePlant(red, why, names, c.status)
 		if c.says == "" && got != "" || c.says != "" && !strings.Contains(got, c.says) {
 			t.Errorf("%v: %q, want %q", c.status, got, c.says)
 		}
@@ -124,26 +128,29 @@ func TestAnEditPlantIsJudgedOnItsTreesRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	const target = "go.functional.roundtrip.fam.one"
-	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "a.go", Anchor: "x", With: "y"}}, Red: []string{target}})
+	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "a.go", Anchor: "x", With: "y"}}, Red: []string{target}, Reason: "x is y"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	inst := testreg.Instance{Full: "none.functional.plant.fam.edit", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: in}}
 	for _, c := range []struct {
-		tree    func(context.Context, []plantEdit, []string) (map[string]string, string, error)
+		tree    func(context.Context, []plantEdit, []string) (map[string]outcome, string, error)
 		verdict string
 		says    string
 	}{
-		{func(_ context.Context, e []plantEdit, n []string) (map[string]string, string, error) {
+		{func(_ context.Context, e []plantEdit, n []string) (map[string]outcome, string, error) {
 			if len(e) != 1 || len(n) != 1 || n[0] != target {
 				return nil, "", errors.New("the tree was handed the wrong plant")
 			}
-			return map[string]string{target: "FAIL"}, "", nil
+			return map[string]outcome{target: {"FAIL", "want x, got y: x is y"}}, "", nil
 		}, testreg.Pass, ""},
-		{func(context.Context, []plantEdit, []string) (map[string]string, string, error) {
-			return map[string]string{target: "PASS"}, "", nil
+		{func(context.Context, []plantEdit, []string) (map[string]outcome, string, error) {
+			return map[string]outcome{target: {"PASS", ""}}, "", nil
 		}, testreg.Fail, "names it red"},
-		{func(context.Context, []plantEdit, []string) (map[string]string, string, error) {
+		{func(context.Context, []plantEdit, []string) (map[string]outcome, string, error) {
+			return map[string]outcome{target: {"FAIL", "cannot find tla2tools.jar"}}, "", nil
+		}, testreg.Fail, "red for another reason"},
+		{func(context.Context, []plantEdit, []string) (map[string]outcome, string, error) {
 			return nil, "", plantEditError{"edit 1: the anchor is not in a.go (0 matches)"}
 		}, testreg.Fail, "0 matches"},
 	} {
@@ -163,8 +170,11 @@ func TestAnEditPlantIsJudgedOnItsTreesRun(t *testing.T) {
 func TestPlantInputsAreOneForm(t *testing.T) {
 	t.Parallel()
 	for in, ok := range map[string]bool{
-		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"}}`:                               true,
-		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"]}`:                            true,
+		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"},"reason":"r"}`:                               true,
+		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"}}`:                               false,
+		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"r"}`:                            true,
+		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"]}`:                            false,
+		`{"make":"x-negative-control","file":"Makefile","group":"g","reason":"r"}`:                            false,
 		`{"make":"x-negative-control","file":"Makefile","group":"g"}`:                                true,
 		`{"target":"go.functional.roundtrip.fam.one"}`:                                               false,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"x"}],"red":["a"]}`:                            false,
@@ -189,9 +199,9 @@ func TestPlantInputsAreOneForm(t *testing.T) {
 // names.
 func TestParseOutcomesReadsTheRunsLines(t *testing.T) {
 	t.Parallel()
-	log := "schema-test run a.b.c.d.e: 2 names\n  none.unit.tooling.f.a\nPASS none.unit.tooling.f.a\nFAIL none.unit.tooling.f.b: boom: at x\nFAIL run: expected 2\nschema-test FAIL: expected 2, ran 2\n"
+	log := "schema-test run a.b.c.d.e: 2 names\n  none.unit.tooling.f.a\nPASS none.unit.tooling.f.a\nFAIL none.unit.tooling.f.b: boom: at x\n  want 3\nFAIL run: expected 2\nschema-test FAIL: expected 2, ran 2\n"
 	got := parseOutcomes(log)
-	if len(got) != 2 || got["none.unit.tooling.f.a"] != "PASS" || got["none.unit.tooling.f.b"] != "FAIL" {
+	if len(got) != 2 || got["none.unit.tooling.f.a"].status != "PASS" || got["none.unit.tooling.f.b"] != (outcome{"FAIL", "boom: at x\n  want 3"}) {
 		t.Fatalf("%v", got)
 	}
 }

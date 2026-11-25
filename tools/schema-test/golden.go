@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,10 +41,13 @@ import (
 //
 // The checkout is never written except by --update.
 type goldenAdapter struct {
-	// write runs the writer in a copy of the tree and returns the copy, the
-	// writer's log and a cleanup; a unit test hands in its own, so no unit
-	// test copies a tree or runs make.
-	write func(ctx context.Context, writer string) (fileTree, func(), string, error)
+	// write runs the writer in a copy of the tree, with the files in fresh
+	// (every file a golden row of the writer names) deleted from the copy
+	// first, so the writer must write each one again: a golden it no longer
+	// writes is absent from the copy, never the committed file copied in. It
+	// returns the copy, the writer's log and a cleanup; a unit test hands in
+	// its own, so no unit test copies a tree or runs make.
+	write func(ctx context.Context, writer string, fresh []string) (fileTree, func(), string, error)
 	// checkout is the tree the goldens are committed in.
 	checkout fileTree
 	// reg is the registry the run loaded: a file another golden row of the
@@ -166,11 +170,18 @@ func (a goldenAdapter) Run(ctx context.Context, _ string, instances []testreg.In
 	}
 	var out []testreg.Result
 	for _, w := range writers {
-		written, cleanup, log, err := a.write(ctx, w)
+		registered := a.registered(w)
+		for _, inst := range byWriter[w] {
+			for _, f := range ins[inst.Full].Files {
+				registered[f] = true
+			}
+		}
+		fresh := slices.Sorted(maps.Keys(registered))
+		written, cleanup, log, err := a.write(ctx, w, fresh)
 		if err != nil {
 			return out, fmt.Errorf("writer %s: %w\n%s", w, err, tail(log, 40))
 		}
-		res, err := a.judge(ctx, written, a.registered(w), byWriter[w], ins)
+		res, err := a.judge(ctx, written, registered, byWriter[w], ins)
 		cleanup()
 		out = append(out, res...)
 		if err != nil {
@@ -267,8 +278,9 @@ func (a goldenAdapter) registered(writer string) map[string]bool {
 }
 
 // writeInCopy copies the tracked tree beside the checkout (so ../serialize
-// resolves as it does for the checkout) and runs the writer there.
-func writeInCopy(ctx context.Context, writer string) (fileTree, func(), string, error) {
+// resolves as it does for the checkout), deletes the files in fresh from the
+// copy, and runs the writer there.
+func writeInCopy(ctx context.Context, writer string, fresh []string) (fileTree, func(), string, error) {
 	root, err := os.Getwd()
 	if err != nil {
 		return nil, nil, "", err
@@ -284,6 +296,12 @@ func writeInCopy(ctx context.Context, writer string) (fileTree, func(), string, 
 	cleanup := func() { _ = os.RemoveAll(work) }
 	for _, f := range files {
 		if err := copyFile(filepath.Join(root, filepath.FromSlash(f)), filepath.Join(work, filepath.FromSlash(f))); err != nil {
+			cleanup()
+			return nil, nil, "", err
+		}
+	}
+	for _, f := range fresh {
+		if err := os.Remove(filepath.Join(work, filepath.FromSlash(f))); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			cleanup()
 			return nil, nil, "", err
 		}

@@ -2935,25 +2935,13 @@ jobs:
   # matrix prints first, every time, so a language with no adapter stays in
   # sight; its MISSING instances are red in schema-test-nightly.yml. The old
   # harness jobs above keep running until the registry covers what they run.
-  #
-  # SHARDED BY MEASURED SECONDS. schema-test-plan holds the extract and asks
-  # `schema-test shards` for the fewest shards whose every part fits 90
-  # measured seconds (the registry's ms fields; whole families, so a golden
-  # writer or a harness build runs once): 90 s is the adapter call limit, so
-  # no planned part can be cut by it, and a two-minute job keeps the rest for
-  # its checkout, the sibling clones and the driver build. A family past the
-  # budget fails the plan by name: it is cut smaller or tiered nightly, and
-  # the budget is never raised to fit. Every shard runs every name its part
-  # holds; nothing here selects by path.
-  schema-test-plan:
+  schema-test:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    outputs:
-      shards: ${{ steps.shards.outputs.shards }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -2962,6 +2950,15 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      - name: the pinned Go runtime the go adapter builds against
+        run: |
+          set -euo pipefail
+          (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
+      # the golden writers build against the C++ runtime (the pins rows did)
+      - name: the pinned C++ runtime the golden writers build against
+        run: |
+          set -euo pipefail
+          (cd .. && rm -rf serialize && git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize)
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
       # EVERY TEST IS A REGISTRY ROW OR IN THE UNMOVED LEDGER, AND THE LEDGER
@@ -2987,56 +2984,13 @@ jobs:
             echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
             go run ./tools/schema-test extract --since "$RUNNER_TEMP/main-tree"
           fi
-      - id: shards
-        name: the pr group's shards, by measured seconds
-        run: |
-          set -euo pipefail
-          go run ./tools/schema-test shards --group pr --budget 90 > "$RUNNER_TEMP/shards.txt"
-          cat "$RUNNER_TEMP/shards.txt"
-          echo "shards=$(head -n 1 "$RUNNER_TEMP/shards.txt")" >> "$GITHUB_OUTPUT"
-
-  schema-test:
-    needs: schema-test-plan
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    name: schema-test (${{ matrix.shard }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.schema-test-plan.outputs.shards) }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      # Every sibling in every shard: which shard a family lands in is the
-      # cut's, so no shard may lack a runtime a row reaches for (the go
-      # adapter builds against serialize.go; the golden writers against the
-      # C++ serialize).
-      - name: the pinned serialize runtimes
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize serialize.go
-          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-      - name: schema-test run --group pr --shard ${{ matrix.shard }}
-        env:
-          SHARD: ${{ matrix.shard }}
+      - name: schema-test run --group pr
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
             . /opt/nova/sdk/env.sh
           fi
-          go build -o "$RUNNER_TEMP/schema-test" ./tools/schema-test
-          "$RUNNER_TEMP/schema-test" run --group pr --shard "$SHARD"
+          go run ./tools/schema-test run --group pr
 
   # THE VERDICT: ONE CHECK THAT IS RED WHEN ANY GATE OF THIS RUN DID NOT PASS.
   # main requires no status check (no branch protection; the only ruleset
@@ -3047,10 +3001,10 @@ jobs:
   # never from a hand list) and fails on any result but success, except a job
   # the plan selected nothing for: a skip is green only where this script names
   # the plan output that made it, and the gates that always run (plan,
-  # ci-policy, lint-fast, vet, schema-test-plan) may never skip. `verdict` is the
+  # ci-policy, lint-fast, vet, schema-test) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test-plan, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, stage-compiler, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, nightly-fast]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, stage-compiler, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, nightly-fast]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds

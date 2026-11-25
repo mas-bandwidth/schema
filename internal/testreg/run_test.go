@@ -3,7 +3,6 @@ package testreg
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -360,53 +359,5 @@ func TestCoverageShowsEveryCell(t *testing.T) {
 	}
 	if c.Missing() != 3 {
 		t.Fatalf("%d MISSING, want 3 (c has no adapter)", c.Missing())
-	}
-}
-
-// TestShardsCutByMeasuredMilliseconds: a family is one batch (never cut
-// across shards), a make or plant row is a batch of its own, the cut is by
-// measured milliseconds (unmeasured counts one second), Shards finds the
-// fewest parts within the budget, and a batch past the budget is an error
-// naming it.
-func TestShardsCutByMeasuredMilliseconds(t *testing.T) {
-	t.Parallel()
-	inst := func(full, adapter, family string, ms int) Instance {
-		return Instance{Full: full, Lang: "go", Test: Test{Adapter: adapter, Family: family, Ms: ms}}
-	}
-	all := []Instance{
-		inst("f1", "gotest", "big", 30000), inst("f2", "gotest", "big", 30000),
-		inst("m1", "make", "mk", 40000), inst("m2", "make", "mk", 40000),
-		inst("u1", "gotest", "", 0),
-	}
-	n, load, err := Shards(all, 70)
-	if err != nil || n != 3 || slices.Max(load) > 70000 {
-		t.Fatalf("budget 70 s: %d shards, loads %v, %v; want 3 within 70 s", n, load, err)
-	}
-	seen := map[string]int{}
-	for i := 1; i <= n; i++ {
-		part, err := Shard(all, i, n)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var names []string
-		for _, p := range part {
-			seen[p.Full] = i
-			names = append(names, p.Full)
-		}
-		if slices.Contains(names, "m1") && slices.Contains(names, "m2") {
-			t.Errorf("two make rows of one file share shard %d: %v", i, names)
-		}
-	}
-	if seen["f1"] != seen["f2"] {
-		t.Errorf("family big was cut across shards %d and %d", seen["f1"], seen["f2"])
-	}
-	if len(seen) != len(all) {
-		t.Errorf("shards ran %v, want every name once", seen)
-	}
-	if _, _, err := Shards(all, 59); err == nil || !strings.Contains(err.Error(), "go gotest big costs 60.0 s") {
-		t.Errorf("a family past the budget: %v, want it named", err)
-	}
-	if _, _, err := Shards(all, 0); err == nil {
-		t.Error("a zero budget was accepted")
 	}
 }

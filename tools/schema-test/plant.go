@@ -20,18 +20,22 @@ import (
 // sabotage it plants turns exactly the tests it names red. Its inputs take
 // one of three forms:
 //
-//   - {"target": <full name>, "env": {...}}: the target runs with env set,
-//     which turns on a hook its harness carries; it must run and fail.
+//   - {"target": <full name>, "env": {...}, "reason": <text>}: the target runs
+//     with env set, which turns on a hook its harness carries; it must run and
+//     fail for the stated reason: its FAIL reason holds the text. A red for
+//     any other reason (a missing tool, a build that broke) is not the
+//     plant's red, and fails the plant.
 //   - {"edits": [{"file", "anchor", "with"}...], "red": [<full name>...],
-//     "run": [<full name>...]}: the plant contract (docs/TEST-REGISTRY.md,
+//     "run": [<full name>...], "reason": <text>}: the plant contract (docs/TEST-REGISTRY.md,
 //     "Plants"). Each edit replaces its anchor in a copy of the tracked tree,
 //     and the anchor must be in its file exactly once (0 or 2+ fails, named,
 //     per edit); an anchor also written in another source file of the same
 //     kind that no edit names fails, so a plant reaches every copy (G21).
 //     The named tests then run in that copy through their own adapters, so
 //     the build is the leg's own, flags and asserts included. Every name in
-//     red must fail; every other name in run must pass: a sabotage that
-//     reddens a row it does not name fails the plant.
+//     red must fail for the stated reason (its FAIL reason holds the text);
+//     every other name in run must pass: a sabotage that reddens a row it
+//     does not name, or a named row for another reason, fails the plant.
 //   - {"make": <target>, "group": <group>}: a negative control of
 //     make/negative-controls.json, whose recipe plants its sabotage and
 //     holds its gate red itself; it passes when the target exits 0 with no
@@ -42,8 +46,11 @@ type plantAdapter struct {
 	// tree runs the edit form: copy the tracked tree, apply the edits and
 	// run the names there, returning each name's status. A unit test hands
 	// in its own, so no unit test copies a tree or starts a process.
-	tree func(ctx context.Context, edits []plantEdit, names []string) (map[string]string, string, error)
+	tree func(ctx context.Context, edits []plantEdit, names []string) (map[string]outcome, string, error)
 }
+
+// outcome is one name's status and reason, as its run reported them.
+type outcome struct{ status, reason string }
 
 type plantInputs struct {
 	Target string            `json:"target"`
@@ -51,6 +58,7 @@ type plantInputs struct {
 	Edits  []plantEdit       `json:"edits"`
 	Red    []string          `json:"red"`
 	Run    []string          `json:"run"`
+	Reason string            `json:"reason"`
 	Make   string            `json:"make"`
 	Group  string            `json:"group"`
 	File   string            `json:"file"`
@@ -79,15 +87,18 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 	env := in.Target != "" || len(in.Env) > 0
 	edits := len(in.Edits) > 0 || len(in.Red) > 0 || len(in.Run) > 0
 	mk := in.Make != "" || in.Group != "" || in.File != ""
+	if mk && in.Reason != "" {
+		return in, "", fmt.Errorf("a make control holds its own gate red: it states no reason")
+	}
 	switch {
 	case env && !edits && !mk:
-		if in.Target == "" || len(in.Env) == 0 {
-			return in, "", fmt.Errorf("an env plant names its target and the env that breaks it")
+		if in.Target == "" || len(in.Env) == 0 || in.Reason == "" {
+			return in, "", fmt.Errorf("an env plant names its target, the env that breaks it and the reason the target fails for")
 		}
 		return in, "env", nil
 	case edits && !env && !mk:
-		if len(in.Edits) == 0 || len(in.Red) == 0 {
-			return in, "", fmt.Errorf("an edit plant names its edits and the tests it turns red")
+		if len(in.Edits) == 0 || len(in.Red) == 0 || in.Reason == "" {
+			return in, "", fmt.Errorf("an edit plant names its edits, the tests it turns red and the reason they fail for")
 		}
 		for i, e := range in.Edits {
 			if e.File == "" || e.Anchor == "" || e.Anchor == e.With || filepath.IsAbs(e.File) || strings.Contains(e.File, "..") {
@@ -101,7 +112,7 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 		}
 		return in, "make", nil
 	}
-	return in, "", fmt.Errorf("plant inputs are one form: {target, env}, {edits, red, run} or {make, file, group}")
+	return in, "", fmt.Errorf("plant inputs are one form: {target, env, reason}, {edits, red, run, reason} or {make, file, group}")
 }
 
 func (plantAdapter) Answers(t testreg.Test) bool {
@@ -160,11 +171,19 @@ func (a plantAdapter) runEnv(ctx context.Context, inst testreg.Instance, in plan
 			o = x
 		}
 	}
-	if o.Status == testreg.StatusFail && rep.Ran == 1 && len(rep.Problems) == 0 {
+	got := map[string]outcome{}
+	if o.Full != "" {
+		got[o.Full] = outcome{o.Status, o.Reason}
+	}
+	bad := judgePlant([]string{target.Full}, in.Reason, []string{target.Full}, got)
+	if bad == "" && rep.Ran == 1 && len(rep.Problems) == 0 {
 		return testreg.Result{Instance: inst.Full, Verdict: testreg.Pass}, nil
 	}
+	if bad == "" {
+		bad = fmt.Sprintf("the planted run ran %d, with problems %v", rep.Ran, rep.Problems)
+	}
 	return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
-		Reason: fmt.Sprintf("planted %v, %s was %s (ran %d), not red: %s", in.Env, target.Full, o.Status, rep.Ran, o.Reason)}, nil
+		Reason: fmt.Sprintf("planted %v: %s", in.Env, bad)}, nil
 }
 
 func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in plantInputs) (testreg.Result, error) {
@@ -182,7 +201,7 @@ func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in pl
 		}
 		return testreg.Result{}, fmt.Errorf("%s: %w\n%s", inst.Full, err, tail(log, 30))
 	}
-	if bad := judgePlant(in.Red, names, status); bad != "" {
+	if bad := judgePlant(in.Red, in.Reason, names, status); bad != "" {
 		return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: bad + "\n" + tail(log, 30)}, nil
 	}
 	return testreg.Result{Instance: inst.Full, Verdict: testreg.Pass}, nil
@@ -211,9 +230,12 @@ func (a plantAdapter) plantNames(inst testreg.Instance, in plantInputs) ([]strin
 	return names, nil
 }
 
-// judgePlant is the plant's verdict over the statuses its run reported:
-// every red name FAIL, every other name PASS. It returns what is wrong, or "".
-func judgePlant(red, names []string, status map[string]string) string {
+// judgePlant is the plant's verdict over the outcomes its run reported:
+// every red name FAIL with a reason that holds the stated reason, every
+// other name PASS. A red for another reason is not the plant's red: a
+// missing tool or a broken build reddens a row without the sabotage having
+// been caught. It returns what is wrong, or "".
+func judgePlant(red []string, reason string, names []string, status map[string]outcome) string {
 	want := map[string]bool{}
 	for _, n := range red {
 		want[n] = true
@@ -224,16 +246,18 @@ func judgePlant(red, names []string, status map[string]string) string {
 		switch {
 		case !ok:
 			bad = append(bad, fmt.Sprintf("%s did not report", n))
-		case want[n] && got != testreg.StatusFail:
-			bad = append(bad, fmt.Sprintf("%s was %s, and the plant names it red", n, got))
-		case !want[n] && got != testreg.StatusPass:
-			bad = append(bad, fmt.Sprintf("%s was %s, and the plant does not name it: a sabotage reddens only the rows it names", n, got))
+		case want[n] && got.status != testreg.StatusFail:
+			bad = append(bad, fmt.Sprintf("%s was %s, and the plant names it red", n, got.status))
+		case want[n] && (reason == "" || !strings.Contains(got.reason, reason)):
+			bad = append(bad, fmt.Sprintf("%s was red for another reason than the plant states (%q): %s", n, reason, firstLine(got.reason)))
+		case !want[n] && got.status != testreg.StatusPass:
+			bad = append(bad, fmt.Sprintf("%s was %s, and the plant does not name it: a sabotage reddens only the rows it names", n, got.status))
 		}
 	}
 	if len(bad) == 0 {
 		return ""
 	}
-	return "the planted run is not exactly its named rows red: " + strings.Join(bad, "; ")
+	return "the planted run is not exactly its named rows red for the stated reason: " + strings.Join(bad, "; ")
 }
 
 // plantEditError is an edit that did not land exactly once, or a copy of
@@ -305,7 +329,7 @@ func firstLine(s string) string {
 // the checkout (so ../serialize and the other siblings resolve as they do
 // for the checkout), the edits are applied to the copy, and this same
 // program runs the names there. The copy is removed afterwards.
-func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[string]string, string, error) {
+func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[string]outcome, string, error) {
 	root, err := os.Getwd()
 	if err != nil {
 		return nil, "", err
@@ -352,26 +376,36 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (map[st
 }
 
 // parseOutcomes reads a run's printed outcomes ("PASS <name>", "FAIL
-// <name>: <reason>", ...) into each name's status.
-func parseOutcomes(log string) map[string]string {
-	out := map[string]string{}
+// <name>: <reason>", ...) into each name's status and reason. A reason runs
+// on over the lines after its outcome line, up to the next outcome line or
+// the run's closing count.
+func parseOutcomes(log string) map[string]outcome {
+	out := map[string]outcome{}
+	last := ""
 	sc := bufio.NewScanner(strings.NewReader(log))
 	sc.Buffer(make([]byte, 1<<20), 1<<24)
 	for sc.Scan() {
-		status, rest, ok := strings.Cut(sc.Text(), " ")
-		if !ok {
-			continue
-		}
+		line := sc.Text()
+		status, rest, ok := strings.Cut(line, " ")
 		switch status {
 		case testreg.StatusPass, testreg.StatusFail, testreg.StatusMissing, testreg.StatusUnasked:
 		default:
+			ok = false
+		}
+		name, reason, _ := strings.Cut(rest, ": ")
+		if !ok || name == "run" || strings.Count(name, ".") < 4 || strings.ContainsAny(name, " :") {
+			if ok || strings.HasPrefix(line, "schema-test ") {
+				last = "" // the run's own lines close the reason before them
+			}
+			if last != "" {
+				o := out[last]
+				o.reason += "\n" + line
+				out[last] = o
+			}
 			continue
 		}
-		name, _, _ := strings.Cut(rest, ":")
-		if name == "run" || strings.Count(name, ".") < 4 {
-			continue
-		}
-		out[name] = status
+		out[name] = outcome{status, reason}
+		last = name
 	}
 	return out
 }

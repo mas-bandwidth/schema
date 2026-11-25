@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -151,5 +153,119 @@ func TestAMakeRowRunsWithTheCoresAndAControlWithout(t *testing.T) {
 		if strings.Join(argv, " ") != want {
 			t.Errorf("jobs %d ran %q, want %q", jobs, strings.Join(argv, " "), want)
 		}
+	}
+}
+
+// TestAMakeRowSetsItsVariablesOnTheCommandLine: a lint row's make variables
+// follow its target on make's command line, in name order, so a row can
+// name its formatter (CLANG_FORMAT=clang-format-18); a variable that is not
+// an upper-case name with a one-line value is not a make row.
+func TestAMakeRowSetsItsVariablesOnTheCommandLine(t *testing.T) {
+	t.Parallel()
+	in, err := json.Marshal(makeInputs{File: "make/x.mk", Target: "gate-check", Vars: map[string]string{"DART": "dart", "CLANG_FORMAT": "clang-format-18"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "v", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Inputs: in}}
+	var argv []string
+	a := makeAdapter{read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
+		exec: func(_ context.Context, av []string) (string, error) { argv = av; return "", nil }}
+	if _, err := a.Run(context.Background(), "", []testreg.Instance{inst}); err != nil {
+		t.Fatal(err)
+	}
+	if want := "make --no-print-directory gate-check CLANG_FORMAT=clang-format-18 DART=dart"; strings.Join(argv, " ") != want {
+		t.Errorf("ran %q, want %q", strings.Join(argv, " "), want)
+	}
+	for _, bad := range []string{
+		`{"file":"make/x.mk","target":"a","vars":{"dart":"x"}}`,
+		`{"file":"make/x.mk","target":"a","vars":{"A B":"x"}}`,
+		`{"file":"make/x.mk","target":"a","vars":{"DART":"x\ny"}}`,
+		`{"file":"make/x.mk","target":"a","tools":["/usr/bin/dart"]}`,
+		`{"file":"make/x.mk","target":"a","tools":[""]}`,
+		`{"file":"make/x.mk","target":"a","siblings":["serialize.go"]}`,
+		`{"file":"make/x.mk","target":"a","siblings":["../a/b"]}`,
+		`{"file":"make/x.mk","target":"a","siblings":["../.."]}`,
+	} {
+		if (makeAdapter{}).Answers(testreg.Test{Scope: testreg.LangFree, Inputs: json.RawMessage(bad)}) {
+			t.Errorf("%s answered as a make row", bad)
+		}
+	}
+}
+
+// TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner: a tool not on
+// PATH or a sibling checkout not beside this one fails the row before make
+// runs, naming each lack and the runner; with both there, make runs.
+func TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner(t *testing.T) {
+	t.Parallel()
+	in, err := json.Marshal(makeInputs{File: "make/x.mk", Target: "gate-check", Tools: []string{"dart", "clang-format-18"}, Siblings: []string{"../serialize.go"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "lint", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Inputs: in}}
+	for _, c := range []struct {
+		onPath  map[string]bool
+		sibling bool
+		says    []string
+	}{
+		{map[string]bool{"dart": true, "clang-format-18": true}, true, nil},
+		{map[string]bool{"dart": true}, true, []string{"runner bench-7", "the tool clang-format-18 is not on PATH"}},
+		{map[string]bool{"dart": true, "clang-format-18": true}, false, []string{"runner bench-7", "the sibling checkout ../serialize.go is not beside this one"}},
+	} {
+		ran := 0
+		a := makeAdapter{
+			read: func(string) ([]byte, error) { return []byte(fakeRules), nil },
+			exec: func(context.Context, []string) (string, error) { ran++; return "", nil },
+			look: func(name string) (string, error) {
+				if c.onPath[name] {
+					return "/bin/" + name, nil
+				}
+				return "", errors.New("not found")
+			},
+			stat: func(p string) (os.FileInfo, error) {
+				if c.sibling && p == filepath.FromSlash("../serialize.go") {
+					return dirInfo{}, nil
+				}
+				return nil, os.ErrNotExist
+			},
+			host: func() (string, error) { return "bench-7", nil },
+		}
+		res, err := a.Run(context.Background(), "", []testreg.Instance{inst})
+		if err != nil || len(res) != 1 {
+			t.Fatalf("%v %+v", err, res)
+		}
+		if c.says == nil {
+			if res[0].Verdict != testreg.Pass || ran != 1 {
+				t.Errorf("with everything there: %+v, make ran %d times", res[0], ran)
+			}
+			continue
+		}
+		if res[0].Verdict != testreg.Fail || ran != 0 {
+			t.Errorf("%v: %+v, make ran %d times: a lack fails before make runs", c.says, res[0], ran)
+		}
+		for _, s := range c.says {
+			if !strings.Contains(res[0].Reason, s) {
+				t.Errorf("%q does not say %q", res[0].Reason, s)
+			}
+		}
+	}
+}
+
+// dirInfo is a directory's file info, for a stat a unit test hands in.
+type dirInfo struct{ os.FileInfo }
+
+func (dirInfo) IsDir() bool { return true }
+
+// TestATargetSpecificVariableIsNotARule: "name: export X = 1" and "name: X
+// := 1" set a variable for a rule and write none, so a row naming only
+// such a line names a test that does not exist; a recipe after ";" may
+// hold "=".
+func TestATargetSpecificVariableIsNotARule(t *testing.T) {
+	t.Parallel()
+	rules, err := makeRules([]byte("only-var: export X = 1\nother-var: X := 1\ninline: ; @echo a=b\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rules["only-var"] || rules["other-var"] || !rules["inline"] {
+		t.Errorf("rules %v, want inline only", rules)
 	}
 }

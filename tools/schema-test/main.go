@@ -6,13 +6,10 @@
 //	schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update]
 //	schema-test list [the same]
 //	schema-test coverage
-//	schema-test shards --group G --budget SECONDS
 //	schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
 //	schema-test addenda [--check] [--root DIR]
 //
-// shards prints the fewest --shard values whose every part fits the budget
-// by the measured seconds the registry stores, as a JSON list for a
-// workflow matrix. extract finds every test the repository holds (internal/testreg/extract)
+// extract finds every test the repository holds (internal/testreg/extract)
 // and holds each to the registry or the unmoved ledger.
 //
 // addenda writes the spec addenda (docs/SPEC-TESTS*.md) from the registry;
@@ -30,7 +27,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -56,13 +52,11 @@ const usage = `usage:
   schema-test run  [NAME|PATTERN]... [--lang L]... [--tier T]... [--type Y]... [--family F]... [--ready] [--group G] [--shard i/n] [--update]
   schema-test list [the same]
   schema-test coverage
-  schema-test shards --group G --budget SECONDS
   schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE]
   schema-test addenda [--check] [--root DIR]
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group")
-  --shard i/n       the i-th of n parts of the expanded list, cut by measured seconds
-  --budget S        shards: the most measured seconds one part may hold
+  --shard i/n       the i-th of n parts of the expanded list
   --update          run: re-pin the named goldens from their writers (goldens only)
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
@@ -115,7 +109,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if sub == "addenda" {
 		return addendaCmd(args[1:], stdout)
 	}
-	if sub != "run" && sub != "list" && sub != "coverage" && sub != "shards" {
+	if sub != "run" && sub != "list" && sub != "coverage" {
 		return usageError{fmt.Sprintf("unknown subcommand %q", sub)}
 	}
 	fs := flag.NewFlagSet("schema-test "+sub, flag.ContinueOnError)
@@ -130,7 +124,6 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	shard := fs.String("shard", "", "")
 	path := fs.String("registry", testreg.DefaultPath, "")
 	timeout := fs.Duration("timeout", 90*time.Second, "")
-	budget := fs.Int("budget", 0, "")
 	update := fs.Bool("update", false, "")
 	// flags may come before or after the names
 	rest := args[1:]
@@ -167,9 +160,6 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 		}
 		return err
 	}
-	if sub == "shards" && *group == "" {
-		return usageError{"shards takes --group: the cut is of a stored query"}
-	}
 	if *group != "" {
 		if !q.Empty() {
 			return usageError{"--group is a whole stored query: give it alone (with --shard)"}
@@ -189,12 +179,6 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	instances := sel.Instances
 	what := q.String()
-	if sub == "shards" {
-		if *shard != "" {
-			return usageError{"shards prints the --shard values: give it no --shard"}
-		}
-		return printShards(stdout, instances, *budget)
-	}
 	if *shard != "" {
 		i, n, err := parseShard(*shard)
 		if err != nil {
@@ -237,24 +221,3 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	return nil
 }
 
-// printShards writes the --shard values that cut the instances into parts
-// of at most budget measured seconds, as one JSON list (a workflow matrix),
-// then each part's seconds on a line of its own.
-func printShards(w io.Writer, instances []testreg.Instance, budget int) error {
-	n, load, err := testreg.Shards(instances, budget)
-	if err != nil {
-		return err
-	}
-	vals := make([]string, n)
-	var costs strings.Builder
-	for i := range n {
-		vals[i] = fmt.Sprintf("%d/%d", i+1, n)
-		fmt.Fprintf(&costs, "# shard %d/%d: %.1f measured seconds\n", i+1, n, float64(load[i])/1000)
-	}
-	data, err := json.Marshal(vals)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(w, "%s\n%s", data, costs.String())
-	return err
-}

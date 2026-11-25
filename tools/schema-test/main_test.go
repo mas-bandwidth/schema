@@ -15,19 +15,27 @@ import (
 const cliRegistry = "testdata/registry.jsonl"
 
 // envFake passes every instance unless the run's environment carries BREAK,
-// and then fails every one: a build a plant breaks.
-type envFake struct{ ignoreBreak bool }
+// and then fails every one: a build a plant breaks. With redFor set it
+// fails every instance for that reason, BREAK or not: a row red for a cause
+// the plant did not plant (a missing tool).
+type envFake struct {
+	ignoreBreak bool
+	redFor      string
+}
 
 func (envFake) Answers(t testreg.Test) bool { return t.PerLang() }
 
 func (f envFake) Run(ctx context.Context, _ string, insts []testreg.Instance) ([]testreg.Result, error) {
 	var out []testreg.Result
 	for _, inst := range insts {
-		v := testreg.Pass
+		v, why := testreg.Pass, "broken"
 		if testreg.EnvFrom(ctx)["BREAK"] != "" && !f.ignoreBreak {
 			v = testreg.Fail
 		}
-		out = append(out, testreg.Result{Instance: inst.Full, Verdict: v, Reason: "broken"})
+		if f.redFor != "" {
+			v, why = testreg.Fail, f.redFor
+		}
+		out = append(out, testreg.Result{Instance: inst.Full, Verdict: v, Reason: why})
 	}
 	return out, nil
 }
@@ -76,8 +84,19 @@ func TestAPlantPassesOnlyWhenItsTargetGoesRed(t *testing.T) {
 		t.Errorf("the plant failed against a build it breaks:\n%s", out)
 	}
 	code, out := cli(t, envFake{ignoreBreak: true}, "run", "none.functional.plant.fam.one-red")
-	if code != 1 || !strings.Contains(out, "not red") {
+	if code != 1 || !strings.Contains(out, "was PASS, and the plant names it red") {
 		t.Errorf("the plant passed against a target that stayed green (exit %d):\n%s", code, out)
+	}
+}
+
+// TestAPlantRedForAnotherReasonFails: a target red for a cause the plant did
+// not plant (here a missing tool, BREAK or not) is not the plant's red: the
+// plant states its reason, and any other red fails it, named.
+func TestAPlantRedForAnotherReasonFails(t *testing.T) {
+	t.Parallel()
+	code, out := cli(t, envFake{redFor: "tla2tools.jar is missing"}, "run", "none.functional.plant.fam.one-red")
+	if code != 1 || !strings.Contains(out, `red for another reason than the plant states ("broken"): tla2tools.jar is missing`) {
+		t.Errorf("the plant passed on a red it did not plant (exit %d):\n%s", code, out)
 	}
 }
 

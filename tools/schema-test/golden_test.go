@@ -48,7 +48,7 @@ func goldenInst(t *testing.T, name, writer string, files ...string) testreg.Inst
 func goldenFake(checkout, written memTree, calls *int) goldenAdapter {
 	return goldenAdapter{
 		checkout: checkout,
-		write: func(_ context.Context, writer string) (fileTree, func(), string, error) {
+		write: func(_ context.Context, writer string, _ []string) (fileTree, func(), string, error) {
 			*calls++
 			if writer != "pins-x" {
 				return nil, nil, "", errors.New("unknown writer " + writer)
@@ -177,5 +177,38 @@ func TestUpdateRepinsOnlyTheNamedGoldens(t *testing.T) {
 	}
 	if err := goldenOnly([]testreg.Instance{goldenInst(t, "a", "pins-x", "testdata/g/a.bin"), makeInst(t, "m", "Makefile", "x-check")}); err == nil {
 		t.Error("--update over a run that is not only goldens was accepted")
+	}
+}
+
+// TestTheWriterWritesEveryGoldenAfresh: the writer is handed every file a
+// golden row of it names (the selected rows' and the registry's others) to
+// delete from its copy before it runs, so a golden it no longer writes is
+// absent from its output and fails, never passes as the committed file
+// copied in.
+func TestTheWriterWritesEveryGoldenAfresh(t *testing.T) {
+	t.Parallel()
+	checkout := memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": "BBBB", "testdata/g/c.bin": "CCCC"}
+	var fresh []string
+	a := goldenAdapter{checkout: checkout, write: func(_ context.Context, _ string, f []string) (fileTree, func(), string, error) {
+		fresh = f
+		// the writer writes a and b, and no longer c
+		return memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": "BBBB"}, func() {}, "", nil
+	}}
+	reg, err := testreg.Parse("golden.jsonl", strings.NewReader(`{"rec":"lang","name":"go","write":"refuse","adapter":""}
+{"rec":"type","name":"golden","what":"pinned","contract":"equal"}
+{"rec":"tier","name":"functional","what":"a toolchain"}
+{"rec":"test","key":"golden.x.b","type":"golden","family":"x","case":"b","tier":"functional","checks":"b","inputs":{"writer":"pins-x","files":["testdata/g/b.bin"]},"expect":"same","scope":"none","adapter":"golden"}
+{"rec":"test","key":"golden.y.b","type":"golden","family":"y","case":"b","tier":"functional","checks":"b","inputs":{"writer":"pins-y","files":["testdata/h/b.bin"]},"expect":"same","scope":"none","adapter":"golden"}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.reg = reg
+	got := goldenVerdicts(t, a, context.Background(), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"), goldenInst(t, "c", "pins-x", "testdata/g/c.bin"))
+	if strings.Join(fresh, " ") != "testdata/g/a.bin testdata/g/b.bin testdata/g/c.bin" {
+		t.Errorf("the writer wrote afresh %v, want every file of its rows and no other writer's", fresh)
+	}
+	if got["a"].Verdict != testreg.Pass || got["c"].Verdict != testreg.Fail || !strings.Contains(got["c"].Reason, "no longer writes it") {
+		t.Errorf("verdicts %+v", got)
 	}
 }

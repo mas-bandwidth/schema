@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -29,15 +28,8 @@ func (goTestAdapter) Answers(t testreg.Test) bool { return t.Scope == testreg.La
 
 var goTestName = regexp.MustCompile(`^(Test|Example|Fuzz)[A-Za-z0-9_]*$`)
 
-// slowEnv opens internal/slowtest's gate for a functional or nightly row: the
-// row's tier is the decision that it runs with its toolchain, made in the
-// registry before the run, so the test never decides at run time to skip. A
-// unit row runs with the gate shut, and a unit row that reaches the gate
-// skips, which is a fail: it is tiered wrong.
-func slowEnv(tier string) bool { return tier != "unit" }
-
 func (a goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	byPkg := map[string]map[string]string{} // package (and gate) -> Go test -> instance
+	byPkg := map[string]map[string]string{} // package -> Go test -> instance
 	var pkgs []string
 	for _, inst := range instances {
 		var in goTestInputs
@@ -49,29 +41,21 @@ func (a goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.In
 		if !strings.HasPrefix(in.Package, "./") || !goTestName.MatchString(in.Test) {
 			return nil, fmt.Errorf("%s: inputs want a ./package and a Go test name, got %q %q", inst.Full, in.Package, in.Test)
 		}
-		key := in.Package
-		if slowEnv(inst.Test.Tier) {
-			key += " slow"
+		if byPkg[in.Package] == nil {
+			byPkg[in.Package] = map[string]string{}
+			pkgs = append(pkgs, in.Package)
 		}
-		if byPkg[key] == nil {
-			byPkg[key] = map[string]string{}
-			pkgs = append(pkgs, key)
-		}
-		byPkg[key][in.Test] = inst.Full
+		byPkg[in.Package][in.Test] = inst.Full
 	}
 	var out []testreg.Result
-	for _, key := range pkgs {
-		tests := byPkg[key]
-		pkg, slow := strings.CutSuffix(key, " slow")
+	for _, pkg := range pkgs {
+		tests := byPkg[pkg]
 		names := make([]string, 0, len(tests))
 		for n := range tests {
 			names = append(names, n)
 		}
 		cmd := exec.CommandContext(ctx, "go", "test", "-count=1", "-json", "-run", "^("+strings.Join(names, "|")+")$", pkg)
 		bound(cmd)
-		if slow {
-			cmd.Env = append(os.Environ(), "SCHEMA_SLOW=1")
-		}
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
@@ -125,3 +109,4 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	}
 	return out, nil
 }
+
