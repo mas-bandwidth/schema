@@ -8450,8 +8450,7 @@ tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest: export ZERO_COST_C
 # the arms of a row run together. The rest row keeps the floor of 60 from
 # the 132 files that run compared; the heavy row's floor is its own files.
 tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
-	@rm -rf $(BLOCKFUL_ROOT)/c/block $(BLOCKFUL_ROOT)/c/blockhome $(BLOCKFUL_ROOT)/c/messages $(BLOCKFUL_ROOT)/c/examples
-	@rm -rf $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
+	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c/block $(BLOCKFUL_ROOT)/c/blockhome $(BLOCKFUL_ROOT)/c/messages $(BLOCKFUL_ROOT)/c/examples
 	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
 	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
@@ -8465,8 +8464,10 @@ tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
 	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
 
-# Serial on purpose: the rest row deletes the whole C tree, so it must not
-# overlap the heavy row in one workspace.
+# Serial on purpose: each row deletes the whole C tree, so neither may
+# overlap the other in one workspace, and neither judges what the other left
+# (run after c-rest, a heavy row that kept the rest's files failed its
+# whole-tree checks: "did not write vocab9/Vocab9Table.c").
 tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(MAKE) tables-block-zero-cost-c-heavy
 	@$(MAKE) tables-block-zero-cost-c-rest
