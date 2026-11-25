@@ -95,13 +95,20 @@ func TestCppCookExtentCanonicalAlignmentLinked(t *testing.T) {
 }
 
 // TestCppCookExtentCasesAreEachInOneTest holds the split to the five cases
-// the one test ran: every case names one of the two tests, by name, and no
-// name is twice. Planted: a case that names neither test would run in
-// neither (red).
+// the one test ran: every case names one of the two tests, by name, no name
+// is twice, and the five names are each there. Planted: a case that names
+// neither test would run in neither (red).
 func TestCppCookExtentCasesAreEachInOneTest(t *testing.T) {
 	t.Parallel()
 	if err := cppCookExtentCasesSplit(cppCookExtentCases); err != nil {
 		t.Fatal(err)
+	}
+	var names []string
+	for _, tc := range cppCookExtentCases {
+		names = append(names, tc.name)
+	}
+	if got, want := strings.Join(names, " "), "root nested schema-type-named-Dish pointer-node map-entry"; got != want {
+		t.Fatalf("the cook-extent cases are %q, want the five the one test ran, %q", got, want)
 	}
 	lost := append(append([]cppCookExtentCase(nil), cppCookExtentCases...), cppCookExtentCase{"TestCppCookExtentCanonicalAlignmentLinkd", "planted", "", ""})
 	if err := cppCookExtentCasesSplit(lost); err == nil {

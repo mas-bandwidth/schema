@@ -6,7 +6,7 @@
 # drifting file not listed fails, and a listed file that is clean now (or is no
 # longer generated) fails until its line is deleted.
 #
-# usage: c-clean-format.sh <ratchet-file> <tree>...
+# usage: c-clean-format.sh <ratchet-file> <tree or generated file>...
 # env:   CLANG_FORMAT, OUT (scratch dir), SHARD (K/N: judge only the files
 #        make/checks/shard-filter.sh puts in shard K of N, and only their
 #        ratchet lines; empty: every file)
@@ -30,9 +30,11 @@ rm -rf "$work" && mkdir -p "$work"
 
 # THE GATE PROVES IT RAN. A tree that is not there, or trees that hold no C at
 # all, used to leave the file list empty, skip every check below and print
-# "clean": a gate that looked at nothing. Both are failures by name.
+# "clean": a gate that looked at nothing. Both are failures by name. A path
+# may name one generated file (tables-c-clean-fast names the announce files
+# it judges one by one); a path that is neither is the same failure.
 for t in "$@"; do
-	[ -d "$t" ] || { echo "tables-c-clean: $t is not a directory — the gate was pointed at a tree that is not generated"; exit 1; }
+	[ -d "$t" ] || [ -f "$t" ] || { echo "tables-c-clean: $t is not a directory or a file — the gate was pointed at a tree that is not generated"; exit 1; }
 done
 # find's own status is read (a pipe would hand back sort's), and a tree with
 # no .h or .c is a failure: the gate would otherwise print "clean" over nothing.
