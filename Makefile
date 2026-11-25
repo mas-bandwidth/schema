@@ -8368,6 +8368,15 @@ pins-wire-tables: bin/schema test/tables/main.cpp test/tables/message_form.h
 	@set -eu; for p in $(TABLES_PARTS); do SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables_part$$p; done
 
 PINS_WIRE_FORMS_DIRS := block maps lists arms rt1 rt2 rt3
+# The generated sources each driver LINKS, and no others: the rest of each
+# unit's directory (all four of arms, PaddedBlock, HoldersTable, MigrateTable,
+# DepthTable) compiled for nothing here. A driver that comes to call into
+# another source fails this row's link by that symbol's name, and the source is
+# added here. arms_main.cpp links none: its units are header-only to it.
+PINS_WIRE_FORMS_BLOCK_SOURCES := build/tables-generated/block/RenderBlock.cpp
+PINS_WIRE_FORMS_MAPS_SOURCES := $(addprefix build/tables-generated/maps/,CellsTable.cpp ChunksTable.cpp CrewsTable.cpp \
+	DocsTable.cpp FleetTable.cpp PairsTable.cpp RowsTable.cpp RunsTable.cpp SlotsTable.cpp SpansTable.cpp TextTable.cpp TrailsTable.cpp)
+PINS_WIRE_FORMS_LISTS_SOURCES := $(addprefix build/tables-generated/lists/,ReportTable.cpp SaveTable.cpp SharedTable.cpp)
 
 .PHONY: pins-wire-tables-forms
 pins-wire-tables-forms: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
@@ -8385,10 +8394,10 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	rm -rf "$$objdir" && mkdir -p "$$objdir/block" "$$objdir/maps" "$$objdir/lists" "$$objdir/arms" "$$objdir/retain"; \
 	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
 	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
-	{ for s in test/tables/block_main.cpp $(BLOCK_SOURCES); do echo "block:$$s"; done; \
-	  for s in test/tables/maps_main.cpp $(MAPS_SOURCES); do echo "maps:$$s"; done; \
-	  for s in test/tables/lists_main.cpp $(LISTS_SOURCES); do echo "lists:$$s"; done; \
-	  for s in test/tables/arms_main.cpp $(ARMS_SOURCES); do echo "arms:$$s"; done; \
+	{ for s in test/tables/block_main.cpp $(PINS_WIRE_FORMS_BLOCK_SOURCES); do echo "block:$$s"; done; \
+	  for s in test/tables/maps_main.cpp $(PINS_WIRE_FORMS_MAPS_SOURCES); do echo "maps:$$s"; done; \
+	  for s in test/tables/lists_main.cpp $(PINS_WIRE_FORMS_LISTS_SOURCES); do echo "lists:$$s"; done; \
+	  echo "arms:test/tables/arms_main.cpp"; \
 	  echo "retain:test/tables/retain_main.cpp"; } | \
 	xargs -P "$$procs" -I{} bash -c 'set -eu; bin=$${1%%:*}; src=$${1#*:}; \
 		case "$$bin" in block) flags="$(BLOCK_CXXFLAGS) $(BLOCK_INCLUDES)";; *) flags="$(TABLES_CXXFLAGS) $(TABLES_INCLUDES)";; esac; \
