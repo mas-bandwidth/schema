@@ -5,8 +5,9 @@
 // manifest's length. The ledger is the count that is not the loop's own: what
 // the corpus FOLDER registers (the manifest's rows, checked against the files
 // in inputs/), against the cases the port's reader actually gave a verdict
-// for, carrier by carrier. A case is either RAN or held by NAME with a reason;
-// anything else is red, and so is a run of nothing.
+// for, carrier by carrier. Every registered case RAN; anything else is red,
+// and so is a run of nothing. No list holds a case back (Glenn, 2026-11-25:
+// "NO SKIPS"): a case a port cannot answer yet is red until it can.
 //
 // The comparison is by IDENTITY, never by count: the set of case names run
 // against the set registered. A Go runner keeps a Ledger and calls Check. A
@@ -90,49 +91,17 @@ func Registered(dir string) ([]Case, error) {
 	return cases, nil
 }
 
-// Held is one named exemption: a case, or a whole carrier, a port does not
-// run, and one line saying why.
-type Held map[string]string
-
-// LoadHeld reads a held-by-name list: `name<TAB>reason` lines, `#` comments
-// and blank lines ignored. An empty path is an empty list.
-func LoadHeld(path string) (Held, error) {
-	out := Held{}
-	if path == "" {
-		return out, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	for n, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		name, why, ok := strings.Cut(line, "\t")
-		if !ok || name == "" || strings.TrimSpace(why) == "" {
-			return nil, fmt.Errorf("%s:%d: a held line is a name and one line saying why, tab-separated", path, n+1)
-		}
-		if _, dup := out[name]; dup {
-			return nil, fmt.Errorf("%s:%d: %s is held twice", path, n+1, name)
-		}
-		out[name] = why
-	}
-	return out, nil
-}
-
 // Ledger counts the cases one run gave a verdict for, by name.
 type Ledger struct {
 	cases   []Case
 	carrier map[string]string
 	ran     map[string]int
-	skipped map[string]string
 	unknown []string
 }
 
 // NewLedger starts a ledger over the registered cases.
 func NewLedger(cases []Case) *Ledger {
-	l := &Ledger{cases: cases, carrier: map[string]string{}, ran: map[string]int{}, skipped: map[string]string{}}
+	l := &Ledger{cases: cases, carrier: map[string]string{}, ran: map[string]int{}}
 	for _, c := range cases {
 		l.carrier[c.Name] = c.Carrier
 	}
@@ -149,35 +118,23 @@ func (l *Ledger) Ran(name string) {
 	l.ran[name]++
 }
 
-// Skipped records a case the run did not put to the reader, held by name.
-func (l *Ledger) Skipped(name, why string) {
-	if _, ok := l.carrier[name]; !ok {
-		l.unknown = append(l.unknown, name)
-		return
-	}
-	l.skipped[name] = why
-}
-
 // Counts is one run's tally per carrier.
 type Counts map[string]int
 
 // counts tallies the ledger by carrier.
-func (l *Ledger) counts() (registered, ran, skipped Counts) {
-	registered, ran, skipped = Counts{}, Counts{}, Counts{}
+func (l *Ledger) counts() (registered, ran Counts) {
+	registered, ran = Counts{}, Counts{}
 	for _, c := range l.cases {
 		registered[c.Carrier]++
 		if l.ran[c.Name] > 0 {
 			ran[c.Carrier]++
-		} else if _, ok := l.skipped[c.Name]; ok {
-			skipped[c.Carrier]++
 		}
 	}
-	return registered, ran, skipped
+	return registered, ran
 }
 
-// Check is the assertion: every registered case ran exactly once or is
-// skipped by name, no case ran that the folder does not register, and the run
-// was not a run of nothing.
+// Check is the assertion: every registered case ran exactly once, no case ran
+// that the folder does not register, and the run was not a run of nothing.
 func (l *Ledger) Check() error {
 	var bad []string
 	if len(l.cases) == 0 {
@@ -186,14 +143,11 @@ func (l *Ledger) Check() error {
 	total := 0
 	for _, c := range l.cases {
 		n := l.ran[c.Name]
-		_, skip := l.skipped[c.Name]
 		total += n
 		switch {
 		case n > 1:
 			bad = append(bad, fmt.Sprintf("%s (%s) ran %d times", c.Name, c.Carrier, n))
-		case n == 1 && skip:
-			bad = append(bad, fmt.Sprintf("%s (%s) ran and is also skipped", c.Name, c.Carrier))
-		case n == 0 && !skip:
+		case n == 0:
 			bad = append(bad, fmt.Sprintf("%s (%s) is registered and was not run", c.Name, c.Carrier))
 		}
 	}
@@ -212,18 +166,17 @@ func (l *Ledger) Check() error {
 // Summary is the one line a green run prints: cases run of cases registered,
 // per carrier.
 func (l *Ledger) Summary() string {
-	registered, ran, skipped := l.counts()
-	return summary(registered, ran, skipped)
+	registered, ran := l.counts()
+	return summary(registered, ran)
 }
 
-func summary(registered, ran, skipped Counts) string {
+func summary(registered, ran Counts) string {
 	var carriers []string
-	nr, nran, nskip := 0, 0, 0
+	nr, nran := 0, 0
 	for c, n := range registered {
 		carriers = append(carriers, c)
 		nr += n
 		nran += ran[c]
-		nskip += skipped[c]
 	}
 	for c := range ran {
 		if _, ok := registered[c]; !ok {
@@ -236,7 +189,7 @@ func summary(registered, ran, skipped Counts) string {
 	for _, c := range carriers {
 		parts = append(parts, fmt.Sprintf("%s %d/%d", c, ran[c], registered[c]))
 	}
-	return fmt.Sprintf("ran %d of %d registered, %d held by name (%s)", nran, nr, nskip, strings.Join(parts, ", "))
+	return fmt.Sprintf("ran %d of %d registered (%s)", nran, nr, strings.Join(parts, ", "))
 }
 
 // RowIDs are the rows one case owes, by the id a runner prints for each: the
@@ -291,18 +244,18 @@ func LedgerBlocks(log string) ([]Counts, error) {
 
 // CheckLog holds a runner's printed ledger to the folder, BY IDENTITY: the set
 // of case names the runner ran against the set the folder registers. A count
-// is not enough (a runner that ran a held case in place of an owed one on the
-// same carrier has the right count), so a registered case that did not run, a
-// row id that ran and is not registered, a held case that ran, and a row that
-// ran more or fewer times than once are each red by name.
+// is not enough (a runner that ran one case twice in place of an owed one on
+// the same carrier has the right count), so a registered case that did not
+// run, a row id that ran and is not registered, and a row that ran more or
+// fewer times than once are each red by name.
 //
 // runs is how many times the runner goes over the corpus (the Rust runner
 // runs it once per build profile). rows names the rows a case of a carrier
 // owes where that is not the one row of its own name (RowIDs): each is
-// tracked by its own id, so four runs of one tier are not two tiers twice. heldCases names cases the port does not
-// run, heldCarriers whole carriers it has no reader for; a held name the
-// corpus no longer registers is stale and red. It returns the green summary.
-func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, rows map[string][]string) (string, error) {
+// tracked by its own id, so four runs of one tier are not two tiers twice. No
+// case or carrier is held back: one the port has no reader for is red. It
+// returns the green summary.
+func CheckLog(cases []Case, log string, runs int, rows map[string][]string) (string, error) {
 	blocks, err := LedgerBlocks(log)
 	if err != nil {
 		return "", err
@@ -313,33 +266,11 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, 
 	if len(cases) == 0 {
 		return "", fmt.Errorf("hostile-corpus ledger: the corpus registers no case")
 	}
-	registered, held := Counts{}, Counts{}
-	carrier := map[string]string{}
-	isHeld := map[string]bool{}
+	registered := Counts{}
 	for _, c := range cases {
-		carrier[c.Name] = c.Carrier
 		registered[c.Carrier]++
-		_, heldCase := heldCases[c.Name]
-		_, heldCarrier := heldCarriers[c.Carrier]
-		if heldCase && heldCarrier {
-			return "", fmt.Errorf("hostile-corpus ledger: %s is held by name and its carrier %s is held too: drop one", c.Name, c.Carrier)
-		}
-		if heldCase || heldCarrier {
-			isHeld[c.Name] = true
-			held[c.Carrier]++
-		}
 	}
 	var bad []string
-	for name := range heldCases {
-		if _, ok := carrier[name]; !ok {
-			bad = append(bad, fmt.Sprintf("the held case %s is not in the corpus: delete its line", name))
-		}
-	}
-	for c := range heldCarriers {
-		if registered[c] == 0 {
-			bad = append(bad, fmt.Sprintf("the held carrier %s has no case in the corpus: delete its line", c))
-		}
-	}
 	for c := range rows {
 		if registered[c] == 0 {
 			bad = append(bad, fmt.Sprintf("rows are owed for the carrier %s, which has no case in the corpus", c))
@@ -376,9 +307,6 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, 
 				got += ran[id]
 			}
 			switch {
-			case isHeld[c.Name] && got > 0:
-				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is held by name and ran: delete its line", i+1, c.Name, c.Carrier))
-			case isHeld[c.Name]:
 			case got == 0:
 				bad = append(bad, fmt.Sprintf("run %d: %s (%s) is registered and was not run", i+1, c.Name, c.Carrier))
 			default:
@@ -397,7 +325,7 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, 
 		if total == 0 {
 			bad = append(bad, fmt.Sprintf("run %d: no case ran: the run compared nothing", i+1))
 		}
-		last = summary(registered, ranCases, held)
+		last = summary(registered, ranCases)
 	}
 	sort.Strings(bad)
 	if len(bad) > 0 {
@@ -408,9 +336,9 @@ func CheckLog(cases []Case, log string, runs int, heldCases, heldCarriers Held, 
 
 // RanEvery is the ledger for a Go runner that collects its answers by name:
 // it reads what the folder registers, counts the names the port's reader
-// answered, and fails unless every registered case ran once or is held by
-// name. It returns the green summary line.
-func RanEvery(dir string, ran []string, held Held) (string, error) {
+// answered, and fails unless every registered case ran once. It returns the
+// green summary line.
+func RanEvery(dir string, ran []string) (string, error) {
 	cases, err := Registered(dir)
 	if err != nil {
 		return "", err
@@ -418,9 +346,6 @@ func RanEvery(dir string, ran []string, held Held) (string, error) {
 	l := NewLedger(cases)
 	for _, name := range ran {
 		l.Ran(name)
-	}
-	for name, why := range held {
-		l.Skipped(name, why)
 	}
 	if err := l.Check(); err != nil {
 		return "", err
