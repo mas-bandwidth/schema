@@ -1,8 +1,10 @@
 package elixirtable
 
 // THE TEXT WRITER REFUSES A FLAGS MASK WITH A BIT NO VARIANT NAMES
-// (docs/SPEC-TABLES.md §5, §16.2): the file read keeps such a bit whole
-// (§4.1), and the text form has no spelling for it, so to_json/2 answers
+// (docs/SPEC-TABLES.md §5, §16.2): the file read keeps such a bit whole when
+// it is below the mask's width W (§4.1; a bit at or above W refuses the load,
+// so the probe declares `| max = 8` to leave unnamed bits under W), and the
+// text form has no spelling for it, so to_json/2 answers
 // {:error, :invalid_value} exactly as the Go engine's writer does. The same
 // clause carries a flags FIELD and a flags LIST ELEMENT, and every named-bits
 // value still writes its committed text.
@@ -22,7 +24,7 @@ import (
 
 const flagsNamedBitsSchema = `package flagsbits
 
-flags Perm { Read, Write, Own }
+flags Perm | max = 8 { Read, Write, Own }
 
 table Root
 {

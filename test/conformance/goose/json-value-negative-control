@@ -64,9 +64,9 @@ count)
 	source=internal/codegen/goosetable/runtime/json_value.goose
 	from='        if placed >= bound {
             c.jr.rep.oor += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }'
+            if !jr_skip(c, depth + 2) { ok = false; break; }'
 	to='        if placed >= bound {
-            if !jr_skip(c, depth + 1) { ok = false; break; }'
+            if !jr_skip(c, depth + 2) { ok = false; break; }'
 	source2=internal/codegen/goosetable/runtime/schema_json.goose
 	from2='        if placed >= bound {
             jr.rep.oor += 1;

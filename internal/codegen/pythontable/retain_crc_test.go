@@ -116,7 +116,7 @@ def leb(n):
     out=bytearray()
     while n>=128: out.append((n&127)|128); n >>= 7
     out.append(n); return bytes(out)
-large=bytes([1,1,4,7,0,0,0,2,31])+leb(131072)+bytes([91])*131072+bytes([0])+Root.descriptor.field('n').field_id.to_bytes(8,'little')+(0x123456789abcdef0).to_bytes(8,'little')+(2).to_bytes(8,'little')
+large=bytes([1,1,4,7,0,0,0,2,12])+leb(131072)+bytes([91])*131072+bytes([0])+Root.descriptor.field('n').field_id.to_bytes(8,'little')+(0x123456789abcdef0).to_bytes(8,'little')+(2).to_bytes(8,'little')
 large+=crc32c(large).to_bytes(4,'little')
 large_keep=TableRetain(bytearray(132096),bytearray(24*8)); large_report=LoadReport()
 large_value=Root.load_retain(large,large_keep,large_report)

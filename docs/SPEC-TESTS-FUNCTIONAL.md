@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2313.
+Functional tests every language answers: 2560. Language-free tests: 2320.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2894,6 +2894,29 @@ two implementations or two versions give the same answer.
 
 Each runs once, as `none.functional.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
+### Type `roundtrip`
+
+read bytes, write them back, same bytes.
+
+#### `roundtrip` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.goosetable.goose-required-fields-never-elide` | `gotest` | Go test TestGooseRequiredFieldsNeverElide in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseRequiredFieldsNeverElide` | the Go test passes | `internal/codegen/goosetable/required_writes_test.go:97` |
+
+#### `roundtrip` family `luatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.luatable.lua-deprecated-map-value-reads-none` | `gotest` | Go test TestLuaDeprecatedMapValueReadsNone in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaDeprecatedMapValueReadsNone` | the Go test passes | `internal/codegen/luatable/deprecatedmap_test.go:106` |
+
+#### `roundtrip` family `luautable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.luautable.luau-save-retain-born-array-later-element-matches-the-oracle` | `gotest` | Go test TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauSaveRetainBornArrayLaterElementMatchesTheOracle` | the Go test passes | `internal/codegen/luautable/retain_fuzz_bounds_test.go:128` |
+| `none.functional.roundtrip.luautable.luau-save-retain-bounds-mutant-matches-the-oracle` | `gotest` | Go test TestLuauSaveRetainBoundsMutantMatchesTheOracle in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauSaveRetainBoundsMutantMatchesTheOracle` | the Go test passes | `internal/codegen/luautable/retain_fuzz_bounds_test.go:36` |
+
 ### Type `write-refusal`
 
 writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
@@ -2927,6 +2950,23 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.write-refusal.unitytable.unity-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/unitytable/declared_deprecated_enum_cook_test.go:86` |
+
+### Type `load-refusal`
+
+hostile bytes are refused in every build, with the named reason.
+
+#### `load-refusal` family `elixirtable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.load-refusal.elixirtable.fixed-form-count-over-bound-elixir` | `gotest` | Go test TestFixedFormCountOverBoundElixir in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedFormCountOverBoundElixir` | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/fixedform_l5_parity_test.go:86` |
+| `none.functional.load-refusal.elixirtable.fixed-form-refusal-names-elixir` | `gotest` | Go test TestFixedFormRefusalNamesElixir in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedFormRefusalNamesElixir` | refused on load, in every build (verdict only) | `internal/codegen/elixirtable/fixedform_l5_parity_test.go:23` |
+
+#### `load-refusal` family `luautable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.load-refusal.luautable.luau-walk-reads-zero-a-reused-report` | `gotest` | Go test TestLuauWalkReadsZeroAReusedReport in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauWalkReadsZeroAReusedReport` | refused on load, in every build (verdict only) | `internal/codegen/luautable/walk_report_reset_test.go:23` |
 
 ### Type `codegen`
 
@@ -4899,7 +4939,7 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:581` |
+| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:596` |
 
 #### `fuzz` family `verify-goose-fuzz-part-1`, 5 tests
 

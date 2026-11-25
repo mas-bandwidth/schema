@@ -192,7 +192,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 	// tables-elixir-message-batch's -run filter reaches them.
 	t.Run("bounds", func(t *testing.T) {
 		t.Parallel()
-		u := messageLoadUnit(t, root, units["backenddemo"])
+		u := unitFrom(t, boundsProbeSchema)
 		tables, err := Generate(u)
 		if err != nil {
 			t.Fatalf("generate: %v", err)
@@ -206,16 +206,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 			t.Fatal(err)
 		}
 		ns := ir.GoExportName(u.Package)
-		// The hand-built announcements ride the ids of LoginRequest's own
-		// fields, so the bound read keeps their values under the peer's
-		// shapes; the build version is another, so no order or default is
-		// judged.
-		login := u.Tables["LoginRequest"]
-		if login == nil || len(login.Fields) < 2 {
-			t.Fatalf("LoginRequest has %d fields", len(login.Fields))
-		}
-		id0 := ir.TableFieldEntry(login.Fields[0]).Id
-		id1 := ir.TableFieldEntry(login.Fields[1]).Id
+		ids := boundsProbeIds(t, u)
 
 		t.Run("source", func(t *testing.T) {
 			t.Parallel()
@@ -224,7 +215,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 
 		t.Run("values", func(t *testing.T) {
 			t.Parallel()
-			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, module, boundsValuesProbe(ns, ids))
 			if err != nil {
 				t.Fatalf("%v\n%s", err, out)
 			}
@@ -233,7 +224,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_descending_range", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageDescendingEmptyRange(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, bad, boundsDescendingProbe(ns, ids))
 			if err == nil || !strings.Contains(out, "empty text") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad descending range did not fail for the empty-text reason:\nerr=%v\n%s", err, out)
 			}
@@ -242,7 +233,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_count_loop", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageCountLoop(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, bad, boundsCountProbe(ns, ids))
 			if err == nil || !strings.Contains(out, "count-driven zero-progress materialization") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad count loop did not fail for the count-driven reason:\nerr=%v\n%s", err, out)
 			}
@@ -251,7 +242,7 @@ func TestMessageFormBatchElixir(t *testing.T) {
 		t.Run("known_bad_declared_capacity_cap", func(t *testing.T) {
 			t.Parallel()
 			bad := sabotageDeclaredCapacityCap(t, module)
-			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns, id0, id1))
+			out, err := runElixirModuleProbe(t, bad, boundsDeclaredProbe(ns, ids))
 			if err == nil || !strings.Contains(out, "declared capacity shrank") || strings.Contains(out, "control did not restore") || strings.Contains(out, "CompileError") || strings.Contains(out, "SyntaxError") {
 				t.Fatalf("known-bad declared capacity cap did not fail for the element-cap reason:\nerr=%v\n%s", err, out)
 			}
@@ -714,7 +705,7 @@ func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, er
 	return string(out), err
 }
 
-func boundsValuesProbe(ns string, id0, id1 uint64) string {
+func boundsValuesProbe(ns string, ids boundsIds) string {
 	return boundsProbe(ns, boundsValueFns, `
     empty_text_and_lengths()
     small_arrays()
@@ -723,31 +714,71 @@ func boundsValuesProbe(ns string, id0, id1 uint64) string {
     second_body_damage()
     fixed_nine_last_field()
     declared_capacity_above_budget()
-`, id0, id1)
+`, ids)
 }
 
-func boundsDescendingProbe(ns string, id0, id1 uint64) string {
+func boundsDescendingProbe(ns string, ids boundsIds) string {
 	return boundsProbe(ns, boundsDescendingFn, `
     descending_control()
-`, id0, id1)
+`, ids)
 }
 
-func boundsCountProbe(ns string, id0, id1 uint64) string {
+func boundsCountProbe(ns string, ids boundsIds) string {
 	return boundsProbe(ns, boundsCountFn, `
     count_control()
-`, id0, id1)
+`, ids)
 }
 
-func boundsDeclaredProbe(ns string, id0, id1 uint64) string {
+func boundsDeclaredProbe(ns string, ids boundsIds) string {
 	return boundsProbe(ns, boundsDeclaredFn, `
     declared_capacity_control()
-`, id0, id1)
+`, ids)
 }
 
-func boundsProbe(ns, fns, body string, id0, id1 uint64) string {
-	fns = strings.ReplaceAll(fns, "0x1000", fmt.Sprintf("%#x", id0))
-	fns = strings.ReplaceAll(fns, "0x1001", fmt.Sprintf("%#x", id1))
-	fns = strings.ReplaceAll(fns, "0x2000", fmt.Sprintf("%#x", id1))
+// boundsProbeSchema is the bounds probes' own root. A message read holds
+// every announced field it declares to its own kind and element kind
+// (docs/SPEC-TABLES.md §3.3, §4: a kind that moved refuses the whole batch
+// kind_mismatch), so a value the probe reads back rides a field of the same
+// kind: text a string, count a uint8, elems an array of uint8. A zero-width
+// element (kind 0, kind 32) is no kind a declaration has, so those runs ride
+// entries this root does not declare, which the walk steps over by their
+// announced shapes under another build version and never delivers; their
+// bounds are met in that walk.
+const boundsProbeSchema = `package boundsprobe
+
+fixed table Probe
+{
+    text  string(64)
+    count uint8
+    elems [..8]uint8
+}
+`
+
+// boundsIds are the probe's field ids, and two ids Probe does not declare.
+type boundsIds struct{ text, count, elems, unknown, unknown2 uint64 }
+
+func boundsProbeIds(t *testing.T, u *ir.Unit) boundsIds {
+	t.Helper()
+	probe := u.Tables["Probe"]
+	if probe == nil || len(probe.Fields) != 3 {
+		t.Fatalf("the bounds probe root is not Probe { text count elems }")
+	}
+	ids := boundsIds{unknown: 0x5a5a5a5a00000001, unknown2: 0x5a5a5a5a00000002}
+	ids.text = ir.TableFieldEntry(probe.Fields[0]).Id
+	ids.count = ir.TableFieldEntry(probe.Fields[1]).Id
+	ids.elems = ir.TableFieldEntry(probe.Fields[2]).Id
+	return ids
+}
+
+func boundsProbe(ns, fns, body string, ids boundsIds) string {
+	// one pass, so no id spelled in is read as a placeholder again
+	fns = strings.NewReplacer(
+		"TEXT_ID", fmt.Sprintf("%#x", ids.text),
+		"COUNT_ID", fmt.Sprintf("%#x", ids.count),
+		"ELEMS_ID", fmt.Sprintf("%#x", ids.elems),
+		"UNKNOWN_ID", fmt.Sprintf("%#x", ids.unknown),
+		"UNKNOWN2_ID", fmt.Sprintf("%#x", ids.unknown2),
+	).Replace(fns)
 	return fmt.Sprintf(`# GENERATED BY internal/codegen/elixirtable/messageform_batch_test.go.
 defmodule Probe do
   import Bitwise
@@ -869,12 +900,13 @@ const boundsElixirHelpers = `
         2, 0, 0, 0, 0, 0, 0, 0>>
   end
 
-  # a hand-built announcement at build version 0, bound to LoginRequest: its
-  # entries ride that root's own field ids, and another build's batch is not
-  # judged for declaration order or defaults
+  # a hand-built announcement at build version 0, bound to Probe: a known
+  # entry rides that root's own field id at its own kind, an unknown one is
+  # stepped over, and another build's batch is not judged for declaration
+  # order or defaults
   defp read!(words) do
     with {:ok, vocab} <- M.announce_read(announce(words)),
-         {:ok, bound} <- M.for_root(vocab, "LoginRequest") do
+         {:ok, bound} <- M.for_root(vocab, "Probe") do
       bound
     else
       other -> raise "announce_read #{inspect(other)}"
@@ -895,6 +927,21 @@ const boundsElixirHelpers = `
         case M.load_messages(vocab, batch) do
           {:ok, [got]} when got == values -> :ok
           other -> check(false, "round trip got #{inspect_small(other)} want #{inspect(values)}")
+        end
+
+      other ->
+        check(false, "save got #{inspect(other)}")
+    end
+  end
+
+  # an unknown entry is written by its announced shape and stepped over on
+  # the read: the batch reads, delivering only the fields Probe declares
+  defp skip_trip(vocab, values, kept) do
+    case M.save_messages(vocab, [values]) do
+      {:ok, batch} ->
+        case M.load_messages(vocab, batch) do
+          {:ok, [got]} when got == kept -> :ok
+          other -> check(false, "skip trip got #{inspect_small(other)} want #{inspect(kept)}")
         end
 
       other ->
@@ -924,13 +971,13 @@ const boundsElixirHelpers = `
 
 const boundsValueFns = boundsElixirHelpers + `
   defp empty_text_and_lengths do
-    words = entry(0x1000, <<12>> <> leb(15)) <> entry(0x1001, <<6, 0>>)
+    words = entry(TEXT_ID, <<12>> <> leb(15)) <> entry(COUNT_ID, <<6, 0>>)
     vocab = read!(words)
     round_trip(vocab, [{1, <<>>}, {2, 7}])
     round_trip(vocab, [{1, <<"z">>}, {2, 1}])
     round_trip(vocab, [{1, :binary.copy(<<65>>, 15)}, {2, 2}])
 
-    only = read!(entry(0x1000, <<12>> <> leb(15)))
+    only = read!(entry(TEXT_ID, <<12>> <> leb(15)))
 
     case M.save_messages(only, [[{1, <<"abcd">>}]]) do
       {:ok, batch} ->
@@ -947,41 +994,41 @@ const boundsValueFns = boundsElixirHelpers + `
   end
 
   defp small_arrays do
-    uints = entry(0x1000, <<14>> <> leb(3) <> leb(3) <> <<6, 0>>) <> entry(0x1001, <<6, 0>>)
+    uints = entry(ELEMS_ID, <<14>> <> leb(3) <> leb(3) <> <<6, 0>>) <> entry(COUNT_ID, <<6, 0>>)
     round_trip(read!(uints), [{1, [9, 8, 7]}, {2, 4}])
 
-    names = entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<0>>) <> entry(0x1001, <<6, 0>>)
-    round_trip(read!(names), [{1, [:name, :name]}, {2, 5}])
+    names = entry(UNKNOWN_ID, <<14>> <> leb(2) <> leb(2) <> <<0>>) <> entry(COUNT_ID, <<6, 0>>)
+    skip_trip(read!(names), [{1, [:name, :name]}, {2, 5}], [{2, 5}])
 
-    none = entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<32>>) <> entry(0x1001, <<6, 0>>)
-    round_trip(read!(none), [{1, [:none, :none]}, {2, 6}])
+    none = entry(UNKNOWN_ID, <<14>> <> leb(2) <> leb(2) <> <<32>>) <> entry(COUNT_ID, <<6, 0>>)
+    skip_trip(read!(none), [{1, [:none, :none]}, {2, 6}], [{2, 6}])
 
-    empty = entry(0x1000, <<14>> <> leb(0) <> leb(0) <> <<0>>) <> entry(0x1001, <<6, 0>>)
-    round_trip(read!(empty), [{1, []}, {2, 8}])
+    empty = entry(UNKNOWN_ID, <<14>> <> leb(0) <> leb(0) <> <<0>>) <> entry(COUNT_ID, <<6, 0>>)
+    skip_trip(read!(empty), [{1, []}, {2, 8}], [{2, 8}])
 
-    one = entry(0x1000, <<14>> <> leb(1) <> leb(1) <> <<0>>) <> entry(0x1001, <<6, 0>>)
-    round_trip(read!(one), [{1, [:name]}, {2, 8}])
+    one = entry(UNKNOWN_ID, <<14>> <> leb(1) <> leb(1) <> <<0>>) <> entry(COUNT_ID, <<6, 0>>)
+    skip_trip(read!(one), [{1, [:name]}, {2, 8}], [{2, 8}])
 
     ranged =
-      entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<6, 1>> <> leb(0) <> leb(7)) <>
-        entry(0x1001, <<6, 0>>)
+      entry(ELEMS_ID, <<14>> <> leb(2) <> leb(2) <> <<6, 1>> <> leb(0) <> leb(7)) <>
+        entry(COUNT_ID, <<6, 0>>)
 
     round_trip(read!(ranged), [{1, [7, 7]}, {2, 3}])
   end
 
   defp wide_counts do
-    kind0 = read!(entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>))
+    kind0 = read!(entry(UNKNOWN_ID, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>))
     ceiling(kind0)
     refuse_wide(kind0)
 
-    kind32 = read!(entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<32>>))
+    kind32 = read!(entry(UNKNOWN_ID, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<32>>))
     ceiling(kind32)
     refuse_wide(kind32)
 
     # An unbounded list (min = 0, max = 0xFFFFFFFF) carrying a hostile wire
     # count (9 elements in a 6-byte batch with only 7 trailing bits) is
     # refused without allocating the list.
-    unbounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(0xFFFFFFFF) <> <<0>>))
+    unbounded = read!(entry(UNKNOWN_ID, <<14>> <> leb(0) <> leb(0xFFFFFFFF) <> <<0>>))
 
     case M.load_messages(unbounded, <<2, 0, 19, 0, 0, 0, 0>>) do
       {:malformed, 0, []} -> :ok
@@ -990,15 +1037,12 @@ const boundsValueFns = boundsElixirHelpers + `
 
     # The unbounded count is compared with n > bits_left, each element costing
     # at least one bit: a count equal to the seven bits left is backed by the
-    # wire and is accepted, and one past it is refused. The body is five bytes,
-    # so the 1-bit reference and 32-bit count leave seven bits.
+    # wire and is accepted (stepped over whole), and one past it is refused.
+    # The body is five bytes, so the 1-bit reference and 32-bit count leave
+    # seven bits.
     case M.load_messages(unbounded, <<2, 0, 15, 0, 0, 0, 0>>) do
-      {:ok, [[{1, seven}]]} ->
-        if seven == List.duplicate(:name, 7) do
-          :ok
-        else
-          check(false, "unbounded count at the bit bound #{inspect_small({:ok, [[{1, seven}]]})}")
-        end
+      {:ok, [[]]} ->
+        :ok
 
       other ->
         check(false, "unbounded count at the bit bound #{inspect_small(other)}")
@@ -1012,7 +1056,7 @@ const boundsValueFns = boundsElixirHelpers + `
 
   defp nested_counts do
     wide =
-      entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<14>> <> leb(0) <> leb(0) <> <<0>>)
+      entry(UNKNOWN_ID, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<14>> <> leb(0) <> leb(0) <> <<0>>)
 
     case M.announce_read(announce(wide)) do
       {:error, :malformed, _} -> :ok
@@ -1020,8 +1064,8 @@ const boundsValueFns = boundsElixirHelpers + `
     end
 
     small =
-      entry(0x1000, <<14>> <> leb(2) <> leb(2) <> <<14>> <> leb(2) <> leb(2) <> <<0>>) <>
-        entry(0x1001, <<6, 0>>)
+      entry(UNKNOWN_ID, <<14>> <> leb(2) <> leb(2) <> <<14>> <> leb(2) <> leb(2) <> <<0>>) <>
+        entry(COUNT_ID, <<6, 0>>)
 
     case M.announce_read(announce(small)) do
       {:error, :malformed, _} -> :ok
@@ -1031,8 +1075,8 @@ const boundsValueFns = boundsElixirHelpers + `
 
   defp second_body_damage do
     words =
-      entry(0x1000, <<12>> <> leb(15)) <>
-        entry(0x2000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>)
+      entry(TEXT_ID, <<12>> <> leb(15)) <>
+        entry(UNKNOWN_ID, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>)
 
     vocab = read!(words)
 
@@ -1054,7 +1098,7 @@ const boundsValueFns = boundsElixirHelpers + `
     # A fixed zero-width array with no following payload: the body is the
     # reference bit, the elements and the terminator, so fewer bits remain than
     # the announced count. The run is damage, not a list.
-    words = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>)
+    words = entry(UNKNOWN_ID, <<14>> <> leb(9) <> leb(9) <> <<0>>)
     vocab = read!(words)
 
     case M.save_messages(vocab, [[{1, nine}]]) do
@@ -1068,14 +1112,15 @@ const boundsValueFns = boundsElixirHelpers + `
         check(false, "fixed nine save #{inspect_small(other)}")
     end
 
-    # The same run followed by a field whose bits back it loads exactly.
-    backed = entry(0x1000, <<14>> <> leb(9) <> leb(9) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+    # The same run followed by a field whose bits back it loads: the run is
+    # stepped over whole and the field after it reads exactly.
+    backed = entry(UNKNOWN_ID, <<14>> <> leb(9) <> leb(9) <> <<0>>) <> entry(COUNT_ID, <<6, 0>>)
     backed_vocab = read!(backed)
 
     case M.save_messages(backed_vocab, [[{1, nine}, {2, 7}]]) do
       {:ok, batch} ->
         case M.load_messages(backed_vocab, batch) do
-          {:ok, [[{1, ^nine}, {2, 7}]]} -> :ok
+          {:ok, [[{2, 7}]]} -> :ok
           other -> check(false, "fixed nine backed run #{inspect_small(other)}")
         end
 
@@ -1087,7 +1132,7 @@ const boundsValueFns = boundsElixirHelpers + `
     # writes 1 ref bit + 4 count bits + 1 terminator bit + 2 pad bits =
     # <<2, 0, 19>>: only 3 bits remain after the count, fewer than the nine
     # announced elements, so the run is damage.
-    bounded = read!(entry(0x1000, <<14>> <> leb(0) <> leb(9) <> <<0>>))
+    bounded = read!(entry(UNKNOWN_ID, <<14>> <> leb(0) <> leb(9) <> <<0>>))
 
     case M.save_messages(bounded, [[{1, nine}]]) do
       {:ok, <<2, 0, 19>>} ->
@@ -1102,14 +1147,14 @@ const boundsValueFns = boundsElixirHelpers + `
 
     # Followed by a field whose bits back it, the same bounded run loads.
     bounded_backed =
-      entry(0x1000, <<14>> <> leb(0) <> leb(9) <> <<0>>) <> entry(0x1001, <<6, 0>>)
+      entry(UNKNOWN_ID, <<14>> <> leb(0) <> leb(9) <> <<0>>) <> entry(COUNT_ID, <<6, 0>>)
 
     bounded_vocab = read!(bounded_backed)
 
     case M.save_messages(bounded_vocab, [[{1, nine}, {2, 7}]]) do
       {:ok, batch} ->
         case M.load_messages(bounded_vocab, batch) do
-          {:ok, [[{1, ^nine}, {2, 7}]]} -> :ok
+          {:ok, [[{2, 7}]]} -> :ok
           other -> check(false, "bounded nine backed run #{inspect_small(other)}")
         end
 
@@ -1120,21 +1165,23 @@ const boundsValueFns = boundsElixirHelpers + `
 
   defp declared_capacity_above_budget do
     # vocab.max_bytes bounds the announcement's bytes, not an array's element
-    # count: a run above the 65_536-byte default is materialized when the bits
-    # the batch still holds back it.
+    # count: a run above the 65_536-byte default is read when the bits the
+    # batch still holds back it. Both entries are ones Probe does not declare
+    # (a zero-width element, and text past Probe's own string(64)), so the
+    # batch reads stepping over both.
     n = 70_000
     names = List.duplicate(:name, n)
     text = :binary.copy(<<65>>, n)
 
     words =
-      entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>) <> entry(0x1001, <<12>> <> leb(n))
+      entry(UNKNOWN_ID, <<14>> <> leb(n) <> leb(n) <> <<0>>) <> entry(UNKNOWN2_ID, <<12>> <> leb(n))
 
     vocab = read!(words)
 
     case M.save_messages(vocab, [[{1, names}, {2, text}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
-          {:ok, [[{1, got}, {2, ^text}]]} when length(got) == n -> :ok
+          {:ok, [[]]} -> :ok
           other -> check(false, "declared zero-width capacity shrank #{inspect_small(other)}")
         end
 
@@ -1146,14 +1193,14 @@ const boundsValueFns = boundsElixirHelpers + `
     # not only when min equals max.
     bounded =
       read!(
-        entry(0x1000, <<14>> <> leb(0) <> leb(n) <> <<0>>) <>
-          entry(0x1001, <<12>> <> leb(n))
+        entry(UNKNOWN_ID, <<14>> <> leb(0) <> leb(n) <> <<0>>) <>
+          entry(UNKNOWN2_ID, <<12>> <> leb(n))
       )
 
     case M.save_messages(bounded, [[{1, names}, {2, text}]]) do
       {:ok, batch} ->
         case M.load_messages(bounded, batch) do
-          {:ok, [[{1, got}, {2, ^text}]]} when length(got) == n -> :ok
+          {:ok, [[]]} -> :ok
           other -> check(false, "bounded zero-width capacity shrank #{inspect_small(other)}")
         end
 
@@ -1166,7 +1213,7 @@ const boundsValueFns = boundsElixirHelpers + `
 
 const boundsDescendingFn = boundsElixirHelpers + `
   defp descending_control do
-    words = entry(0x1000, <<12>> <> leb(15)) <> entry(0x1001, <<6, 0>>)
+    words = entry(TEXT_ID, <<12>> <> leb(15)) <> entry(COUNT_ID, <<6, 0>>)
     vocab = read!(words)
 
     try do
@@ -1197,7 +1244,7 @@ const boundsDescendingFn = boundsElixirHelpers + `
 
 const boundsCountFn = boundsElixirHelpers + `
   defp count_control do
-    words = entry(0x1000, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>)
+    words = entry(UNKNOWN_ID, <<14>> <> leb(0xFFFFFFFF) <> leb(0xFFFFFFFF) <> <<0>>)
     vocab = read!(words)
 
     try do
@@ -1233,14 +1280,14 @@ const boundsDeclaredFn = boundsElixirHelpers + `
     text = :binary.copy(<<65>>, n)
 
     words =
-      entry(0x1000, <<14>> <> leb(n) <> leb(n) <> <<0>>) <> entry(0x1001, <<12>> <> leb(n))
+      entry(UNKNOWN_ID, <<14>> <> leb(n) <> leb(n) <> <<0>>) <> entry(UNKNOWN2_ID, <<12>> <> leb(n))
 
     vocab = read!(words)
 
     case M.save_messages(vocab, [[{1, names}, {2, text}]]) do
       {:ok, batch} ->
         case M.load_messages(vocab, batch) do
-          {:ok, [[{1, got}, {2, ^text}]]} when length(got) == n ->
+          {:ok, [[]]} ->
             IO.puts(:stderr, "control did not restore the declared capacity cap: #{inspect_small({:ok, batch})}")
 
           _ ->

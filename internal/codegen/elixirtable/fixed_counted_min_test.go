@@ -64,7 +64,7 @@ func TestFixedCountedArrayHoldsMinEmitted(t *testing.T) {
 		all.Write(src)
 	}
 	text := all.String()
-	if !strings.Contains(text, ", 2, 4)") || !strings.Contains(text, "R.clamps(c, n_") {
+	if !strings.Contains(text, "R.held_count(c, n_vals, 2, 4)") {
 		t.Errorf("the fixed reader does not hold a [2..4] count to [2, 4]")
 	}
 	if strings.Contains(text, ", 0, 4)") {

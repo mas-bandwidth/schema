@@ -48,15 +48,15 @@ table VarTightCount { nest [1..4]CountChild }
 
 	// the child's own decode holds its count to its declared [2..4]
 	child := elixirDefBody(t, fixed, "def count_child_fixed_decode(\n")
-	if !strings.Contains(child, "R.clamps(c, n_vals, 2, 4)") {
+	if !strings.Contains(child, "R.held_count(c, n_vals, 2, 4)") {
 		t.Errorf("CountChild's fixed decode does not hold vals to [2, 4]:\n%s", child)
 	}
 
 	// each parent holds its own count to its own bounds and walks the child's
 	// decode, whatever minimum the parent itself declares
 	for _, p := range []struct{ fn, own string }{
-		{"def fixed_loose_count_fixed_decode(\n", "R.clamps(c, n_nest, 0, 4)"},
-		{"def fixed_tight_count_fixed_decode(\n", "R.clamps(c, n_nest, 1, 4)"},
+		{"def fixed_loose_count_fixed_decode(\n", "R.held_count(c, n_nest, 0, 4)"},
+		{"def fixed_tight_count_fixed_decode(\n", "R.held_count(c, n_nest, 1, 4)"},
 	} {
 		body := elixirDefBody(t, fixed, p.fn)
 		if !strings.Contains(body, p.own) {

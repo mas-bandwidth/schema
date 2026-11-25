@@ -32,7 +32,7 @@ var luauModuleKeys = map[string][]string{
 	"schema_cookread.luau":  {"Check", "CheckWhole", "layout", "open"},
 	"schema_fixed.luau":     {"check", "fixed_layout", "load", "loadWalk", "read", "readInto", "save"},
 	"schema_json.luau":      {"FromJson", "FromJsonInto", "fromJsonWalk", "SetFlags", "ToJson"},
-	"schema_load.luau":      {"ReadStrict", "ReadStrictVariable", "load", "loadInto", "loadWalk", "resetReport", "resetWalkCount", "walkCount"},
+	"schema_load.luau":      {"ReadStrict", "ReadStrictVariable", "judgeWalk", "load", "loadInto", "loadWalk", "resetReport", "resetWalkCount", "walkCount", "walkUnjudged"},
 	"schema_message.luau": {
 		"AnnounceRead", "LoadMessages", "LoadMessagesInto", "loadMessagesWalk", "MeasureMessages", "NewVocabulary", "SaveMessages",
 		"announceRead",

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3161.
+Unit tests every language answers: 2. Language-free tests: 3163.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -57,6 +57,16 @@ generated source compiles and is clean.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.codegen.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:125` |
+
+### Type `name-check`
+
+a schema's names are accepted or refused by the name checker.
+
+#### `name-check` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.name-check.goosetable.goose-table-names-meet-the-wire-parts-names` | `gotest` | Go test TestGooseTableNamesMeetTheWirePartsNames in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseTableNamesMeetTheWirePartsNames` | the Go test passes | `internal/codegen/goosetable/names_test.go:290` |
 
 ### Type `fuzz`
 
@@ -2492,7 +2502,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:` |
 | `none.unit.tooling.gotestrun.the-wrapper-keeps-the-exit-and-under-red-only-one-is-red` | `gotest` | Go test TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheWrapperKeepsTheExitAndUnderRedOnlyOneIsRed` | the Go test passes | `tools/gotestrun/main_test.go:167` |
 
-#### `tooling` family `harness`, 346 tests
+#### `tooling` family `harness`, 347 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2652,6 +2662,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.harness.message-fuzz-dead-roots-are-red` | `gotest` | Go test TestMessageFuzzDeadRootsAreRed in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessageFuzzDeadRootsAreRed` | the Go test passes | `test/conformance/harness/messagefuzz_dead_test.go:8` |
 | `none.unit.tooling.harness.message-fuzz-detects-sabotaged-driver` | `gotest` | Go test TestMessageFuzzDetectsSabotagedDriver in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessageFuzzDetectsSabotagedDriver` | the Go test passes | `test/conformance/harness/messagefuzz_test.go:91` |
 | `none.unit.tooling.harness.message-fuzz-pack-unpack-and-oracle` | `gotest` | Go test TestMessageFuzzPackUnpackAndOracle in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessageFuzzPackUnpackAndOracle` | the Go test passes | `test/conformance/harness/messagefuzz_test.go:15` |
+| `none.unit.tooling.harness.message-fuzz-units-cut-is-the-slice` | `gotest` | Go test TestMessageFuzzUnitsCutIsTheSlice in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessageFuzzUnitsCutIsTheSlice` | the Go test passes | `test/conformance/harness/messagefuzz_units_test.go:17` |
 | `none.unit.tooling.harness.message-noncanonical-purpose-shapes` | `gotest` | Go test TestMessageNoncanonicalPurposeShapes in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessageNoncanonicalPurposeShapes` | the Go test passes | `test/conformance/harness/framing_purpose_spelling_test.go:351` |
 | `none.unit.tooling.harness.message-prior-scoring` | `gotest` | Go test TestMessagePriorScoring in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessagePriorScoring` | the Go test passes | `test/conformance/harness/messageprior_test.go:235` |
 | `none.unit.tooling.harness.message-prior-writer-is-ranges-apart` | `gotest` | Go test TestMessagePriorWriterIsRangesApart in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestMessagePriorWriterIsRangesApart` | the Go test passes | `test/conformance/harness/messageprior_test.go:33` |

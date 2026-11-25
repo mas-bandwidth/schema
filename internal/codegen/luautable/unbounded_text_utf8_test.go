@@ -108,15 +108,22 @@ func TestLuauUnboundedTextIsValidatedAsText(t *testing.T) {
 }
 
 // TestLuauUnboundedTextUTF8NegativeControl removes the field path's check from
-// the emitted load and requires exactly the optional-element rows to turn: the
-// list element and key paths keep their own checks.
+// the emitted load, and the walk's share of the strict read's wire-alone
+// judgement that also refuses ill-formed text (judgeWalk; docs/SPEC-TABLES.md
+// §6.5), and requires exactly the optional-element rows to turn: the list
+// element and key paths keep their own checks.
 func TestLuauUnboundedTextUTF8NegativeControl(t *testing.T) {
 	t.Parallel()
 	const anchor = "\t\tif not utf8_ok(r.b, r.at, n) then\n\t\t\t-- ILL-FORMED TEXT IS DAMAGE at any bound"
+	const judge = "if res ~= nil and judged ~= nil and wireAloneRefuses(judged, report) then"
 	got, want := unboundedUTF8Answers(t, func(s string) string {
 		if strings.Count(s, anchor) != 1 {
 			t.Fatalf("the unbounded text check is not in the emitted load exactly once")
 		}
+		if strings.Count(s, judge) != 1 {
+			t.Fatalf("the walk's wire-alone judgement is not in the emitted load exactly once")
+		}
+		s = strings.Replace(s, judge, "if false then", 1)
 		return strings.Replace(s, anchor, "\t\tif false then\n\t\t\t-- ILL-FORMED TEXT IS DAMAGE at any bound", 1)
 	})
 	var red []string

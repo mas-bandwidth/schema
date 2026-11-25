@@ -549,7 +549,9 @@ end
 -- tableFixedChildrenNamed).
 local function children_named(w, r)
   local named = {}
-  for _, c in ipairs(r.children) do named[c.id] = true end
+  for _, c in ipairs(r.children) do
+    named[c.id] = true
+  end
   for _, c in ipairs(w.children) do
     if not named[c.id] then return false end
   end
@@ -573,7 +575,9 @@ local lawful_pair
 local function lawful_table(T, desc, w, r)
   if not children_named(w, r) then return "layout_malformed" end
   local wById = {}
-  for _, c in ipairs(w.children) do wById[c.id] = c end
+  for _, c in ipairs(w.children) do
+    wById[c.id] = c
+  end
   local dById = {}
   if desc ~= nil then
     for _, f in ipairs(desc.fields) do
@@ -658,7 +662,6 @@ lawful_pair = function(T, d, w, r)
   if w.size ~= r.size and not (w.size < r.size and r.size <= 8) then return "layout_malformed" end
   return nil
 end
-
 
 local function compat_old(d, node)
   if d == nil or node == nil then return false end

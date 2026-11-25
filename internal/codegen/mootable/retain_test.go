@@ -174,7 +174,8 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 
 // TestMooRetainAnswersTheManifest answers every `retain` row of the tables
 // manifest (docs/SPEC-TABLES.md §6.6; FORMAT.md) under the one strict read:
-// every row is readable, so the retaining load answers the whole value at the
+// a row pinned `refused` is refused by both engines, and every other row is
+// readable, so the retaining load answers the whole value at the
 // row's capacities (`short` is one byte under what a `full` load used), and
 // the save is the pinned file byte for byte. Each row is also held to the Go
 // reference engine (internal/tablewire DecodeRetain, EncodeRetain) at the same
@@ -188,7 +189,7 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 		t.Fatal("the manifest names no retain row")
 	}
 	cache := map[string]*generatedUnit{}
-	pinned := 0
+	pinned, refused := 0, 0
 	for _, row := range rows {
 		g := cache[row.unit]
 		if g == nil {
@@ -211,6 +212,20 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 			capacity = mooRetain(t, g, row.root, wire, retainFull, ids).used - 1
 		}
 		got := mooRetain(t, g, row.root, wire, capacity, ids)
+		// A row whose last field is `refused` is a refused retaining load
+		// (FORMAT.md; test/conformance/harness/manifest.go RetainCase.Refused):
+		// the one strict read refuses it, moo and the Go engine alike, and the
+		// verdict alone is compared (docs/rulings.json refusal-verdict-only).
+		if row.saves == "refused" {
+			if got.value {
+				t.Errorf("%s: the row pins a refusal and moo's retaining load read it: %v", row.caseName, got)
+			}
+			if oracle := goRetain(t, g.unit, row.root, wire, capacity, ids); oracle.value {
+				t.Errorf("%s: the row pins a refusal and the Go engine read it: %v", row.caseName, oracle)
+			}
+			refused++
+			continue
+		}
 		if !got.value || got.saveErr != "" {
 			t.Errorf("%s: the read refused a readable row, or the save failed: value=%v %s", row.caseName, got.value, got.saveErr)
 			continue
@@ -231,6 +246,9 @@ func TestMooRetainAnswersTheManifest(t *testing.T) {
 	}
 	if pinned == 0 {
 		t.Fatal("no retain row pins a save")
+	}
+	if refused == 0 {
+		t.Fatal("no retain row pins a refusal")
 	}
 }
 
