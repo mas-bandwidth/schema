@@ -422,7 +422,11 @@ jobs:
           set -euo pipefail
           go vet ./...
           make deps
-          go test ./...
+          # tools/namebuild's per-target tests are the registry's nightly
+          # name-buildability rows (schema-test-nightly.yml); its other tests
+          # run here, chosen at the root by name
+          go test $(go list ./... | grep -v '/tools/namebuild$')
+          sel=$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$sel" ./tools/namebuild
           go test ./internal/fuzz/
 
       - name: the committed generated/ tree is what this compiler emits, from an empty directory
