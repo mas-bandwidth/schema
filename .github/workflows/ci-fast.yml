@@ -3282,9 +3282,11 @@ jobs:
   # harness jobs above keep running until the registry covers what they run.
   # THE pr GROUP, ONE LANGUAGE PER ROW (docs/TEST-REGISTRY.md, "CI"). Every
   # pull request runs every ready test (`--group pr`), whatever it touched:
-  # each row is the group narrowed to one language (`--lang`), so the rows
-  # together are the group exactly, and "none" is the language-free tests
-  # (its row also holds the coverage matrix and extract). The rows are the
+  # each row is the group narrowed to one language (`--lang`). The "none" row
+  # runs no tests: it holds the coverage matrix and extract, and the
+  # language-free tests run in schema-test-pr's shards (`--lang none
+  # --shard`), so these rows and those shards together are the group
+  # exactly. The rows are the
   # registry's (plan's `schema-test langs --ready`). A row builds only its
   # own leg (the corpus adapter's `make conformance-leg-<lang>`), so it fits
   # the two-minute cap on its own. The toolchain a row needs is its
@@ -3339,6 +3341,7 @@ jobs:
             go run ./tools/schema-test extract --since "$RUNNER_TEMP/main-tree"
           fi
       - name: the pinned sibling runtimes the leg builds against
+        if: matrix.lang != 'none'
         env:
           LANG_ROW: ${{ matrix.lang }}
         run: |
@@ -3354,9 +3357,9 @@ jobs:
             js)       git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js ;;
           esac
       - uses: ./.github/actions/dist-pins
-        if: matrix.lang == 'lua' || matrix.lang == 'luau' || matrix.lang == 'goose' || matrix.lang == 'lobster' || matrix.lang == 'none'
+        if: matrix.lang == 'lua' || matrix.lang == 'luau' || matrix.lang == 'goose' || matrix.lang == 'lobster'
         with:
-          pins: ${{ matrix.lang == 'none' && 'lua' || matrix.lang }}
+          pins: ${{ matrix.lang }}
       - uses: ./.github/actions/python
         if: matrix.lang == 'python'
       - uses: ./.github/actions/ruby

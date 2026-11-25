@@ -208,8 +208,11 @@ func (s *scan) workflowJobs(files []string) {
 }
 
 // driverRun is the command a workflow job runs the registry with: one of
-// the driver's verbs that runs or holds the registry's tests.
-var driverRun = regexp.MustCompile(`go run \./tools/schema-test (run|coverage|extract)\b`)
+// the driver's verbs that runs or holds the registry's tests, spelled the
+// one way the workflows spell it (`go run ./tools/schema-test <verb>`, the
+// verb first); a job that runs the driver any other way is counted as a
+// job of its own, so the miscount is loud, never silent.
+var driverRun = regexp.MustCompile(`go run \./tools/schema-test/? (run|coverage|extract)\b`)
 
 // dataCases emits each line of a .jsonl file and each other data file,
 // files that share a stem in one directory (case.in, case.out) being one

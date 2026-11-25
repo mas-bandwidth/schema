@@ -119,3 +119,89 @@ func TestThePRShardsFitTheirJobs(t *testing.T) {
 		t.Errorf("a matrix with a shard missing passed: %v", p)
 	}
 }
+
+// jobText is one job of a workflow: its lines from "  <name>:" to the next
+// job's key.
+func jobText(workflow, name string) (string, bool) {
+	_, rest, ok := strings.Cut(workflow, "\n  "+name+":\n")
+	if !ok {
+		return "", false
+	}
+	if loc := regexp.MustCompile(`\n  [A-Za-z0-9_-]+:\n`).FindStringIndex(rest); loc != nil {
+		rest = rest[:loc[0]]
+	}
+	return rest, true
+}
+
+// prLangFreeRun and prPerLangRun are the two halves of the pr group in
+// ci-fast.yml: the shards run its language-free part, and the schema-test
+// job one ready language per row, its "none" row running no tests.
+const (
+	prLangFreeRun = `go run ./tools/schema-test run --group pr --lang none --shard "$SHARD"`
+	prPerLangRun  = `go run ./tools/schema-test run --group pr --lang "$LANG_ROW"`
+	prPerLangSkip = `if: matrix.lang != 'none'`
+)
+
+// prJobsSplit holds ci-fast.yml's two pr jobs to the split: schema-test-pr
+// runs the group's language-free part by shard, and the schema-test job's
+// run of the group leaves its "none" row to the shards. Either one missing
+// runs a part of the group twice or not at all.
+func prJobsSplit(workflow string) []string {
+	var problems []string
+	shards, ok := jobText(workflow, "schema-test-pr")
+	switch {
+	case !ok:
+		problems = append(problems, "ci-fast.yml has no schema-test-pr job")
+	case strings.Count(shards, prLangFreeRun) != 1:
+		problems = append(problems, "schema-test-pr does not run `"+prLangFreeRun+"` once: its shards are cut over the group's language-free part only")
+	}
+	perLang, ok := jobText(workflow, "schema-test")
+	if !ok {
+		return append(problems, "ci-fast.yml has no schema-test job")
+	}
+	at := strings.Index(perLang, prPerLangRun)
+	if at < 0 || strings.Count(perLang, prPerLangRun) != 1 {
+		return append(problems, "the schema-test job does not run `"+prPerLangRun+"` once")
+	}
+	// the step holding the run starts at the last "- name:" before it, and
+	// its guard is a line of the step's own
+	start := strings.LastIndex(perLang[:at], "      - name:")
+	if start < 0 {
+		return append(problems, "the schema-test job's run of the pr group is not in a named step")
+	}
+	if !regexp.MustCompile(`(?m)^        ` + regexp.QuoteMeta(prPerLangSkip) + `$`).MatchString(perLang[start:at]) {
+		problems = append(problems, "the schema-test job's run of the pr group has no `"+prPerLangSkip+"`: its none row would run the language-free tests the shards run")
+	}
+	return problems
+}
+
+// TestThePRJobsSplitTheGroupByLanguage: the pr group runs once, in two
+// halves: schema-test-pr's shards run its language-free part, and the
+// schema-test job one row per ready language, leaving none to the shards.
+// The plants are the shards without --lang none and the per-language run
+// without its none guard: each is red by name.
+func TestThePRJobsSplitTheGroupByLanguage(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../.github/workflows/ci-fast.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(data)
+	if p := prJobsSplit(wf); len(p) > 0 {
+		t.Fatalf("ci-fast.yml's pr jobs:\n  %s", strings.Join(p, "\n  "))
+	}
+	whole := strings.Replace(wf, prLangFreeRun, `go run ./tools/schema-test run --group pr --shard "$SHARD"`, 1)
+	if p := prJobsSplit(whole); !strings.Contains(strings.Join(p, "\n"), "schema-test-pr does not run") {
+		t.Errorf("shards over the whole group passed: %v", p)
+	}
+	// the guard of the run's own step: the last one before the run
+	guard := "        " + prPerLangSkip + "\n"
+	g := strings.LastIndex(wf[:strings.Index(wf, prPerLangRun)], guard)
+	if g < 0 {
+		t.Fatalf("the plant found no `%s` line to remove", prPerLangSkip)
+	}
+	twice := wf[:g] + wf[g+len(guard):]
+	if p := prJobsSplit(twice); !strings.Contains(strings.Join(p, "\n"), "has no `"+prPerLangSkip+"`") {
+		t.Errorf("a per-language job whose none row runs the group passed: %v", p)
+	}
+}
