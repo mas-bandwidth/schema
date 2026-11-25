@@ -396,8 +396,10 @@ func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 // committed files it reads and the driver each language answers it with, and
 // those data cases and drivers count as the registry's: a file by its
 // directory and stem (x.in and x.out are the case x), a driver for every
-// language the registry lists. A language-free row's inputs index nothing,
-// and a data case no row reads is still unmoved.
+// language that answers the row. A language-free row's inputs index nothing,
+// and a data case no row reads is still unmoved. Only what runs counts: the
+// driver of a language with no adapter is unmoved, and a row no ready
+// language answers (none has an adapter, or each owes it) indexes nothing.
 func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	t.Parallel()
 	res := &Result{Items: []Item{
@@ -408,9 +410,10 @@ func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	}}
 	row := testreg.Test{Key: "roundtrip.conformance-wire.x", Inputs: []byte(`{"surface":"wire","case":"x","files":["testdata/corpus/x.in","testdata/corpus/x.out"],"driver":"test/conformance/{lang}/driver"}`)}
 	free := testreg.Test{Key: "tooling.t.y", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./t","test":"TestY","files":["testdata/corpus/y.in"]}`)}
-	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}, {Name: "ww"}}, Tests: []testreg.Test{row}}
-	// a driver is claimed for every language listed; ww has none on disk,
-	// so its claim matches nothing
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}, {Name: "ww", Adapter: "corpus"}, {Name: "qq"}}, Tests: []testreg.Test{row}}
+	// a driver is claimed for every ready language; ww has none on disk, so
+	// its claim matches nothing, and qq has no adapter, so its driver is not
+	// claimed (planted: claim it, and the ledger's qq line is red)
 	got := Indexed(reg)
 	if len(got) != 3 || got[res.Items[0].ID()] != row.Key || got[res.Items[2].ID()] != row.Key || got[res.Items[3].ID()] != "" {
 		t.Fatalf("indexed %v, want the case x and the zz and ww drivers", got)
@@ -426,6 +429,11 @@ func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	reg.Tests = append(reg.Tests, free)
 	if got := Indexed(reg); len(got) != 3 {
 		t.Fatalf("a language-free row indexed files: %v", got)
+	}
+	// no ready language answers it: it indexes nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}, {Name: "qq"}}, Tests: []testreg.Test{row}}
+	if got := Indexed(idle); len(got) != 0 {
+		t.Fatalf("a row no adapter answers indexed %v", got)
 	}
 }
 

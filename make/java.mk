@@ -2235,6 +2235,7 @@ test-java: build/mustrun toolchain-java generated/java/.stamp generated/java-lud
 
 TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java
+CONFORMANCE_LEG_java := build-conformance-java
 TOOLCHAIN_PINS_java := JAVA JAVAC
 CONFORMANCE_LEGS   += $(call unless_skipped,java,build-conformance-java)
 REGISTRY_NA        += bench-tables:java goldens:java

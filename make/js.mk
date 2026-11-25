@@ -1369,6 +1369,7 @@ test-js-packet: build/mustrun toolchain-js generated/js/.stamp generated/js-ludi
 
 TEST_LEGS         += test-js
 TOOLCHAIN_LEGS    += js
+CONFORMANCE_LEG_js := build/tables-generated-js/.stamp
 TOOLCHAIN_PINS_js  := NODE ESLINT
 CONFORMANCE_LEGS  += $(call unless_skipped,js,build/tables-generated-js/.stamp)
 REGISTRY_NA       += bench-tables:js goldens:js

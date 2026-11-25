@@ -93,8 +93,10 @@ func usage() {
              verify FromJson verdict, canonical ToJson, Save wire, and
              Load(wire) -> ToJson across matching drivers in two batched calls.
   registry-rows
-             print every case of every surface as a test registry row
-             (adapter.go); test/registry/registry.jsonl holds exactly these.
+             print every case of every surface as a test registry row,
+             then an owed line for each case retain-refusal-owed.txt
+             ledgers (adapter.go); test/registry/registry.jsonl holds
+             exactly these.
 
   adapter    the test registry's corpus harness (docs/TEST-REGISTRY.md): read
              request lines on stdin, run --lang's leg over every surface as
@@ -347,7 +349,11 @@ func main() {
 		if err != nil {
 			fatalf("%v", err)
 		}
-		if err := writeRegistryRows(os.Stdout, rows); err != nil {
+		owed, err := corpusOwed(*manifest, m, rows)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeRegistryRows(os.Stdout, rows, owed); err != nil {
 			fatalf("%v", err)
 		}
 	case "adapter":

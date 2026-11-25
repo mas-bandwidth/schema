@@ -459,6 +459,7 @@ conformance-negative-control-lua-absent: toolchain-lua build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the lua $$s surface did not go red"; cat build/lua-absent-control/log; exit 1; }; done
 	@echo "conformance-negative-control-lua-absent: dropping <case>.absent and the refusal answer turns [$$(grep -oE '^ *lua / [a-z-]+' build/lua-absent-control/log | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')] red"
 
+CONFORMANCE_LEG_lua := build/conformance-lua
 TEST_LEGS         += test-lua
 CONFORMANCE_LEGS  += $(call unless_skipped,lua,build/conformance-lua)
 BENCH_TABLES_LEGS += generated/bench/tables/lua/.stamp

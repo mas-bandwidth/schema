@@ -343,7 +343,7 @@ _conformance-corpus-java: toolchain-java build/conformance-harness build-conform
 	@rm -rf build/verify/conformance-corpus-java && mkdir -p build/verify/conformance-corpus-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-corpus-java --results $(VERIFY_RESULTS_DIR)/java.json
 
-_conformance-corpus-dart: toolchain-dart build/conformance-harness build/conformance-dart
+_conformance-corpus-dart: toolchain-dart build/conformance-harness build/conformance-dart build/conformance-dart-asserts.dill
 	@rm -rf build/verify/conformance-corpus-dart && mkdir -p build/verify/conformance-corpus-dart $(VERIFY_RESULTS_DIR)
 	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-corpus-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 

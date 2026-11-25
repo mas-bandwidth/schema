@@ -124,6 +124,12 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // (the extract's own rule, dataCases), and a driver as the driver directory
 // it sits in. Many rows read one file, so this is a set, not a claim each row
 // owns.
+//
+// Only what runs counts: a row indexes its files only when some language
+// answers it (a ready language, one with an adapter, that neither owes it nor
+// declares it unrepresentable), and its driver only for those languages. A
+// row no adapter answers, and the driver of a language with no adapter, stay
+// unmoved.
 func Indexed(reg *testreg.Registry) map[string]string {
 	out := map[string]string{}
 	claim := func(id, key string) {
@@ -142,6 +148,17 @@ func Indexed(reg *testreg.Registry) map[string]string {
 		if err := json.Unmarshal(t.Inputs, &in); err != nil {
 			continue // inputs that are not an object index nothing
 		}
+		var answering []string
+		for _, l := range reg.Langs {
+			_, owed := reg.OwedBy(t.Key, l.Name)
+			_, unrep := reg.Unrepresentable(t.Key, l.Name)
+			if l.Ready() && !owed && !unrep {
+				answering = append(answering, l.Name)
+			}
+		}
+		if len(answering) == 0 {
+			continue // no language runs it: what it reads is not yet the registry's
+		}
 		for _, f := range in.Files {
 			dir, name := path.Split(f)
 			if strings.HasSuffix(name, ".jsonl") || name == "" {
@@ -154,8 +171,8 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), t.Key)
 		}
 		if in.Driver != "" {
-			for _, l := range reg.Langs {
-				dir := path.Dir(strings.ReplaceAll(in.Driver, "{lang}", l.Name))
+			for _, l := range answering {
+				dir := path.Dir(strings.ReplaceAll(in.Driver, "{lang}", l))
 				claim(Item{Kind: KindDriver, Dir: dir, Name: path.Base(dir)}.ID(), t.Key)
 			}
 		}

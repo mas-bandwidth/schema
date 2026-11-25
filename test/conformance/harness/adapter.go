@@ -336,16 +336,71 @@ func filesOf(files map[string][]string, name string) []string {
 	return nil
 }
 
-// writeRegistryRows prints the rows, one JSON line each.
-func writeRegistryRows(w io.Writer, rows []corpusRow) error {
-	var b bytes.Buffer
+// corpusOwedRow is a registry owed line (docs/TEST-REGISTRY.md): a case a
+// language does not answer yet, so its instance is MISSING, red in the
+// nightly and out of the pr group.
+type corpusOwedRow struct {
+	Rec    string `json:"rec"`
+	Test   string `json:"test"`
+	Lang   string `json:"lang"`
+	Reason string `json:"reason"`
+}
+
+// corpusOwed is the registry's owed lines for the corpus: exactly the
+// harness's own retain-refusal ledger (retain-refusal-owed.txt beside the
+// manifest), one line per leg and case, with the ledger's cause as the reason.
+// The ledger stays the one list, and TestTheRegistryHoldsEveryConformanceCase
+// holds the registry to it. A ledgered case with no row is an error.
+func corpusOwed(manifestPath string, m *Manifest, rows []corpusRow) ([]corpusOwedRow, error) {
+	ledger, err := loadRetainRefusalLedger(manifestPath, m)
+	if err != nil {
+		return nil, err
+	}
+	keys := map[string]string{}
 	for _, r := range rows {
-		line, err := json.Marshal(r)
+		if r.Inputs.Surface == "retain-refusal" {
+			keys[r.Inputs.Case] = r.Key
+		}
+	}
+	var out []corpusOwedRow
+	for legCase, why := range ledger {
+		leg, name, _ := strings.Cut(legCase, " ")
+		key, ok := keys[name]
+		if !ok {
+			return nil, fmt.Errorf("%s owes %s for %s, and the corpus has no retain-refusal row %s", RetainRefusalOwed, name, leg, name)
+		}
+		out = append(out, corpusOwedRow{Rec: "owed", Test: key, Lang: leg, Reason: "owed in " + RetainRefusalOwed + ": " + why})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Lang != out[j].Lang {
+			return out[i].Lang < out[j].Lang
+		}
+		return out[i].Test < out[j].Test
+	})
+	return out, nil
+}
+
+// writeRegistryRows writes the rows, then the owed lines, one JSON line each.
+func writeRegistryRows(w io.Writer, rows []corpusRow, owed []corpusOwedRow) error {
+	var b bytes.Buffer
+	add := func(v any) error {
+		line, err := json.Marshal(v)
 		if err != nil {
 			return err
 		}
 		b.Write(line)
 		b.WriteByte('\n')
+		return nil
+	}
+	for _, r := range rows {
+		if err := add(r); err != nil {
+			return err
+		}
+	}
+	for _, o := range owed {
+		if err := add(o); err != nil {
+			return err
+		}
 	}
 	_, err := w.Write(b.Bytes())
 	return err

@@ -1300,6 +1300,7 @@ test-cs: build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/b
 
 TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
+CONFORMANCE_LEG_cs := build-conformance-cs build-cs-cook
 TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp

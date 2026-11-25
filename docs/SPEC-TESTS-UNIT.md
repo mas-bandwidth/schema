@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 89.
+Unit tests every language answers: 0. Language-free tests: 91.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -23,7 +23,13 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `corpus-adapter`, 7 tests
+#### `tooling` family `ci`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.ci.every-port-names-its-conformance-leg-build` | `gotest` | Go test TestEveryPortNamesItsConformanceLegBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPortNamesItsConformanceLegBuild` | the Go test passes | `internal/ci/conformance_leg_build_test.go:59` |
+
+#### `tooling` family `corpus-adapter`, 8 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -32,6 +38,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.corpus-adapter.the-corpus-adapter-answers-every-request-once` | `gotest` | Go test TestTheCorpusAdapterAnswersEveryRequestOnce in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterAnswersEveryRequestOnce` | the Go test passes | `test/conformance/harness/adapter_test.go:91` |
 | `none.unit.tooling.corpus-adapter.the-corpus-adapter-gives-each-case-its-verdict` | `gotest` | Go test TestTheCorpusAdapterGivesEachCaseItsVerdict in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterGivesEachCaseItsVerdict` | the Go test passes | `test/conformance/harness/adapter_test.go:24` |
 | `none.unit.tooling.corpus-adapter.the-corpus-adapter-refuses-a-request-it-cannot-read` | `gotest` | Go test TestTheCorpusAdapterRefusesARequestItCannotRead in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterRefusesARequestItCannotRead` | the Go test passes | `test/conformance/harness/adapter_test.go:75` |
+| `none.unit.tooling.corpus-adapter.the-corpus-owes-exactly-the-harness-ledger` | `gotest` | Go test TestTheCorpusOwesExactlyTheHarnessLedger in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusOwesExactlyTheHarnessLedger` | the Go test passes | `test/conformance/harness/adapter_test.go:254` |
 | `none.unit.tooling.corpus-adapter.the-registry-check-goes-red-on-each-drift` | `gotest` | Go test TestTheRegistryCheckGoesRedOnEachDrift in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRegistryCheckGoesRedOnEachDrift` | the Go test passes | `test/conformance/harness/adapter_test.go:225` |
 | `none.unit.tooling.corpus-adapter.the-registry-holds-every-conformance-case` | `gotest` | Go test TestTheRegistryHoldsEveryConformanceCase in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRegistryHoldsEveryConformanceCase` | the Go test passes | `test/conformance/harness/adapter_test.go:144` |
 

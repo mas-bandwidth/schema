@@ -51,10 +51,27 @@ local readBytes = function(path) {
   return b;
 };
 
+// ONE BYTE AS A ONE-CHARACTER STRING, made once: format("%c") per byte
+// was most of a surface's time.
+local byteChars = array(256);
+for (local i = 0; i < 256; i++) byteChars[i] = format("%c", i);
+
+// A FILE AS A STRING, built in 4096-byte chunks. sq's string concatenation
+// and format() share one scratch pad that grows for a long result and
+// halves for a short one, so appending byte by byte to the whole manifest
+// (about 200 KB) reallocated the pad twice per byte: about 10 s of kernel
+// time on every surface. A chunk stays short, and the long string grows
+// once per chunk.
 local readText = function(path) {
   local b = readBytes(path);
+  local n = b.len();
   local s = "";
-  for (local i = 0; i < b.len(); i++) s += format("%c", b[i] & 0xff);
+  for (local at = 0; at < n; at += 4096) {
+    local end = at + 4096 < n ? at + 4096 : n;
+    local chunk = "";
+    for (local i = at; i < end; i++) chunk += byteChars[b[i] & 0xff];
+    s += chunk;
+  }
   return s;
 };
 

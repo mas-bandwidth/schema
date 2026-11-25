@@ -230,6 +230,7 @@ build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.
 		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_restore" --nologo -v quiet
 	@python3 -c 'import concurrent.futures,os,subprocess,sys; dotnet,cur=sys.argv[1],sys.argv[2]; units=[(p[1],p[2:]) for l in open("testdata/conformance/tables/MANIFEST.txt") for p in [l.split()] if p and p[0]=="unit"]+[("cards",["tables/cards"])]; run=lambda u:(os.makedirs(f"build/conformance-unity/_gen/{u[0]}",exist_ok=True),subprocess.run(["./bin/schema","generate","--lang","unity","--out",f"build/conformance-unity/_gen/{u[0]}",*u[1]],check=True),subprocess.run([dotnet,"build","test/conformance/unity/unit/schemaunit.csproj","-c","Debug",f"-p:UnityUnitDir={cur}/build/conformance-unity/_gen/{u[0]}",f"-p:ArtifactsPath={cur}/build/conformance-unity/_art/{u[0]}","-o",f"build/conformance-unity/{u[0]}","--nologo","-v","quiet"],check=True,stdout=subprocess.DEVNULL)); list(concurrent.futures.ThreadPoolExecutor(max_workers=8).map(run,units))' "$(DOTNET)" "$(CURDIR)"
 	@touch $@
+CONFORMANCE_LEG_unity := build/conformance-unity/.stamp
 
 CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)
 

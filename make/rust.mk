@@ -666,6 +666,7 @@ test-rust: build/mustrun generated/rust/.stamp generated/rust-ludicrous/.stamp g
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-ludicrous-debug -count 49 -- cargo run --quiet
 	cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" ../../$(MUSTRUN) -name test-rust-ludicrous-release -count 48 -- cargo run --quiet --release
 
+CONFORMANCE_LEG_rust := build/conformance-rust
 TEST_LEGS         += test-rust
 CONFORMANCE_LEGS  += $(call unless_skipped,rust,build/conformance-rust)
 REGISTRY_NA       += bench-tables:rust goldens:rust toolchain:rust

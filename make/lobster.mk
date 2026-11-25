@@ -168,6 +168,7 @@ test-lobster: cards-lobster-test cards-lobster-conformance cards-lobster-conform
 
 TEST_LEGS         += test-lobster
 TOOLCHAIN_LEGS    += lobster
+CONFORMANCE_LEG_lobster := build/conformance-lobster
 TOOLCHAIN_PINS_lobster := LOBSTER
 CONFORMANCE_LEGS  += $(call unless_skipped,lobster,build/conformance-lobster)
 BENCH_TABLES_LEGS += generated/bench/tables/lobster/.stamp

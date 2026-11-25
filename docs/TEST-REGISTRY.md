@@ -207,7 +207,10 @@ files and the drivers as the registry's, not the ledger's.
   `TestTheRegistryHoldsEveryConformanceCase` holds the registry to them field
   for field: a corpus case with no row, or a row with no case, is red.
 - A case a language does not answer today is an `owed` line, so it is MISSING
-  (red in the nightly) and out of the `pr` group.
+  (red in the nightly) and out of the `pr` group. The corpus's owed lines are
+  generated from the harness's one list, testdata/conformance/tables/
+  retain-refusal-owed.txt (`registry-rows` prints them after the rows), and
+  the same test holds the registry to it.
 - Plants: `plant.corpus-plants.go-wrong-byte-root-full` flips one byte of the
   go leg's wire answer for root_full, and `plant.corpus-plants.go-absent-root-full`
   drops that case from its answers (test/conformance/go/main.go, `plantEnv`);

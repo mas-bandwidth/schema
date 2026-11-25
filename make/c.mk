@@ -1641,6 +1641,7 @@ test-c-recipe: build/mustrun build/schema_test_c build/schema_test_c_asan build/
 	cd test/c-ludicrous && ../../$(MUSTRUN) -name schema_test_c_ludicrous -count 39 -- ../../build/schema_test_c_ludicrous
 	$(MUSTRUN) -name schema_test_bench_c -count 35 -- ./build/schema_test_bench_c
 
+CONFORMANCE_LEG_c := build/conformance-c
 TEST_LEGS         += test-c
 CONFORMANCE_LEGS  += $(call unless_skipped,c,build/conformance-c)
 BENCH_TABLES_LEGS += generated/bench/tables/c/.stamp

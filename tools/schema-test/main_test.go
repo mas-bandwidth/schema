@@ -70,6 +70,7 @@ func TestTheCommandExitsNonZeroOnEveryFailRule(t *testing.T) {
 		{[]string{"run", "--group", "ready", "--lang", "klingon"}, 1, "--lang klingon is not one of the group's languages"},
 		{[]string{"run", "--group", "ready", "--lang", "go"}, 0, "1 names"},
 		{[]string{"run", "--group", "ready", "--tier", "functional"}, 2, "--group is a whole stored query"},
+		{[]string{"langs", "go"}, 2, "langs takes no names"},
 	} {
 		code, out := cli(t, envFake{}, c.args...)
 		if code != c.code || !strings.Contains(out, c.says) {
@@ -245,6 +246,12 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	}
 	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
 		t.Errorf("conformance build for lua: %q", got)
+	}
+	// an instance routed here with no harness is an error naming it, before
+	// anything builds or runs
+	inst := testreg.Instance{Full: "go.functional.codegen.name-buildability.x", Lang: "go", Test: testreg.Test{Family: "name-buildability"}}
+	if _, err := a.Run(context.Background(), "go", []testreg.Instance{inst}); err == nil || !strings.Contains(err.Error(), "no harness for family name-buildability") {
+		t.Errorf("an instance with no harness: %v", err)
 	}
 }
 
