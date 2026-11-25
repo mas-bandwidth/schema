@@ -31,8 +31,8 @@ the same.
 | tier | tests | what it is |
 |---|---|---|
 | `unit` | 2961 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4710 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 1975 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `functional` | 4723 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `nightly` | 1969 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
 
@@ -60,7 +60,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `c` | 13/16 | 3 | 50.2 |
 | `c` | 14/16 | 2 | 46.2 |
 | `c` | 15/16 | 2 | 35.2 |
-| `c` | 16/16 | 2 | 48.4 |
+| `c` | 16/16 | 3 | 48.9 |
 | `cpp` | 1/16 | 43 | 53.1 |
 | `cpp` | 2/16 | 292 | 54.7 |
 | `cpp` | 3/16 | 379 | 54.6 |
@@ -76,7 +76,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `cpp` | 13/16 | 3 | 50.2 |
 | `cpp` | 14/16 | 2 | 46.2 |
 | `cpp` | 15/16 | 2 | 35.2 |
-| `cpp` | 16/16 | 2 | 48.4 |
+| `cpp` | 16/16 | 3 | 48.9 |
 | `cs` | 1/16 | 43 | 53.1 |
 | `cs` | 2/16 | 292 | 54.7 |
 | `cs` | 3/16 | 379 | 54.6 |
@@ -92,7 +92,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `cs` | 13/16 | 3 | 50.2 |
 | `cs` | 14/16 | 2 | 46.2 |
 | `cs` | 15/16 | 2 | 35.2 |
-| `cs` | 16/16 | 2 | 48.4 |
+| `cs` | 16/16 | 3 | 48.9 |
 | `unity` | 1/16 | 43 | 53.1 |
 | `unity` | 2/16 | 292 | 54.7 |
 | `unity` | 3/16 | 379 | 54.6 |
@@ -108,7 +108,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `unity` | 13/16 | 3 | 50.2 |
 | `unity` | 14/16 | 2 | 46.2 |
 | `unity` | 15/16 | 2 | 35.2 |
-| `unity` | 16/16 | 2 | 48.4 |
+| `unity` | 16/16 | 3 | 48.9 |
 | `go` | 1/16 | 43 | 53.1 |
 | `go` | 2/16 | 292 | 54.7 |
 | `go` | 3/16 | 379 | 54.6 |
@@ -124,7 +124,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `go` | 13/16 | 3 | 50.2 |
 | `go` | 14/16 | 2 | 46.2 |
 | `go` | 15/16 | 2 | 35.2 |
-| `go` | 16/16 | 2 | 48.4 |
+| `go` | 16/16 | 3 | 48.9 |
 | `rust` | 1/16 | 43 | 53.1 |
 | `rust` | 2/16 | 292 | 54.7 |
 | `rust` | 3/16 | 379 | 54.6 |
@@ -140,7 +140,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `rust` | 13/16 | 3 | 50.2 |
 | `rust` | 14/16 | 2 | 46.2 |
 | `rust` | 15/16 | 2 | 35.2 |
-| `rust` | 16/16 | 2 | 48.4 |
+| `rust` | 16/16 | 3 | 48.9 |
 | `java` | 1/16 | 43 | 53.1 |
 | `java` | 2/16 | 292 | 54.7 |
 | `java` | 3/16 | 379 | 54.6 |
@@ -156,7 +156,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `java` | 13/16 | 3 | 50.2 |
 | `java` | 14/16 | 2 | 46.2 |
 | `java` | 15/16 | 2 | 35.2 |
-| `java` | 16/16 | 2 | 48.4 |
+| `java` | 16/16 | 3 | 48.9 |
 | `dart` | 1/16 | 43 | 53.1 |
 | `dart` | 2/16 | 292 | 54.7 |
 | `dart` | 3/16 | 379 | 54.6 |
@@ -172,7 +172,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `dart` | 13/16 | 3 | 50.2 |
 | `dart` | 14/16 | 2 | 46.2 |
 | `dart` | 15/16 | 2 | 35.2 |
-| `dart` | 16/16 | 2 | 48.4 |
+| `dart` | 16/16 | 3 | 48.9 |
 | `elixir` | 1/16 | 43 | 53.1 |
 | `elixir` | 2/16 | 292 | 54.7 |
 | `elixir` | 3/16 | 379 | 54.6 |
@@ -188,7 +188,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `elixir` | 13/16 | 3 | 50.2 |
 | `elixir` | 14/16 | 2 | 46.2 |
 | `elixir` | 15/16 | 2 | 35.2 |
-| `elixir` | 16/16 | 2 | 48.4 |
+| `elixir` | 16/16 | 3 | 48.9 |
 | `js` | 1/16 | 43 | 53.1 |
 | `js` | 2/16 | 292 | 54.7 |
 | `js` | 3/16 | 379 | 54.6 |
@@ -204,7 +204,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `js` | 13/16 | 3 | 50.2 |
 | `js` | 14/16 | 2 | 46.2 |
 | `js` | 15/16 | 2 | 35.2 |
-| `js` | 16/16 | 2 | 48.4 |
+| `js` | 16/16 | 3 | 48.9 |
 | `python` | 1/16 | 43 | 53.1 |
 | `python` | 2/16 | 292 | 54.7 |
 | `python` | 3/16 | 379 | 54.6 |
@@ -220,7 +220,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `python` | 13/16 | 3 | 50.2 |
 | `python` | 14/16 | 2 | 46.2 |
 | `python` | 15/16 | 2 | 35.2 |
-| `python` | 16/16 | 2 | 48.4 |
+| `python` | 16/16 | 3 | 48.9 |
 | `ruby` | 1/16 | 43 | 53.1 |
 | `ruby` | 2/16 | 292 | 54.7 |
 | `ruby` | 3/16 | 379 | 54.6 |
@@ -236,7 +236,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `ruby` | 13/16 | 3 | 50.2 |
 | `ruby` | 14/16 | 2 | 46.2 |
 | `ruby` | 15/16 | 2 | 35.2 |
-| `ruby` | 16/16 | 2 | 48.4 |
+| `ruby` | 16/16 | 3 | 48.9 |
 | `lua` | 1/16 | 43 | 53.1 |
 | `lua` | 2/16 | 292 | 54.7 |
 | `lua` | 3/16 | 379 | 54.6 |
@@ -252,7 +252,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `lua` | 13/16 | 3 | 50.2 |
 | `lua` | 14/16 | 2 | 46.2 |
 | `lua` | 15/16 | 2 | 35.2 |
-| `lua` | 16/16 | 2 | 48.4 |
+| `lua` | 16/16 | 3 | 48.9 |
 | `luau` | 1/16 | 43 | 53.1 |
 | `luau` | 2/16 | 292 | 54.7 |
 | `luau` | 3/16 | 379 | 54.6 |
@@ -268,7 +268,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `luau` | 13/16 | 3 | 50.2 |
 | `luau` | 14/16 | 2 | 46.2 |
 | `luau` | 15/16 | 2 | 35.2 |
-| `luau` | 16/16 | 2 | 48.4 |
+| `luau` | 16/16 | 3 | 48.9 |
 | `squirrel` | 1/16 | 43 | 53.1 |
 | `squirrel` | 2/16 | 292 | 54.7 |
 | `squirrel` | 3/16 | 379 | 54.6 |
@@ -284,7 +284,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `squirrel` | 13/16 | 3 | 50.2 |
 | `squirrel` | 14/16 | 2 | 46.2 |
 | `squirrel` | 15/16 | 2 | 35.2 |
-| `squirrel` | 16/16 | 2 | 48.4 |
+| `squirrel` | 16/16 | 3 | 48.9 |
 | `moo` | 1/16 | 43 | 53.1 |
 | `moo` | 2/16 | 292 | 54.7 |
 | `moo` | 3/16 | 379 | 54.6 |
@@ -300,7 +300,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `moo` | 13/16 | 3 | 50.2 |
 | `moo` | 14/16 | 2 | 46.2 |
 | `moo` | 15/16 | 2 | 35.2 |
-| `moo` | 16/16 | 2 | 48.4 |
+| `moo` | 16/16 | 3 | 48.9 |
 | `goose` | 1/16 | 43 | 53.1 |
 | `goose` | 2/16 | 292 | 54.7 |
 | `goose` | 3/16 | 379 | 54.6 |
@@ -316,7 +316,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `goose` | 13/16 | 3 | 50.2 |
 | `goose` | 14/16 | 2 | 46.2 |
 | `goose` | 15/16 | 2 | 35.2 |
-| `goose` | 16/16 | 2 | 48.4 |
+| `goose` | 16/16 | 3 | 48.9 |
 | `lobster` | 1/16 | 43 | 53.1 |
 | `lobster` | 2/16 | 292 | 54.7 |
 | `lobster` | 3/16 | 379 | 54.6 |
@@ -332,83 +332,87 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `lobster` | 13/16 | 3 | 50.2 |
 | `lobster` | 14/16 | 2 | 46.2 |
 | `lobster` | 15/16 | 2 | 35.2 |
-| `lobster` | 16/16 | 2 | 48.4 |
-| `none` | 1/75 | 4 | 40.4 |
-| `none` | 2/75 | 131 | 47.3 |
-| `none` | 3/75 | 2 | 48.3 |
-| `none` | 4/75 | 3 | 55.0 |
-| `none` | 5/75 | 97 | 37.9 |
-| `none` | 6/75 | 45 | 41.8 |
-| `none` | 7/75 | 394 | 51.2 |
-| `none` | 8/75 | 66 | 29.0 |
-| `none` | 9/75 | 151 | 45.3 |
-| `none` | 10/75 | 966 | 48.3 |
-| `none` | 11/75 | 3 | 38.7 |
-| `none` | 12/75 | 27 | 51.8 |
-| `none` | 13/75 | 15 | 57.5 |
-| `none` | 14/75 | 40 | 58.8 |
-| `none` | 15/75 | 85 | 55.9 |
-| `none` | 16/75 | 2 | 43.6 |
-| `none` | 17/75 | 4 | 41.9 |
-| `none` | 18/75 | 144 | 47.5 |
-| `none` | 19/75 | 18 | 58.4 |
-| `none` | 20/75 | 17 | 51.9 |
-| `none` | 21/75 | 62 | 52.0 |
-| `none` | 22/75 | 8 | 48.8 |
-| `none` | 23/75 | 6 | 56.8 |
-| `none` | 24/75 | 27 | 57.2 |
-| `none` | 25/75 | 22 | 58.9 |
-| `none` | 26/75 | 6 | 56.7 |
-| `none` | 27/75 | 14 | 55.6 |
-| `none` | 28/75 | 19 | 54.8 |
-| `none` | 29/75 | 3 | 50.2 |
-| `none` | 30/75 | 18 | 50.8 |
-| `none` | 31/75 | 89 | 49.7 |
-| `none` | 32/75 | 26 | 50.9 |
-| `none` | 33/75 | 46 | 51.5 |
-| `none` | 34/75 | 85 | 57.7 |
-| `none` | 35/75 | 19 | 56.8 |
-| `none` | 36/75 | 18 | 57.1 |
-| `none` | 37/75 | 42 | 53.9 |
-| `none` | 38/75 | 90 | 51.1 |
-| `none` | 39/75 | 168 | 57.0 |
-| `none` | 40/75 | 181 | 59.0 |
-| `none` | 41/75 | 84 | 58.7 |
-| `none` | 42/75 | 92 | 57.2 |
-| `none` | 43/75 | 107 | 57.9 |
-| `none` | 44/75 | 56 | 53.0 |
-| `none` | 45/75 | 70 | 59.0 |
-| `none` | 46/75 | 269 | 53.3 |
-| `none` | 47/75 | 14 | 57.6 |
-| `none` | 48/75 | 34 | 48.9 |
-| `none` | 49/75 | 23 | 52.8 |
-| `none` | 50/75 | 50 | 51.8 |
-| `none` | 51/75 | 228 | 55.0 |
-| `none` | 52/75 | 230 | 58.9 |
-| `none` | 53/75 | 124 | 58.9 |
-| `none` | 54/75 | 29 | 58.4 |
-| `none` | 55/75 | 66 | 53.5 |
-| `none` | 56/75 | 96 | 48.4 |
-| `none` | 57/75 | 1 | 51.6 |
-| `none` | 58/75 | 118 | 47.3 |
-| `none` | 59/75 | 106 | 53.3 |
-| `none` | 60/75 | 33 | 59.0 |
-| `none` | 61/75 | 2 | 47.8 |
-| `none` | 62/75 | 4 | 44.1 |
-| `none` | 63/75 | 7 | 41.6 |
-| `none` | 64/75 | 1 | 38.5 |
-| `none` | 65/75 | 1 | 38.5 |
-| `none` | 66/75 | 1 | 38.5 |
-| `none` | 67/75 | 1 | 38.5 |
-| `none` | 68/75 | 1 | 38.5 |
-| `none` | 69/75 | 1 | 38.5 |
-| `none` | 70/75 | 1 | 38.5 |
-| `none` | 71/75 | 1 | 38.5 |
-| `none` | 72/75 | 21 | 55.5 |
-| `none` | 73/75 | 49 | 56.0 |
-| `none` | 74/75 | 34 | 55.7 |
-| `none` | 75/75 | 83 | 56.0 |
-| **every row** | **363 jobs** | **49661** | **18602.8** |
+| `lobster` | 16/16 | 3 | 48.9 |
+| `none` | 1/79 | 4 | 40.4 |
+| `none` | 2/79 | 131 | 47.3 |
+| `none` | 3/79 | 2 | 48.3 |
+| `none` | 4/79 | 3 | 55.0 |
+| `none` | 5/79 | 9 | 54.1 |
+| `none` | 6/79 | 93 | 46.0 |
+| `none` | 7/79 | 45 | 41.8 |
+| `none` | 8/79 | 394 | 51.2 |
+| `none` | 9/79 | 66 | 29.0 |
+| `none` | 10/79 | 151 | 45.3 |
+| `none` | 11/79 | 966 | 48.3 |
+| `none` | 12/79 | 3 | 38.7 |
+| `none` | 13/79 | 27 | 51.8 |
+| `none` | 14/79 | 15 | 57.5 |
+| `none` | 15/79 | 40 | 58.8 |
+| `none` | 16/79 | 85 | 55.9 |
+| `none` | 17/79 | 2 | 43.6 |
+| `none` | 18/79 | 4 | 41.9 |
+| `none` | 19/79 | 144 | 47.5 |
+| `none` | 20/79 | 18 | 58.4 |
+| `none` | 21/79 | 17 | 51.9 |
+| `none` | 22/79 | 62 | 52.0 |
+| `none` | 23/79 | 8 | 48.8 |
+| `none` | 24/79 | 6 | 56.8 |
+| `none` | 25/79 | 27 | 57.2 |
+| `none` | 26/79 | 22 | 58.9 |
+| `none` | 27/79 | 6 | 56.7 |
+| `none` | 28/79 | 14 | 55.6 |
+| `none` | 29/79 | 19 | 54.8 |
+| `none` | 30/79 | 3 | 50.2 |
+| `none` | 31/79 | 12 | 50.6 |
+| `none` | 32/79 | 95 | 49.9 |
+| `none` | 33/79 | 25 | 50.9 |
+| `none` | 34/79 | 46 | 50.5 |
+| `none` | 35/79 | 86 | 58.7 |
+| `none` | 36/79 | 19 | 56.8 |
+| `none` | 37/79 | 18 | 57.1 |
+| `none` | 38/79 | 42 | 53.9 |
+| `none` | 39/79 | 89 | 49.8 |
+| `none` | 40/79 | 169 | 58.3 |
+| `none` | 41/79 | 181 | 59.0 |
+| `none` | 42/79 | 84 | 58.7 |
+| `none` | 43/79 | 92 | 57.2 |
+| `none` | 44/79 | 107 | 57.9 |
+| `none` | 45/79 | 56 | 53.0 |
+| `none` | 46/79 | 70 | 59.0 |
+| `none` | 47/79 | 269 | 53.3 |
+| `none` | 48/79 | 14 | 57.6 |
+| `none` | 49/79 | 33 | 47.1 |
+| `none` | 50/79 | 24 | 54.6 |
+| `none` | 51/79 | 50 | 51.8 |
+| `none` | 52/79 | 228 | 55.0 |
+| `none` | 53/79 | 230 | 58.9 |
+| `none` | 54/79 | 124 | 58.9 |
+| `none` | 55/79 | 29 | 58.4 |
+| `none` | 56/79 | 66 | 53.5 |
+| `none` | 57/79 | 95 | 44.0 |
+| `none` | 58/79 | 2 | 56.0 |
+| `none` | 59/79 | 117 | 43.6 |
+| `none` | 60/79 | 107 | 57.0 |
+| `none` | 61/79 | 33 | 59.0 |
+| `none` | 62/79 | 2 | 47.8 |
+| `none` | 63/79 | 3 | 43.1 |
+| `none` | 64/79 | 8 | 42.6 |
+| `none` | 65/79 | 1 | 38.5 |
+| `none` | 66/79 | 1 | 38.5 |
+| `none` | 67/79 | 1 | 38.5 |
+| `none` | 68/79 | 1 | 38.5 |
+| `none` | 69/79 | 1 | 38.5 |
+| `none` | 70/79 | 1 | 38.5 |
+| `none` | 71/79 | 1 | 38.5 |
+| `none` | 72/79 | 1 | 38.5 |
+| `none` | 73/79 | 15 | 49.5 |
+| `none` | 74/79 | 46 | 55.0 |
+| `none` | 75/79 | 39 | 58.8 |
+| `none` | 76/79 | 47 | 47.0 |
+| `none` | 77/79 | 41 | 58.9 |
+| `none` | 78/79 | 1 | 46.0 |
+| `none` | 79/79 | 5 | 30.6 |
+| **every row** | **367 jobs** | **49691** | **18795.8** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

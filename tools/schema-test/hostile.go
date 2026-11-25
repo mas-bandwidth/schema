@@ -217,10 +217,16 @@ func (s hostileSet) rows(root string) ([]testreg.Test, error) {
 			Family: s.family,
 			Case:   key,
 			// a toolchain per language (functional), and each run is the
-			// whole manifest, which the retired workflows ran only nightly
+			// whole manifest, which the retired workflows ran only nightly;
+			// the announce case also runs per pull request: its run is
+			// the whole manifest, so the per-PR run executes every case
+			// and reports this case's verdict, and the rest stay nightly
 			Tier:   "nightly",
 			Inputs: raw,
 			Source: fmt.Sprintf("%s/%s:%d", hostileCorpus, s.manifest, lines[c.Name]),
+		}
+		if key == "announce-bytes-too-large" {
+			t.Tier = "functional"
 		}
 		if c.Verdict == hostilecorpus.Refuse {
 			t.Type = "load-refusal"

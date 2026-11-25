@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 626. Language-free tests: 1349.
+Nightly tests every language answers: 625. Language-free tests: 1344.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -186,11 +186,10 @@ bytes read give exactly the expected value.
 
 hostile bytes are refused in every build, with the named reason.
 
-#### `load-refusal` family `hostile`, 262 tests
+#### `load-refusal` family `hostile`, 261 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.nightly.load-refusal.hostile.announce-bytes-too-large` | shared hostile corpus announce-bytes-too-large: the announce\_bytes reader refuses inputs/announcement.bin as tables/examples.PackConfig | `case: announce-bytes-too-large`<br>`inputs.go_tests` (100 bytes, held in the registry row's `inputs.go_tests`)<br>`input: internal/ci/hostilecorpus/corpus/inputs/announcement.bin`<br>`target: schema-{lang}-runs-hostile-corpus` | refused on load, in every build (verdict only) | `internal/ci/hostilecorpus/corpus/manifest.tsv:3` |
 | `L.nightly.load-refusal.hostile.announce-entries-too-large` | shared hostile corpus announce-entries-too-large: the announce\_entries reader refuses inputs/announcement.bin as tables/examples.PackConfig | `case: announce-entries-too-large`<br>`inputs.go_tests` (100 bytes, held in the registry row's `inputs.go_tests`)<br>`input: internal/ci/hostilecorpus/corpus/inputs/announcement.bin`<br>`target: schema-{lang}-runs-hostile-corpus` | refused on load, in every build (verdict only) | `internal/ci/hostilecorpus/corpus/manifest.tsv:4` |
 | `L.nightly.load-refusal.hostile.announce-newer-form` | shared hostile corpus announce-newer-form: the announce reader refuses inputs/announcement-newer-form.bin as tables/examples.PackConfig | `case: announce-newer-form`<br>`inputs.go_tests` (100 bytes, held in the registry row's `inputs.go_tests`)<br>`input: internal/ci/hostilecorpus/corpus/inputs/announcement-newer-form.bin`<br>`target: schema-{lang}-runs-hostile-corpus` | refused on load, in every build (verdict only) | `internal/ci/hostilecorpus/corpus/manifest.tsv:5` |
 | `L.nightly.load-refusal.hostile.announce-second` | shared hostile corpus announce-second: the announce\_second reader refuses inputs/announcement.bin as tables/examples.PackConfig | `case: announce-second`<br>`inputs.go_tests` (100 bytes, held in the registry row's `inputs.go_tests`)<br>`input: internal/ci/hostilecorpus/corpus/inputs/announcement.bin`<br>`target: schema-{lang}-runs-hostile-corpus` | refused on load, in every build (verdict only) | `internal/ci/hostilecorpus/corpus/manifest.tsv:6` |
@@ -787,12 +786,11 @@ seeded mutations.
 |---|---|---|---|---|---|
 | `none.nightly.fuzz.make-ruby-wirefuzz.ruby-wirefuzz-release-check` | `make` | make ruby-wirefuzz-release-check (make/ruby-wirefuzz.mk) exits 0 | `file: make/ruby-wirefuzz.mk`<br>`target: ruby-wirefuzz-release-check` | the target exits 0 with no skip in its log | `make/ruby-wirefuzz.mk:49` |
 
-#### `fuzz` family `make-schema-dart-nightly-fuzz`, 2 tests
+#### `fuzz` family `make-schema-dart-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz` | `make` | make schema-dart-nightly-fuzz (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`seed: DART_NIGHTLY_FUZZ_SEED`<br>`target: schema-dart-nightly-fuzz` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:88` |
-| `none.nightly.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
 
 #### `fuzz` family `make-schema-lua-nightly-fuzz`, 1 test
 
@@ -3197,12 +3195,11 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-hosted-keyed.python-hosted-keyed-negative-control` | `make` | make python-hosted-keyed-negative-control (make/python-hosted-keyed.mk) exits 0 | `file: make/python-hosted-keyed.mk`<br>`target: python-hosted-keyed-negative-control` | the target exits 0 with no skip in its log | `make/python-hosted-keyed.mk:7` |
 
-#### `plant` family `make-python-hostile`, 2 tests
+#### `plant` family `make-python-hostile`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-python-hostile.schema-python-resource-bounds-negative-control` | `make` | make schema-python-resource-bounds-negative-control (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds-negative-control` | the target exits 0 with no skip in its log | `make/python-hostile.mk:24` |
-| `none.nightly.plant.make-python-hostile.schema-python-runs-hostile-corpus-negative-control` | `make` | make schema-python-runs-hostile-corpus-negative-control (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-runs-hostile-corpus-negative-control` | the target exits 0 with no skip in its log | `make/python-hostile.mk:17` |
 
 #### `plant` family `make-python-json`, 1 test
 
@@ -3550,12 +3547,6 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.plant.make-rust-packet-write-cfloat.packet-write-cfloat-rust-negative-control` | `make` | make packet-write-cfloat-rust-negative-control (make/rust-packet-write-cfloat.mk) exits 0 | `file: make/rust-packet-write-cfloat.mk`<br>`target: packet-write-cfloat-rust-negative-control` | the target exits 0 with no skip in its log | `make/rust-packet-write-cfloat.mk:21` |
-
-#### `plant` family `make-schema-lua-runs-hostile-corpus`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.plant.make-schema-lua-runs-hostile-corpus.schema-lua-runs-hostile-corpus-planted` | `make` | make schema-lua-runs-hostile-corpus-planted (make/schema-lua-runs-hostile-corpus.mk) exits 0 | `file: make/schema-lua-runs-hostile-corpus.mk`<br>`target: schema-lua-runs-hostile-corpus-planted` | the target exits 0 with no skip in its log | `make/schema-lua-runs-hostile-corpus.mk:29` |
 
 #### `plant` family `make-schema-ruby-generated-strict-gate`, 1 test
 
@@ -4694,12 +4685,6 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.make-cs.tables-cs-leg` | `make` | make tables-cs-leg (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-leg` | the target exits 0 with no skip in its log | `make/cs.mk:642` |
 | `none.nightly.harness-run.make-cs.tables-cs-leg-debug` | `make` | make tables-cs-leg-debug (make/cs.mk) exits 0 | `file: make/cs.mk`<br>`target: tables-cs-leg-debug` | the target exits 0 with no skip in its log | `make/cs.mk:646` |
 
-#### `harness-run` family `make-cs-block-compile`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.harness-run.make-cs-block-compile.tables-cs-block-compile-negative-control` | `make` | make tables-cs-block-compile-negative-control (make/cs-block-compile.mk) exits 0 | `file: make/cs-block-compile.mk`<br>`target: tables-cs-block-compile-negative-control` | the target exits 0 with no skip in its log | `make/cs-block-compile.mk:46` |
-
 #### `harness-run` family `make-dart`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5085,12 +5070,6 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.ci-plumbing.make-python-toolchain.dist-python` | `make` | make dist-python (make/python-toolchain.mk) exits 0 | `file: make/python-toolchain.mk`<br>`target: dist-python` | the target exits 0 with no skip in its log | `make/python-toolchain.mk:70` |
-
-#### `ci-plumbing` family `make-squirrel`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-squirrel.dist-squirrel` | `make` | make dist-squirrel (make/squirrel.mk) exits 0 | `file: make/squirrel.mk`<br>`target: dist-squirrel` | the target exits 0 with no skip in its log | `make/squirrel.mk:25` |
 
 #### `ci-plumbing` family `makefile`, 32 tests
 

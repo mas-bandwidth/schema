@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2242.
+Functional tests every language answers: 2469. Language-free tests: 2254.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2503,6 +2503,12 @@ hostile bytes are refused in every build, with the named reason.
 |---|---|---|---|---|
 | `L.functional.load-refusal.fixed-dead-bytes.are-zero` | every dead byte of a fixed record is zero: a control reads and saves back, and each vector with one dead region made non-zero is refused whole | `inputs.tests` (1272 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/fixeddeadbytes_test.go:19` |
 
+#### `load-refusal` family `hostile`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.hostile.announce-bytes-too-large` | shared hostile corpus announce-bytes-too-large: the announce\_bytes reader refuses inputs/announcement.bin as tables/examples.PackConfig | `case: announce-bytes-too-large`<br>`inputs.go_tests` (100 bytes, held in the registry row's `inputs.go_tests`)<br>`input: internal/ci/hostilecorpus/corpus/inputs/announcement.bin`<br>`target: schema-{lang}-runs-hostile-corpus` | refused on load, in every build (verdict only) | `internal/ci/hostilecorpus/corpus/manifest.tsv:3` |
+
 #### `load-refusal` family `json-text`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -4678,6 +4684,12 @@ seeded mutations.
 |---|---|---|---|---|---|
 | `none.functional.fuzz.fuzz.fuzz-generated-compiles` | `gotest` | Go test FuzzGeneratedCompiles in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzGeneratedCompiles` | the Go test passes | `internal/fuzz/compile_test.go:150` |
 
+#### `fuzz` family `make-schema-dart-nightly-fuzz`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.fuzz.make-schema-dart-nightly-fuzz.schema-dart-nightly-fuzz-replay` | `make` | make schema-dart-nightly-fuzz-replay (make/schema-dart-nightly-fuzz.mk) exits 0 | `file: make/schema-dart-nightly-fuzz.mk`<br>`target: schema-dart-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-dart-nightly-fuzz.mk:118` |
+
 #### `fuzz` family `make-schema-lua-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -4764,6 +4776,18 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.lua-format.tables-lua-format-negative-control` | `plant` | negative control tables-lua-format-negative-control (group lua-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`group: lua-format`<br>`make: tables-lua-format-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:236` |
+
+#### `plant` family `make-python-hostile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.make-python-hostile.schema-python-runs-hostile-corpus-negative-control` | `make` | make schema-python-runs-hostile-corpus-negative-control (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-runs-hostile-corpus-negative-control` | the target exits 0 with no skip in its log | `make/python-hostile.mk:17` |
+
+#### `plant` family `make-schema-lua-runs-hostile-corpus`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.make-schema-lua-runs-hostile-corpus.schema-lua-runs-hostile-corpus-planted` | `make` | make schema-lua-runs-hostile-corpus-planted (make/schema-lua-runs-hostile-corpus.mk) exits 0 | `file: make/schema-lua-runs-hostile-corpus.mk`<br>`target: schema-lua-runs-hostile-corpus-planted` | the target exits 0 with no skip in its log | `make/schema-lua-runs-hostile-corpus.mk:29` |
 
 #### `plant` family `moo`, 1 test
 
@@ -5425,6 +5449,12 @@ generated or runtime code is clean under the language's strict analyser.
 |---|---|---|---|---|---|
 | `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:50` |
 
+#### `lint` family `make-schema-ruby-generated-strict-gate`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.lint.make-schema-ruby-generated-strict-gate.schema-ruby-generated-strict-gate-fast` | `make` | make schema-ruby-generated-strict-gate-fast (make/schema-ruby-generated-strict-gate.mk) exits 0 | `file: make/schema-ruby-generated-strict-gate.mk`<br>`target: schema-ruby-generated-strict-gate-fast` | the target exits 0 with no skip in its log | `make/schema-ruby-generated-strict-gate.mk:17` |
+
 ### Type `differential`
 
 two implementations or two versions give the same answer.
@@ -5591,11 +5621,38 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
 | `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:308` |
 
+#### `harness-run` family `make-conformance-rows`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-conformance-rows.appendix-go-fixed` | `make` | make appendix-go-fixed (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: appendix-go-fixed` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:84` |
+| `none.functional.harness-run.make-conformance-rows.appendix-java-announcement-budgets` | `make` | make appendix-java-announcement-budgets (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: appendix-java-announcement-budgets` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:80` |
+| `none.functional.harness-run.make-conformance-rows.appendix-python-fixed` | `make` | make appendix-python-fixed (make/conformance-rows.mk) exits 0 | `file: make/conformance-rows.mk`<br>`target: appendix-python-fixed` | the target exits 0 with no skip in its log | `make/conformance-rows.mk:88` |
+
+#### `harness-run` family `make-cs-block-compile`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-cs-block-compile.tables-cs-block-compile` | `make` | make tables-cs-block-compile (make/cs-block-compile.mk) exits 0 | `file: make/cs-block-compile.mk`<br>`target: tables-cs-block-compile` | the target exits 0 with no skip in its log | `make/cs-block-compile.mk:38` |
+| `none.functional.harness-run.make-cs-block-compile.tables-cs-block-compile-negative-control` | `make` | make tables-cs-block-compile-negative-control (make/cs-block-compile.mk) exits 0 | `file: make/cs-block-compile.mk`<br>`target: tables-cs-block-compile-negative-control` | the target exits 0 with no skip in its log | `make/cs-block-compile.mk:46` |
+
 #### `harness-run` family `make-go`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.harness-run.make-go.tables-go-fixedform` | `make` | make tables-go-fixedform (make/go.mk) exits 0 | `file: make/go.mk`<br>`siblings: ["../serialize"]`<br>`target: tables-go-fixedform` | the target exits 0 with no skip in its log | `make/go.mk:63` |
+
+#### `harness-run` family `make-go-table-optional-array-resize`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-go-table-optional-array-resize.table-optional-array-resize-go` | `make` | make table-optional-array-resize-go (make/go-table-optional-array-resize.mk) exits 0 | `file: make/go-table-optional-array-resize.mk`<br>`target: table-optional-array-resize-go` | the target exits 0 with no skip in its log | `make/go-table-optional-array-resize.mk:6` |
+
+#### `harness-run` family `make-lobster`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.harness-run.make-lobster.lobster-fixed-proof-fast` | `make` | make lobster-fixed-proof-fast (make/lobster.mk) exits 0 | `file: make/lobster.mk`<br>`target: lobster-fixed-proof-fast` | the target exits 0 with no skip in its log | `make/lobster.mk:188` |
 
 #### `harness-run` family `makefile`, 9 tests
 
@@ -5610,6 +5667,16 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8470` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-cs` | `make` | make tables-block-zero-cost-cs (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cs` | the target exits 0 with no skip in its log | `Makefile:8481` |
 | `none.functional.harness-run.makefile.tables-fixedform-corpus` | `make` | make tables-fixedform-corpus (Makefile) exits 0 | `file: Makefile`<br>`siblings: ["../serialize"]`<br>`target: tables-fixedform-corpus` | the target exits 0 with no skip in its log | `Makefile:7186` |
+
+### Type `ci-plumbing`
+
+a step that provisions or builds what other tests run on (a pinned toolchain, a compiled harness): it passes when it provisions; it checks nothing else.
+
+#### `ci-plumbing` family `make-squirrel`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.ci-plumbing.make-squirrel.dist-squirrel` | `make` | make dist-squirrel (make/squirrel.mk) exits 0 | `file: make/squirrel.mk`<br>`target: dist-squirrel` | the target exits 0 with no skip in its log | `make/squirrel.mk:25` |
 
 ## Declared unrepresentable
 
