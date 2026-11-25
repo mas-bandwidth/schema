@@ -30,7 +30,7 @@ func TestPythonWriteRefusalDriverMutations(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	inputs := map[string][]byte{}
-	for _, name := range []string{"write-refusal.py", "_common.py"} {
+	for _, name := range []string{"write-refusal.py", "_common.py", "_mutate.py"} {
 		source, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "python", "surfaces", name))
 		if err != nil {
 			t.Fatal(err)
