@@ -937,6 +937,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 		want[s] = e
 	}
+	if err := plantExpectations(want); err != nil {
+		return false, err
+	}
 
 	// THE DISCRIMINATION PROOF (discriminate.go): a must-refuse row with no
 	// lawful twin is a row a leg passes by refusing everything, and the run

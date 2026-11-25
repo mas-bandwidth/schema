@@ -32,6 +32,7 @@ hostile-elixir | elixir | (^|/)schema[-_]elixir[-_]runs[-_]hostile|^internal/ci/
 hostile-java | java | (^|/)schema[-_]java[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-java-runs-hostile-corpus JAVA=java JAVAC=javac
 hostile-js | js | (^|/)schema[-_]js[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-js-runs-hostile-corpus NODE=node
 hostile-lua | lua | (^|/)schema[-_]lua[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-lua-runs-hostile-corpus schema-lua-runs-hostile-corpus-planted
+hostile-lobster | lobster | (^|/)schema[-_]lobster[-_]runs[-_]hostile|^internal/ci/hostilecorpus/|^make/lobster-hostile\.mk$ | make schema-lobster-runs-hostile-corpus
 hostile-luau | luau | (^|/)schema[-_]luau[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-luau-runs-hostile-corpus
 hostile-moo | moo | (^|/)schema[-_]moo[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-moo-runs-hostile-corpus
 hostile-python | python | (^|/)schema[-_]python[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-python-runs-hostile-corpus schema-python-runs-hostile-corpus-negative-control

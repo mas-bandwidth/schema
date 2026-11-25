@@ -56,11 +56,12 @@ func rubyReadinessFindings(files map[string]string) []string {
 		add("leg-pins")
 	}
 	certify := files[".github/workflows/certify.yml"]
-	// certify.yml runs Ruby in three jobs: the sharded `test` leg (`startsWith(matrix.shard, 'ruby-')`),
-	// `release-gates` (`tables-ruby-release` + `go test -race`), and
-	// `negative-controls-nightly` (`matrix.ruby != ''`). (`inline-gate` runs only
+	// certify.yml runs Ruby in four jobs: the sharded `test` leg (`startsWith(matrix.shard, 'ruby-')`),
+	// `release-gates` (`tables-ruby-release` + `go test -race`),
+	// `negative-controls-nightly` (`matrix.ruby != ''`), and `nightly-gates`
+	// (`matrix.leg == 'ruby' || matrix.leg == 'all'`). (`inline-gate` runs only
 	// the five compiled inline-budget legs.)
-	if strings.Count(certify, "      - uses: ./.github/actions/ruby\n") < 3 ||
+	if strings.Count(certify, "      - uses: ./.github/actions/ruby\n") < 4 ||
 		!strings.Contains(certify, "      - uses: ./.github/actions/ruby\n        if: startsWith(matrix.shard, 'ruby-')\n") ||
 		!strings.Contains(certify, "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n") {
 		add("certify-pins")
@@ -165,6 +166,7 @@ func TestRubyReadinessNegativeControl(t *testing.T) {
 		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n        if: startsWith(matrix.shard, 'ruby-')\n", ""},
 		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n      # The moo pin", "      # The moo pin"},
 		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n        if: matrix.ruby != ''\n", ""},
+		{"certify-pins", ".github/workflows/certify.yml", "      - uses: ./.github/actions/ruby\n        if: matrix.leg == 'ruby' || matrix.leg == 'all'\n", ""},
 		{"ci-json-pin", "test/conformance/ruby/ci.json", `"ruby": "pin"`, `"ruby": ""`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `"goose", "ruby", "moo"`, `"goose", "moo"`},
 		{"readiness-entry", "test/conformance/nightly-readiness", `harness = "./build/conformance-harness-ruby"`, `harness = "./build/conformance-harness"`},

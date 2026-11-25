@@ -1297,9 +1297,9 @@ tables-cook-fuzz-negative-control:
 # open time flat across 1 MB, 100 MB and 1 GB — has inputs the C++ worker can
 # regenerate rather than a gigabyte in the tree.
 #
-# CI runs the first two, under the two-minute rule. THE GIGABYTE IS RUN BY
-# HAND (`make tables-cook-scale-1gb`): it writes a 1.6 GB file, which is not
-# something a CI runner's disk should meet on every push. What runs here is
+# CI runs the first two, under the two-minute rule. THE GIGABYTE RUNS NIGHTLY
+# (`make tables-cook-scale-1gb`, certify.yml nightly-gates row cook-1gb): it
+# writes a 1.6 GB file, which is not per-push work. What runs here is
 # the TOOL's own scan, which is O(R + P log N) and not the O(1) the runtime
 # owes; this target's job is to produce the fixtures and prove they check.
 COOKGEN_UNIT := tables/pointers
@@ -1651,9 +1651,9 @@ tables-cook-valued: bin/schema
 		{ echo "the engine's uncook did not recover every value the fixture carries"; exit 1; }
 	@echo "valued cook: cookgen --values -> uncook -> cook is byte-identical, so every value survives the engine's own read"
 
-# THE GIGABYTE ARM, by hand (§7.5): a 1.5 GB fixture is not something a CI
-# runner's disk should meet on every push, and the two arms above already span
-# two orders of magnitude.
+# THE GIGABYTE ARM (§7.5), nightly (certify.yml nightly-gates row cook-1gb,
+# 2026-11-24): a 1.5 GB fixture is not per-push work, and heavy work runs at
+# night rather than never.
 .PHONY: tables-cook-open-1gb
 tables-cook-open-1gb: build/schema_test_cook build/cook-open/.stamp
 	go build -o build/cookgen ./test/cookgen
