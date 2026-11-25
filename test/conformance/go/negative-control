@@ -7,8 +7,11 @@
 # (key-order), a text writer that writes storage that is not text
 # (text-refusal), the generated variable and fixed writers' ranged-int
 # refusal (write-refusal), the generated FixedSave's ranged-int refusal
-# (write-refusal-fixed) and the generated SaveMessages's ranged-int refusal
-# (write-refusal-message).
+# (write-refusal-fixed), the generated SaveMessages's ranged-int refusal
+# (write-refusal-message), and the three §22.7 write-order breaks: a loaded
+# map walked descending (write-order-descending), a builder map written in
+# insertion order (write-order-insertion) and the numbering walk taking a
+# body's fields in reverse (write-order-numbering).
 set -eu
 
 mode=$1
@@ -117,6 +120,41 @@ absent)
         exit 1
     fi
     ;;
+write-order-descending)
+    # THE WRITE ORDER's first break (docs/SPEC-TABLES.md §22.7): the cursor
+    # the wire writer walks a LOADED region's map with starts at the last
+    # entry and steps backward, so the entries are written in DESCENDING key
+    # order. The stored region is untouched and a builder's map walks its own
+    # sorted order, so json-read (text in, wire out) stays green.
+    source=$(grep -l '^func tableMapCursor(' build/tables-generated-go/maps/*Table.go)
+    perl -0pe 's/(\t\t\tprev = k\n\t\t\}\n)\t\treturn c\n/$1\t\tc.p, c.size = unsafe.Add(base, int64(h.Count-1)*int64(f.ElemSize)), -c.size \/\/ SABOTAGED: a loaded map walks descending\n\t\treturn c\n/' "$source" > "$out/source.gotext"
+    ;;
+write-order-insertion)
+    # THE WRITE ORDER's second break (§22.7): a builder's map is written in
+    # INSERTION ORDER, its sort and the sort's check taken out. A text whose
+    # keys arrive unsorted (edge_map_keys_unsorted) packs out of order, so
+    # json-read goes red there; a loaded region's map never meets the
+    # builder's walk, so wire stays green.
+    source=$(grep -l '^func tableMapCursor(' build/tables-generated-go/maps/*Table.go)
+    perl -0pe 's/\tslices\.SortFunc\(order, func\(x, y int64\) int \{\n[^\n]*\n\t\}\)\n/\t_ = slices.SortFunc[[]int64, int64] \/\/ SABOTAGED: a builder map writes in insertion order\n/; s/ \|\| i > 0 && tableMapKeyOrder\(tableMapStoredKey\(a\.At\(order\[i-1\]\), key\), k, key\) >= 0 \{/ || i < 0 { \/\/ SABOTAGED: the order check goes with the sort/' "$source" > "$out/source.gotext"
+    grep -q 'SABOTAGED: a builder map writes in insertion order' "$out/source.gotext" && grep -q 'SABOTAGED: the order check goes with the sort' "$out/source.gotext" || {
+        echo "negative control patched only part of the sort: $mode ($source)" >&2
+        exit 1
+    }
+    ;;
+write-order-numbering)
+    # THE WRITE ORDER's third break (§22.7): the numbering walk takes a body's
+    # fields in REVERSE. Only the walk that numbers the nodes is sabotaged (a
+    # reversed copy of tableRegionEdges that the numbering's visit calls), so
+    # the writer still writes each body in declaration order and names nodes
+    # by numbers the canonical depth-first walk does not give them.
+    source=$(grep -l '^func tableRegionEdges(' build/tables-generated-go/pointers/*Table.go)
+    perl -0pe 's{(^func tableRegionEdges\(.*?^\}\n)}{my $f = $1; (my $r = $f) =~ s/^func tableRegionEdges\(/func tableRegionEdgesReversed(/; $r =~ s/f := &info\.Fields\[i\]/f := &info.Fields[len(info.Fields)-1-i] \/\/ SABOTAGED: the numbering walk takes a body\x27s fields in reverse/; $f . $r}mse; s/if t != nil && !tableRegionEdges\(p, t, func\(/if t != nil && !tableRegionEdgesReversed(p, t, func(/' "$source" > "$out/source.gotext"
+    grep -q 'SABOTAGED: the numbering walk' "$out/source.gotext" && grep -q '!tableRegionEdgesReversed(p, t, func(' "$out/source.gotext" || {
+        echo "negative control patched only part of the walk: $mode ($source)" >&2
+        exit 1
+    }
+    ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
 if cmp -s "$source" "$out/source.gotext"; then
@@ -199,6 +237,29 @@ else
         grep -q 'go / write-refusal-message: mref_range_low' "$out/log"
         grep -q '^message       pass' "$out/log"
         grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = write-order-descending ]; then
+        # §22.7's edge vectors run through the wire surface on the derived
+        # rewrite manifest and print under rewrite. The text writer walks the
+        # stored order itself, and no pointer graph holds a map.
+        grep -q 'go / rewrite: edge_map_keys:' "$out/log"
+        grep -q '^json-write    pass' "$out/log"
+        if grep -q 'go / [a-z-]*: graph_' "$out/log"; then echo "negative control reddened what its break cannot reach: graph_ rows" >&2; exit 1; fi
+        if grep -q 'go / rewrite: edge_graph_diamond:' "$out/log"; then echo "negative control reddened what its break cannot reach: edge_graph_diamond" >&2; exit 1; fi
+    elif [ "$mode" = write-order-insertion ]; then
+        # the unsorted text either packs to other bytes or is refused when the
+        # leg reads its own out-of-order write back; both name the row
+        grep -Eq 'go / json-read: (edge_map_keys_unsorted:|.*unanswered: .*edge_map_keys_unsorted)' "$out/log"
+        grep -q '^wire          pass' "$out/log"
+        grep -q '^json-write    pass' "$out/log"
+    elif [ "$mode" = write-order-numbering ]; then
+        grep -q 'go / rewrite: edge_graph_diamond:' "$out/log"
+        # node_diamond_chain is also a framing row that reads, and the
+        # framing surface writes it back through the same numbering walk
+        grep -q 'go / rewrite: node_diamond_chain:' "$out/log"
+        grep -q 'go / framing: node_diamond_chain.wire:' "$out/log"
+        grep -q '^json-write    pass' "$out/log"
+        if grep -q 'go / [a-z-]*: map_' "$out/log"; then echo "negative control reddened what its break cannot reach: map_ rows" >&2; exit 1; fi
+        if grep -q 'go / rewrite: edge_map_keys:' "$out/log"; then echo "negative control reddened what its break cannot reach: edge_map_keys" >&2; exit 1; fi
     else
         grep -q 'go / json-hostile:' "$out/log"
         grep -q 'wire          pass' "$out/log"
