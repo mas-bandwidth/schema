@@ -28,6 +28,11 @@ bad=
 while read -r lref lsha rref rsha; do
   [ -z "${lsha:-}" ] && continue
   [ "$lsha" = "$zero" ] && continue
+  if [ "$rsha" != "$zero" ] && ! git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+    # The remote tip is not in this clone (the remote moved and nothing was
+    # fetched): rsha..lsha cannot be computed, so check what is on no remote ref.
+    rsha=$zero
+  fi
   if [ "$rsha" = "$zero" ]; then
     # A new branch carries exactly the commits on no remote ref. A range from
     # origin/main would also hold a lane branch the new one is based on, and
@@ -43,11 +48,21 @@ while read -r lref lsha rref rsha; do
     fi
     range+=(--not --remotes)
   fi
+  # Read the log first: a failing git log must refuse the push, never pass it
+  # unchecked.
+  if ! log=$(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "${range[@]}" 2>&1); then
+    {
+      echo "pre-push: refused. git log ${range[*]} failed, so the commits of $lref could not be checked:"
+      printf '%s\n' "$log"
+    } >&2
+    exit 1
+  fi
   while IFS=$'\t' read -r sha an ae cn ce; do
+    [ -z "$sha" ] && continue
     if ! ok "$an" "$ae" || ! ok "$cn" "$ce"; then
       bad+="  ${sha:0:12}  author $an <$ae>  committer $cn <$ce>"$'\n'
     fi
-  done < <(git log --format='%H%x09%an%x09%ae%x09%cn%x09%ce' "${range[@]}")
+  done <<<"$log"
 done
 
 if [ -n "$bad" ]; then

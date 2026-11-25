@@ -128,3 +128,92 @@ func TestPrePushHookExistingBranchSkipsCommitsOnAnyRemote(t *testing.T) {
 		t.Errorf("the new-branch refusal must name %s and not %s:\n%s", newForeign[:12], pushed[:12], out)
 	}
 }
+
+// prePushScratch builds a scratch agent clone and returns a function that runs
+// the hook on one pushed ref line, plus helpers to make commits.
+func prePushScratch(t *testing.T) (commit func(foreign bool, msg string) string, push func(lsha, rsha string) (string, error)) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Fatalf("git is required: %v", err)
+	}
+	hook := filepath.Join(repoRoot(t), ".githooks", "pre-push")
+	if _, err := os.Stat(hook); err != nil {
+		t.Fatal(err)
+	}
+	const agentName = "Rowan Claude"
+	const agentEmail = "305107455+rowan-claude@users.noreply.github.com"
+	work := t.TempDir()
+	env := []string{"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1"}
+	git := func(extra []string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = work
+		cmd.Env = append(append(os.Environ(), env...), extra...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git(nil, "init", "-q", "-b", "main")
+	git(nil, "config", "user.name", agentName)
+	git(nil, "config", "user.email", agentEmail)
+	commit = func(foreign bool, msg string) string {
+		t.Helper()
+		who := []string{"GIT_AUTHOR_NAME=" + agentName, "GIT_AUTHOR_EMAIL=" + agentEmail, "GIT_COMMITTER_NAME=" + agentName, "GIT_COMMITTER_EMAIL=" + agentEmail}
+		if foreign {
+			who = []string{"GIT_AUTHOR_NAME=x", "GIT_AUTHOR_EMAIL=x@x", "GIT_COMMITTER_NAME=x", "GIT_COMMITTER_EMAIL=x@x"}
+		}
+		git(who, "commit", "-q", "--allow-empty", "-m", msg)
+		return git(nil, "rev-parse", "HEAD")
+	}
+	push = func(lsha, rsha string) (string, error) {
+		t.Helper()
+		testinputs.Files(t, hook)
+		cmd := exec.Command("bash", hook, "origin", "unused")
+		cmd.Dir = work
+		cmd.Env = append(os.Environ(), env...)
+		cmd.Stdin = strings.NewReader("refs/heads/b " + lsha + " refs/heads/b " + rsha + "\n")
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	return commit, push
+}
+
+// TestPrePushHookMissingRemoteTipChecksUnpushedCommits: when the remote tip
+// (rsha) is not in the clone, rsha..lsha cannot be computed. The hook used to
+// ignore that git error and exit 0 unchecked. It must check the commits on no
+// remote ref instead, and refuse a foreign one, naming it.
+func TestPrePushHookMissingRemoteTipChecksUnpushedCommits(t *testing.T) {
+	t.Parallel()
+	commit, push := prePushScratch(t)
+	const missing = "1234567890123456789012345678901234567890"
+	good := commit(false, "base")
+	if out, err := push(good, missing); err != nil {
+		t.Errorf("a clean push with a remote tip missing locally was refused: %v\n%s", err, out)
+	}
+	foreign := commit(true, "foreign commit")
+	out, err := push(foreign, missing)
+	if err == nil {
+		t.Errorf("a foreign commit was pushed when the remote tip was missing locally\n%s", out)
+	} else if !strings.Contains(out, foreign[:12]) {
+		t.Errorf("the refusal does not name %s:\n%s", foreign[:12], out)
+	}
+}
+
+// TestPrePushHookGitLogFailureRefuses: a git log that fails (here the pushed
+// sha is no object in the clone) must refuse the push loudly with git's cause;
+// the hook used to ignore the failure and exit 0 with nothing checked.
+func TestPrePushHookGitLogFailureRefuses(t *testing.T) {
+	t.Parallel()
+	commit, push := prePushScratch(t)
+	base := commit(false, "base")
+	const bogus = "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+	out, err := push(bogus, base)
+	if err == nil {
+		t.Fatalf("a push whose git log failed was passed unchecked\n%s", out)
+	}
+	if !strings.Contains(out, "could not be checked") || !strings.Contains(out, "abcdef") {
+		t.Errorf("the refusal does not give the failed log and its cause:\n%s", out)
+	}
+}
