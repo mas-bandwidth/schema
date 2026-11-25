@@ -34,12 +34,12 @@ import (
 // EVERY CONDITION CAN BE EVALUATED ANYWHERE: the rewrite evaluates every
 // condition after the branches before it, and evaluates an #elif the chain
 // never reached. So a chain that carries an #elif or #else may test only
-// defined( NAME ), integer literals and implementation-reserved names
+// defined( NAME ), integer literals and the compiler's predefined names
 // (ppDefinedOnly: a program's macro could expand to anything, and
 // __has_builtin( x ) is a syntax error where it is not defined), and a branch
-// that #defines or #undefs a name its chain reads, or #includes a project
-// header that might (a system header, <x.h>, is taken not to redefine the
-// compiler's own names), is refused by name. So is what the parser does not
+// that #defines or #undefs a name its chain reads, or #includes a header that
+// might (a project header always; a system header when the chain reads any
+// name but the compiler's own), is refused by name. So is what the parser does not
 // know: #elifdef and #elifndef, a carriage return, a chain that is never
 // closed, and an #elif, #else or #endif with no #if.
 func SinglePassConditionals(src string) (string, error) {
@@ -252,15 +252,28 @@ func ppCondition(rest string) string {
 
 var ppIdent = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 var ppDefines = regexp.MustCompile(`^[ \t]*#[ \t]*(?:define|undef)[ \t]+([A-Za-z_][A-Za-z0-9_]*)`)
-var ppInclude = regexp.MustCompile(`^[ \t]*#[ \t]*include[ \t]*[^ \t<]`)
+var ppInclude = regexp.MustCompile(`^[ \t]*#[ \t]*include`)
+var ppSystemInclude = regexp.MustCompile(`^[ \t]*#[ \t]*include[ \t]*<`)
+var ppNumber = regexp.MustCompile(`\b[0-9][0-9A-Za-z]*`)
 var ppToken = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9][0-9A-Za-z]*|&&|\|\||==|!=|<=|>=|[!()<>])`)
-var ppReserved = regexp.MustCompile(`^(?:__|_[A-Z])`)
+
+// ppPredefined are names the compiler itself defines, which no program or
+// header redefines: the only names a split chain may test by value, and the
+// only names a chain may read when a branch #includes a system header. A
+// program's _POSIX_C_SOURCE or a libc's __BYTE_ORDER is not among them.
+var ppPredefined = map[string]bool{
+	"__STDC__": true, "__STDC_VERSION__": true, "__STDC_NO_ATOMICS__": true, "__cplusplus": true,
+	"__GNUC__": true, "__clang__": true, "_MSC_VER": true,
+	"__BYTE_ORDER__": true, "__ORDER_LITTLE_ENDIAN__": true, "__ORDER_BIG_ENDIAN__": true, "__ORDER_PDP_ENDIAN__": true,
+	"__APPLE__": true, "_WIN32": true, "_WIN64": true,
+	"__x86_64__": true, "__i386__": true, "__aarch64__": true, "_M_X64": true, "_M_IX86": true, "_M_ARM64": true,
+}
 
 // ppDefinedOnly says why cond may not be evaluated out of its chain's
 // order, or "" when it may: it is built from defined( NAME ), defined NAME,
-// integer literals and the implementation's own names (__x, _X, which no
-// program may #define, so none expands to a defined() or changes under a
-// branch), compared and joined by ! == != < > <= >= && ||. A call of any
+// integer literals and the compiler's own names (ppPredefined: none expands
+// to a defined() or changes under a branch), compared and joined by
+// ! == != < > <= >= && ||. A call of any
 // kind (__has_builtin( x )) is refused: it is a syntax error wherever the
 // name is not a function-like macro.
 func ppDefinedOnly(cond string) string {
@@ -288,8 +301,8 @@ func ppDefinedOnly(cond string) string {
 			}
 		case i+1 < len(toks) && toks[i+1] == "(":
 			return t + "( ... ) is called"
-		case !ppReserved.MatchString(t):
-			return t + " is tested by value; only defined() or an implementation-reserved name (__x, _X) may be"
+		case !ppPredefined[t]:
+			return t + " is tested by value; only defined() or a compiler-predefined name may be"
 		}
 	}
 	return ""
@@ -309,7 +322,8 @@ func (n *ppNode) check() error {
 				return fmt.Errorf("line %d: #%s %s: %s; a chain with an #elif or #else is split only when every condition can be evaluated out of order", br.start, br.word, br.cond, why)
 			}
 		}
-		for _, id := range ppIdent.FindAllString(br.cond, -1) {
+		// the names it reads: identifiers, never a literal's suffix (201112L)
+		for _, id := range ppIdent.FindAllString(ppNumber.ReplaceAllString(br.cond, " "), -1) {
 			if id != "defined" {
 				read[id] = true
 			}
@@ -319,7 +333,13 @@ func (n *ppNode) check() error {
 	walk = func(nodes []*ppNode) error {
 		for _, c := range nodes {
 			for _, line := range c.text {
-				if ppInclude.MatchString(line) {
+				if ppSystemInclude.MatchString(line) {
+					for id := range read {
+						if !ppPredefined[id] {
+							return fmt.Errorf("line %d: a branch of this chain #includes a system header, and the chain reads %s, which a header may define; it cannot be split into independent conditionals", n.branches[0].start, id)
+						}
+					}
+				} else if ppInclude.MatchString(line) {
 					return fmt.Errorf("line %d: a branch of this chain #includes a project file, which may change a name the chain reads; it cannot be split into independent conditionals", n.branches[0].start)
 				}
 				if m := ppDefines.FindStringSubmatch(line); m != nil && read[m[1]] {

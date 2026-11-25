@@ -326,6 +326,7 @@ tables-c-zero-cost: build/tables-generated-c/.stamp
 	          build/tables-generated-c/v2/*TableData.h build/tables-generated-c/p1/*TableData.h \
 	          build/tables-generated-c/p3/*TableData.h; do \
 		test -e "$$f" || continue; \
+		test -r "$$f" || { echo "ZERO-COST GATE FAILED: unreadable data header $$f"; exit 1; }; \
 		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
 			echo "ZERO-COST GATE FAILED: pointer machinery leaked into $$f"; exit 1; \
 		fi; \

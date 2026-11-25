@@ -567,6 +567,9 @@ tables_zero_cost_scan = for u in $(TABLES_ZERO_COST_UNITS); do \
 		done; \
 		for f in $(1)/$$u/*TableData.h; do \
 			test -e "$$f" || continue; \
+			if ! test -r "$$f"; then \
+				echo "ZERO-COST GATE FAILED: unit $$u has an unreadable data header: $$f"; exit 1; \
+			fi; \
 			if $(call tables_zero_cost_leaks,$$f); then \
 				grep -nE "$(TABLES_ZERO_COST_SYMBOLS)" $$f | grep -vE "$(TABLES_ZERO_COST_ALLOWED)"; \
 				echo "ZERO-COST GATE FAILED: pointer, map or list machinery leaked into $$f"; exit 1; \
