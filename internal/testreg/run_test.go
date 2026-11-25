@@ -922,3 +922,66 @@ func TestGoTestSubtestsOfOneParentShareOneShard(t *testing.T) {
 		t.Fatalf("parts %q, want TestA's three subtests together", got)
 	}
 }
+
+// stepped is an adapter that prepares in steps (StepPreparer); each step logs
+// itself and answers its context's error, as a build cut off does.
+type stepped struct {
+	name  string
+	steps []string
+	log   *eventLog
+}
+
+func (a stepped) Answers(Test) bool { return true }
+
+func (a stepped) PrepareSteps(_ string, _ []Instance) []PrepareStep {
+	var out []PrepareStep
+	for _, s := range a.steps {
+		out = append(out, PrepareStep{Name: s, Run: func(ctx context.Context) error {
+			a.log.add("step " + s)
+			return ctx.Err()
+		}})
+	}
+	return out
+}
+
+func (a stepped) Run(_ context.Context, _ string, instances []Instance) ([]Result, error) {
+	a.log.add("start " + a.name)
+	return passAll(instances), nil
+}
+
+// TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName: a
+// StepPreparer's steps each get a deadline of their own, named "prepare
+// <group> <step>", and run in the order declared; the step that outlasts its
+// limit fails the group naming that step, the steps after it never run and the
+// group's call never runs. Planted: a runner that prepared the steps under one
+// group deadline names no step and makes no deadline per step.
+func TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{
+		"a": stepped{name: "a", steps: []string{"build/one", "build/two", "build/slow", "build/after"}, log: log},
+		"b": stepped{name: "b", steps: []string{"build/fine"}, log: log},
+	}, Context: func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		if group == "prepare none/a build/slow" {
+			return context.WithDeadline(parent, time.Unix(0, 0)) // the step outlasted its limit
+		}
+		return context.WithCancel(parent)
+	}}
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "timed out in prepare none/a build/slow", "deadline exceeded")
+	for _, g := range []string{"prepare none/a build/one", "prepare none/a build/two", "prepare none/a build/slow", "prepare none/b build/fine"} {
+		if !log.has("deadline " + g) {
+			t.Errorf("no deadline made for %q: %q", g, log.ev)
+		}
+	}
+	if log.at("step build/one") >= log.at("step build/two") || log.at("step build/two") >= log.at("step build/slow") {
+		t.Errorf("the steps did not run in the order declared: %q", log.ev)
+	}
+	if log.has("step build/after") || log.has("start a") {
+		t.Errorf("a step or the call ran after a step timed out: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Errorf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
+	}
+}
