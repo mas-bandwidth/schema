@@ -52,6 +52,7 @@ func goTestEvents(tests ...[2]string) string {
 		}
 		if tc[1] == "skip" {
 			line("output", tc[0], "    x_test.go:9: SKIP: the planted skip\n")
+			line("output", tc[0], "--- SKIP: "+tc[0]+" (0.00s)\n")
 		}
 		line(tc[1], tc[0], "")
 	}
@@ -276,6 +277,20 @@ func TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone(t *testing.T) {
 		{"the recipe's own skip beside a go test skip", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
 			gotestrunSkipLog + "SKIP: the recipe skipped its check\n", errors.New("exit status 1"),
 			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
+		{"a recipe line that starts as gotestrun's does", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
+			gotestrunSkipLog + "gotestrun: skipped the lua leg\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
+		{"a gotestrun run whose events the file does not hold", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
+			gotestrunSkipLog + "gotestrun: ran 1, passed 0, skipped 1, failed 0 across 1 package(s)\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
+		{"a skipped test's line printed once more", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
+			gotestrunSkipLog + "    x_test.go:9: SKIP: the planted skip\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
+		{"a skip line go test split across events", ev(`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"pass","Package":"example.com/x","Test":"TestA"}`,
+			`{"Action":"run","Package":"example.com/x","Test":"TestB"}`, `{"Action":"output","Package":"example.com/x","Test":"TestB","Output":"    x_test.go:9: SKIP: the "}`,
+			`{"Action":"output","Package":"example.com/x","Test":"TestB","Output":"planted skip\n"}`, `{"Action":"output","Package":"example.com/x","Test":"TestB","Output":"--- SKIP: TestB (0.00s)\n"}`,
+			`{"Action":"skip","Package":"example.com/x","Test":"TestB"}`),
+			gotestrunSkipLog, errors.New("exit status 1"), []string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "TestB skipped"},
 		{"a sibling's failure is not the package's", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "fail"}), "ok", errors.New("exit status 1"),
 			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "the planted failure"},
 		{"started twice, finished once", ev(`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"pass","Package":"example.com/x","Test":"TestA"}`,

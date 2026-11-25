@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -394,9 +395,10 @@ type goTestRead struct {
 	// outside the tests
 	pkgTestFailed map[string]bool
 	// skipLines: the lines go test and gotestrun print of the skips the
-	// events name (the skipped tests' output, "--- SKIP: TestB", "SKIPPED
-	// <package> <test>"), each its row's red by name
-	skipLines map[string]bool
+	// events name, each as many times as they print it: every line of a
+	// skipped test's own output (its "--- SKIP: TestB (0.00s)" among them),
+	// and gotestrun's "SKIPPED <package> <test>"; each is its row's red by name
+	skipLines map[string]int
 	skips     int                 // skip events, of tests and subtests
 	pkgOutput map[string][]string // a package's output that names no test
 	ran       int                 // top-level test runs
@@ -405,7 +407,11 @@ type goTestRead struct {
 // readGoTestEvents reads go test -json events; a line that is not one is
 // an error, never a line passed over.
 func readGoTestEvents(raw []byte) (goTestRead, error) {
-	ev := goTestRead{pkgTestFailed: map[string]bool{}, skipLines: map[string]bool{}, tests: map[goTestKey]*goTestSeen{}, byPkg: map[string][]string{}, pkgFailed: map[string]bool{}, pkgOutput: map[string][]string{}}
+	ev := goTestRead{pkgTestFailed: map[string]bool{}, skipLines: map[string]int{}, tests: map[goTestKey]*goTestSeen{}, byPkg: map[string][]string{}, pkgFailed: map[string]bool{}, pkgOutput: map[string][]string{}}
+	// a test's output, by "<package> <test>" (a subtest by its full name),
+	// as the text it printed: go test may split a line across events
+	said := map[string]*strings.Builder{}
+	var skipped []string
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -438,10 +444,15 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 			}
 		case "output":
 			s.output = append(s.output, strings.TrimRight(e.Output, "\n"))
+			b := said[e.Package+" "+e.Test]
+			if b == nil {
+				b = &strings.Builder{}
+				said[e.Package+" "+e.Test] = b
+			}
+			b.WriteString(e.Output)
 		case "skip":
 			ev.skips++
-			ev.skipLines["--- SKIP: "+e.Test] = true
-			ev.skipLines["SKIPPED "+e.Package+" "+e.Test] = true
+			skipped = append(skipped, e.Package+" "+e.Test)
 			if isSub {
 				s.skipped = append(s.skipped, sub)
 			} else {
@@ -467,38 +478,60 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 		if s.failed || s.runs > s.closes {
 			ev.pkgTestFailed[k.pkg] = true
 		}
-		if len(s.skipped) > 0 {
-			for _, o := range s.output {
+	}
+	for _, name := range skipped {
+		ev.skipLines["SKIPPED "+name]++
+		if b := said[name]; b != nil {
+			for _, o := range strings.Split(b.String(), "\n") {
 				if o = strings.TrimSpace(o); o != "" {
-					ev.skipLines[o] = true
+					ev.skipLines[o]++
 				}
 			}
+			delete(said, name) // a test skipped twice printed its output once
 		}
 	}
 	return ev, nil
 }
 
+// gotestrunSkipCount is gotestrun's summary of a run that skipped ("gotestrun:
+// ran 2, passed 1, skipped 1, failed 0 across 1 package(s)") and its refusal
+// of those skips, each with the count.
+var (
+	gotestrunSkipSummary = regexp.MustCompile(`^gotestrun: ran \d+, passed \d+, skipped (\d+), failed \d+ across \d+ package\(s\)$`)
+	gotestrunSkipRefusal = regexp.MustCompile(`^gotestrun: REFUSED: SKIPPED: (\d+) test\(s\) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root$`)
+)
+
 // withoutGoTestSkips is make's log without what go test and gotestrun print
-// of the skips the events name: a skipped test's own output, its "--- SKIP:
-// TestB" line, gotestrun's "SKIPPED <package> <test>" line, and, when the
-// events hold a skip, gotestrun's own summary and refusal ("gotestrun: ran
-// 2, passed 1, skipped 1, ..."), which count those skips. Each such skip is
-// its row's red, by name. Any other skip the log reports is the recipe's
-// own, and fails every row.
+// of the skips the events name, which are each their row's red by name: each
+// line of a skipped test's own output and gotestrun's "SKIPPED <package>
+// <test>", dropped at most as many times as the events print it, and
+// gotestrun's summaries and refusals of skips, dropped only when the skips
+// they count are the events' skips exactly (a gotestrun run whose events the
+// file does not hold counts more). Every other skip the log reports is the
+// recipe's own, and fails every row.
 func withoutGoTestSkips(lines []string, ev goTestRead) []string {
+	summed, refused := 0, 0
+	for _, l := range lines {
+		t := strings.TrimSpace(l)
+		if m := gotestrunSkipSummary.FindStringSubmatch(t); m != nil {
+			n, _ := strconv.Atoi(m[1]) //errdiscard: \d+ of a count gotestrun printed
+			summed += n
+		} else if m := gotestrunSkipRefusal.FindStringSubmatch(t); m != nil {
+			n, _ := strconv.Atoi(m[1]) //errdiscard: as above
+			refused += n
+		}
+	}
+	counted := summed == ev.skips && refused <= summed
+	left := maps.Clone(ev.skipLines)
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
-		if ev.skips > 0 && strings.HasPrefix(t, "gotestrun: ") {
+		if left[t] > 0 {
+			left[t]--
 			continue
 		}
-		if ev.skipLines[t] {
+		if counted && (gotestrunSkipSummary.MatchString(t) || gotestrunSkipRefusal.MatchString(t)) {
 			continue
-		}
-		if rest, ok := strings.CutPrefix(t, "--- SKIP: "); ok {
-			if name, _, _ := strings.Cut(rest, " "); ev.skipLines["--- SKIP: "+name] {
-				continue
-			}
 		}
 		out = append(out, l)
 	}
