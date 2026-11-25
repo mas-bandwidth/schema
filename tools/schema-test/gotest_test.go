@@ -386,3 +386,51 @@ func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
 		t.Fatal("a make input that is not one target was accepted")
 	}
 }
+
+// TestASubtestRowFailsByItsOwnName: a row that names one subtest is that
+// subtest's verdict, not its parent's. A subtest that does not run fails by
+// that name. A skipped subtest fails. The -run pattern selects those subtests.
+func TestASubtestRowFailsByItsOwnName(t *testing.T) {
+	t.Parallel()
+	events := `{"Action":"run","Test":"TestP"}
+{"Action":"run","Test":"TestP/ok"}
+{"Action":"pass","Test":"TestP/ok","Elapsed":0.02}
+{"Action":"run","Test":"TestP/bad"}
+{"Action":"output","Test":"TestP/bad","Output":"bad case\n"}
+{"Action":"fail","Test":"TestP/bad","Elapsed":0.1}
+{"Action":"run","Test":"TestP/later"}
+{"Action":"output","Test":"TestP/later","Output":"no tool\n"}
+{"Action":"skip","Test":"TestP/later"}
+{"Action":"output","Test":"TestP","Output":"parent still ran\n"}
+{"Action":"fail","Test":"TestP","Elapsed":0.2}
+`
+	res, err := goTestResults(strings.NewReader(events), map[string]string{
+		"TestP/ok": "ok", "TestP/bad": "bad", "TestP/later": "later", "TestP/gone": "gone",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]testreg.Result{}
+	for _, r := range res {
+		got[r.Instance] = r
+	}
+	if a := got["ok"]; a.Verdict != testreg.Pass || a.Seconds != 0.02 {
+		t.Errorf("a passing subtest: %+v", a)
+	}
+	if a := got["bad"]; a.Verdict != testreg.Fail || !strings.Contains(a.Reason, "bad case") {
+		t.Errorf("a failing subtest: %+v", a)
+	}
+	if a := got["later"]; a.Verdict != testreg.Fail || !strings.Contains(a.Reason, "nothing is ever skipped") {
+		t.Errorf("a skipped subtest: %+v", a)
+	}
+	if a := got["gone"]; a.Verdict != testreg.Fail || !strings.Contains(a.Reason, "did not run the subtest TestP/gone") || !strings.Contains(a.Reason, "parent still ran") {
+		t.Errorf("a subtest the run did not execute: %+v", a)
+	}
+	args := goTestArgs(goTestPackage{pkg: "./tools/testguard"}, "./tools/testguard", map[string]string{
+		"TestProbes/tap-plan-1..0": "a", "TestProbes/green-control": "b",
+	}, "60s")
+	want := "test -count=1 -json -timeout 60s -run ^TestProbes$/^(green-control|tap-plan-1\\.\\.0)$ ./tools/testguard"
+	if strings.Join(args, " ") != want {
+		t.Fatalf("args %q, want %q", strings.Join(args, " "), want)
+	}
+}

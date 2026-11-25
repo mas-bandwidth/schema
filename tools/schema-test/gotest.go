@@ -74,6 +74,10 @@ func newGoTestAdapterBuilding(log io.Writer, root string, jobs int, build func(c
 type goTestInputs struct {
 	Package string `json:"package"`
 	Test    string `json:"test"`
+	// Subtest is one subtest of Test, or empty to run the whole test. One
+	// row per subtest is how a case fails by its own name. The call is
+	// go test -run with ^Test$ and ^sub$.
+	Subtest string `json:"subtest,omitempty"`
 	// Files are the committed data files the test reads (a case folder it
 	// replays): the registry indexes them where they are
 	// (internal/testreg/extract, Indexed).
@@ -97,6 +101,9 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	}
 	if !strings.HasPrefix(in.Package, "./") || !goTestName.MatchString(in.Test) {
 		return in, fmt.Errorf("inputs want a ./package and a Go test name, got %q %q", in.Package, in.Test)
+	}
+	if strings.Contains(in.Subtest, "/") || strings.ContainsAny(in.Subtest, "\r\n") {
+		return in, fmt.Errorf("inputs: subtest wants one subtest name, got %q", in.Subtest)
 	}
 	if in.Make != "" && !makeTarget.MatchString(in.Make) {
 		return in, fmt.Errorf("inputs: make wants one make target, got %q", in.Make)
@@ -201,7 +208,11 @@ func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.I
 			absent = append(absent, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
 		}
-		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
+		name := in.Test
+		if in.Subtest != "" {
+			name += "/" + in.Subtest
+		}
+		calls.add(goTestPackage{pkg: in.Package}, name, inst, a.callBudget())
 	}
 	res, err := a.runCalls(ctx, calls)
 	return append(res, absent...), err
@@ -326,7 +337,20 @@ func goTestArgs(p goTestPackage, rel string, tests map[string]string, timeout st
 	if p.tags != "" {
 		args = append(args, "-tags", p.tags)
 	}
-	return append(args, "-run", "^("+strings.Join(names, "|")+")$", rel)
+	run := "^(" + strings.Join(names, "|") + ")$"
+	if strings.Contains(names[0], "/") {
+		parent, _, _ := strings.Cut(names[0], "/")
+		subs := make([]string, 0, len(names))
+		for _, n := range names {
+			_, sub, ok := strings.Cut(n, "/")
+			if !ok || parent+"/"+sub != n {
+				return append(args, "-run", run, rel)
+			}
+			subs = append(subs, regexp.QuoteMeta(sub))
+		}
+		run = "^" + regexp.QuoteMeta(parent) + "$/^(" + strings.Join(subs, "|") + ")$"
+	}
+	return append(args, "-run", run, rel)
 }
 
 var goTestPackageLocks sync.Map // package directory -> *sync.Mutex
@@ -364,10 +388,28 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 	return out, nil
 }
 
+// subtestCall is true when every asked name is Parent/sub. A call is one
+// or the other (addToCall); a mix is a bug in the cut.
+func subtestCall(tests map[string]string) bool {
+	if len(tests) == 0 {
+		return false
+	}
+	for name := range tests {
+		if !strings.Contains(name, "/") {
+			return false
+		}
+	}
+	return true
+}
+
 // goTestResults reads go test -json events into one result per asked test.
 // A subtest's events count against its top-level test: its output joins the
-// reason, and a subtest that skips fails its parent.
+// reason, and a subtest that skips fails its parent. A call that asked for
+// subtests by name answers each one on its own (goTestSubResults).
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
+	if subtestCall(tests) {
+		return goTestSubResults(r, tests)
+	}
 	type event struct {
 		Action, Test, Output string
 		Elapsed              float64
@@ -420,6 +462,76 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	return out, nil
 }
 
+// goTestSubResults answers each asked Parent/sub from its own pass, fail
+// or skip event. A subtest the run did not execute fails by that name. The
+// parent's own output is the reason when the test died before the subtest.
+func goTestSubResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
+	type event struct {
+		Action, Test, Output string
+		Elapsed              float64
+	}
+	output := map[string][]string{}
+	var other []string
+	verdict := map[string]testreg.Result{}
+	var order []string
+	dec := json.NewDecoder(r)
+	for {
+		var ev event
+		if err := dec.Decode(&ev); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("go test -json: %w", err)
+		}
+		inst, asked := tests[ev.Test]
+		switch ev.Action {
+		case "output":
+			if asked {
+				output[ev.Test] = append(output[ev.Test], strings.TrimRight(ev.Output, "\n"))
+			} else if ev.Output != "" {
+				other = append(other, strings.TrimRight(ev.Output, "\n"))
+			}
+		case "pass":
+			if !asked {
+				continue
+			}
+			order = append(order, ev.Test)
+			verdict[ev.Test] = testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(ev.Elapsed, goTestTick)}
+		case "fail":
+			if !asked {
+				continue
+			}
+			order = append(order, ev.Test)
+			verdict[ev.Test] = testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: tail(strings.Join(output[ev.Test], "\n"), 20), Seconds: ev.Elapsed}
+		case "skip":
+			if !asked {
+				continue
+			}
+			order = append(order, ev.Test)
+			verdict[ev.Test] = testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[ev.Test], "\n"), 5)}
+		}
+	}
+	out := make([]testreg.Result, 0, len(order))
+	for _, name := range order {
+		out = append(out, verdict[name])
+	}
+	why := tail(strings.Join(other, "\n"), 20)
+	missing := make([]string, 0)
+	for name := range tests {
+		if _, ok := verdict[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	slices.Sort(missing)
+	for _, name := range missing {
+		reason := "the Go test did not run the subtest " + name
+		if why != "" {
+			reason += "\n" + why
+		}
+		out = append(out, testreg.Result{Instance: tests[name], Verdict: testreg.Fail, Reason: reason})
+	}
+	return out, nil
+}
+
 // goTestTimeout is go test's -timeout for one package's run: what is left of
 // the adapter call's deadline less goTestTimeoutMargin (at least 1 s), or 0
 // (none) when the call has none. go test's
@@ -440,8 +552,11 @@ func goTestTimeout(ctx context.Context, now time.Time) string {
 const goTestTimeoutMargin = 10 * time.Second
 
 // goTestCall is one go test's rows: Go test name -> instance, and what they
-// weigh together (testreg.Weight, their measured seconds).
+// weigh together (testreg.Weight, their measured seconds). group is "" for
+// top-level tests, or the parent test when the rows are its subtests. A call
+// never mixes the two, and never mixes two parents: -run is one pattern.
 type goTestCall struct {
+	group   string
 	tests   map[string]string
 	seconds float64
 }
@@ -457,14 +572,25 @@ func (a *goTestAdapter) callBudget() float64 {
 // the last would weigh more than budget with it. A call holds at least one
 // row, so a row heavier than the budget is a call of its own (the sharder
 // names it: TestThePRShardsFitTheirJobs).
+// callGroup is the batch a row belongs in: "" for a top-level test, or the
+// parent test's name for a subtest row.
+func callGroup(name string) string {
+	parent, _, ok := strings.Cut(name, "/")
+	if !ok {
+		return ""
+	}
+	return parent
+}
+
 func addToCall(calls []goTestCall, name string, inst testreg.Instance, budget float64) []goTestCall {
 	w := testreg.Weight(inst)
-	if n := len(calls); n > 0 && calls[n-1].seconds+w <= budget {
+	g := callGroup(name)
+	if n := len(calls); n > 0 && calls[n-1].group == g && calls[n-1].seconds+w <= budget {
 		calls[n-1].tests[name] = inst.Full
 		calls[n-1].seconds += w
 		return calls
 	}
-	return append(calls, goTestCall{tests: map[string]string{name: inst.Full}, seconds: w})
+	return append(calls, goTestCall{group: g, tests: map[string]string{name: inst.Full}, seconds: w})
 }
 
 // missingFiles names the files a row's inputs name that root does not hold

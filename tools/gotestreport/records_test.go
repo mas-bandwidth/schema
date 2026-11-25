@@ -87,19 +87,55 @@ func TestTheRecordCorpus(t *testing.T) {
 			continue
 		}
 		ran++
-		args := append(append([]string{"-slowest", "0"}, c.args...), dir)
-		var stdout, stderr bytes.Buffer
-		if got := run(args, &stdout, &stderr, ""); got != c.exit {
-			t.Errorf("%s: exit %d, want %d\n%s%s", d.Name(), got, c.exit, stdout.String(), stderr.String())
-			continue
-		}
-		for _, w := range c.want {
-			if !strings.Contains(stdout.String(), w) {
-				t.Errorf("%s: the report lacks %q:\n%s", d.Name(), w, stdout.String())
+		name, rec, caseDir := d.Name(), c, dir
+		t.Run(name, func(t *testing.T) {
+			args := append(append([]string{"-slowest", "0"}, rec.args...), caseDir)
+			var stdout, stderr bytes.Buffer
+			if got := run(args, &stdout, &stderr, ""); got != rec.exit {
+				t.Fatalf("%s: exit %d, want %d\n%s%s", name, got, rec.exit, stdout.String(), stderr.String())
 			}
-		}
+			for _, w := range rec.want {
+				if !strings.Contains(stdout.String(), w) {
+					t.Errorf("%s: the report lacks %q:\n%s", name, w, stdout.String())
+				}
+			}
+		})
 	}
 	if ran != recordCases {
 		t.Errorf("the corpus ran %d case(s), want %d: a case added or lost changes recordCases", ran, recordCases)
+	}
+}
+
+// TestRecordGenNamesTheRecordCorpus reads the generator that writes the
+// record corpus (testdata/recordgen) and holds its case list to the
+// directories under testdata/records. It does not run the generator: that
+// runs go test in ledgertest, which skips while it is recording.
+func TestRecordGenNamesTheRecordCorpus(t *testing.T) {
+	t.Parallel()
+	var src []byte
+	for _, p := range []string{
+		"testdata/recordgen/main.go",
+		"testdata/recordgen/ledgertest/go.mod",
+		"testdata/recordgen/ledgertest/ledger_test.go",
+	} {
+		b, err := os.ReadFile(p)
+		if err != nil || len(bytes.TrimSpace(b)) == 0 {
+			t.Fatalf("%s: %v", p, err)
+		}
+		if strings.HasSuffix(p, "main.go") {
+			src = b
+		}
+	}
+	dirs, err := os.ReadDir("testdata/records")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range dirs {
+		if !d.IsDir() || d.Name() == "f177-no-record" {
+			continue
+		}
+		if !strings.Contains(string(src), `"`+d.Name()+`"`) {
+			t.Errorf("recordgen does not name record case %s", d.Name())
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -149,6 +150,11 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
 	readCase := map[string]string{}   // a data case a make row reads, by the first such row
 	var readOrder []string
+	// subtest rows of one Go test share it: the extract counts the parent
+	// test, and each subtest is a case inside it. A second row for the same
+	// subtest, or a row that runs the parent whole beside them, is named.
+	subtestRun := map[string]string{}
+	subtestParent := map[string]bool{}
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()
 		if prev, dup := out[id]; dup {
@@ -172,12 +178,35 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 		}
 		switch t.Adapter {
 		case "gotest":
-			var in struct{ Package, Test string }
+			var in struct{ Package, Test, Subtest string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			parent := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}
+			what := in.Package + " " + in.Test
+			if in.Subtest != "" {
+				full := what + "/" + in.Subtest
+				if prev, dup := subtestRun[full]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s, which %s already runs", reg.Path, t.Line, t.Key, full, prev))
+					continue
+				}
+				subtestRun[full] = t.Key
+				if prev, dup := out[parent.ID()]; dup && !subtestParent[parent.ID()] {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s, which %s already runs", reg.Path, t.Line, t.Key, what, prev))
+					continue
+				}
+				subtestParent[parent.ID()] = true
+				if _, seen := out[parent.ID()]; !seen {
+					out[parent.ID()] = t.Key
+				}
+				continue
+			}
+			if subtestParent[parent.ID()] {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s, which %s already runs", reg.Path, t.Line, t.Key, what, out[parent.ID()]))
+				continue
+			}
+			claim(t, parent, what)
 		case "model-check":
 			// a TLC run of tla/<config>; the controls row runs no config
 			var in struct{ Config string }
@@ -419,11 +448,63 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 // committed case folder), and one that names no adapter indexes nothing.
 // filesHeld are the language-free adapters that hold a row to the files its
 // inputs name: gotest fails a row whose files are gone before it runs, and
-// its rows' tests read exactly those files. A language-free row of another
-// adapter indexes no files.
+// its rows' tests read exactly those files. A listed .jsonl file indexes
+// each of its lines (indexJSONL), the same cases the extract counts. A
+// language-free row of another adapter indexes no files.
 var filesHeld = map[string]bool{"gotest": true}
 
+// indexJSONL claims each case of a .jsonl file the way jsonlCases names
+// them. A file that cannot be read claims nothing: the row that names it
+// fails at run for the missing file, and a line that is not there is not a
+// case.
+func indexJSONL(root, f, dir, base, key string, claim func(id, key string)) {
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+	if err != nil {
+		return
+	}
+	for i, line := range strings.Split(string(data), "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "//") || strings.HasPrefix(t, "#") {
+			continue
+		}
+		var row map[string]any
+		if json.Unmarshal([]byte(t), &row) != nil {
+			continue
+		}
+		name := ""
+		for _, k := range []string{"name", "id", "key", "case"} {
+			if v, ok := row[k].(string); ok && v != "" {
+				name = v
+				break
+			}
+		}
+		if name == "" {
+			name = "line" + strconv.Itoa(i+1)
+		}
+		claim(Item{Kind: KindDataCase, Dir: dir, Name: base + "/" + name}.ID(), key)
+	}
+}
+
 func Indexed(reg *testreg.Registry) map[string]string {
+	return indexedAt(reg, registryRoot(reg))
+}
+
+// registryRoot is the repository root the registry file sits in. schema-test
+// extract runs at that root, and go test runs in the package, so a .jsonl
+// case (read, not claimed from its name) is found from either. A path that
+// is not <root>/test/registry/<file> is a fixture and reads from ".".
+func registryRoot(reg *testreg.Registry) string {
+	if reg == nil || reg.Path == "" {
+		return "."
+	}
+	dir := filepath.Dir(reg.Path)
+	if filepath.Base(dir) != "registry" || filepath.Base(filepath.Dir(dir)) != "test" {
+		return "."
+	}
+	return filepath.Dir(filepath.Dir(dir))
+}
+
+func indexedAt(reg *testreg.Registry, root string) map[string]string {
 	out := map[string]string{}
 	claim := func(id, key string) {
 		if _, ok := out[id]; !ok {
@@ -432,8 +513,14 @@ func Indexed(reg *testreg.Registry) map[string]string {
 	}
 	dataCase := func(f, key string) {
 		dir, name := path.Split(f)
-		if strings.HasSuffix(name, ".jsonl") || name == "" {
-			return // each line of a .jsonl file is a case of its own
+		if name == "" {
+			return
+		}
+		if strings.HasSuffix(name, ".jsonl") {
+			// each line is a case of its own (jsonlCases); naming the file
+			// indexes those lines, not a stem of the file name
+			indexJSONL(root, f, strings.TrimSuffix(dir, "/"), strings.TrimSuffix(name, ".jsonl"), key, claim)
+			return
 		}
 		stem := name
 		if i := strings.Index(name[1:], "."); i >= 0 {

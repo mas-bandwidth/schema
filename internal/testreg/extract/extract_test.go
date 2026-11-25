@@ -779,3 +779,60 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }
+
+// TestSubtestRowsShareTheParentGoTest: rows that name subtests of one Go
+// test cover that test once. Two rows for one subtest, or a row for the
+// whole test beside them, are named. A listed .jsonl file indexes each line
+// the extract would count, and nothing when the file is not there.
+func TestSubtestRowsShareTheParentGoTest(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindGoTest, Dir: "a", Name: "TestRow", Source: "a/x_test.go:1"},
+	}}
+	sub := func(key, sub string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "gotest", Inputs: []byte(`{"package":"./a","test":"TestRow","subtest":"` + sub + `"}`)}
+	}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{sub("tooling.a.one", "one"), sub("tooling.a.two", "two")}}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("two subtests of one test: %v", p)
+	}
+	again := &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(reg.Tests), sub("tooling.a.one-again", "one"))}
+	if p := Check(res, again, nil); !strings.Contains(strings.Join(p, "\n"), "tooling.a.one-again runs ./a TestRow/one, which tooling.a.one already runs") {
+		t.Fatalf("one subtest twice: %v", p)
+	}
+	bare := &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(reg.Tests), gotestRow("tooling.a.whole", "./a", "TestRow"))}
+	if p := Check(res, bare, nil); !strings.Contains(strings.Join(p, "\n"), "tooling.a.whole runs ./a TestRow, which tooling.a.one already runs") {
+		t.Fatalf("the whole test beside its subtests: %v", p)
+	}
+
+	dir := t.TempDir()
+	rel := "testdata/rec/1.jsonl"
+	if err := os.MkdirAll(filepath.Join(dir, "testdata/rec"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "{\"Action\":\"pass\"}\n\n# comment\n{\"name\":\"kept\"}\n"
+	if err := os.WriteFile(filepath.Join(dir, rel), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	row := testreg.Test{Key: "tooling.t.rec", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./t","test":"TestRec","files":["` + rel + `"]}`)}
+	got := indexedAt(&testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{row}}, dir)
+	wantLine := Item{Kind: KindDataCase, Dir: "testdata/rec", Name: "1/line1"}.ID()
+	wantKept := Item{Kind: KindDataCase, Dir: "testdata/rec", Name: "1/kept"}.ID()
+	if len(got) != 2 || got[wantLine] != row.Key || got[wantKept] != row.Key {
+		t.Fatalf("jsonl lines indexed %v", got)
+	}
+	missing := testreg.Test{Key: "tooling.t.gone", Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(`{"package":"./t","test":"TestRec","files":["testdata/rec/nope.jsonl"]}`)}
+	if got := indexedAt(&testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{missing}}, dir); len(got) != 0 {
+		t.Fatalf("a jsonl file that is not there indexed %v", got)
+	}
+	// Indexed reads a listed .jsonl from the registry file's repository, not
+	// from the process working directory: go test's is the package.
+	regPath := filepath.Join(dir, "test", "registry", "registry.jsonl")
+	if err := os.MkdirAll(filepath.Dir(regPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got = Indexed(&testreg.Registry{Path: regPath, Tests: []testreg.Test{row}})
+	if len(got) != 2 || got[wantLine] != row.Key || got[wantKept] != row.Key {
+		t.Fatalf("jsonl lines indexed from the registry path %v", got)
+	}
+}
