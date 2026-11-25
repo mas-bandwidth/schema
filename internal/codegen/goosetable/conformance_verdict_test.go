@@ -67,6 +67,7 @@ func verdictUnitFiles(t *testing.T, key string, paths []string, override map[str
 		t.Fatal(err)
 	}
 	files["main.goose"] = main
+	stageAccel(t, root, files)
 	text, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "units", key+".goose"))
 	if errors.Is(err, fs.ErrNotExist) {
 		text, err = os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "unit.goose"))
@@ -116,7 +117,7 @@ func verdictGlue(ns string, mods []string) string {
 	b.WriteString("        out.push(10);\n")
 	b.WriteString("    }\n")
 	b.WriteString("}\n")
-	b.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
+	b.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], fresh: bool, path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
 	return b.String()
 }
 
