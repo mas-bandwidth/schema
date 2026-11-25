@@ -372,7 +372,8 @@ func t05R31(t *testing.T) {
 		"e.arg2 = chainArg[chainLen - 2];",
 		"e.argw2 = chainArgw[chainLen - 2];",
 		"if (chainAt < 0) { chainAt = layGuards(); }",
-		"if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {",
+		"final int chain = chainHolds(p, src, srcAt, srcLength);",
+		"if (chain == chainMissed) { continue; }",
 	} {
 		if !javaCarries(src, want) {
 			t.Errorf("R31: the outer tag is not conjoined on a second guard lane — %q is not emitted", want)

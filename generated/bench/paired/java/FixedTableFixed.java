@@ -201,7 +201,7 @@ public final class FixedTableFixed {
 
     /**
      * THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a layout this build
-     * once served is retired, and the answer is `layoutUnsupported` rather than `layoutNewer`
+     * once served is retired, and the answer is `layoutUnsupported` rather than `layoutUnknown`
      * (§5.2). A retired entry stays in the lineage forever: the floor is an index cut.
      */
     public static final int floor = 0;
@@ -328,9 +328,9 @@ public final class FixedTableFixed {
      * fail for want of a plan (§5.9 #3).
      *
      * <p>THE FIXED TABLE READS BACKWARD AND NEVER FORWARD. A hash in no lineage entry is
-     * `layoutNewer` — ship the reader — carrying THE FILE'S HASH and nothing else; a hash below the
-     * floor is `layoutUnsupported` — upgrade the client — carrying it too. Neither decodes a byte
-     * and neither moves a counter: REFUSE IS TOTAL, the prefill included.
+     * `layoutUnknown` (§5.3 step 5; layoutNewer is retired), carrying THE FILE'S HASH and nothing
+     * else; a hash below the floor is `layoutUnsupported` — upgrade the client — carrying it too.
+     * Neither decodes a byte and neither moves a counter: REFUSE IS TOTAL, the prefill included.
      *
      * <p>THE PLAN AND THE REMAP ARGUMENTS ARE CAPACITY DECLARATIONS NOW, checked and never written
      * through (§5.9 #5, #24): a static plan carries its own ordinal table, because the table is
@@ -374,8 +374,8 @@ public final class FixedTableFixed {
             TableFixed.Report report) {
         report.reset();
         // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,
-        // and 20 + L is inside the file. The first is framing damage and has no
-        // name; the other two refuse by name.
+        // and 20 + L is inside the file. Each refuses by name: no first byte and a
+        // short header are truncated, a reserved byte reservedNotZero (§5.3).
         final TableFixed.Header head = TableFixed.header();
         if (!TableFixed.readHeader(data, head, report)) {
             return -1;
@@ -390,7 +390,7 @@ public final class FixedTableFixed {
         // an operator in opposite directions, and both report the file's hash.
         final int pick = TableFixed.select(known, fileHash);
         if (pick < 0) {
-            report.refuseHash(TableFixed.Reason.layoutNewer, fileHash);
+            report.refuseHash(TableFixed.Reason.layoutUnknown, fileHash);
             return -1;
         }
         if (pick < floor) {
@@ -439,11 +439,11 @@ public final class FixedTableFixed {
 
         // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight
         // or less, a header and layout followed by no record, and a ragged tail
-        // are framing damage and have no name — and the caller's capacity, which
-        // does.
+        // refuse truncated by name (§5.3; no malformed flag) — and the caller's capacity,
+        // which refuses batchTooLarge.
         final long rest = data.length - head.recordsAt;
         if (recordSize <= 8 || rest == 0 || rest % recordSize != 0) {
-            report.damaged = true;
+            report.refuse(TableFixed.Reason.truncated);
             return -1;
         }
         final long count64 = rest / recordSize;
@@ -485,8 +485,8 @@ public final class FixedTableFixed {
                 }
                 TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
                 scatter(image, 0, pass == 0 ? scratch : values[k], report, true, fileHash == hash);
-                // DAMAGE DISCARDS THE WHOLE LOAD (§4)
-                if (report.refused || report.damaged) {
+                // A REFUSAL DISCARDS THE WHOLE LOAD (§5.3, REFUSE IS TOTAL)
+                if (report.refused) {
                     report.widened = widenedBefore;
                     return -1;
                 }

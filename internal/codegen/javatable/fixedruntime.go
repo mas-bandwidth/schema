@@ -672,8 +672,8 @@ public final class TableFixed {
     // build's own record and reading anybody else's.
     //
     // EVERY REACH INTO THE RECORD IS BOUNDED. A compiled plan came from a
-    // stranger's layout, so an entry that would read past the record body is
-    // framing damage and is reported rather than thrown: an exception escaping
+    // stranger's layout, so an entry that would read past the record body
+    // refuses layoutMalformed (§5.3) rather than throwing: an exception escaping
     // into a caller that asked a question is the one thing this must not do.
 
     /**
@@ -756,25 +756,34 @@ public final class TableFixed {
         return true;
     }
 
+    /** chainHolds' three answers. */
+    static final int chainHeld = 1;
+    static final int chainMissed = 0;
+    static final int chainPastRecord = -1;
+
     /**
      * EVERY LINK OF A GUARD CHAIN PAST TWO HOLDS (docs/FIXED-FORM-ALGORITHM.md §4.1): an arm inside
      * an arm inside an arm answers to every enclosing tag, outermost first, each at its own width
-     * and inside the writer's record. A link past the record refuses layoutMalformed: the build laid a plan its own entry cannot hold (§5.3, "a known hash whose LINEAGE ENTRY would not build").
+     * and inside the writer's record. The answer is three-way: chainHeld when every link holds,
+     * chainMissed when a link names another arm, and chainPastRecord when a link reaches past the
+     * record, which the caller refuses as layoutMalformed: the build laid a plan its own entry
+     * cannot hold (§5.3, "a known hash whose LINEAGE ENTRY would not build"). The bounds answer is
+     * its own value because the report keeps its first refusal, so an earlier refusal on the same
+     * record (a count over its bound) must not be read as this one.
      */
-    static boolean chainHolds(Entry p, byte[] src, int srcAt, int srcLength, Report report) {
+    static int chainHolds(Entry p, byte[] src, int srcAt, int srcLength) {
         for (int j = 0; j < p.gcount; j++) {
             final long gl = p.gpool[2 * (p.gindex + j)];
             final int g = (int) gl;
             final int gw = guardWidth((byte) (gl >>> 32));
             if (g < 0 || g + gw > srcLength) {
-                report.refuse(Reason.layoutMalformed);
-                return false;
+                return chainPastRecord;
             }
             if (tagAt(src, srcAt + g, gw) != p.gpool[2 * (p.gindex + j) + 1]) {
-                return false;
+                return chainMissed;
             }
         }
-        return true;
+        return chainHeld;
     }
 
     /** run one plan over one record body, landing it in this reader's image. */
@@ -822,11 +831,15 @@ public final class TableFixed {
                     continue;
                 }
             }
-            if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {
-                if (report.refused) {
+            if (p.gcount > 2) {
+                final int chain = chainHolds(p, src, srcAt, srcLength);
+                if (chain == chainPastRecord) {
+                    report.refuse(Reason.layoutMalformed);
                     return;
                 }
-                continue;
+                if (chain == chainMissed) {
+                    continue;
+                }
             }
             switch (p.op) {
                 case opCopy:
