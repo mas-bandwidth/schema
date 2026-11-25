@@ -181,3 +181,28 @@ func TestARunThatSelectsNothingStillPrintsItsCounts(t *testing.T) {
 		}
 	}
 }
+
+// TestTheAddendaVerbChecksTheCommittedPages runs `schema-test addenda
+// --check` itself: against the repository it is 0, and against a tree with
+// no pages it exits 1 naming the missing page, writing nothing.
+func TestTheAddendaVerbChecksTheCommittedPages(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		root string
+		code int
+		says string
+	}{
+		{"../..", 0, "are what ../../test/registry/registry.jsonl generates"},
+		{"testdata", 1, "docs/SPEC-TESTS.md is missing"},
+	} {
+		var out, errOut bytes.Buffer
+		code := run(context.Background(), []string{"addenda", "--check", "--registry", "../../" + testreg.DefaultPath, "--root", c.root}, &out, &errOut, nil)
+		if all := out.String() + errOut.String(); code != c.code || !strings.Contains(all, c.says) {
+			t.Errorf("addenda --check --root %s: exit %d, want %d saying %q:\n%s", c.root, code, c.code, c.says, all)
+		}
+	}
+	var out, errOut bytes.Buffer
+	if code := run(context.Background(), []string{"addenda", "stray"}, &out, &errOut, nil); code != 2 {
+		t.Errorf("addenda with a name: exit %d, want 2:\n%s", code, errOut.String())
+	}
+}
