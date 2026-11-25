@@ -38,13 +38,14 @@ C_HOSTILE_UNITS := tabledemo:tables/examples \
 	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes inner:test/tables/inner probe:$(C_HOSTILE_BUILD)/probe.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
 	hostilepacket:internal/ci/hostilecorpus/corpus/packet/hostile.schema \
-	tblvaluedefaults:test/tables/ValueDefaults.schema
+	tblvaluedefaults:test/tables/ValueDefaults.schema \
+	tblmoodmap:test/tables/moodmap
 
 $(C_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-c-runs-hostile-corpus.mk internal/ci/hostilecorpus/corpus.go \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
 			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema test/tables/inner/Inner.schema testdata/conformance/feature-witnesses/full/Features.schema \
-		internal/ci/hostilecorpus/corpus/packet/hostile.schema test/tables/ValueDefaults.schema
+		internal/ci/hostilecorpus/corpus/packet/hostile.schema test/tables/ValueDefaults.schema test/tables/moodmap/MoodMap.schema
 	@rm -rf $(C_HOSTILE_BUILD)/generated && mkdir -p $(C_HOSTILE_BUILD)/generated
 	@go run ./tools/hostilecorpusexec probe-schema $(C_HOSTILE_BUILD)/probe.schema
 	@for unit in $(C_HOSTILE_UNITS); do \

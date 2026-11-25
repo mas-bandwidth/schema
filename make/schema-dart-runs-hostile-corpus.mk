@@ -31,13 +31,14 @@ DART_HOSTILE_UNITS := tabledemo:tables/examples \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
 	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes inner:test/tables/inner probe:test/dart-hostile/probe.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
-	tblvaluedefaults:test/tables/ValueDefaults.schema
+	tblvaluedefaults:test/tables/ValueDefaults.schema \
+	tblmoodmap:test/tables/moodmap
 
 $(DART_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-dart-runs-hostile-corpus.mk \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
 			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema test/tables/inner/Inner.schema \
-		test/dart-hostile/probe.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/ValueDefaults.schema
+		test/dart-hostile/probe.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/ValueDefaults.schema test/tables/moodmap/MoodMap.schema
 	@rm -rf $(DART_HOSTILE_BUILD)/generated && mkdir -p $(DART_HOSTILE_BUILD)/generated
 	@for unit in $(DART_HOSTILE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \

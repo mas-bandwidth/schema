@@ -99,7 +99,8 @@ public final class Runner {
                     Map.entry("test/tables/inner", "inner"),
                     Map.entry("schemas/probe.schema", "probe"),
                     Map.entry("testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses"),
-                    Map.entry("test/tables/ValueDefaults.schema", "tblvaluedefaults"));
+                    Map.entry("test/tables/ValueDefaults.schema", "tblvaluedefaults"),
+                    Map.entry("test/tables/moodmap", "tblmoodmap"));
 
     // A verdict: "accept <digest>" or "refuse <reason>"; anything else (a
     // throw, a value the runner cannot canonicalise) is its own text and never
