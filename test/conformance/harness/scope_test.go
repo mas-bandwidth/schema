@@ -59,6 +59,9 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 		"forgery forged1 block x f1.blk 64 0",
 		"forgery forged2 block y f2.blk 64 0",
 		"forgery forged3 cook ck f3.cook 64 null",
+		"cook cv U Scene cv.cook",
+		"forgery forged4 cook Scene f4.cook 64 null",
+		"forgery forged5 block nowhere f5.blk 64 0",
 	}, "\n")
 	kept, err := scopeLines(text, map[caseKey]bool{{"cook-write", "inst1"}: true})
 	if err != nil {
@@ -84,10 +87,23 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 			t.Errorf("the scope of forged1 and forged3 dropped %q:\n%s", line, kept)
 		}
 	}
-	for _, line := range []string{"forgery forged2 ", "block y U", "cook cj U"} {
+	for _, line := range []string{"forgery forged2 ", "block y U", "cook cj U", "cook cv U"} {
 		if strings.Contains(kept, line) {
 			t.Errorf("the scope of forged1 and forged3 kept %q:\n%s", line, kept)
 		}
+	}
+	// a cooked forgery's subject may be a root: the cook line of that root
+	// goes with it (squirrel, luau, lobster, moo and elixir look it up so)
+	kept, err = scopeLines(text, map[caseKey]bool{{"cook-forgery", "forged4"}: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(kept, "cook cv U Scene cv.cook") {
+		t.Errorf("the scope of forged4, made from root Scene, dropped the cook of that root:\n%s", kept)
+	}
+	// a forgery whose subject no line answers to is refused, by name
+	if _, err := scopeLines(text, map[caseKey]bool{{"forgery", "forged5"}: true}); err == nil || !strings.Contains(err.Error(), "block nowhere") || !strings.Contains(err.Error(), "forged5") {
+		t.Errorf("a forgery made from no line: err %v, want a refusal naming block nowhere and forged5", err)
 	}
 	kept, err = scopeLines(text, map[caseKey]bool{{"message", "msg1"}: true, {"json-read", "inst2"}: true})
 	if err != nil {
@@ -143,6 +159,7 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 		}
 	}
 	cases := 0
+	all := map[caseKey]bool{}
 	for _, s := range surfaces {
 		var names []string
 		if s == "json-hostile" {
@@ -164,17 +181,21 @@ func TestEveryCorpusCaseIsCarriedByAManifestRow(t *testing.T) {
 		}
 		for _, name := range names {
 			cases++
+			all[caseKey{s, name}] = true
 			if !carried[caseKey{s, name}] {
 				t.Errorf("%s/%s: no derived manifest line carries it, so a scoped run would never send it", s, name)
 			}
 		}
 		// the first case asked alone cuts a manifest whose references hold
 		if _, err := scopeLines(string(data), map[caseKey]bool{{s, names[0]}: true}); err != nil {
-
 			t.Errorf("%s/%s asked alone: %v", s, names[0], err)
 		}
 	}
 	if cases == 0 {
 		t.Fatal("the corpus gave no case to check")
+	}
+	// every case asked at once: every forgery's subject answers to a line
+	if _, err := scopeLines(string(data), all); err != nil {
+		t.Errorf("the whole corpus asked at once: %v", err)
 	}
 }

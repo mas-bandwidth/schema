@@ -1043,8 +1043,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		for _, s := range surfaces {
 			legWants[s] = want[s]
 			// a run that cannot reach the battery does not read its saves
-			if s == "json-hostile" && (opts.only == nil || opts.only[s]) {
-
+			if s == "json-hostile" && hostileRuns(opts) {
 				legWants[s], exemptions[s] = hostileExpectations(m, d.lang)
 				if err := attachHostileSaves(m, legWants[s]); err != nil {
 					return false, err
