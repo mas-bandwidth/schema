@@ -1878,34 +1878,37 @@ local function surfaceReadInto(lines: { { string } })
 			end
 			local fresh = report()
 			if load(lawfulBytes, fresh) ~= "read\n" then
-				error(name .. ": the lawful retaining load did not read into a fresh report")
-			end
-			local function zeroed(rep: any): string
-				local diff = {}
-				for k, v in rep do
-					if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+				-- the row answers, and fails by name, rather than ending the driver:
+				-- a refused lawful load is this row's red, never every row's
+				sayText(name, "the lawful retaining load did not read into a fresh report\n")
+			else
+				local function zeroed(rep: any): string
+					local diff = {}
+					for k, v in rep do
+						if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+					end
+					for k, v in fresh do
+						if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
+					end
+					table.sort(diff)
+					if #diff == 0 then return "zeroed\n" end
+					return "kept " .. table.concat(diff, ", ") .. "\n"
 				end
-				for k, v in fresh do
-					if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
-				end
-				table.sort(diff)
-				if #diff == 0 then return "zeroed\n" end
-				return "kept " .. table.concat(diff, ", ") .. "\n"
+				local rep = {
+					malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
+					widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
+					retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
+					missingName = "stale", field = "stale", unknownField = "stale",
+					duplicateField = "stale",
+				}
+				local parts = {}
+				parts[#parts + 1] = load(lawfulBytes, rep)
+				parts[#parts + 1] = zeroed(rep)
+				parts[#parts + 1] = load(damagedBytes, rep)
+				parts[#parts + 1] = load(lawfulBytes, rep)
+				parts[#parts + 1] = zeroed(rep)
+				sayText(name, table.concat(parts))
 			end
-			local rep = {
-				malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
-				widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
-				retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
-				missingName = "stale", field = "stale", unknownField = "stale",
-				duplicateField = "stale",
-			}
-			local parts = {}
-			parts[#parts + 1] = load(lawfulBytes, rep)
-			parts[#parts + 1] = zeroed(rep)
-			parts[#parts + 1] = load(damagedBytes, rep)
-			parts[#parts + 1] = load(lawfulBytes, rep)
-			parts[#parts + 1] = zeroed(rep)
-			sayText(name, table.concat(parts))
 		else
 			local n = tonumber(count)
 			if n == nil or n < 1 then error(name .. ": " .. tostring(count) .. " is not a count") end
