@@ -102,6 +102,7 @@ var producers = []producer{
 	{"conformance-leg-go", "conformance-leg-go", "bin/schema build/conformance-go build/conformance-harness-vm build/tables-counted-min-variable build/tables-generated-go build/tables-generated-go-announce build/tables-generated-go-framing build/tables-generated-go-r19 build/tables-lists-variable build/tables-r1-variable"},
 	{"conformance-leg-goose", "conformance-leg-goose", "bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose"},
 	{"conformance-leg-cpp", "conformance-leg-cpp", "bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated"},
+	{"lint-c", "tables-c-clean-inputs", "bin/schema build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c"},
 	{"lint-cpp", "tables-cpp-clean-inputs", "bin/schema build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp"},
 	{"lint-js", "tables-js-clean-inputs", "bin/schema build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js"},
 	{"lint-rust", "tables-rust-clippy-inputs", "bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses"},
