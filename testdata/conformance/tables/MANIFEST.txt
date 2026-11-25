@@ -2828,6 +2828,15 @@ read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conforma
 # the second file is lawful; generate fails if the engine refuses it, and an
 # unmarked fixed row fails if the engine reads its damaged file.
 read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1 lawful-second
+# A REFUSAL THROUGH A LINEAGE PLAN RESETS EVERY ROW IT WAS HANDED (SPEC-TABLES
+# §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). The first read
+# lands v3's full record, every field off its default. The second is an OLDER
+# writer's (v1) file the lineage plan selects and the CHECK pass refuses (a
+# corrupt deprecated slot): the row then holds its declared defaults, never
+# the first read's values. ri_fixed holds the same rule for a three-row batch
+# under a damage refusal; a driver resets its rows before the first read, so
+# rows no wire reached are held by each leg's own test, not by this row.
+read-into ri_fixed_lineage_refused tblfixedevo EvoRoot fixed testdata/conformance/tables/wire/fixedevo_v3_full.bin testdata/conformance/tables/wire/fixedevo_v1_dep_corrupt.bin 1
 
 # THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
 # retaining load is handed a report the driver PRE-FILLED (every counter
