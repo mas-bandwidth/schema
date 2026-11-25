@@ -978,3 +978,18 @@ refusal-verdict-only), so the case is the leg's unit test.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
+
+### No fixed read clamps, the tolerant walk included
+
+The fixed form has no tolerant read (SPEC-TABLES §3.4, §4: "no read
+clamps"): a compressed float past its declared range refuses the load
+`out_of_range`, and a counted array below its declared Min refuses
+`count_over_bound`, whichever entry point reads the file. The shared cases are
+the `shapes` instance rows `shapes_fixed_tenth_past_max`,
+`shapes_fixed_seventh_below_min` and `shapes_fixed_octets_below_min`
+(`FixedBounds`, `wire-refused`), beside their lawful twins `_at_max`,
+`_at_min` and `shapes_fixed_octets_at_min`.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §3.4, §4: a fixed read refuses a value past its range and a count below Min, never clamps | `shapes_fixed_tenth_past_max`, `shapes_fixed_seventh_below_min`, `shapes_fixed_octets_below_min`; `TestSquirrelTableSaveRoundTripsEveryInstance` (`internal/codegen/squirreltable`, slow tier) | red before its fix on Squirrel: the walk load's fixed path clamped the floats to their ends (counting `oor`) and took a count of 1 under `[2..8]`, so the value reached the save, which wrote 655 bytes |
