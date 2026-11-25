@@ -53,9 +53,9 @@ static partial class Program
             floatReport.Reason == "non_finite_float: ProfileConfig.precision", "float widening: a signalling NaN is refused as non_finite_float");
 
         // Ref zero terminates a body; identity zero in the vocabulary is just
-        // an unknown name. Length-framed (kind 13), no-payload and enum values
-        // remain skippable under it.
-        byte[] zeroId = Fixture(new byte[] { 1,13,2,99,100,2,32,0,3,30,1,4,4,42,0,0,0,0 },
+        // an unknown name. Length-framed (kind 12, the framed payload
+        // 2,99,100), no-payload and enum values remain skippable under it.
+        byte[] zeroId = Fixture(new byte[] { 1,12,2,99,100,2,32,0,3,30,1,4,4,42,0,0,0,0 },
             "zero", "future-void", "future-enum", "a");
         zeroId.AsSpan(zeroId.Length - 40, 8).Clear();
         report = new V1.TableReport();
