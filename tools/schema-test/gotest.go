@@ -396,11 +396,12 @@ func packageVerdict(pkg string, res []testreg.Result, runErr error, stdout, stde
 //
 // A result's seconds are what the test costs run alone, which the sharder
 // sums: its own Elapsed plus the Elapsed of every parallel subtest under it
-// (one that paused for t.Parallel). go test's Elapsed for a test leaves out
-// its parallel subtests, which run after its body returns, so a test made
-// of them would weigh its body alone (the Ruby strict gate: 4.24 s of a
-// 612 s run). A subtest that did not pause ran inside its parent's body and
-// is in the parent's Elapsed already. Never the wall time between events:
+// (one that paused for t.Parallel) whose every ancestor below the top-level
+// test paused too. go test's Elapsed for a test leaves out its parallel
+// subtests, which run after its body returns, so a test made of them would
+// weigh its body alone (the Ruby strict gate: 4.24 s of a 612 s run). A
+// subtest that did not pause ran inside its parent's body, and its whole
+// run, parallel children and all, is in the parent's Elapsed already. Never the wall time between events:
 // tests of one call run side by side, and the wall of each holds the
 // others' work.
 func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, error) {
@@ -413,6 +414,16 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	paused := map[string]bool{}      // the subtests that paused for t.Parallel
 	parallel := map[string]float64{} // a top-level test's parallel subtests' Elapsed
 	seconds := func(top string, ev event) float64 { return ev.Elapsed + parallel[top] }
+	// outside is whether a paused subtest's time is in no Elapsed counted
+	// yet: every test between it and the top-level one paused as well
+	outside := func(name string) bool {
+		for n := name; strings.Contains(n, "/"); n = n[:strings.LastIndex(n, "/")] {
+			if !paused[n] {
+				return false
+			}
+		}
+		return true
+	}
 	var out []testreg.Result
 	dec := json.NewDecoder(r)
 	for {
@@ -442,7 +453,7 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[top], "\n"), 5)})
 		case "pass":
 			if isSub {
-				if paused[ev.Test] {
+				if outside(ev.Test) {
 					parallel[top] += ev.Elapsed
 				}
 				continue
@@ -458,7 +469,7 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(seconds(top, ev), goTestTick)})
 		case "fail":
 			if isSub {
-				if paused[ev.Test] {
+				if outside(ev.Test) {
 					parallel[top] += ev.Elapsed
 				}
 				continue

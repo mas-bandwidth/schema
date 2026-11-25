@@ -39,3 +39,8 @@ needs ./internal/fixedvector .* tables-fixedform-corpus
 needs ./test/conformance/go .* build/conformance-go
 needs ./test/conformance/go/rows .* build/conformance-go
 needs ./test/go-tables .* build/tables-generated-go/.stamp
+
+# the legs, harness and toolchain the all-port differential's own make of its
+# answer tree builds from: shared with the run's other makes, so built first,
+# under the driver's hold on the checkout
+needs ./internal/ci TestSchemaSquirrelAllPortDifferential schema-squirrel-all-port-differential-legs

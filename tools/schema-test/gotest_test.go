@@ -59,7 +59,8 @@ func TestASubtestThatSkipsFailsItsParent(t *testing.T) {
 // depth. go test -json gives TestGate an Elapsed of its body alone (0.01 s)
 // though its parallel subtests a (29.99 s) and b (30 s, holding a parallel
 // b/x of 5 s and a serial b/y already in b's 30 s) ran after it: it weighs
-// 65 s. A paused top-level test weighs its Elapsed, never its wait (TestPaused:
+// 65 s. A serial subtest's parallel children are in its parent's Elapsed
+// already (TestWrap/g holds them; TestWrap weighs its 10 s, not 50). A paused top-level test weighs its Elapsed, never its wait (TestPaused:
 // 5 s). A failing parent weighs the same way (TestRed: 7 s). The wall time
 // between events counts nothing: TestPaused's events are 105 s apart.
 // Planted: with Elapsed alone, TestGate weighs 0.01 s and TestRed 0.
@@ -85,6 +86,18 @@ func TestAGoTestsSecondsCountItsParallelSubtests(t *testing.T) {
 {"Action":"pass","Test":"TestGate","Elapsed":0.01}
 {"Time":"2026-11-25T10:01:40Z","Action":"cont","Test":"TestPaused"}
 {"Time":"2026-11-25T10:01:45Z","Action":"pass","Test":"TestPaused","Elapsed":5}
+{"Action":"run","Test":"TestWrap"}
+{"Action":"run","Test":"TestWrap/g"}
+{"Action":"run","Test":"TestWrap/g/1"}
+{"Action":"pause","Test":"TestWrap/g/1"}
+{"Action":"run","Test":"TestWrap/g/2"}
+{"Action":"pause","Test":"TestWrap/g/2"}
+{"Action":"cont","Test":"TestWrap/g/1"}
+{"Action":"cont","Test":"TestWrap/g/2"}
+{"Action":"pass","Test":"TestWrap/g/1","Elapsed":10}
+{"Action":"pass","Test":"TestWrap/g/2","Elapsed":10}
+{"Action":"pass","Test":"TestWrap/g","Elapsed":0}
+{"Action":"pass","Test":"TestWrap","Elapsed":10}
 {"Action":"run","Test":"TestRed"}
 {"Action":"run","Test":"TestRed/a"}
 {"Action":"pause","Test":"TestRed/a"}
@@ -92,7 +105,7 @@ func TestAGoTestsSecondsCountItsParallelSubtests(t *testing.T) {
 {"Action":"fail","Test":"TestRed/a","Elapsed":7}
 {"Action":"fail","Test":"TestRed","Elapsed":0}
 `
-	res, err := goTestResults(strings.NewReader(events), map[string]string{"TestGate": "gate", "TestPaused": "paused", "TestRed": "red"})
+	res, err := goTestResults(strings.NewReader(events), map[string]string{"TestGate": "gate", "TestPaused": "paused", "TestRed": "red", "TestWrap": "wrap"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +119,9 @@ func TestAGoTestsSecondsCountItsParallelSubtests(t *testing.T) {
 	}
 	if p := got["paused"]; p.Verdict != testreg.Pass || !near(p.Seconds, 5) {
 		t.Errorf("a paused parallel test weighs %v s, want its Elapsed, 5 s: %+v", p.Seconds, p)
+	}
+	if w := got["wrap"]; w.Verdict != testreg.Pass || !near(w.Seconds, 10) {
+		t.Errorf("a parent of a serial subtest holding parallel ones weighs %v s, want its own 10 s: %+v", w.Seconds, w)
 	}
 	if r := got["red"]; r.Verdict != testreg.Fail || !near(r.Seconds, 7) {
 		t.Errorf("a failing parent of a parallel subtest weighs %v s, want 7 s: %+v", r.Seconds, r)
