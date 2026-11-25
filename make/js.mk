@@ -1386,14 +1386,14 @@ REGISTRY_NA_WHY.goldens.js      := no committed table goldens; its packet golden
 ESLINT ?= eslint
 JS_CLEAN_TREES := build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
 # THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
-# registry row sets JS_CLEAN_SHARD=K/N and lints the .js, .mjs and .cjs files
-# eslint would find in the trees that land in its shard, so N rows lint every
-# file once.
+# row may set JS_CLEAN_SHARD=K/N; shard K lints the .js, .mjs and .cjs files
+# eslint would find in the trees that land in it, so N rows lint every file
+# once.
 JS_CLEAN_SHARD ?=
 .PHONY: tables-js-clean
 TABLES_JS_CLEAN_INPUTS := build/tables-generated-js/.stamp generated/js/.stamp generated/js-ludicrous/.stamp generated/bench/js/.stamp generated/bench/paired/js/.stamp
 # tables-js-clean-inputs builds what tables-js-clean reads and nothing else:
-# ci-fast.yml's produce job builds it once and hands the trees to every shard.
+# a producer job can build it once and hand the trees to every shard.
 .PHONY: tables-js-clean-inputs
 tables-js-clean-inputs: $(TABLES_JS_CLEAN_INPUTS)
 

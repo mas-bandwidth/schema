@@ -362,8 +362,9 @@ CPP_CLEAN_STAMPS := build/tables-generated/.stamp generated/cpp/.stamp generated
 CPP_FORMAT_ALLOW := make/cpp-format-allow.txt
 CPP_WARN_ALLOW   := make/cpp-warn-allow.txt
 # EACH GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
-# registry row sets CPP_FORMAT_SHARD or CPP_WARN_SHARD=K/N, so N rows judge
-# every file once.
+# row may set CPP_FORMAT_SHARD or CPP_WARN_SHARD=K/N, so N rows judge
+# every file once (the warnings gate in whole directories: a header's
+# findings come from the files of its directory that include it).
 CPP_FORMAT_SHARD ?=
 CPP_WARN_SHARD   ?=
 
@@ -373,8 +374,8 @@ tables-cpp-clean: tables-cpp-format tables-cpp-warnings
 # the two halves are separate targets so a parallel make runs them together;
 # $(MAKE) -j runs them and each fans out over the cores itself
 # tables-cpp-clean-inputs builds the trees tables-cpp-format and
-# tables-cpp-warnings read, and nothing else: ci-fast.yml's produce job builds
-# it once and hands the trees to every shard.
+# tables-cpp-warnings read, and nothing else: a producer job can build
+# it once and hand the trees to every shard.
 .PHONY: tables-cpp-clean-inputs
 tables-cpp-clean-inputs: $(CPP_CLEAN_STAMPS)
 

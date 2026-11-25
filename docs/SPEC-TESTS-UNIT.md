@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2890.
+Unit tests every language answers: 2. Language-free tests: 2891.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1772,11 +1772,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 278 tests
+#### `tooling` family `ci`, 279 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.ci.a-c-format-shard-holds-its-ratchet-lines` | `gotest` | Go test TestACFormatShardHoldsItsRatchetLines in ./internal/ci | `package: ./internal/ci`<br>`test: TestACFormatShardHoldsItsRatchetLines` | the Go test passes | `internal/ci/lint_shard_test.go:146` |
+| `none.unit.tooling.ci.a-c-format-shard-holds-its-ratchet-lines` | `gotest` | Go test TestACFormatShardHoldsItsRatchetLines in ./internal/ci | `package: ./internal/ci`<br>`test: TestACFormatShardHoldsItsRatchetLines` | the Go test passes | `internal/ci/lint_shard_test.go:147` |
+| `none.unit.tooling.ci.a-directory-shard-is-whole-and-weighs-its-source` | `gotest` | Go test TestADirectoryShardIsWholeAndWeighsItsSource in ./internal/ci | `package: ./internal/ci`<br>`test: TestADirectoryShardIsWholeAndWeighsItsSource` | the Go test passes | `internal/ci/lint_shard_test.go:247` |
 | `none.unit.tooling.ci.air-c-fixed-table-reference-build-record` | `gotest` | Go test TestAirCFixedTableReferenceBuildRecord in ./internal/ci | `package: ./internal/ci`<br>`test: TestAirCFixedTableReferenceBuildRecord` | the Go test passes | `internal/ci/air_c_reference_build_test.go:18` |
 | `none.unit.tooling.ci.base-reds-ledger-names-real-tests` | `gotest` | Go test TestBaseRedsLedgerNamesRealTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestBaseRedsLedgerNamesRealTests` | the Go test passes | `internal/ci/basereds_test.go:20` |
 | `none.unit.tooling.ci.c-conformance-children-write-no-core` | `gotest` | Go test TestCConformanceChildrenWriteNoCore in ./internal/ci | `package: ./internal/ci`<br>`test: TestCConformanceChildrenWriteNoCore` | the Go test passes | `internal/ci/c_no_core_children_test.go:76` |
@@ -1955,8 +1956,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.release-refuses-on-differential-reaches-differential` | `gotest` | Go test TestReleaseRefusesOnDifferentialReachesDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestReleaseRefusesOnDifferentialReachesDifferential` | the Go test passes | `internal/ci/release_refuses_on_differential_test.go:14` |
 | `none.unit.tooling.ci.release-soak-parallel-sharding-preserves-full-counts` | `gotest` | Go test TestReleaseSoakParallelShardingPreservesFullCounts in ./internal/ci | `package: ./internal/ci`<br>`test: TestReleaseSoakParallelShardingPreservesFullCounts` | the Go test passes | `internal/ci/certify_parallel_test.go:396` |
 | `none.unit.tooling.ci.release-workflow-publishes-the-git-hub-release` | `gotest` | Go test TestReleaseWorkflowPublishesTheGitHubRelease in ./internal/ci | `package: ./internal/ci`<br>`test: TestReleaseWorkflowPublishesTheGitHubRelease` | the Go test passes | `internal/ci/release_publishes_test.go:99` |
-| `none.unit.tooling.ci.retired-workflow-problems-are-seen` | `gotest` | Go test TestRetiredWorkflowProblemsAreSeen in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowProblemsAreSeen` | the Go test passes | `internal/ci/retired_workflows_test.go:180` |
-| `none.unit.tooling.ci.retired-workflows-are-registry-rows` | `gotest` | Go test TestRetiredWorkflowsAreRegistryRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowsAreRegistryRows` | the Go test passes | `internal/ci/retired_workflows_test.go:165` |
+| `none.unit.tooling.ci.retired-workflow-problems-are-seen` | `gotest` | Go test TestRetiredWorkflowProblemsAreSeen in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowProblemsAreSeen` | the Go test passes | `internal/ci/retired_workflows_test.go:190` |
+| `none.unit.tooling.ci.retired-workflows-are-registry-rows` | `gotest` | Go test TestRetiredWorkflowsAreRegistryRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestRetiredWorkflowsAreRegistryRows` | the Go test passes | `internal/ci/retired_workflows_test.go:174` |
 | `none.unit.tooling.ci.root-scaffolding-files-stay-absent` | `gotest` | Go test TestRootScaffoldingFilesStayAbsent in ./internal/ci | `package: ./internal/ci`<br>`test: TestRootScaffoldingFilesStayAbsent` | the Go test passes | `internal/ci/rootscaffolding_test.go:22` |
 | `none.unit.tooling.ci.ruby-analyzers-beside-ruby` | `gotest` | Go test TestRubyAnalyzersBesideRuby in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyAnalyzersBesideRuby` | the Go test passes | `internal/ci/rubypins_test.go:303` |
 | `none.unit.tooling.ci.ruby-design-page` | `gotest` | Go test TestRubyDesignPage in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyDesignPage` | the Go test passes | `internal/ci/rubydesign_test.go:16` |
@@ -2047,7 +2048,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.the-fixed-form-harnesses-run-per-pull-request` | `gotest` | Go test TestTheFixedFormHarnessesRunPerPullRequest in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheFixedFormHarnessesRunPerPullRequest` | the Go test passes | `internal/ci/ci_test.go:590` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js` | `gotest` | Go test TestTheGoTestJobClonesSerializeJS in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJS` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:57` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js-negative-control` | `gotest` | Go test TestTheGoTestJobClonesSerializeJSNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJSNegativeControl` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:72` |
-| `none.unit.tooling.ci.the-lint-shards-judge-every-line-once` | `gotest` | Go test TestTheLintShardsJudgeEveryLineOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLintShardsJudgeEveryLineOnce` | the Go test passes | `internal/ci/lint_shard_test.go:70` |
+| `none.unit.tooling.ci.the-lint-shards-judge-every-line-once` | `gotest` | Go test TestTheLintShardsJudgeEveryLineOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLintShardsJudgeEveryLineOnce` | the Go test passes | `internal/ci/lint_shard_test.go:71` |
 | `none.unit.tooling.ci.the-parity-table-is-covered` | `gotest` | Go test TestTheParityTableIsCovered in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheParityTableIsCovered` | the Go test passes | `internal/ci/parity_table_test.go:18` |
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
 | `none.unit.tooling.ci.tla-runs-hash-every-model-and-config` | `gotest` | Go test TestTLARunsHashEveryModelAndConfig in ./internal/ci | `package: ./internal/ci`<br>`test: TestTLARunsHashEveryModelAndConfig` | the Go test passes | `internal/ci/strictonly_tla_test.go:107` |

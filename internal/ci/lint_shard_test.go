@@ -4,6 +4,7 @@ package ci
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -233,5 +234,79 @@ func TestACFormatShardHoldsItsRatchetLines(t *testing.T) {
 	}
 	if reds != 1 {
 		t.Errorf("a ratchet line for a gone file is red in %d shards, want exactly 1", reds)
+	}
+}
+
+// TestADirectoryShardIsWholeAndWeighsItsSource: with key "dir" every line
+// lands in the shard of its first field's directory, so a gate that shards
+// whole directories (the C++ warnings gate: a header's findings come from
+// the files of its directory that include it) keeps each directory in one
+// shard. A directory weighs its files' bytes with target/ and Cargo.lock
+// left out, so a build's leftovers on one runner do not move the split:
+// every runner assigns the same directories to the same shards.
+func TestADirectoryShardIsWholeAndWeighsItsSource(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	dir := t.TempDir()
+	paths, _ := shardTree(t, dir, 24)
+	var dirs []string
+	for _, p := range paths {
+		dirs = append(dirs, filepath.Dir(p))
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dirs.txt"), []byte(strings.Join(dirs, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var lines []string
+	for _, p := range paths {
+		lines = append(lines, p+" sign-conversion", filepath.Dir(p)+"/Other.h shadow")
+	}
+	split := func() map[string]int {
+		at := map[string]int{}
+		assigned := map[string]int{} // the shard the universe gives each directory
+		for k := 1; k <= 4; k++ {
+			own, _, err := shardFilter(t, root, dir, dirs, fmt.Sprintf("%d/4", k), "dirs.txt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range own {
+				assigned[d] = k
+			}
+		}
+		for k := 1; k <= 4; k++ {
+			got, stderr, err := shardFilter(t, root, dir, lines, fmt.Sprintf("%d/4", k), "dirs.txt", "dir")
+			if err != nil {
+				t.Fatalf("shard %d/4: %v %s", k, err, stderr)
+			}
+			for _, l := range got {
+				d := filepath.Dir(strings.Fields(l)[0])
+				if s, ok := at[d]; ok && s != k {
+					t.Errorf("directory %s is split across shards %d and %d", d, s, k)
+				}
+				if assigned[d] != k {
+					t.Errorf("a line of %s is in shard %d, and the universe gives %s to shard %d", d, k, d, assigned[d])
+				}
+				at[d] = k
+			}
+		}
+		return at
+	}
+	before := split()
+	if len(before) != len(dirs) {
+		t.Fatalf("the shards hold %d directories, want %d", len(before), len(dirs))
+	}
+	// a build's leftovers in the lightest directory: a target/ far heavier
+	// than every source, and a Cargo.lock
+	light := filepath.Join(dir, dirs[0])
+	if err := os.MkdirAll(filepath.Join(light, "target", "debug"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(light, "target", "debug", "unit.rlib"), []byte(strings.Repeat("x", 1<<20)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(light, "Cargo.lock"), []byte(strings.Repeat("x", 1<<19)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if after := split(); !maps.Equal(before, after) {
+		t.Errorf("a target/ and a Cargo.lock moved the split:\nbefore %v\nafter  %v", before, after)
 	}
 }

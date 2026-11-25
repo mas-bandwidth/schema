@@ -124,8 +124,10 @@ write-order-descending)
     # THE WRITE ORDER's first break (docs/SPEC-TABLES.md §22.7): the cursor
     # the wire writer walks a LOADED region's map with starts at the last
     # entry and steps backward, so the entries are written in DESCENDING key
-    # order. The stored region is untouched and a builder's map walks its own
-    # sorted order, so json-read (text in, wire out) stays green.
+    # order. The stored region is untouched and the text writer walks it in its
+    # own order, so json-write stays green; json-read (text in, wire out) packs
+    # the text and writes the wire through the same cursor, so its map rows go
+    # red with the wire's, and nothing else of it does.
     source=$(grep -l '^func tableMapCursor(' build/tables-generated-go/maps/*Table.go)
     perl -0pe 's/(\t\t\tprev = k\n\t\t\}\n)\t\treturn c\n/$1\t\tc.p, c.size = unsafe.Add(base, int64(h.Count-1)*int64(f.ElemSize)), -c.size \/\/ SABOTAGED: a loaded map walks descending\n\t\treturn c\n/' "$source" > "$out/source.gotext"
     ;;
@@ -243,6 +245,8 @@ else
         # stored order itself, and no pointer graph holds a map.
         grep -q 'go / rewrite: edge_map_keys:' "$out/log"
         grep -q '^json-write    pass' "$out/log"
+        grep -q 'go / json-read: map_key_order:' "$out/log"
+        if grep 'go / json-read: ' "$out/log" | grep -vqE 'go / json-read: (map_|edge_map_)'; then echo "negative control reddened what its break cannot reach: a json-read row that holds no map" >&2; exit 1; fi
         if grep -q 'go / [a-z-]*: graph_' "$out/log"; then echo "negative control reddened what its break cannot reach: graph_ rows" >&2; exit 1; fi
         if grep -q 'go / rewrite: edge_graph_diamond:' "$out/log"; then echo "negative control reddened what its break cannot reach: edge_graph_diamond" >&2; exit 1; fi
     elif [ "$mode" = write-order-insertion ]; then

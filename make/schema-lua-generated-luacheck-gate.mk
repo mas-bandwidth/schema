@@ -128,8 +128,8 @@ $(LUA_LUACHECK_CORPUS)/.stamp: bin/schema make/schema-lua-generated-luacheck-gat
 .PHONY: tables-lua-luacheck
 TABLES_LUA_LUACHECK_INPUTS := $(LUA_LUACHECK_CORPUS)/.stamp $(LUA_LUACHECK_CONFIG)
 # tables-lua-luacheck-inputs builds the corpus tables-lua-luacheck and
-# tables-lua-format read and nothing else: ci-fast.yml's produce job builds it
-# once and hands the trees to every shard.
+# tables-lua-format read and nothing else: a producer job can build it
+# once and hand the trees to every shard.
 .PHONY: tables-lua-luacheck-inputs
 tables-lua-luacheck-inputs: $(TABLES_LUA_LUACHECK_INPUTS)
 

@@ -276,11 +276,14 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	// the run's seed: --seed, or the UTC date; every adapter is handed it
 	// (testreg.SeedEnv), and it is printed so a red fuzz row re-runs by name
 	// with it
-	seed := testreg.DateSeed(now())
+	// with the clock read only when no --seed names it
+	var seed uint64
 	if *seedFlag != "" {
 		if seed, err = testreg.ParseSeed(*seedFlag); err != nil {
 			return usageError{"--seed: " + err.Error()}
 		}
+	} else {
+		seed = testreg.DateSeed(now())
 	}
 	ctx = testreg.WithEnv(ctx, map[string]string{testreg.SeedEnv: strconv.FormatUint(seed, 10)})
 	if _, err := fmt.Fprintf(stdout, "schema-test run: seed %d (a red fuzz row re-runs with: schema-test run NAME --seed %d)\n", seed, seed); err != nil {

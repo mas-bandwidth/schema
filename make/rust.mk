@@ -133,13 +133,13 @@ tables-rust-features: build/tables-generated-rust/.stamp
 # RUST_CLIPPY_ROOT is the tree the gate walks; its control hands it a copy.
 RUST_CLIPPY_ROOT ?= build/tables-generated-rust
 # THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
-# registry row sets RUST_CLIPPY_SHARD=K/N and its workspace holds the units
-# whose names land in its shard, so N rows lint every unit once.
+# row may set RUST_CLIPPY_SHARD=K/N; shard K's workspace holds the units
+# that land in it, so N rows lint every unit once.
 RUST_CLIPPY_SHARD ?=
 .PHONY: tables-rust-clippy
 TABLES_RUST_CLIPPY_INPUTS := build/tables-generated-rust/.stamp
 # tables-rust-clippy-inputs builds what tables-rust-clippy reads and nothing else:
-# ci-fast.yml's produce job builds it once and hands the trees to every shard.
+# a producer job can build it once and hand the trees to every shard.
 .PHONY: tables-rust-clippy-inputs
 tables-rust-clippy-inputs: $(TABLES_RUST_CLIPPY_INPUTS)
 

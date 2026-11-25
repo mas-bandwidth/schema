@@ -2,8 +2,10 @@
 # THE LINT SHARD FILTER. A lint gate over generated files runs whole, or as
 # shard K of N. The gate hands this filter its whole list of files or units,
 # the UNIVERSE, and every shard computes the same assignment from it: the
-# entries are taken heaviest first (a file's bytes, a directory's kilobytes,
-# the cost a formatter or a compiler pays for it) and each goes to the
+# entries are taken heaviest first (a file's bytes, a directory's files' bytes
+# with its build output, target/, and Cargo.lock left out: the cost a
+# formatter or a compiler pays for it, and the same on every runner however
+# much a build left there or however the filesystem stores it) and each goes to the
 # lightest shard so far, ties to the lower shard and then by path. So the N
 # shards hold every entry of the universe exactly once and carry about equal
 # weight. A line whose key is not in the universe (a ratchet line for a file
@@ -13,13 +15,14 @@
 #
 # usage: shard-filter.sh <K/N | ""> <universe-file> [key] < lines > lines-of-the-shard
 #        an empty spec passes every line: the whole gate. With key "first",
-#        a line is keyed by its first field (a ratchet line `<path> <kinds>`),
-#        else by the whole line (a path).
+#        a line is keyed by its first field (a ratchet line `<path> <kinds>`);
+#        with key "dir", by its first field's directory (a gate that shards
+#        whole directories); else by the whole line (a path).
 set -eu
 spec=${1-}
 universe=${2-}
 key=${3-line}
-case "$key" in line | first) ;; *) echo "shard-filter: key \"$key\" is not line or first" >&2; exit 2 ;; esac
+case "$key" in line | first | dir) ;; *) echo "shard-filter: key \"$key\" is not line, first or dir" >&2; exit 2 ;; esac
 if [ -z "$spec" ]; then
 	cat
 	exit 0
@@ -34,14 +37,17 @@ if [ "$n" -lt 1 ] || [ "$k" -lt 1 ] || [ "$k" -gt "$n" ]; then
 	exit 2
 fi
 [ -r "$universe" ] || { echo "shard-filter: the universe \"$universe\" cannot be read" >&2; exit 2; }
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 
 # <weight> <path> for every entry of the universe; an entry that is not on
 # disk is a gate's bookkeeping error, refused by name
 weights=$(while IFS= read -r p; do
 	[ -n "$p" ] || continue
 	if [ -d "$p" ]; then
-		w=$(du -sk "$p") || exit 1
-		w=${w%%[ 	]*}
+		# find fails when any wc it runs fails; a lone file has no "total" line
+		find "$p" -type d -name target -prune -o -type f ! -name Cargo.lock -exec wc -c {} + > "$tmp/sizes" || exit 1
+		w=$(awk '$2 != "total" { s += $1 } END { print s + 0 }' "$tmp/sizes") || exit 1
 	elif [ -f "$p" ]; then
 		w=$(wc -c < "$p") || exit 1
 		w=$(echo $w)
@@ -53,8 +59,6 @@ weights=$(while IFS= read -r p; do
 done < "$universe") || exit 1
 # the assignment: heaviest first, each to the lightest shard (LPT); one line
 # `<shard> <path>` per entry of the universe
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
 printf '%s\n' "$weights" | LC_ALL=C sort -k1,1nr -k2,2 | awk -v n="$n" '
 	NF {
 		best = 1
@@ -68,6 +72,7 @@ awk -v k="$k" -v key="$key" '
 	{
 		q = $0
 		if (key == "first") q = $1
+		if (key == "dir") { q = $1; sub(/\/[^\/]*$/, "", q) }
 		if (q in shard) { if (shard[q] == k) print "Y\t" $0 }
 		else print "C\t" $0
 	}' "$tmp/assigned" - | while IFS= read -r tagged; do
@@ -76,8 +81,11 @@ awk -v k="$k" -v key="$key" '
 	Y*) printf '%s\n' "$p" ;;
 	*)
 		q=$p
-		if [ "$key" = first ]; then
+		if [ "$key" = first ] || [ "$key" = dir ]; then
 			q=${p%%[ 	]*}
+		fi
+		if [ "$key" = dir ]; then
+			q=${q%/*}
 		fi
 		h=$(printf '%s' "$q" | cksum)
 		h=${h%% *}

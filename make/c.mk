@@ -1673,12 +1673,12 @@ CLANG_FORMAT_PIN   ?= 23.1.3
 CLANG_FORMAT_MAJOR := $(firstword $(subst ., ,$(CLANG_FORMAT_PIN)))
 C_FORMAT_TREES     := build/tables-generated-c generated/c generated/c-ludicrous generated/bench/c generated/bench/tables/c generated/bench/paired/c
 # THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
-# registry row sets C_FORMAT_SHARD=K/N, so N rows judge every file once.
+# row may set C_FORMAT_SHARD=K/N, so N rows judge every file once.
 C_FORMAT_SHARD     ?=
 .PHONY: tables-c-clean
 TABLES_C_CLEAN_INPUTS := build/tables-generated-c/.stamp cards-c-generate generated/c/.stamp generated/c-ludicrous/.stamp generated/bench/c/.stamp generated/bench/tables/c/.stamp generated/bench/paired/c/.stamp
 # tables-c-clean-inputs builds what tables-c-clean reads and nothing else:
-# ci-fast.yml's produce job builds it once and hands the trees to every shard.
+# a producer job can build it once and hand the trees to every shard.
 .PHONY: tables-c-clean-inputs
 tables-c-clean-inputs: $(TABLES_C_CLEAN_INPUTS)
 

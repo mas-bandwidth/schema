@@ -111,8 +111,9 @@ var retiredWorkflows = map[string][]retiredRow{
 // retiredWorkflowProblems is every way the repository disagrees with the
 // retired workflows' table: a retired workflow file that is back (two
 // harnesses running one gate), and a row that is missing, of another tier,
-// run by an adapter that is not make, plant or gotest, or that no longer
-// sets the variables or the seed its job set.
+// run by an adapter that is not make, plant or gotest, that runs another
+// target than its job did, or that no longer sets the variables or the seed
+// its job set.
 func retiredWorkflowProblems(root string, reg *testreg.Registry) []string {
 	var out []string
 	names := make([]string, 0, len(retiredWorkflows))
@@ -139,12 +140,20 @@ func retiredWorkflowProblems(root string, reg *testreg.Registry) []string {
 				out = append(out, fmt.Sprintf("%s: row %s runs on adapter %q, not make, plant or gotest", wf, want.key, t.Adapter))
 			}
 			var in struct {
-				Vars map[string]string `json:"vars"`
-				Seed string            `json:"seed"`
+				Target string            `json:"target"`
+				Make   string            `json:"make"`
+				Vars   map[string]string `json:"vars"`
+				Seed   string            `json:"seed"`
 			}
 			if err := json.Unmarshal(t.Inputs, &in); err != nil {
 				out = append(out, fmt.Sprintf("%s: row %s inputs: %v", wf, want.key, err))
 				continue
+			}
+			// a make row runs its case as its target, and a plant the make control
+			// its case names: what the job ran, by name
+			ran := map[string]string{"make": in.Target, "plant": in.Make}[t.Adapter]
+			if t.Adapter != "gotest" && ran != t.Case {
+				out = append(out, fmt.Sprintf("%s: row %s runs make %q, want %q as its job did", wf, want.key, ran, t.Case))
 			}
 			for k, v := range want.vars {
 				if in.Vars[k] != v {
@@ -176,7 +185,8 @@ func TestRetiredWorkflowsAreRegistryRows(t *testing.T) {
 
 // TestRetiredWorkflowProblemsAreSeen plants each fault in a copy of the
 // registry and a scratch root: a workflow back, a row gone, a row moved to
-// another tier, a dropped variable and a dropped seed are each named.
+// another tier, a swapped target, a dropped variable and a dropped seed are
+// each named.
 func TestRetiredWorkflowProblemsAreSeen(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -217,6 +227,7 @@ func TestRetiredWorkflowProblemsAreSeen(t *testing.T) {
 			"tables-lua-luacheck is tier nightly, want functional"},
 		"variable dropped": {`"LUA_FUZZ_SECONDS":"600"`, `"LUA_FUZZ_SECONDS":"60"`, `sets LUA_FUZZ_SECONDS="60"`},
 		"seed dropped":     {`"seed":"LUAU_FUZZ_SEED"`, `"seed":""`, `takes seed "", want "LUAU_FUZZ_SEED"`},
+		"target swapped":   {`"target":"schema-lua-resource-bounds"`, `"target":"schema-lua-resource-bounds-negative-control"`, `runs make "schema-lua-resource-bounds-negative-control", want "schema-lua-resource-bounds"`},
 	} {
 		if strings.Count(string(data), c.old) != 1 {
 			t.Errorf("%s: the plant's anchor %q is not in the registry exactly once", name, c.old)
