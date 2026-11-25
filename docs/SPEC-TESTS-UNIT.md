@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 2780.
+Unit tests every language answers: 0. Language-free tests: 2783.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2901,7 +2901,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 31 tests
+#### `tooling` family `schema-test`, 32 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2934,6 +2934,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-fail-rule` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryFailRule in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryFailRule` | the Go test passes | `tools/schema-test/main_test.go:51` |
 | `none.unit.tooling.schema-test.the-pr-jobs-split-the-group-by-language` | `gotest` | Go test TestThePRJobsSplitTheGroupByLanguage in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRJobsSplitTheGroupByLanguage` | the Go test passes | `tools/schema-test/shards_test.go:183` |
 | `none.unit.tooling.schema-test.the-pr-shards-fit-their-jobs` | `gotest` | Go test TestThePRShardsFitTheirJobs in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePRShardsFitTheirJobs` | the Go test passes | `tools/schema-test/shards_test.go:80` |
+| `none.unit.tooling.schema-test.the-runs-seed-is-printed-and-handed-to-every-adapter` | `gotest` | Go test TestTheRunsSeedIsPrintedAndHandedToEveryAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRunsSeedIsPrintedAndHandedToEveryAdapter` | the Go test passes | `tools/schema-test/seed_cli_test.go:32` |
 | `none.unit.tooling.schema-test.write-ledger-keeps-the-tier-lines` | `gotest` | Go test TestWriteLedgerKeepsTheTierLines in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerKeepsTheTierLines` | the Go test passes | `tools/schema-test/extract_test.go:44` |
 | `none.unit.tooling.schema-test.write-ledger-refuses-an-unreadable-tree` | `gotest` | Go test TestWriteLedgerRefusesAnUnreadableTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerRefusesAnUnreadableTree` | the Go test passes | `tools/schema-test/extract_test.go:149` |
 
@@ -3017,10 +3018,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 49 tests
+#### `tooling` family `testreg`, 51 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.testreg.a-date-seed-is-the-utc-date` | `gotest` | Go test TestADateSeedIsTheUTCDate in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestADateSeedIsTheUTCDate` | the Go test passes | `internal/testreg/seed_test.go:10` |
 | `none.unit.tooling.testreg.a-full-name-is-never-filtered-out` | `gotest` | Go test TestAFullNameIsNeverFilteredOut in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAFullNameIsNeverFilteredOut` | the Go test passes | `internal/testreg/run_test.go:120` |
 | `none.unit.tooling.testreg.a-hand-edit-to-an-addendum-is-red` | `gotest` | plant: a hand edit to a generated addendum makes the drift check fail, naming the page and the line | `package: ./internal/testreg`<br>`test: TestAHandEditToAnAddendumIsRed` | the Go test passes | `internal/testreg/addenda_test.go:85` |
 | `none.unit.tooling.testreg.a-harness-skip-line-fails` | `gotest` | Go test TestAHarnessSkipLineFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAHarnessSkipLineFails` | the Go test passes | `internal/testreg/run_test.go:261` |
@@ -3032,6 +3034,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.a-result-nobody-asked-for-fails` | `gotest` | Go test TestAResultNobodyAskedForFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAResultNobodyAskedForFails` | the Go test passes | `internal/testreg/run_test.go:198` |
 | `none.unit.tooling.testreg.a-result-reported-twice-fails` | `gotest` | Go test TestAResultReportedTwiceFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAResultReportedTwiceFails` | the Go test passes | `internal/testreg/run_test.go:208` |
 | `none.unit.tooling.testreg.a-row-added-without-regenerating-is-red` | `gotest` | plant: a registry row added without regenerating makes the drift check fail, naming its tier's page | `package: ./internal/testreg`<br>`test: TestARowAddedWithoutRegeneratingIsRed` | the Go test passes | `internal/testreg/addenda_test.go:98` |
+| `none.unit.tooling.testreg.a-seed-is-a-decimal-number-and-nothing-else` | `gotest` | Go test TestASeedIsADecimalNumberAndNothingElse in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestASeedIsADecimalNumberAndNothingElse` | the Go test passes | `internal/testreg/seed_test.go:26` |
 | `none.unit.tooling.testreg.all-pass-is-green` | `gotest` | Go test TestAllPassIsGreen in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAllPassIsGreen` | the Go test passes | `internal/testreg/run_test.go:69` |
 | `none.unit.tooling.testreg.an-adapter-crash-fails` | `gotest` | Go test TestAnAdapterCrashFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterCrashFails` | the Go test passes | `internal/testreg/run_test.go:218` |
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:146` |
