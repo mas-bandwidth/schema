@@ -790,8 +790,10 @@ static void form_header_cases()
            "form header: the valid form-3 fixture saves" );
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
 
-    // EMPTY FILE — zero bytes, so there is no first byte to earn a name: the
-    // residue, DAMAGE (`damaged`), with nothing decoded and nothing written.
+    // EMPTY FILE — zero bytes: REFUSED, recommended name `truncated`, with
+    // nothing decoded and nothing written (docs/FIXED-FORM-ALGORITHM.md §5.3's
+    // refusal table, "no bytes at all"; "There is no `malformed` flag on this
+    // form's report", so `damaged` stays false).
     {
         tblfx1::FxRoot v;
         std::memset( (void *) &v, 0xAB, sizeof( v ) );
@@ -799,11 +801,12 @@ static void form_header_cases()
         tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
-        check( n < 0 && r.damaged && !r.refused, "empty-file: zero bytes is damage" );
+        check( n < 0 && r.refused && r.reason == tblfx1::TableFixedReason::truncated && !r.damaged,
+               "empty-file: zero bytes refuses truncated, never damage" );
         check( r.unknown == 0 && r.widened == 0,
-               "empty-file: damage moves no counter" );
+               "empty-file: the refusal moves no counter" );
         check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
-               "empty-file: damage leaves the row at its declared defaults" );
+               "empty-file: the refusal leaves the row at its declared defaults" );
     }
 
     // SHORT-FORM1 — a committed form-1 file is TEN bytes: `previous_form`, the
@@ -864,7 +867,8 @@ static void form_header_cases()
 
     // RESERVED-BYTE3 — the seven bytes after the form byte are refused and not
     // ignored, so that they stay spendable later. Byte 3 set nonzero on a valid
-    // form-3 file is damage (`damaged`), with no refusal.
+    // form-3 file REFUSES, recommended name `reserved_not_zero`, and sets no
+    // `damaged` (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table).
     {
         std::vector<uint8_t> reserved = good;
         reserved[3] = 1;
@@ -874,12 +878,12 @@ static void form_header_cases()
         tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
-        check( n < 0 && r.damaged && !r.refused,
-               "reserved-byte3: a nonzero reserved byte 3 is damage, not a named refusal" );
+        check( n < 0 && r.refused && r.reason == tblfx1::TableFixedReason::reserved_not_zero && !r.damaged,
+               "reserved-byte3: a nonzero reserved byte 3 refuses reserved_not_zero, never damage" );
         check( r.unknown == 0 && r.widened == 0,
-               "reserved-byte3: damage moves no counter" );
+               "reserved-byte3: the refusal moves no counter" );
         check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
-               "reserved-byte3: damage leaves the row at its declared defaults" );
+               "reserved-byte3: the refusal leaves the row at its declared defaults" );
     }
 }
 
@@ -894,9 +898,10 @@ static void fuzz_case()
     // deep, is not a hypothetical — it is one flipped byte away.
     //
     // So: every byte of a form-3 file, flipped one bit at a time, handed to a
-    // reader of the other generation. The reader must answer one of three ways
-    // and never a fourth — a refusal by name, a damaged read, or a read that
-    // lands values. UNDER ASAN "never a fourth" includes never touching a byte
+    // reader of the other generation. The reader must answer one of two ways
+    // and never a third — a refusal by name, or a read that lands values (the
+    // form's report has no damaged channel, §5.3). UNDER ASAN "never a third"
+    // includes never touching a byte
     // outside the buffer, which is what this is really for. The named rules
     // above say which refusal a given break earns; this says there is no break
     // that earns none of them.
@@ -927,8 +932,14 @@ static void fuzz_case()
                                                        plan.data(), (int32_t) plan.size(), NULL, &r );
             if ( n < 0 )
             {
-                if ( r.refused ) { refused++; check( !r.damaged, "fuzz: a refusal is never damage" ); }
-                else { damaged++; check( r.damaged, "fuzz: a negative read that is not a refusal is damage" ); }
+                // §5.3: framing damage refuses by name like every other
+                // refusal, and there is no malformed flag on this form's
+                // report, so every negative read is a refusal and none is
+                // damage.
+                if ( r.refused ) { refused++; }
+                check( r.refused, "fuzz: a negative read is a refusal by name" );
+                if ( r.damaged ) { damaged++; }
+                check( !r.damaged, "fuzz: the fixed load never sets damaged" );
                 continue;
             }
             read += n;

@@ -4427,8 +4427,8 @@ inline uint64_t TableStoredFloatBits( double d )
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
-// -1 of <T>FixedLoad carries one, and a framing-damage return keeps
-// "malformed" set BESIDE it. They are the one vocabulary's own values
+// -1 of <T>FixedLoad carries one with refused set, a framing-damage return
+// included: there is no malformed flag on this form's report. They are the one vocabulary's own values
 // (TableRefuseReason, §6.5), named here as well so the fixed form's callers
 // keep the spelling they already read.
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
@@ -10630,11 +10630,12 @@ inline int64_t PaddedRowFixedLoadWalkBody( PaddedRow * values, int64_t capacity,
     TableReport local;
     if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
-    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
-    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): framing
+    // damage refuses by name like every other refusal, and "there is no
+    // malformed flag on this form's report": damaged is never set here.
     if ( data == NULL || bytes < 1 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
@@ -10648,18 +10649,18 @@ inline int64_t PaddedRowFixedLoadWalkBody( PaddedRow * values, int64_t capacity,
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // one refuses TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
         if ( data[i] != 0 )
         {
-            report->damaged = true;
+            report->refused = true;
             report->reason = TableFixedReason::reserved_not_zero;
             return -1;
         }
@@ -10804,7 +10805,7 @@ inline int64_t PaddedRowFixedLoadWalkBody( PaddedRow * values, int64_t capacity,
     }
     if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
@@ -12374,11 +12375,12 @@ inline int64_t PaddedFrameFixedLoadWalkBody( PaddedFrame * values, int64_t capac
     TableReport local;
     if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
-    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
-    // malformed set BESIDE the name, so a caller switching on reason sees it.
+    // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): framing
+    // damage refuses by name like every other refusal, and "there is no
+    // malformed flag on this form's report": damaged is never set here.
     if ( data == NULL || bytes < 1 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
@@ -12392,18 +12394,18 @@ inline int64_t PaddedFrameFixedLoadWalkBody( PaddedFrame * values, int64_t capac
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
-    // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
+    // one refuses TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
         if ( data[i] != 0 )
         {
-            report->damaged = true;
+            report->refused = true;
             report->reason = TableFixedReason::reserved_not_zero;
             return -1;
         }
@@ -12548,7 +12550,7 @@ inline int64_t PaddedFrameFixedLoadWalkBody( PaddedFrame * values, int64_t capac
     }
     if ( rest == 0 || record_bytes <= 8 || rest % record_bytes != 0 )
     {
-        report->damaged = true;
+        report->refused = true;
         report->reason = TableFixedReason::truncated;
         return -1;
     }
