@@ -19,6 +19,7 @@ import (
 )
 
 func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_union_append")
 	older := cReadSchema(t, "VOLD_union_append")

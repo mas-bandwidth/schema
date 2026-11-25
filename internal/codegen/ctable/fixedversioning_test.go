@@ -189,6 +189,7 @@ var cVersionRows = []cVersionRow{
 // row silently stopping to assert a value.
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	for _, r := range cVersionRows {
 		t.Run(r.row, func(t *testing.T) {
@@ -237,6 +238,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 // ---- OLD-REFUSES-NEW --------------------------------------------------------
 
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	for _, r := range cVersionRows {
 		t.Run(r.row, func(t *testing.T) {
@@ -280,6 +282,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // `layout_unknown`. §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	older := cReadSchema(t, "VOLD_floor")
 	mid := cReadSchema(t, "VMID_floor")
@@ -326,6 +329,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 // ---- the hash ---------------------------------------------------------------
 
 func TestFixedVersioningHash(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_field_append")
 	older := cReadSchema(t, "VOLD_field_append")
@@ -384,6 +388,7 @@ func TestFixedVersioningHash(t *testing.T) {
 // read on the merged build (the name-subset rule, bill §8a.1).
 
 func TestFixedVersioningLineageMerge(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	merged := cReadSchema(t, "VNEW_lineage_merge")
 	a := cReadSchema(t, "VBRA_lineage_merge")
@@ -415,6 +420,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 // and every destination slot keeps its reset image. C names that refusal
 // out_of_range; the verdict, not the name, is the contract (SPEC-TABLES §6.5).
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_array_bounded_grow")
 	older := cReadSchema(t, "VOLD_array_bounded_grow")
@@ -464,6 +470,7 @@ func TestFixedVersioningWriterBoundCount(t *testing.T) {
 // body is `03 09 00 00 00` (tier=Gold, seq=9), asserted to occur exactly once
 // and to BE the tail of the file, as the Go leg's row does (#1123).
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	t.Parallel() // reads the corpus, writes only its own TempDir (make tables-c-versioning)
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_enum_append")
 	older := cReadSchema(t, "VOLD_enum_append")

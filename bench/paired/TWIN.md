@@ -63,6 +63,7 @@ behaviour.
 | `TableFixedPlanCache * cache` | `TableFixedPlanCache & cache` | `TableFixedPlanCache REF cache` |
 | `(uint8_t) kTableFixedClamp` | `kTableFixedClamp` | `kTableFixedClamp` |
 | `(uint8_t) 8` in `table_fixed_tag_at` | `8u` | `8u` |
+| `N * (int) sizeof( TableFixedGuardLink )` in a plan row | `N * static_cast<int>( sizeof( TableFixedGuardLink ) )` | the C spelling (C++ writes no C-style cast: -Wold-style-cast) |
 | union-arm `my_arm = mi + 1` then `c.argw =` | `c.argw =` then `my_arm = mi + 1` | my_arm then argw |
 | `const T * p` in the runtime | `const T & p` | `T REF` |
 | `TableFixedEntryLands( &plan[i] )` | `TableFixedEntryLands( plan[i] )` | `TableFixedEntryLands( plan[i] )` — same pointer/ref as Apply, for the prefill's cover-minus-plan |

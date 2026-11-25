@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1100. Language-free tests: 1486.
+Nightly tests every language answers: 1100. Language-free tests: 1502.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -1200,12 +1200,6 @@ a schema's names are accepted or refused by the name checker.
 
 one schema version reads or writes another's data.
 
-#### `evolution` family `make-c`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.nightly.evolution.make-c.tables-c-versioning` | `make` | make tables-c-versioning (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-versioning` | the target exits 0 with no skip in its log | `make/c.mk:1624` |
-
 #### `evolution` family `make-cs`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -1254,6 +1248,28 @@ one schema version reads or writes another's data.
 |---|---|---|---|---|---|
 | `none.nightly.evolution.make-rust.tables-rust-versioning` | `make` | make tables-rust-versioning (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: tables-rust-versioning` | the target exits 0 with no skip in its log | `make/rust.mk:466` |
 | `none.nightly.evolution.make-rust.tables-rust-versioning-probes` | `make` | make tables-rust-versioning-probes (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`target: tables-rust-versioning-probes` | the target exits 0 with no skip in its log | `make/rust.mk:469` |
+
+#### `evolution` family `tables-c-versioning`, 17 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-cfloat-range-widen` | `make-gotest` | Go test TestFixedVersioningCfloatRangeWiden in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningCfloatRangeWiden` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_cfloat_range_widen_test.go:30` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-cfloat-res-refine` | `make-gotest` | Go test TestFixedVersioningCfloatResRefine in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningCfloatResRefine` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_cfloat_res_refine_test.go:23` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-count-clamp-ends` | `make-gotest` | Go test TestFixedVersioningCountClampEnds in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningCountClampEnds` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_count_clamp_ends_test.go:20` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-floor` | `make-gotest` | Go test TestFixedVersioningFloor in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningFloor` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:284` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-forged-ordinal-both-plans` | `make-gotest` | Go test TestFixedVersioningForgedOrdinalBothPlans in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningForgedOrdinalBothPlans` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:472` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-hash` | `make-gotest` | Go test TestFixedVersioningHash in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningHash` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:331` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-lineage-merge` | `make-gotest` | Go test TestFixedVersioningLineageMerge in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningLineageMerge` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:390` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-new-reads-old` | `make-gotest` | Go test TestFixedVersioningNewReadsOld in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningNewReadsOld` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:191` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-old-refuses-new` | `make-gotest` | Go test TestFixedVersioningOldRefusesNew in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningOldRefusesNew` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:240` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-range-widen-hostile` | `make-gotest` | Go test TestFixedVersioningRangeWidenHostile in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningRangeWidenHostile` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_range_widen_hostile_test.go:21` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-refuse-writes-nothing` | `make-gotest` | Go test TestFixedVersioningRefuseWritesNothing in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningRefuseWritesNothing` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_refuse_writes_nothing_test.go:20` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-union-tag-both-plans` | `make-gotest` | Go test TestFixedVersioningUnionTagBothPlans in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningUnionTagBothPlans` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_union_tag_both_plans_test.go:33` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-union-unselected-arm` | `make-gotest` | Go test TestFixedVersioningUnionUnselectedArm in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningUnionUnselectedArm` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_union_unselected_arm_row_test.go:21` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-unknown-census` | `make-gotest` | Go test TestFixedVersioningUnknownCensus in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningUnknownCensus` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_unknown_census_test.go:60` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-unknown-census-many-records` | `make-gotest` | Go test TestFixedVersioningUnknownCensusManyRecords in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningUnknownCensusManyRecords` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_unknown_census_many_test.go:16` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-writer-bound-count` | `make-gotest` | Go test TestFixedVersioningWriterBoundCount in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningWriterBoundCount` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_test.go:422` |
+| `none.nightly.evolution.tables-c-versioning.fixed-versioning-writer-bound-count-two-remotes` | `make-gotest` | Go test TestFixedVersioningWriterBoundCountTwoRemotes in ./internal/codegen/ctable, run by make tables-c-versioning (make/c.mk) and read by name from its go test -json events | `file: make/c.mk`<br>`package: ./internal/codegen/ctable`<br>`target: tables-c-versioning`<br>`test: TestFixedVersioningWriterBoundCountTwoRemotes` | the Go test passes in make tables-c-versioning's run, with no skip | `internal/codegen/ctable/fixedversioning_writer_bound_count_two_endpoints_test.go:20` |
 
 #### `evolution` family `tables-goose-versioning`, 12 tests
 
@@ -3323,7 +3339,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2540` |
+| `none.nightly.plant.make-c.packet-write-refusal-c-negative-control` | `make` | make packet-write-refusal-c-negative-control (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: packet-write-refusal-c-negative-control` | the target exits 0 with no skip in its log | `make/c.mk:2556` |
 
 #### `plant` family `make-checks-schema-shared-hostile-corpus`, 1 test
 
@@ -5436,10 +5452,10 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2126` |
+| `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2142` |
 | `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`inputs.reads` (151 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1599` |
-| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2596` |
-| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/conformance/c/drivers-asan.txt"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1632` |
+| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2612` |
+| `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`reads: ["test/conformance/c/drivers-asan.txt"]`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1648` |
 
 #### `harness-run` family `make-c-fixed-default-copy`, 1 test
 
@@ -5847,8 +5863,8 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-end-c-test`<br>`reads: ["test/packet-end/PacketEnd.schema"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2458` |
-| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-write-cfloat-c-test`<br>`reads: ["test/packet-write-cfloat/PacketCFloat.schema"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2417` |
+| `none.nightly.ci-plumbing.make-c.build-packet-end-c-test` | `make` | make build/packet-end-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-end-c-test`<br>`reads: ["test/packet-end/PacketEnd.schema"]`<br>`target: build/packet-end-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2474` |
+| `none.nightly.ci-plumbing.make-c.build-packet-write-cfloat-c-test` | `make` | make build/packet-write-cfloat/c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`read_plant: plant.read-credits.ci-plumbing-make-c-build-packet-write-cfloat-c-test`<br>`reads: ["test/packet-write-cfloat/PacketCFloat.schema"]`<br>`target: build/packet-write-cfloat/c-test` | the target exits 0 with no skip in its log | `make/c.mk:2433` |
 
 #### `ci-plumbing` family `make-checks-packet-defaults`, 1 test
 

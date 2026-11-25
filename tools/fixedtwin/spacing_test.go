@@ -19,6 +19,10 @@ func TestFormatterSpellingsKeepSemanticDifferences(t *testing.T) {
  }`, "&v, 4", "&v, 8"},
 		{"guard", `const TableFixedGuardLink * l = ( const TableFixedGuardLink * ) ( const void * ) ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );`,
 			`const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );`, "+ p.guard_index", "- p.guard_index"},
+		{"guard offset", `{ 2u, 8u, 4u, 0u, 1u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 },`,
+			`{ 2u, 8u, 4u, 0u, 1u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * static_cast<int>( sizeof( TableFixedGuardLink ) ), 4 },`, "static_cast<int>", "static_cast<long>"},
+		{"guard offset operand", `{ 2u, 8u, 4u, 0u, 1u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * (int) sizeof( TableFixedGuardLink ), 4 },`,
+			`{ 2u, 8u, 4u, 0u, 1u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 2 * static_cast<int>( sizeof( TableFixedGuardLink ) ), 4 },`, "sizeof( TableFixedGuardLink )", "sizeof( TableFixedEntry )"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

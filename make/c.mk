@@ -1617,13 +1617,29 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
 # harness fails by name when build/fixedform-corpus is absent (docs/rulings.json
 # no-skips), so the target BUILDS THE ORACLE FIRST (`tables-fixedform-corpus`,
-# the C++ reference's own dump) and a missing corpus can never pass. Run the
-# whole ctable package: the fixed roadmap framing tests also read this corpus,
-# and the former TestFixedVersioning filter left them outside the gate.
+# the C++ reference's own dump) and a missing corpus can never pass.
+#
+# IT RUNS THE VERSIONING TESTS, BY NAME, AND NOTHING ELSE (2026-11-25). Run as
+# the whole ctable package it hit go test's 10-minute limit on staging
+# (625 tests started, 358 passed, the limit firing in
+# TestFixedRoadmapCT05Evolution/c/E6); the limit is never raised. Each test
+# below is a registry row of its own (make-gotest, read by name from this
+# run's go test -json events), so a test that hangs or slows is red by name.
+# TestFixedVersioningKindMoved has its own gotest row and is not run here
+# twice. The whole package, these tests and the roadmap tests among them, still
+# runs in ci-full.yml's three unit-codegen ctable steps (^TestC, ^TestFixe and
+# the rest), which build the corpus first.
+C_VERSIONING_TESTS := TestFixedVersioningCfloatRangeWiden TestFixedVersioningCfloatResRefine \
+	TestFixedVersioningCountClampEnds TestFixedVersioningFloor TestFixedVersioningForgedOrdinalBothPlans \
+	TestFixedVersioningHash TestFixedVersioningLineageMerge TestFixedVersioningNewReadsOld \
+	TestFixedVersioningOldRefusesNew TestFixedVersioningRangeWidenHostile TestFixedVersioningRefuseWritesNothing \
+	TestFixedVersioningUnionTagBothPlans TestFixedVersioningUnionUnselectedArm TestFixedVersioningUnknownCensus \
+	TestFixedVersioningUnknownCensusManyRecords TestFixedVersioningWriterBoundCount \
+	TestFixedVersioningWriterBoundCountTwoRemotes
 .PHONY: tables-c-versioning
 tables-c-versioning: tables-fixedform-corpus
-	$(GO_TEST) ./internal/codegen/ctable/ -count=1
-	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
+	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -run '^($(subst $(eval) ,|,$(strip $(C_VERSIONING_TESTS))))$$'
+	@echo 'tables C corpus: ctable checks the C++ reference bytes of every §5 versioning row'
 
 .PHONY: test-c test-c-recipe
 test-c: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan

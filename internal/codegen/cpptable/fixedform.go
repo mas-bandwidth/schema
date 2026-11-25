@@ -725,7 +725,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		// a BYTE OFFSET from the pool's base (the identity pool is this static array).
 		guardIndex := "0"
 		if e.GuardCount > 0 {
-			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+			guardIndex = fmt.Sprintf("%d * static_cast<int>( sizeof( TableFixedGuardLink ) )", e.GuardIndex)
 		}
 		// A COUNT'S AUX IS ITS ELEMENT WIDTH IN BYTES: its Size is the bound in
 		// ELEMENTS, and the dead-byte scan needs the byte span of one slot. A

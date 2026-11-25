@@ -77,7 +77,7 @@ build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA) $(GOOSE_DISPATCH)
 		ls "$$d"*Table.goose >/dev/null 2>&1 && basename "$$d"; \
 	done | awk -v slice='$(GOOSE_FUZZ_SLICE)' 'BEGIN { if (slice != "" && split(slice, s, "/") != 2) { print "GOOSE_FUZZ_SLICE=" slice ": want i/n" > "/dev/stderr"; exit 2 } } slice == "" || (NR - 1) % s[2] == s[1] - 1' \
 	| xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -I{} sh -c \
-		'sh make/goose-wirefuzz-build.sh "$$1" "$$2/units/{}" "$$2/legs/{}" || echo "{}" >>"$$2/build-failed.txt"' \
+		'GOOSE_LEG_LTO=$(if $(GOOSE_FUZZ_SLICE),1) sh make/goose-wirefuzz-build.sh "$$1" "$$2/units/{}" "$$2/legs/{}" || echo "{}" >>"$$2/build-failed.txt"' \
 		_ "$(GOOSE)" $(GOOSE_LEGS_DIR)
 	@if [ -s $(GOOSE_LEGS_DIR)/build-failed.txt ]; then \
 		echo "goose wire-fuzz legs do not build: $$(tr '\n' ' ' <$(GOOSE_LEGS_DIR)/build-failed.txt)"; \
