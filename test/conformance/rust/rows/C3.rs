@@ -77,7 +77,6 @@ fn assert_refused(label: &str, file: &[u8]) {
         matches!(report.reason, TableFixedReason::OutOfRange | TableFixedReason::TextIllFormed),
         "{label}: a refusal by name: {report:?}"
     );
-    assert!(!report.damaged, "{label}: this form's report has no malformed flag: {report:?}");
     assert!(
         row.tag == defaults.tag && row.id == defaults.id && row.label_length == defaults.label_length,
         "{label}: the row handed in is back at its declared defaults, nothing clamped landed"
@@ -106,7 +105,7 @@ fn test_label_length_in_range_reads() {
         let (file, _) = file_with_label(text);
         let (n, report, row) = load(&file);
         assert_eq!(n, Some(1), "length {} reads: {report:?}", text.len());
-        assert!(!report.refused && !report.damaged, "length {}: {report:?}", text.len());
+        assert!(!report.refused, "length {}: {report:?}", text.len());
         assert_eq!(row.label_length as usize, text.len(), "the used length lands verbatim");
         assert_eq!(&row.label[..text.len()], text, "the used bytes land verbatim");
     }

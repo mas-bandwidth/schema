@@ -69,7 +69,7 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         let mut values = vec![BRow::default(); 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &valid, &mut plan, &mut remap, &mut report);
-        if got != Some(1) || report.damaged || report.refused || !values[0].ok || !unsafe { values[0].pick.arms.flag } {
+        if got != Some(1) || report.refused || !values[0].ok || !unsafe { values[0].pick.arms.flag } {
             failures.push(format!("clean: the saved file must read: {:?}", report));
         }
     }
@@ -80,7 +80,7 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         let mut values = vec![row; 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &data, &mut plan, &mut remap, &mut report);
-        if got.is_some() || !report.damaged || report.refused {
+        if got.is_some() || !report.refused {
             failures.push(format!("{name}: a live byte of 2 must be damage: {:?} {:?}", got, report));
         }
         if values[0].ok || values[0].opt_present || values[0].flags_count != 0 || values[0].pick.tag != 0 {
@@ -93,7 +93,7 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         let mut values = vec![row; 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &data, &mut plan, &mut remap, &mut report);
-        if got.is_some() || !report.damaged || report.refused {
+        if got.is_some() || !report.refused {
             failures.push(format!("{name}: a non-zero dead byte must refuse the whole load: {:?} {:?}", got, report));
         }
         // RULING R4 (SPEC-TABLES §6.5): after ANY refusal every row handed in

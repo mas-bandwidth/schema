@@ -7,15 +7,14 @@
 //
 //   "a byte-flip fuzz over the whole file, under a sanitizer, and it is not
 //    optional — every offset is arithmetic over sizes a stranger wrote down,
-//    so every byte, one bit at a time, is answered one of three ways and
-//    never a fourth: a refusal by name, a `malformed` read, or a read that
-//    lands values."
+//    so every byte, one bit at a time, is answered one of two ways and
+//    never a third: a refusal by one name, or a read that lands values."
 //
 // The same rule at docs/SPEC-TABLES.md:7131 ("A BYTE-FLIP FUZZ OVER A WHOLE
-// FILE, UNDER A SANITIZER ... ONE OF THREE WAYS AND NEVER A FOURTH ... 'The
+// FILE, UNDER A SANITIZER ... ONE OF TWO WAYS AND NEVER A THIRD ... 'The
 // reader never leaves the buffer' is a claim only a sanitizer can hold"), and
 // the §8 coverage-matrix row at docs/FIXED-FORM-ALGORITHM.md:1714
-// ("byte-flip fuzz, sanitizer, three answers never a fourth | §7 item 5").
+// (the byte-flip fuzz under a sanitizer, §7 item 5).
 //
 // THE PRODUCTION PATH is `chain_fixed_load`, the generated form-3 reader for
 // build/tables-generated-rust/tblp3 (test/tables/P3.schema — table Chain with
@@ -39,7 +38,7 @@
 // the BUILD is the sanitizer — every index this reader reaches runs through
 // checked slices and `.get()`, and any escape out of the buffer is a PANIC,
 // which under `rustc --test` fails this binary. A panic inside the sweep IS a
-// fourth answer and never arrives quietly.
+// third answer and never arrives quietly.
 //
 // No assertion of this cell existed under test/conformance/rust/ (STEP 2);
 // the leg's earlier twin over fx1.bin is the_hostile_sweep at
@@ -133,96 +132,91 @@ fn p3_a_lawful_file_lands_values() {
 }
 
 // THE CELL — every byte of the whole file, one bit at a time (§7 proof 5):
-// each mutant is answered one of three ways — a refusal by name, a
-// `malformed` read, or a read that lands values — and never a fourth. A panic
-// anywhere in the sweep (the sanitizer's verdict: a read that left the buffer)
-// fails this test before the counts are checked.
+// each mutant is answered one of two ways — a refusal by one name, or a read
+// that lands values — and never a third. This form's report has no
+// `malformed` flag (§5.3): damage on the wire is a refusal by name,
+// wire_damaged. A panic anywhere in the sweep (the sanitizer's verdict: a read
+// that left the buffer) fails this test before the counts are checked.
 #[test]
-fn p3_every_single_bit_mutation_gets_one_of_three_answers_never_a_fourth() {
+fn p3_every_single_bit_mutation_gets_one_of_two_answers_never_a_third() {
     let file = lawful_file();
     let mut refused: u32 = 0;
-    let mut damaged: u32 = 0;
     let mut landed: u32 = 0;
-    let mut fourth: Option<String> = None;
+    let mut third: Option<String> = None;
     for at in 0..file.len() {
         for bit in 0..8u32 {
             let mut hit = file.clone();
             hit[at] ^= 1u8 << bit;
             let (n, _, report) = load(&hit);
-            // THE THREE ANSWERS, classified exactly as the leg's twin does
-            // (test/rust-fixedform/src/main.rs:2347-2354).
-            let named = n.is_none()
-                && report.refused
-                && report.reason != TableFixedReason::None
-                && !report.damaged;
-            let hurt = report.damaged && !report.refused;
-            let clean = n.is_some() && !report.refused && !report.damaged;
+            // THE TWO ANSWERS, classified exactly as the leg's twin does
+            // (test/rust-fixedform/src/main.rs, the_hostile_sweep).
+            let named = n.is_none() && report.refused && report.reason != TableFixedReason::None;
+            let clean = n.is_some() && !report.refused && report.reason == TableFixedReason::None;
             if named {
                 refused += 1;
-            } else if hurt {
-                damaged += 1;
             } else if clean {
                 landed += 1;
-            } else if fourth.is_none() {
-                fourth = Some(format!(
-                    "byte {at} bit {bit}: n={n:?} refused={} reason={} malformed={} — \
-                     a refusal, a malformed read or a read that lands values, never a fourth",
+            } else if third.is_none() {
+                third = Some(format!(
+                    "byte {at} bit {bit}: n={n:?} refused={} reason={} — \
+                     a refusal by name or a read that lands values, never a third",
                     report.refused,
-                    report.reason.name(),
-                    report.damaged
+                    report.reason.name()
                 ));
             }
         }
     }
     let total = (file.len() * 8) as u32;
-    if let Some(what) = fourth {
+    if let Some(what) = third {
         panic!("{what}");
     }
     assert_eq!(
-        refused + damaged + landed,
+        refused + landed,
         total,
-        "every mutation answered exactly one way: refused={refused} malformed={damaged} landed={landed}"
+        "every mutation answered exactly one way: refused={refused} landed={landed}"
     );
     println!(
-        "P3: {total} single-bit mutants over {} bytes — refused={refused} malformed={damaged} landed={landed}, three answers never a fourth",
+        "P3: {total} single-bit mutants over {} bytes — refused={refused} landed={landed}, two answers never a third",
         file.len()
     );
 }
 
-// ANTI-VACUOUS: all three answers FIRED on this fixture — a sweep that only
-// ever landed (a reader that stopped refusing) or only ever refused (a reader
-// that decodes nothing) would still have answered "never a fourth".
+// ANTI-VACUOUS: both answers FIRED on this fixture, and damage on the wire was
+// among the refusals by its own name — a sweep that only ever landed (a reader
+// that stopped refusing) or only ever refused (a reader that decodes nothing)
+// would still have answered "never a third".
 #[test]
-fn p3_all_three_answers_fire() {
+fn p3_both_answers_fire_and_damage_refuses_by_name() {
     let file = lawful_file();
     let mut refused: u32 = 0;
-    let mut damaged: u32 = 0;
+    let mut wire_damaged: u32 = 0;
     let mut landed: u32 = 0;
     for at in 0..file.len() {
         for bit in 0..8u32 {
             let mut hit = file.clone();
             hit[at] ^= 1u8 << bit;
             let (n, _, report) = load(&hit);
-            if n.is_none() && report.refused && report.reason != TableFixedReason::None && !report.damaged {
+            if n.is_none() && report.refused && report.reason != TableFixedReason::None {
                 refused += 1;
-            } else if report.damaged && !report.refused {
-                damaged += 1;
-            } else if n.is_some() && !report.refused && !report.damaged {
+                if report.reason == TableFixedReason::WireDamaged {
+                    wire_damaged += 1;
+                }
+            } else if n.is_some() && !report.refused {
                 landed += 1;
             }
         }
     }
     println!(
-        "P3: all three answers fire on the sweep — refused={refused} malformed={damaged} landed={landed}"
+        "P3: both answers fire on the sweep — refused={refused} (wire_damaged={wire_damaged}) landed={landed}"
     );
     assert!(refused > 0, "a refusal by name must fire: {refused}");
-    assert!(damaged > 0, "a malformed read must fire: {damaged}");
+    assert!(wire_damaged > 0, "damage on the wire must refuse wire_damaged: {wire_damaged}");
     assert!(landed > 0, "a read that lands values must fire: {landed}");
 }
 
 // THE LENGTH IS STRANGER-CONTROLLED TOO: one byte off the end is arithmetic
-// over a size a stranger wrote down — DAMAGE by name (`malformed`), never a
-// silent short read and never a refusal dressed as one.
+// over a size a stranger wrote down — refused by name, never a silent short
+// read.
 #[test]
 fn p3_a_one_byte_short_file_is_damage() {
     // A ragged tail is REFUSED by the name `truncated`
@@ -240,5 +234,4 @@ fn p3_a_one_byte_short_file_is_damage() {
         TableFixedReason::Truncated,
         "a ragged tail is refused by the name truncated: {report:?}"
     );
-    assert!(!report.damaged, "this form's report has no malformed flag: {report:?}");
 }

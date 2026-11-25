@@ -1338,7 +1338,12 @@ hostile image is refused by its name and is never left partly landed. This is th
 which written back equal the canonical bytes. The reason and the `widened` count are per-language
 diagnostics, never compared. The RECOMMENDED names, the framing damage included: `truncated` for a short input or ragged tail and `reserved_not_zero` for a reserved byte, matching the
 cooked form's `TableRefuseTruncated` and `TableRefuseReservedNotZero` spellings (SPEC-TABLES §3.4's registry,
-§7). There is no `malformed` flag on this form's report.
+§7). There is no `malformed` flag on this form's report. **Rust, 2026-11-25:** the generated load answered
+no first byte, a short header, a nonzero reserved byte, a header and layout with no record, and a ragged tail
+with `damaged` set and no name until this date; it now refuses each by name — `TableFixedReason::Truncated`,
+`ReservedNotZero` — and damage on the wire (a non-zero dead byte, a live bool or present byte past `1`, a plan
+reach past the record) refuses `TableFixedReason::WireDamaged`; `TableFixedReport` has no `damaged` field
+(held by `test/conformance/rust/rows/F8.rs` and `P3.rs`; SPEC-CONFORMANCE.md §7).
 
 | the outcome | `refused` | `reason` | returns | the counters |
 |---|---|---|---|---|
@@ -1354,7 +1359,13 @@ lineage is oldest first with the reader's own layout LAST and `schema check` hol
 declaration, so every entry a build holds is the reader's own or older (a `retired` mark is older too, and is
 `layout_unsupported`); a hash outside it has no position in it; and the wire carries a hash and no ordinal. So
 every step-5 miss is `layout_unknown`, in every leg, with no variation (decided 2026-11-03); `layout_newer`
-keeps its ordinal and no read answers it. **JavaScript, 2026-11-24:** the generated load answered `TableFixedRefusal.LayoutNewer` at step 5 until this date; it now answers `TableFixedRefusal.LayoutUnknown` (`"layout_unknown"`) with `layoutHash` the file's hash and nothing else, `LayoutUnknown` appended so no ordinal moves and `LayoutNewer` kept and never emitted (held by `test/conformance/js/rows/R15.mjs`; SPEC-CONFORMANCE.md §7).
+keeps its ordinal and no read answers it. **Rust, C and Dart, 2026-11-25:** the same change as JavaScript's
+below — Rust appends `TableFixedReason::LayoutUnknown` and removes `LayoutNewer` (a Rust reason's ordinal
+never leaves the process, so no ordinal crosses a boundary), C appends `SCHEMA_TABLE_LAYOUT_UNKNOWN = 22` (past
+the shared `non_finite_float`'s 21) and Dart appends `TableFixedRefusal.layoutUnknown = 25` (JavaScript's own
+integer), C and Dart keeping their retired `layout_newer` member and never emitting it (held by
+`test/conformance/rust/rows/R8.rs`, `test/conformance/dart/rows/E8.dart` and each leg's
+`TestFixedRoadmapT01Framing`; SPEC-CONFORMANCE.md §7). **JavaScript, 2026-11-24:** the generated load answered `TableFixedRefusal.LayoutNewer` at step 5 until this date; it now answers `TableFixedRefusal.LayoutUnknown` (`"layout_unknown"`) with `layoutHash` the file's hash and nothing else, `LayoutUnknown` appended so no ordinal moves and `LayoutNewer` kept and never emitted (held by `test/conformance/js/rows/R15.mjs`; SPEC-CONFORMANCE.md §7).
 
 **`layout_unsupported` fills `layout_hash` too** — both live layout refusals report the file's hash, and what
 belongs to `layout_unknown` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the

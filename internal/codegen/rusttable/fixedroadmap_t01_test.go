@@ -106,14 +106,14 @@ fn v_t01_f9() {
         let data = t01_records(k);
         let (n, report, _) = t01_read(&data, k, 4096);
         assert_eq!(n, Some(k), "{k} records into capacity {k} read: {:?}", report);
-        assert!(!report.refused && !report.damaged, "a batch at capacity is clean: {:?}", report);
+        assert!(!report.refused, "a batch at capacity is clean: {:?}", report);
         if k == 1 {
             continue;
         }
         let (n, report, values) = t01_read(&data, k - 1, 4096);
         assert!(n.is_none(), "{k} records past capacity {} must refuse: {:?}", k - 1, report);
         assert_eq!(report.reason.name(), "batch_too_large", "{k} records past capacity: {:?}", report.reason);
-        assert!(report.refused && !report.damaged, "a refusal by name never sets damaged: {:?}", report);
+        assert!(report.refused, "a refusal by name never sets damaged: {:?}", report);
         assert!(t01_total(&report), "REFUSE is TOTAL, no counter moves: {:?}", report);
         assert!(t01_defaulted(&values), "batch_too_large left a row off its declared default");
     }
@@ -140,7 +140,7 @@ fn v_t01_f10() {
         let (n, report, values) = t01_read(&data, 3, 4096);
         assert!(n.is_none(), "record {k} with a forged hash must refuse: {:?}", report);
         assert_eq!(report.reason.name(), "no_block", "record {k}: {:?}", report.reason);
-        assert!(report.refused && !report.damaged, "record {k}: refused and malformed are never both set: {:?}", report);
+        assert!(report.refused, "record {k}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report), "record {k}: no counter moves: {:?}", report);
         assert_eq!(report.layout_hash, 0, "record {k}: no_block carries no hash: {:?}", report);
         assert!(t01_defaulted(&values), "a refusal at record {k} left a row off its declared default");
@@ -236,7 +236,7 @@ fn v_t01_r9() {
         let (n, report, values) = t01_read(&d, 2, 4096);
         assert!(n.is_none(), "{name}: a lie about a known version is refused: {:?}", report);
         assert_eq!(report.reason.name(), "layout_malformed", "{name}: ONE name, not {:?}", report.reason);
-        assert!(report.refused && !report.damaged, "{name}: refused and malformed are never both set: {:?}", report);
+        assert!(report.refused, "{name}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report) && report.layout_hash == 0, "{name}: nothing else is reported: {:?}", report);
         assert!(t01_defaulted(&values), "{name}: a row is not its declared default");
     }
@@ -275,7 +275,6 @@ fn v_t01_r13() {
         assert!(n.is_none(), "{label}: a refusal reads nothing: {:?}", report);
         assert!(report.refused, "{label}: refused is set: {:?}", report);
         assert_eq!(report.reason.name(), name, "{label}");
-        assert!(!report.damaged, "{label}: this form's report has no malformed flag: {:?}", report);
         assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
         assert!(t01_defaulted(&values), "{label}: a row is not its declared default");
     }

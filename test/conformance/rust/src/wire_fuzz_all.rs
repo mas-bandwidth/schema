@@ -480,14 +480,14 @@ macro_rules! fixed_arm {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = TableFixedReport::default();
         let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
-        let read = read.filter(|_| !report.refused && !report.damaged);
+        let read = read.filter(|_| !report.refused);
         // a file of no record is truncated: there is no root to read
         let empty = read == Some(0);
         let read = read.filter(|_| !empty);
         let mut reply = Reply { loaded: read.is_some(), ..Default::default() };
         reply.unknown = u64::from(report.unknown);
         reply.widened = u64::from(report.widened);
-        reply.damaged = report.damaged || empty;
+        reply.damaged = empty;
         reply.refused = report.refused;
         match read {
             Some(n) => {
@@ -520,11 +520,10 @@ macro_rules! fixed_load_only_arm {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = TableFixedReport::default();
         let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
-        let read = read.filter(|_| !report.refused && !report.damaged);
+        let read = read.filter(|_| !report.refused);
         let mut reply = Reply { loaded: read.is_some(), measure: -1, save_fail: true, ..Default::default() };
         reply.unknown = u64::from(report.unknown);
         reply.widened = u64::from(report.widened);
-        reply.damaged = report.damaged;
         reply.refused = report.refused;
         Some(reply)
     }};

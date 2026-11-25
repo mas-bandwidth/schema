@@ -115,7 +115,6 @@ fn r3_floor_law() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean read is not a refusal",
     );
-    check(!report.damaged, "a clean read is not damage");
     check(values[0].grade == 1, "the grade value lands");
     check(values[0].tail == 99, "the field after the union lands");
     check(
@@ -144,24 +143,21 @@ fn r3_floor_law() {
         report2.layout_hash == stranger_hash,
         "layout_unknown carries THE FILE'S hash",
     );
-    check(
-        !report2.damaged,
-        "a refusal by name is not damage (§5.3 joint answer)",
-    );
     check(report2.refused, "a refusal by name sets the refused flag");
     check(
-        report2.widened == 0
-            && report2.unknown == 0
-            && report2.mismatch == 0
-            && report2.oor == 0,
+        report2.widened == 0 && report2.unknown == 0,
         "REFUSE is TOTAL: no counter moves",
     );
-    let fresh = FeRootRow::default();
+    // RULING R4 (SPEC-TABLES §6.5): after a refusal every row handed in holds
+    // its DECLARED defaults (grade = Silver, tail = 7), the image the load
+    // prefills from FE_ROOT_FIXED_DEFAULTS, not Rust's zero Default.
+    let mut fresh = FeRootRow::default();
+    fe_root_fixed_scatter(&FE_ROOT_FIXED_DEFAULTS, &mut fresh, &mut TableFixedReport::default());
     check(
         values2[0].grade == fresh.grade
             && values2[0].tail == fresh.tail
             && values2[0].effect.tag() == fresh.effect.tag(),
-        "REFUSE wrote no destination bytes",
+        "REFUSE left every row at its declared defaults",
     );
 
     assert_eq!(

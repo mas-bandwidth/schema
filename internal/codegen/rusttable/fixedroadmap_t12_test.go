@@ -342,7 +342,7 @@ func t12R27(t *testing.T, corpus string) {
 // so those mutations count as malformed rather than landed.
 func t12P3(t *testing.T, corpus string) {
 	out := t12FixedFormRun(t, corpus)
-	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1660 malformed=239 landed=435, three answers never a fourth"
+	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1899 (wire_damaged=239) landed=435, two answers never a third"
 	if strings.Contains(out, "FAIL:") {
 		t.Fatalf("rust/P3: test/rust-fixedform reported a failure:\n%s", out)
 	}
@@ -574,7 +574,7 @@ fn check_f4() -> Result<(), String> {
     if lineage_fixed_load(&mut clean, &good, &mut plan, &mut remap, &mut report) != Some(1) {
         return Err("positive control failed to load new_field_append.bin".into());
     }
-    if report.refused || report.damaged || report.reason != TableFixedReason::None {
+    if report.refused || report.reason != TableFixedReason::None {
         return Err("positive control set refused/malformed".into());
     }
 
@@ -589,10 +589,10 @@ fn check_f4() -> Result<(), String> {
         if got.is_some() {
             return Err(format!("cut={cut}: truncated layout loaded {:?}", got));
         }
-        if !r.refused || r.damaged || r.reason != TableFixedReason::LayoutMalformed {
+        if !r.refused || r.reason != TableFixedReason::LayoutMalformed {
             return Err(format!(
-                "cut={cut}: want refused LayoutMalformed, got refused={} malformed={} reason={}",
-                r.refused, r.damaged, r.reason.name()
+                "cut={cut}: want refused LayoutMalformed, got refused={} reason={}",
+                r.refused, r.reason.name()
             ));
         }
         if r.reason.name() != "layout_malformed" || r.layout_hash != 0 {
@@ -616,7 +616,7 @@ fn check_f4() -> Result<(), String> {
         if lineage_fixed_load(&mut dst, &forged, &mut plan, &mut remap, &mut r).is_some() {
             return Err(format!("bad_l={bad_l}: forged L loaded"));
         }
-        if !r.refused || r.damaged || r.reason != TableFixedReason::LayoutMalformed || r.layout_hash != 0 {
+        if !r.refused || r.reason != TableFixedReason::LayoutMalformed || r.layout_hash != 0 {
             return Err(format!("bad_l={bad_l}: wrong refusal {:?}", r.reason.name()));
         }
         if !is_reset(&dst[0], lineage_fixed_scatter, &LINEAGE_FIXED_DEFAULTS) {
@@ -787,7 +787,7 @@ fn check_p4() -> Result<(), String> {
     if widen_old::int_widen_fixed_load(&mut dst, &new_widen, &mut plan, &mut remap, &mut rep).is_some() {
         return Err("VOLD_int_widen accepted new_int_widen.bin instead of refusing layout_unknown".into());
     }
-    if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutUnknown || rep.layout_hash != new_hash {
+    if !rep.refused || rep.reason != TableFixedReason::LayoutUnknown || rep.layout_hash != new_hash {
         return Err("VOLD_int_widen did not report LayoutUnknown with the file's hash".into());
     }
     if !is_reset(&dst[0], widen_old::int_widen_fixed_scatter, &widen_old::INT_WIDEN_FIXED_DEFAULTS) {

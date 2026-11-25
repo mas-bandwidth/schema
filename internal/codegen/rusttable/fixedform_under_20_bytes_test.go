@@ -53,7 +53,7 @@ fn v_fixed_form_under_20_bytes() {
         ));
         assert!(n >= 1, "the full file lands at least one record, not {n}");
         assert!(
-            !report.refused && report.reason == TableFixedReason::None && !report.damaged,
+            !report.refused && report.reason == TableFixedReason::None,
             "the full file is neither a refusal nor damage: {:?}", report
         );
         assert!(values[0].w == 777, "the full file lost its value: w={}", values[0].w);
@@ -82,7 +82,6 @@ fn v_fixed_form_under_20_bytes() {
             report.reason, TableFixedReason::Truncated,
             "a short file is refused by the name truncated: {:?}", report.reason
         );
-        assert!(!report.damaged, "this form's report has no malformed flag: {:?}", report);
         assert_eq!(report.layout_hash, 0, "truncated carries no hash: {:?}", report);
         assert!(
             report.widened == 0 && report.unknown == 0,

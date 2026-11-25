@@ -772,7 +772,7 @@ func (g *gen) emitFixedScatterField(f *ir.Field, off int64) {
 		// A PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 		// §4.5), and the payload under an absent one is slack (§3.4): unspecified
 		// on read, never a refusal, so the scatter lands it at slack depth.
-		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.damaged = true;\n    }\n", base)
+		g.pf("    if b[%d] > 1 && report.slack == 0 {\n        report.wire_damage += 1;\n    }\n", base)
 		slackOff := base
 		g.pf("    value.%s_present = b[%d] == 1;\n", f.Name, base)
 		g.pf("    let _slack_%d = u32::from(!value.%s_present);\n", slackOff, f.Name)
@@ -877,7 +877,7 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 	case ir.TBool:
 		// A BOOL BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
 		// §4.5), on live bytes only (§3.4's slack rule).
-		g.pf("%s    if b[at] > 1 && report.slack == 0 {\n%s        report.damaged = true;\n%s    }\n", ind, ind, ind)
+		g.pf("%s    if b[at] > 1 && report.slack == 0 {\n%s        report.wire_damage += 1;\n%s    }\n", ind, ind, ind)
 		g.pf("%s", set(ind+"    ", "b[at] == 1"))
 	case ir.TFloat32:
 		g.pf("%s", set(ind+"    ", "f32::from_le_bytes(b[at..at + 4].try_into().expect(\"four bytes\"))"))
@@ -1756,7 +1756,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        });\n")
 	g.pf("    }\n")
 	if st.Integrity == "crc32c" {
-		g.pf("    let Some(data) = table_integrity_body(data, 5) else { report.damaged = true; return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
+		g.pf("    let Some(data) = table_integrity_body(data, 5) else { return report.refuse(TableFixedReason::IntegrityMismatch); };\n")
 	}
 	g.pf("    // FEWER THAN 20 BYTES — the 16-byte header and the layout's length word —\n")
 	g.pf("    // is `truncated` (§5.3 step 2), the form byte having already answered.\n")
@@ -1857,7 +1857,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,\n")
 	g.pf("    // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte\n")
 	g.pf("    // no live value covers is zero, and a non-zero one refuses the whole load\n")
-	g.pf("    // BEFORE any record lands. An absent optional's payload, a counted array's\n")
+	g.pf("    // BEFORE any record lands, as wire_damaged. An absent optional's payload, a counted array's\n")
 	g.pf("    // slots past its count, a text's or bytes' units past its length, and an\n")
 	g.pf("    // inactive union arm are the four dead regions.\n")
 	// Identity walks this build's own layout: its plan is one Copy and cannot
@@ -1870,16 +1870,14 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("%sfor k in 0..n {\n", deadInd)
 	g.pf("%s    if %s(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n", deadInd, fn(st.Name, "fixed_dead"))
-	g.pf("%s        report.damaged = true;\n", deadInd)
-	g.pf("%s        return None;\n", deadInd)
+	g.pf("%s        return report.refuse(TableFixedReason::WireDamaged);\n", deadInd)
 	g.pf("%s    }\n", deadInd)
 	g.pf("%s}\n", deadInd)
 	if len(lineage) > 1 {
 		g.pf("    } else {\n")
 		g.pf("        for k in 0..n {\n")
 		g.pf("            if table_fixed_dead(entries, guards, &rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n")
-		g.pf("                report.damaged = true;\n")
-		g.pf("                return None;\n")
+		g.pf("                return report.refuse(TableFixedReason::WireDamaged);\n")
 		g.pf("            }\n")
 		g.pf("        }\n")
 		g.pf("    }\n")
@@ -1904,11 +1902,16 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            let z = h.size as usize;\n")
 	g.pf("            image[o..o + z].copy_from_slice(&%s_FIXED_DEFAULTS[o..o + z]);\n", up)
 	g.pf("        }\n")
-	g.pf("        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);\n")
+	g.pf("        if !table_fixed_run(entries, guards, table, &record[8..], &mut image, report) {\n")
+	g.pf("            report.widened = widened_before;\n")
+	g.pf("            return report.refuse(TableFixedReason::WireDamaged);\n        }\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
-	g.pf("        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than\n")
-	g.pf("        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.\n")
-	g.pf("        if report.damaged {\n            return None;\n        }\n")
+	g.pf("        // DAMAGE REFUSES THE WHOLE LOAD BY NAME: a bool or present byte other\n")
+	g.pf("        // than 0 or 1 on live data, or a plan reach past the record\n")
+	g.pf("        // (FIXED-FORM-ALGORITHM §4.5, §5.3); the caller resets.\n")
+	g.pf("        if report.wire_damage != 0 {\n")
+	g.pf("            report.widened = widened_before;\n")
+	g.pf("            return report.refuse(TableFixedReason::WireDamaged);\n        }\n")
 	if finite {
 		g.pf("        // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs\n")
 		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")

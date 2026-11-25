@@ -161,7 +161,9 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut remap = [0u16; 64];
     let mut r = TableFixedReport::default();
     if root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut r).is_some() { bad.push("fixed: fixed_load answered records on damage".to_string()); }
-    if !r.damaged { bad.push("fixed: the report does not say malformed".to_string()); }
+    // this form has no malformed flag (FIXED-FORM-ALGORITHM §5.3): the ragged
+    // tail is a refusal by name
+    if !r.refused || r.reason == TableFixedReason::None { bad.push("fixed: the report does not say refused".to_string()); }
     if values.iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0 || v.inner.ok) {
         bad.push(format!("fixed: a damaged load left a caller record holding a={} b={} n={}", values[0].a, values[0].b, values[0].inner.n));
     }

@@ -497,13 +497,12 @@ fn fixed_table_fixed_load_records(
     // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
     // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte
     // no live value covers is zero, and a non-zero one refuses the whole load
-    // BEFORE any record lands. An absent optional's payload, a counted array's
+    // BEFORE any record lands, as wire_damaged. An absent optional's payload, a counted array's
     // slots past its count, a text's or bytes' units past its length, and an
     // inactive union arm are the four dead regions.
     for k in 0..n {
         if fixed_table_fixed_dead(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {
-            report.damaged = true;
-            return None;
+            return report.refuse(TableFixedReason::WireDamaged);
         }
     }
     // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
@@ -527,12 +526,17 @@ fn fixed_table_fixed_load_records(
             let z = h.size as usize;
             image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
         }
-        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);
+        if !table_fixed_run(entries, guards, table, &record[8..], &mut image, report) {
+            report.widened = widened_before;
+            return report.refuse(TableFixedReason::WireDamaged);
+        }
         fixed_table_fixed_scatter(&image, &mut values[k], report);
-        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than
-        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.
-        if report.damaged {
-            return None;
+        // DAMAGE REFUSES THE WHOLE LOAD BY NAME: a bool or present byte other
+        // than 0 or 1 on live data, or a plan reach past the record
+        // (FIXED-FORM-ALGORITHM §4.5, §5.3); the caller resets.
+        if report.wire_damage != 0 {
+            report.widened = widened_before;
+            return report.refuse(TableFixedReason::WireDamaged);
         }
         // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
         // FIRST, before the bounds pass, over the storage the run just wrote,

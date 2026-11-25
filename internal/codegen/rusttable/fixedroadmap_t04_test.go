@@ -234,7 +234,7 @@ func t04R32(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
 	// The compile census's kind_changed is retired with the census (§5.4,
 	// §5.9 #30): a kind off every ladder is an unlawful entry, never a count.
-	for _, zero := range []string{"self.unknown = 0;", "self.widened = 0;", "self.held = 0;", "self.damaged = false;"} {
+	for _, zero := range []string{"self.unknown = 0;", "self.widened = 0;", "self.held = 0;", "self.wire_damage = 0;"} {
 		t04Has(t, runtime, zero, "R32 REFUSE is TOTAL")
 	}
 	t04Lacks(t, runtime, "kind_changed", "R32 there is no kind census to zero")

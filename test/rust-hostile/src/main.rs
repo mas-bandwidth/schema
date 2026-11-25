@@ -277,7 +277,7 @@ macro_rules! fixed_ops {
             if report.refused {
                 return $crate::refuse(report.reason.name());
             }
-            if report.damaged || read != Some(1) {
+            if read != Some(1) {
                 return $crate::refuse("damaged");
             }
             let mut buffer = vec![0u8; input.len() + 4096];

@@ -90,8 +90,8 @@ fn arg_and_meta_are_two_lanes() {
         "arg-v-meta: the five utf8 BYTES land under arm 2",
     );
     check(
-        !report.damaged && report.oor == 0 && !report.refused,
-        "arg-v-meta: nothing damaged, clamped or refused",
+        !report.refused,
+        "arg-v-meta: nothing refused",
     );
 
     // NEGATIVE CONTROL — the OLD one-lane encoding, planted: stamp the utf8

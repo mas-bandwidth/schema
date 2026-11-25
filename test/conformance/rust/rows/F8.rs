@@ -6,7 +6,7 @@
 // A fixed-form file whose remaining bytes after the header and layout block are not
 // an exact multiple of the record size is REFUSED, recommended name `truncated`, and
 // this form's report has no malformed flag. The reader returns None, sets refused and
-// reason TableFixedReason::Truncated, leaves damaged false, and moves no counters.
+// reason TableFixedReason::Truncated and moves no counters (this form's report has no malformed flag).
 // (Until 2026-11-25 this row asserted the off-spec answer, malformed with no name.)
 //
 // THE PRODUCTION PATH:
@@ -18,7 +18,7 @@
 //   For each extra byte length from 1 to record_bytes - 1:
 //     Append `extra` bytes to the valid file.
 //     Call padded_row_fixed_load on the ragged file.
-//     Assert: returns None, report.refused is true, report.damaged is false,
+//     Assert: returns None, report.refused is true,
 //     report.reason is TableFixedReason::Truncated, all counters zero, and the row
 //     handed in (pre-poisoned off its defaults) holds its declared defaults
 //     (ruling R4).
@@ -26,7 +26,7 @@
 // THE NEGATIVE CONTROL:
 //   extra == record_bytes is one WHOLE extra record, not a ragged tail.
 //   With a destination slice of len 1, the reader owes batch_too_large (a refusal by name),
-//   setting report.refused = true and leaving report.damaged = false.
+//   setting report.refused = true.
 //
 // To run:
 //   rustc --edition 2024 --test -L test/conformance/rust/target/debug/deps \
@@ -78,7 +78,6 @@ fn test_row_f8_ragged_tail() {
         let mut report = TableFixedReport::default();
         let n = padded_row_fixed_load(&mut values, &clean_file, &mut plan, &mut remap, &mut report);
         assert_eq!(n, Some(1), "clean file must read 1 record");
-        assert!(!report.damaged, "clean file must not be malformed");
         assert!(!report.refused, "clean file must not be refused");
         assert_eq!(report.reason, TableFixedReason::None);
         assert_eq!(values[0].tag, 42);
@@ -113,7 +112,6 @@ fn test_row_f8_ragged_tail() {
 
         assert!(n.is_none(), "ragged tail at +{extra} bytes must return None, got {n:?}");
         assert!(report.refused, "ragged tail at +{extra} bytes is a refusal");
-        assert!(!report.damaged, "this form's report has no malformed flag (+{extra} bytes)");
         assert_eq!(
             report.reason,
             TableFixedReason::Truncated,
@@ -153,7 +151,6 @@ fn test_row_f8_ragged_tail() {
             TableFixedReason::BatchTooLarge,
             "whole extra record owes batch_too_large, got {:?}", report.reason
         );
-        assert!(!report.damaged, "whole extra record must NOT set malformed");
     }
 }
 

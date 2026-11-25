@@ -64,7 +64,7 @@ fn v_fixed_form_ragged_tail() {
         ));
         assert!(n >= 1, "the full file lands at least one record, not {n}");
         assert!(
-            !report.refused && report.reason == TableFixedReason::None && !report.damaged,
+            !report.refused && report.reason == TableFixedReason::None,
             "the full file is neither a refusal nor damage: {:?}", report
         );
         assert!(values[0].w == 777, "the full file lost its value: w={}", values[0].w);
@@ -96,7 +96,6 @@ fn v_fixed_form_ragged_tail() {
             report.reason, TableFixedReason::Truncated,
             "a ragged tail is refused by the name truncated: {:?}", report.reason
         );
-        assert!(!report.damaged, "this form's report has no malformed flag: {:?}", report);
         assert_eq!(report.layout_hash, 0, "truncated carries no hash: {:?}", report);
         assert!(
             report.widened == 0 && report.unknown == 0,
@@ -124,7 +123,6 @@ fn v_fixed_form_ragged_tail() {
             "extra == record_bytes is one more whole record, owed batch_too_large, not {:?}", report.reason
         );
         assert!(report.refused, "extra == record_bytes sets refused: {:?}", report);
-        assert!(!report.damaged, "this form's report has no malformed flag: {:?}", report);
     }
 }
 `, filepath.Join(corpus, "new_field_append.bin"))

@@ -346,7 +346,7 @@ fn the_negative_controls(dir: &str) {
             "a broken layout under a KNOWN hash: refused BY NAME — layout_malformed, the one name §5.3 gives it",
         );
         check(
-            !report.damaged && report.unknown == 0,
+            report.unknown == 0,
             "a broken layout under a KNOWN hash: a refusal moves no counter",
         );
     }
@@ -378,7 +378,7 @@ fn the_negative_controls(dir: &str) {
             "the header's hash: the report carries THE FILE'S hash, the flipped value and not this build's",
         );
         check(
-            !report.damaged && report.unknown == 0 && report.widened == 0,
+            report.unknown == 0 && report.widened == 0,
             "the header's hash: a refusal by name is never malformed and moves no counter",
         );
         // AND THE NEGATIVE CONTROL FOR IT: the same file untouched loads.
@@ -435,7 +435,6 @@ fn the_negative_controls(dir: &str) {
                 report.refused && report.reason == want,
                 &format!("REFUSED BY NAME: {what}"),
             );
-            check(!report.damaged, "REFUSED BY NAME: never damage");
             check(
                 report.unknown == 0
                     && report.widened == 0,
@@ -457,7 +456,7 @@ fn the_negative_controls(dir: &str) {
         let n = tblfx1::fx_root_fixed_load(&mut values, &ragged, &mut plan, &mut remap, &mut report);
         check(n.is_none(), "a ragged tail: refused");
         check(
-            report.refused && report.reason == tblfx1::TableFixedReason::Truncated && !report.damaged,
+            report.refused && report.reason == tblfx1::TableFixedReason::Truncated,
             "a ragged tail: refused truncated, because the two ends of the file met",
         );
     }
@@ -558,7 +557,7 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
                 &format!("{label}: named refusal restores every declared default"),
             );
             check(
-                report.refused && report.reason == reason && !report.damaged,
+                report.refused && report.reason == reason,
                 &format!("{label}: `{}` by name and nothing else claims the read", reason.name()),
             );
         }
@@ -734,8 +733,7 @@ fn refuses(file: &[u8], want_name: &str, what: &str) {
     // record would be the damage the refusal exists to prevent.
     check(
         report.unknown == 0
-            && report.widened == 0
-            && !report.damaged,
+            && report.widened == 0,
         &format!("{what}: a layout refusal sets nothing and counts nothing"),
     );
 }
@@ -886,8 +884,7 @@ fn the_record_bound() {
         );
         check(
             report.unknown == 0
-                && report.widened == 0
-                && !report.damaged,
+                && report.widened == 0,
             "W10: the refusal sets nothing and counts nothing",
         );
         check(
@@ -926,7 +923,7 @@ fn the_record_bound() {
             &mut report,
         );
         check(
-            made.is_some() && !report.refused && !report.damaged,
+            made.is_some() && !report.refused,
             "W10: a text entry ending EXACTLY at root.size is not a refusal",
         );
     }
@@ -1115,7 +1112,7 @@ fn the_union_controls(dir: &str) {
         "a forged tag: a tag past the arm count refuses as out_of_range",
     );
     check(
-        !report.damaged && report.unknown == 0 && report.widened == 0,
+        report.unknown == 0 && report.widened == 0,
         "a forged tag: REFUSE IS TOTAL — not damage, and no counter moved",
     );
 
@@ -1130,7 +1127,7 @@ fn the_union_controls(dir: &str) {
         &mut clean,
     );
     check(
-        values[0].value.game_event.tag() == 1 && !clean.refused && !clean.damaged,
+        values[0].value.game_event.tag() == 1 && !clean.refused,
         "NEGATIVE CONTROL: the same record unforged lands `hit` and refuses nothing",
     );
 }
@@ -1213,9 +1210,9 @@ fn the_text_under_an_arm() {
     // ---------------------------------------------------------------------
     // A BOOL OR PRESENT BYTE THAT IS NOT 0 OR 1 IS DAMAGE (§4.5, the strict
     // read). A `bool` and an optional's PRESENCE each ride as one byte; a live
-    // byte past 1 is wire_damaged, a whole-load discard: the load answers
-    // None, `damaged` is set, nothing is refused, and every caller row is back
-    // at its declared default. FU1's body leads with those two bytes, so the
+    // byte past 1 refuses the whole load as wire_damaged (§5.3: this form's
+    // report has no malformed flag), and every caller row is back at its
+    // declared default. FU1's body leads with those two bytes, so the
     // forgeries below are at a known offset.
     // ---------------------------------------------------------------------
     let body0 = records_at(&file) + 8;
@@ -1227,7 +1224,10 @@ fn the_text_under_an_arm() {
         let mut r3 = tblfu1::TableFixedReport::default();
         let n3 = tblfu1::fu_root_fixed_load(&mut mine2, &bad, &mut plan, &mut remap, &mut r3);
         check(n3.is_none(), &format!("stray true bytes: {what} discards the whole load"));
-        check(r3.damaged && !r3.refused, &format!("stray true bytes: {what} is damage, never a refusal"));
+        check(
+            r3.refused && r3.reason == tblfu1::TableFixedReason::WireDamaged,
+            &format!("stray true bytes: {what} refuses by name, wire_damaged"),
+        );
         check(
             !mine2[0].flag && !mine2[0].note_present,
             &format!("stray true bytes: {what} leaves every caller row at its default"),
@@ -1285,7 +1285,7 @@ fn the_enum_extent() {
     let n = tblfe1::fe_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(n.is_none(), "a forged ordinal: the load refuses (strict-only)");
     check(
-        report.refused && report.reason == tblfe1::TableFixedReason::OutOfRange && !report.damaged,
+        report.refused && report.reason == tblfe1::TableFixedReason::OutOfRange,
         "a forged ordinal: an ordinal past the last variant refuses as out_of_range, not damage",
     );
 
@@ -1298,7 +1298,7 @@ fn the_enum_extent() {
     let mut back = [tblfe1::FeRootRow::default(); 4];
     tblfe1::fe_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut clean);
     check(
-        back[0].grade == 3 && !clean.refused && !clean.damaged,
+        back[0].grade == 3 && !clean.refused,
         "NEGATIVE CONTROL: the same record unforged lands Gold and refuses nothing",
     );
 }
@@ -1344,9 +1344,9 @@ fn the_guard_is_the_whole_tag() {
 
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &body, &mut image, &mut report);
+    let ran = tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &body, &mut image, &mut report);
     check(
-        image == [0u8; 4] && !report.damaged,
+        image == [0u8; 4] && ran,
         "the guard: a two-byte tag of 0x0101 is NOT arm 1, so the arm's entry does not fire",
     );
 
@@ -1354,9 +1354,9 @@ fn the_guard_is_the_whole_tag() {
     let named: [u8; 6] = [0x01, 0x00, 0xAA, 0xBB, 0xCC, 0xDD];
     let mut image = [0u8; 4];
     let mut report = tblfu1::TableFixedReport::default();
-    tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &named, &mut image, &mut report);
+    let ran = tblfu1::table_fixed_run(&[entry], &[guard_at(2)], &[], &named, &mut image, &mut report);
     check(
-        image == [0xAA, 0xBB, 0xCC, 0xDD] && !report.damaged,
+        image == [0xAA, 0xBB, 0xCC, 0xDD] && ran,
         "the guard: 0x0001 at two bytes IS arm 1, and the entry fires",
     );
 
@@ -1378,10 +1378,10 @@ fn the_guard_is_the_whole_tag() {
         argw: 4,
         arg: 1,
     };
-    tblfu1::table_fixed_run(&[entry], &[past], &[], &body, &mut image, &mut report);
+    let ran = tblfu1::table_fixed_run(&[entry], &[past], &[], &body, &mut image, &mut report);
     check(
-        report.damaged && image == [0u8; 4],
-        "the guard: a tag whose width runs past the record is malformed and lands nothing",
+        !ran && image == [0u8; 4],
+        "the guard: a tag whose width runs past the record stops the run (the load refuses it wire_damaged) and lands nothing",
     );
 }
 
@@ -1460,7 +1460,7 @@ fn the_declared_range() {
         tabledemo::ranged_signed_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
     check(n == Some(1), "the range: the clean record reads");
     check(
-        back[0].i8_inside == 5 && !report.refused && !report.damaged,
+        back[0].i8_inside == 5 && !report.refused,
         "NEGATIVE CONTROL: a value inside the range lands untouched and refuses NOTHING",
     );
 
@@ -1479,7 +1479,7 @@ fn the_declared_range() {
     );
     check(n.is_none(), "the range: the forged record refuses (strict-only)");
     check(
-        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange && !report.damaged,
+        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange,
         "the range: a value under the declared min refuses as out_of_range, not damage",
     );
 
@@ -1554,7 +1554,7 @@ fn the_declared_width() {
     let n = tabledemo::ranged_widths_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
     check(n.is_none(), "the width: the forged record refuses (strict-only)");
     check(
-        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange && !report.damaged,
+        report.refused && report.reason == tabledemo::TableFixedReason::OutOfRange,
         "the width: a value past 2^N-1 refuses as out_of_range, not damage",
     );
 
@@ -1613,7 +1613,7 @@ fn the_text_content_rule(dir: &str) {
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
     check(
-        n == Some(2) && !report.damaged && !report.refused,
+        n == Some(2) && !report.refused,
         "NEGATIVE CONTROL: the reference's own text is well formed and raises nothing",
     );
     check(
@@ -1632,7 +1632,7 @@ fn the_text_content_rule(dir: &str) {
         n.is_none()
             && report.refused
             && report.reason == tblfx1::TableFixedReason::TextIllFormed
-            && !report.damaged,
+           ,
         "the content rule: a lone continuation byte is DAMAGE and REFUSES BY NAME — text_ill_formed",
     );
     check(
@@ -1661,16 +1661,15 @@ fn the_text_content_rule(dir: &str) {
 
     // AND THE SLACK IS DEAD, AND DEAD BYTES ARE ZERO (docs/SPEC-TABLES.md §3.4,
     // docs/FIXED-FORM-ALGORITHM.md §4.5): the same byte PAST the used length is
-    // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD, leaving
-    // every row at its declared default (R4). The verdict is the contract, not its
-    // name: this leg reports a dead byte as damage.
+    // not text and not data, and a nonzero one REFUSES THE WHOLE LOAD as
+    // wire_damaged, leaving every row at its declared default (R4).
     let mut forged = golden.clone();
     forged[body + 26 + 5] = 0x80; // past `label_length` of 3
     let mut report = tblfx1::TableFixedReport::default();
     let n =
         tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        n.is_none() && (report.refused || report.damaged),
+        n.is_none() && report.refused && report.reason == tblfx1::TableFixedReason::WireDamaged,
         "the content rule: a nonzero byte past the USED LENGTH is a dead byte and refuses the whole load",
     );
     check(
@@ -1685,7 +1684,7 @@ fn the_text_content_rule(dir: &str) {
     let mut report = tblfx1::TableFixedReport::default();
     tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
     check(
-        !report.damaged && !report.refused && values[0].blob[0] == 0x80,
+        !report.refused && values[0].blob[0] == 0x80,
         "the content rule: a `bytes(N)` has NO content rule — the same byte is data",
     );
 }
@@ -1734,7 +1733,7 @@ fn the_hostile_sweep(dir: &str) {
     // THE SWEEP: the reference's own poison set, every offset of the whole file.
     const POISON: [u8; 6] = [0x00, 0x01, 0x02, 0x7f, 0x80, 0xff];
     let mut refused: u32 = 0;
-    let mut damaged: u32 = 0;
+    let mut wire_damaged: u32 = 0;
     let mut landed: u32 = 0;
     for at in 0..golden.len() {
         for &p in &POISON {
@@ -1742,27 +1741,27 @@ fn the_hostile_sweep(dir: &str) {
             hit[at] = p;
             let mut report = tblfx1::TableFixedReport::default();
             let n = tblfx1::fx_root_fixed_load(&mut values, &hit, &mut plan, &mut remap, &mut report);
-            // THREE ANSWERS NEVER A FOURTH. A panic is the fourth: it unwinds
-            // out of the load and fails the whole binary, so reaching here IS
-            // the sanitizer's verdict for this mutation.
+            // TWO ANSWERS NEVER A THIRD (§5.3: this form's report has no
+            // malformed flag, so damage is a refusal by name). A panic is the
+            // third: it unwinds out of the load and fails the whole binary, so
+            // reaching here IS the sanitizer's verdict for this mutation.
             let named = n.is_none()
                 && report.refused
-                && report.reason != tblfx1::TableFixedReason::None
-                && !report.damaged;
-            let hurt = report.damaged && !report.refused;
-            let clean = n.is_some() && !report.refused && !report.damaged;
+                && report.reason != tblfx1::TableFixedReason::None;
+            let clean = n.is_some() && !report.refused;
             if named {
                 refused += 1;
-            } else if hurt {
-                damaged += 1;
+                if report.reason == tblfx1::TableFixedReason::WireDamaged {
+                    wire_damaged += 1;
+                }
             } else if clean {
                 landed += 1;
             } else {
                 check(
                     false,
                     &format!(
-                        "P3 hostile sweep: byte {at} poison 0x{p:02x} is a fourth answer (n={n:?} refused={} malformed={})",
-                        report.refused, report.damaged,
+                        "P3 hostile sweep: byte {at} poison 0x{p:02x} is a third answer (n={n:?} refused={} reason={})",
+                        report.refused, report.reason.name(),
                     ),
                 );
             }
@@ -1770,15 +1769,15 @@ fn the_hostile_sweep(dir: &str) {
     }
     let total = (golden.len() * POISON.len()) as u32;
     check(
-        refused + damaged + landed == total,
+        refused + landed == total,
         &format!(
-            "P3 hostile sweep: all {total} mutations answered, none a fourth (refused={refused} malformed={damaged} landed={landed})",
+            "P3 hostile sweep: all {total} mutations answered, none a third (refused={refused} landed={landed})",
         ),
     );
     check(
-        refused > 0 && damaged > 0 && landed > 0,
+        refused > 0 && wire_damaged > 0 && landed > 0,
         &format!(
-            "P3 hostile sweep: all three answers fired, never only one (refused={refused} malformed={damaged} landed={landed})",
+            "P3 hostile sweep: both answers fired, and damage refused by name (refused={refused} wire_damaged={wire_damaged} landed={landed})",
         ),
     );
 
@@ -1789,11 +1788,11 @@ fn the_hostile_sweep(dir: &str) {
     let mut report = tblfx1::TableFixedReport::default();
     let n = tblfx1::fx_root_fixed_load(&mut values, &short, &mut plan, &mut remap, &mut report);
     check(
-        n.is_none() && report.refused && report.reason == tblfx1::TableFixedReason::Truncated && !report.damaged,
+        n.is_none() && report.refused && report.reason == tblfx1::TableFixedReason::Truncated,
         "P3 hostile sweep: a one-byte-short file is refused truncated, not a short read",
     );
     println!(
-        "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} malformed={damaged} landed={landed}, three answers never a fourth",
+        "P3 hostile sweep: {total} mutations over {} bytes — refused={refused} (wire_damaged={wire_damaged}) landed={landed}, two answers never a third",
         golden.len(),
     );
 }

@@ -234,6 +234,11 @@ func t05E9(t *testing.T) {
 	if report == "" {
 		t.Fatal("E9: TableFixedReport is not in the shared runtime")
 	}
+	// THIS FORM'S REPORT HAS NO MALFORMED FLAG (§5.3): damage on the wire is
+	// the refusal wire_damaged, and the scatter's count of it is crate-private.
+	if strings.Contains(report, "damaged: bool") {
+		t.Errorf("E9: the fixed form's report carries a malformed flag; this form refuses wire_damaged instead:\n%s", report)
+	}
 	if strings.Contains(report, "duplicate") {
 		t.Errorf("E9: the fixed form's report carries `duplicate`; this form raises all but it:\n%s", report)
 	}
@@ -241,7 +246,7 @@ func t05E9(t *testing.T) {
 		"pub unknown: u32,",
 		"pub widened: u32,",
 		"pub(crate) held: u32,",
-		"pub damaged: bool,",
+		"pub(crate) wire_damage: u32,",
 		"pub refused: bool,",
 		"pub reason: TableFixedReason,",
 		"pub layout_hash: u64,",
