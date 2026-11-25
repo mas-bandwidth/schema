@@ -69,6 +69,12 @@ build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_
 test-goose: toolchain-goose build/fixedform-corpus/.stamp
 	$(MAKE) test-goose-recipe
 test-goose-recipe: toolchain-goose build/fixedform-corpus/.stamp
+	go test -count=1 -timeout 600s ./internal/codegen/goose/...
+	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[A-C]'
+	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[D-E]'
+	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGooseF'
+	go test -count=1 -timeout 600s ./internal/codegen/goosetable -run '^TestGoose[G-P]'
+	go test -count=1 -timeout 600s ./internal/codegen/goosetable
 update-goldens-goose: ;
 
 # THE FIXED FORM'S NEGATIVE CONTROL (make/negative-controls.json, group
@@ -80,9 +86,11 @@ update-goldens-goose: ;
 \.PHONY: tables-goose-fixedform tables-goose-fixedform-negative-control
 tables-goose-fixedform: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s -run "^(TestGooseFixedFormAgreesWithTheByteOracle|TestGooseFixedProofSuiteStrict|TestGooseFixedProofSuiteStrictNegativeControl)$$" ./internal/codegen/goosetable/
 
 tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -run '^TestGooseFixedFormNegativeControl$$' ./internal/codegen/goosetable/
 
 # THE TABLE WIRE'S NEGATIVE CONTROL (make/negative-controls.json, group
 # goose): TestGooseTableWireNegativeControl breaks the load's widened count,
@@ -92,6 +100,7 @@ tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 .PHONY: tables-goose-tablewire-negative-control
 tables-goose-tablewire-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s -run '^TestGooseTableWireNegativeControl$$' ./internal/codegen/goosetable/
 
 # build/conformance-goose is the manifest's units generated for goose, one
 # directory per unit. The schema_leg_goose tag is the target's until the port
@@ -154,7 +163,9 @@ conformance-negative-control-goose-write-refusal-message: build/conformance-harn
 # cycle check, and require the damaged and the cyclic roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
 tables-goose-damage: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
 tables-goose-damage-negative-control: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control
 
 # THE ENUM-KEYED ARRAY's guard (docs/PORTING.md M5): schema_rt::table_keyed
@@ -164,7 +175,9 @@ test-goose: tables-goose-damage tables-goose-damage-negative-control
 # the shift out of the runtime in turn, each turning exactly its own row red.
 .PHONY: tables-goose-keyed tables-goose-keyed-negative-control
 tables-goose-keyed: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedAccessorCoversBothEnds$$'
 tables-goose-keyed-negative-control: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseKeyedNegativeControl$$'
 test-goose: tables-goose-keyed tables-goose-keyed-negative-control
 
 # A MAP IS A SORTED ENTRY ARRAY (docs/PORTING.md M19): every writer (the wire
@@ -176,7 +189,9 @@ test-goose: tables-goose-keyed tables-goose-keyed-negative-control
 # own rows red.
 .PHONY: tables-goose-maps tables-goose-maps-negative-controls
 tables-goose-maps: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsAreSortedEntryArrays$$'
 tables-goose-maps-negative-controls: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseMapsNegativeControl$$'
 test-goose: tables-goose-maps tables-goose-maps-negative-controls
 
 # The variable-table wire-fuzz verdict pipe (§4.2, §6.6): both the plain
@@ -184,7 +199,9 @@ test-goose: tables-goose-maps tables-goose-maps-negative-controls
 # on every mutant's strict read verdict and canonical write-back bytes.
 .PHONY: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
 tables-goose-wire-fuzz-verdict: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipe$$'
 tables-goose-wire-fuzz-verdict-negative-control: goose-toolchain-ready
+	go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
 test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
 
 test-goose: conformance-negative-control-goose-write-refusal conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message

@@ -56,6 +56,7 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 	$(LUAU_CONFORMANCE_DRIVER)/inputs.luau \
 	$(LUAU_CONFORMANCE_DRIVER)/units.luau \
 	$(SERIALIZE_GO_RUNTIME)/go.mod
+	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
 		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 
@@ -140,10 +141,12 @@ test-luau: tables-luau-json-walk tables-luau-json-walk-negative-control \
 
 .PHONY: tables-luau-fixed-form tables-luau-versioning
 tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
+	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
 	go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal|TestLuauFixedPlainReadIsStrict|TestLuauFixedByteArrays|TestLuauFixedByteArraysNegativeControl|TestLuauFixedStrictBounds|TestLuauFixedStrictBoundsNegativeControl|TestLuauFixedEvolution.*)$$'
 	@echo 'tables Luau fixed form: every corpus root on the C++ reference bytes, every refusal by name'
 
 tables-luau-versioning: toolchain-luau tables-fixedform-corpus
+	go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedVersioning.*|TestLuauFixedCompiledPlanTagPastArmSet)$$'
 	@echo 'tables Luau versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # THE TWO GATES' NEGATIVE CONTROLS (§5.9 #11: a gate nobody has watched fail may
@@ -345,6 +348,7 @@ cards-luau-test: toolchain-luau cards-luau-generate build/cards-driver-luau card
 	$(MUSTRUN) -name cards-luau-test -count 11 -- cat build/cards-luau-unit/unit.txt
 
 cards-luau-conformance: toolchain-luau cards-luau-generate build/cards-driver-luau build/conformance-harness cards-corpus-check
+	SCHEMA_CARDS_SURFACES=$(CARDS_LUAU_REQUIRE) ./build/conformance-harness cards --work build/cards-luau-conformance --corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(CARDS_LUAU_REQUIRE)
 
 cards-luau-conformance-negative-control: cards-luau-test cards-luau-conformance
 	sh tables/cards/luau/negative-control.sh render

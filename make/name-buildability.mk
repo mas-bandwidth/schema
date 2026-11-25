@@ -23,6 +23,7 @@ name-buildability: dist-lua dist-luau dist-moo dist-squirrel dist-goose dist-lob
 	@mkdir -p $(NAME_BUILDABILITY_DIR)
 	@rm -f $(NAME_BUILDABILITY_SUMMARY)
 	@status=0; \
+	PATH="$(BEAM_PATH):$$PATH" NAMEBUILD_SUMMARY="$(abspath $(NAME_BUILDABILITY_SUMMARY))" \
 	CC="$(CC)" CXX="$(CXX)" DOTNET="$(DOTNET)" DART="$(DART)" JAVAC="$(JAVAC)" JAVA="$(JAVA)" NODE="$(NODE)" \
 	PYTHON="$(PYTHON)" RUBY="$(RUBY)" LUA="$(LUA)" LUAU="$(LUAU)" LUAU_ANALYZE="$(LUAU_ANALYZE)" \
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" SQ="$(SQ)" LOBSTER="$(LOBSTER)" GOOSE="$(GOOSE)" \

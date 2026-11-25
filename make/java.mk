@@ -846,6 +846,7 @@ tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixe
 # job, for the same reason.
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -858,6 +859,7 @@ tables-java-versioning: tables-fixedform-corpus
 # every malformed and out-of-range message batch by name.
 .PHONY: tables-java-message-batch
 tables-java-message-batch:
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestMessageFormBatchJava|TestMessageFormAnnounceJava'
 	@echo 'tables Java message form: announcement and batch round-trip, versioning and refusals pass'
 
@@ -869,6 +871,7 @@ tables-java-message-batch:
 # reference bytes in build/fixedform-corpus (fu1.bin, fu2.bin).
 .PHONY: tables-java-fixed-roadmap
 tables-java-fixed-roadmap: tables-fixedform-corpus
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
 	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
 
@@ -885,6 +888,7 @@ tables-java-fixed-roadmap: tables-fixedform-corpus
 # so a missing oracle turns the skip into a FAILURE.
 .PHONY: tables-java-fixed-t18
 tables-java-fixed-t18: tables-fixedform-corpus
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
 	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
 
@@ -899,6 +903,7 @@ tables-java-fixed-t18: tables-fixedform-corpus
 # oracle can never pass silently.
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 900s
 	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
 
@@ -910,6 +915,7 @@ tables-java-package: tables-fixedform-corpus
 # with an off-grid float32 and asserts the unfused witness bits 0xbf4ccccc.
 .PHONY: tables-java-t14
 tables-java-t14:
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
 
@@ -927,9 +933,11 @@ tables-java-t14:
 # the rule that nothing skips makes a missing JDK a FAILURE rather than a skip.
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl|TestJsonLeadingBOMBoundaryJava)$$'
 	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
 tables-java-json-differential-negative-control:
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
 	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
 
@@ -967,6 +975,7 @@ test-java: tables-java-block-build
 # this name a missing oracle can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
+	JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
@@ -2415,9 +2424,11 @@ test-java: cards-java-test cards-java-conformance cards-java-conformance-negativ
 # positive native codec gates.
 .PHONY: tables-java-variable-arms tables-java-variable-fixed-class
 tables-java-variable-arms: bin/schema
+	JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
 
 tables-java-variable-fixed-class: bin/schema
+	JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
@@ -2466,6 +2477,7 @@ tables-java-view: bin/schema test/java-view/View.java
 # one and says which declaration a wrong string belongs to.
 .PHONY: tables-java-descriptor-doc
 tables-java-descriptor-doc: bin/schema
+	JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestJavaDescriptorDocAndTags$$'
 
 test-java: tables-java-view tables-java-descriptor-doc

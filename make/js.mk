@@ -629,6 +629,7 @@ tables-js-fixed-form: build/retiredskips build/mustrun build/js-fixed/.stamp bui
 # first and the rule that nothing skips makes the skip a FAILURE.
 .PHONY: tables-js-versioning
 tables-js-versioning: build/fixedform-corpus/.stamp
+	NODE=$(NODE) go test -count=1 ./internal/codegen/jstable/ -run 'TestJSFixedVersioning|TestJSFixedLineageLockBugFailsTheBuild'
 	@echo 'tables JS versioning: every row of §5.7 over the reference own bytes, both columns'
 
 test-js: tables-js-versioning
@@ -649,6 +650,7 @@ test-js: tables-js-versioning
 # makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-block-build
 tables-js-block-build:
+	NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^TestBlockBuildAndCookWriteJavaScript$$'
 	@echo 'tables JS block build: the built extent is the Go builder own bytes, and this leg reader opens it'
 
 test-js: tables-js-block-build
@@ -676,6 +678,7 @@ test-js: tables-js-deprecated-write
 
 .PHONY: tables-js-cook-write-rows
 tables-js-cook-write-rows:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestCookWriteAnswersEveryCookWriteRowJavaScript$$'
 	@echo 'tables JS cook-write rows: every cook-write row in MANIFEST.txt matches the golden bytes in both byte orders'
 
 test-js: tables-js-cook-write-rows
@@ -687,6 +690,7 @@ test-js: tables-js-cook-write-rows
 # found by <F>Find). The rows' bytes themselves are tables-js-cook-write-rows.
 .PHONY: tables-js-cook-map
 tables-js-cook-map:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
 	@echo 'tables JS cook map: a Map built out of key order cooks the reference bytes, and a cooked map is found in place'
 
 test-js: tables-js-cook-map
@@ -724,6 +728,7 @@ test-js: tables-js-cook-map-extent-start-negative-control tables-js-cook-map-nod
 # the rule that nothing skips makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-class
 tables-js-variable-class:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestVariableClassBeyondCardConstructsJavaScript|TestOtherVariableConstructsAreRefusedByName)$$'
 	@echo 'tables JS variable class: the class beyond the card constructs round-trips the oracle bytes and the rest is refused by name'
 
 test-js: tables-js-variable-class
@@ -746,6 +751,7 @@ test-js: tables-js-variable-class
 # the rule that nothing skips makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-arms
 tables-js-variable-arms:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestNestedTypesAndFixedArraysOnTheTableWireJavaScript|TestMapsAndUnionArmsOnTheTableWireJavaScript|TestOtherVariableConstructsAreRefusedByName|TestMapWriterSortJavaScript)$$'
 	@echo 'tables JS variable arms: maps, union arms, optional ?T, enum-keyed arrays, nested types, fixed-length arrays [N]T, fixed-point scalars round-trip the oracle bytes and are no longer refused by name'
 
 test-js: tables-js-variable-arms
@@ -760,6 +766,7 @@ test-js: tables-js-variable-arms
 # the rule that nothing skips makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-variable-fixed-class
 tables-js-variable-fixed-class:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestFixedClassOnTableWireJavaScript$$'
 	@echo 'tables JS variable fixed class: fixed-class tables, defaults, nested types, flags and renames round-trip the oracle bytes'
 
 test-js: tables-js-variable-fixed-class
@@ -775,8 +782,10 @@ test-js: tables-js-variable-fixed-class
 # the rule that nothing skips makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-text-differential tables-js-text-differential-negative-control
 tables-js-text-differential:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialJavaScript$$'
 	@echo 'tables JS text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-js-text-differential-negative-control:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestTextDifferentialNegativeControlJavaScript$$'
 	@echo 'tables JS text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 test-js: tables-js-text-differential
@@ -790,7 +799,9 @@ test-js: tables-js-text-differential
 # raw-bits test off in turn and the probe must red on exactly that read's rows.
 .PHONY: tables-js-finite-float tables-js-finite-float-negative-control
 tables-js-finite-float:
+	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFloat32CellsAreBitTransparent$$'
 tables-js-finite-float-negative-control:
+	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestJsFiniteFloatNegativeControl$$'
 test-js: tables-js-finite-float
 
 # js/F12 — "a second layout under a held hash" (docs/FIXED-FORM-ALGORITHM.md §2
@@ -811,6 +822,7 @@ test-js: tables-js-finite-float
 # in-memory shape (no C++ oracle), so it joins the t13 name in the one -run list.
 .PHONY: tables-js-fixed-roadmap
 tables-js-fixed-roadmap:
+	NODE=$(NODE) go test -count=1 -v ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT12GuardsWideText|TestFixedRoadmapJsT13LayoutHashCollision)$$'
 	@echo 'tables JS fixed roadmap: a second layout under a held hash is layout_malformed (js/F12)'
 
 test-js: tables-js-fixed-roadmap
@@ -1449,6 +1461,7 @@ tables-js-view: bin/schema test/js-view/view_main.mjs
 # the rule that nothing skips makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-view-descriptors
 tables-js-view-descriptors:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestUnitViewDescriptorsJavaScript$$'
 	@echo 'tables JS view: every table and type described at the record layout, with its vocabulary, docs and tags'
 
 # THE TEXT FORM FOR EVERY TABLE (docs/SPEC-TABLES.md §16) rides the conformance
@@ -1587,6 +1600,7 @@ test-js: tables-js-json-walk tables-js-json-walk-negative-control
 # open. the rule that nothing skips makes a missing node a FAILURE, not a skip.
 .PHONY: tables-js-descriptors
 tables-js-descriptors:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestJavaScriptDescriptorsAreConstants$$'
 	@echo 'tables JS descriptors: every variable descriptor is frozen after the link (M13)'
 
 test-js: tables-js-descriptors
@@ -1601,6 +1615,7 @@ test-js: tables-js-descriptors
 # the rule that nothing skips makes a missing node a FAILURE rather than a skip.
 .PHONY: tables-js-keyed
 tables-js-keyed:
+	NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestKeyedArrayAccessorsJavaScript$$'
 	@echo 'tables JS keyed: a keyed array indexes by key and refuses None and a key past Max on every form (M5)'
 
 test-js: tables-js-keyed
@@ -1807,6 +1822,7 @@ test-js: conformance-negative-control-js-absent
 # hash zero with None, and requires the real native round-trip test to catch it.
 .PHONY: tables-js-retain-hashzero tables-js-retain-hashzero-negative-control
 tables-js-retain-hashzero:
+	NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJavaScriptRetainNestedHashZero$$'
 
 tables-js-retain-hashzero-negative-control: tables-js-retain-hashzero
 	$(call js_jstable_control,js-retain-hashzero-none,internal/codegen/jstable/retain.go,^TestJavaScriptRetainNestedHashZero$$,./internal/codegen/jstable/,FAIL: save 0-0.bin)
@@ -1822,6 +1838,7 @@ test-js: tables-js-retain-hashzero-negative-control
 # TestMessageFormBatchJavaScript/damage, where a damaged batch delivers no body.
 .PHONY: tables-js-discard
 tables-js-discard:
+	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
 	@echo 'tables JS discard: damaged input hands back no value on every load (§4)'
 
 test-js: tables-js-discard
@@ -1846,6 +1863,7 @@ test-js: tables-js-discard-negative-control tables-js-batch-discard-negative-con
 # copy reached by a Go overlay, and requires the gate red on a cyclic wire.
 .PHONY: tables-js-cycle tables-js-cycle-negative-control
 tables-js-cycle:
+	NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
 	@echo 'tables JS cycle: a cyclic wire is damage, a shared node is not (§3.1)'
 
 tables-js-cycle-negative-control:
@@ -1867,6 +1885,7 @@ test-js: conformance-js-text-boundary
 
 .PHONY: tables-js-blob-shared-report
 tables-js-blob-shared-report: toolchain-js
+	NODE=$(NODE) \
 		sh test/slowgate/proof tables-js-blob-shared-report 'TestJavaScriptBlobSharedReportCensus' \
 		-count=1 -timeout=0 -run '^TestJavaScriptBlobSharedReportCensus$$' ./internal/codegen/jstable/
 
@@ -1874,6 +1893,7 @@ test-js: tables-js-blob-shared-report
 
 .PHONY: tables-js-helper-closure
 tables-js-helper-closure: toolchain-js
+	ESLINT=$(ESLINT) \
 		sh test/slowgate/proof tables-js-helper-closure 'TestJavaScriptVariableHelperClosure' \
 		-count=1 -timeout=0 -run '^TestJavaScriptVariableHelperClosure$$' ./internal/codegen/jstable/
 
@@ -1974,6 +1994,7 @@ test-js: packet-write-cfloat-js packet-write-cfloat-js-negative-control
 # depth 129; a private emitter copy lowered to 127 must lose the 128 witness.
 .PHONY: tables-js-retain-depth tables-js-retain-depth-negative-control
 tables-js-retain-depth:
+	NODE=$(NODE) go test -count=1 -v -timeout 600s ./internal/codegen/jstable/ -run '^TestJsRetainKeepsDepth128$$'
 
 tables-js-retain-depth-negative-control: tables-js-retain-depth
 	$(call js_jstable_control,js-retain-depth-127,internal/codegen/jstable/retain.go,^TestJsRetainKeepsDepth128$$,./internal/codegen/jstable/,depth_keyed_scalar_128: retaining save refused or lost retention)

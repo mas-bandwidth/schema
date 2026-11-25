@@ -195,6 +195,7 @@ _verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-be
 _verify-unity-conformance: toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
 
 _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-unity-conformance packet-defaults-unity packet-utf8-unity
+	go test -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
 
 # ---- go ----
 

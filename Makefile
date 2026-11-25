@@ -586,8 +586,11 @@ tables-zero-cost-negative-control: build/tables-generated/.stamp
 # compiles and runs a probe of the reference emitter.
 .PHONY: tables-accessor-descriptor-agreement tables-accessor-negative-control tables-slot-negative-control
 tables-accessor-descriptor-agreement:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorAgreement$$' -count=1
 tables-accessor-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorScalarNegativeControl$$' -count=1
 tables-slot-negative-control:
+	go test ./internal/codegen/cpptable -run '^TestCppAccessorDescriptorSlotNegativeControl$$' -count=1
 
 .PHONY: tables-json-walk
 tables-json-walk: build/tables-generated/.stamp
@@ -4334,6 +4337,7 @@ tables-lists: build/schema_test_lists build/schema_test_lists_asan
 	./bin/schema cook-check --root Army build/lists-cooks/army.cook tables/lists
 	# and the Go test that holds the same map-holding cook
 	# (internal/tablecook/list_test.go) reads it here, the one place it is
+	go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/
 	# written: under the rule that nothing skips an absent cook fails, never skips.
 	@if ./bin/schema cook-check --root Sheet build/lists-cooks/sheet-forged.cook tables/lists > build/lists-cooks/forged.log 2>&1; then \
 		echo "LIST GATE FAILED: cook-check accepted a list slot pointing past its holder's extent"; exit 1; \
@@ -6345,6 +6349,7 @@ endef
 # it, and requires the clean output to pass.
 .PHONY: message-form-fixed-only-lock-negative-control
 message-form-fixed-only-lock-negative-control:
+	go test -count=1 ./compiler -run '^TestNoVariableTableMessagePathNegativeControl$$'
 
 .PHONY: tables-message-form-text-negative-control
 tables-message-form-text-negative-control: bin/schema test/tables/message_text_main.cpp build/tables-generated/.stamp
@@ -6658,7 +6663,9 @@ include $(wildcard make/*.mk)
 # unchanged.
 .PHONY: test-moo-tagged-compiler test-moo-tagged-table
 test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
+	go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/ ./internal/goldens/
 test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
+	go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
 # THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
 # non-schedule events). Measured on run 42578064640, the full halves cannot
 # fit the 110 s per-commit budget at any row count (moo-table 859 s, one
@@ -6671,9 +6678,13 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 # which is a failure, never a skip, when missing on CI under the rule that nothing skips, so it builds it.
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
 test-moo-tagged-compiler-smoke: toolchain-moo build/fixedform-corpus/.stamp
+	go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
 	sh test/slowgate/proof moo-tagged-goldens 'TestGoldenLudicrousSource TestGoldenSourceEveryTarget TestGoldenDirectoriesBelongToTargets' -count=1 -tags schema_leg_moo -run '^TestGolden' ./internal/goldens/
 test-moo-tagged-table-smoke: toolchain-moo
+	go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
+	go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
 test-goose-tagged-harness-smoke:
+	go test -count=1 -timeout 60m -tags schema_leg_goose -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)
@@ -7054,6 +7065,7 @@ test: tables-fixedform
 # and each of the five appended kinds.
 .PHONY: tables-cpp-fixed-t18
 tables-cpp-fixed-t18:
+	go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapCppT18FieldEvolution'
 
 test: tables-cpp-fixed-t18
 
@@ -7954,6 +7966,7 @@ test: deps
 # the gate catches both a weakened checker and a broken native accessor.
 .PHONY: tables-go-checked-cook
 tables-go-checked-cook:
+	go test -count=1 -v ./compiler -run '^TestCheckedCookGoConsumers'
 
 # ---- THE PINS MATRIX TARGETS (ci-full.yml's pins job) ------------------------
 #

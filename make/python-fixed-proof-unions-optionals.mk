@@ -17,10 +17,14 @@ PYTHON_CI_SUPPORT_GROUPS += $(PYTHON_FIXED_UNION_TARGETS) $(PYTHON_FIXED_UNION_T
 test-python: $(PYTHON_FIXED_UNION_TARGETS) $(PYTHON_FIXED_UNION_TYPE_TARGETS) python-fixed-proof-ci-selection
 python-fixed-proof-unions-optionals: $(PYTHON_FIXED_UNION_TARGETS) $(PYTHON_FIXED_UNION_TYPE_TARGETS)
 python-fixed-proof-unions-optionals-negative-control: dist-python
+	go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofUnionsOptionals$$/^controls$$' ./internal/codegen/pythontable/
 $(PYTHON_FIXED_UNION_TARGETS): dist-python
+	go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofUnionsOptionals$$/^(values|controls|evolution)$$/^$(@:python-fixed-proof-union-%=%)$$' ./internal/codegen/pythontable/
 $(PYTHON_FIXED_UNION_TYPE_TARGETS): dist-python
+	go test -v -count=1 -timeout 600s -tags schema_leg_python -run '^TestPythonFixedProofUnionsOptionals$$/^types$$/^($(PYTHON_FIXED_UNION_TYPES_$(@:python-fixed-proof-union-types-%=%)))$$' ./internal/codegen/pythontable/
 python-fixed-proof-ci-patterns:
 	@printf 'values %s\n' $(PYTHON_FIXED_VALUE_ROWS)
 	@printf 'union %s\n' $(PYTHON_FIXED_UNION_ROWS)
 	@printf 'types %s\n' '$(PYTHON_FIXED_UNION_TYPES_0)' '$(PYTHON_FIXED_UNION_TYPES_1)' '$(PYTHON_FIXED_UNION_TYPES_2)' '$(PYTHON_FIXED_UNION_TYPES_3)' '$(PYTHON_FIXED_UNION_TYPES_4)' '$(PYTHON_FIXED_UNION_TYPES_5)' '$(PYTHON_FIXED_UNION_TYPES_6)' '$(PYTHON_FIXED_UNION_TYPES_7)'
 python-fixed-proof-ci-selection:
+	go test -count=1 -tags schema_leg_python -run '^TestPythonFixedProofCISelection$$' ./internal/codegen/pythontable/

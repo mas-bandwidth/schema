@@ -1216,6 +1216,7 @@ test-elixir:
 # json-write and report surfaces for the variable-class instances.
 .PHONY: tables-elixir-variable-class
 tables-elixir-variable-class: build/conformance-elixir-manifest/manifest.txt
+	ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestVariableClassBeyondCardConstructsElixir|TestListdemoNamesUncarriedRoots|TestOptionalVariableClosureElixir|TestScalarListUnderATableHeaderElixir|TestCountPastTheBoundRefusesElixir|TestNestedBodyEndingEarlyIsDamageElixir|TestReservedNodeIdInANestedBodyIsDamageElixir'
 	@rm -rf build/conformance-elixir-variable-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-class
 
@@ -1236,6 +1237,7 @@ test-elixir: tables-elixir-variable-class
 # writer's bytes as the engine reads them (§5).
 .PHONY: tables-elixir-variable-fixed-class
 tables-elixir-variable-fixed-class: build/conformance-elixir-manifest/manifest.txt
+	ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedClassOnTableWireElixir|TestDefaultsAndTableRenameElixir'
 	@rm -rf build/conformance-elixir-variable-fixed-class
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-fixed-class
 
@@ -1249,6 +1251,7 @@ test-elixir: tables-elixir-variable-fixed-class
 # the rule that nothing skips and fails on any SKIP.
 .PHONY: tables-elixir-wasrows
 tables-elixir-wasrows:
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run '^TestElixirWasRowsCarried$$'
 test-elixir: tables-elixir-wasrows
 
@@ -1347,6 +1350,7 @@ test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-cont
 # instances.
 .PHONY: tables-elixir-variable-arms
 tables-elixir-variable-arms: build/conformance-elixir-manifest/manifest.txt
+	ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestMapsAndUnionArmsOnTheTableWireElixir
 	@rm -rf build/conformance-elixir-variable-arms
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-variable-arms
 
@@ -1360,6 +1364,7 @@ test-elixir: tables-elixir-variable-arms
 # carries and writes <case>.absent for the rest.
 .PHONY: tables-elixir-block-build
 tables-elixir-block-build: build/conformance-elixir-manifest/manifest.txt
+	ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run TestBlockBuildAndCookWriteElixir
 	@rm -rf build/conformance-elixir-block-build
 	./build/conformance-harness run --only elixir --work build/conformance-elixir-block-build
 
@@ -1569,6 +1574,7 @@ ERL_BIN    ?=
 
 .PHONY: tables-elixir-versioning
 tables-elixir-versioning: tables-fixedform-corpus
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning'
 	@echo 'tables Elixir versioning: §5 read both columns of every row against the C++ reference bytes'
 
@@ -1618,6 +1624,7 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 # is a FAILURE under the rule that nothing skips.
 .PHONY: tables-elixir-t13
 tables-elixir-t13:
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT13SecondLayoutUnderAHeldHash'
 	@echo 'tables Elixir T13: a second layout under a held hash is layout_malformed, no counter moved'
 
@@ -1675,6 +1682,7 @@ test-elixir: tables-elixir-message-conformance
 
 .PHONY: tables-elixir-fixed-roadmap-t12
 tables-elixir-fixed-roadmap-t12: tables-fixedform-corpus
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapElixirT12OrdinalsArms'
 	@echo 'tables Elixir T12: R27 manifest oracle, union-field-arms and payload-free-arms verified'
 
@@ -1940,6 +1948,7 @@ ELIXIR_DISCARD_NC := build/elixir-discard-nc
 
 .PHONY: tables-elixir-discard tables-elixir-discard-negative-control
 tables-elixir-discard:
+	ELIXIR=$(ELIXIR_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s \
 		-run '^TestDamageDiscardsTheWholeLoadElixir$$'
 
 tables-elixir-discard-negative-control:
@@ -2234,6 +2243,7 @@ ELIXIR_CONFORMANCE_FRAMING_SED := -e 's~    if count > 4096 or count > div(size 
 ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|Enum.reduce(Map.get(parents, idx, \[\]), {pending, ready}, fn|Enum.reduce(Enum.take(Map.get(parents, idx, []), 1), {pending, ready}, fn|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
+	$(GO) test -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)
@@ -2257,6 +2267,7 @@ test-elixir: conformance-elixir-framing conformance-negative-control-elixir-fram
 # into a failure.
 .PHONY: tables-elixir-cook-map
 tables-elixir-cook-map:
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \
 		-run '^(TestCookWriteMapsAndListsElixir|TestCookMapWriterHoldsTheSortElixir)$$'
 
 test-elixir: tables-elixir-cook-map
@@ -2308,6 +2319,7 @@ test-elixir: tables-elixir-cook-map-negative-control
 # Void-only unions must compile without unreachable payload alternatives.
 .PHONY: tables-elixir-void-union
 tables-elixir-void-union: toolchain-elixir
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		sh test/slowgate/proof tables-elixir-void-union 'TestElixirVoidUnionNative' \
 		-count=1 -timeout=0 -run '^TestElixirVoidUnionNative$$' ./internal/codegen/elixirtable/
 
@@ -2317,6 +2329,7 @@ test-elixir: tables-elixir-void-union
 # Framing-driven map, keyed and union extents use shared independent region pins.
 .PHONY: tables-elixir-region-closure
 tables-elixir-region-closure: toolchain-elixir
+	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 		sh test/slowgate/proof tables-elixir-region-closure 'TestRegionClosureElixir' \
 		-count=1 -timeout=0 -run '^TestRegionClosureElixir$$' ./internal/codegen/elixirtable/
 

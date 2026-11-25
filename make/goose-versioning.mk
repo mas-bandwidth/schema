@@ -20,6 +20,7 @@
 .PHONY: tables-goose-versioning
 tables-goose-versioning: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go test -count=1 -timeout 600s \
 		-run '^TestGooseFixed(Versioning|FormNamesEveryRefusal$$|FormKindMismatchCensus$$)' ./internal/codegen/goosetable/
 	@echo 'tables Goose versioning: §5 read both columns of every row against the C++ reference bytes'
 

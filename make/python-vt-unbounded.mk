@@ -13,3 +13,4 @@ python-ci-vt-unbounded: python-vt-unbounded-negative-control
 
 .PHONY: python-vt-unbounded-negative-control
 python-vt-unbounded-negative-control:
+	go test -tags schema_leg_python -run 'TestPythonVtUnboundedNegativeControl' ./internal/codegen/pythontable/ -count=1

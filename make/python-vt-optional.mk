@@ -20,8 +20,11 @@ PYTHON_CI_SUPPORT_GROUPS += python-ci-vt-optional
 python-ci-vt-optional: python-vt-optional python-vt-optional-negative-control python-vt-optional-carries-negative-control
 
 python-vt-optional:
+	go test -tags schema_leg_python -run '^(TestPythonVtOptional|TestPythonVtOptionalArrays)$$' ./internal/codegen/pythontable/ -count=1
+	go test -tags schema_leg_python -run '^TestPythonCarriesOptionalVariableClosure$$' ./compiler -count=1
 
 python-vt-optional-negative-control:
+	go test -tags schema_leg_python -run '^(TestPythonVtOptionalNegativeControl|TestPythonVtOptionalArraysNegativeControl)$$' ./internal/codegen/pythontable/ -count=1
 
 PYTHON_VT_OPTIONAL_CARRIES_NEGATIVE := build/python-vt-optional/carries-negative
 
