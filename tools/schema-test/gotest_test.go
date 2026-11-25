@@ -29,8 +29,9 @@ func TestASubtestThatSkipsFailsItsParent(t *testing.T) {
 {"Action":"fail","Test":"TestB/row"}
 {"Action":"fail","Test":"TestB","Elapsed":1.25}
 {"Action":"pass","Test":"TestC","Elapsed":2}
+{"Action":"pass","Test":"TestD","Elapsed":0}
 `
-	res, err := goTestResults(strings.NewReader(events), map[string]string{"TestA": "a", "TestB": "b", "TestC": "c"})
+	res, err := goTestResults(strings.NewReader(events), map[string]string{"TestA": "a", "TestB": "b", "TestC": "c", "TestD": "d"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +47,10 @@ func TestASubtestThatSkipsFailsItsParent(t *testing.T) {
 	}
 	if c := got["c"]; c.Verdict != testreg.Pass || c.Seconds != 2 {
 		t.Errorf("a passing test: %+v", c)
+	}
+	// a pass go test timed at 0.00 s was measured: it carries one tick
+	if d := got["d"]; d.Verdict != testreg.Pass || d.Seconds != goTestTick {
+		t.Errorf("a pass timed at 0.00 s: %+v", d)
 	}
 }
 
@@ -298,5 +303,86 @@ func TestAPackagesRowsAreCutIntoCallsByWeight(t *testing.T) {
 	}
 	if bad := over(cut(1000), 20); len(bad) == 0 {
 		t.Error("plant: one call holding every row was not named over the 20 s budget")
+	}
+}
+
+// TestAGoTestRowWhoseDataIsGoneFails: a row's "files" are the data its test
+// reads; a file the tree does not hold fails that row by name, before any go
+// test runs, and a row whose files are all there is not refused. Planted:
+// with the check off, the row would run its test instead.
+func TestAGoTestRowWhoseDataIsGoneFails(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "testdata"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "testdata", "here.tsv"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if why := missingFiles(root, []string{"testdata/here.tsv"}); why != "" {
+		t.Fatalf("a file that is there: %s", why)
+	}
+	if why := missingFiles(root, []string{"testdata", "testdata/here.tsv", "testdata/gone.tsv"}); !strings.Contains(why, "testdata, testdata/gone.tsv") || strings.Contains(why, "here.tsv") {
+		t.Fatalf("a directory and a missing file: %q", why)
+	}
+	inst := testreg.Instance{Full: "none.unit.tooling.x.gone", Lang: testreg.LangFree, Test: testreg.Test{
+		Key: "tooling.x.gone", Scope: testreg.LangFree, Adapter: "gotest",
+		Inputs: []byte(`{"package":"./x","test":"TestGone","files":["testdata/gone.tsv"]}`)}}
+	res, err := newGoTestAdapter(nil, root, 1).Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 || res[0].Instance != inst.Full || res[0].Verdict != testreg.Fail || !strings.Contains(res[0].Reason, "testdata/gone.tsv") {
+		t.Fatalf("results %+v", res)
+	}
+}
+
+// TestAGoTestRowsMakeTargetIsBuiltFirst: a row naming a make target in its
+// inputs has that target made once in Prepare, before any call runs, however
+// many rows name it; a row naming none makes nothing; a target that does not
+// make fails Prepare naming the row and the target; and a make input that is
+// not one target is refused as the row's inputs.
+func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
+	t.Parallel()
+	row := func(full, inputs string) testreg.Instance {
+		return testreg.Instance{Full: full, Test: testreg.Test{Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(inputs)}}
+	}
+	rows := []testreg.Instance{
+		row("a", `{"package":"./p","test":"TestA","make":"build/tree/.stamp"}`),
+		row("b", `{"package":"./p","test":"TestB","make":"build/tree/.stamp"}`),
+		row("c", `{"package":"./p","test":"TestC"}`),
+	}
+	var made [][]string
+	a := newGoTestAdapterBuilding(nil, t.TempDir(), 1, func(_ context.Context, argv []string) error {
+		made = append(made, argv)
+		return nil
+	})
+	if err := a.Prepare(context.Background(), "", rows); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(made) != "[[make build/tree/.stamp]]" {
+		t.Fatalf("made %v, want the one target once", made)
+	}
+
+	var tried [][]string
+	broken := newGoTestAdapterBuilding(nil, t.TempDir(), 1, func(_ context.Context, argv []string) error {
+		tried = append(tried, argv)
+		return errors.New("build step failed")
+	})
+	err := broken.Prepare(context.Background(), "", rows)
+	if err == nil || !strings.Contains(err.Error(), "a: build step failed") || fmt.Sprint(tried) != "[[make build/tree/.stamp]]" {
+		t.Fatalf("a target that does not make: got %v, want the row named", err)
+	}
+
+	none := newGoTestAdapter(nil, t.TempDir(), 1)
+	if err := none.Prepare(context.Background(), "", rows[2:]); err != nil {
+		t.Fatalf("a row naming no target: %v", err)
+	}
+	if err := none.Prepare(context.Background(), "", rows[:1]); err == nil || !strings.Contains(err.Error(), "make build/tree/.stamp") {
+		t.Fatalf("no builder: got %v, want the target named", err)
+	}
+
+	if _, err := goTestInputsOf(row("d", `{"package":"./p","test":"TestD","make":"a b; rm"}`).Test); err == nil {
+		t.Fatal("a make input that is not one target was accepted")
 	}
 }

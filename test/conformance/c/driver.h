@@ -206,6 +206,7 @@ const ConformanceCodec * conformance_codecs_tblvarevo3( int * count );
 const ConformanceCodec * conformance_codecs_cooktorture( int * count );
 const ConformanceCodec * conformance_codecs_cooktorturewide( int * count );
 const ConformanceCodec * conformance_codecs_shapes( int * count );
+const ConformanceCodec * conformance_codecs_tblmoodmap( int * count );
 const ConformanceCodec * conformance_codecs_tblprior( int * count );
 int conformance_write_refusal_set_graphdemo( const char * root, void * value, const char * path, const char * kind, const char * text );
 int conformance_write_refusal_write_graphdemo( int surface, const char * root, const void * value, const uint8_t * announcement, int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );

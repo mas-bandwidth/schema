@@ -414,7 +414,7 @@ func coverageRows(langs []string, results map[string]map[string]*result, want ma
 			}
 			names := want[s]
 			if s == "json-hostile" {
-				names, _ = hostileExpectations(m, lang)
+				names = hostileExpectations(m, lang)
 			}
 			byClass := map[string]*coverageRow{}
 			var order []string

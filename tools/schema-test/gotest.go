@@ -37,10 +37,20 @@ import (
 // reports in the event stream fails (the runner's "did not report it"). A
 // test that skips, or holds a subtest that skips, fails: there is no
 // skipped verdict.
+//
+// A row whose test reads something make builds (a generated tree) names
+// that make target in its inputs, {"make": "build/x/.stamp"}: Prepare makes
+// each named target once, before any call's deadline starts
+// (testreg.Preparer), and a target that fails to make fails the group by
+// name, so the test never runs against a tree that was not built.
 type goTestAdapter struct {
 	log  io.Writer
 	root string // the repository root, which packages are relative to
 	jobs int    // packages run at once
+
+	// build runs one build step (a make command line) once per process;
+	// adapters hands in the shared builder's, a unit test its own
+	build func(ctx context.Context, argv []string) error
 
 	mu    sync.Mutex
 	funcs map[string]map[string]bool // package -> the top-level test functions its source declares
@@ -53,12 +63,29 @@ func newGoTestAdapter(log io.Writer, root string, jobs int) *goTestAdapter {
 	return &goTestAdapter{log: log, root: root, jobs: max(jobs, 1), funcs: map[string]map[string]bool{}}
 }
 
+// newGoTestAdapterBuilding is newGoTestAdapter whose Prepare makes a row's
+// "make" target with build.
+func newGoTestAdapterBuilding(log io.Writer, root string, jobs int, build func(context.Context, []string) error) *goTestAdapter {
+	a := newGoTestAdapter(log, root, jobs)
+	a.build = build
+	return a
+}
+
 type goTestInputs struct {
 	Package string `json:"package"`
 	Test    string `json:"test"`
+	// Files are the committed data files the test reads (a case folder it
+	// replays): the registry indexes them where they are
+	// (internal/testreg/extract, Indexed).
+	Files []string `json:"files,omitempty"`
+	// Make is the make target the test needs built first, or empty
+	Make string `json:"make,omitempty"`
 }
 
-var goTestName = regexp.MustCompile(`^(Test|Fuzz)[A-Za-z0-9_]*$`)
+var (
+	goTestName = regexp.MustCompile(`^(Test|Fuzz)[A-Za-z0-9_]*$`)
+	makeTarget = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./-]*$`)
+)
 
 // goTestInputsOf reads and checks a row's inputs.
 func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
@@ -71,7 +98,35 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 	if !strings.HasPrefix(in.Package, "./") || !goTestName.MatchString(in.Test) {
 		return in, fmt.Errorf("inputs want a ./package and a Go test name, got %q %q", in.Package, in.Test)
 	}
+	if in.Make != "" && !makeTarget.MatchString(in.Make) {
+		return in, fmt.Errorf("inputs: make wants one make target, got %q", in.Make)
+	}
 	return in, nil
+}
+
+// The runner calls Prepare only on an adapter that is a Preparer.
+var _ testreg.Preparer = (*goTestAdapter)(nil)
+
+// Prepare makes, once each, the targets the instances' rows name in
+// "make" (testreg.Preparer). A row whose inputs do not read fails in Run,
+// by name; a target that does not make fails the group here, naming it and
+// the row that asked for it.
+func (a *goTestAdapter) Prepare(ctx context.Context, _ string, instances []testreg.Instance) error {
+	seen := map[string]bool{}
+	for _, inst := range instances {
+		in, err := goTestInputsOf(inst.Test)
+		if err != nil || in.Make == "" || seen[in.Make] {
+			continue
+		}
+		seen[in.Make] = true
+		if a.build == nil {
+			return fmt.Errorf("%s: needs make %s, and the gotest adapter has no builder", inst.Full, in.Make)
+		}
+		if err := a.build(ctx, []string{"make", in.Make}); err != nil {
+			return fmt.Errorf("%s: %w", inst.Full, err)
+		}
+	}
+	return nil
 }
 
 // declared is the set of top-level functions a package's _test.go files
@@ -136,14 +191,20 @@ func (a *goTestAdapter) moduleOf(pkg string) (string, string, error) {
 
 func (a *goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
 	calls := goTestCalls{}
+	var absent []testreg.Result // rows naming a data file the tree does not hold
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", inst.Full, err)
 		}
+		if why := missingFiles(a.root, in.Files); why != "" {
+			absent = append(absent, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
+			continue
+		}
 		calls.add(goTestPackage{pkg: in.Package}, in.Test, inst, a.callBudget())
 	}
-	return a.runCalls(ctx, calls)
+	res, err := a.runCalls(ctx, calls)
+	return append(res, absent...), err
 }
 
 // goTestPackage is one go test invocation's package and its build tags.
@@ -344,7 +405,11 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 				out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: fmt.Sprintf("subtests skipped, and nothing is ever skipped: %s\n%s", strings.Join(s, ", "), tail(strings.Join(output[top], "\n"), 5))})
 				continue
 			}
-			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: ev.Elapsed})
+			// go test's clock reads to the hundredth: a pass it timed at
+			// 0.00 s was measured, at under goTestTick, and is recorded so
+			// (`--write-seconds`, `schema-test seconds`), never left to
+			// weigh DefaultSeconds as if it had never run
+			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Pass, Seconds: max(ev.Elapsed, goTestTick)})
 		case "fail":
 			if isSub {
 				continue
@@ -401,3 +466,23 @@ func addToCall(calls []goTestCall, name string, inst testreg.Instance, budget fl
 	}
 	return append(calls, goTestCall{tests: map[string]string{name: inst.Full}, seconds: w})
 }
+
+// missingFiles names the files a row's inputs name that root does not hold
+// as regular files, or is "" when it holds them all: a row whose data is
+// gone fails by name and its test does not run.
+func missingFiles(root string, files []string) string {
+	var gone []string
+	for _, f := range files {
+		st, err := os.Stat(filepath.Join(root, filepath.FromSlash(f)))
+		if err != nil || !st.Mode().IsRegular() {
+			gone = append(gone, f)
+		}
+	}
+	if len(gone) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the row names data the tree does not hold: %s", strings.Join(gone, ", "))
+}
+
+// goTestTick is go test's clock resolution: Elapsed is in hundredths.
+const goTestTick = 0.01

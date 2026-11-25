@@ -25,14 +25,19 @@ itself establish the full roster or seeded release runs.
 The full-roster gate has twelve streams: current and floor interpreters,
 normal and development modes, and plain, mixed-builder and retaining arms.
 Each stream runs every applicable enumerated mutation and pinned vector plus
-`N` random mutations at `SEED`; defaults are `N=100000` and
-`SEED=24845619678`. `make tables-python-wire-fuzz` runs the twelve streams
+`N` random mutations (default `N=100000`) at the run's seed:
+`SCHEMA_TEST_SEED` when the run hands one in, else the UTC date as
+YYYYMMDD (`WIRE_FUZZ_RUN_SEED`, make/wire-fuzz-rows.mk); `SEED` given on
+the make command line wins. Each stream prints the seed and the line that
+re-runs a red with it. The CI shards below are certify's fixed partition
+and stay on the Makefile's `SEED` (24845619678). `make tables-python-wire-fuzz` runs the twelve streams
 whole. The pull-request support plan splits each stream by stable mutant
 index into eight shards (`PYTHON_WIRE_FUZZ_CI_SHARDS`), 96 rows in all; the
 shards together keep the roster, seed and `N` of the whole stream. At four
 shards the slowest row took 106 s of a fleet runner's two-minute bound, so
 the plan uses eight. The partition control removes an arm from a copied make
-fragment and requires the coverage check to identify the gap. The nightly
-target runs the whole streams at `N=500000` for the default seed and seed 2.
+fragment and requires the coverage check to identify the gap. The nightly runs
+the whole streams at `N=500000` as the registry's wire-fuzz rows
+(`schema-test run --family wire-fuzz --lang python`), at the run's seed.
 The release gate (`make tables-wire-fuzz-release-python`) runs the plain and
 retain arms at seeds 1, 2 and 3 with `N=100000`.

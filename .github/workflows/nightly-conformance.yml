@@ -247,8 +247,8 @@ jobs:
         env:
           # the case-folding scratch every Linux fleet runner mounts (nova-fleet
           # github-runners, casefold.yml): internal/tablepack runs its
-          # folding-volume tests there, and the gate sets
-          # the rule that nothing skips, so a runner without it fails them by name
+          # folding-volume tests there, and a runner without it fails them by
+          # name (docs/rulings.json no-skips)
           SCHEMA_CASEFOLD_DIR: /srv/casefold/scratch
         run: |
           set -uo pipefail

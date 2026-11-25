@@ -12,8 +12,8 @@ import (
 // TestSchemaJsRunsHostileCorpusWiring holds the JavaScript runner's blades
 // without needing Node in the Go unit tier: the make target exists and is a
 // prerequisite of the port's normal unit target, the runner reads the committed
-// manifest with every carrier bound, every FIX-CARD names a case the manifest
-// carries with its own input, the probe schema is the corpus's, and the
+// manifest with every carrier bound, no list carries a finding, the probe
+// schema is the corpus's, and the
 // control rides a pull-request negative-control row.
 func TestSchemaJsRunsHostileCorpusWiring(t *testing.T) {
 	t.Parallel()
@@ -39,7 +39,7 @@ func TestSchemaJsRunsHostileCorpusWiring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the JavaScript runner is missing: %v", err)
 	}
-	for _, want := range []string{"manifest.tsv", "FIX-CARD", "STALE", "HOSTILE_CASE_BUDGET_MS", "Worker",
+	for _, want := range []string{"manifest.tsv", "HOSTILE_CASE_BUDGET_MS", "Worker",
 		"FromJson", "Load`", "LoadRetain", "LoadMessages", "AnnounceRead", "ReadStream", "Flat`",
 		"\"text\"", "\"wire\"", "\"wire_retain\"", "\"message\"", "\"message_novocab\"", "\"announce\"",
 		"\"announce_second\"", "\"announce_bytes\"", "\"announce_entries\"", "\"packet\"", "\"development\"", "\"production\""} {
@@ -56,46 +56,15 @@ func TestSchemaJsRunsHostileCorpusWiring(t *testing.T) {
 		t.Error("test/js-hostile/probe.schema is not the corpus's schemas/probe.schema (hostilecorpus.ProbeSchema)")
 	}
 
-	manifestBytes, err := os.ReadFile(filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus", "manifest.tsv"))
-	if err != nil {
-		t.Fatalf("the committed manifest is missing: %v", err)
+	// NO LIST CARRIES A FINDING (docs/rulings.json no-skips): every
+	// disagreement is red by its case's name, so neither a findings file nor
+	// a runner that reads one is wired here
+	if _, err := os.Stat(filepath.Join(root, "test", "js-hostile", "known-findings.tsv")); !os.IsNotExist(err) {
+		t.Errorf("test/js-hostile/known-findings.tsv is present: a list that carries findings by name (%v)", err)
 	}
-	cases := map[string]string{}
-	for line := range strings.SplitSeq(string(manifestBytes), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		f := strings.Split(line, "\t")
-		if len(f) != 9 {
-			t.Fatalf("manifest line has %d fields, want 9: %q", len(f), line)
-		}
-		cases[f[0]] = f[4]
-	}
-
-	findings, err := os.ReadFile(filepath.Join(root, "test", "js-hostile", "known-findings.tsv"))
-	if err != nil {
-		t.Fatalf("the carried-findings list is missing: %v", err)
-	}
-	for line := range strings.SplitSeq(string(findings), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		f := strings.Split(line, "\t")
-		if len(f) != 5 {
-			t.Fatalf("carried finding has %d fields, want 5 (name, slug, input, answer, one line): %q", len(f), line)
-		}
-		// a packet case carries one row per read tier and mode: <case>@<tier>-<mode>
-		name, _, _ := strings.Cut(f[0], "@")
-		input, ok := cases[name]
-		if !ok {
-			t.Errorf("carried finding %q names a case the manifest does not carry", f[0])
-			continue
-		}
-		if f[2] != input {
-			t.Errorf("carried finding %q names input %q, manifest says %q", f[0], f[2], input)
-		}
-		if !strings.HasPrefix(f[1], "js-hostile-") || strings.TrimSpace(f[3]) == "" {
-			t.Errorf("carried finding %q has no FIX-CARD slug and one line: %q", f[0], line)
+	for _, carry := range []string{"known-findings", "FIX-CARD", "STALE"} {
+		if strings.Contains(string(runner), carry) {
+			t.Errorf("test/js-hostile/runner.mjs carries %q: a finding is never carried", carry)
 		}
 	}
 

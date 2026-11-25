@@ -17,12 +17,11 @@
 // it is printed on a FAIL line as its diagnostic and never compared
 // (TestScorerOutcomes grades the shared scorer outcome cases through agrees).
 //
-// A disagreement the port already owes is carried by name in the findings
-// file and printed as a FIX-CARD; one no finding names fails, and a finding
-// whose case has gone green fails too, so the list cannot rot. Reads files
-// only: no network, no clock.
+// No list carries a finding (docs/rulings.json no-skips): every disagreement
+// is a FAIL line that names its case, and the run is red. Reads files only:
+// no network, no clock.
 //
-//	hostile [--corpus dir] [--units dir] [--findings file] [--no-generate]
+//	hostile [--corpus dir] [--units dir] [--no-generate]
 //
 // --no-generate runs over units already in --units (the negative control
 // plants a reader defect in a copy and runs that). The working directory is
@@ -343,29 +342,6 @@ func digest(answerHex string, packet bool) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
-// carriedFinding is one line of the findings file: the answer this port gives
-// the case today, `accept <digest>` or `refuse`, and one line saying why.
-type carriedFinding struct {
-	answer, text string
-}
-
-func (f carriedFinding) String() string { return f.text }
-
-// carries says whether the finding carries got: a refusal under `refuse`,
-// whatever its reason (docs/rulings.json refusal-verdict-only), or the very
-// accept and digest it records. Nothing else (F-070, F-079).
-func (f carriedFinding) carries(got string) bool {
-	if f.answer == "refuse" {
-		return strings.HasPrefix(got, "refuse ")
-	}
-	return got == f.answer
-}
-
-func validAnswer(a string) bool {
-	d, accept := strings.CutPrefix(a, "accept ")
-	return a == "refuse" || (accept && d != "" && !strings.ContainsAny(d, " \t"))
-}
-
 // answerOf is the runner's one-line answer for the program's line about a
 // case (a[0] the verdict, a[1] the hex text or the refusal's name), or for no
 // line at all.
@@ -403,34 +379,9 @@ func agrees(got, want string) bool {
 	return got == want
 }
 
-// readFindings: name<TAB>answer<TAB>one line, `#` comments. A finding carries
-// the answer it records and no other (F-079).
-func readFindings(path string) (map[string]carriedFinding, error) {
-	out := map[string]carriedFinding{}
-	if path == "" {
-		return out, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		f := strings.SplitN(line, "\t", 3)
-		if len(f) != 3 || f[0] == "" || f[2] == "" || !validAnswer(f[1]) {
-			return nil, fmt.Errorf("%s: %q is not name<TAB>answer (accept <digest> or refuse)<TAB>finding", path, line)
-		}
-		out[f[0]] = carriedFinding{f[1], f[2]}
-	}
-	return out, nil
-}
-
 func main() {
 	corpus := flag.String("corpus", "internal/ci/hostilecorpus/corpus", "the committed corpus directory")
 	units := flag.String("units", "build/lobster-hostile", "where each schema's unit is generated")
-	findingsPath := flag.String("findings", "test/conformance/lobster/hostile-known-findings.tsv", "the carried disagreements")
 	noGenerate := flag.Bool("no-generate", false, "run over the units already in --units")
 	flag.Parse()
 
@@ -443,10 +394,6 @@ func main() {
 		fatalf("%v", err)
 	}
 	ledger := hostilecorpus.NewLedger(cases)
-	findings, err := readFindings(*findingsPath)
-	if err != nil {
-		fatalf("%v", err)
-	}
 	if err := os.MkdirAll(*units, 0o755); err != nil {
 		fatalf("%v", err)
 	}
@@ -483,15 +430,12 @@ func main() {
 		}
 	}
 
-	pass, carried, missing := 0, 0, 0
-	var bad, stale []string
+	pass, missing := 0, 0
+	var bad []string
 	for _, c := range cases {
 		if why, no := absent[c.Schema]; no {
 			missing++
 			fmt.Printf("ABSENT %s carrier=%s: %s\n", c.Name, c.Carrier, why)
-			if finding, owed := findings[c.Name]; owed {
-				stale = append(stale, fmt.Sprintf("STALE FIX-CARD %s: the case is absent; delete its line (%s)", c.Name, finding))
-			}
 			continue
 		}
 		a, ok := answers[c.Schema][c.Name]
@@ -499,38 +443,35 @@ func main() {
 			ledger.Ran(c.Name)
 		}
 		got, want := answerOf(a, ok, c.Carrier == "packet"), expected(c)
-		finding, owed := findings[c.Name]
-		switch {
-		case agrees(got, want) && owed:
-			stale = append(stale, fmt.Sprintf("STALE FIX-CARD %s: the case passes; delete its line (%s)", c.Name, finding))
-		case agrees(got, want):
+		if agrees(got, want) {
 			pass++
 			fmt.Printf("PASS %s\n", c.Name)
-		// A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
-		// execution failure (F-070: no answer, a digest that failed, an
-		// answer that is neither an accept nor a refusal), and never a
-		// different verdict or digest (F-079).
-		case owed && ok && finding.carries(got):
-			carried++
-			fmt.Printf("FIX-CARD %s carrier=%s: %s (got %s, want %s)\n", c.Name, c.Carrier, finding, got, want)
-		default:
-			bad = append(bad, fmt.Sprintf("FAIL %s carrier=%s got=%s want=%s", c.Name, c.Carrier, got, want))
+			continue
 		}
+		// no list carries a finding (docs/rulings.json no-skips): every
+		// disagreement and every execution failure is red by name
+		bad = append(bad, fmt.Sprintf("FAIL %s carrier=%s got=%s want=%s", c.Name, c.Carrier, got, want))
 	}
 	for _, line := range bad {
 		fmt.Println(line)
 	}
-	for _, line := range stale {
-		fmt.Println(line)
+	// the per-case block (internal/ci/hostilecorpus/verdicts.go): a ran
+	// line per case the reader answered, the ledger, then the end
+	for _, c := range cases {
+		if _, ok := answers[c.Schema][c.Name]; ok {
+			fmt.Printf("hostile-ledger ran %s\n", c.Name)
+		}
 	}
-	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d absent, %d fail, %d stale, of %d cases\n", pass, carried, missing, len(bad), len(stale), len(cases))
 	lerr := ledger.Check()
 	if lerr != nil {
 		fmt.Printf("FAIL lobster %v\n", lerr)
-	} else {
+	}
+	fmt.Println("hostile-ledger end")
+	fmt.Printf("lobster hostile corpus: %d pass, %d absent, %d fail, of %d cases\n", pass, missing, len(bad), len(cases))
+	if lerr == nil {
 		fmt.Printf("lobster hostile-corpus ledger: %s\n", ledger.Summary())
 	}
-	if len(bad) > 0 || len(stale) > 0 || lerr != nil {
+	if len(bad) > 0 || lerr != nil {
 		os.Exit(1)
 	}
 }

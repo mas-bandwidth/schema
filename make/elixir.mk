@@ -146,11 +146,12 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	shapes:test/tables/shapes \
+	tblmoodmap:test/tables/moodmap/MoodMap.schema \
 	tblprior:test/tables/prior/PriorNarrow.schema \
 	tblsurf:test/tables/surfaces/Surfaces.schema tblann4096:test/tables/announce4096/Announce.schema tblann4097:test/tables/announce4097/Announce.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/moodmap/MoodMap.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema
 	@mkdir -p build/tables-generated-elixir
 	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
@@ -638,7 +639,8 @@ tables-elixir-block-lead-negative-control: build/conformance-elixir-manifest/man
 # and (b) that a FORGED offset_of or delta word (high half 0x7FFFFFFF, and the
 # delta's negative twin) is refused with no more minor collections than an
 # immediate-high-half twin (a bignum would add some). It is a FUNCTIONAL test:
-# the rule that nothing skips turns a missing toolchain into a failure, never a skip.
+# a missing toolchain is a failure that names it, never a skip
+# (docs/rulings.json no-skips).
 .PHONY: tables-elixir-offsets
 tables-elixir-offsets:
 	@mkdir -p build
@@ -1207,9 +1209,9 @@ test-elixir:
 # round-trips tables/pointers, tables/blobs, tables/lists, tblp2 and the
 # fixed-only form-1 units tblp1 and tblp3 through the generated Elixir against
 # the Go oracle bytes and text form; it is a FUNCTIONAL
-# test (it runs the leg's own toolchain through elixirBinary), so
-# the rule that nothing skips turns a missing toolchain or corpus into a FAILURE,
-# never a skip. TestListdemoNamesUncarriedRoots (the roots the cook write and
+# test (it runs the leg's own toolchain through elixirBinary), so a missing
+# toolchain or corpus is a FAILURE that names it, never a skip
+# (docs/rulings.json no-skips). TestListdemoNamesUncarriedRoots (the roots the cook write and
 # the wire-fuzz roster leave uncarried) rides the same -run; the refusal gate
 # TestOtherVariableConstructsAreRefusedByName retired with
 # tables-elixir-variable-arms below, which carries every construct it named. The conformance run answers the wire, json-read,
@@ -1227,8 +1229,8 @@ test-elixir: tables-elixir-variable-class
 # (Vessel -> Ship) reads across the rename on form 1 alone. TestFixedClassOn-
 # TableWireElixir generates tblw1/tblw2 and tblr1 through the COMPILER path and
 # round-trips the committed oracle bytes and text through the generated Elixir.
-# It is a FUNCTIONAL test, so the rule that nothing skips turns a missing toolchain
-# into a failure, never a skip. The conformance run answers wire and report for
+# It is a FUNCTIONAL test, so a missing toolchain is a failure that names it,
+# never a skip (docs/rulings.json no-skips). The conformance run answers wire and report for
 # the tblv1/tblv2, tblw1/tblw2 and tblr1 instances, whose report rows
 # w1_fleet_as_w2 and w1_fleet_default_as_w2 equal the Go leg's, and tblr2's
 # r1_cfg_as_r2 / r2_cfg_as_r1 equal the Go leg's. TestDefaultsAndTableRename-
@@ -1247,8 +1249,8 @@ test-elixir: tables-elixir-variable-fixed-class
 # renaming one enum variant, one packet-union arm and one type field, feeds the new
 # build an older writer's bytes (the engine over the old unit), and requires the new
 # build to read and re-save them byte for byte. It is a FUNCTIONAL test (it runs the
-# leg's own toolchain through elixirBinary), so it runs under
-# the rule that nothing skips and fails on any SKIP.
+# leg's own toolchain through elixirBinary), so a missing toolchain fails by
+# name (docs/rulings.json no-skips), and the target fails on any SKIP line.
 .PHONY: tables-elixir-wasrows
 tables-elixir-wasrows:
 	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
@@ -1279,8 +1281,8 @@ test-elixir: tables-elixir-file-module
 # compiler's own engine (internal/tabletext, internal/tablepack) read every wire
 # and byte-compare its text with the leg's, and pack every leg text back and
 # byte-compare the wire. The probe builds its own unit, so no corpus is a
-# prerequisite. It is a FUNCTIONAL test (it runs elixir), so the target runs it
-# under the rule that nothing skips and fails on any SKIP. The control caps a
+# prerequisite. It is a FUNCTIONAL test (it runs elixir): a missing elixir fails
+# by name (docs/rulings.json no-skips), and the target fails on any SKIP line. The control caps a
 # float32 at six significant digits in the emitted json_float, in memory, and
 # requires the run red on the text comparison and not on a compile error.
 .PHONY: tables-elixir-json-differential tables-elixir-json-differential-negative-control
@@ -1310,8 +1312,8 @@ test-elixir: tables-elixir-json-differential tables-elixir-json-differential-neg
 # raw bits as non_finite_float, every writer refuses one, and -0 rides by its
 # bits. TestElixirFiniteFloat generates its own three units and runs a probe
 # over every float position, so no corpus is a prerequisite. It is a FUNCTIONAL
-# test (it runs elixir), so the target runs it under the rule that nothing skips and
-# fails on any SKIP. The control sabotages the variable read's bit test at each
+# test (it runs elixir): a missing elixir fails by name (docs/rulings.json
+# no-skips), and the target fails on any SKIP line. The control sabotages the variable read's bit test at each
 # width, the retained unknown's test, the message read's, the fixed read's and
 # the variable writer's, one at a time, and each must red exactly its own rows.
 .PHONY: tables-elixir-finite-float tables-elixir-finite-float-negative-control
@@ -1344,8 +1346,8 @@ test-elixir: tables-elixir-finite-float tables-elixir-finite-float-negative-cont
 # (`schema generate --lang elixir`) and round-trips every committed instance,
 # and the tables/arms goldens, through the generated Elixir against the Go
 # oracle's wire and text byte for byte. It is a FUNCTIONAL test (it runs the
-# leg's own toolchain), so the rule that nothing skips turns a missing toolchain
-# into a failure, never a skip. The conformance run answers wire, report,
+# leg's own toolchain), so a missing toolchain is a failure that names it,
+# never a skip (docs/rulings.json no-skips). The conformance run answers wire, report,
 # json-read and json-write for the mapdemo, messagedemo and scalars
 # instances.
 .PHONY: tables-elixir-variable-arms
@@ -1359,8 +1361,8 @@ test-elixir: tables-elixir-variable-arms
 # THE BUILDER SIDE (docs/SPEC-TABLES.md §19.1, §7.6). TestBlockBuildAndCookWriteElixir
 # builds the pinned block golden and cooks the carried instances to `schema cook`
 # in both byte orders; a short buffer returns false and writes nothing. It is a
-# FUNCTIONAL test, so the rule that nothing skips turns a missing toolchain into a
-# failure. The conformance run answers cook-write for the instances this leg
+# FUNCTIONAL test, so a missing toolchain is a failure that names it
+# (docs/rulings.json no-skips). The conformance run answers cook-write for the instances this leg
 # carries and writes <case>.absent for the rest.
 .PHONY: tables-elixir-block-build
 tables-elixir-block-build: build/conformance-elixir-manifest/manifest.txt
@@ -1557,11 +1559,9 @@ tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
 # lineage, writes ONE PROBE per row per column beside it and runs it with this
 # leg's own toolchain (§5.9 #18).
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the harness
-# SKIPS itself when build/fixedform-corpus or the Elixir in dist/ is absent,
-# which is right for a bare `go test ./...` and is exactly how a §5 regression
-# would ride into a green. So the target builds the oracle first and sets
-# the rule that nothing skips, under which that skip is a FAILURE.
+# THE TARGET BUILDS THE ORACLE FIRST: the harness fails by name when
+# build/fixedform-corpus or the Elixir in dist/ is absent (docs/rulings.json
+# no-skips), so a §5 regression can never ride into a green without them.
 #
 # ELIXIR_BIN and ERL_BIN are PLAIN PATHS and not the PATH-prefixed launchers the
 # rest of this file uses, because the harness spawns the binary itself: empty is
@@ -1620,8 +1620,8 @@ tables-elixir-row-f12: build/elixir-fixedform/.stamp
 # the held layout bent in turn, the other lock entry's real layout under this
 # build's hash, and this build's layout under the older entry's hash, each
 # `:layout_malformed`, plus the `:layout_newer` contrast. It runs the leg's own
-# Elixir, so it is gated exactly like tables-elixir-versioning: the corpus skip
-# is a FAILURE under the rule that nothing skips.
+# Elixir, so it runs exactly like tables-elixir-versioning: a missing corpus is
+# a FAILURE that names it (docs/rulings.json no-skips).
 .PHONY: tables-elixir-t13
 tables-elixir-t13:
 	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
@@ -1631,12 +1631,10 @@ tables-elixir-t13:
 # THE MESSAGE FORM'S BATCH ON THE ELIXIR LEG (docs/SPEC-TABLES.md §3.3).
 # TestMessageFormBatchElixir reads the `message` rows of the conformance
 # manifest and runs the generated Elixir against the leg's own toolchain, so it
-# is a FUNCTIONAL test: elixirBinary SKIPS when no Elixir is found and only
-# FAILS by name under the rule that nothing skips — which is the shape
-# tables-elixir-versioning (above) established: a bare `go test ./...` is green
-# with no toolchain, so the leg's gate is never satisfied by absence. This
-# target is that gate for the batch: it arms the rule that nothing skips, pins the
-# one test, and reds on any `--- SKIP` in the -v output.
+# is a FUNCTIONAL test: elixirBinary FAILS by name when no Elixir is found
+# (docs/rulings.json no-skips), so the leg's gate is never satisfied by
+# absence. This target is that gate for the batch: it pins the one test, and
+# reds on any `--- SKIP` in the -v output.
 #
 # ERL_FLAGS CAPS EACH BEAM'S SCHEDULER THREADS. The batch runs one Elixir VM per
 # parallel subtest, and a default BEAM starts one scheduler thread per core plus
@@ -1664,7 +1662,7 @@ tables-elixir-message-batch:
 # golden, and answers graph_tree `refused` (its root Scene is a variable table,
 # which the form refuses by name; ruling R13). TestMessageFormConformanceElixir's harness clause
 # runs `./build/conformance-harness run --only elixir` over the built leg; the
-# target arms the rule that nothing skips and reds on any `--- SKIP`.
+# target reds on any `--- SKIP`.
 .PHONY: tables-elixir-message-conformance
 tables-elixir-message-conformance: build/conformance-harness build-conformance-elixir
 	@mkdir -p build
@@ -2153,8 +2151,8 @@ test-elixir: cards-elixir-conformance cards-elixir-conformance-negative-control
 # unused variable and an unused alias) through the same strict invocation the
 # gates use and requires the compile to exit NON-ZERO with the warning text. It
 # passes only when the strict compile fails, and fails by name when the compile
-# exits 0. Without a toolchain it skips by name; under the rule that nothing skips
-# a missing toolchain is a failure, not a skip.
+# exits 0. A missing toolchain is a failure that names it, not a skip
+# (docs/rulings.json no-skips).
 .PHONY: tables-elixir-warning-control
 tables-elixir-warning-control:
 	@if ! command -v $(lastword $(ELIXIRC)) >/dev/null 2>&1; then \
@@ -2257,8 +2255,8 @@ test-elixir: conformance-elixir-framing conformance-negative-control-elixir-fram
 # whose keys come out of order (past thirty-two keys, and integer keys spelled
 # as strings), reads the cook back through the holder's span and <field>_find,
 # and requires the entries ascending and every key found where it lies. Both
-# run the leg's own toolchain, so the rule that nothing skips turns a missing one
-# into a failure.
+# run the leg's own toolchain, and a missing one is a failure that names it
+# (docs/rulings.json no-skips).
 .PHONY: tables-elixir-cook-map
 tables-elixir-cook-map:
 	ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) $(GO_TEST) ./internal/codegen/elixirtable/ -count=1 -timeout 600s -v \

@@ -12,10 +12,8 @@
 # Reads files only: no network, no clock. Each case runs in its own isolate
 # under a 5 s budget (HOSTILE_CASE_BUDGET_MS overrides).
 #
-# A disagreement the port already owes is carried, by name, in
-# test/dart-hostile/known-findings.tsv and printed as a FIX-CARD. A disagreement
-# no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
-# too, so the list cannot rot into silence.
+# A disagreement is never excused by name: every one is a FAIL line naming its
+# case.
 #
 # The planted-bad-pattern control changes the generated text reader in a
 # scratch copy so every accepted text input is refused, and requires the runner
@@ -27,20 +25,20 @@
 
 DART_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 DART_HOSTILE_BUILD    := build/dart-hostile
-DART_HOSTILE_FINDINGS ?= test/dart-hostile/known-findings.tsv
 
 DART_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
 	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists shapes:test/tables/shapes inner:test/tables/inner probe:test/dart-hostile/probe.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
-	tblvaluedefaults:test/tables/ValueDefaults.schema
+	tblvaluedefaults:test/tables/ValueDefaults.schema \
+	tblmoodmap:test/tables/moodmap
 
 $(DART_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-dart-runs-hostile-corpus.mk \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
 			tables/maps/*.schema tables/lists/*.schema) test/tables/shapes/Shapes.schema test/tables/inner/Inner.schema \
-		test/dart-hostile/probe.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/ValueDefaults.schema
+		test/dart-hostile/probe.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/ValueDefaults.schema test/tables/moodmap/MoodMap.schema
 	@rm -rf $(DART_HOSTILE_BUILD)/generated && mkdir -p $(DART_HOSTILE_BUILD)/generated
 	@for unit in $(DART_HOSTILE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -66,12 +64,10 @@ DART_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(DART_HOSTILE_CORPUS)/manifest.tsv
 schema-dart-runs-hostile-corpus: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.dart
 	$(DART) run test/dart-hostile/reasons_test.dart
 	$(DART) run test/dart-hostile/runner.dart --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,dart,$(DART_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-dart-runs-hostile-corpus -count $(DART_HOSTILE_CASES) -- $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)",$(DART_HOSTILE_CORPUS))
-	sh make/checks/hostile-carry-controls.sh dart findings $(DART_HOSTILE_BUILD)/carry '$(DART) run test/dart-hostile/runner.dart "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
+	$(call hostile_ledgered,dart,$(DART_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-dart-runs-hostile-corpus -count $(DART_HOSTILE_CASES) -- $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)",$(DART_HOSTILE_CORPUS))
 	@# THE WRITER CONTROL (F-070): in a scratch copy, every text writer throws
-	@# after its reader accepts. Run over the committed text-corpus with a
-	@# finding that records a refusal, the throw must read FAIL as an error after
-	@# the accept, never be carried as the refusal the finding names.
+	@# after its reader accepts. Run over the committed corpus, the throw must
+	@# read FAIL as an error after the accept, never as the reader's refusal.
 	@rm -rf $(DART_HOSTILE_BUILD)/writer && mkdir -p $(DART_HOSTILE_BUILD)/writer/build/dart-hostile $(DART_HOSTILE_BUILD)/writer/test/dart-hostile
 	@cp -R $(DART_HOSTILE_BUILD)/generated $(DART_HOSTILE_BUILD)/packet $(DART_HOSTILE_BUILD)/writer/build/dart-hostile/
 	@sed "s|^  const Loaded(this.refused, this.reason, this.written, this.exercise);$$|  Loaded(this.refused, this.reason, String Function() _, this.exercise) : written = (() => throw StateError('PLANTED text writer'));|" \
@@ -79,15 +75,14 @@ schema-dart-runs-hostile-corpus: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.da
 	@cp test/dart-hostile/runner.dart $(DART_HOSTILE_BUILD)/writer/test/dart-hostile/runner.dart
 	@if cmp -s $(DART_HOSTILE_BUILD)/dispatch.dart $(DART_HOSTILE_BUILD)/writer/build/dart-hostile/dispatch.dart; then \
 		echo 'WRITER CONTROL FAILED: the planted text writer did not apply'; exit 1; fi
-	@if $(DART) run $(DART_HOSTILE_BUILD)/writer/test/dart-hostile/runner.dart internal/ci/hostilecorpus/testdata/carry/text-corpus \
-			internal/ci/hostilecorpus/testdata/carry/findings/text-writer-refuse.tsv > $(DART_HOSTILE_BUILD)/writer/log 2>&1; then \
-		echo 'WRITER CONTROL FAILED: a text writer that threw after an accept was carried as a refusal'; \
+	@if $(DART) run $(DART_HOSTILE_BUILD)/writer/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" \
+			> $(DART_HOSTILE_BUILD)/writer/log 2>&1; then \
+		echo 'WRITER CONTROL FAILED: a text writer that threw after an accept left the corpus green'; \
 		cat $(DART_HOSTILE_BUILD)/writer/log; exit 1; fi
-	@if grep -q '^FIX-CARD' $(DART_HOSTILE_BUILD)/writer/log || \
-			! grep -q '^FAIL conformance-base64-empty .*got=error after accept, the text writer raised' $(DART_HOSTILE_BUILD)/writer/log; then \
+	@if ! grep -q '^FAIL conformance-base64-empty .*got=error after accept, the text writer raised' $(DART_HOSTILE_BUILD)/writer/log; then \
 		echo 'WRITER CONTROL FAILED: the throw after the accept did not read FAIL as an error'; \
 		cat $(DART_HOSTILE_BUILD)/writer/log; exit 1; fi
-	@echo 'dart writer control: a text writer that throws after an accept reads FAIL, never a carried refusal'
+	@echo 'dart writer control: a text writer that throws after an accept reads FAIL as an error, never a refusal'
 
 test-dart: schema-dart-runs-hostile-corpus
 
@@ -102,7 +97,7 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/*/*Wire.dart
 	@if cmp -s $(DART_HOSTILE_BUILD)/generated/tabledemo/TabledemoWire.dart $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/tabledemo/TabledemoWire.dart; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
-	@if $(DART) run $(DART_HOSTILE_BUILD)/plant/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
+	@if $(DART) run $(DART_HOSTILE_BUILD)/plant/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" \
 			> $(DART_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a text reader that refuses accepted inputs left the corpus green'; \
 		cat $(DART_HOSTILE_BUILD)/plant/log; exit 1; fi
@@ -113,7 +108,7 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 		echo 'NEGATIVE CONTROL FAILED: a text-reader plant turned a wire, message or announce case red'; \
 		cat $(DART_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@tail -1 $(DART_HOSTILE_BUILD)/plant/log
-	@if HOSTILE_CASE_BUDGET_MS=0 $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
+	@if HOSTILE_CASE_BUDGET_MS=0 $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" \
 			> $(DART_HOSTILE_BUILD)/plant/budget.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a 0 ms case budget left the corpus green'; \
 		cat $(DART_HOSTILE_BUILD)/plant/budget.log; exit 1; fi

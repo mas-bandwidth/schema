@@ -6,8 +6,8 @@
 # and each reversed witness is also registered in make/negative-controls.json.
 #
 # The gates run through test/slowgate/proof where the Go test shells out to the
-# pinned interpreter (it sets the rule that nothing skips, refuses a gate skip and requires a
-# named --- PASS), and as a plain go test where the test is pure Go.
+# pinned interpreter (proof refuses a SKIP in the log and requires a named
+# --- PASS), and as a plain go test where the test is pure Go.
 
 # I3: the block and cook forgery fuzz oracle (internal/codegen/luatable/
 # forgeryfuzz_test.go). A mutated block or cook REFUSES, or OPENS and is WHOLE:

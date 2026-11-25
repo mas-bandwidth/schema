@@ -1097,6 +1097,7 @@ if surface == "list":
     // the opt-in units this leg answers (MANIFEST.txt `opt-in`): every unit
     // key is generated into build/conformance-lobster by make/lobster.mk
     print("unit shapes")
+    print("unit tblmoodmap")
 else:
     let text = read_file(manifest_path)
     assert text

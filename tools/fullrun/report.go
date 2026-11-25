@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -80,6 +81,12 @@ func account(st *State) (*Account, error) {
 			r, ok := got[n.Name]
 			if !ok || r.Verdict != Pass && r.Verdict != Fail {
 				r = Row{Bench: "-", Verdict: Fail, Log: "-", How: "notrun", First: "NOT RUN: no shard ran it"}
+				if s == nil && u.GOOS != "" && !slices.ContainsFunc(st.Benches, func(b Bench) bool { return b.Runs(u.GOOS) }) {
+					r.First = fmt.Sprintf("NOT RUN: it builds only for %s, and no bench in this run runs %s tests: name one with --bench HOST=SHARDS+%s", u.GOOS, u.GOOS, u.GOOS)
+					if u.GOOS == "windows" {
+						r.First += " (captain runs them, through WSL)"
+					}
+				}
 				if s != nil {
 					r.Bench, r.Shard = s.label(), s.ID
 					r.Log = filepath.Join(st.localDir(s), "shard.log")
