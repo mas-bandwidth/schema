@@ -3,7 +3,14 @@
 
 .PHONY: schema-ruby-runs-hostile-corpus schema-ruby-runs-hostile-corpus-negative-control schema-ruby-resource-bounds schema-ruby-resource-bounds-negative-control ruby-hostile
 
-schema-ruby-runs-hostile-corpus: ruby-toolchain-check
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-ruby-runs-hostile-corpus-build
+schema-ruby-runs-hostile-corpus-build: ruby-toolchain-check
+
+schema-ruby-runs-hostile-corpus: schema-ruby-runs-hostile-corpus-build
 	$(GO_TEST) -count=1 -timeout 600s -tags schema_leg_ruby -run '^(TestHostileCorpus_ruby|TestSchemaRubyHostileScorerOutcomes)$$' ./internal/ci/
 
 schema-ruby-runs-hostile-corpus-negative-control: ruby-toolchain-check

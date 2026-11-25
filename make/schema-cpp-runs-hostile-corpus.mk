@@ -99,7 +99,14 @@ $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go 
 	go build -o $@ ./tools/hostilecorpusexec
 
 .PHONY: schema-cpp-runs-hostile-corpus
-schema-cpp-runs-hostile-corpus: $(CPP_HOSTILE_BUILD)/case $(CPP_HOSTILE_BUILD)/hostilecorpusexec
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-cpp-runs-hostile-corpus-build
+schema-cpp-runs-hostile-corpus-build: $(CPP_HOSTILE_BUILD)/case $(CPP_HOSTILE_BUILD)/hostilecorpusexec
+
+schema-cpp-runs-hostile-corpus: schema-cpp-runs-hostile-corpus-build
 	$(CPP_HOSTILE_BUILD)/hostilecorpusexec run -port cpp -exec $(CPP_HOSTILE_BUILD)/case \
 		-corpus "$(CPP_HOSTILE_CORPUS)"
 

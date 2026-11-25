@@ -61,7 +61,14 @@ $(DART_HOSTILE_BUILD)/dispatch.dart: $(DART_HOSTILE_BUILD)/generated/.stamp $(DA
 # changes it.
 DART_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(DART_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-dart-runs-hostile-corpus
-schema-dart-runs-hostile-corpus: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.dart
+# THE BUILD, DECLARED: the prerequisites the corpus target builds first.
+# tools/schema-test builds this target before a row's deadline starts (the
+# hostile harness's Build step), so what it builds is never a case's timeout;
+# what the run recipe itself still compiles is paid inside the run.
+.PHONY: schema-dart-runs-hostile-corpus-build
+schema-dart-runs-hostile-corpus-build: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.dart
+
+schema-dart-runs-hostile-corpus: schema-dart-runs-hostile-corpus-build
 	$(DART) run test/dart-hostile/reasons_test.dart
 	$(DART) run test/dart-hostile/runner.dart --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
 	$(call hostile_ledgered,dart,$(DART_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-dart-runs-hostile-corpus -count $(DART_HOSTILE_CASES) -- $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)",$(DART_HOSTILE_CORPUS))

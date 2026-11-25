@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2949.
+Unit tests every language answers: 2. Language-free tests: 2950.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3000,7 +3000,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 97 tests
+#### `tooling` family `schema-test`, 98 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3060,6 +3060,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.an-uncommitted-golden-is-missing` | `gotest` | Go test TestAnUncommittedGoldenIsMissing in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUncommittedGoldenIsMissing` | the Go test passes | `tools/schema-test/golden_test.go:231` |
 | `none.unit.tooling.schema-test.an-unreadable-index-is-named` | `gotest` | Go test TestAnUnreadableIndexIsNamed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAnUnreadableIndexIsNamed` | the Go test passes | `tools/schema-test/golden_test.go:353` |
 | `none.unit.tooling.schema-test.every-corpus-family-has-its-harness` | `gotest` | Go test TestEveryCorpusFamilyHasItsHarness in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryCorpusFamilyHasItsHarness` | the Go test passes | `tools/schema-test/main_test.go:227` |
+| `none.unit.tooling.schema-test.every-hostile-target-declares-its-build` | `gotest` | Go test TestEveryHostileTargetDeclaresItsBuild in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryHostileTargetDeclaresItsBuild` | the Go test passes | `tools/schema-test/hostile_test.go:359` |
 | `none.unit.tooling.schema-test.every-make-in-the-checkout-holds-it` | `gotest` | Go test TestEveryMakeInTheCheckoutHoldsIt in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestEveryMakeInTheCheckoutHoldsIt` | the Go test passes | `tools/schema-test/make_test.go:278` |
 | `none.unit.tooling.schema-test.extract-holds-the-ledger-to-the-tree` | `gotest` | Go test TestExtractHoldsTheLedgerToTheTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsTheLedgerToTheTree` | the Go test passes | `tools/schema-test/extract_test.go:117` |
 | `none.unit.tooling.schema-test.extract-names-a-new-test-since-main` | `gotest` | Go test TestExtractNamesANewTestSinceMain in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractNamesANewTestSinceMain` | the Go test passes | `tools/schema-test/extract_test.go:77` |
