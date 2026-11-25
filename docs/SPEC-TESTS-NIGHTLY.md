@@ -21,7 +21,7 @@ read bytes, write them back, same bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.nightly.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-writes-conformance` | the fixed-form writer output conforms to the spec rows for argument and metadata lanes, nested union tags and counters, and reads back | `inputs.tests` (383 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t08_test.go:20` |
+| `L.nightly.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-writes-conformance` | the fixed-form plan and writer conform to the spec rows for argument and metadata lanes, nested union tags and counters | `inputs.tests` (383 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t08_test.go:20` |
 
 ### Type `codegen`
 

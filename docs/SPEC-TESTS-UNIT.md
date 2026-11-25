@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 54. Language-free tests: 2806.
+Unit tests every language answers: 55. Language-free tests: 2806.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -76,7 +76,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.compressed-f32-ends-shape.compressed-f32-ends-shape` | the generated source tests a compressed float's range against the float32 nearest each end on every read and write path, and a plain float32 has no range test | `inputs.tests` (273 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/compressed_f32_ends_shape_test.go:35` |
+| `L.unit.codegen.compressed-f32-ends-shape.compressed-f32-ends-shape` | the generated source tests a compressed float's range against the float32 nearest each end on the read and write paths it pins, and a plain float32 has no range test | `inputs.tests` (273 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/javatable/compressed_f32_ends_shape_test.go:35` |
 
 #### `codegen` family `compressed-f32-range-source`, 1 test
 
@@ -106,7 +106,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.fixed-root-form3.fixed-root-saves-form-three` | a fixed root's file save writes form byte 3 and the strict read refuses any other form byte by name | `inputs.tests` (183 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixed_root_form3_test.go:14` |
+| `L.unit.codegen.fixed-root-form3.fixed-root-saves-form-three` | a fixed root's file save goes through the form-3 fixed writer rather than the form-1 wire writer | `inputs.tests` (183 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/fixed_root_form3_test.go:14` |
 
 #### `codegen` family `fixedcount-op-reach`, 1 test
 
@@ -128,19 +128,19 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.fixedroadmap-t18.fixed-t18-arm-lines` | the emitted union arm switch writes one direct text arm, bytes arm, fixed array arm, counted array arm and payload-free arms as field lines | `inputs.tests` (167 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedroadmap_t18_test.go:65` |
+| `L.unit.codegen.fixedroadmap-t18.fixed-t18-arm-lines` | the emitted fixed form gives a union's direct text, bytes, fixed array and counted array arms their storage and gives its payload-free arms none | `inputs.tests` (167 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixedroadmap_t18_test.go:65` |
 
 #### `codegen` family `fixedroadmap-t19`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.fixedroadmap-t19.fixed-t19-payload-free-lines` | the emitted writer for a payload-free union arm writes the tag, holds no field store under the arm, and the bounds pass clamps a tag past the arm set | `inputs.tests` (170 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t19_test.go:28` |
+| `L.unit.codegen.fixedroadmap-t19.fixed-t19-payload-free-lines` | the emitted fixed writer for a union writes the tag and holds no field store under a payload-free arm | `inputs.tests` (170 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t19_test.go:28` |
 
 #### `codegen` family `fixedversioning`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.fixedversioning.fixed-lineage-lock-bug-fails-the-build` | generation fails naming the table when a handed lineage entry has a layout that does not parse or a record size that is not its layout, and a lawful entry builds | `inputs.tests` (192 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/fixedversioning_test.go:1031` |
+| `L.unit.codegen.fixedversioning.fixed-lineage-lock-bug-fails-the-build` | generation fails when a handed lineage entry has a layout that does not parse or a record size that is not its layout, and a lawful entry builds | `inputs.tests` (192 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/jstable/fixedversioning_test.go:1031` |
 
 #### `codegen` family `jsonwalk`, 1 test
 
@@ -148,11 +148,12 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.unit.codegen.jsonwalk.json-walk-is-one-runtime` | every generated unit carries the same JSON walk runtime byte for byte | `inputs.tests` (277 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/jsonwalk_test.go:95` |
 
-#### `codegen` family `luautable`, 2 tests
+#### `codegen` family `luautable`, 3 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.luautable.refuses-by-name` | generation refuses a module cycle or a name colliding with a runtime module, naming the cause | `inputs.tests` (251 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/luautable_test.go:219` |
+| `L.unit.codegen.luautable.refuses-by-name` | generation refuses a module cycle or a name colliding with a runtime module, naming the cause | `inputs.tests` (172 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/luautable_test.go:219` |
+| `L.unit.codegen.luautable.scalar-and-duplicate-names` | generation refuses a package named for a Goose scalar type and a name declared twice in the namespace, naming the cause | `tests: {"goose":{"package":"./internal/codegen/goose","test":"TestGooseRefusesByName"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goose/goose_test.go:236` |
 | `L.unit.codegen.luautable.table-free-unit-adds-nothing` | a unit with no tables generates no table module and no table runtime | `inputs.tests` (277 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luautable/luautable_test.go:267` |
 
 #### `codegen` family `message-ceiling-write-assert`, 1 test
@@ -165,14 +166,14 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.message-fixed-only.message-form-fixed-tables-only` | only a fixed table gets message-form batch code, while a variable table or a struct only variable tables hold gets none | `inputs.tests` (171 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/message_fixed_only_test.go:14` |
+| `L.unit.codegen.message-fixed-only.message-form-fixed-tables-only` | only a fixed table gets message-form batch code, and a variable table gets none | `inputs.tests` (171 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/message_fixed_only_test.go:14` |
 
 #### `codegen` family `nested-count-min`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.nested-count-min.fixed-form-holds-a-count-minimum-inside-each-counted-child` | the generated fixed read's bounds pass and write check walk each counted child so a child's count minimum is held inside every record that holds it | `inputs.tests` (338 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/nested_count_min_test.go:53` |
-| `L.unit.codegen.nested-count-min.holds-a-count-minimum-inside-each-counted-child` | the generated variable read and write hold a child's count minimum from the descriptor inside every record that holds it | `inputs.tests` (334 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/nested_count_min_test.go:36` |
+| `L.unit.codegen.nested-count-min.holds-a-count-minimum-inside-each-counted-child` | the generated variable read holds a child's count minimum from the descriptor inside every record that holds it | `inputs.tests` (334 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/mootable/nested_count_min_test.go:36` |
 
 #### `codegen` family `retain-refusal`, 1 test
 
