@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luaWriteDepthSchema is internal/tabletext's depthWriteUnit: a pointer chain
@@ -72,7 +71,6 @@ table FlagsNode
 // reader refuses that text.
 func TestLuaJsonWriteDepthCapCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 
 	work := t.TempDir()
 	path := filepath.Join(work, "depthwrite.schema")

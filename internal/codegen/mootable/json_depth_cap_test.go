@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonDepthCapSchema puts a table one level inside each kind of container the
@@ -41,7 +39,6 @@ table Root
 // depth-union-past-cap).
 func TestMooJsonDepthCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 
 	nest := func(k int) string { return strings.Repeat("[", k) + strings.Repeat("]", k) }
 	sites := []struct{ name, open, close string }{
@@ -154,7 +151,6 @@ table FlagsNode
 // reader refuses that text.
 func TestMooJsonWriteDepthCapCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 
 	u := unitFromSource(t, jsonWriteDepthSchema)
 	files, err := generate(u)

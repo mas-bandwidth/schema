@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // unityJSONWriteDepthUnit is internal/tabletext's depthWriteUnit: a chain of
@@ -73,7 +72,6 @@ var unityJSONWriteDepthTables = []string{"ArrNode", "UnionNode", "MapNode", "Key
 // TestWriteDepthCapCountsEveryContainer.
 func TestUnityJSONWriteDepthCapCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect (it compiles and runs the generated text writer)")
 	var b strings.Builder
 	b.WriteString(`using System;
 using Depthwrite;

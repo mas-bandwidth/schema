@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -119,7 +118,6 @@ void main() {
 // it at 129: toJson throws StateError naming the cap, with asserts on and off.
 func TestDartWriteDepthCapCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (JSON write depth-cap probe)")
 	u := unitFrom(t, depthWriteDartUnit)
 	files, err := Generate(u)
 	if err != nil {

@@ -3,8 +3,6 @@ package ctable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cDepthWriteUnit is internal/tabletext/depth_write_test.go's depthWriteUnit:
@@ -70,7 +68,6 @@ table FlagsNode
 // the text. Each node kind carries one container: an array, a union's object,
 // a map's object, an enum-keyed array's object and a flags value's array.
 func TestCTextWriteDepthCapCountsEveryContainer(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cDepthWriteUnit)
 	var body strings.Builder

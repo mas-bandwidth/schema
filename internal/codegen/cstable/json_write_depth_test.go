@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // csJSONWriteDepthUnit is internal/tabletext's depthWriteUnit: a chain of nodes,
@@ -72,7 +70,6 @@ var csJSONWriteDepthTables = []string{"ArrNode", "UnionNode", "MapNode", "KeyedN
 // TestWriteDepthCapCountsEveryContainer.
 func TestCSharpJSONWriteDepthCapCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# text writer)")
 	var b strings.Builder
 	b.WriteString(`using System;
 using Depthwrite;

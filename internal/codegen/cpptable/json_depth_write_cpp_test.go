@@ -3,8 +3,6 @@ package cpptable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cppDepthWriteUnit is internal/tabletext/depth_write_test.go's
@@ -132,7 +130,6 @@ static int DepthCase( const char * name, W write, R read )
 // the text. Each node kind carries one container: an array, a union's object,
 // a map's object, an enum-keyed array's object and a flags value's array.
 func TestCppTextWriteDepthCapCountsEveryContainer(t *testing.T) {
-	slowtest.Gate(t, "a C++ compiler (c++)")
 	t.Parallel()
 	u := cppUnitFrom(t, cppDepthWriteUnit)
 	out, err := runCPPProbeWithPrelude(t, u, cppDepthWritePrelude, `

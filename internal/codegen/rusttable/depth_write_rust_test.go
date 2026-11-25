@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -71,7 +70,6 @@ table FlagsNode
 // it at 129: the write refuses (to_json_checked is None), in every build.
 func TestRustWriteDepthCapCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (JSON write depth-cap probe)")
 	keyedRequireRustc(t)
 
 	files, err := Generate(unitFrom(t, depthWriteRustUnit))
