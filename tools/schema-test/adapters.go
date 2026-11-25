@@ -115,7 +115,7 @@ func harnessFor(t testreg.Test) (harness, bool) {
 	case wireFuzzFamilies[family]:
 		return wireFuzzHarness, true
 	}
-	return harness{}, false
+	return hostileHarnessFor(family)
 }
 
 // adapters are the adapters a language row may name: the families each

@@ -107,6 +107,38 @@ func TestAPerLanguageNightlyRowLeavesOutEachLanguagesTest(t *testing.T) {
 	}
 }
 
+// TestAPerLanguageRowsGoTestsAreNightly: a nightly per-language row (the
+// hostile corpus's) runs the Go tests its go_tests name, {lang} read as each
+// language the registry holds and never the language-free scope, so a
+// per-change selection leaves them out; a unit row's go_tests stay in.
+func TestAPerLanguageRowsGoTestsAreNightly(t *testing.T) {
+	t.Parallel()
+	root, dir := plant(t, "",
+		`{"rec":"lang","name":"A"}`+"\n"+
+			`{"rec":"lang","name":"B"}`+"\n"+
+			`{"rec":"lang","name":"none"}`+"\n"+
+			`{"rec":"test","key":"k","tier":"nightly","inputs":{"target":"t-{lang}","go_tests":["./p Test{lang}"]}}`+"\n"+
+			`{"rec":"test","key":"u","tier":"unit","inputs":{"target":"u-{lang}","go_tests":["./p TestX"]}}`+"\n")
+	got, err := Select(linux(), root, []string{dir}, nil, regexp.MustCompile(`^(Example|Fuzz)`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "^(TestX)$"; got != want {
+		t.Errorf("select: %q, want %q (TestA and TestB are the nightly row's)", got, want)
+	}
+	nightly, err := Nightly(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nightly["p:Testnone"] || !nightly["p:TestA"] || !nightly["p:TestB"] || nightly["p:TestX"] {
+		t.Errorf("nightly: %v, want p:TestA and p:TestB only", nightly)
+	}
+	root, _ = plant(t, "", `{"rec":"test","key":"k","tier":"nightly","inputs":{"go_tests":["TestA"]}}`+"\n")
+	if _, err := Nightly(root); err == nil || !strings.Contains(err.Error(), "is not") {
+		t.Errorf("a go_tests entry with no package was read: %v", err)
+	}
+}
+
 // TestAnEmptySelectionFails: a row that would select nothing is an error by
 // name, never a pattern that runs nothing.
 func TestAnEmptySelectionFails(t *testing.T) {

@@ -23,7 +23,7 @@ schema-dart-hostile-text-throw-negative-control: build/dart-hostile/dispatch.dar
 		$(DART_HOSTILE_BUILD)/throw/build/dart-hostile/generated/*/*Wire.dart
 	@if cmp -s $(DART_HOSTILE_BUILD)/generated/tabledemo/TabledemoWire.dart $(DART_HOSTILE_BUILD)/throw/build/dart-hostile/generated/tabledemo/TabledemoWire.dart; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted RangeError did not apply'; exit 1; fi
-	@if $(DART) run $(DART_HOSTILE_BUILD)/throw/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
+	@if $(DART) run $(DART_HOSTILE_BUILD)/throw/test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" \
 			> $(DART_HOSTILE_BUILD)/throw/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a RangeError escaping every text read left the corpus green'; \
 		cat $(DART_HOSTILE_BUILD)/throw/log; exit 1; fi

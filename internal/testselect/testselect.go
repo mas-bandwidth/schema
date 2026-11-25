@@ -78,8 +78,9 @@ func isTestName(name, prefix string) bool {
 // Nightly is every Go test whose tier is nightly, as "<dir>:<Name>" with dir
 // slash-separated and relative to root: the tier lines of
 // test/registry/unmoved.tsv, the gotest rows of test/registry/registry.jsonl,
-// and its per-language rows whose test is named with testreg.LangPlaceholder
-// (tools/namebuild's TestNameBuildability_{lang}), one test per language the
+// its per-language rows whose test is named with testreg.LangPlaceholder
+// (tools/namebuild's TestNameBuildability_{lang}), and the go_tests of its
+// per-language rows (the hostile corpus's), one test per language the
 // registry lists.
 func Nightly(root string) (map[string]bool, error) {
 	out := map[string]bool{}
@@ -100,32 +101,59 @@ func Nightly(root string) (map[string]bool, error) {
 	defer reg.Close() //nolint:errcheck // read-only
 	rs := bufio.NewScanner(reg)
 	rs.Buffer(make([]byte, 1<<20), 1<<20)
+	// A per-language row (the hostile corpus's, tools/schema-test/hostile.go)
+	// runs the Go tests its inputs' go_tests name, "<package> <Test>" with
+	// {lang} for each language the registry holds: at a nightly row's tier
+	// they are nightly tests, which the nightly lane runs once.
 	var langs, perLang []string
 	for n := 1; rs.Scan(); n++ {
 		var row struct {
-			Rec, Tier, Adapter, Scope, Name string
-			Inputs                          struct{ Package, Test string }
+			Rec, Name, Tier, Adapter, Scope string
+			Inputs                          struct {
+				Package, Test string
+				GoTests       []string `json:"go_tests"`
+			}
 		}
 		if err := json.Unmarshal(rs.Bytes(), &row); err != nil {
 			return nil, fmt.Errorf("registry.jsonl:%d: %w", n, err)
 		}
+		if row.Rec == "lang" && row.Name != testreg.LangFree {
+			langs = append(langs, row.Name)
+		}
+		if row.Rec != "test" || row.Tier != "nightly" {
+			continue
+		}
 		place := strings.TrimPrefix(row.Inputs.Package, "./") + ":" + row.Inputs.Test
 		switch {
-		case row.Rec == "lang" && row.Name != testreg.LangFree:
-			langs = append(langs, row.Name)
-		case row.Rec != "test" || row.Tier != "nightly" || row.Inputs.Test == "":
+		case row.Inputs.Test == "":
 		case row.Adapter == "gotest":
 			out[place] = true
 		case row.Scope == "" && row.Inputs.Package != "" && strings.Contains(row.Inputs.Test, testreg.LangPlaceholder):
+			// a per-language row of any adapter whose one test is named
+			// for each language (tools/namebuild's TestNameBuildability_{lang})
 			perLang = append(perLang, place)
 		}
+		for _, g := range row.Inputs.GoTests {
+			pkg, test, ok := strings.Cut(g, " ")
+			if !ok || pkg == "" || test == "" {
+				return nil, fmt.Errorf("registry.jsonl:%d: go_tests entry %q is not \"<package> <Test>\"", n, g)
+			}
+			perLang = append(perLang, strings.TrimPrefix(pkg, "./")+":"+test)
+		}
+	}
+	if err := rs.Err(); err != nil {
+		return nil, err
 	}
 	for _, p := range perLang {
+		if !strings.Contains(p, testreg.LangPlaceholder) {
+			out[p] = true
+			continue
+		}
 		for _, l := range langs {
 			out[strings.ReplaceAll(p, testreg.LangPlaceholder, l)] = true
 		}
 	}
-	return out, rs.Err()
+	return out, nil
 }
 
 // Select is the -run pattern naming every test of the packages in dirs that

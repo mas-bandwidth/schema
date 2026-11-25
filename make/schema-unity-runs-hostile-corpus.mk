@@ -10,10 +10,8 @@
 # FAIL for its case and the rest still run. Reads files only: no network, no
 # clock.
 #
-# A disagreement the port already owes is carried, by name, in
-# test/unity-hostile/known-findings.tsv, and printed as a FIX-CARD. A disagreement
-# no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a
-# failure too, so the list cannot rot into silence.
+# A disagreement is never excused by name: every one is a FAIL line naming its
+# case.
 #
 # The planted-verdict control requires the unplanted corpus green, then copies
 # the corpus to a scratch directory, flips the committed verdict of one passing
@@ -22,7 +20,6 @@
 
 UNITY_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 UNITY_HOSTILE_BUILD    ?= build/unity-hostile
-UNITY_HOSTILE_FINDINGS ?= test/unity-hostile/known-findings.tsv
 # The rows the port may skip. A skip is no verdict: gen fails when the dispatch
 # skips a row this list does not name, or a named row no longer skips.
 
@@ -48,8 +45,7 @@ UNITY_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(UNITY_HOSTILE_CORPUS)/manifest.t
 .PHONY: schema-unity-runs-hostile-corpus
 schema-unity-runs-hostile-corpus: build/mustrun $(UNITY_HOSTILE_BUILD)/bin/.stamp
 	$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)",$(UNITY_HOSTILE_CORPUS))
-	sh make/checks/hostile-carry-controls.sh unity findings $(UNITY_HOSTILE_BUILD)/carry '$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
+	$(call hostile_ledgered,unity,$(UNITY_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-unity-runs-hostile-corpus -count $(UNITY_HOSTILE_CASES) -- $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)",$(UNITY_HOSTILE_CORPUS))
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and
@@ -60,7 +56,7 @@ test-unity: schema-unity-runs-hostile-corpus
 schema-unity-runs-hostile-corpus-negative-control: $(UNITY_HOSTILE_BUILD)/bin/.stamp
 	@rm -rf $(UNITY_HOSTILE_BUILD)/plant && mkdir -p $(UNITY_HOSTILE_BUILD)/plant/corpus
 	@cp -R $(UNITY_HOSTILE_CORPUS)/. $(UNITY_HOSTILE_BUILD)/plant/corpus/
-	@$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" "$(UNITY_HOSTILE_FINDINGS)" > $(UNITY_HOSTILE_BUILD)/plant/clean.log 2>&1 || \
+	@$(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_CORPUS)" > $(UNITY_HOSTILE_BUILD)/plant/clean.log 2>&1 || \
 		{ echo 'NEGATIVE CONTROL FAILED: the unplanted corpus is not green'; cat $(UNITY_HOSTILE_BUILD)/plant/clean.log; exit 1; }
 	@sed -n 's/^PASS //p' $(UNITY_HOSTILE_BUILD)/plant/clean.log > $(UNITY_HOSTILE_BUILD)/plant/pass; \
 	acc=$$(awk -F'\t' 'NR == FNR { ok[$$0] = 1; next } !/^#/ && $$7 == "accept" && ($$1 in ok) { print $$1; exit }' \
@@ -77,7 +73,7 @@ schema-unity-runs-hostile-corpus-negative-control: $(UNITY_HOSTILE_BUILD)/bin/.s
 		$(UNITY_HOSTILE_CORPUS)/manifest.tsv > $(UNITY_HOSTILE_BUILD)/plant/corpus/manifest.tsv; \
 	if cmp -s $(UNITY_HOSTILE_CORPUS)/manifest.tsv $(UNITY_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdicts did not apply'; exit 1; fi; \
-	if $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_BUILD)/plant/corpus" "$(UNITY_HOSTILE_FINDINGS)" \
+	if $(DOTNET) $(UNITY_HOSTILE_BUILD)/bin/unityhostile.dll "$(UNITY_HOSTILE_BUILD)/plant/corpus" \
 			> $(UNITY_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: changed verdicts left the corpus green'; cat $(UNITY_HOSTILE_BUILD)/plant/log; exit 1; fi; \
 	for name in $$acc $$ref; do \
