@@ -4,5 +4,5 @@
 {"rec":"type","name":"roundtrip","what":"same bytes back"}
 {"rec":"type","name":"plant","what":"a negative control"}
 {"rec":"test","key":"roundtrip.fam.one","type":"roundtrip","family":"fam","case":"one","tier":"functional","checks":"one","inputs":{"n":1},"expect":"same"}
-{"rec":"test","key":"plant.fam.one-red","type":"plant","family":"fam","case":"one-red","tier":"functional","checks":"one goes red when broken","inputs":{"target":"go.functional.roundtrip.fam.one","env":{"BREAK":"1"},"reason":"broken"},"expect":"the target fails, saying broken","scope":"none","adapter":"plant"}
+{"rec":"test","key":"plant.fam.one-red","type":"plant","family":"fam","case":"one-red","tier":"functional","checks":"one goes red when broken","inputs":{"target":"go.functional.roundtrip.fam.one","env":{"BREAK":"1"},"reason":"the build is broken"},"expect":"the target fails","scope":"none","adapter":"plant"}
 {"rec":"group","name":"ready","what":"the ready languages","query":{"langs":["go"]}}

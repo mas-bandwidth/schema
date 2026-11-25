@@ -847,7 +847,7 @@ tables-java-fixedform: build/retiredskips build/java-fixedform/.stamp build/fixe
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # THE MESSAGE FORM, form byte 2 (docs/SPEC-TABLES.md §3.3;
@@ -860,7 +860,7 @@ tables-java-versioning: tables-fixedform-corpus
 .PHONY: tables-java-message-batch
 tables-java-message-batch:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestMessageFormBatchJava|TestMessageFormAnnounceJava'
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestMessageFormBatchJava|TestMessageFormAnnounceJava'
 	@echo 'tables Java message form: announcement and batch round-trip, versioning and refusals pass'
 
 # THE FIXED-FORM ROADMAP T12 GATE (union-field-arms/java/valid-data,
@@ -872,7 +872,7 @@ tables-java-message-batch:
 .PHONY: tables-java-fixed-roadmap
 tables-java-fixed-roadmap: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT12BatchesUnions'
 	@echo 'tables Java fixed roadmap (T12): union arms, payload-free arms, union arrays and optional arrays pass through the registered target'
 
 # THE FIXED TABLES' SHARED BYTE ORACLE AND HOSTILE INPUT (java/W13, java/R27,
@@ -889,7 +889,7 @@ tables-java-fixed-roadmap: tables-fixedform-corpus
 .PHONY: tables-java-fixed-t18
 tables-java-fixed-t18: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapJavaT18OracleHostile'
 	@echo 'tables Java fixed t18: the shared byte oracle and hostile input rows pass (java/W13, java/R27, java/P3, java/P4)'
 
 # THE WHOLE JAVATABLE PACKAGE, ONCE, WITH THE CORPUS ALREADY BUILT. Ten of the
@@ -904,7 +904,7 @@ tables-java-fixed-t18: tables-fixedform-corpus
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 900s
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 900s
 	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
 
 
@@ -916,7 +916,7 @@ tables-java-package: tables-fixedform-corpus
 .PHONY: tables-java-t14
 tables-java-t14:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
+		$(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestFixedRoadmapJavaT14CompressedFloats$$'
 	@echo 'tables Java T14: the compressed float rides as the float, unfused dequantize (java/R30)'
 
 # I13 (docs/PORTING.md, issue #419): the Java leg's text differential against a
@@ -934,11 +934,11 @@ tables-java-t14:
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl|TestJsonLeadingBOMBoundaryJava)$$'
+		$(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl|TestJsonLeadingBOMBoundaryJava)$$'
 	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
 tables-java-json-differential-negative-control:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
+		$(GO_TEST) -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^TestTextDifferentialJavaNegativeControl$$'
 	@echo 'tables Java text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 test-java: tables-java-json-differential
@@ -951,7 +951,7 @@ test-java: tables-java-json-differential
 tables-java-block-build:
 	@mkdir -p build/java-block-build
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestBlockBuildAndCookWriteJava$$' \
 		> build/java-block-build/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-block-build/log | head -40; tail -20 build/java-block-build/log; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-block-build/log; then \
 		echo "tables-java-block-build: a test SKIPPED"; grep -- '--- SKIP' build/java-block-build/log; exit 1; \
@@ -976,7 +976,7 @@ test-java: tables-java-block-build
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
 	JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
@@ -1006,7 +1006,7 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/$(JAVA_VERSIONING_SABOTAGE)/fixedform.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(JAVA_VERSIONING_SABOTAGE)/overlay.json
 	@if JAVAC=$(JAVAC) JAVA=$(JAVA) \
-			go test -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
+			$(GO_TEST_RED) -overlay=$(JAVA_VERSIONING_SABOTAGE)/overlay.json \
 			./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning' \
 			> $(JAVA_VERSIONING_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
@@ -1036,7 +1036,7 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 tables-java-keyed:
 	@mkdir -p build/java-keyed
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestKeyedArrayIndexingJava|TestKeyedFormWireCodeMatchesUnkeyedInTree' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run 'TestKeyedArrayIndexingJava|TestKeyedFormWireCodeMatchesUnkeyedInTree' \
 		> build/java-keyed/log 2>&1 || { tail -40 build/java-keyed/log; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-keyed/log; then \
 		echo "tables-java-keyed: a keyed test SKIPPED"; grep -- '--- SKIP' build/java-keyed/log; exit 1; \
@@ -1069,7 +1069,7 @@ tables-java-keyed-negative-control:
 		printf '{"Replace":{"%s/internal/codegen/javatable/fixedform.go":"%s/%s/fixedform.gotext"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$d" > $$d/overlay.json; \
 		if JAVAC=$(JAVAC) JAVA=$(JAVA) \
-				go test -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
+				$(GO_TEST_RED) -overlay=$$d/overlay.json ./internal/codegen/javatable/ -count=1 -timeout 600s \
 				-run 'TestKeyedArrayIndexingJava' > $$d/log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: dropping the $$end bound left the keyed accessor green"; tail -20 $$d/log; exit 1; \
 		fi; \
@@ -1089,7 +1089,7 @@ tables-java-keyed-negative-control:
 tables-java-deprecated-write:
 	@mkdir -p build/java-deprecated
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaDeprecatedVariant(NeverWritten|NegativeControl)$$' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaDeprecatedVariant(NeverWritten|NegativeControl)$$' \
 		> build/java-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/java-deprecated/log | head -40; exit 1; }
 	@if grep -q -- '--- SKIP' build/java-deprecated/log; then \
 		echo "tables-java-deprecated-write: a test SKIPPED"; grep -- '--- SKIP' build/java-deprecated/log; exit 1; \
@@ -1119,7 +1119,7 @@ test-java: tables-java-deprecated-write
 tables-java-finite-float:
 	@mkdir -p build/java-finite
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloats$$' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloats$$' \
 		> build/java-finite/log 2>&1 || { tail -40 build/java-finite/log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaFiniteFloats ' build/java-finite/log || \
 		{ echo "tables-java-finite-float: TestJavaFiniteFloats did not run to a PASS"; tail -20 build/java-finite/log; exit 1; }
@@ -1129,7 +1129,7 @@ test-java: tables-java-finite-float
 tables-java-finite-float-negative-control:
 	@mkdir -p build/java-finite
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloatNegativeControl$$' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestJavaFiniteFloatNegativeControl$$' \
 		> build/java-finite/control.log 2>&1 || { tail -40 build/java-finite/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaFiniteFloatNegativeControl ' build/java-finite/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: TestJavaFiniteFloatNegativeControl did not run to a PASS"; tail -20 build/java-finite/control.log; exit 1; }
@@ -1147,7 +1147,7 @@ tables-java-finite-float-negative-control:
 tables-java-discard:
 	@mkdir -p build/java-discard
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestDamageDiscardsTheWholeLoadJava$$' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 600s -v -run '^TestDamageDiscardsTheWholeLoadJava$$' \
 		> build/java-discard/log 2>&1 || { tail -40 build/java-discard/log; exit 1; }
 	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJava ' build/java-discard/log || \
 		{ echo "tables-java-discard: TestDamageDiscardsTheWholeLoadJava did not run to a PASS"; tail -20 build/java-discard/log; exit 1; }
@@ -1157,7 +1157,7 @@ test-java: tables-java-discard
 tables-java-discard-negative-control:
 	@mkdir -p build/java-discard
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 900s -v -run '^TestDamageDiscardsTheWholeLoadJavaNegativeControl$$' \
+		$(GO_TEST) ./internal/codegen/javatable/ -count=1 -timeout 900s -v -run '^TestDamageDiscardsTheWholeLoadJavaNegativeControl$$' \
 		> build/java-discard/control.log 2>&1 || { tail -40 build/java-discard/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestDamageDiscardsTheWholeLoadJavaNegativeControl ' build/java-discard/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: TestDamageDiscardsTheWholeLoadJavaNegativeControl did not run to a PASS"; tail -20 build/java-discard/control.log; exit 1; }
@@ -2424,11 +2424,11 @@ test-java: cards-java-test cards-java-conformance cards-java-conformance-negativ
 # positive native codec gates.
 .PHONY: tables-java-variable-arms tables-java-variable-fixed-class
 tables-java-variable-arms: bin/schema
-	JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+	JAVAC=$(JAVAC) JAVA=$(JAVA) $(GO_TEST) ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run 'TestMapsAndUnionArmsOnTheTableWireJava|TestOtherVariableConstructsAreRefusedByName|TestJavaVariable|TestJavaFixedGeneralArmPayloads'
 
 tables-java-variable-fixed-class: bin/schema
-	JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+	JAVAC=$(JAVAC) JAVA=$(JAVA) $(GO_TEST) ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestFixedClassOnTableWireJava$$'
 
 test-java: tables-java-variable-arms tables-java-variable-fixed-class
@@ -2462,11 +2462,11 @@ tables-java-view: bin/schema test/java-view/View.java
 	@set -e; pids=""; for entry in $(VIEW_CORPUS); do pkg=$${entry##*:}; \
 		$(JAVA) -XX:-UsePerfData -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
 	done; for pid in $$pids; do wait $$pid; done
-	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" $(GO_TEST) -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative
 	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing
 	@if cmp -s build/java-view/tabledemo.listing build/java-view/negative/tabledemo.listing; then echo "tables-java-view negative control damaged nothing"; exit 1; fi
-	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
+	@if SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view/negative" SCHEMA_VIEW_LISTING_UNITS=tabledemo $(GO_TEST_RED) -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR > build/java-view/negative.log 2>&1; then echo "Java UnitView negative control escaped"; exit 1; fi
 	@grep -q "listing is not the compiler's" build/java-view/negative.log
 	@echo "Java UnitView: $(words $(VIEW_CORPUS)) units match the compiler's listing; a damaged doc is detected"
 
@@ -2477,7 +2477,7 @@ tables-java-view: bin/schema test/java-view/View.java
 # one and says which declaration a wrong string belongs to.
 .PHONY: tables-java-descriptor-doc
 tables-java-descriptor-doc: bin/schema
-	JAVAC=$(JAVAC) JAVA=$(JAVA) go test ./internal/codegen/javatable/ \
+	JAVAC=$(JAVAC) JAVA=$(JAVA) $(GO_TEST) ./internal/codegen/javatable/ \
 		-count=1 -timeout 600s -v -run '^TestJavaDescriptorDocAndTags$$'
 
 test-java: tables-java-view tables-java-descriptor-doc
@@ -2695,14 +2695,14 @@ test-java: packet-end-java packet-end-java-negative-control
 tables-java-transport-id:
 	@mkdir -p build/java-transport-id
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDFirstUse$$' ./internal/codegen/javatable/ \
+		$(GO_TEST) -count=1 -timeout 120s -v -run '^TestJavaTransportIDFirstUse$$' ./internal/codegen/javatable/ \
 		> build/java-transport-id/positive.log 2>&1 || { cat build/java-transport-id/positive.log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaTransportIDFirstUse ' build/java-transport-id/positive.log || { cat build/java-transport-id/positive.log; exit 1; }
 	@echo 'Java transport IDs: legal and noncanonical vectors matched the Go oracle'
 
 tables-java-transport-id-negative-control: tables-java-transport-id
 	@JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 120s -v -run '^TestJavaTransportIDNegativeControl$$' ./internal/codegen/javatable/ \
+		$(GO_TEST) -count=1 -timeout 120s -v -run '^TestJavaTransportIDNegativeControl$$' ./internal/codegen/javatable/ \
 		> build/java-transport-id/control.log 2>&1 || { cat build/java-transport-id/control.log; exit 1; }
 	@grep -q -- '--- PASS: TestJavaTransportIDNegativeControl ' build/java-transport-id/control.log || { cat build/java-transport-id/control.log; exit 1; }
 	@echo 'Java transport IDs: bypassing the check makes each malformed identity vector read'

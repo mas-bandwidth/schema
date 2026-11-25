@@ -34,10 +34,13 @@ func init() {
 
 	// §4 on the message form: damage inside a body delivers the bodies before
 	// it instead of none.
+	// The damage path is the one after the refusal and non-finite paths, which
+	// return through refuse() as well; its comment anchors it.
 	sabotages["js-batch-discard-dropped"] = []edit{{
-		old: `g.pf("      for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
-	g.pf("      return 0;\n")`,
-		new: `g.pf("      return i; // SABOTAGED: the bodies before the damage are delivered\n")`,
+		old: `g.pf("      // declared defaults.\n")
+	g.pf("      return refuse();\n")`,
+		new: `g.pf("      // declared defaults.\n")
+	g.pf("      return i; // SABOTAGED: the bodies before the damage are delivered\n")`,
 	}}
 
 	// M5: the read accessor of a variable- or fixed-class keyed array loses
