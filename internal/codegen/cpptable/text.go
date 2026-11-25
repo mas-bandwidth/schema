@@ -234,9 +234,17 @@ struct TableTextFormReader
                 if ( end < n && end > start && s[end - 1] == '\r' ) { end--; }
                 for ( int64_t k = start; k < end; k++ )
                 {
-                    if ( s[k] == '\0' || s[k] == '\r' ) { i = start; return fail( "text_syntax" ); }
+                    if ( s[k] == '\0' || s[k] == '\r' )
+                    {
+                        i = start;
+                        return fail( "text_syntax" );
+                    }
                 }
-                if ( !TableUtf8Valid( (const uint8_t *) s + start, (uint64_t) ( end - start ) ) ) { i = start; return fail( "text_encoding" ); }
+                if ( !TableUtf8Valid( (const uint8_t *) s + start, (uint64_t) ( end - start ) ) )
+                {
+                    i = start;
+                    return fail( "text_encoding" );
+                }
                 continue;
             }
             return true;
@@ -608,11 +616,23 @@ inline std::string tableTextFormCanonDecimal( const std::string & token )
 inline bool tableTextFormInteger( const std::string & token, std::string & integer, const char ** why )
 {
     const std::string canon = tableTextFormCanonDecimal( token );
-    if ( canon == "0" ) { integer = "0"; return true; }
+    if ( canon == "0" )
+    {
+        integer = "0";
+        return true;
+    }
     const size_t e = canon.find( 'e' );
-    if ( e == std::string::npos ) { *why = "text_kind_mismatch"; return false; }
+    if ( e == std::string::npos )
+    {
+        *why = "text_kind_mismatch";
+        return false;
+    }
     const long long exponent = strtoll( canon.c_str() + e + 1, NULL, 10 );
-    if ( exponent < 0 ) { *why = "text_kind_mismatch"; return false; }
+    if ( exponent < 0 )
+    {
+        *why = "text_kind_mismatch";
+        return false;
+    }
     const size_t sign = canon[0] == '-' ? 1 : 0;
     const size_t digits = e - sign;
     if ( exponent > 39 || digits > 39 || digits + (size_t) exponent > 39 )
@@ -821,7 +841,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     {
         i++;
         bool exp_negative = false;
-        if ( i < length && ( s[i] == '-' || s[i] == '+' ) ) { exp_negative = s[i] == '-'; i++; }
+        if ( i < length && ( s[i] == '-' || s[i] == '+' ) )
+        {
+            exp_negative = s[i] == '-';
+            i++;
+        }
         int64_t e = 0;
         while ( i < length && s[i] >= '0' && s[i] <= '9' )
         {
@@ -837,7 +861,11 @@ inline bool tableTextFormFixedExact( const std::string & token, int frac )
     };
     int32_t start = 0;
     int64_t point = int_len + exp;
-    while ( start < total && digit( start ) == 0 ) { start++; point--; }
+    while ( start < total && digit( start ) == 0 )
+    {
+        start++;
+        point--;
+    }
     int32_t end = total;
     while ( end > start && digit( end - 1 ) == 0 ) { end--; }
     if ( start == end ) { return true; }
@@ -1284,7 +1312,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         if ( !tableTextFormInteger( n.text, integer, why ) ) { return false; }
         tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) );
         if ( TableJsonKindWideText( f ) ) { TableTextFormJsonString( out, integer ); }
-        else { out += integer; }
+        else
+        {
+            out += integer;
+        }
         return true;
     }
     // THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a float32
@@ -1317,7 +1348,10 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         tableTextFormCanon( spans, path, tableTextFormCanonDecimal( n.text ) );
     }
     if ( TableJsonKindWideText( f ) ) { TableTextFormJsonString( out, n.text ); }
-    else { out += n.text; }
+    else
+    {
+        out += n.text;
+    }
     return true;
 }
 

@@ -27,7 +27,6 @@ build/tables-generated/block/PaddedTable.cpp
 build/tables-generated/block/PaddedTable.h
 build/tables-generated/block/RenderTable.cpp
 build/tables-generated/block/RenderTable.h
-build/tables-generated/blockhome/ConstantsTable.h
 build/tables-generated/blockhome/DataTable.cpp
 build/tables-generated/blockhome/DataTable.h
 build/tables-generated/blockhome/FrameTable.cpp
