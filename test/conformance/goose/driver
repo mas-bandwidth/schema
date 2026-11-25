@@ -1331,33 +1331,37 @@ batch_fresh() {
 	done
 	return 0
 }
-# batch_lock <dir>: mkdir is the lock; a holder that died is stolen from
+# batch_lock <dir>: mkdir is the lock. It is never stolen: the cache belongs
+# to one harness run (batch_dir), whose drivers die together, so a lock is
+# only ever held by a live call of this run.
 batch_lock() {
 	while ! mkdir "$1" 2>/dev/null; do
-		_p=$(cat "$1/pid" 2>/dev/null)
-		if [ -n "$_p" ] && ! kill -0 "$_p" 2>/dev/null; then
-			rm -rf "$1"
-			continue
-		fi
-		sleep 0.05
+		sleep 1
 	done
-	echo $$ >"$1/pid"
 }
-# batch_dir <manifest>: the cache directory on stdout. The call that creates
-# it writes the map, warms every unit (batch_warm) and then writes
-# warm.done; every other call waits for warm.done, looking twice a second,
-# and takes the warm over when its owner has died.
+# batch_dir <manifest>: the cache directory on stdout. It is keyed by the
+# checksum of the manifest, this driver, main.goose, accel.goose,
+# accel_lib.goose, every unit's text glue and the goose command, and by the
+# pid of the process that runs the drivers (the harness), so the cache lives
+# for one run and a run never meets another's answers or locks. The call
+# that creates it removes the caches of runs that have ended, writes the map,
+# warms every unit (batch_warm) and then writes warm.done; every other call
+# waits for warm.done, looking once a second.
 batch_dir() {
-	_d="$base/batch/$(cat "$1" "$0" "$main" "$accel" "$accel_lib" | cksum | cut -d" " -f1)"
+	_k=$({ cat "$1" "$0" "$main" "$accel" "$accel_lib" test/conformance/goose/unit.goose test/conformance/goose/units/*.goose && echo "$goose"; } | cksum | cut -d" " -f1) || return 1
+	_d="$base/batch/$_k-$PPID"
 	mkdir -p "$_d" || return 1
 	while [ ! -f "$_d/warm.done" ]; do
 		if mkdir "$_d/warm.lock" 2>/dev/null; then
-			echo $$ >"$_d/warm.lock/pid"
 			# a warm that finished between the look and the lock is done
 			if [ -f "$_d/warm.done" ]; then
 				rm -rf "$_d/warm.lock"
 				break
 			fi
+			for _o in "$base"/batch/*-*; do
+				[ "$_o" = "$_d" ] || [ ! -d "$_o" ] && continue
+				kill -0 "${_o##*-}" 2>/dev/null || rm -rf "$_o"
+			done
 			if ! batch_map "$1" "$_d"; then
 				echo "goose driver: no batch map in $_d" >&2
 				rm -rf "$_d/warm.lock"
@@ -1368,56 +1372,70 @@ batch_dir() {
 			rm -rf "$_d/warm.lock"
 			break
 		fi
-		_p=
-		[ -f "$_d/warm.lock/pid" ] && read -r _p <"$_d/warm.lock/pid"
-		if [ -n "$_p" ] && ! kill -0 "$_p" 2>/dev/null; then
-			rm -rf "$_d/warm.lock"
-			continue
-		fi
-		sleep 0.5
+		sleep 1
 	done
 	echo "$_d"
 }
 # batch_warm <manifest> <dir>: every unit's batch, the largest unit first,
-# nproc at a time; a unit whose fill fails is answered by its single runs
+# nproc at a time; a unit whose batch fails says so here, and its surfaces
+# are answered by their single runs
 batch_warm() {
 	for _k in $(awk '$1 == "unit" { print $2 }' "$1"); do
 		[ -d "$units/$_k" ] && printf '%s %s\n' "$(du -sk "$units/$_k" | cut -f1)" "$_k"
-	done | sort -rn | cut -d" " -f2 | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill
+	done | sort -rn | cut -d" " -f2 | batch_d="$2" xargs -P "$maxjobs" -n 1 "$0" "$1" __batch-fill ||
+		echo "goose driver: a unit's batch failed (its .err in $2 says why); its surfaces fall back to single runs" >&2
 }
 # batch_fill <manifest> <unit>: the unit's batch cache under $batch_d, made
 # under the unit's lock when it is missing or stale (a fresh cache is read
 # without the lock: it is only ever replaced whole, by a rename; a unit no
-# batch surface names gets an empty cache)
+# batch surface names gets an empty cache). False when the batch exits
+# non-zero: what it finished is kept, and the rest falls back.
 batch_fill() {
 	batch_fresh "$batch_d/$2.out" "$units/$2" && return 0
 	batch_lock "$batch_d/$2.lock"
+	_st=0
 	if ! batch_fresh "$batch_d/$2.out" "$units/$2"; then
 		_fs=$(batch_of "$batch_d/batch.map" "$2")
 		if [ -n "$_fs" ]; then
 			glue "$units/$2"
 			# shellcheck disable=SC2086 # the surface list is words by design
-			"$goose" run -O0 "$units/$2/main.goose" -- batch "$1" "$2" $_fs >"$batch_d/$2.out.tmp" 2>"$batch_d/$2.err"
+			"$goose" run -O0 "$units/$2/main.goose" -- batch "$1" "$2" $_fs >"$batch_d/$2.out.tmp" 2>"$batch_d/$2.err" || _st=$?
 		else
 			: >"$batch_d/$2.out.tmp"
 		fi
 		mv "$batch_d/$2.out.tmp" "$batch_d/$2.out"
 	fi
 	rm -rf "$batch_d/$2.lock"
+	return "$_st"
 }
 # batch_section <surface> <unit>: the surface's section of the unit's batch
-# on stdout, or false when the batch has no "#done" line for it
+# on stdout, read in one pass, or false (and nothing printed) when the batch
+# has no "#done" line for it. SCHEMA_TEST_PLANT_CONFORMANCE_GOOSE
+# =wrong-byte:<case> flips the first hex digit of that case's wire answer here,
+# and only here: the registry's plant (plant.corpus-plants.goose-batch-*)
+# holds that the scored answers are the batch's.
 batch_section() {
-	_c="$batch_d/$2.out"
-	grep -qx "#done $1" "$_c" 2>/dev/null || return 1
-	awk -v s="$1" '$0 == "#surface " s { on = 1; next } $0 == "#done " s { on = 0; next } on' "$_c"
+	awk -v s="$1" -v plant="${SCHEMA_TEST_PLANT_CONFORMANCE_GOOSE:-}" '
+		BEGIN { if (s == "wire" && plant ~ /^wrong-byte:/) flip = substr(plant, 12) }
+		$0 == "#surface " s { on = 1; n = 0; next }
+		$0 == "#done " s { on = 0; done = 1; next }
+		on {
+			if (flip != "" && $1 == flip && $2 ~ /^[0-9a-f]/) {
+				$2 = (substr($2, 1, 1) == "0" ? "1" : "0") substr($2, 2)
+			}
+			out[++n] = $0
+		}
+		END {
+			if (!done) exit 1
+			for (i = 1; i <= n; i++) print out[i]
+		}' "$batch_d/$2.out" 2>/dev/null
 }
 # batch_answer <manifest> <surface> <unit>: a main surface's answer lines for
 # one unit on stdout, and its exit status. A surface missing from the batch
 # says so on stderr, naming the batch's own stderr, before its single run.
 batch_answer() {
 	case " $batch_main_surfaces " in *" $2 "*)
-		batch_fill "$1" "$3"
+		batch_fill "$1" "$3" || echo "goose driver: unit $3's batch exited non-zero (its stderr: $batch_d/$3.err)" >&2
 		batch_section "$2" "$3" && return 0
 		echo "goose driver: batch has no \"#done $2\" for unit $3 (its stderr: $batch_d/$3.err); single run" >&2
 		;;
@@ -1430,7 +1448,7 @@ batch_answer() {
 # (accel_prep)
 accel_answer() {
 	case " $batch_accel_surfaces " in *" $2 "*)
-		batch_fill "$1" "$3"
+		batch_fill "$1" "$3" || echo "goose driver: unit $3's batch exited non-zero (its stderr: $batch_d/$3.err)" >&2
 		batch_section "$2" "$3" && return 0
 		echo "goose driver: batch has no \"#done $2\" for unit $3 (its stderr: $batch_d/$3.err); single run" >&2
 		;;
@@ -1442,7 +1460,11 @@ maxjobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
 # one unit's fill, for batch_warm's xargs ($batch_d comes from its
 # environment)
 if [ "$2" = __batch-fill ]; then
-	batch_fill "$1" "$3"
+	if ! batch_fill "$1" "$3"; then
+		echo "goose driver: unit $3's batch exited non-zero; its last lines:" >&2
+		tail -n 5 "$batch_d/$3.err" >&2
+		exit 1
+	fi
 	exit 0
 fi
 # THE FORGERY FUZZER (docs/PORTING.md I3): accel.goose's block-fuzz and

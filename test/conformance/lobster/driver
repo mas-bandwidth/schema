@@ -158,16 +158,19 @@ if [ "$2" = list ]; then
 fi
 # THE LIST, ONCE PER MANIFEST (2026-11-25). Every surface call used to run
 # the program's list (a stage and a run, 0.4 s) before answering, one surface
-# after another: about 14 s of the leg. The answer is kept per manifest
-# checksum and asked again whenever the driver, main.lobster, the hooks, an
-# adapter or a generated unit module is newer than it (the conformance_*
-# files this driver stages on every run are not inputs).
+# after another: about 14 s of the leg. The answer is kept per checksum of
+# the manifest and the Lobster binary's path, and asked again whenever the
+# driver, main.lobster, the hooks, an adapter or a generated unit module is
+# newer than it (the conformance_* files this driver stages on every run are
+# not inputs). A find that fails (a path gone or unreadable) makes the list
+# stale, and says why on stderr.
 list_fresh() {
 	[ -f "$1" ] || return 1
 	[ "$0" -nt "$1" ] && return 1
-	[ -z "$(find "$main" "$hooks" "$adapters" "$units" -name '*.lobster' ! -name 'conformance_*' -newer "$1" -print 2>/dev/null | head -n 1)" ]
+	_newer=$(find "$main" "$hooks" "$adapters" "$units" -name '*.lobster' ! -name 'conformance_*' -newer "$1" -print) || return 1
+	[ -z "$_newer" ]
 }
-listc="$dir/list.$(cksum <"$manifest" | cut -d' ' -f1)"
+listc="$dir/list.$({ cat "$manifest"; echo "$lobster"; } | cksum | cut -d' ' -f1)"
 if ! list_fresh "$listc"; then
 	surfaces >"$listc.tmp.$$" || { rm -f "$listc.tmp.$$"; exit 1; }
 	mv "$listc.tmp.$$" "$listc" || exit 1
