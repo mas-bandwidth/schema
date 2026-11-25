@@ -18,7 +18,8 @@ import (
 // t01Prelude is the probe-side vocabulary every subtest shares: a destination
 // poisoned with a sentinel (a value compare, never a struct's slack, §5.9 #17),
 // and `total`, which holds the joint answer of §5.3's report table — a refusal
-// by name is n == -1, `refused` is that name, `malformed` is false, every
+// by name is n == -1, `refused` is that name, the report carries no second
+// answer channel (there is no malformed flag on this form's report), every
 // counter is zero and (R4) every row handed in is at its declared default.
 const t01Prelude = `
 import { TableFixedPlan, TableFixedLayoutView, TableFixedParseLayout } from "./@HOME@Table.js";
@@ -53,15 +54,15 @@ function defaults(label, back, plan) {
 }
 function counters(r) { return r.unknown + r.mismatch + r.oor + r.widened + r.repeated; }
 // total: REFUSE is total (§5.3: "no counter moves, nothing is decoded, and not
-// one destination byte is written"); malformed is the residue and never set
-// beside a name. hash is what layout_hash must hold, or null where the page
+// one destination byte is written"); framing damage refuses by its own name
+// like any other refusal, and the report grows no damaged flag. hash is what layout_hash must hold, or null where the page
 // leaves it unsettled.
 function total(label, n, r, name, hash, back, plan) {
   if (n !== -1) { fail(label + ": a refusal returns -1, got n=" + n + " " + reason(r)); }
   if (r.refused !== TableFixedRefusal[name]) {
     fail(label + ": the name is " + name + ", got " + TableFixedRefusalName(r.refused) + " " + reason(r));
   }
-  if (r.damaged) { fail(label + ": refused and malformed are never both set: " + reason(r)); }
+  if ("damaged" in r) { fail(label + ": the fixed form's report has no malformed flag (§5.3): " + reason(r)); }
   if (counters(r) !== 0) { fail(label + ": REFUSE is total, no counter moves: " + reason(r)); }
   if (hash !== null && r.layoutHash !== hash) {
     fail(label + ": layout_hash is " + hash.toString(16) + ", got " + r.layoutHash.toString(16));
@@ -124,8 +125,7 @@ for (let k = layoutAt; k < layoutAt + L; k++) {
   poison(back, plan);
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, cut, cut.length, plan, r);
-  if (n !== -1 || !r.damaged || r.refused !== 0) { fail("20 + L == len holds no record and is refused: n=" + n + " " + reason(r)); }
-  defaults("no record", back, plan);
+  total("20 + L == len holds no record", n, r, "Truncated", 0n, back, plan);
 }
 // the declared L one past the bytes that are there, and the largest u32 (no wrap)
 for (const declared of [data.length - layoutAt + 1, 0xFFFFFFFF]) {
@@ -406,6 +406,13 @@ for (const [b, name] of [[1, "PreviousForm"], [2, "MessageFormAsFile"], [6, "New
 { const f = copy(old); const v = new DataView(f.buffer); v.setBigUint64(8, 0xDEADBEEFCAFEF00Dn, true);
   refuse("a hash in no lineage entry", f, "LayoutUnknown", 0xDEADBEEFCAFEF00Dn, back.length, big); }
 refuse("more records than the caller's room", old, "BatchTooLarge", 0n, 0, big);
+// FRAMING DAMAGE, each by its own name (§5.3's refusal table; "There is no
+// malformed flag on this form's report"): no first byte, every length
+// under the 20-byte header, a nonzero reserved byte, and a ragged tail.
+refuse("no bytes at all", new Uint8Array(0), "Truncated", 0n, back.length, big);
+for (let k = 1; k < 20; k++) { refuse("a " + k + "-byte file", copy(old, k), "Truncated", 0n, back.length, big); }
+for (let i = 1; i < 8; i++) { const f = copy(old); f[i] = 1; refuse("reserved byte " + i + " nonzero", f, "ReservedNotZero", 0n, back.length, big); }
+{ const f = new Uint8Array(old.length + 1); f.set(old); refuse("a ragged tail", f, "Truncated", 0n, back.length, big); }
 refuse("a plan that does not fit", old, "PlanTooLarge", 0n, back.length, none);
 refuse("no plan at all", old, "PlanTooLarge", 0n, back.length, null);
 { const f = copy(old); f[recAt + 7] ^= 0xFF; refuse("a record hash naming no layout", f, "NoLayout", null, back.length, big); }

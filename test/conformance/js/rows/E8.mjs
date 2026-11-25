@@ -155,9 +155,9 @@ check(imageView.getInt32(8, true) === 0,
 check(report.unknown === 0 && report.oor === 0 && report.mismatch === 0,
   "E8 append: no counter fires (unknown=" + report.unknown +
   ", clamped=" + report.oor + ", kindMismatch=" + report.mismatch + ")");
-check(!report.damaged && report.refused === 0,
+check(!("damaged" in report) && report.refused === 0,
   "E8 append: no refusal or malformed (refused=" + report.refused +
-  ", malformed=" + report.damaged + ")");
+  ", malformed=" + ("damaged" in report) + ")");
 
 // ---- THE REMOVAL HALF: a field the reader names nowhere is UNLAWFUL ----
 // A deprecated field does NOT change the layout — the slot stays where it is

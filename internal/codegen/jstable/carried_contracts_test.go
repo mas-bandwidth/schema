@@ -233,7 +233,7 @@ for (const [a, b, c, d] of [
   const back = [new T()]; InitT(back[0]);
   const report = new TableFixedReport();
   const count = TLoad(back,1,raw,raw.length,plan,report);
-  if (count !== 1 || report.refused !== 0 || report.damaged || report.oor !== 0
+  if (count !== 1 || report.refused !== 0 || ("damaged" in report) || report.oor !== 0
       || back[0].a !== a || back[0].b !== b || back[0].c !== c || back[0].d !== d) {
     fail("fixed one-sided in-range read: " + show(back) + " " + reason(report));
   }
@@ -279,7 +279,7 @@ for (const [name, patch] of [
   const back = [new T()]; InitT(back[0]);
   const report = new TableFixedReport();
   const count = TLoad(back,1,raw,raw.length,plan,report);
-  if (count !== -1 || report.refused !== TableFixedRefusal.OutOfRange || report.damaged || report.oor !== 0) {
+  if (count !== -1 || report.refused !== TableFixedRefusal.OutOfRange || ("damaged" in report) || report.oor !== 0) {
     fail("fixed one-sided refusal (" + name + "): " + show(back) + " " + reason(report));
   }
 }

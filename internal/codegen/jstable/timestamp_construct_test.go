@@ -167,7 +167,7 @@ for(const stamp of [0n,1n,-1n,-9223372036854775808n,9223372036854775807n]){
  if(TSave([value],1,wire)!==wire.length){fail("fixed timestamp write");continue;}
  const back=[new T()];InitT(back[0]);const report=new TableFixedReport();
  const count=TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report);
- if(count!==1 || report.damaged || report.refused!==0 || report.oor!==0 || back[0].at!==stamp){fail("fixed timestamp roundtrip "+show(back)+" "+reason(report));}
+ if(count!==1 || ("damaged" in report) || report.refused!==0 || report.oor!==0 || back[0].at!==stamp){fail("fixed timestamp roundtrip "+show(back)+" "+reason(report));}
 }
 `
 	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "T", script); err != nil {

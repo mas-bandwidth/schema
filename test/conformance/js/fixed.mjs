@@ -373,8 +373,8 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
     load: (wire, r) => {
       const x = fresh();
       const n = fixedLoad([x], 1, wire, wire.length, plan, r);
-      if (n !== 1 || r.refused !== 0 || r.damaged) {
-        if (n === 0 && r.refused === 0 && !r.damaged) { r.damaged = true; }
+      if (n !== 1 || r.refused !== 0) {
+        if (n === 0 && r.refused === 0) { r.refused = T.TableFixedRefusal.Truncated; } // a batch of none is truncated (§5.3 step 9)
         return null;
       }
       return toVar(t, x, root);
@@ -396,7 +396,7 @@ export async function fixedCodec(generated, load, unit, root, variablePath, code
         const x = fresh();
         const r = new T.TableFixedReport();
         const n = fixedLoad([x], 1, wire, wire.length, plan, r);
-        return n === 1 && r.refused === 0 && !r.damaged ? x : null;
+        return n === 1 && r.refused === 0 ? x : null;
       },
       // the bytes written, or -1 where the generated writer refused
       save: (x) => fixedSave([x], 1, new Uint8Array(fixedMeasure(1))),

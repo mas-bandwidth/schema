@@ -135,7 +135,7 @@ const quiet = (r) => r.oor === 0 && r.widened === 0 && r.unknown === 0 && r.mism
   // THE POSITIVE CONTROL FIRST: an untouched record reads, so a refusal that
   // fired on every read below would not read as a pass.
   const r = readProduction(lawfulFile());
-  check(r.n === 1 && r.report.refused === 0 && !r.report.damaged && quiet(r.report),
+  check(r.n === 1 && r.report.refused === 0 && !("damaged" in r.report) && quiet(r.report),
     "C3 IDENTITY: a lawful record of this build's own layout reads and moves no counter");
   check(r.v.nameLength === 16 && r.v.link.tagLength === 8 && r.v.link.value === 7,
     "C3 IDENTITY: the lawful lengths land as written (name 16, tag 8, value 7)");
@@ -145,7 +145,7 @@ function refusesWhole(at, value, what) {
   const bytes = lawfulFile();
   plant(bytes, at, value);
   const r = readProduction(bytes);
-  check(r.n === -1 && r.report.refused === LENGTH_OVER_BOUND && !r.report.damaged,
+  check(r.n === -1 && r.report.refused === LENGTH_OVER_BOUND && !("damaged" in r.report),
     "C3 IDENTITY: " + what + " refuses length_over_bound, never a clamp (n=" + r.n + ", refused=" +
     home.TableFixedRefusalName(r.report.refused) + ")");
   check(quiet(r.report),

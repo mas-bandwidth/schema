@@ -45,10 +45,10 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 			newer := jsReadSchema(t, "VNEW_"+vec.Row)
 			older := jsReadSchema(t, "VOLD_"+vec.Row)
 			table := jsFixedRootName(t, older)
-			verdict := fmt.Sprintf(`if (n !== 1 || r.damaged || r.refused !== 0) { fail("the forged file reads one record: n=" + n + " " + reason(r)); }
+			verdict := fmt.Sprintf(`if (n !== 1 || ("damaged" in r) || r.refused !== 0) { fail("the forged file reads one record: n=" + n + " " + reason(r)); }
 %s`, checks.String())
 			if want.Refused || want.Clamped > 0 {
-				verdict = `if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+				verdict = `if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || ("damaged" in r) || r.oor !== 0) {
   fail("a value past the WRITER's range owes out_of_range: n=" + n + " " + reason(r));
 }
 if (show(back[0]) !== fresh0) {

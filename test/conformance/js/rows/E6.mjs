@@ -148,7 +148,7 @@ if (lane !== null && lane.ready === true) {
   const report = new rt.TableFixedReport();
   rt.TableFixedRun(lane.entries, lane.count, rec, rv, 8, plan.image, plan.view, lane.remap, report);
   rt.FxRootFixedCheckRead(plan.view, 0, report);
-  check(report.refused === 0 && !report.damaged,
+  check(report.refused === 0 && !("damaged" in report),
     `the record runs and checks clean (refused=${rt.TableFixedRefusalName(report.refused)})`);
   const v = new rt.FxRoot();
   v.renamedTo = -1; v.keep = 0; v.added = -1;

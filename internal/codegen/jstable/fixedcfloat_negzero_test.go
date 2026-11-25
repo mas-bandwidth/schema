@@ -42,7 +42,7 @@ if (back[0].lead !== 1 || back[0].trail !== 2) { fail(%[2]q + ": a neighbour mov
 if (!Object.is(back[0].value, 0) || f32bits(back[0].value) !== 0) {
   fail(%[2]q + ": a compressed float's -0 kept its sign: value " + back[0].value + " bits " + f32bits(back[0].value).toString(16));
 }
-if (r.oor !== 0 || r.damaged || r.refused !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
+if (r.oor !== 0 || ("damaged" in r) || r.refused !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail(%[2]q + ": the read of a compressed -0 counted something: " + reason(r));
 }
 const out = new Uint8Array(TMeasure(1));
