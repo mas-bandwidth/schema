@@ -93,6 +93,11 @@ func TestScopeLinesKeepTheAskedRowsAndWhatTheyRead(t *testing.T) {
 	has("the scope of cook-write inst1", cut(map[caseKey]bool{{"cook-write", "inst1"}: true}),
 		[]string{"cook-write inst1 ", "instance inst1 ", "instance inst2 ", "write-refusal wr1 ", "message msg1 ", "block y ", "forgery forged2 "},
 		[]string{"cook-write inst2 "})
+	// with the wire surface running too, inst1 is a running surface's
+	// unasked row, and stays only because the asked cook-write row reads it
+	has("the scope of cook-write inst1 and wire inst2", cut(map[caseKey]bool{{"cook-write", "inst1"}: true, {"wire", "inst2"}: true}),
+		[]string{"cook-write inst1 ", "instance inst1 ", "instance inst2 "},
+		[]string{"cook-write inst2 "})
 	// the asked rows on json-read, cook-write and message, and the cut of
 	// each surface's unasked rows (inst1 is read by no kept row); a
 	// write-refusal-message row on a surface that does not run keeps its
