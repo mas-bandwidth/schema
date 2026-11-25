@@ -93,7 +93,7 @@ Leg.start()
 # (test/js-tables/fixedform.mjs:850-858, docs/FIXED-FORM-ALGORITHM.md:1082).
 #
 # IT SITS FIRST, BESIDE THE WRITE'S OWN BYTE-FOR-BYTE CASE BELOW, because a
-# broken constant sends a self-written file `layout_newer` and takes the later
+# broken constant sends a self-written file `layout_unknown` and takes the later
 # sections down with it: the property has to be read off the FILE'S OWN HEADER,
 # which is answered before any lineage.
 #
@@ -190,7 +190,7 @@ roundtrip = fn name, load, save ->
     {:ok, values, report} ->
       # `layout_hash` IS ZERO ON A READ THAT LANDS VALUES (§5.9 #15): it is the
       # last member of the report and it carries a number on exactly two paths,
-      # `layout_newer` and `layout_unsupported`. Asserting it here is what keeps
+      # `layout_unknown` and `layout_unsupported`. Asserting it here is what keeps
       # it from riding on every clean read.
       Leg.eq("#{name}: a clean read moves no counter", report, %{
         unknown: 0,
@@ -1075,25 +1075,25 @@ Leg.eq(
 # THE FORM BYTE EARNS ITS NAME BEFORE THE FILE'S LENGTH IS MEASURED (§5.3 step
 # 1), so the REAL lengths of the two forms this reader names are the cases: a
 # committed form-1 file is TEN bytes and a form-2 batch THREE. A reader that
-# measured first would answer `malformed` for both and name neither.
+# measured first would answer `truncated` for both and name neither.
 Leg.eq(
-  "a TEN-byte form-1 file is `previous_form`, not `malformed`",
+  "a TEN-byte form-1 file is `previous_form`, not `truncated`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(<<1, 0, 0, 0, 0, 0, 0, 0, 0, 0>>) |> elem(1),
   :previous_form
 )
 
 Leg.eq(
-  "a THREE-byte form-2 batch is `message_form_as_file`, not `malformed`",
+  "a THREE-byte form-2 batch is `message_form_as_file`, not `truncated`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(<<2, 1, 0>>) |> elem(1),
   :message_form_as_file
 )
 
-# A FILE WITH NO FIRST BYTE IS THE RESIDUE: `malformed`, with no name, because
-# there is no byte to earn one.
+# A FILE WITH NO FIRST BYTE IS `truncated` (docs/FIXED-FORM-ALGORITHM.md §5.3
+# refusal table: "no bytes at all | truncated"); this form has no malformed flag.
 Leg.eq(
-  "zero bytes is `malformed`",
+  "zero bytes is `truncated`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(<<>>) |> elem(1),
-  :malformed
+  :truncated
 )
 
 # FORM BYTE 0 IS A BYTE NO FORM DEFINES, and the registry is ORDERED, so it is
@@ -1110,10 +1110,10 @@ Leg.eq(
 <<form_byte, _res::binary-size(7), after_reserved::binary>> = read.("fx1.bin")
 
 Leg.eq(
-  "a nonzero RESERVED byte is `malformed`",
+  "a nonzero RESERVED byte is `reserved_not_zero`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(<<form_byte, 0, 0, 1, 0, 0, 0, 0, after_reserved::binary>>)
   |> elem(1),
-  :malformed
+  :reserved_not_zero
 )
 
 Leg.eq(
@@ -1121,7 +1121,7 @@ Leg.eq(
   Tblfx1.FixedRuntime.read_file_header(
     <<form_byte, 0, 0, 1, 0, 0, 0, 0, after_reserved::binary>>
   ),
-  {:error, :malformed}
+  {:error, :reserved_not_zero}
 )
 
 # A LAYOUT WHOSE BYTES ARE NOT A LAYOUT, each rule under ITS OWN NAME.
@@ -1172,7 +1172,7 @@ Leg.eq(
 #   UNDER A KNOWN HASH — this reader's own, with the layout bytes bent — the byte
 #   comparison fails and the answer is ONE NAME, `layout_malformed`: "a lie about
 #   a known version" (§5.3's table, bill §12.4).
-#   UNDER AN UNKNOWN HASH — the bent bytes' own — the answer is `layout_newer`,
+#   UNDER AN UNKNOWN HASH — the bent bytes' own — the answer is `layout_unknown`,
 #   reported at step 5 BEFORE ANY WALK, carrying the file's hash and nothing
 #   else, whatever the bytes behind it say.
 #
@@ -1196,8 +1196,8 @@ refuse = fn name, bad ->
 
   bad_hash = Tblfx1.FixedRuntime.hash(bad)
   {:error, why, report} = Tblfx1.FX1Fixed.fx_root_fixed_load(file.(bad_hash))
-  Leg.eq("#{name}, under an UNKNOWN hash: `layout_newer`", why, :layout_newer)
-  Leg.eq("#{name}: and `layout_newer` reports THE FILE's hash", report.layout_hash, bad_hash)
+  Leg.eq("#{name}, under an UNKNOWN hash: `layout_unknown`", why, :layout_unknown)
+  Leg.eq("#{name}: and `layout_unknown` reports THE FILE's hash", report.layout_hash, bad_hash)
   Leg.eq("#{name}: a refusal by name moves no counter", report.unknown, 0)
 end
 
@@ -1243,7 +1243,7 @@ refuse.("a child count that does not close", bad_tree)
 # THE SEVEN §1.1 RULES, EACH BY ITS OWN NAME, AS THE LOCK'S VALIDATION (§5.6).
 # §5.6 retired the run-time walk of a stranger's layout — on the wire a hostile
 # layout is COMPARED, never parsed, so the read answers one name
-# (`layout_malformed` / `layout_newer`), asserted above. What §5.6 kept is the
+# (`layout_malformed` / `layout_unknown`), asserted above. What §5.6 kept is the
 # seven checks AS THE LOCK'S VALIDATION OF WHAT IT RECORDS, and on this leg that
 # is `parse_layout/1`: the same seven refusals, each under its own name, and the
 # ORDER load-bearing — keep the FIRST reason and stop.
@@ -1315,11 +1315,11 @@ Leg.eq(
 
 # A HEADER WHOSE HASH NAMES A LAYOUT THIS BUILD DOES NOT HOLD is answered at
 # §5.3 step 5 and the bytes behind it are never looked at — these ARE this
-# reader's own, valid layout bytes, and the answer is still `layout_newer`. The
+# reader's own, valid layout bytes, and the answer is still `layout_unknown`. The
 # hash is the version, and nothing is recomputed from the wire: §2's step 5 goes
 # with the walk (§5.6).
 Leg.eq(
-  "a header that names another layout is `layout_newer`",
+  "a header that names another layout is `layout_unknown`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(
     IO.iodata_to_binary([
       Tblfx1.FixedRuntime.file_header(stated + 1, byte_size(layout)),
@@ -1328,7 +1328,7 @@ Leg.eq(
     ])
   )
   |> elem(1),
-  :layout_newer
+  :layout_unknown
 )
 
 # AND AN UNKNOWN HASH IS ANSWERED BEFORE ANY WALK, so bending the layout too
@@ -1346,25 +1346,27 @@ Leg.eq(
     ])
   )
   |> elem(1),
-  :layout_newer
+  :layout_unknown
 )
 
 # A plan past the caller's capacity (`plan_too_large`) is held where a compiled
 # lane exists, the lineage harness's TestFixedVersioningPlanTooLarge (§5.9 #39,
 # #45).
 
-# BYTES LEFT OVER ARE `malformed`: the two ends of the file have met.
+# BYTES LEFT OVER ARE `truncated`: the two ends of the file have met
+# (docs/FIXED-FORM-ALGORITHM.md §5.3 step 6: "a ragged tail: rest mod
+# record_bytes != 0 | truncated").
 Leg.eq(
-  "a ragged tail is `malformed`",
+  "a ragged tail is `truncated`",
   Tblfx1.FX1Fixed.fx_root_fixed_load(read.("fx1.bin") <> <<1, 2, 3>>) |> elem(1),
-  :malformed
+  :truncated
 )
 
 # A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS `no_layout`: nothing
-# is decoded, no counter moves, `malformed` does not fire.
+# is decoded, no counter moves, `truncated` does not fire.
 #
 # THE BODY IS THE DECLARED ONE and its length is asked for rather than typed:
-# a record short of `body_bytes` is a RAGGED TAIL and refuses as `malformed`
+# a record short of `body_bytes` is a RAGGED TAIL and refuses as `truncated`
 # before the hash is ever looked up, so a hand-written length is a test that
 # silently stops testing `no_layout` the day a field joins FxRoot.
 {:error, why, no_layout_report} =
@@ -1379,9 +1381,10 @@ Leg.eq(
 Leg.eq("a hash naming no layout is `no_layout`", why, :no_layout)
 Leg.eq("`no_layout` moves no counter", no_layout_report.unknown, 0)
 
-# A COUNT AND A LENGTH ARE CLAMPED TO THIS READER'S OWN BOUND, counting one
-# `clamped` each — the `count` and `text` ops, on the identity path as well as
-# the compiled one.
+# A LENGTH PAST THIS READER'S OWN BOUND REFUSES BY NAME and is never clamped
+# (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table: "a length past the plan's
+# cap (§4.5) | length_over_bound"; §4.5: "Nothing is clamped").
+# Held on the direct record decode too, by TestFixedFormRefusalNamesElixir.
 hostile =
   (fn ->
      [body | _] = bodies_of.(read.("p1.bin"), Tblp1.P1Fixed.chain_fixed_body_bytes())
@@ -1397,19 +1400,17 @@ hostile =
          rest::binary>>
    end).()
 
-{:error, clamp_why, clamp_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
+{:error, over_why, over_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
 
-# AND THEN THE CONTENT RULE FIRES ON WHAT THE CLAMP LEFT, which is the
-# reference's own order: the length is held to the declared bound FIRST, and the
-# used units are checked SECOND. `chain-one` padded out to sixteen bytes carries
-# NULs, and a `string(N)`'s bytes have no zero among them (§3) — so the read
-# refuses by name (`:text_ill_formed`, §4.5 fix 11).
-Leg.eq("the clamped span is then held to the CONTENT rule", clamp_why, :text_ill_formed)
-Leg.eq("a refusal by name moves no counter", clamp_report.unknown, 0)
+# THE LENGTH IS HELD TO THE DECLARED BOUND FIRST and refuses there: no span is
+# cut from it, so the content rule never reads the NULs that `chain-one` padded
+# out to sixteen bytes carries.
+Leg.eq("a hostile length refuses `length_over_bound`", over_why, :length_over_bound)
+Leg.eq("a refusal by name moves no counter", over_report.unknown, 0)
 
-# A CLAMP ON ITS OWN IS NOT DAMAGE. The same hostile length over a field whose
-# whole declared bound IS well-formed text: the clamp counts and nothing else
-# moves, which is what makes the case above discriminating.
+# THE SAME HOSTILE LENGTH over a field whose whole declared bound IS well-formed
+# text refuses the same way: the length alone is the refusal, whatever the
+# bytes behind it say.
 full =
   (fn ->
      saved =
@@ -1426,9 +1427,9 @@ full =
 full_out = Tblp1.P1Fixed.chain_fixed_load(full)
 
 Leg.eq(
-  "a length past the declared bound refuses on the strict read",
+  "a length past the declared bound refuses `length_over_bound` over well-formed text too",
   full_out,
-  {:error, :out_of_range, Tblp1.FixedRuntime.report()}
+  {:error, :length_over_bound, Tblp1.FixedRuntime.report()}
 )
 
 # ---------------------------------------------------------------------------
@@ -1438,7 +1439,7 @@ Leg.eq(
 # A `string(N)`'s used bytes are well-formed UTF-8 with no zero among them. A
 # payload that is not the text its kind says it is is DAMAGE and not data, and
 # the verdict is a REFUSAL BY NAME (§4.5 fix 11): `:text_ill_formed` refuses the
-# whole read without setting `malformed`.
+# whole read by that name.
 #
 # THE POISON IS LAID INTO A WRITTEN IMAGE, because the writer refuses it: a
 # string that is not UTF-8 or holds a zero byte is a value the declaration
@@ -1612,15 +1613,12 @@ Leg.check(
     hd(sweep_values).keep == 4242
 )
 
-# THE CLASSIFICATION, BY NAME. §5.3's report is two answers and they are NEVER
-# both set: a named refusal carries `malformed` false, and `:malformed` is the
-# one error that sets the flag. A read that RETURNS carries `:malformed` only as
-# the damaged projection of a positional record, which is the second answer
-# here. Anything outside the table is the fourth.
+# THE CLASSIFICATION, BY NAME. This form's report carries no malformed flag:
+# framing damage is a refusal like any other, each by its own name (`truncated`,
+# `reserved_not_zero`; docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table), so on
+# this leg the lawful answers are a refusal by name and a read that lands
+# values. A `:malformed` answer, or anything else outside the table, is a fourth.
 classify = fn
-  {:error, :malformed, %{unknown: 0, widened: 0}} ->
-    :malformed
-
   {:error, name, %{unknown: 0, widened: 0}} when is_atom(name) and name != :malformed ->
     {:refusal, name}
 
@@ -1646,7 +1644,7 @@ sweep = fn clean ->
 
   Enum.reduce(
     0..(size - 1),
-    %{refusal: 0, malformed: 0, landed: 0, visited: 0, fourth: []},
+    %{refusal: 0, landed: 0, visited: 0, fourth: []},
     fn at, acc ->
       Enum.reduce(0..7, acc, fn bit, acc ->
         hit = flip_bit.(clean, at, bit)
@@ -1663,9 +1661,6 @@ sweep = fn clean ->
         case classify.(outcome) do
           {:refusal, _name} ->
             %{acc | refusal: acc.refusal + 1, visited: acc.visited + 1}
-
-          :malformed ->
-            %{acc | malformed: acc.malformed + 1, visited: acc.visited + 1}
 
           :landed ->
             %{acc | landed: acc.landed + 1, visited: acc.visited + 1}
@@ -1690,24 +1685,24 @@ Leg.eq(
 )
 
 # THE ASSERTION, AND IT NAMES THE RULE. The failure text below is the doc's own
-# three answers; a non-empty `fourth` is the one thing §7 item 5 forbids, and it
-# carries the offset, the bit and what came back instead.
+# answers, less the malformed read this form does not have; a non-empty
+# `fourth` is the one thing §7 item 5 forbids, and it carries the offset, the bit and what came back instead.
 Leg.eq(
-  "a byte flip is answered a refusal by name, a malformed read, or a read that " <>
+  "a byte flip is answered a refusal by name or a read that " <>
     "lands values — never a fourth",
   sweep_counts.fourth,
   []
 )
 
 Leg.eq(
-  "every one of the #{sweep_total} flips is one of the three lawful answers",
-  sweep_counts.refusal + sweep_counts.malformed + sweep_counts.landed,
+  "every one of the #{sweep_total} flips is one of the two lawful answers",
+  sweep_counts.refusal + sweep_counts.landed,
   sweep_total
 )
 
 IO.puts(
   "  fuzz: #{sweep_size} bytes x 8 bits — #{sweep_counts.refusal} refused by name, " <>
-    "#{sweep_counts.malformed} malformed, #{sweep_counts.landed} records read, " <>
+    "#{sweep_counts.landed} records read, " <>
     "#{length(sweep_counts.fourth)} divergences"
 )
 
@@ -1722,7 +1717,7 @@ IO.puts(
 #
 # THE LAYOUT HERE IS INTERNALLY VALID, hand-built out of this build's own field
 # ids and passing all seven rules. After COMPILE-from-lock (§5.3), LOAD never
-# parses a stranger — an unknown hash is `layout_newer` — so the bound is
+# parses a stranger — an unknown hash is `layout_unknown` — so the bound is
 # asserted on `FixedRuntime.compile/5` directly, which is the path a known older
 # writer still takes through the lineage harness. THE FINDING IS THAT THIS LEG
 # CARRIES NO SUCH BOUND: the `layout_record_too_large` refusals in

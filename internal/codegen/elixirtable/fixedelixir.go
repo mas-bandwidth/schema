@@ -891,8 +891,11 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		segN := "n_" + v + "::little-signed-32"
 		segB := fmt.Sprintf("b_%s::binary-size(%d)", v, f.Type.Size)
 		out.match = append(out.match, segN, segB)
-		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.Type.Size))
-		out.field(f.Name, rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, f.Type.Size))
+		// A LENGTH PAST THE CAP REFUSES BY NAME, `length_over_bound`, and is
+		// never clamped (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table: "a
+		// length past the plan's cap (§4.5) | length_over_bound").
+		out.stmt("c", rawf("R.held_len(c, n_%s, %d)", v, f.Type.Size))
+		out.field(f.Name, rawf("binary_part(b_%s, 0, n_%s)", v, v))
 	default:
 		prior := g.present
 		if f.Type.Optional {
@@ -903,8 +906,9 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	}
 }
 
-// readText is a string(N): the length is held to this
-// reader's bound, the used units are held to the CONTENT rule, and a payload
+// readText is a string(N): a length past this reader's bound REFUSES BY NAME,
+// `length_over_bound`, and is never clamped (docs/FIXED-FORM-ALGORITHM.md §5.3
+// refusal table, §4.5: "Nothing is clamped"); the used units are held to the CONTENT rule, and a payload
 // that is not the text its kind says it is REFUSES BY NAME (`text_ill_formed`,
 // §4.5 fix 11). bytes(N) does not come here.
 func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, present node) {
@@ -912,8 +916,8 @@ func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, present node) {
 	segN := "n_" + v + "::little-signed-32"
 	segB := fmt.Sprintf("b_%s::binary-size(%d)", v, bound)
 	out.match = append(out.match, segN, segB)
-	out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, bound))
-	used := rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, bound)
+	out.stmt("c", rawf("R.held_len(c, n_%s, %d)", v, bound))
+	used := rawf("binary_part(b_%s, 0, n_%s)", v, v)
 	def := g.fixedElemDefaultTerm(f)
 	helper := "R.text"
 	out.stmt("{t_"+v+", m}", call(helper, used, raw(def), raw("m"), present))
@@ -1780,7 +1784,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
 	g.pf("  # against these and on NOTHING ELSE; the layout it carries is COMPARED with\n")
 	g.pf("  # the bytes the lock recorded and never parsed. A hash no entry holds is\n")
-	g.pf("  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in\n")
+	g.pf("  # `:layout_unknown` (§5.3 step 5; `layout_newer` is retired). The four members are §5.9 #19's, in\n")
 	g.pf("  # its order, with the byte length riding BESIDE the bytes.\n")
 	g.pf("  @%s_known {\n", snake)
 	for i, e := range lineage {
@@ -1809,7 +1813,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  }\n\n")
 	g.pf("  # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
 	g.pf("  # a layout this build once served is retired and the answer is\n")
-	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.\n")
+	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.\n")
 	g.pf("  @%s_floor %d\n\n", snake, floor)
 	retired := []string{}
 	for _, e := range lineage {
@@ -1914,10 +1918,8 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("    case R.read_file_header(data) do\n")
 	g.pf("      {:ok, stated, layout, records} ->\n")
 	g.pf("        %s_fixed_records(stated, layout, records, report, opts)\n\n", snake)
-	g.pf("      {:error, :malformed} ->\n")
-	g.pf("        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket\n")
-	g.pf("        # a named rule falls into — `malformed`, and no reason (§5.3).\n")
-	g.pf("        {:error, :malformed, report}\n\n")
+	g.pf("      # STEPS 1 AND 2: an empty or short file is `truncated`, a reserved byte\n")
+	g.pf("      # `reserved_not_zero` (§5.3); this form's report has no malformed flag.\n")
 	g.pf("      {:error, why} ->\n")
 	g.pf("        {:error, why, report}\n")
 	g.pf("    end\n")
@@ -1990,9 +1992,8 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 		g.pf("    {census_u, census_k} = census\n\n")
 	}
 	g.pf("    # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,\n")
-	g.pf("    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs\n")
-	g.pf("    # first and owns the ragged tail, so a `rest` that is not a whole number\n")
-	g.pf("    # of records passes this and the split reports `malformed`.\n")
+	g.pf("    # and a batch past the caller's room is a REFUSAL BY NAME; a `rest` that is\n")
+	g.pf("    # not a whole number of records is a ragged tail, `truncated` (§5.3 step 6).\n")
 	g.pf("    # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME\n")
 	g.pf("    # (§4.5 fix 11): `R.text` and the compiled plan's text op both\n")
 	g.pf("    # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform\n")
@@ -2033,7 +2034,6 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("        # refusal that came after would have moved a counter.\n")
 	g.pf("        {:ok, values, R.census(report, census_u, census_k)}\n")
 	g.pf("      else\n")
-	g.pf("        {:error, :malformed} -> {:error, :malformed, report}\n")
 	g.pf("        {:error, why} -> {:error, why, report}\n")
 	g.pf("      end\n")
 	g.pf("    catch\n")
@@ -2043,7 +2043,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 
 	g.pf("  # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows\n")
 	g.pf("  # the record size from the layout, so the count is arithmetic. BYTES LEFT\n")
-	g.pf("  # OVER ARE `malformed`, which is §3's rule for the same reason.\n")
+	g.pf("  # OVER ARE `truncated` (§5.3 step 6): the two ends of the file have met.\n")
 	g.pf("  defp %s_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}\n\n", snake)
 	g.pf("  defp %s_fixed_split(records, hash, size, acc) do\n", snake)
 	g.pf("    case records do\n")
@@ -2054,7 +2054,7 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("        # NAME, never a guess and never damage.\n")
 	g.pf("        {:error, :no_layout}\n\n")
 	g.pf("      _ ->\n")
-	g.pf("        {:error, :malformed}\n")
+	g.pf("        {:error, :truncated}\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 }
