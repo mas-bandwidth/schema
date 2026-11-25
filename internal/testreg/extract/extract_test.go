@@ -298,7 +298,7 @@ func TestASkipRedLineStaysWhileItsSkipDoes(t *testing.T) {
 	}
 	carried.Count = 3
 	p = KeepsSkipReds(main, []LedgerLine{carried}, res, renamed)
-	if len(p) != 2 || !strings.Contains(p[0], "skip-red a:TestHidesStill is a new ledger line") || !strings.Contains(p[1], "skip-red a:TestHides left the ledger with its test") {
+	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestHidesStill is a new ledger line") {
 		t.Fatalf("a carry that grew: %v", p)
 	}
 }
@@ -427,6 +427,10 @@ func TestWhatGitIgnoresIsNotATest(t *testing.T) {
 	if out, err := git.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
+	// a person's own excludes are not the repository's: they change no count
+	if err := os.WriteFile(filepath.Join(root, ".git", "info", "exclude"), []byte("pkg/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	have := names(root)
 	if strings.Contains(have, "TestBuilt") || strings.Contains(have, "Cargo") || !strings.Contains(have, "go-test pkg TestKept") || !strings.Contains(have, "data-case test/rust case") {
 		t.Fatalf("in a checkout, what git ignores is not a test:\n%s", have)
@@ -437,5 +441,55 @@ func TestWhatGitIgnoresIsNotATest(t *testing.T) {
 	}
 	if _, err := Extract(broken); err == nil || !strings.Contains(err.Error(), "to leave out what git ignores") {
 		t.Fatalf("a .git that git cannot read: %v", err)
+	}
+}
+
+// TestACarryIsARenameAndNothingElse: a skip-red line moves only to a new
+// test, only from a test that is gone, only once, and a line of the same
+// count first; tests that share a helper's skip do not hold each other's
+// lines.
+func TestACarryIsARenameAndNothingElse(t *testing.T) {
+	t.Parallel()
+	test := func(name string, sites ...string) Item {
+		it := Item{Kind: KindGoTest, Dir: "a", Name: name, Source: "a/x_test.go:1"}
+		for _, s := range sites {
+			it.Gates = append(it.Gates, "skip: a/x_test.go:"+s)
+		}
+		return it
+	}
+	line := func(name string, n int) LedgerLine {
+		return LedgerLine{Kind: KindSkipRed, Dir: "a:" + name, Count: n, Layer: "L5", Reason: "measured red"}
+	}
+	tree := func(its ...Item) *Result { return &Result{Items: its} }
+	// two tests share a helper's skip; one is deleted with its line
+	main := tree(test("TestA", "9 if x"), test("TestB", "9 if x"))
+	if p := KeepsSkipReds([]LedgerLine{line("TestA", 1), line("TestB", 1)}, []LedgerLine{line("TestB", 1)}, main, tree(test("TestB", "9 if x"))); len(p) != 0 {
+		t.Fatalf("a deleted test whose helper another lined test shares: %v", p)
+	}
+	// a test that still exists is not a carry source
+	p := KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestC", 1)}, tree(test("TestA", "9 if x")), tree(test("TestA", "9 if x"), test("TestC", "9 if x")))
+	if len(p) != 2 || !strings.Contains(p[0], "skip-red a:TestC is a new ledger line") || !strings.Contains(p[1], "skip-red a:TestA left the ledger, and the test still has 1 skips") {
+		t.Fatalf("a carry off a test that still skips: %v", p)
+	}
+	// a line that stays is not a carry source
+	p = KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestA", 1), line("TestC", 1)}, tree(test("TestA", "9 if x")), tree(test("TestC", "9 if x")))
+	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestC is a new ledger line") {
+		t.Fatalf("a carry off a line that stays: %v", p)
+	}
+	// one old line is carried once
+	p = KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestC", 1), line("TestD", 1)}, tree(test("TestA", "9 if x")), tree(test("TestC", "9 if x"), test("TestD", "9 if x")))
+	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestD is a new ledger line") {
+		t.Fatalf("one line carried twice: %v", p)
+	}
+	// a carry goes to a new test only
+	p = KeepsSkipReds([]LedgerLine{line("TestA", 1)}, []LedgerLine{line("TestB", 1)}, main, tree(test("TestB", "9 if x")))
+	if len(p) != 1 || !strings.Contains(p[0], "skip-red a:TestB is a new ledger line") {
+		t.Fatalf("a carry onto a test main holds: %v", p)
+	}
+	// two renamed tests sharing a skip: each line goes to its own count
+	both := tree(test("TestA", "9 if x", "12 if y"), test("TestB", "9 if x"))
+	renamed := tree(test("TestA2", "9 if x", "12 if y"), test("TestB2", "9 if x"))
+	if p := KeepsSkipReds([]LedgerLine{line("TestA", 2), line("TestB", 1)}, []LedgerLine{line("TestB2", 1), line("TestA2", 2)}, both, renamed); len(p) != 0 {
+		t.Fatalf("two renames sharing a skip: %v", p)
 	}
 }

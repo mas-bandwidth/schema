@@ -238,13 +238,16 @@ func SkipReds(ledger []LedgerLine) []LedgerLine {
 // KeepsSkipReds holds the skip-red lines to the ledger they replace (main's
 // ledger old, read against main's tree before; res is this tree). A line is
 // never added and never grows. It may leave only when its test's skips are
-// gone, or its test is gone and no test reaches its skips any more. A test
-// renamed or moved takes its line with it: the line under the new place is a
-// carry, not an addition, when the new test reaches a skip the old one
-// reached (the same file and condition) and counts no more skips. A skip is
-// told apart from its line number, which edits move, by its file and its
-// condition. Without before, a line whose test is gone cannot be told from a
-// rename, so it is refused.
+// gone, or its test is gone and no new test reaches its skips. A test renamed
+// or moved takes its line with it: the line under the new place is a carry,
+// not an addition, when its test is new (main's tree does not hold it), the
+// old test is gone, the new test reaches a skip the old one reached (the same
+// file and condition), and it counts no more skips; a line of the same count
+// is matched first, and each old line is carried once. A skip is told apart
+// from its line number, which edits move, by its file and its condition, and
+// only new tests are compared, so tests that share a helper's skip do not
+// hold each other's lines. Without before, a line whose test is gone cannot
+// be told from a rename, so it is refused.
 func KeepsSkipReds(old, now []LedgerLine, before, res *Result) []string {
 	was, is := map[string]LedgerLine{}, map[string]LedgerLine{}
 	for _, l := range SkipReds(old) {
@@ -256,8 +259,17 @@ func KeepsSkipReds(old, now []LedgerLine, before, res *Result) []string {
 	skips := skipSites(res)
 	nowAt := skipKeys(res)
 	var beforeAt map[string]map[string]bool
+	var inBefore map[string]int
 	if before != nil {
 		beforeAt = skipKeys(before)
+		inBefore = skipSites(before)
+	}
+	isNew := func(place string) bool {
+		if before == nil {
+			return false
+		}
+		_, held := inBefore[place]
+		return !held
 	}
 	shares := func(a, b map[string]bool) string {
 		var hit []string
@@ -272,34 +284,42 @@ func KeepsSkipReds(old, now []LedgerLine, before, res *Result) []string {
 		}
 		return hit[0]
 	}
+	// gone is each old line whose test this tree no longer holds: the only
+	// lines a renamed or moved test can carry.
+	gone := func(d LedgerLine) bool {
+		_, stays := is[d.Dir]
+		_, exists := skips[d.Dir]
+		return !stays && !exists
+	}
 	var problems []string
-	carried := map[string]bool{}
+	carried := map[string]bool{} // old place -> carried
+	from := map[string]string{}  // new place -> the old place it carries
+	for _, exact := range []bool{true, false} {
+		for _, l := range SkipReds(now) {
+			if _, ok := was[l.Dir]; ok || from[l.Dir] != "" || !isNew(l.Dir) {
+				continue
+			}
+			for _, d := range SkipReds(old) {
+				if carried[d.Dir] || !gone(d) || l.Count > d.Count || exact && l.Count != d.Count {
+					continue
+				}
+				if shares(beforeAt[d.Dir], nowAt[l.Dir]) != "" {
+					from[l.Dir], carried[d.Dir] = d.Dir, true
+					break
+				}
+			}
+		}
+	}
 	for _, l := range SkipReds(now) {
-		b, ok := was[l.Dir]
-		if ok {
+		if b, ok := was[l.Dir]; ok {
 			if l.Count > b.Count {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s %s grew from %d to %d skips: the ledger only shrinks, so add no skip to a test that hides a red", LedgerPath, l.Line, l.Kind, l.Dir, b.Count, l.Count))
 			}
 			continue
 		}
-		from := ""
-		for _, d := range SkipReds(old) {
-			if _, stays := is[d.Dir]; stays || carried[d.Dir] || l.Count > d.Count {
-				continue
-			}
-			if _, exists := skips[d.Dir]; exists {
-				continue
-			}
-			if shares(beforeAt[d.Dir], nowAt[l.Dir]) != "" {
-				from = d.Dir
-				break
-			}
-		}
-		if from == "" {
+		if from[l.Dir] == "" {
 			problems = append(problems, fmt.Sprintf("%s:%d: %s %s is a new ledger line: the ledger only shrinks, so remove the skip and fix the red it hides", LedgerPath, l.Line, l.Kind, l.Dir))
-			continue
 		}
-		carried[from] = true
 	}
 	for _, l := range SkipReds(old) {
 		if _, kept := is[l.Dir]; kept || carried[l.Dir] {
@@ -317,13 +337,16 @@ func KeepsSkipReds(old, now []LedgerLine, before, res *Result) []string {
 		}
 		var by []string
 		for place, at := range nowAt {
+			if _, lined := is[place]; lined || !isNew(place) {
+				continue
+			}
 			if site := shares(beforeAt[l.Dir], at); site != "" {
 				by = append(by, place+" (at "+site+")")
 			}
 		}
 		sort.Strings(by)
 		if len(by) > 0 {
-			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger with its test, and its skip is still reached by %s: a renamed or moved test takes its line, so set the line's place to the test that holds the skip", LedgerPath, l.Kind, l.Dir, strings.Join(by, ", ")))
+			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger with its test, and its skip is still reached by %s, a new test: a renamed or moved test takes its line, so set the line's place to the test that holds the skip", LedgerPath, l.Kind, l.Dir, strings.Join(by, ", ")))
 		}
 	}
 	return problems

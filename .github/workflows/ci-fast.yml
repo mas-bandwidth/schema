@@ -3165,7 +3165,8 @@ jobs:
           git fetch --quiet --depth 1 origin main
           # an exported tree, not a worktree: a worktree stays registered in
           # .git on a persistent runner and refuses the next job
-          rm -rf "$RUNNER_TEMP/main-tree" && mkdir -p "$RUNNER_TEMP/main-tree"
+          rm -rf "$RUNNER_TEMP/main-tree"
+          mkdir -p "$RUNNER_TEMP/main-tree"
           git archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/main-tree"
           if git cat-file -e FETCH_HEAD:test/registry/unmoved.tsv; then
             git show FETCH_HEAD:test/registry/unmoved.tsv > "$RUNNER_TEMP/unmoved-main.tsv"

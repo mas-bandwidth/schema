@@ -207,9 +207,10 @@ becomes either its tier or a tool its runner must carry.
 
 Every test the extract finds is either a registry row or counted in the unmoved
 ledger, [`test/registry/unmoved.tsv`](../test/registry/unmoved.tsv). The extract
-reads the files git tracks or would track: what git ignores (build output, a
-build's lock files, scratch) is not a test. A ledger line is a kind, a place,
-an exact count, the layer that moves those tests in, and the reason they wait.
+reads the files git tracks or would track: what the repository's `.gitignore`
+files ignore (build output, a build's lock files, scratch) is not a test. A
+ledger line is a kind, a place, an exact count, the layer that moves those
+tests in, and the reason they wait.
 Two checks hold this:
 
 - `TestEveryTestIsARowOrInTheLedger` (unit tier, every pull request) holds the

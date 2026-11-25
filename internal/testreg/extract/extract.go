@@ -127,17 +127,18 @@ func skipDir(rel, name string) bool {
 	return false
 }
 
-// ignored is every path under root that git ignores (build output, lock
-// files a build writes, scratch), each directory with a trailing slash. A
-// root without .git (a fixture, an exported tree) has none; a git that cannot
-// answer is an error, never an empty set.
+// ignored is every path under root that the repository's .gitignore files
+// ignore (build output, lock files a build writes, scratch), each directory
+// with a trailing slash; a person's own excludes are not read, so every
+// checkout counts the same. A root without .git (a fixture, an exported tree)
+// has none; a git that cannot answer is an error, never an empty set.
 func ignored(root string) (map[string]bool, error) {
 	if _, err := os.Stat(filepath.Join(root, ".git")); errors.Is(err, os.ErrNotExist) {
 		return map[string]bool{}, nil
 	} else if err != nil {
 		return nil, err
 	}
-	out, err := exec.Command("git", "-C", root, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z").Output()
+	out, err := exec.Command("git", "-C", root, "ls-files", "--others", "--ignored", "--exclude-per-directory=.gitignore", "--directory", "-z").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-files in %s, to leave out what git ignores: %w", root, err)
 	}

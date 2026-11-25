@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 70.
+Unit tests every language answers: 0. Language-free tests: 72.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -23,12 +23,13 @@ Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its r
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
 
-#### `tooling` family `schema-test`, 13 tests
+#### `tooling` family `schema-test`, 14 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.tooling.schema-test.a-plant-passes-only-when-its-target-goes-red` | `gotest` | Go test TestAPlantPassesOnlyWhenItsTargetGoesRed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAPlantPassesOnlyWhenItsTargetGoesRed` | the Go test passes | `tools/schema-test/main_test.go:73` |
 | `none.unit.tooling.schema-test.a-run-that-selects-nothing-still-prints-its-counts` | `gotest` | Go test TestARunThatSelectsNothingStillPrintsItsCounts in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestARunThatSelectsNothingStillPrintsItsCounts` | the Go test passes | `tools/schema-test/main_test.go:169` |
+| `none.unit.tooling.schema-test.extract-holds-a-renamed-skip-red-test` | `gotest` | Go test TestExtractHoldsARenamedSkipRedTest in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsARenamedSkipRedTest` | the Go test passes | `tools/schema-test/extract_test.go:177` |
 | `none.unit.tooling.schema-test.extract-holds-the-ledger-to-the-tree` | `gotest` | Go test TestExtractHoldsTheLedgerToTheTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractHoldsTheLedgerToTheTree` | the Go test passes | `tools/schema-test/extract_test.go:118` |
 | `none.unit.tooling.schema-test.extract-names-a-new-test-since-main` | `gotest` | Go test TestExtractNamesANewTestSinceMain in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractNamesANewTestSinceMain` | the Go test passes | `tools/schema-test/extract_test.go:70` |
 | `none.unit.tooling.schema-test.extract-refuses-a-dropped-skip-red-line` | `gotest` | Go test TestExtractRefusesADroppedSkipRedLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesADroppedSkipRedLine` | the Go test passes | `tools/schema-test/extract_test.go:90` |
@@ -86,10 +87,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.unrepresentable-is-data-not-a-name` | `gotest` | Go test TestUnrepresentableIsDataNotAName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnrepresentableIsDataNotAName` | the Go test passes | `internal/testreg/run_test.go:162` |
 | `none.unit.tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest` | Go test TestWildcardsExpandToAnExplicitList in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWildcardsExpandToAnExplicitList` | the Go test passes | `internal/testreg/run_test.go:279` |
 
-#### `tooling` family `testreg-extract`, 12 tests
+#### `tooling` family `testreg-extract`, 13 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.testreg-extract.a-carry-is-a-rename-and-nothing-else` | `gotest` | Go test TestACarryIsARenameAndNothingElse in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestACarryIsARenameAndNothingElse` | the Go test passes | `internal/testreg/extract/extract_test.go:451` |
 | `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:126` |
 | `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:309` |
 | `none.unit.tooling.testreg-extract.a-skip-red-line-stays-while-its-skip-does` | `gotest` | Go test TestASkipRedLineStaysWhileItsSkipDoes in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASkipRedLineStaysWhileItsSkipDoes` | the Go test passes | `internal/testreg/extract/extract_test.go:254` |

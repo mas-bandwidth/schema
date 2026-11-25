@@ -171,3 +171,26 @@ func TestWriteLedgerRefusesAnUnreadableTree(t *testing.T) {
 		t.Fatalf("the ledger was rewritten:\n%s", after)
 	}
 }
+
+// TestExtractHoldsARenamedSkipRedTest: with main's tree and ledger, a test
+// renamed with its skip-red line dropped fails the command by the new name.
+func TestExtractHoldsARenamedSkipRedTest(t *testing.T) {
+	t.Parallel()
+	main, root := extractRoot(t), extractRoot(t)
+	src := filepath.Join(root, "pkg", "a_test.go")
+	body, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(src, bytes.Replace(body, []byte("TestHides"), []byte("TestHidden"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, extract.LedgerPath), []byte("# h\ngo-test\tpkg\t1\tL3\twaits\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err = extractCmd([]string{"--root", root, "--since", main, "--shrinks-from", filepath.Join(main, extract.LedgerPath)}, &out)
+	if err == nil || !strings.Contains(out.String(), "skip-red pkg:TestHides left the ledger with its test, and its skip is still reached by pkg:TestHidden") {
+		t.Fatalf("a renamed test that left its line behind passed (err %v):\n%s", err, out.String())
+	}
+}
