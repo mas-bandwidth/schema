@@ -19,7 +19,7 @@ go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them
 go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/baseline	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/check	123	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	330	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/ci	329	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/ci/hostilecorpus	10	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/ccommon	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -36,7 +36,7 @@ go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's a
 go-test	internal/codegen/elixirtable	291	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/golang	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/goose	10	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	internal/codegen/goosetable	196	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
+go-test	internal/codegen/goosetable	195	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/gotable	395	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/gotable/fuzzunit	35	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/java	19	L5	per-language (java) Go tests: java's adapter runs them when their families move in
@@ -53,7 +53,7 @@ go-test	internal/codegen/moo	26	L5	per-language (moo) Go tests: moo's adapter ru
 go-test	internal/codegen/moo/moorun	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	internal/codegen/mootable	257	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	internal/codegen/python	37	L5	per-language (python) Go tests: python's adapter runs them when their families move in
-go-test	internal/codegen/pythontable	530	L5	per-language (python) Go tests: python's adapter runs them when their families move in
+go-test	internal/codegen/pythontable	529	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	internal/codegen/ruby	17	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	internal/codegen/rubytable	66	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	internal/codegen/rust	6	L5	per-language (rust) Go tests: rust's adapter runs them when their families move in
@@ -349,7 +349,7 @@ make-target	make/unity.mk	4	L6	make gates: the make adapter runs them
 make-target	make/verify-reuse.mk	1	L6	make gates: the make adapter runs them
 make-target	make/verify-vm.mk	43	L6	make gates: the make adapter runs them
 make-target	make/verify-widen-18.mk	8	L6	make gates: the make adapter runs them
-negative-control	(excluded)	27	L6	negative controls: the plant adapter runs them
+negative-control	(excluded)	26	L6	negative controls: the plant adapter runs them
 negative-control	base-1	10	L6	negative controls: the plant adapter runs them
 negative-control	base-2-1	3	L6	negative controls: the plant adapter runs them
 negative-control	base-2-2	3	L6	negative controls: the plant adapter runs them
@@ -2671,8 +2671,6 @@ skip-red	internal/codegen/squirreltable:TestSquirrelMapsMatchTheWire	1	L5	maps_t
 skip-red	internal/codegen/squirreltable:TestSquirrelMapWireCountRefusal	1	L5	maps_test.go:275 (layer 4, the whole test) hides a red: unskipped, the past-L oracle refuses where the test expects a tolerant read. Re-pin as a verdict (docs/plans/strict-only.md). Measured on hetzner1 at d41e9f7e4c, SCHEMA_SLOW=1
 skip-red	internal/codegen/gotable:TestFixedVersioningUnknownCensus	1	L5	fixedversioning_test.go:859 (byte oracle not built) skips it in every row without the corpus; with make tables-fixedform-corpus it is red: "unlawful lineage wrote destination", the test still wants a refused fixed load to leave the caller's values, where SPEC-TABLES FL-03 now resets them to defaults. Red in ci-full nightly 45346851098 and on hetzner1 at d41e9f7e4c
 skip-red	internal/codegen/gotable:TestFixedVersioningUnknownCensusManyRecords	1	L5	fixedversioning_test.go:859 (byte oracle not built) skips it in every row without the corpus; with make tables-fixedform-corpus it is red: "unlawful lineage wrote destination", the same stale FL-03 expectation. Red in ci-full nightly 45346851098 and on hetzner1 at d41e9f7e4c
-skip-red	internal/codegen/squirreltable:TestSquirrelFixedFormAgreesWithTheByteOracle	1	L5	fixedform_test.go:33 (fixed-form corpus not built) skips it in every row without the corpus; with it the test is red: the appended-field invariant fails (VERSION-NEW-OLD:-1:layout_unknown:A=5), so the Squirrel appended-field lineage does not resolve. Red in ci-full nightly 45346851098 and on hetzner1 at d41e9f7e4c
-skip-red	internal/codegen/squirreltable:TestSquirrelFixedFormNegativeControl	1	L5	fixedform_test.go:33 (fixed-form corpus not built) skips it in every row without the corpus; with it the control is red before it plants: its fixture's "package neg" is refused because the Lobster target cannot express that name. Red in ci-full nightly 45346851098 and on hetzner1 at d41e9f7e4c
 skip-red	internal/codegen/darttable:TestCookWriteAnswersEveryCookWriteRowDart	2	L5	cookwrite_rows_test.go:61 skips it until make tables-dart-block-build has run, and under that target it is red on hetzner1 at d41e9f7e4c: the driver imports build/tables-generated-dart-framing/countedmin, which only tables-dart-wire-fuzz builds. Green once that output exists; no workflow runs this target
 skip-red	test/conformance/harness:TestCCollectionCookDifferential	1	L3	collections_test.go:23 skips it until make tables-c-collections-fuzz builds both native legs, and that target does not link on hetzner1 at d41e9f7e4c (undefined conformance_write_refusal_integer, test/c-tables/collections_fuzz_lists.c), so the test never runs
 skip-red	test/conformance/harness:TestCCollectionDifferential	1	L3	collections_test.go:23 skips it until make tables-c-collections-fuzz builds both native legs, and that target does not link on hetzner1 at d41e9f7e4c (undefined conformance_write_refusal_integer, test/c-tables/collections_fuzz_lists.c), so the test never runs
