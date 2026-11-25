@@ -11,6 +11,7 @@ package tablewire_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -31,7 +32,31 @@ table Bench {
 
 const engineBenchText = `{"id":42,"x":1.5,"y":-2.25,"z":3.75,"name":"the quick brown fox","flags":"123456789"}`
 
-func engineBenchModel(b *testing.B) *tabletext.Model {
+// TestEngineBenchFixtureReads holds the bench fixture to the strict reader in
+// the ordinary test pass. The BenchmarkEngine* functions run only under
+// -bench, so a fixture the engine refuses went unseen until the full run: the
+// text spelled the uint64 flags as a bare number, which docs/SPEC-TABLES.md
+// §16.2 (ruling json-wide-integers-refuse-number-token) refuses
+// kind_mismatch. The fixture must read, and the bare-number spelling of the
+// same field must still refuse, so the fixture and the rule cannot drift apart.
+func TestEngineBenchFixtureReads(t *testing.T) {
+	t.Parallel()
+	m := engineBenchModel(t)
+	engineBenchInstance(t, m)
+	bare := strings.Replace(engineBenchText, `"flags":"123456789"`, `"flags":123456789`, 1)
+	if bare == engineBenchText {
+		t.Fatal("the fixture no longer spells flags as \"123456789\": update this guard with it")
+	}
+	var r tabletext.Report
+	if m.Read(m.New(m.Lookup("Bench")), []byte(bare), &r) {
+		t.Fatalf("a bare number token for the uint64 flags read: want kind_mismatch, got %+v", r)
+	}
+	if !strings.HasPrefix(r.Reason, "kind_mismatch") {
+		t.Fatalf("a bare number token for the uint64 flags refused %q, want kind_mismatch", r.Reason)
+	}
+}
+
+func engineBenchModel(b testing.TB) *tabletext.Model {
 	b.Helper()
 	dir := b.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "Bench.schema"), []byte(engineBenchSchema), 0o644); err != nil {
@@ -49,7 +74,7 @@ func engineBenchModel(b *testing.B) *tabletext.Model {
 	return tabletext.NewModel(u)
 }
 
-func engineBenchInstance(b *testing.B, m *tabletext.Model) *tabletext.Instance {
+func engineBenchInstance(b testing.TB, m *tabletext.Model) *tabletext.Instance {
 	b.Helper()
 	inst := m.New(m.Lookup("Bench"))
 	var r tabletext.Report
