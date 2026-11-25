@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -42,7 +41,6 @@ table Root
 // in either order, is still refused.
 func TestLuaCookCheckArrayOverlapIsNearLinear(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	path := filepath.Join(t.TempDir(), "overlapcost.schema")
 	if err := os.WriteFile(path, []byte(overlapCostSchema), 0o644); err != nil {
 		t.Fatal(err)

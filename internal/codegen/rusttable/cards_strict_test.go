@@ -13,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -75,10 +74,7 @@ func requireRustcForCards(t *testing.T) string {
 			return candidate
 		}
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH")
-	}
-	t.Skip("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset")
+	t.Fatalf("rustc is not on PATH")
 	return ""
 }
 
@@ -342,7 +338,6 @@ func rustCardsCheckSurface(surface string, rows [][]string, outDir, expectedDir 
 
 func TestRustCardsStrictNames(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (builds and runs the Rust cards facade, unit tests, and 9 conformance surfaces)")
 	rustc := requireRustcForCards(t)
 	repo := rustCardsRepoRoot(t)
 	sources := rustCardsReadSources(t, repo)
@@ -357,7 +352,6 @@ func TestRustCardsStrictNames(t *testing.T) {
 
 func TestRustCardsStrictNamesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (negative controls for the Rust cards strict names and conformance surfaces)")
 	rustc := requireRustcForCards(t)
 	repo := rustCardsRepoRoot(t)
 	baseSources := rustCardsReadSources(t, repo)

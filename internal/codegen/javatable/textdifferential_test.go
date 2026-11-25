@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -168,27 +167,24 @@ public final class TextDiffProbe {
 }
 `
 
-// javaToolsRequired is javaTools, except that SCHEMA_REQUIRE_CORPUS=1 turns
-// a missing JDK into a failure by name rather than a skip.
+// javaToolsRequired is javaTools after checking that a working javac/java
+// resolves, failing by name when none does.
 func javaToolsRequired(t *testing.T) (string, string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "1" {
-		ok := false
-		if jc, j := os.Getenv("JAVAC"), os.Getenv("JAVA"); jc != "" && j != "" {
-			ok = testproc.Command(t, jc, "-version").Run() == nil
-		}
-		if !ok {
-			if jc, err := exec.LookPath("javac"); err == nil {
-				if _, err := exec.LookPath("java"); err == nil {
-					ok = testproc.Command(t, jc, "-version").Run() == nil
-				}
+	ok := false
+	if jc, j := os.Getenv("JAVAC"), os.Getenv("JAVA"); jc != "" && j != "" {
+		ok = testproc.Command(t, jc, "-version").Run() == nil
+	}
+	if !ok {
+		if jc, err := exec.LookPath("javac"); err == nil {
+			if _, err := exec.LookPath("java"); err == nil {
+				ok = testproc.Command(t, jc, "-version").Run() == nil
 			}
 		}
-		if !ok {
-			t.Fatal("SCHEMA_REQUIRE_CORPUS=1 and no working javac/java (set JAVAC and JAVA): the Java text differential cannot run")
-		}
+	}
+	if !ok {
+		t.Fatal("no working javac/java (set JAVAC and JAVA): the Java text differential cannot run")
 	}
 	return javaTools(t)
 }
@@ -200,7 +196,6 @@ func javaToolsRequired(t *testing.T) (string, string) {
 // returns the divergence messages and a non-nil error when any instance
 // differs, so the negative control asserts on what the row itself prints.
 func runTextDifferentialJava(t *testing.T, edit func(map[string][]byte)) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, javaBin := javaToolsRequired(t)

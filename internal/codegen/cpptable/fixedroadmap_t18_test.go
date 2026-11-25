@@ -28,9 +28,7 @@ package cpptable
 //
 // THIS IS A TEST-AND-EVIDENCE CARD: no emitter and no runtime changes. The
 // functional subtests cpp/E8 and cpp/R19 compile and run the generated C++
-// through cppRunVersionProbe (fixedversioning_test.go lines 199-204), so they
-// skip by name when the compiler is absent and SCHEMA_REQUIRE_CORPUS is unset,
-// and fail by name when it is set. The unit tier TestFixedCppT18OldFiles runs
+// through cppRunVersionProbe (fixedversioning_test.go lines 199-204), so they fail by name when the compiler is absent. The unit tier TestFixedCppT18OldFiles runs
 // in process only (loadUnit and the generator; no compiler, no clock, no
 // socket, no network).
 
@@ -48,7 +46,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -83,9 +80,7 @@ func t18RunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, er
 }
 
 // t18RequireCompiler is the functional subtests' gate: they compile and run C++,
-// so with no compiler on PATH they SKIP BY NAME — and under SCHEMA_REQUIRE_CORPUS
-// that skip is a FAILURE, because a suite that skips itself there would report
-// green over a row that never ran.
+// so with no compiler on PATH they FAIL BY NAME.
 func t18RequireCompiler(t *testing.T) {
 	t.Helper()
 	cxx := os.Getenv("CXX")
@@ -93,10 +88,7 @@ func t18RequireCompiler(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no C++ compiler (%s) is on PATH: %v", cxx, err)
-		}
-		t.Skipf("no C++ compiler (%s) is on PATH: %v", cxx, err)
+		t.Fatalf("no C++ compiler (%s) is on PATH: %v", cxx, err)
 	}
 }
 
@@ -313,8 +305,7 @@ const t18CleanRead = `
 // reads the deprecated pair under the explicit lock (same hash) plus the append
 // half under the sibling convention; cpp/R19 reads one Go-built OLD file per
 // appended kind. Both compile and RUN the generated C++ through the leg's own
-// probe, so an absent compiler SKIPS them by name and SCHEMA_REQUIRE_CORPUS
-// turns that skip into a failure.
+// probe, so an absent compiler fails them by name.
 func TestFixedRoadmapCppT18FieldEvolution(t *testing.T) {
 	t.Parallel()
 
@@ -469,7 +460,6 @@ func TestFixedRoadmapCppT18FieldEvolution(t *testing.T) {
 // cppRunVersionProbe's signature is untouched; this is a second entry point.
 func cppRunVersionProbeLock(t *testing.T, row, olderPath, file, body, forge string) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "a C++ compiler (it builds and runs the generated probe)")
 	t18Compiles <- struct{}{}
 	defer func() { <-t18Compiles }()
 	dir := t.TempDir()
@@ -738,7 +728,6 @@ const t18Read = `
 // TestFixedRoadmapCppT18ExactCounters is cpp/R16: the §5.4 counters, exactly.
 func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c++ compiler (the leg's own toolchain)")
 	t.Run("cpp/R16", func(t *testing.T) {
 		t.Parallel()
 

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -19,7 +17,6 @@ import (
 // between them. It then reads the same bytes back and checks the union and the
 // array survive the round trip.
 func TestUnionThenFixedByteArrayWire(t *testing.T) {
-	slowtest.Gate(t, "cargo and the serialize.rs runtime (it builds and runs the generated crate)")
 
 	const src = `package unionalign
 
@@ -134,7 +131,7 @@ func serializeRSPath(t *testing.T) string {
 			return p
 		}
 	}
-	t.Skip("no serialize.rs runtime: set SERIALIZE_RS or stage the sibling checkout")
+	t.Fatal("no serialize.rs runtime: set SERIALIZE_RS or stage the sibling checkout")
 	return ""
 }
 
@@ -158,6 +155,6 @@ func cargoPath(t *testing.T) string {
 			return c
 		}
 	}
-	t.Skip("no cargo toolchain")
+	t.Fatal("no cargo toolchain")
 	return ""
 }

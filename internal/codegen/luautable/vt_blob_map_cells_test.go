@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -199,7 +198,6 @@ func vtWant(t *testing.T) string {
 // refuses as malformed (decision 5): the "whole value or a refusal" rule.
 func TestLuauVtBlobMapCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	got := vtSuite(t, "", "")
 	if want := vtWant(t); got != want {
 		t.Fatalf("the strict read's verdicts:\n%s\nwant\n%s", got, want)
@@ -211,7 +209,6 @@ func TestLuauVtBlobMapCells(t *testing.T) {
 // repeated map key, which must refuse, to start reading: the row goes red.
 func TestLuauVtBlobMapCellsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	got := vtSuite(t, vtDupFrom, vtDupTo)
 	if want := vtWant(t); got == want {
 		t.Fatalf("the planted defect left the row green:\n%s", got)

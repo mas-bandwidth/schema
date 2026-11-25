@@ -17,13 +17,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestMooFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned moo interpreter")
 
 	u := unitFromPath(t, "test/fixed-empty-batch/Batch.schema")
 	g := fixedUnit(t, u, nil)

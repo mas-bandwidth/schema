@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestRetainedRecordsReturnToTheirOwnBody pins docs/SPEC-TABLES.md §6.6 at
@@ -28,7 +26,6 @@ import (
 // seven nested records it left behind.
 func TestRetainedRecordsReturnToTheirOwnBody(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "elixir (it compiles and runs the generated unit)")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)

@@ -10,7 +10,7 @@ package elixirtable
 // body it emits it with, so the harness is reachable on a tree that never built
 // the C++ reference corpus and never carries a sibling runtime checkout: the
 // compile-and-run half of this leg's fixed form is fixedversioning_test.go,
-// which skips exactly there.
+// which fails exactly there.
 //
 // elixir/E6 [weak]: Renaming uses the declared identity: a field's table-wire
 // id derives from its `was` alias, so the layout bytes of a renamed field equal

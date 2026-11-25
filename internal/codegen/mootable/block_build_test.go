@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -81,7 +80,6 @@ print(hex(block.buffer, bytes :: number))
 // table_blockread.moo and rebuilt through table_block.moo's Begin and Write,
 // is the golden's bytes, byte for byte.
 func TestMooBlockBuilderRebuildsTheGoldens(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_block.moo)")
 	t.Parallel()
 	byUnit := map[string]*generatedUnit{}
 	rows := manifestLines(t, "block")
@@ -151,7 +149,6 @@ func expectedBegin(bl *ir.BlockLayout, buildVersion uint64, counts []int64) []by
 // walk (the Go builder's), then an over-count and a negative count to the
 // refusal naming the array, the count and the maximum.
 func TestMooBlockBeginMatchesTheLayoutEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_block.moo)")
 	t.Parallel()
 	g := blockUnit(t)
 	blocks := ir.Blocks(g.unit)
@@ -204,7 +201,6 @@ func TestMooBlockBeginMatchesTheLayoutEngine(t *testing.T) {
 // built count, a float that is not finite, and a text past its bound each
 // refuse by name, and a clean write of the same value does not.
 func TestMooBlockWriteRefusesWhatItCannotHold(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_block.moo)")
 	t.Parallel()
 	g := blockUnit(t)
 	row := manifestLines(t, "block")[0]
@@ -242,7 +238,6 @@ func TestMooBlockWriteRefusesWhatItCannotHold(t *testing.T) {
 // aligned leads and refuses unaligned_base at every other, the alignment being
 // the last clause (nothing else about the block changes with the lead).
 func TestMooBlockOpenHoldsTheBaseAlignment(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
 	byUnit := map[string]*generatedUnit{}
 	rows := manifestLines(t, "block")
@@ -295,7 +290,6 @@ func TestMooBlockOpenHoldsTheBaseAlignment(t *testing.T) {
 // array start's rounding removed (the goldens and the layout engine), and the
 // write's finite check removed (the NaN refusal).
 func TestMooBlockBuilderNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_block.moo)")
 	t.Parallel()
 	for _, c := range []struct{ name, anchor, repl string }{
 		{"align", "\t\t\toffset = roundUp(offset, f.startAlign)\n", "\t\t\toffset = roundUp(offset, 1)\n"},

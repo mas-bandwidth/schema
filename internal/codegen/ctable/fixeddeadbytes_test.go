@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -24,7 +23,6 @@ const vecRoot = "DeadRoot"
 // destination byte, and reads each control and saves it back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C compiler (it runs the generated reader over the dead-byte corpus)")
 	corpus := cFixedCorpus(t)
 	schema := cReadSchema(t, "DeadBytes")
 	snake := ir.RustSnake(vecRoot)

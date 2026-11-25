@@ -38,7 +38,6 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -501,7 +500,6 @@ func TestGeneratedConstantsAgreeWithCheckerRandom(t *testing.T) {
 // ---- the slow half: compile, run, compare ----
 
 func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
-	slowtest.Gate(t, "the C, C++, Go, Node, Rust, .NET, Dart and Java toolchains (each compiles and runs the generated constants)")
 	t.Parallel()
 	withTypes := unitFromSource(t, constAgreeConsts+constAgreeTypes)
 	constsOnly := unitFromSource(t, constAgreeConsts)
@@ -569,7 +567,7 @@ func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
 		t.Parallel()
 		dotnet := findDotnet()
 		if dotnet == "" {
-			t.Skip("dotnet unavailable")
+			t.Fatal("no dotnet on PATH or in ~/.dotnet")
 		}
 		dir := agreeGenerate(t, constsOnly, "cs", "")
 		agreeWrite(t, filepath.Join(dir, "probe.csproj"), `<Project Sdk="Microsoft.NET.Sdk">
@@ -721,7 +719,7 @@ func agreeTool(t *testing.T, name string) string {
 	t.Helper()
 	p, err := exec.LookPath(name)
 	if err != nil {
-		t.Skipf("%s unavailable: %v", name, err)
+		t.Fatalf("no %s on PATH: %v", name, err)
 	}
 	return p
 }

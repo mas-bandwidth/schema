@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -323,7 +322,6 @@ func runJavaDepthBoundaryProbe(t *testing.T, u *ir.Unit, ann []byte, cases []dep
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runJavaDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {

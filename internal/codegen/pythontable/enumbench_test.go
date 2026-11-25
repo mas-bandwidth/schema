@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const enumBenchSchema = `package enumbench
@@ -40,10 +39,9 @@ table Many
 // functional test; the numbers it logs are the record in docs/PORT-PYTHON.md
 // and it asserts only that both lookups read and write the same bytes.
 //
-// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+// Functional (pythonBinary).
 func TestPythonEnumLookupBench(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it times the emitted table runtime)")
 	u := loadUnit(t, enumBenchSchema)
 	files, err := Generate(u)
 	if err != nil {

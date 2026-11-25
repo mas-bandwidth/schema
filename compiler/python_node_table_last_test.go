@@ -6,11 +6,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonNodeTableLastThroughDriver(t *testing.T) {
-	slowtest.Gate(t, "public Python compiler and pinned readers")
 	u := unitFromSource(t, `package mapdemo
 fixed table Item { count int32 }
 table Crews {

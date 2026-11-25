@@ -35,7 +35,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -381,7 +380,7 @@ func pythonVTMapRowsFailures(t *testing.T, mutate func(*testing.T, map[string][]
 
 // TestPythonVtMapsRows holds the map row over the manifest. Its completeness
 // check runs in every build; the read-then-write runs the pinned interpreters
-// (functional: run with SCHEMA_SLOW=1).
+// (functional.
 func TestPythonVtMapsRows(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -419,7 +418,6 @@ func TestPythonVtMapsRows(t *testing.T) {
 		t.Fatalf("pythonVTMapRows is not the manifest's map rows in manifest order: not held %v, held but reach no map %v", missing, extra)
 	}
 
-	slowtest.Gate(t, "both pinned Python interpreters (it runs the emitted table runtime)")
 	fails, held := pythonVTMapRowsFailures(t, nil)
 	for _, f := range fails {
 		t.Error(f)
@@ -435,10 +433,9 @@ func TestPythonVtMapsRows(t *testing.T) {
 // key-order test inverted (every map of two or more entries refuses), and the
 // writer's entry count one too many (no saved map is the canonical wire).
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtMapsRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters (it runs the emitted table runtime)")
 	plant := func(from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			t.Helper()

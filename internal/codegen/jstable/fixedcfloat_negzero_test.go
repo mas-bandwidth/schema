@@ -16,12 +16,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated reader over the negative-zero vector)")
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
 	src := jsReadSchema(t, "FNZ")

@@ -17,14 +17,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestDartCookWriteZeroesDeadSlots(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (it runs the generated cook writer)")
 	dartBin := dartBinary(t)
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

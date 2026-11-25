@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -20,7 +19,6 @@ import (
 // bytes produced by the generated C++ reference, on both pinned interpreters.
 func TestPythonVtPointerArraysCppIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	u := loadNamedUnit(t, "PtrArr.schema", pointerArraysSchema)
 	files, err := cpp.Generate(u)
 	if err != nil {

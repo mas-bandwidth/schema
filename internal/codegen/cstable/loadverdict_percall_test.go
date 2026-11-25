@@ -41,7 +41,6 @@ table Root
 
 func TestCSharpLoadVerdictPerCall(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	files := generateFiles(t, "Probe", csLoadVerdictSchema)
 	if err := csLoadVerdictNoSharedReport(files); err != nil {
 		t.Error(err)

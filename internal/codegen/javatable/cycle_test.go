@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -176,7 +175,6 @@ func javaCycleOverwritten(t *testing.T, m *tabletext.Model) []byte {
 }
 
 func TestJavaCyclicWireIsDamage(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java cycle gate)")
 	t.Parallel()
 	u, m := javaCycleModel(t, javaCycleSchema)
 	_, mw := javaCycleModel(t, javaCycleWriterSchema)

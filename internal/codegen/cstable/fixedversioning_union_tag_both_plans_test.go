@@ -3,7 +3,6 @@ package cstable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +26,6 @@ import (
 // None and seq at its declared default; the same verdict on both plans is the
 // row's whole proof.
 func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()

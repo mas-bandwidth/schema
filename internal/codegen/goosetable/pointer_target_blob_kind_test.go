@@ -41,7 +41,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -440,7 +439,6 @@ func logBlobKindReasons(t *testing.T, rows []blobKindCase, answers map[string]bl
 
 func TestGoosePointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the generated reader)")
 
 	rows := blobKindCases(t)
 	byUnit := map[string][]blobKindCase{}

@@ -31,7 +31,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `mapwalk/` | map walk | `go test ./internal/mapwalk` | `go test ./internal/mapwalk` |
 | `memceiling/` | memory ceiling for allocating tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
 | `modulemove/` | pin and release boundary of the /v3 module move | `go test ./internal/modulemove` | `go test ./internal/modulemove` |
-| `nameemit/` | name-corpus reader for the emit legs | `go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds` | `SCHEMA_SLOW=1 go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds` |
+| `nameemit/` | name-corpus reader for the emit legs | `go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds` | `go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds` |
 | `nightlyrows/` | PR-tier nightly-fast row parser and selector | `go test ./internal/nightlyrows` | `go test ./internal/nightlyrows` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `pathid/` | where a path lands, by the file system's identity | `go test ./internal/pathid` | `go test ./internal/pathid` |
@@ -41,8 +41,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |
 | `runmatch/` | go test -run selection, as Go matches it | `go test ./internal/runmatch` | `go test ./internal/runmatch` |
 | `scanner/` | tokenizer | `go test ./internal/parser` | `go test ./internal/parser` |
-| `skipledger/` | skip ledger: every reason a test may skip for | `go test ./internal/skipledger` | `go test ./internal/ci -run Skip` |
-| `slowtest/` | 1-2 minute unit-test gate | `make slow-gate-scan` | `make slow-gate-scan` |
+| `slowtest/` | names the tool or program a test needs, and fails when it is missing | `go test ./internal/slowtest` | `go test ./internal/slowtest` |
 | `tablecook/` | cook form | `go test ./internal/tablecook` | `go test ./internal/tablecook` |
 | `tablenames/` | per-language claimed names | `go test ./compiler` | `go test ./compiler` |
 | `tablepack/` | pack/unpack | `go test ./internal/tablepack` | `go test ./internal/tablepack` |
@@ -51,6 +50,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `testinputs/` | repository files a test's child process reads, recorded for the go test cache | `go test ./internal/testinputs` | `go test ./internal/testinputs` |
 | `testproc/` | bounded child processes for tests | `go test ./internal/testproc` | `go test ./internal/testproc` |
 | `testreg/` | the test registry: load, select, shard, run, cover, extract | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test coverage` |
+| `testselect/` | a -run/-not selection listed as test names at the root, less the nightly tier | `go test ./internal/testselect` | `go run ./tools/gotestselect -not X ./pkg` |
 | `vacuous/` | Go tests that pass checking nothing | `go test ./internal/vacuous` | `go test ./internal/ci -run TestEveryGoTestCanFail` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |

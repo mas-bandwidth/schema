@@ -1,14 +1,12 @@
 package rusttable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"strings"
 	"testing"
 )
 
 func TestRustRequiredRangeWritersNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (Required active range preflight)")
 	keyedRequireRustc(t)
 	source, e := os.ReadFile("../../../testdata/conformance/feature-witnesses/required/range-writers/Probe.schema")
 	if e != nil {

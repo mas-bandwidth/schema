@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -110,13 +109,9 @@ func TestFixedByteArrayAfterUnionWireC(t *testing.T) {
 // against unionByteArrayLayout, reads them back, and re-encodes.
 func runUnionByteArrayProbe(t *testing.T, files map[string][]byte) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the c compiler and the serialize.c sibling")
 	serialize, ok := setterSerializeDir(t)
 	if !ok {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout); SCHEMA_REQUIRE_CORPUS says this probe must run", serialize)
-		}
-		t.Skipf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout): the probe cannot compile", serialize)
+		t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout)", serialize)
 	}
 
 	dir := t.TempDir()

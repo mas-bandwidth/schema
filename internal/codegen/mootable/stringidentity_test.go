@@ -33,7 +33,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -261,7 +260,6 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 }
 
 func TestMooStringIdentity(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, b := range stringIdentityGate(t, nil) {
 		t.Error(b)
@@ -276,7 +274,6 @@ func TestMooStringIdentity(t *testing.T) {
 //   - the save's blob_shared refusal is dropped, so one buffer named twice
 //     is written once and referenced twice: the one-buffer row must go red.
 func TestMooStringIdentityNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, ctl := range []struct {
 		name, from, to string

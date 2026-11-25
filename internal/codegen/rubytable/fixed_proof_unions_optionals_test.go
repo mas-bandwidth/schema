@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -105,7 +104,6 @@ end
 
 func TestRubyFixedProofUnionsOptionals(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and live C++ fixed-form oracle")
 	runner := rubyUnionOptionalRunner{}
 	t.Run("values", func(t *testing.T) { fixedproof.RunValueRows(t, runner, rubyUnionOptionalRows...) })
 	t.Run("controls", func(t *testing.T) { fixedproof.RunNegativeControlRows(t, runner, rubyUnionOptionalRows...) })

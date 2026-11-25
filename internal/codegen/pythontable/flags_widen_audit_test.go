@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -13,7 +12,6 @@ import (
 // A historical unsigned integer field can widen into a flags field; the
 // reader must count the widening and write the current canonical wire.
 func TestPythonAuditWidenFlags(t *testing.T) {
-	slowtest.Gate(t, "unsigned historical field to flags")
 	old := loadUnit(t, "package flagwiden\ntable Root { value uint8 }\n")
 	next := loadUnit(t, "package flagwiden\nflags Caps { A, B, C }\ntable Root { value Caps }\n")
 	wire := wideEngineWire(t, old, "Root", `{"value":7}`)
@@ -50,7 +48,6 @@ print(v.save().hex())
 
 // The same unsigned-to-flags evolution must work in supported containers.
 func TestPythonAuditWidenFlagsContainers(t *testing.T) {
-	slowtest.Gate(t, "historical uint8 to flags in containers")
 	for _, tc := range []struct{ name, old, new, text, check string }{
 		{"array", `package flagcontainer
  table Root { values []uint8 }`, `package flagcontainer

@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestJavaDriverAnswersBothOptInLegs drives the Java conformance driver over
@@ -18,7 +16,6 @@ import (
 // omitting leg is not asked has no answer, and the controls on the required
 // units answer the same on both.
 func TestJavaDriverAnswersBothOptInLegs(t *testing.T) {
-	slowtest.Gate(t, "the JDK and the conformance corpus")
 	root := javaConformanceRoot(t)
 	javaConformanceBuild(t, root)
 

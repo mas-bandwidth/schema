@@ -62,6 +62,7 @@ const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
 // hook is silenced for the duration: the panic IS the pass.
 fn expect_assert<F: FnOnce()>(f: F, what: &str) {
     if !ASSERTS_ENABLED {
+        check(false, &format!("{what}: asserts are off in this build: this row needs the assert build"));
         return;
     }
     let previous = std::panic::take_hook();

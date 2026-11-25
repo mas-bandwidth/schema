@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -187,10 +185,9 @@ int main()
 // cases the Go oracle pins (internal/codegen/gotable/strictdefault_test.go).
 func TestCPPFromJsonIsStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated C++ text form is C++: no c++ on PATH")
+		t.Fatal("the generated C++ text form is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, cppStrictFromJsonSchema), "cpp", Options{})
 	if err != nil {

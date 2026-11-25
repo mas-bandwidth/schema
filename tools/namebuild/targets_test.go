@@ -1,11 +1,9 @@
-//go:build namebuild_targets
-
 // The per-target tests build every accepted name with every target's
 // toolchain: minutes of every toolchain, so they are the registry's nightly
 // rows (codegen.name-buildability.<case>), run through make
-// name-buildability-run with -tags namebuild_targets. A plain go test of this
-// package never compiles them, so no fast lane runs them; a registry run
-// without the tag finds no such test and fails every instance by name.
+// name-buildability-run. They are left out of every per-change row at the
+// root, by name (tools/gotestselect reads their rows' nightly tier through
+// internal/testselect.Nightly); nothing in them decides whether they run.
 
 package namebuild
 

@@ -21,7 +21,7 @@ set -eu
 
 # check <log>: the cook-write verdict of one harness log
 check() {
-	line=$(grep -E '^cook-write ' "$1" | sed 's/ *$//' || true)
+	line=$(grep -E '^cook-write ' "$1" | sed 's/ *$//')
 	if [ -z "$line" ]; then
 		echo "luau cook-write: the harness log $1 has no cook-write line" >&2
 		return 1
@@ -51,7 +51,7 @@ gate)
 	out=build/conformance-luau-cook-write
 	rm -rf "$out"
 	mkdir -p "$out"
-	build/conformance-harness run --only luau --work "$out/work" > "$out/log" 2>&1 || true
+	build/conformance-harness run --only luau --work "$out/work" > "$out/log" 2>&1 || echo "luau cook-write: the harness exited $? over the whole leg; this verdict reads the cook-write line alone" >&2
 	if ! check "$out/log"; then
 		cat "$out/log" >&2
 		exit 1
@@ -108,7 +108,7 @@ cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" "\$2
 EOF
 	chmod +x "$out/driver"
 	printf 'luau %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
-	build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+	build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || echo "luau cook-write: the harness exited $? over the whole leg; this verdict reads the cook-write line alone" >&2
 	if check "$out/log" > "$out/check" 2>&1; then
 		echo "negative control failed: the dead-slot fault left luau cook-write green" >&2
 		cat "$out/log" >&2

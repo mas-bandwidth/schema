@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE BIRTH VALUE OF A COUNTED ARRAY IN C# (modern) (docs/SPEC-TABLES.md
@@ -24,7 +23,6 @@ import (
 // element kind (test/verify-tablegen/pinned.go, pin:ci32:* and pin:crec:*).
 func TestCSharpCountedArrayBirthValue(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C# writers)")
 	dir := t.TempDir()
 	u := unitFrom(t, countedBirthSchema)
 	files, err := csharp.Generate(u)

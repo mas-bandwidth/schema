@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -20,7 +19,6 @@ import (
 // leg refuses answers a reason from report.err(), never null.
 func TestJavaScriptTextRepeatedKeyEveryObject(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 	u := unitFrom(t, `package probe
 table Child {

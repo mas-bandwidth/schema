@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -126,7 +125,6 @@ print("ok " .. tostring(n) .. " " .. table.concat(parts))
 // pointers, blobs, unions, maps and keyed arrays, each round-tripped from a
 // wire the Go reference engine wrote.
 func TestMooTableConstructsMatchTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, c := range constructCases {
 		t.Run(c.name, func(t *testing.T) {
@@ -154,7 +152,6 @@ func TestMooTableConstructsMatchTheGoEngine(t *testing.T) {
 // emitted save.moo's id table count and requires the construct gate's
 // comparison to go red, so the gate can fail.
 func TestMooTableConstructsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	c := constructCases[0]
 	u := unitFromSource(t, c.schema)

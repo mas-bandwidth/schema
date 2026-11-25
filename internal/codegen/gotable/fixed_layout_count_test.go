@@ -3,8 +3,6 @@ package gotable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestFixedLayoutCountPreserved tests the closure walk after the byte-length
@@ -12,7 +10,6 @@ import (
 // count would otherwise require more than 36 GB of layout bytes.
 func TestFixedLayoutCountPreserved(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain")
 	u := unitFrom(t, `package probedemo
 fixed table Root { x int32 }
 `)

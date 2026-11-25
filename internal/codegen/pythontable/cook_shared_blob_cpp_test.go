@@ -10,14 +10,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestPythonCookSharedBlobCppIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned interpreters")
 	u := loadUnit(t, `package cookshared
  table Root {
    left *bytes

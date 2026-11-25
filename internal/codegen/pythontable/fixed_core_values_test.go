@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 var pythonFixedCoreRows = []string{"record-measurement", "fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection", "compiled-plans", "definition-hash", "fixed-closure", "live-extents", "writing"}
@@ -45,12 +44,10 @@ func init() {
 
 func TestPythonFixedCoreValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins and the live C++ byte oracle")
 	fixedproof.RunValueRows(t, pythonFixedProofRunner{}, pythonFixedCoreRows...)
 }
 
 func TestPythonFixedCoreValuesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins and the live C++ byte oracle")
 	fixedproof.RunNegativeControlRows(t, pythonFixedProofRunner{}, pythonFixedCoreRows...)
 }

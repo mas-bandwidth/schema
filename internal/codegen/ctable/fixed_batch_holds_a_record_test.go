@@ -119,7 +119,7 @@ func cFixedBatchProbeRun(t *testing.T, mode string, args ...string) ([]byte, err
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc: %v", err)
 	}
 	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "fixed-empty-batch", "Batch.schema"))
 	if err != nil {
@@ -174,7 +174,6 @@ func cFixedBatchProbeRun(t *testing.T, mode string, args ...string) ([]byte, err
 
 func TestCFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs a compiled C fixed-form probe")
 
 	vector := filepath.Join("..", "..", "..", "testdata", "wire", "fixed-empty-batch")
 	out, err := cFixedBatchProbeRun(t, "read",

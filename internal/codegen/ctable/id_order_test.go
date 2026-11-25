@@ -6,12 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestCWireIdOrder(t *testing.T) {
-	slowtest.Gate(t, "the C compiler and sanitizers")
 	u := unitFrom(t, "package probe\ntable Root { n int32 }\n")
 	file := func(body []byte, ids ...uint64) []byte {
 		wire := append([]byte{1}, body...)

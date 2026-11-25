@@ -19,7 +19,6 @@ import (
 // rather than copying a definition into every pointer slot (§16.7/§16.9.2).
 // Run the same documents through independently generated C++ and Go readers.
 func TestCPPTextFormSharing(t *testing.T) {
-	slowtest.Gate(t, "the C++ and Go compilers")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Fatal(err)

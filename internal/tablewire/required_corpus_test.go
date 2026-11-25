@@ -58,7 +58,6 @@ func TestRequiredCommittedCorpus(t *testing.T) {
 // The committed bytes are hand-framed; this independent generated runtime
 // reads and writes them without calling the neutral oracle.
 func TestRequiredCorpusGeneratedGo(t *testing.T) {
-	slowtest.Gate(t, "Go (it checks independent required-field corpus bytes)")
 	u, err := compiler.New().Load([]string{filepath.Join(requiredCorpus, "Probe.schema")})
 	if err != nil {
 		t.Fatal(err)

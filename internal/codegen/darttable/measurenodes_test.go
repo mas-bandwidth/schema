@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -99,7 +98,6 @@ func TestWireMeasureCountsNodeRecordsDart(t *testing.T) {
 // measureProbe runs the generated <root>WireMeasure over an oracle .bin and
 // returns the byte count it reports.
 func measureProbe(t *testing.T, wireName string, wire []byte, root, oracle string, packet map[string][]byte) int {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

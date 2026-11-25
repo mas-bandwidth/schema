@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func runFail(t *testing.T, bin string, args ...string) (string, int) {
@@ -156,7 +155,7 @@ func TestHelpListsNewLeg(t *testing.T) {
 // runs the verb there, and then asks the tree what a porter would — does it
 // build, does vet pass, does the new package's fixture test pass, does the
 // Makefile's wildcard include discover test-zig. It builds a whole tree and
-// runs the Go toolchain over it, so it sits behind slowtest.Gate.
+// runs the Go toolchain over it, so its tier is functional.
 //
 // The controls below are the review's confinement (schema#1859 item 1): every
 // output stays inside --root and is created exclusively. Each holds the same
@@ -164,10 +163,9 @@ func TestHelpListsNewLeg(t *testing.T) {
 // already there stays byte for byte.
 
 func TestNewLegZigYieldsABuildingTestingSkeleton(t *testing.T) {
-	slowtest.Gate(t, "go build, go vet and make over a copied tree")
 	for _, tool := range []string{"make", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("no %s on PATH", tool)
+			t.Fatalf("no %s on PATH", tool)
 		}
 	}
 	root, err := filepath.Abs("../..")
@@ -345,14 +343,14 @@ func zigLeg(t *testing.T) map[string][]byte {
 	return files
 }
 
-// plantSymlink plants a link, or skips where the platform refuses one.
+// plantSymlink plants a link, or fails where the platform refuses one.
 func plantSymlink(t *testing.T, target, link string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("cannot create a symlink here: %v", err)
+		t.Fatalf("cannot create a symlink here: %v", err)
 	}
 }
 
@@ -474,31 +472,6 @@ func TestScaffoldRefusesASymlinkedParentDirectory(t *testing.T) {
 		t.Errorf("pre-existing content outside --root changed: %q", got)
 	}
 	wroteNothing(t, root, files, "make/zig.mk")
-}
-
-// TestScaffoldReportsALookupErrorThatIsNotAbsence: only "does not exist" means
-// a path is free. A directory the tool cannot search is reported, and nothing
-// is written, where an os.Stat check read it as absence and went on writing.
-func TestScaffoldReportsALookupErrorThatIsNotAbsence(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs POSIX permissions that bind the caller")
-	}
-	files := zigLeg(t)
-	root := schemaTree(t)
-	mk := filepath.Join(root, "make")
-	if err := os.Chmod(mk, 0o000); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(mk, 0o755) })
-
-	err := writeNewLeg(root, files, false)
-	if err == nil || !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), "make/zig.mk") {
-		t.Fatalf("an unsearchable make/ was not reported as a lookup error naming make/zig.mk: %v", err)
-	}
-	if err := os.Chmod(mk, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	wroteNothing(t, root, files)
 }
 
 func TestScaffoldRefusesAFileWhereADirectoryGoes(t *testing.T) {

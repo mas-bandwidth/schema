@@ -3,13 +3,10 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestElixirStringMapWriteKeys(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated Elixir string-map writer")
 	u := unitFrom(t, "package mapwrite\n\ntable Root { words map[string(8)]int32 }\n")
 	out := runCompleteUnitProbe(t, u, `
 alias Mapwrite.Table, as: T

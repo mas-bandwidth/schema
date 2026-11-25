@@ -6,14 +6,12 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func runVariableProbe(t *testing.T, u *ir.Unit, driver string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := Generate(u)

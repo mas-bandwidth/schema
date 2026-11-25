@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -507,7 +506,6 @@ func luauForgeryHash(s string) uint64 {
 
 func TestLuauForgeryFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luauForgeryCost)
 	seed, n := luauForgeryKnobs(t)
 	t.Logf("Luau forgery fuzz: SEED=%#x N=%d per image", seed, n)
 	res := runLuauForgeryFuzz(t, seed, n, nil)
@@ -550,7 +548,6 @@ func luauForgeryEdit(t *testing.T, files map[string][]byte, name, old, repl stri
 // cook-check as a CheckWhole that accepted what the tool refuses.
 func TestLuauForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luauForgeryCost)
 	seed, n := luauForgeryKnobs(t)
 	t.Run("block extent bounds removed", func(t *testing.T) {
 		t.Parallel()
@@ -617,7 +614,6 @@ func luauCookWholeVerdict(t *testing.T, g *generatedUnit, rootName string, build
 // comes from the reference cook writer; future checksum work must update that
 // producer, not freeze Check/Open to the present header contract.
 func TestLuauCookCheckWholeCorpus(t *testing.T) {
-	slowtest.Gate(t, luauForgeryCost)
 	t.Parallel()
 	units, _ := readManifest(t)
 	cache := map[string]*cookUnit{}
@@ -639,9 +635,6 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 			inst := cu.m.New(cu.m.Lookup(row.root))
 			var report tabletext.Report
 			if _, err = tablewire.Decode(cu.m, inst, wire, &report); err != nil {
-				if tablewire.ReadRefusal(err) {
-					t.Skipf("reference refuses the wire: %v", err)
-				}
 				t.Fatal(err)
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
@@ -669,7 +662,6 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 // check. Meta is not a pointer target of Scene, so this also holds the complete
 // registered-type lookup independently of the root's placement closure.
 func TestLuauCookCheckWholeUnreachableNode(t *testing.T) {
-	slowtest.Gate(t, luauForgeryCost)
 	t.Parallel()
 	units, _ := readManifest(t)
 	cu := buildCookUnit(t, units, "graphdemo")
@@ -739,7 +731,6 @@ func TestLuauCookCheckWholeUnreachableNode(t *testing.T) {
 // accept it before testing the Luau scan. Header offsets below are the current
 // pre-CRC format; checksum rollout must rebuild these fixtures accordingly.
 func TestLuauCookCheckWholeMapKeys(t *testing.T) {
-	slowtest.Gate(t, luauForgeryCost)
 	t.Parallel()
 	for _, keyType := range []string{"int32", "uint64", "string(8)"} {
 		t.Run(keyType, func(t *testing.T) {

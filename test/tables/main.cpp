@@ -355,6 +355,9 @@ static void test_storage_invariants()
     profile.loadout.attachments_count = -5;
     expect_storage_assert( "nested count (measure)", [&] { (void) tabledemo::ProfileConfigMeasure( profile ); } );
     expect_storage_assert( "nested count (save)", [&] { (void) tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) ); } );
+#else
+    printf( "FAIL storage invariants: asserts are off in this build: these rows need the assert build\n" );
+    failures++;
 #endif
 
     // an out-of-range union tag refuses in measure exactly as in write

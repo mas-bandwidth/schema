@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -90,7 +89,6 @@ func TestGoAnnouncementRefusalHoldsInBothRuntimeForms(t *testing.T) {
 // accepts it) and 4097 (Announce and AnnounceMeasure answer -1).
 func TestGoAnnouncementRefusalRunsInBothRuntimeForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit in both runtime forms)")
 	for _, rt := range []Runtime{RuntimeStandalone, RuntimeShared} {
 		for _, row := range []struct {
 			entries int

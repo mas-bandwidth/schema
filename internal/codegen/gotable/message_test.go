@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -73,7 +72,6 @@ fixed table Root {
 
 	t.Run("hostile_announcement", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 
 		probeTest := `package probe
 
@@ -232,7 +230,6 @@ fixed table Root {
 
 	t.Run("declared_shapes", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 		out, err := runGeneratedEdited(t, probeSchema, declaredShapesProbeTest, nil)
 		if err != nil {
 			t.Fatalf("generated test failed: %v\n%s", err, out)

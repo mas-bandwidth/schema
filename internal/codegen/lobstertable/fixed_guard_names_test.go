@@ -8,14 +8,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Union payloads overlay their arm storage, so distinct lexical occurrences
 // can have the same byte offset. Lobster still forbids reusing their locals.
 func TestLobsterFixedNestedUnionGuardNames(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain")
 	u := fixedproof.ParseCheckUnit(t, `package probe
 union Inner {
     value uint8

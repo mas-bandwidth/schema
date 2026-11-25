@@ -14,8 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -99,7 +97,7 @@ func TestIssue710UnpackPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(dir, "x.json")); err != nil {
-		t.Skipf("symlink: %v", err)
+		t.Fatalf("symlink: %v", err)
 	}
 	if _, err := c.Unpack(u, "Root", wire, dir); err == nil {
 		t.Fatal("followed outside symlink")
@@ -227,9 +225,8 @@ func TestIssue710TableRecovery(t *testing.T) {
 
 func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 	t.Helper()
-	slowtest.Gate(t, "a C/C++ compiler")
 	if _, err := exec.LookPath(compiler); err != nil {
-		t.Skipf("%s unavailable: %v", compiler, err)
+		t.Fatalf("no %s on PATH: %v", compiler, err)
 	}
 	path := filepath.Join(dir, "test"+ext)
 	bin := filepath.Join(dir, "test")
@@ -254,13 +251,10 @@ func issue710CompileRun(t *testing.T, dir, compiler, ext, source string) {
 }
 
 // Run the emitted helpers at the actual signed length limit. The single 2 GiB
-// allocation is reused for both scans, freed before the next language runs,
-// and omitted by go test -short. No packet or consumer process is involved.
+// allocation is reused for both scans, freed before the next language runs;
+// the allocation makes its tier nightly. No packet or consumer process is involved.
 func TestIssue710PacketStringBounds(t *testing.T) {
 	t.Parallel()
-	if testing.Short() {
-		t.Skip("-short: the INT32_MAX string helper boundary requires a 2 GiB allocation")
-	}
 	u := unitFromSource(t, "package px\ntype Text { label string(8) }\n")
 	c := New()
 	for _, lang := range []string{"c", "cpp"} {

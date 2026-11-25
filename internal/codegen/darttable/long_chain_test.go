@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -17,7 +16,6 @@ import (
 
 func TestFunctionalDartLongPointerChain(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)

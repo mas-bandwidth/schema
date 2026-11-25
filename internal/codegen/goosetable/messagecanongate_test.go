@@ -23,7 +23,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -31,7 +30,6 @@ import (
 
 func TestGooseMessageCanonicalGateIsTheBuildVersion(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it reads message batches under two announced build versions)")
 
 	u, err := loadSchemaPaths([]string{filepath.Join(fixedRoot, "test", "message-one-encoding", "One.schema")})
 	if err != nil {

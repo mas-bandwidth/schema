@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -19,14 +17,13 @@ import (
 // and the same header still compiles as C.
 func TestCTablePointerHeaderIncludesFromCxx(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C and C++ compilers, once per generated table header")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("generated C compilation requires cc")
+		t.Fatal("generated C compilation requires cc")
 	}
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("generated C++ inclusion requires c++")
+		t.Fatal("generated C++ inclusion requires c++")
 	}
 	for _, path := range []string{"../tables/pointers", "../tables/blobs"} {
 		t.Run(filepath.Base(path), func(t *testing.T) {

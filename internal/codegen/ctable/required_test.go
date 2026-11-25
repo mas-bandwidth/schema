@@ -10,17 +10,15 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func runCProbe(t *testing.T, schema, probe string) {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("cc not found")
+		t.Fatal("cc not found")
 	}
 	u := unitFrom(t, schema)
 	files, err := cgen.Generate(u)

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // analyzeCorpora is every packet corpus the leg generates: each module and
@@ -40,7 +39,6 @@ func analyzeDir(t *testing.T, dir string) string {
 }
 
 func TestMooGeneratedCodeIsAnalyzerClean(t *testing.T) {
-	slowtest.Gate(t, "moo-analyze (it analyzes the generated modules)")
 	t.Parallel()
 	for _, c := range analyzeCorpora {
 		t.Run(strings.Join(c, "/"), func(t *testing.T) {
@@ -81,7 +79,6 @@ func TestMooGeneratedCodeIsAnalyzerClean(t *testing.T) {
 // generated module and requires the analyzer's output to name it: the gate
 // can go red, and a lint warning (which moo-analyze exits 0 on) counts.
 func TestMooAnalyzerGateNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo-analyze (it analyzes the generated modules)")
 	t.Parallel()
 	dir, files := generateInto(t, unitFromDir(t, repo("examples")))
 	src := string(files["Wire.moo"])

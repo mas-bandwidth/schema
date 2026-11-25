@@ -188,16 +188,12 @@ func TestCookCheckMapSlot(t *testing.T) {
 // the cook the C++ reference writes for `Army`, whose list elements each hold
 // a map, is read by the tool with no clause left owed. It is the file
 // `make tables-lists` produces, so this row is the two writers meeting. That
-// target runs this test after writing the cook, under SCHEMA_REQUIRE_CORPUS,
-// where an absent cook fails; a plain `go test` skips it by name.
+// target runs this test after writing the cook; an absent cook fails it.
 func TestCookCheckReadsTheReferencesMapHoldingCook(t *testing.T) {
 	path := "../../build/lists-cooks/army.cook"
 	file, err := os.ReadFile(path)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is absent (make tables-lists writes it): %v", path, err)
-		}
-		t.Skipf("%s is written by `make tables-lists`: %v", path, err)
+		t.Fatalf("%s is absent (make tables-lists writes it): %v", path, err)
 	}
 	u := unit(t, "../../tables/lists")
 	m := tabletext.NewModel(u)

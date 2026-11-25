@@ -14,7 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
@@ -158,7 +157,6 @@ func plantBareNext(t *testing.T, src string) string {
 }
 
 func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error {
-	slowtest.Gate(t, "Ruby conformance driver")
 	rubyBin := rubyrun.Interpreter(t)
 	manifest := filepath.Join(dir, "MANIFEST.txt")
 	if err := os.WriteFile(manifest, []byte("# empty manifest\n"), 0o644); err != nil {
@@ -253,8 +251,7 @@ puts hex(["unlexed:", *words.reject { |w| Ripper.lex(w).dig(0, 1) == :on_kw }].j
 // and each rule, turned off, lets its case through (the rules' negative
 // control); the checker's Ruby row is the keyword list less next and alias;
 // a record whose fields are every keyword reaches none bare; the conformance
-// driver answers every surface absent. The slow half (SCHEMA_SLOW, make
-// test-ruby) runs the pinned interpreters: the namespace loads under both with
+// driver answers every surface absent. The functional half runs the pinned interpreters: the namespace loads under both with
 // no warning under ruby -w, two units keep their own errors, the keyword
 // record runs, the name lists are the pins', and the warning, load and keyword
 // gates each go red on a planted fault. Every control is a subtest named

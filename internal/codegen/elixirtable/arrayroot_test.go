@@ -3,7 +3,6 @@ package elixirtable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"strings"
 	"testing"
@@ -14,7 +13,6 @@ import (
 // wrong root shapes rather than crediting declarations or successful compile.
 func TestArrayRootElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir array-root runtime")
 	bin := elixirBinary(t)
 	u := unitFrom(t, `package featurewitnesses
  table ArrayRoot | json="array" { values []int32 }

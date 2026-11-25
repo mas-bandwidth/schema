@@ -46,7 +46,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -430,15 +429,7 @@ func fixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
-		// `go test ./...` on a tree that never built the oracle has nothing to
-		// read and says so; but `make tables-dart-versioning` builds the corpus
-		// first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
-		// missing file means the build did not do what the target says it did.
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not in %s (%v): make tables-fixedform-corpus", dir, err)
 	}
 	return dir
 }
@@ -455,10 +446,7 @@ func dartBinary(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dart); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the Dart SDK is not at %s: %v", dart, err)
-		}
-		t.Skip("the Dart SDK is not unpacked in dist/: see make/dart.mk")
+		t.Fatalf("the Dart SDK is not at %s (%v): set DART or see make/dart.mk", dart, err)
 	}
 	return dart
 }
@@ -698,7 +686,6 @@ func versionHasField(st *ir.Struct, name string) bool {
 // toolchain. A probe is generated, never hand-written, so a row and its
 // negative control cost the same (§5.9 #18).
 func runVersionProbe(t *testing.T, dartBin, reader string, older []string, retire int, file, body string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := versionSchema(t, reader)

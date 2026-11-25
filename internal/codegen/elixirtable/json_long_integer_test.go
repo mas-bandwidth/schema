@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -15,7 +14,6 @@ import (
 // Every row is compared with the Go engine's verdict on the same text.
 func TestElixirJsonLongIntegerAnswersWithoutRaising(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package longint
 table Root {
  experience uint32 = 0

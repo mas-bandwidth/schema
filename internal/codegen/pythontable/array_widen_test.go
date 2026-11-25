@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 var arrayWideningCases = []struct{ old, new, json string }{
@@ -22,7 +21,6 @@ var arrayWideningCases = []struct{ old, new, json string }{
 
 func TestPythonArrayWidening(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "array widening under both Python pins")
 	for _, tc := range arrayWideningCases {
 		t.Run(tc.old+"_to_"+tc.new, func(t *testing.T) {
 			t.Logf("case %s to %s", tc.old, tc.new)
@@ -85,7 +83,6 @@ print(v.save().hex())
 
 func TestPythonArrayWideningNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "array widening negative control")
 	writer := loadUnit(t, "package widenarray\ntable Root { values []int16 }\n")
 	reader := loadUnit(t, "package widenarray\ntable Root { values []int32 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"values":[-1265,17]}`)
@@ -115,7 +112,6 @@ with open("wire", "rb") as f:
 
 func TestPythonArrayWideningRejectsIncompatible(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "array widening refuses incompatible element kinds")
 	for _, tc := range []struct{ old, new string }{{"int32", "int16"}, {"int8", "uint16"}, {"uint8", "int16"}, {"float64", "float32"}} {
 		array := "[]"
 		if strings.HasPrefix(tc.old, "float") {
@@ -160,7 +156,6 @@ else:
 
 func TestPythonArrayWideningWithFixedGrowth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed-array growth with widening")
 	writer := loadUnit(t, "package widenarray\ntable Root { values [1]int16 }\n")
 	reader := loadUnit(t, "package widenarray\ntable Root { values [2]int32 }\n")
 	text := `{"values":[-1265]}`
@@ -204,7 +199,6 @@ print(v.save().hex())
 
 func TestPythonArrayWideningBoundaries(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "widened array bounds and float damage")
 	for _, tc := range []struct{ name, old, new, text, mode string }{
 		{"inside", "[]int16", "[]int32 | min = -10, max = 10", `{"values":[-10,10]}`, "ok"},
 		{"below", "[]int16", "[]int32 | min = -10, max = 10", `{"values":[-11,10]}`, "out_of_range"},

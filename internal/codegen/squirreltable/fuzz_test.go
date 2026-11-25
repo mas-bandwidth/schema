@@ -518,7 +518,6 @@ func runWireFuzzDifferential(t *testing.T, edit func(name string, src []byte) []
 // to that directory.
 func TestSquirrelWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	n, err := runWireFuzzDifferential(t, nil)
 	if err != nil {
 		t.Fatalf("after %d agreeing mutants: %v", n, err)
@@ -533,7 +532,6 @@ func TestSquirrelWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 // the differential to go red.
 func TestSquirrelWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	const anchor = "readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {\n" +
 		"  local L = leb(r);\n" +
 		"  if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }\n"

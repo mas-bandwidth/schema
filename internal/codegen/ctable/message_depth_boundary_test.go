@@ -1096,7 +1096,6 @@ func shiftCGuard(t *testing.T, files map[string][]byte) {
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runCDepthBoundaryProbe(t, u, ann, cases, nil)
 	shiftedOut, shiftedErr := runCDepthBoundaryProbe(t, u, ann, cases, func(files map[string][]byte) {
@@ -1107,7 +1106,6 @@ func TestGeneratedMessageDepthBoundary(t *testing.T) {
 
 func TestGeneratedMessageDepthBoundaryAllRuntimes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "every runtime's toolchain (it compiles and runs the depth probe in all nine)")
 	u, ann, cases := depthBoundaryFixtures(t)
 
 	runtimes := []struct {

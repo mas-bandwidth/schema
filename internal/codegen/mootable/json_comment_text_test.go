@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A JSON COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2): the bytes inside a line
@@ -24,7 +23,6 @@ import (
 // runtime/json.moo's space is held to the rule in both comment forms. The
 // verdict alone is the contract (docs/rulings.json refusal-verdict-only).
 func TestMooJsonCommentIsText(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated JSON read)")
 	t.Parallel()
 
 	rows := commentVectors(t)

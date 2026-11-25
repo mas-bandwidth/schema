@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITE CONTRACT ON THE TEXT WRITER (docs/SPEC.md §5.1 rows 1 to 4 and
@@ -146,7 +145,6 @@ def answer(name:string, rec:schema_rt.Record):
 
 func TestLobsterJsonWriteHoldsTheWriteContract(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain")
 	src := filepath.Join(t.TempDir(), "Probe.schema")
 	if err := os.WriteFile(src, []byte(jsonWriteContractSchema), 0o644); err != nil {
 		t.Fatal(err)

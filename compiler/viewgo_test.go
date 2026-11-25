@@ -15,7 +15,6 @@ import (
 
 func TestGoUnitViewCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain, once per corpus unit")
 	printer, err := os.ReadFile("../test/tables/view_go.gotext")
 	if err != nil {
 		t.Fatal(err)
@@ -35,9 +34,6 @@ func TestGoUnitViewCorpus(t *testing.T) {
 		}
 		t.Run(path, func(t *testing.T) {
 			c := New()
-			if path == "wide" {
-				t.Skip("the wide-text unit is retired")
-			}
 			source := "../tables/" + path
 			paths, err := filepath.Glob(source + "/*.schema")
 			if err != nil {

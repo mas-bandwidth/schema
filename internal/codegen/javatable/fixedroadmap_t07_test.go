@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -79,7 +78,6 @@ func t07Capability(t *testing.T, schema, root, setters string, want map[string]s
 // t07Build generates one unit's fixed form, writes the generated Java and the
 // capability probe beside it, and compiles the lot with this leg's toolchain.
 func t07Build(t *testing.T, schema, root, setters string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, schema)
@@ -138,7 +136,6 @@ func t07Build(t *testing.T, schema, root, setters string) string {
 
 // t07Run runs one compiled capability probe and answers its combined output.
 func t07Run(t *testing.T, classes string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	_, javaBin := javaTools(t)
@@ -315,7 +312,6 @@ fixed table T
 // t07BuildProbe generates one unit's fixed form, writes a custom probe beside
 // it, and compiles the lot.
 func t07BuildProbe(t *testing.T, schema, probe string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, schema)
@@ -356,7 +352,6 @@ func t07BuildProbe(t *testing.T, schema, probe string) string {
 
 // t07RunClass runs one compiled probe by class name.
 func t07RunClass(t *testing.T, classes, class string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	_, javaBin := javaTools(t)

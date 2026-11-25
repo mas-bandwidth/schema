@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // countCapSchema is the measure unit of
@@ -67,7 +66,6 @@ var countCapPaths = []string{"tolerant", "load", "strict", "retain", "retainTole
 // which reads, and each cap row with its count lowered to the cap itself
 // (2^31-1), which is not this refusal.
 func TestLuauCountCapRefusal(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	t.Parallel()
 	data, err := os.ReadFile("../goosetable/testdata/load_refusal_reasons.tsv")
 	if err != nil {
@@ -245,7 +243,6 @@ func readOrderFaults(t *testing.T, edit func(map[string][]byte)) map[string]stri
 // TestLuauCountCapReadOrder holds every builder read to the two-refusal rule
 // on the float rows of the shared pin table.
 func TestLuauCountCapReadOrder(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	t.Parallel()
 	for key, line := range readOrderFaults(t, nil) {
 		t.Errorf("%s: %s", key, line)
@@ -256,7 +253,6 @@ func TestLuauCountCapReadOrder(t *testing.T) {
 // kept, so the count wins whatever came first, and requires exactly
 // nan_then_over_cap to go red on every builder read.
 func TestLuauCountCapReadOrderNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	t.Parallel()
 	bad := readOrderFaults(t, func(files map[string][]byte) {
 		const from, to = "\t_nonFinite = _countNonFinite\n", "\t_nonFinite = nil\n"

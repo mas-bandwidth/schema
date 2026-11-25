@@ -24,8 +24,6 @@ const finished = `{"Action":"budget","Budget":"10m"}
 {"Action":"pass","Package":"p","Test":"TestA","Elapsed":1.5}
 {"Action":"run","Package":"p","Test":"TestB"}
 {"Action":"fail","Package":"p","Test":"TestB","Elapsed":0.25}
-{"Action":"run","Package":"p","Test":"TestC"}
-{"Action":"skip","Package":"p","Test":"TestC","Elapsed":0}
 {"Action":"output","Package":"p","Output":"FAIL\tp\t2.0s\n"}
 {"Action":"fail","Package":"p","Elapsed":2.0}
 `
@@ -37,7 +35,7 @@ func TestAFinishedRowListsFailuresAndIsNotRedForThem(t *testing.T) {
 		t.Errorf("a test failure is the test step's verdict, not the report's:\n%s", f.text)
 	}
 	for _, want := range []string{
-		"1 package run(s), 3 test(s): 1 passed, 1 failed, 1 skipped, 0 never reported",
+		"1 package run(s), 2 test(s): 1 passed, 1 failed, 0 skipped, 0 never reported",
 		"FAIL            p TestB",
 		"slowest tests:",
 		"1.5s  p TestA",
@@ -64,7 +62,7 @@ func TestACutRowNamesWhatWasRunning(t *testing.T) {
 	for _, want := range []string{
 		"NEVER FINISHED  q",
 		"NEVER REPORTED  q TestHangs",
-		"2 package run(s), 5 test(s): 2 passed, 1 failed, 1 skipped, 1 never reported",
+		"2 package run(s), 4 test(s): 2 passed, 1 failed, 0 skipped, 1 never reported",
 	} {
 		if !strings.Contains(f.text, want) {
 			t.Errorf("report lacks %q:\n%s", want, f.text)

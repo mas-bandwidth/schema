@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirFixedBatchHoldsARecord holds the Elixir leg to the rule that a
@@ -18,10 +16,9 @@ import (
 // (docs/rulings.json write-refusal). Only the verdict is compared, never a
 // reason (refusal-verdict-only).
 //
-// This is a functional test: it runs the generated Elixir behind SCHEMA_SLOW.
+// This is a functional test: it runs the generated Elixir.
 func TestElixirFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir (native fixed batch holds a record)")
 	bin := elixirBinary(t)
 	vector := filepath.Join("..", "..", "..", "testdata", "wire", "fixed-empty-batch")
 	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "fixed-empty-batch", "Batch.schema"))

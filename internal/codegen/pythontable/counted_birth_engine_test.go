@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -66,7 +65,6 @@ func countedBirthEngineCases() []countedBirthEngineCase {
 
 func TestPythonCountedArrayBornAtItsMinimumEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	unit := loadUnit(t, countedBirthEngineSchema)
 	files, err := Generate(unit)
 	if err != nil {

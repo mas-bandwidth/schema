@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -14,7 +13,6 @@ import (
 // allocate a list proportional to the hostile count.
 func TestPythonVtPointerArrayBodyBound(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadNamedUnit(t, "PtrArr.schema", pointerArraysSchema)
 	var id uint64
 	for _, f := range u.Tables["Root"].Fields {

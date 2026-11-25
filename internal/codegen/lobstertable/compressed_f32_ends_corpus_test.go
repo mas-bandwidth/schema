@@ -21,8 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type lobsterF32EndsRow struct {
@@ -97,7 +95,6 @@ def write(name:string, root:string, file:string, elem:int, bits:int):
 
 func TestLobsterCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	corpus, err := filepath.Abs(lobsterF32EndsCorpusDir)
 	if err != nil {
 		t.Fatal(err)

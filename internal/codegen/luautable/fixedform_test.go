@@ -18,7 +18,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // fixedCorpusVectors pairs the corpus files with the schema and root that wrote
@@ -176,9 +175,6 @@ func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 			t.Parallel()
 			oracle, err := os.ReadFile(filepath.Join(corpus, v.file))
 			if err != nil {
-				if !slowtest.CorpusRequired() {
-					t.Skip("the oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
-				}
 				t.Fatalf("the oracle file %s is absent: build it with make tables-fixedform-corpus: %v", v.file, err)
 			}
 			dir, mod, _ := build(t, v.schema)
@@ -269,20 +265,13 @@ func knownLiteral(oracle []byte) string {
 // as layout_unknown, reporting the file's hash.
 func TestLuauFixedFormVersioning(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oldOracle, err := os.ReadFile(filepath.Join(corpus, "fu1.bin"))
 	if err != nil {
-		if !slowtest.CorpusRequired() {
-			t.Skip("the FU1 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
-		}
 		t.Fatalf("the FU1 oracle is absent: make tables-fixedform-corpus: %v", err)
 	}
 	newOracle, err := os.ReadFile(filepath.Join(corpus, "fu2.bin"))
 	if err != nil {
-		if !slowtest.CorpusRequired() {
-			t.Skip("the FU2 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
-		}
 		t.Fatalf("the FU2 oracle is absent: make tables-fixedform-corpus: %v", err)
 	}
 
@@ -387,13 +376,9 @@ func forgedFile(hash uint64, entries [][4]uint64) []byte {
 // docs/SPEC-TABLES.md §3).
 func TestLuauFixedFormRefusals(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {
-		if !slowtest.CorpusRequired() {
-			t.Skip("the FX1 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
-		}
 		t.Fatalf("the FX1 oracle is absent: make tables-fixedform-corpus: %v", err)
 	}
 	const forgedHash = 0x0123456789abcdef
@@ -469,13 +454,9 @@ if F.read(T.FxRootDescriptor, fixed, inputs.oracle, report) ~= nil then print("r
 // the oracle comparison must then go red.
 func TestLuauFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the fixed-form corpus")
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {
-		if !slowtest.CorpusRequired() {
-			t.Skip("the FX1 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
-		}
 		t.Fatalf("the FX1 oracle is absent: make tables-fixedform-corpus: %v", err)
 	}
 	dir, mod, files := build(t, "test/tables/FX1.schema")

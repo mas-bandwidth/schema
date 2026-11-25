@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -61,7 +60,6 @@ table Closed
 // a refusal's reason is the leg's own diagnostic and is not compared.
 func TestCSharpJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK and the read-closed vectors")
 
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-read-closed")
 	data, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

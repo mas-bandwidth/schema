@@ -4,7 +4,7 @@
 # python-vt-timestamp: the compiler half. TestPythonCarriesTimestamp holds that
 # the Python target generates the timestamp feature witness and refuses nothing
 # for the construct; the proof requires its named PASS. The table half,
-# TestPythonVtTimestamp, runs in test-python's SCHEMA_SLOW run of the
+# TestPythonVtTimestamp, runs in test-python's the rule that nothing skips run of the
 # pythontable package.
 #
 # python-vt-timestamp-negative-control: one fault per probe check is planted in
@@ -18,4 +18,4 @@ python-ci-vt-timestamp: python-vt-timestamp python-vt-timestamp-negative-control
 python-vt-timestamp:
 	sh test/slowgate/proof python-vt-timestamp-compiler 'TestPythonCarriesTimestamp' -tags schema_leg_python ./compiler -run '^TestPythonCarriesTimestamp$$' -count=1
 python-vt-timestamp-negative-control: python-toolchain-check
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonVtTimestampNegativeControl ./internal/codegen/pythontable/
+	go test -count=1 -timeout 600s -tags schema_leg_python -run TestPythonVtTimestampNegativeControl ./internal/codegen/pythontable/

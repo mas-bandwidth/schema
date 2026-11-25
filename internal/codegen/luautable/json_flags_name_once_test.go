@@ -7,7 +7,7 @@ package luautable_test
 // array inside a value the read only skips is held to the JSON grammar alone.
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // held to the verdict the vectors state. Running the pinned Luau interpreter
-// makes this a functional test, gated by slowtest.
+// makes this a functional test.
 
 import (
 	"bufio"
@@ -22,7 +22,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -183,7 +182,6 @@ end
 
 func TestLuauJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 
 	rows := luauJsonFlagsNameOnceRows(t)
 	unit, rootName := rows[0].unit, rows[0].root

@@ -16,17 +16,12 @@ package rusttable
 // from the crate (element and scalar in turn) and requires exactly that
 // refusal red and nothing else, so the probe can see a write of Old.
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1 (make tables-rust-deprecated-message-write).
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent (make tables-rust-deprecated-message-write).
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const deprecatedMessageSchema = `package depmsg
@@ -124,12 +119,8 @@ var deprecatedMessageAsserts = map[string]string{
 
 func deprecatedMessageGate(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "rustc (it builds and runs the message deprecated-variant probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the message writer's deprecated-variant refusal cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the message writer's deprecated-variant refusal cannot be built or run: %v", err)
 	}
 }
 

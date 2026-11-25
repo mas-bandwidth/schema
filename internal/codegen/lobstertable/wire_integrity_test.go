@@ -10,14 +10,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestLobsterVariableWireIntegrity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lobster variable wire integrity")
 	path := filepath.Join(t.TempDir(), "Seal.schema")
 	const schema = `package seal
  table Checked | integrity="crc32c" {

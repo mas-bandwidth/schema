@@ -16,6 +16,6 @@
 .PHONY: conformance-moo-compressed-negzero
 conformance-moo-compressed-negzero:
 	@if [ ! -x "$(MOO)" ]; then $(MAKE) dist-moo; fi
-	MOO="$(abspath $(MOO))" SCHEMA_SLOW=1 $(GO) test -timeout=0 -count=1 ./internal/codegen/mootable -run '^TestMooCompressedNegZeroCorpus$$'
+	MOO="$(abspath $(MOO))" $(GO) test -timeout=0 -count=1 ./internal/codegen/mootable -run '^TestMooCompressedNegZeroCorpus$$'
 
 test-moo: conformance-moo-compressed-negzero

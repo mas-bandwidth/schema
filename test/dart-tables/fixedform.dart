@@ -75,17 +75,19 @@ import '../../build/dart-fixed/v2/V2Fixed.dart' as v2;
 
 var failed = false;
 
-// THE TESTS SECTION 5.6 RETIRES, SKIPPED BY NAME AND NEVER DELETED
+// THE TESTS SECTION 5.6 RETIRES, FAILED BY NAME AND NEVER DELETED
 // (docs/FIXED-FORM-ALGORITHM.md §5.7 step 5). A deleted test is a coverage
-// claim nobody can audit — and this suite is a `main` that counts failures and
-// has no skip verb, so the skip is A PRINTED LINE AT THE CALL SITE naming the
-// function, §5.6 and where the coverage is owed, plus a COUNT at the end
-// (§5.9 #23). Every retired function stays in this file and stays compiling.
+// claim nobody can audit, and a test not run is never a pass: each retired
+// test is A FAILURE AT THE CALL SITE naming the function, §5.6 and where the
+// coverage is owed, plus a COUNT at the end (§5.9 #23). A test is left out
+// only at the root. Every retired function stays in this file and stays
+// compiling.
 int retired = 0;
 
 void retire(String fn, String where) {
   retired++;
-  print('RETIRED by §5.6: $fn — $where');
+  print('FAILED: RETIRED by §5.6, not run: $fn — $where');
+  failed = true;
 }
 
 void check(bool ok, String what) {
@@ -1048,6 +1050,11 @@ void rangedScalarClampCase() {
             ) ==
             'assert',
         'RANGE: an out-of-range field asserts on write in debug (§5.1)',
+      );
+    } else {
+      check(
+        false,
+        'RANGE: an out-of-range field asserts on write: asserts are off in this build: this row needs the assert build',
       );
     }
     final body = fx1.fxRootFixedHeaderBytes + 8;

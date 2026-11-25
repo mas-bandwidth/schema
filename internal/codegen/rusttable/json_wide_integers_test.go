@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // rustJSONIntegersSchema is the unit the json-integers vectors read: an int32,
@@ -35,7 +33,6 @@ table Integers
 // (docs/SPEC-TABLES.md §16.2, §16.14 W10 and W11).
 func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (the JSON wide-integer writer and strict integer reader)")
 	requireRustcForCards(t)
 
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
@@ -159,7 +156,6 @@ func TestRustJsonWideIntegersAreStrings(t *testing.T) {
 // TestRustJsonWideIntegerPositions checks every value-bearing container.
 func TestRustJsonWideIntegerPositions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (wide integer JSON positions)")
 	requireRustcForCards(t)
 	kinds := []string{"int64", "uint64", "uint128", "fixed(48, 16)", "fixed(80, 48)", "int32"}
 	var schema, body strings.Builder

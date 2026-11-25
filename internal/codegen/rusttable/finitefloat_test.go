@@ -28,10 +28,7 @@ package rusttable
 // structs read in place (block.go emitProjectionField, cook.go emitCookHandle),
 // and no generated accessor decodes a float.
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1, which is how make tables-rust-finite-float runs
-// it; a plain go test skips it behind slowtest.Gate (SCHEMA_SLOW=1 runs it). The Go half reads only the generator's output: no clock, no socket.
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent, as make tables-rust-finite-float and a plain go test both run it. The Go half reads only the generator's output: no clock, no socket.
 
 import (
 	"fmt"
@@ -41,8 +38,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -756,12 +751,8 @@ func finiteFloatLines(out string) (ok, bad []string) {
 // self-contained, so no cargo workspace is needed.
 func runFiniteFloatProbe(t *testing.T, edit func(map[string][]byte)) (string, error) {
 	t.Helper()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the finite rule cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the finite rule cannot be built or run: %v", err)
 	}
 	files, err := Generate(unitFrom(t, finiteFloatSchema))
 	if err != nil {

@@ -116,7 +116,6 @@ func assertCompiles(t *testing.T, u *ir.Unit, s Surfaces, probe string) {
 			t.Fatal(err)
 		}
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if outBytes, err := cmd.CombinedOutput(); err != nil {

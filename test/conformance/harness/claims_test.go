@@ -42,7 +42,7 @@ func (c fakeCorpus) runClaimed(t *testing.T, drivers string, claims *claimSet) (
 	var out bytes.Buffer
 	var rows []coverageRow
 	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work"), "", "", runOptions{claims: claims, coverage: &rows})
+		filepath.Join(t.TempDir(), "work"), "", runOptions{claims: claims, coverage: &rows})
 	if err != nil {
 		t.Fatalf("harness run: %v\n%s", err, out.String())
 	}
@@ -76,8 +76,9 @@ func TestClaimedAbsentFails(t *testing.T) {
 }
 
 // TestUnclaimedAbsentIsCoverage is the other half: the same absence from a leg
-// whose target does not carry the construct is not a failure, and the
-// coverage counts it as not carried.
+// whose target does not carry the construct is not a CLAIM failure, and the
+// coverage counts it as not carried; the run is red all the same, because an
+// absence is a row that did not run.
 func TestUnclaimedAbsentIsCoverage(t *testing.T) {
 	needShell(t)
 	for _, tc := range []struct {
@@ -93,10 +94,10 @@ func TestUnclaimedAbsentIsCoverage(t *testing.T) {
 			c := newFakeCorpus(t)
 			drivers := c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {caseGone: true}})
 			out, ok, rows := c.runClaimed(t, drivers, fakeClaims(tc.uses, map[string][]string{"zz": tc.carried}))
-			if !ok {
-				t.Fatalf("an UNCLAIMED absence turned the run red:\n%s", out)
+			if ok {
+				t.Fatalf("an UNCLAIMED absence left the run green:\n%s", out)
 			}
-			mustSay(t, out, []string{notAllAnswered, "pass 0/1 +1a"}, []string{"CLAIMED", footer})
+			mustSay(t, out, []string{notAllAnswered, "NOT CONFORMING", "pass 0/1 +1a"}, []string{"CLAIMED", footer})
 			r, found := findRow(rows, "zz", "wire")
 			if !found || r.NotCarried != 1 || r.AbsentClaimed != 0 {
 				t.Errorf("the coverage row does not count the absence as not carried: %+v", r)
@@ -106,15 +107,17 @@ func TestUnclaimedAbsentIsCoverage(t *testing.T) {
 }
 
 // TestClaimSkipsAbsentSurface: a surface the leg does not run is a missing
-// surface, named in the coverage, and not a claim about one case.
+// surface, named in the coverage, and not a claim about one case; the run is
+// red for the absence itself.
 func TestClaimSkipsAbsentSurface(t *testing.T) {
 	needShell(t)
 	c := newFakeCorpus(t)
 	drivers := c.committed(t, map[string]fakeLeg{referenceLang: {}, "zz": {unlisted: "json-write"}})
 	out, ok, rows := c.runClaimed(t, drivers, fakeClaims([]string{"timestamp"}, map[string][]string{"zz": {"timestamp"}}))
-	if !ok {
-		t.Fatalf("a whole absent surface was scored as a claimed case:\n%s", out)
+	if ok {
+		t.Fatalf("a whole absent surface left the run green:\n%s", out)
 	}
+	mustSay(t, out, []string{"NOT CONFORMING"}, []string{"CLAIMED", footer})
 	if r, found := findRow(rows, "zz", "json-write"); !found || !r.SurfaceAbsent || r.Failed != 0 {
 		t.Errorf("the coverage does not name the absent surface: %+v", r)
 	}

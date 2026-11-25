@@ -14,8 +14,8 @@
 # The fixed-form tests read the reference's corpus, so it is built first.
 .PHONY: test-moo-tables
 test-moo-tables: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/...
-	SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
+	go test -count=1 ./internal/codegen/mootable/...
+	go test -count=1 -tags schema_leg_moo -run 'Moo' ./compiler/
 
 # the table surface is part of the moo leg's `make test` half: test-moo (make/moo.mk)
 # takes it as a prerequisite, so the leg stays one leg (REGISTERED_LEGS)
@@ -26,11 +26,11 @@ test-moo: test-moo-tables
 # reads the C++ reference's byte oracle out of build/fixedform-corpus — the nine
 # corpus files (§7 row 1), every versioning row's two columns, the floor, and
 # §5.3's refusals cut from fx1.bin. The harness SKIPS on a tree that never built
-# the oracle, so this target builds it first and SCHEMA_REQUIRE_CORPUS=1 makes
+# the oracle, so this target builds it first and the rule that nothing skips makes
 # the skip a FAILURE.
 .PHONY: tables-moo-fixed
 tables-moo-fixed: toolchain-moo build/fixedform-corpus/.stamp
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooFixed|TestMooReadStrict'
+	go test -count=1 ./internal/codegen/mootable/ -run 'TestMooFixed|TestMooReadStrict'
 
 test-moo: tables-moo-fixed
 
@@ -40,12 +40,12 @@ test-moo: tables-moo-fixed
 # write of a kept record, and the fixed-class and nil-report refusals.
 .PHONY: tables-moo-retain-negative-control tables-moo-retain-refusal-negative-control
 tables-moo-retain-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainNegativeControl$$'
+	go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainNegativeControl$$'
 tables-moo-retain-refusal-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainRefusesWhatThePageRefuses$$'
+	go test -count=1 ./internal/codegen/mootable/ -run 'TestMooRetainRefusesWhatThePageRefuses$$'
 
 # Damage (§4) refuses the whole load or batch. The control removes each
 # runtime discard and requires the same malformed inputs to expose values.
 .PHONY: tables-moo-damage-discard-negative-control
 tables-moo-damage-discard-negative-control: toolchain-moo
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/mootable/ -run 'TestMooDamageDiscardNegativeControls$$'
+	go test -count=1 ./internal/codegen/mootable/ -run 'TestMooDamageDiscardNegativeControls$$'

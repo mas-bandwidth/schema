@@ -260,18 +260,18 @@ func TestTablesWithDifferentAxesPassIndependently(t *testing.T) {
 	}
 }
 
-func sbclOrSkip(t *testing.T) string {
+func sbclOrFail(t *testing.T) string {
 	t.Helper()
 	sbcl, err := exec.LookPath("sbcl")
 	if err != nil {
-		t.Skip("sbcl not installed on host; skipping the Lisp renderer (make roadmap-check runs it where sbcl is)")
+		t.Fatal("no sbcl on PATH: the Lisp renderer needs it")
 	}
 	return sbcl
 }
 
-// TestLispRendererSuite invokes the Common Lisp roadmap validation suite if sbcl is installed.
+// TestLispRendererSuite invokes the Common Lisp roadmap validation suite with sbcl.
 func TestLispRendererSuite(t *testing.T) {
-	sbcl := sbclOrSkip(t)
+	sbcl := sbclOrFail(t)
 	cmd := exec.Command(sbcl, "--script", "tools/roadmap/test.lisp")
 	cmd.Dir = "../.."
 	out, err := cmd.CombinedOutput()
@@ -281,13 +281,13 @@ func TestLispRendererSuite(t *testing.T) {
 }
 
 // TestRoadmapIsGeneratedFromTheData holds the data to rendering, into a copy
-// of the page, where sbcl is installed (the same check as `make
+// of the page with sbcl (the same check as `make
 // roadmap-check`): cards never commit ROADMAP.md (tools/roadmap/roadmap.mk),
 // so the committed tables may lag the data on any branch and on main between
 // re-renders. With ROADMAP_PAGE_CHECK set (`make roadmap-page-check`, the
 // nightly) it holds the committed tables to the render instead.
 func TestRoadmapIsGeneratedFromTheData(t *testing.T) {
-	sbcl := sbclOrSkip(t)
+	sbcl := sbclOrFail(t)
 	if os.Getenv("ROADMAP_PAGE_CHECK") == "" {
 		raw, err := os.ReadFile("../../ROADMAP.md")
 		if err != nil {
@@ -374,7 +374,7 @@ func TestOnlyGlennEditsTheHandText(t *testing.T) {
 // would be red on every branch that adds evidence, for a page main has yet
 // to re-render. The stale-base case below holds that.
 func TestRegenerationKeepsTheHandText(t *testing.T) {
-	sbcl := sbclOrSkip(t)
+	sbcl := sbclOrFail(t)
 	raw := readRoadmap(t)
 	regenerationKeepsTheHandText(t, sbcl, raw)
 	t.Run("the committed page is behind the data", func(t *testing.T) {

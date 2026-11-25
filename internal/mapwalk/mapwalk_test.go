@@ -23,9 +23,8 @@ import (
 //  3. the half is ONE half, the same bytes wherever it rides.
 //
 // `make tables-json-map-walk` points SCHEMA_MAP_WALK_DIR at the generated
-// tree. Without it this test still derives the answer for every unit of the
-// corpus and holds the derivation itself honest, which is what keeps
-// `go test ./...` saying something about the fact the gate is built on.
+// tree. Without it the test derives the answer for every unit of the corpus,
+// then fails naming the missing tree: its tier is functional.
 func TestMapWalkHalfRidesTheMapBearingUnits(t *testing.T) {
 	dir := os.Getenv("SCHEMA_MAP_WALK_DIR")
 	// SCHEMA_MAP_WALK_UNITS narrows the scan to named generated directories,
@@ -111,9 +110,8 @@ func TestMapWalkHalfRidesTheMapBearingUnits(t *testing.T) {
 		return
 	}
 	if dir == "" {
-		// the derivation above held; the generated half did not run, and
-		// that is a skip with a reason, never a pass
-		t.Skip("set SCHEMA_MAP_WALK_DIR to read the generated tree: make tables-json-map-walk does")
+		// the derivation above held; the generated half needs the tree
+		t.Fatal("SCHEMA_MAP_WALK_DIR names no generated tree to read: make tables-json-map-walk sets it")
 	}
 	summary := "tables map-walk gate: one map half, byte-identical in " + strconv.Itoa(bearingFiles) +
 		" .cpp files across " + strconv.Itoa(bearingUnits) + " map-bearing units, and in none of the " +

@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE COUNTED-MINIMUM MESSAGE CORPUS ON LOBSTER (docs/SPEC-TABLES.md §3.3(a),
@@ -23,7 +21,6 @@ import (
 // two controls. Lobster refuses a table write in every build.
 func TestLobsterCountedMinimumMessageCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	const dir = "../../../testdata/conformance/feature-witnesses/counted-minimum-message"
 	schema, err := os.ReadFile(filepath.Join(dir, "Probe.schema"))
 	if err != nil {

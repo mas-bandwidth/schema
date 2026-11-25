@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // fixedInt128TwoHalves builds one record with a value whose two 64-bit halves
@@ -42,7 +41,6 @@ func int128RecordBody(wire []byte, layoutLen int) []byte {
 // high-first reading would have produced a different value.
 func TestLuauFixedInt128LayoutReversedWitness(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	tc := luauFixedCase(t, "signed-128")
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	st := fixedproof.RootStruct(t, u, tc.Root)

@@ -20,7 +20,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -36,7 +35,6 @@ const repeatedTextIllFormedAHex = "01010c03616263010c010000861b638ebaadbcc401000
 const repeatedTextIllFormedBHex = "01010c03616263010c02ffff00861b638ebaadbcc40100000000000000"
 
 func TestWireRepeatedTextIllFormedResetsDart(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

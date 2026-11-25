@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -30,7 +29,6 @@ import (
 // byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet (it runs the generated reader over the dead-byte corpus)")
 	corpus := csFixedCorpus(t)
 	u := csUnitOf(t, csReadSchema(t, "DeadBytes"))
 	files, err := csharp.Generate(u)

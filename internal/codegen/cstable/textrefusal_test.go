@@ -1,14 +1,12 @@
 package cstable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"testing"
 )
 
 // Exercise the generated reader, including text that is skipped rather than
 // stored and a NUL beyond the storage bound. Corpus pins remain unchanged.
 func TestStoredTextRefusalsCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t15RunCS(t, `package probe
 table Child { name string(2) }
 table Root {

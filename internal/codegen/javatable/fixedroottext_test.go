@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -24,7 +22,6 @@ import (
 // hold the fixed form's shapes: root_full's counted arrays and union arms,
 // keyed_config's keyed arrays and optional, m1_open's union root.
 func TestJavaFixedRootTextForm(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	vcarry := variableCarrySource(t)
 	m := readCookManifest(t)

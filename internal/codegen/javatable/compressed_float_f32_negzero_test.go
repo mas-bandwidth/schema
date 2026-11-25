@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COMPRESSED FLOAT ON THE VARIABLE AND JSON FORMS of the Java leg holds two
@@ -235,7 +233,6 @@ func TestJavaCompressedFloatVariableAndJson(t *testing.T) {
 	}
 
 	t.Run("jdk", func(t *testing.T) {
-		slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 		javac, java := javaTools(t)
 		cases, err := filepath.Abs(casesPath)
 		if err != nil {

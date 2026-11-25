@@ -6,7 +6,7 @@
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // compared on the verdict alone with the Go engine's (internal/tabletext), and
 // the engine is first held to the verdict the vectors state. Compiling the
-// generated C makes this a functional test, gated by slowtest.
+// generated C makes this a functional test.
 package ctable
 
 import (
@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -78,13 +77,9 @@ func cSnake(name string) string {
 
 func TestCJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is absent: %v", err)
-		}
-		t.Skip("cc not found")
+		t.Fatalf("cc is absent: %v", err)
 	}
 
 	rows := cJsonFlagsNameOnceRows(t)

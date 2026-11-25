@@ -18,7 +18,7 @@ import (
 func TestMain(m *testing.M) {
 	if mode := os.Getenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER"); mode != "" {
 		// the corpus's second case always answers, so a run whose first case
-		// skips is not a run of nothing (the ledger refuses that)
+		// skips is not a run of nothing
 		if strings.HasSuffix(os.Args[len(os.Args)-1], "answers.bin") {
 			fmt.Println("refuse damaged")
 			os.Exit(0)
@@ -124,7 +124,7 @@ func TestKnownFindingCannotHideExecutionFailure(t *testing.T) {
 				return nil, func() bool { return true }
 			}
 			t.Cleanup(func() { startBudget = realBudget })
-			ok, err := run("test", binary, corpus, findings, "", "", 1, time.Hour)
+			ok, err := run("test", binary, corpus, findings, "", 1, time.Hour)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +187,7 @@ func TestAFindingCarriesTheAnswerItRecords(t *testing.T) {
 			if c.accepts {
 				dir = accepting
 			}
-			ok, err := run("test", binary, dir, write(c.answer), "", "", 1, 5*time.Second)
+			ok, err := run("test", binary, dir, write(c.answer), "", 1, 5*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -213,38 +213,25 @@ func TestAFindingCarriesTheAnswerItRecords(t *testing.T) {
 	}
 }
 
-// TestSkipsAreHeldByName is CI-TOOLS-3: a skip passes only when known-skips.tsv
-// names its case, so a binding dropped from a case binary reads red rather
-// than as one more skip; and a carried skip whose case answers, or is gone
-// from the manifest, is stale.
-func TestSkipsAreHeldByName(t *testing.T) {
+// TestASkipIsAFailure is CI-TOOLS-3 with no ledger: a case binary that
+// answers skip compared nothing, so the run is red whatever the reason; the
+// control is the same corpus answered in full.
+func TestASkipIsAFailure(t *testing.T) {
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	corpus := testCorpus(t, "probe", "answers")
-	write := func(name, body string) string {
-		p := filepath.Join(t.TempDir(), name)
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	carried := write("known-skips.tsv", "# name\twhy\nprobe\tno file-form load for this root\n")
-	gone := write("known-skips.tsv", "probe\tno file-form load for this root\nno-such-case\tgone from the manifest\n")
 	for _, c := range []struct {
-		name, mode, skips string
-		want              bool
+		name, mode string
+		want       bool
 	}{
-		{"a skip no line names", "skip", "", false},
-		{"a skip the list names", "skip", carried, true},
-		{"a carried skip whose case answers", "match", carried, false},
-		{"a carried skip whose case is gone", "skip", gone, false},
-		{"no skip and no list", "match", "", true},
+		{"a skip", "skip", false},
+		{"every case answers", "match", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", c.mode)
-			ok, err := run("test", binary, corpus, "", c.skips, "", 1, 5*time.Second)
+			ok, err := run("test", binary, corpus, "", "", 1, 5*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -252,9 +239,6 @@ func TestSkipsAreHeldByName(t *testing.T) {
 				t.Fatalf("success=%v, want %v", ok, c.want)
 			}
 		})
-	}
-	if _, _, err := loadSkips(write("bad.tsv", "probe\n")); err == nil {
-		t.Error("a skip line with no reason was accepted")
 	}
 }
 
@@ -280,33 +264,28 @@ func testCorpus(t *testing.T, names ...string) string {
 }
 
 // TestARunOfNothingIsRed is the ledger on this runner: cases answered equals
-// cases the folder registers. A corpus whose every case is skipped by name
-// compared nothing, and a manifest with no row is not a corpus; before the
-// ledger both printed a summary and exited 0. The control is the same run
-// with one case that answers.
+// cases the folder registers. A corpus whose every case is skipped compared
+// nothing, and a manifest with no row is not a corpus; before the ledger both
+// printed a summary and exited 0. The control is the same corpus answered.
 func TestARunOfNothingIsRed(t *testing.T) {
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	skips := filepath.Join(t.TempDir(), "known-skips.tsv")
-	if err := os.WriteFile(skips, []byte("probe\tno reader\n"), 0o600); err != nil {
-		t.Fatal(err)
+	t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", "match")
+	ok, err := run("test", binary, testCorpus(t, "probe"), "", "", 1, 5*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("CONTROL FAILED: one case that answers: success=%v, %v", ok, err)
 	}
 	t.Setenv("SCHEMA_HOSTILE_RUNNER_TEST_ANSWER", "skip")
-
-	ok, err := run("test", binary, testCorpus(t, "probe", "answers"), "", skips, "", 1, 5*time.Second)
-	if err != nil || !ok {
-		t.Fatalf("CONTROL FAILED: one case skipped by name beside one that answers: success=%v, %v", ok, err)
-	}
-	ok, err = run("test", binary, testCorpus(t, "probe"), "", skips, "", 1, 5*time.Second)
+	ok, err = run("test", binary, testCorpus(t, "probe"), "", "", 1, 5*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ok {
 		t.Error("a run whose every case is skipped passed: it compared nothing")
 	}
-	if _, err := run("test", binary, testCorpus(t), "", "", "", 1, 5*time.Second); err == nil || !strings.Contains(err.Error(), "registers no case") {
+	if _, err := run("test", binary, testCorpus(t), "", "", 1, 5*time.Second); err == nil || !strings.Contains(err.Error(), "registers no case") {
 		t.Errorf("a corpus with no case is not refused: %v", err)
 	}
 }

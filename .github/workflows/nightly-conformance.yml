@@ -139,9 +139,6 @@ jobs:
           cache: false
 
       - name: shared oracle regression corpus (once)
-        env:
-          SCHEMA_SLOW: "1"
-          SCHEMA_REQUIRE_CORPUS: "1"
         run: |
           set -euo pipefail
           mkdir -p build/nightly/shared-regressions
@@ -256,7 +253,7 @@ jobs:
           # the case-folding scratch every Linux fleet runner mounts (nova-fleet
           # github-runners, casefold.yml): internal/tablepack runs its
           # folding-volume tests there, and the gate sets
-          # SCHEMA_REQUIRE_CASEFOLD, so a runner without it fails them by name
+          # the rule that nothing skips, so a runner without it fails them by name
           SCHEMA_CASEFOLD_DIR: /srv/casefold/scratch
         run: |
           set -uo pipefail
@@ -483,10 +480,10 @@ jobs:
             python)   gate="make python-fixed-form-proof" ;;
             ruby)     gate="make ruby-fixed-form-suite" ;;
             unity)    gate="make unity-fixed" ;;
-            lua)      gate="env SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/luatable -run Fixed" ;;
-            squirrel) gate="env SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/squirreltable -run Fixed" ;;
-            lobster)  gate="env SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/lobstertable -run Fixed" ;;
-            *)        echo none > "$record"; echo "no fixed-form gate is registered for ${{ matrix.lang }}"; exit 0 ;;
+            lua)      gate="go test -count=1 ./internal/codegen/luatable -run Fixed" ;;
+            squirrel) gate="go test -count=1 ./internal/codegen/squirreltable -run Fixed" ;;
+            lobster)  gate="go test -count=1 ./internal/codegen/lobstertable -run Fixed" ;;
+            *)        echo fail > "$record"; echo "::error::no fixed-form gate is registered for ${{ matrix.lang }}"; exit 1 ;;
           esac
           echo fail > "$record"
           python3 test/conformance/fixed-corpus-identity.py verify "$SHARED_FIXED_REFERENCE" "$SHARED_FIXED_RECEIPT" --consumer build --phase fixed-before || exit 1
@@ -559,17 +556,14 @@ jobs:
         with:
           pattern: port-*-writes
           path: build/nightly/rows
-        # loud-ok: a missing port artifact is named row by row as a failed receipt by the coverage step below (--require-original-nine), which exits nonzero
-        continue-on-error: true
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: reference-report
           path: build/nightly/rows/reference-report
-        # loud-ok: a missing reference report is a failed receipt in the coverage step below, which exits nonzero
-        continue-on-error: true
       # The coverage command invokes SBCL itself and records a missing validator
       # as a failed acceptance check, alongside every other missing receipt.
       - name: the coverage table
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           mkdir -p build/nightly/coverage build/nightly/rows

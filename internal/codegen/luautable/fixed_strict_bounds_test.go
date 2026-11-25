@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // fixedStrictSchema lays every value the bounds pass holds beside a marker, so
@@ -140,7 +139,6 @@ func fixedStrictRun(t *testing.T, from, to string) string {
 // refuses the load.
 func TestLuauFixedStrictBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	if out := fixedStrictRun(t, "", ""); out != "ok" {
 		t.Fatalf("strict bounds:\n%s", out)
 	}
@@ -150,7 +148,6 @@ func TestLuauFixedStrictBounds(t *testing.T) {
 // emitted runtime, one at a time, and requires the probe to go red.
 func TestLuauFixedStrictBoundsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	plants := []struct{ name, from, to string }{
 		{"bool-byte", "if b > 1 then error(", "if b > 0xff then error("},
 		{"range", "elseif lessThan(v, lo, isSigned) or lessThan(hi, v, isSigned) then\n\t\t\terror(outOfRange(f), 0)",

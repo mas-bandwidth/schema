@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauSkippedValueIsValidated runs every row of the shared skipped-value
@@ -20,7 +19,6 @@ import (
 // The verdict is the contract; a refusal's name is the leg's own diagnostic.
 func TestLuauSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 
 	dir := filepath.Join(root, "testdata", "wire", "skipped-value")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

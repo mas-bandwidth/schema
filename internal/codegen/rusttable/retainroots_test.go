@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -42,11 +41,9 @@ import (
 //     declaration is read by a wide one; the Rust leg counts the oracle's
 //     `widened`, lands the oracle's values, and saves the oracle's bytes (§4).
 //
-// A test that compiles Rust is a FUNCTIONAL test: it skips by name when rustc
-// is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name when it is
-// set, which is how make tables-rust-wire-fuzz-all runs it.
+// A test that compiles Rust is a FUNCTIONAL test: it fails by name when rustc
+// is absent, which is how make tables-rust-wire-fuzz-all runs it.
 func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 
@@ -80,10 +77,7 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 	}
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the all-roots driver cannot be built: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the all-roots driver cannot be built: %v", err)
 	}
 
 	t.Run("RetainOnEveryRoot", func(t *testing.T) {
@@ -401,7 +395,6 @@ func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 }
 
 func rustcBuild(t *testing.T, dir string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	bin := filepath.Join(dir, "driver")
@@ -433,7 +426,6 @@ func buildAllRootsDriver(t *testing.T, repo string, units map[string]*carriedUni
 // protocol (wirefuzz.go: roster, then (index, size, wire) per seed) and holds
 // each reply to the oracle (docs/SPEC-TABLES.md §4.2, §6.6).
 func driveSeeds(t *testing.T, repo, bin string, units map[string]*carriedUnit, seeds []rosterSeed, retain bool) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	cmd := testproc.Command(t, bin)
@@ -606,7 +598,6 @@ func oracleSeed(t *testing.T, u *ir.Unit, root string, wire []byte, retain bool)
 // mismatched. The values are written by the Go engine under the NARROW
 // declaration and read by the Rust leg under the WIDE one.
 func widenOnRead(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	const narrow = "package widen\n\ntable Probe\n{\n    a int8\n    u uint16\n    f float32\n    s int32\n}\n"
 	const wide = "package widen\n\ntable Probe\n{\n    a int32\n    u uint64\n    f float64\n    s int64\n}\n"

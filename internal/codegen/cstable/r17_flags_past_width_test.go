@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -104,7 +103,6 @@ func csR17Ints(b []byte) string {
 }
 
 func TestCSharpR17FlagsPastWidthRefuse(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t.Parallel()
 	older := unitFrom(t, csR17Older)
 	newer := unitFrom(t, strings.Replace(csR17Older, "Verbose }", "Verbose, Extra }", 1))

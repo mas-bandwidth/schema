@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -21,7 +20,6 @@ import (
 // fuzzer's cause (a) found: graphdemo.Scene graph_tree, blobdemo.Catalog,
 // streamdemo.Feed, tblw1.Fleet, a listdemo root and a mapdemo root.
 func TestLoadMeasureCoversVariableFramingJavaScript(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	node := jsNode(t)

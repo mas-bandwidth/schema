@@ -15,7 +15,7 @@ import (
 func TestPythonVtUnionsThroughTheDriver(t *testing.T) {
 	t.Parallel()
 	if _, ok := compiler.Carried("python"); !ok {
-		t.Skip("the python target is behind the schema_leg_python build tag")
+		t.Fatal("the python target is not carried in this build: it needs -tags schema_leg_python")
 	}
 	const src = `package unions
 
@@ -63,7 +63,7 @@ table Root
 func TestPythonVtUnionsCarriesPacketUnionArrays(t *testing.T) {
 	t.Parallel()
 	if _, ok := compiler.Carried("python"); !ok {
-		t.Skip("the python target is behind the schema_leg_python build tag")
+		t.Fatal("the python target is not carried in this build: it needs -tags schema_leg_python")
 	}
 	const src = `package unions
 
@@ -108,7 +108,7 @@ table Root
 func TestPythonVtUnionsStillRefusesBlobLists(t *testing.T) {
 	t.Parallel()
 	if _, ok := compiler.Carried("python"); !ok {
-		t.Skip("the python target is behind the schema_leg_python build tag")
+		t.Fatal("the python target is not carried in this build: it needs -tags schema_leg_python")
 	}
 	const src = `package unions
 

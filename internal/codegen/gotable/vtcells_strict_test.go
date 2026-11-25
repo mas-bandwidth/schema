@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -123,7 +122,6 @@ func vtCellsRequireRed(t *testing.T, what string, out []byte, err error, want st
 // either return the whole value or refuse the whole load; a damaged body after
 // a clean open also reports the TableOpenDamaged verdict.
 func TestGoVariableShapeCellsStrict(t *testing.T) {
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	t.Run("fixed_class_and_id_table_wire", func(t *testing.T) {
 		var schema strings.Builder
 		schema.WriteString("package probe\nfixed table Child {\n")
@@ -422,7 +420,6 @@ func TestStrict(t *testing.T){
 // generated artifact for each cell held by TestGoVariableShapeCellsStrict, and
 // requires the matching gate to go red on its own message.
 func TestGoVariableShapeCellsStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	t.Run("verdict_stamping", func(t *testing.T) {
 		const schema = `package probe
 fixed table Root { n int32 }

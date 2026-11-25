@@ -74,11 +74,10 @@ func generatedFunc(t *testing.T, files map[string][]byte, decl string) string {
 
 // runStringWriteRefusalProbe compiles the generated writer and runs it. An
 // interior NUL is well-formed UTF-8, so each refusal is its own case; a
-// legal payload still writes. Behind slowtest.Gate — it shells out to the
-// Go toolchain.
+// legal payload still writes. It shells out to the Go toolchain
+// (functional).
 func runStringWriteRefusalProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 
 	const probe = `package note
 

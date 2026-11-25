@@ -100,14 +100,14 @@ test: cards-cpp-test cards-cpp-conformance cards-cpp-conformance-negative-contro
 # (internal/tabletext, internal/tablepack) writes its own text from the leg's
 # wire, byte-compared, and packs the leg's text back to wire, byte-compared.
 # The control caps the emitted float32 writer at six significant digits in
-# memory and must go red on the text comparison. SCHEMA_REQUIRE_CORPUS=1 makes
+# memory and must go red on the text comparison. the rule that nothing skips makes
 # a missing C++ compiler a FAILURE rather than a skip.
 .PHONY: tables-cpp-text-differential tables-cpp-text-differential-negative-control
 tables-cpp-text-differential:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
+	go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialAgainstTheGoEngine$$'
 	@echo 'tables C++ text differential: 200 random float instances agree with the Go engine byte for byte, both directions'
 tables-cpp-text-differential-negative-control:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
+	go test ./internal/codegen/cpptable/ -count=1 -timeout 600s -v -run '^TestCppTextDifferentialNegativeControl$$'
 	@echo 'tables C++ text differential negative control: a six-digit float32 writer is red on the text comparison'
 
 # THE C++ TABLES SOAK (docs/PORTING.md I9, issue #416's C++ half). The one-shot
@@ -302,7 +302,7 @@ tables-cpp-release-battery: $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(
 		pid=$${item%%:*}; name=$${item#*:}; \
 		if ! wait "$$pid"; then rc=1; fi; \
 		if [ "$$name" = suites ]; then \
-			for s in tables maps lists arms retain; do [ -f "build/cpp-release-logs/$$s.log" ] && cat "build/cpp-release-logs/$$s.log" || true; done; \
+			for s in tables maps lists arms retain; do [ ! -f "build/cpp-release-logs/$$s.log" ] || cat "build/cpp-release-logs/$$s.log"; done; \
 		else \
 			cat "build/cpp-release-logs/$$name.log"; \
 		fi; \
@@ -354,7 +354,7 @@ tables-cpp-release-flags-negative-control:
 # emitter's files carry on the warning list only the two kinds that cannot
 # be cleared without altering the packet wire (see the list's own header) and
 # are on the format list never. Where the tool is absent the gate SKIPS, except
-# under SCHEMA_REQUIRE_CLANG_FORMAT=1 / SCHEMA_REQUIRE_CLANGXX=1 (CI sets both):
+# under the rule that nothing skips (CI sets both):
 # a gate that always skips is no gate.
 CLANGXX ?= clang++
 CPP_CLEAN_TREES := build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp
@@ -369,8 +369,7 @@ tables-cpp-clean: tables-cpp-format tables-cpp-warnings
 # $(MAKE) -j runs them and each fans out over the cores itself
 tables-cpp-format: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW)
 	@if ! command -v $(CLANG_FORMAT) >/dev/null 2>&1; then \
-		if [ "$(SCHEMA_REQUIRE_CLANG_FORMAT)" = 1 ]; then echo "tables-cpp-clean: $(CLANG_FORMAT) is not installed and SCHEMA_REQUIRE_CLANG_FORMAT=1"; exit 1; fi; \
-		echo "SKIP tables-cpp-format: $(CLANG_FORMAT) is not installed"; exit 0; \
+		echo "tables-cpp-format FAILED: $(CLANG_FORMAT) is not installed"; exit 1; \
 	fi; \
 	v=$$($(CLANG_FORMAT) --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p'); \
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
@@ -380,8 +379,7 @@ tables-cpp-format: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-format.sh $(CPP_FOR
 
 tables-cpp-warnings: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-warnings.sh make/checks/cpp-clean-one.sh $(CPP_WARN_ALLOW)
 	@if ! $(CLANGXX) --version 2>/dev/null | grep -i clang >/dev/null; then \
-		if [ "$(SCHEMA_REQUIRE_CLANGXX)" = 1 ]; then echo "tables-cpp-clean: $(CLANGXX) is not a clang and SCHEMA_REQUIRE_CLANGXX=1"; exit 1; fi; \
-		echo "SKIP tables-cpp-warnings: $(CLANGXX) is not a clang (-Weverything is clang's)"; exit 0; \
+		echo "tables-cpp-warnings FAILED: $(CLANGXX) is not a clang (-Weverything is clang's)"; exit 1; \
 	fi; \
 	test -f $(SERIALIZE)/serialize.h || { echo "tables-cpp-clean: $(SERIALIZE)/serialize.h not found (SERIALIZE names the serialize checkout)"; exit 1; }; \
 	OUT=build/cpp-clean-warn CLANGXX=$(CLANGXX) SERIALIZE_DIR=$(SERIALIZE) sh make/checks/cpp-clean-warnings.sh $(CPP_WARN_ALLOW) check $(CPP_CLEAN_TREES)

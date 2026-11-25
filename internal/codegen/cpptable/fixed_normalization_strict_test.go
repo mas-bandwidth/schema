@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -165,7 +164,7 @@ func cppNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skipf("c++: %v", err)
+		t.Fatalf("c++: %v", err)
 	}
 	schemaDir := t.TempDir()
 	for _, side := range []string{"VOLD_hostile_bool.schema", "VNEW_hostile_bool.schema"} {
@@ -237,7 +236,6 @@ func cppNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 }
 
 func TestCppFixedNormalizationIsDamage(t *testing.T) {
-	slowtest.Gate(t, "functional test: invokes the C++ compiler (c++) and runs a compiled C++ fixed-form probe")
 	t.Parallel()
 	out, err := cppNormDamageRun(t, [2]string{})
 	if err != nil {
@@ -249,7 +247,6 @@ func TestCppFixedNormalizationIsDamage(t *testing.T) {
 }
 
 func TestCppFixedNormalizationIsDamageNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "functional negative control: invokes the C++ compiler (c++) on a mutated C++ fixed-form artifact")
 	t.Parallel()
 	out, err := cppNormDamageRun(t, [2]string{
 		"report->reason = wire_damaged;\n                    report->refuse_reason = wire_damaged;",

@@ -26,14 +26,6 @@ otp_version_path =
 elixir_ok = elixir_found == elixir_want
 
 cond do
-  System.get_env("SCHEMA_ELIXIR_ANY_OTP") == "1" ->
-    IO.puts(
-      :stderr,
-      "NOT CERTIFIED: this gate is running OTP #{otp_found} (want #{otp_want}) " <>
-        "and Elixir #{elixir_found} (want #{elixir_want}); SCHEMA_ELIXIR_ANY_OTP=1 " <>
-        "reads the numbers without certifying them"
-    )
-
   otp_ok and elixir_ok ->
     IO.puts("certified: OTP #{otp_found} with Elixir #{elixir_found}; OK")
 
@@ -41,8 +33,7 @@ cond do
     IO.puts(
       "FAILED: this gate certifies for the pinned runtime (OTP #{otp_want}, " <>
         "Elixir #{elixir_want}); it is running OTP #{otp_found}, Elixir #{elixir_found}; " <>
-        "make/elixir.mk names the pinned toolchain and where it comes from; " <>
-        "SCHEMA_ELIXIR_ANY_OTP=1 reads the numbers without certifying them"
+        "make/elixir.mk names the pinned toolchain and where it comes from"
     )
 
     System.halt(1)

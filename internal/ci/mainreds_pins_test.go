@@ -81,7 +81,7 @@ func TestMainRedsPinsMatchCIFull(t *testing.T) {
 	// A pin whose only reader is a target nothing invokes binds no checkout:
 	// the target is dead text and the loop above still passes. deps is the
 	// staging entry point the gates that need a sibling already name (test,
-	// test-go, slow-gate-coverage, tables-go-sibling-runtime), so the sibling
+	// test-go, tables-go-sibling-runtime), so the sibling
 	// staging has to hang off it or the C/CS/RS/JS pins are decorative.
 	if !slices.Contains(mainRedsPrerequisites(makeText, "deps"), "serialize-siblings") {
 		t.Errorf("serialize-siblings is not a prerequisite of deps, so no invoked target stages it and the C/CS/RS/JS pins bind no sibling checkout")

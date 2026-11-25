@@ -48,7 +48,7 @@ func (w *world) check(args ...string) (int, string, string) {
 }
 
 // The results every rule is planted into: one go package with three tests that
-// ran and one ledgered skip, its baseline written by newWorld.
+// ran, its baseline written by newWorld.
 const goGreen = `{"Action":"start","Package":"ex/a"}
 {"Action":"run","Package":"ex/a","Test":"TestOne"}
 {"Action":"pass","Package":"ex/a","Test":"TestOne"}
@@ -56,13 +56,11 @@ const goGreen = `{"Action":"start","Package":"ex/a"}
 {"Action":"run","Package":"ex/a","Test":"TestTwo/sub"}
 {"Action":"pass","Package":"ex/a","Test":"TestTwo/sub"}
 {"Action":"pass","Package":"ex/a","Test":"TestTwo"}
-{"Action":"run","Package":"ex/a","Test":"TestSkipped"}
-{"Action":"skip","Package":"ex/a","Test":"TestSkipped"}
 {"Action":"pass","Package":"ex/a"}
 `
 
 func (w *world) config(extra string) string {
-	return w.file("testguard.tsv", "# a config\nsuite\tex/a\nskip\tex/a\tTestSkipped\tneeds a GPU\nbaseline\tbl\n"+extra)
+	return w.file("testguard.tsv", "# a config\nsuite\tex/a\nbaseline\tbl\n"+extra)
 }
 
 func TestGreenRunIsOK(t *testing.T) {
@@ -70,7 +68,7 @@ func TestGreenRunIsOK(t *testing.T) {
 	w := newWorld(t)
 	code, out, errOut := w.check("--config", w.config(""), w.file("go.json", goGreen))
 	assert.Equal(t, exitOK, code, out+errOut)
-	assert.Equal(t, "OK: every test that should run ran and passed; read 1 result files: 1 suites, 3 tests run, 1 skipped; 0 coverage tables, 0 pairs\n", out)
+	assert.Equal(t, "OK: every test that should run ran and passed; read 1 result files: 1 suites, 3 tests run, 0 skipped; 0 coverage tables, 0 pairs\n", out)
 	assert.Empty(t, errOut)
 }
 
@@ -92,36 +90,27 @@ func TestPackageFailureOutsideATestIsIncomplete(t *testing.T) {
 	assert.Contains(t, out, "RED incomplete ex/a: the package failed (a build failure, a panic outside a test, or a timeout);")
 }
 
-func TestUnledgeredSkipIsRed(t *testing.T) {
+// A skip is a failure: no config line allows one. TestGreenRunIsOK is the
+// control, the same results without the skipped test.
+func TestASkipIsRed(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	cfg := w.file("c.tsv", "suite\tex/a\nbaseline\tbl\n")
-	code, out, _ := w.check("--config", cfg, w.file("go.json", goGreen))
+	results := strings.Replace(goGreen, `{"Action":"pass","Package":"ex/a"}`, `{"Action":"run","Package":"ex/a","Test":"TestSkipped"}
+{"Action":"skip","Package":"ex/a","Test":"TestSkipped"}
+{"Action":"pass","Package":"ex/a"}`, 1)
+	code, out, _ := w.check("--config", w.config(""), w.file("go.json", results))
 	assert.Equal(t, exitFindings, code)
-	assert.Contains(t, out, "RED skip ex/a\tTestSkipped: skipped, and the ledger does not hold it; fix: make it run, or add the line skip<TAB>SUITE<TAB>TEST<TAB>REASON to c.tsv\n")
+	assert.Contains(t, out, "RED skip ex/a\tTestSkipped: skipped, and a skip is a failure; fix: make it run; a test that is not to run is left out at the root (tools/schema-test), never skipped\n")
 	assert.Contains(t, out, "RED: 1 findings (skip 1); read 1 result files")
 }
 
-func TestLedgerIdsDoNotCollide(t *testing.T) {
+// A skip line in a config is refused: it would allow a skip, and none is allowed.
+func TestASkipLineIsRefused(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
-	// Suite "a" test "b.c" and suite "a.b" test "c" are two tests; a ledgered skip of one does not hold the other.
-	w.file("bl/a/b.c", "")
-	w.file("bl/a.b/d", "")
-	cfg := w.file("c.tsv", "suite\ta\nsuite\ta.b\nskip\ta\tb.c\tr\nbaseline\tbl\n")
-	r := w.file("r.xml", `<testsuites><testsuite name="a"><testcase classname="b" name="c"/></testsuite><testsuite name="a.b"><testcase name="d"/><testcase name="c"><skipped/></testcase></testsuite></testsuites>`)
-	code, out, _ := w.check("--config", cfg, r)
-	assert.Equal(t, exitFindings, code)
-	assert.Contains(t, out, "RED skip a.b\tc:")
-	assert.Contains(t, out, "RED stale-skip a\tb.c:")
-}
-
-func TestLedgeredSkipThatRanIsStale(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t)
-	code, out, _ := w.check("--config", w.config("skip\tex/a\tTestOne\twas flaky\n"), w.file("go.json", goGreen))
-	assert.Equal(t, exitFindings, code)
-	assert.Contains(t, out, "RED stale-skip ex/a\tTestOne: ledgered as a skip, and it did not skip here (it ran, or it is gone); fix: delete its skip line from testguard.tsv\n")
+	code, _, errOut := w.check("--config", w.config("skip\tex/a\tTestOne\tneeds a GPU\n"), w.file("go.json", goGreen))
+	assert.Equal(t, exitRefused, code)
+	assert.Contains(t, errOut, ":4: a skip line allows a skip, and no test may skip")
 }
 
 func TestMissingSuiteIsRed(t *testing.T) {
@@ -194,14 +183,14 @@ func TestBadConfigIsRefusedWithItsLine(t *testing.T) {
 	w := newWorld(t)
 	for body, want := range map[string]string{
 		"suite\n":                         `:1: "suite" wants NAME, separated by tabs; run: sed -n 1p `,
-		"# c\nskip\tex/a.TestX\tr\n":      `:2: "skip" wants SUITE, TEST and REASON`,
+		"# c\nskip\tex/a\tTestX\tr\n":     `:2: a skip line allows a skip, and no test may skip`,
 		"skip ex/a.TestX because\n":       `:1: "skip ex/a.TestX because" is no entry`,
-		"skip\tex/a\tTestX \tr\n":         `a field is empty or starts or ends with a blank: "TestX "`,
+		"suite\tex/a \n":                  `a field is empty or starts or ends with a blank: "ex/a "`,
 		"cover\tt\tdiagonal\tfile\tx\n":   `"cover" wants TABLE, rows|columns|pairs`,
 		"suite\t\n":                       `a field is empty or starts or ends with a blank`,
 		"gap\tt\tr\tc\n":                  `"gap" wants TABLE, ROW, COLUMN and REASON`,
 		"baseline\ta\nbaseline\tb\n":      `"baseline" wants DIR, once`,
-		"suite\tex/a\nfrobnicate\tx\ty\n": `:2: "frobnicate" is no entry; the entries are suite, skip, cover, gap and baseline`,
+		"suite\tex/a\nfrobnicate\tx\ty\n": `:2: "frobnicate" is no entry; the entries are suite, cover, gap and baseline`,
 		"suite\tex/a\nbaseline\tbl\ncover\tt\trows\tfile\tr.txt\n": `table t has no columns source`,
 	} {
 		code, _, errOut := w.check("--config", w.file("bad.tsv", body), w.file("go.json", goGreen))

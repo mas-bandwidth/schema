@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -108,7 +107,6 @@ print('ok')
 // The unknown fields still contribute IDs, including records walked after the root.
 func TestPythonIDOrderUnknownGraphCpp(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both Python pins")
 	c := wideVTConstructs[len(wideVTConstructs)-1]
 	writer := loadUnit(t, c.schema)
 	reader := loadUnit(t, "package wide\ntable Root { n uint128 }\n")
@@ -137,7 +135,6 @@ print('ok')
 
 func TestPythonIDOrderUnknownNestedCpp(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both Python pins")
 	c := wideVTConstruct{name: "nested", schema: `package idnested
  table Inner { a int32
  b int32 }

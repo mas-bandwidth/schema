@@ -5,12 +5,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonCookRequiredRange(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnit(t, `package cookrequiredrange
  table Root { ver uint8 | min = 7, max = 7, required }
 `)

@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -91,7 +89,6 @@ func TestNewLegZigFiles(t *testing.T) {
 }
 
 func TestNewLegZigFixturePasses(t *testing.T) {
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated zig leg fixture)")
 	files, err := NewLeg("zig")
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +139,6 @@ func TestNewLegZigFixturePasses(t *testing.T) {
 }
 
 func TestNewLegBenchScaffoldIsUnavailable(t *testing.T) {
-	slowtest.Gate(t, "the generated leg script (it runs it as a subprocess)")
 	files, err := NewLeg("zig")
 	if err != nil {
 		t.Fatal(err)

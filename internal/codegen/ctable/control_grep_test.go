@@ -1,3 +1,5 @@
+//go:build !windows
+
 package ctable
 
 import (
@@ -6,11 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -20,10 +19,6 @@ import (
 // expressions, BRE alternation, and fixed-string controls before they could
 // recognize the intentionally planted failures.
 func TestCNegativeControlGrepDialects(t *testing.T) {
-	slowtest.Gate(t, "grep")
-	if runtime.GOOS == "windows" {
-		t.Skip("the C make controls execute on POSIX runners")
-	}
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "make", "c.mk"))
 	if err != nil {
 		t.Fatal(err)

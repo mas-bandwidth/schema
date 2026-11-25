@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauJsonWriterRefusesACountBelowMin holds the Luau JSON writer to a
@@ -18,7 +17,6 @@ import (
 // jref_shapes_octets_count), and the count at Min writes.
 func TestLuauJsonWriterRefusesACountBelowMin(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	unitDir := filepath.Join("..", "..", "..", "test", "tables", "shapes")
 	entries, err := os.ReadDir(unitDir)
 	if err != nil {

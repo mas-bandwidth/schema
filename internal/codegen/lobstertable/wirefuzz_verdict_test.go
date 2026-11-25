@@ -7,9 +7,8 @@ package lobstertable_test
 // back the same canonical bytes as internal/tablewire.
 //
 // TestLobsterWireFuzzVerdictPipe checks make/lobster-fuzz.mk's gate
-// registration, then runs that pipe. The check is before slowtest.Gate, so a
-// dropped target fails even when SCHEMA_SLOW is unset. A skip is not a pass:
-// SCHEMA_SLOW=1 is what lets the pipe run.
+// registration, then runs that pipe. A dropped target fails
+// first; the pipe always runs.
 //
 // TestLobsterWireFuzzVerdictPipeNegativeControl plants its faults in the
 // generated artifacts the VM compiles. A string the emitter already writes,
@@ -27,7 +26,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -255,7 +253,6 @@ func TestLobsterWireFuzzVerdictPipe(t *testing.T) {
 	if err := lobsterWireFuzzVerdictMakefileCheck(string(mk)); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Lobster toolchain (it runs the wire-fuzz verdict pipe)")
 	resolveLobster(t, root)
 	harness, host := lobsterWireFuzzBins(t, root)
 	dest := t.TempDir()
@@ -296,7 +293,6 @@ func TestLobsterWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		t.Fatal("NEGATIVE CONTROL FAILED: dropping tables-lobster-wire-fuzz-verdict left the makefile check green")
 	}
 
-	slowtest.Gate(t, "the Lobster toolchain (it runs the wire-fuzz verdict pipe negative controls)")
 	resolveLobster(t, root)
 	harness, host := lobsterWireFuzzBins(t, root)
 	manifest := lobsterManifestUnits(t, root)

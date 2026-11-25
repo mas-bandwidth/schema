@@ -1,10 +1,8 @@
 package jstable
 
-// THE GUARD ON THE JAVASCRIPT ROADMAP TESTS' GATES. jsNode SKIPS a test when no
-// node is on PATH (make/js.mk says so above tables-js-versioning), so `go test
-// ./...` asserts nothing for the message-form and fixed-roadmap tests: only a
-// make target that sets SCHEMA_REQUIRE_CORPUS=1 and refuses a SKIP line makes
-// them run. A ledger row cannot honestly be :done on a test no target runs, and
+// THE GUARD ON THE JAVASCRIPT ROADMAP TESTS' GATES. jsNode fails a test when no
+// node resolves; only a make target that provides node makes the message-form
+// and fixed-roadmap tests run green. A ledger row cannot honestly be :done on a test no target runs, and
 // the next roadmap test added without a target would ride into CI unrun.
 //
 // This test reads files only (no node, no clock, no network): every top-level
@@ -82,7 +80,7 @@ func TestEveryJavaScriptRoadmapTestIsRunByAMakeTarget(t *testing.T) {
 	}
 	sort.Strings(missing)
 	if len(missing) > 0 {
-		t.Errorf("%d test(s) are named by no -run pattern in make/js.mk, so go test ./... skips them with no node and nothing makes them run:\n  %s\nname each in a target that sets SCHEMA_REQUIRE_CORPUS=1 and refuses a SKIP line, and wire it into test-js", len(missing), strings.Join(missing, "\n  "))
+		t.Errorf("%d test(s) are named by no -run pattern in make/js.mk, so nothing makes them run with node:\n  %s\nname each in a target that sets SCHEMA_REQUIRE_CORPUS=1 and refuses a SKIP line, and wire it into test-js", len(missing), strings.Join(missing, "\n  "))
 	}
 }
 

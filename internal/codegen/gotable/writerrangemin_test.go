@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -28,7 +27,6 @@ fixed table Root {
 // leaves its output untouched; each invalid value has a lawful boundary twin.
 func TestGoWritersHoldRangeAndCountMin(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (generated writer probes)")
 	m := tabletext.NewModel(unitOf(t, writerRangeMinSchema))
 	field := func(v *tabletext.Instance, name string) *tabletext.Field {
 		for i := range v.Fields {

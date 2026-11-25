@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -110,7 +109,6 @@ func fixedBoolBytesLayout(t *testing.T) (flag, present, unionBool, payload, nest
 
 func TestFixedBoolBytesStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "functional test: invokes the JDK (javac/java) and runs a compiled Java fixed-form probe")
 	javac, javaBin := javaToolsRequired(t)
 
 	files, err := Generate(unitFrom(t, fixedBoolBytesSchema))

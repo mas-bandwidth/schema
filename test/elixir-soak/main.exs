@@ -35,8 +35,7 @@
 # allocate-and-free, which is why it does not stand alone.
 #
 # THE PIN COMES FIRST, as it does in the audit: the budget is pinned on one
-# runtime, so the leg's runtime pin runs before anything is measured, and
-# SCHEMA_ELIXIR_ANY_OTP=1 prints the figures under NOT CERTIFIED and exits 0.
+# runtime, so the leg's runtime pin runs before anything is measured.
 runtime_pin = fn [_manifest, otp_want, elixir_want | _] = argv ->
   System.argv([otp_want, elixir_want])
   Code.eval_file("test/elixir/runtime_pin.exs")
@@ -63,7 +62,6 @@ defmodule Soak do
 
   def main([manifest, otp_want, elixir_want, passes | rest]) do
     budget_path = List.first(rest) || "test/conformance/elixir/alloc-budget.txt"
-    any_otp = System.get_env("SCHEMA_ELIXIR_ANY_OTP") == "1"
     ebin = System.get_env("ELIXIR_TABLES_EBIN") || "build/elixir-tables-ebin"
     Code.prepend_path(ebin)
     passes = String.to_integer(passes)
@@ -147,12 +145,6 @@ defmodule Soak do
     )
 
     cond do
-      any_otp ->
-        IO.puts(
-          "soak: NOT CERTIFIED — read under SCHEMA_ELIXIR_ANY_OTP=1 (the pin wants OTP " <>
-            "#{otp_want}, Elixir #{elixir_want}); #{over} samples over, and nothing is certified"
-        )
-
       over > 0 ->
         System.halt(1)
 

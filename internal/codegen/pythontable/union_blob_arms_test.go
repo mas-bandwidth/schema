@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -16,14 +15,12 @@ import (
 
 func TestPythonUnionBlobArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnitFiles(t, filepath.Join("..", "..", "..", "tables", "arms"))
 	testPythonUnionBlobArm(t, u, "2", `"hello"`, "text")
 }
 
 func TestPythonUnionBytesArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnit(t, `package armdemo
  union Reach { text *bytes }
  table Gate { reach Reach }
@@ -33,28 +30,24 @@ func TestPythonUnionBytesArm(t *testing.T) {
 
 func TestPythonUnionNullBlobArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnitFiles(t, filepath.Join("..", "..", "..", "tables", "arms"))
 	testPythonUnionBlobArm(t, u, "2", "None", "text")
 }
 
 func TestPythonUnionEmptyBlobArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnitFiles(t, filepath.Join("..", "..", "..", "tables", "arms"))
 	testPythonUnionBlobArm(t, u, "2", `""`, "text")
 }
 
 func TestPythonUnionNullPointerArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnitFiles(t, filepath.Join("..", "..", "..", "tables", "arms"))
 	testPythonUnionBlobArm(t, u, "1", "None", "only")
 }
 
 func TestPythonUnionNullAndEmptyBytesArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnit(t, `package armdemo
  union Reach { text *bytes }
  table Gate { reach Reach }

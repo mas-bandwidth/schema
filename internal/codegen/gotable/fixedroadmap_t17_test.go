@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -20,7 +18,7 @@ import (
 // go/P1: the identity path and the compiled plan produce identical bytes for
 // one populated record. Assertions on Go plan values in-process are unit
 // tests; running the generated unit shells out to the Go toolchain and is a
-// functional test behind slowtest.Gate.
+// functional test.
 func TestFixedRoadmapGoT17PlanPartition(t *testing.T) {
 	t.Parallel()
 
@@ -227,7 +225,6 @@ func runT17TableOnly(t *testing.T, schema, testSource string) {
 			t.Fatal(err)
 		}
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {

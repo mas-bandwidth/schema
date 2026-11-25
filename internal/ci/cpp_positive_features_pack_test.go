@@ -1,3 +1,5 @@
+//go:build !windows
+
 package ci
 
 import (
@@ -5,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -17,9 +18,6 @@ import (
 // no table parser or native reader is invoked here.
 func TestCppPositiveFeatureCorpusPack(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("nightly corpus packaging runs in Bash on Linux")
-	}
 	root := repoRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, ".github/workflows/nightly-conformance.yml"))
 	if err != nil {

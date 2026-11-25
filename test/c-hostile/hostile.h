@@ -10,8 +10,8 @@
  *   accept bytes\n<the port's packet writer's bytes> a decoded packet
  *   accept -\n                                      an announcement read
  *   refuse <reason>\n                               a named refusal, or damaged
- *   skip <why>\n                                    the port has no such API
- *   unbound <what>\n                                the runner names no binding
+ *   unbound <what>\n                                no binding, or a carrier the port has no
+ *                                                   API for: a failure, never a skip
  *   error <what>\n                                  the port could not answer
  *
  * This file is what the C and C++ ports share: the binding row each unit
@@ -34,16 +34,16 @@ typedef struct hc_binding_t
 {
     const char * schema;
     const char * table;
-    /* NULL is a carrier this port has no API for: the case answers skip */
+    /* NULL is a carrier this port has no API for: the case answers unbound (a failure) */
     void ( *wire )( const uint8_t * data, int64_t size );
     void ( *wire_retain )( const uint8_t * data, int64_t size );
     void ( *text )( const uint8_t * data, int64_t size );
     void ( *message )( const uint8_t * data, int64_t size, int announced );
     void ( *announce )( const uint8_t * data, int64_t size, const char * carrier );
     void ( *packet )( const uint8_t * data, int64_t size );
-    const char * wire_retain_skip; /* why wire_retain is NULL, when it is */
+    const char * wire_retain_why; /* why wire_retain is NULL, when it is */
     /* a root the port's target does not generate: every carrier answers
-       skip, naming why */
+       unbound (a failure), naming why */
     const char * absent;
 } hc_binding_t;
 

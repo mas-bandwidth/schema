@@ -32,8 +32,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cppVarCellAnchor names one real artifact and the strict-refusal spelling it
@@ -169,7 +167,6 @@ func TestCppVariableCellsStrict(t *testing.T) {
 	// out_of_range value. This is the same probe TestCppMessageFormStrict
 	// runs; it is a functional test (it compiles and runs the C++ probe).
 	t.Run("vt/message-form/cpp", func(t *testing.T) {
-		slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 		out, err := cppMessageStrictRun(t, nil)
 		if err != nil {
 			t.Fatalf("the message-form strict read: %v\n%s", err, out)
@@ -213,7 +210,6 @@ func TestCppVariableCellsStrictNegativeControl(t *testing.T) {
 	// message-form: remove the generated strict read's whole-load refusal
 	// guard, so the body ends as a value even when it refused.
 	t.Run("vt/message-form/cpp", func(t *testing.T) {
-		slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 		const guard = "if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)"
 		undermine := func(files map[string][]byte) {
 			for name, data := range files {

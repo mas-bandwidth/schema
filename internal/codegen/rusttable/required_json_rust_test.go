@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"os"
@@ -14,7 +13,6 @@ import (
 )
 
 func TestRustRequiredJSONNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (Required JSON named presence and nested guard closure)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/required/rust-json")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))

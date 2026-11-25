@@ -21,7 +21,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,7 +39,6 @@ func probeUnit(t *testing.T, src string) *ir.Unit {
 
 func TestSquirrelKeyedArraysAreHeldAtBothEnds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	u := probeUnit(t, `package keyedprobe
 
 enum Team { Red, Blue, Green }

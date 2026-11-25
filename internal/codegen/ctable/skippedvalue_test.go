@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -24,7 +23,6 @@ import (
 // The verdict is the contract; a refusal's name is the leg's own diagnostic.
 func TestCSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "cc (it compiles and runs the generated skipped-value probe)")
 
 	root := filepath.Join("..", "..", "..")
 	dir := filepath.Join(root, "testdata", "wire", "skipped-value")
@@ -113,10 +111,7 @@ func TestCSkippedValueIsValidated(t *testing.T) {
 
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is not on PATH: %v", err)
-		}
-		t.Skipf("cc is not on PATH: %v", err)
+		t.Fatalf("cc is not on PATH: %v", err)
 	}
 	build := t.TempDir()
 	for name, data := range files {

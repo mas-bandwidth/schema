@@ -1,1 +1,0 @@
-<testsuites><testsuite name="a"><testcase classname="b" name="c"/></testsuite><testsuite name="a.b"><testcase name="d"/><testcase name="c"><skipped/></testcase></testsuite></testsuites>

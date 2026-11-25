@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -85,7 +83,6 @@ func mapSortRun(t *testing.T, edit func(map[string][]byte)) []string {
 
 func TestMapWriterSortsRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the map-sort probe)")
 	keyedRequireRustc(t)
 	if red := mapSortRun(t, nil); len(red) != 0 {
 		t.Fatalf("the map writer's sort is red on %v", red)
@@ -101,7 +98,6 @@ const noSort = "order.sort_by(|_: &usize, _: &usize| core::cmp::Ordering::Equal)
 // turn, in the emitted Rust, and each must red exactly its own clause.
 func TestMapWriterSortsRustNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the map-sort probe)")
 	keyedRequireRustc(t)
 	cases := []struct {
 		name, module, from, to, want string

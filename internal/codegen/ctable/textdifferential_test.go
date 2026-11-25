@@ -16,9 +16,7 @@ package ctable
 // strtod round trips; the engine's is internal/tabletext/write.go's formatG.
 // Two implementations in two languages, neither written from the other.
 //
-// Compiling and running the probe makes this a functional test: it skips by
-// name without SCHEMA_SLOW, and fails by name under SCHEMA_REQUIRE_CORPUS=1
-// when no C compiler is found. It is reached from make
+// Compiling and running the probe makes this a functional test: it fails by name when no C compiler is found. It is reached from make
 // tables-c-text-differential.
 
 import (
@@ -159,16 +157,12 @@ const (
 // and a non-nil error when any instance differs.
 func runCTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CC")
 	if cxx == "" {
 		cxx = "cc"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	u := cUnitOf(t, cTextDifferentialSchema)
 	files, err := cgen.Generate(u)

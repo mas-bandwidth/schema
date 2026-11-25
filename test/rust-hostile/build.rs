@@ -5,8 +5,7 @@
 // functions of the unit crate built from that schema. The crate's own source is
 // scanned for the function names, so a table's snake-case spelling is read off
 // the compiler's output rather than re-derived here. A pair whose functions are
-// absent gets no binding, and the runner reports that case as a SKIP or a FAIL
-// by carrier.
+// absent gets no binding, and the runner reports that case as a FAIL.
 //
 // Inputs (set by make/schema-rust-runs-hostile-corpus.mk):
 //   RUST_HOSTILE_MANIFEST  the corpus manifest.tsv

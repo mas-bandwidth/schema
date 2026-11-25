@@ -196,10 +196,9 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 
 // runWriteRefusalPacket generates the shared unit for the Go leg, builds it
 // with the serialize.go runtime, and runs the probe over the shared cases.
-// Behind slowtest.Gate — it shells out to the Go toolchain.
+// Its tier is functional: it shells out to the Go toolchain.
 func runWriteRefusalPacket(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated packet writer)")
 	t.Chdir("../../..")
 
 	c := compiler.New()

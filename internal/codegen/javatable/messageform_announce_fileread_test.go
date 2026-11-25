@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -170,7 +169,6 @@ func engineFileVerdict(t *testing.T, u *ir.Unit, data []byte) (bool, int) {
 // the unknown count only.
 func TestJavaAnnounceReadIsAFileRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	u := unitFrom(t, announceFileUnit)

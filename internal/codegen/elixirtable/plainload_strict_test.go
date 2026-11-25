@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -135,7 +134,6 @@ func readPlainStrictWire(t *testing.T, root, name string) []byte {
 
 func TestElixirPlainLoadHoldsStrictFraming(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

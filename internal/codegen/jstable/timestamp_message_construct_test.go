@@ -3,13 +3,11 @@ package jstable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaScriptTimestampMessageConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes timestamp vocabulary and message batches)")
 	u := unitFrom(t, `package probe
  fixed table Clock { at timestamp }
  fixed table Older { other int32 }

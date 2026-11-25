@@ -11,7 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -29,7 +28,6 @@ import (
 // plain load, the strict read, the retaining load and the measure.
 func TestLobsterPointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain (it runs the generated unit)")
 
 	dir := filepath.Join(root, "testdata", "wire", "pointer-target-type")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

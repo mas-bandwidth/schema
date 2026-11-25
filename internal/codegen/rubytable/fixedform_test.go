@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -23,7 +22,6 @@ import (
 
 func TestRubyFixedForm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and the live C++ fixed-form oracle")
 	tc := fixedproof.Cases()[0]
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	oracle, verify := fixedproof.CppOracle(t, tc, u)
@@ -47,7 +45,6 @@ puts "fixed-roundtrip"
 
 func TestRubyFixedFormLineage(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n a uint16 = 1\n b int32 = 10\n}\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n a uint32 = 1\n b int64 = 10\n c int32 = 99\n}\n")
 	entry, _ := fixedproof.LineageEntryOf(old, "T")
@@ -70,7 +67,6 @@ func TestRubyFixedFormLineage(t *testing.T) {
 
 func TestRubyFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and the live C++ fixed-form oracle")
 	tc := fixedproof.Cases()[0]
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	oracle, _ := fixedproof.CppOracle(t, tc, u)
@@ -118,7 +114,6 @@ abort("fixed_writer_control") if Probe::T.fixed_save(rows) != wire
 
 func TestRubyFixedFormRefusedHash(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { x int8 }\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { x int16 }\n")
 	entry, _ := fixedproof.LineageEntryOf(old, "T")
@@ -174,7 +169,6 @@ puts "ok"
 
 func TestRubyFixedFormDeprecatedEnum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters and C++ oracle")
 	oldSchema := `package probe
 enum Mode {
     Legacy
@@ -248,7 +242,6 @@ end
 
 func TestRubyFixedFormPacketKeyed(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Ruby pins and the live C++ oracle")
 	tc := fixedproof.RowCase{ID: "ruby-fixed-packet-keyed", Schema: `package probe
 enum Slot { Alpha, Beta }
 type Board { values [Slot]int32 | min = 0, max = 100 }
@@ -289,7 +282,6 @@ puts "ok"
 
 func TestRubyFixedIntegrityCRC(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed-table CRC32C")
 	schema := "package probe\nfixed table T | integrity = \"crc32c\" { n int32 }\n"
 	u := fixedproof.ParseCheckUnit(t, schema)
 	tc := fixedproof.RowCase{ID: "ruby-fixed-crc", Schema: schema, Root: "T", Body: 4, Count: 2, CppSetup: "value[0].n = 7; value[1].n = 8;"}
@@ -341,7 +333,6 @@ puts "ok"
 
 func TestRubyFixedIntegrityCRCNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed-table CRC32C negative controls")
 	schema := "package probe\nfixed table T | integrity = \"crc32c\" { n int32 }\n"
 	u := fixedproof.ParseCheckUnit(t, schema)
 	m := tabletext.NewModel(u)
@@ -388,7 +379,6 @@ end
 
 func TestRubyFixedIdentityTrustedLayoutOnly(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Ruby pins")
 	repo, err := rubyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -467,7 +457,6 @@ puts "ok"
 
 func TestRubyFixedIdentityRejectsUnrecordedSchemes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Ruby pins")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { x int32 | min = 0, max = 10 }\n")
 	e, _ := fixedproof.LineageEntryOf(u, "T")
 	for _, control := range []string{"future", "erased", "layout-only-v2"} {

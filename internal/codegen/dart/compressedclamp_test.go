@@ -11,7 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -56,7 +55,6 @@ func TestDartCompressedFloatClampsTheTopOfRange(t *testing.T) {
 				t.Errorf("emitted writer for max = %s must clamp the quantized integer to the step count:\nwant %q in the generated Dart", c.lit, needle)
 			}
 
-			slowtest.Gate(t, "the Dart toolchain (it compiles and runs the generated unit)")
 			dartProbeRoundTripsTop(t, files, c.lit, steps, wireBits)
 		})
 	}

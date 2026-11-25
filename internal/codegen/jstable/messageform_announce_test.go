@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -270,7 +269,6 @@ func jsRunAnnounceProbe(t *testing.T, node string, u *ir.Unit, extra map[string]
 // the constant array's length" preamble optional: a unit past the writer's
 // 4096-entry maximum refuses instead (R8 follow-up).
 func jsRunAnnounceProbeChecked(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string, measureIsLength bool) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := js.Generate(u)

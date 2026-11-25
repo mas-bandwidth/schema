@@ -20,8 +20,7 @@ func TestCIFastPolicyJobCoverage(t *testing.T) {
 		t.Fatal(strings.Join(errors, "\n"))
 	}
 	for _, needle := range []string{
-		"        run: make slow-gate-scan",
-		"        run: go test ${{ matrix.select }} ./internal/ci/",
+		"        " + ciPolicyCommand,
 		"        run: bash -n bench/run.sh",
 		"  ci-policy:\n",
 		"    needs: ci-policy\n",
@@ -61,7 +60,7 @@ func fastPolicyErrors(wf string) []string {
 	if !strings.Contains(lint, "    needs: ci-policy\n") || strings.Count(lint, gate) != 1 {
 		errs = append(errs, "lint-fast must depend on and enforce the policy result")
 	}
-	for _, command := range []string{"run: make slow-gate-scan", "run: go test ${{ matrix.select }} ./internal/ci/", "run: bash -n bench/run.sh"} {
+	for _, command := range []string{ciPolicyCommand, "run: bash -n bench/run.sh"} {
 		if strings.Count(policy, command) != 1 || strings.Contains(lint, command) {
 			errs = append(errs, "policy command must occur once in its own job: "+command)
 		}

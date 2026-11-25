@@ -550,7 +550,6 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 // serialize runtime beside this repository; a uint64 parameter refuses both
 // calls.
 func TestEnumNameTakesTheEnumType(t *testing.T) {
-	slowtest.Gate(t, "the Go toolchain (it compiles the generated code)")
 	files := generateGo(t, "Typed", "package typed\n\n"+
 		"enum ShipType { Fighter, Bomber, Scout }\n\n"+
 		"type Ship\n{\n    ship_type ShipType\n}\n\n"+
@@ -581,7 +580,7 @@ func TestEnumNameTakesTheEnumType(t *testing.T) {
 // and n*steps + 0.5 at n = 1.0 is a tie that rounds to even — an unclamped
 // writer emits steps+1 for a legal top-of-range value (8388610 for 8388609, or
 // 2^24 into a 24-bit field for 16777215). The generated writer must clamp the
-// integer to the step count. The run half, behind slowtest.Gate, compiles the
+// integer to the step count. The run half compiles the
 // generated code, writes the top value, reads it back exactly, and
 // byte-compares against the C++ reference's bytes — the same clamped step
 // count, packed LSB-first (SPEC §4.3).
@@ -617,10 +616,9 @@ func TestGoCompressedFloatClampsTheTopOfRange(t *testing.T) {
 // runCompressedFloatClampProbe compiles the generated Go and runs it against the
 // serialize.go runtime: the top value writes the clamped step count (byte-identical
 // to the C++ reference, whose clamp writes the same integer) and reads back
-// exactly. Behind slowtest.Gate — it shells out to the Go toolchain.
+// exactly. It shells out to the Go toolchain (functional).
 func runCompressedFloatClampProbe(t *testing.T, files map[string][]byte, steps uint64, bits int) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 
 	var ref [8]byte
 	binary.LittleEndian.PutUint64(ref[:], steps)

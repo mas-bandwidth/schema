@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -89,7 +88,6 @@ func csT18Write(t *testing.T, dir string, files map[string][]byte) {
 // TestFixedRoadmapCSharpT18ExactCounters is cs/R16.
 func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the dotnet SDK (the leg's own toolchain)")
 	t.Run("cs/R16", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()

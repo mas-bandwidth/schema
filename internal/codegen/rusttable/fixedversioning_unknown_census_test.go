@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +28,6 @@ import (
 // `v`, one row) says its declared defaults are.
 func rustUnlawfulProbe(t *testing.T, row, file, reader, older, poison, check string) {
 	t.Helper()
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 	path := filepath.Join(corpus, file)

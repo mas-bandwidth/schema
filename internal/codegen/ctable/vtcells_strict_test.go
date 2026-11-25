@@ -270,7 +270,7 @@ func runVtCellsFilesProbe(t *testing.T, files map[string][]byte, body string) (s
 // read (docs/SPEC-TABLES.md §4, §6.5). The unit checks inspect the generated C
 // artifacts, emitter anchors, and scoped C variable-table test sources in
 // memory with no subprocesses, sockets, or network; the compiled C probe is a
-// functional test gated by slowtest.Gate that compiles and runs the real
+// functional test that compiles and runs the real
 // generated C code under AddressSanitizer and UndefinedBehaviorSanitizer.
 func TestCVariableCellsStrict(t *testing.T) {
 	t.Parallel()
@@ -352,7 +352,6 @@ func TestCVariableCellsStrict(t *testing.T) {
 	// generated C variable-table strict read against clean, damaged,
 	// out-of-range, truncated, duplicate-key, and lone-surrogate inputs.
 	// The same gate runs the fixed-form probes for the generator red.
-	slowtest.Gate(t, "functional test: the C compiler (cc)")
 	reader := unitFrom(t, vtCellsStrictSchema)
 	rm := tabletext.NewModel(reader)
 	clean := vtStrictWire(t, vtCellsStrictSchema, `{"a":5,"score":7,"name":"ok","inner":{"n":3},"next":{"n":9},"tags":{"1":11}}`)
@@ -432,7 +431,6 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 	// 2. Functional negative control (requires the C compiler): sabotage the
 	// strict refusal guard in the real generated ProbeTable.h so out_of_range
 	// is forgiven, and verify the compiled C probe fails.
-	slowtest.Gate(t, "functional test: the C compiler (cc)")
 	reader := unitFrom(t, vtCellsStrictSchema)
 	clean := vtStrictWire(t, vtCellsStrictSchema, `{"a":5,"score":7,"name":"ok","inner":{"n":3},"next":{"n":9},"tags":{"1":11}}`)
 	over := vtStrictWire(t, vtCellsWriterSchema, `{"a":5,"score":19,"inner":{"n":3},"next":{"n":9}}`)

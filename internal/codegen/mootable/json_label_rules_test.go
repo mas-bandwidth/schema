@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooJsonLabelRules holds docs/SPEC-TABLES.md §16.7's label rules in the
@@ -19,7 +17,6 @@ import (
 // whole text. The verdict is the contract, so no reason is compared.
 func TestMooJsonLabelRules(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 
 	data, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {

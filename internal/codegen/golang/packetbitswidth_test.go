@@ -69,7 +69,6 @@ func TestGoPacketWriteRefusesWideBits(t *testing.T) {
 // bits(7) field: 200 is refused with an error and no panic, 127 round trips.
 func runBitsWidthProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 	const probe = `package t
 
 import (

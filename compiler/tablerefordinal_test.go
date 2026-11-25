@@ -252,10 +252,9 @@ int main()
 // elision shape, and an array long enough to move a reference's LEB128 width.
 func TestCppTableRefOrdinalBytes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, refOrdinalSchema()), "cpp", Options{})
 	if err != nil {
@@ -430,10 +429,9 @@ int main()
 // share its cached ordinal and remain correct across elision and re-interning,
 // both when the key uses its ordinal and when generic ref interns it first.
 func TestCppTableRefOrdinalSharedId(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, refOrdinalCollisionSchema), "cpp", Options{})
 	if err != nil {

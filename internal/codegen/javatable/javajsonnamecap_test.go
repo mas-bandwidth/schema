@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -110,7 +108,6 @@ type javaJsonNameCapRow struct {
 // value read.
 func TestJavaJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	const dir = "../../../testdata/wire/json-read-closed"

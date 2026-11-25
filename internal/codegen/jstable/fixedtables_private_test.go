@@ -11,7 +11,6 @@ package jstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,7 +21,6 @@ import (
 )
 
 func TestJsFixedTablesPrivate(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	u := unitFrom(t, `package probe

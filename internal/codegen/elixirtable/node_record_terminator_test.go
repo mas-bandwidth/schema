@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -15,7 +14,6 @@ import (
 
 func TestElixirNodeRecordEndsAtItsTerminator(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir node records must consume their entire declared body")
 
 	u := unitFrom(t, `package nodeterm
 table Node

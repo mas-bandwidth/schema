@@ -3,7 +3,6 @@ package elixirtable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -16,7 +15,6 @@ import (
 
 func TestFormsConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir declared form exports and parent closure helpers")
 	for _, mixed := range []bool{false, true} {
 		t.Run(fmt.Sprint(mixed), func(t *testing.T) {
 			t.Parallel()
@@ -138,7 +136,6 @@ func TestDropFormFunctionIncludesExceptionClauses(t *testing.T) {
 
 func TestFormsCookClosureAcrossFilesElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir declared cook closure across source files")
 	dir := t.TempDir()
 	var paths []string
 	for _, f := range []struct{ name, body string }{
@@ -185,7 +182,6 @@ func TestFormsCookClosureAcrossFilesElixir(t *testing.T) {
 }
 
 func TestFormsAllSubsetsElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir all eight declared form subsets")
 	for _, choice := range []struct {
 		name string
 		mask int

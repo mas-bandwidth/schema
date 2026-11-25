@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -151,7 +150,6 @@ func luaFuzzPipeCoverage(groups []*luaFuzzGroup) (fixed, variable int) {
 // on its pipe, through the real harness, over staged fixed and variable roots,
 // with zero divergences (docs/SPEC-TABLES.md §4.2).
 func TestLuaWireFuzzVerdictPipe(t *testing.T) {
-	slowtest.Gate(t, luaFuzzCost+" over the verdict pipe (test/conformance/lua/wirefuzz.lua)")
 	generated, groups := luaFuzzStagePipeUnits(t, luaFuzzPipeUnits, nil)
 	fixed, variable := luaFuzzPipeCoverage(groups)
 	if fixed == 0 || variable == 0 {
@@ -174,7 +172,6 @@ func TestLuaWireFuzzVerdictPipe(t *testing.T) {
 // past the body stops the body WITHOUT counting it malformed, and requires the
 // verdict pipe to go red on that planted fault.
 func TestLuaWireFuzzVerdictPipeNegativeControl(t *testing.T) {
-	slowtest.Gate(t, luaFuzzCost+" over the verdict pipe negative control (test/conformance/lua/wirefuzz.lua)")
 	sabotaged := strings.Replace(luaFuzzControlAnchor, "report.damaged = true\n", "", 1)
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luaFuzzControlAnchor); n != 1 {

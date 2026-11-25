@@ -30,7 +30,7 @@ func tree(t *testing.T) (root, in, out string) {
 func TestInside(t *testing.T) {
 	root, in, out := tree(t)
 	if err := os.Symlink("tree", filepath.Join(root, "alias")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+		t.Fatalf("symlinks unavailable: %v", err)
 	}
 	if err := os.Symlink(filepath.Join(in, "level.json"), filepath.Join(out, "points-in")); err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestInside(t *testing.T) {
 func TestOverlap(t *testing.T) {
 	root, in, out := tree(t)
 	if err := os.Symlink("tree", filepath.Join(root, "alias")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+		t.Fatalf("symlinks unavailable: %v", err)
 	}
 	nested := filepath.Join(in, "nested")
 	for _, tc := range []struct {

@@ -270,7 +270,6 @@ func TestRetainUnknownRoundTrip(t *testing.T){
 // omitted form's files are truly gone and what remains still compiles and runs.
 func compileOmitted(t *testing.T, u *ir.Unit, testSource string, omit Form) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	files := map[string][]byte{}
 	packet, err := golang.Generate(u)
 	if err != nil {

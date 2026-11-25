@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -190,7 +189,6 @@ func (b *wb) mapOf(entries [][3]int, names []string, damage bool) {
 // the saved bytes must be the same. TestMooRetainDifferentialNegativeControl is
 // its control.
 func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	retaining, refused, bad := occurrenceRetainDifferential(t, nil)
 	for _, b := range bad {
@@ -406,7 +404,6 @@ func sortStrings(s []string) {
 // TestMooRetainDamagedParentDiscardsTheWholeLoad preserves the original
 // damaged-parent vector, but holds the §4 refusal rather than its old partial save.
 func TestMooRetainDamagedParentDiscardsTheWholeLoad(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})
 	b := &wb{}

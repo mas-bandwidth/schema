@@ -5,23 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// THE SERIALIZE.JS RUNTIME IS PART OF THE NODE PROMISE. The node halves of
-// this package import the serialize.js runtime. A lane that says it provides
-// node (SCHEMA_REQUIRE_NODE=1, or SCHEMA_REQUIRE_CORPUS) also stages the
-// runtime, so a missing runtime there fails and names itself; elsewhere it
-// skips with the reason. Every lookup of the runtime goes through
-// serializeJSDir.
-//
-// SCHEMA_SLOW=1 IS THE SAME PROMISE. It asks for the node half of this
-// package, and the node half cannot run without the runtime, so there a
-// missing runtime fails by name too, as slowtest.SerializeGo does for the Go
-// runtime. Before this, `SCHEMA_SLOW=1 go test ./internal/codegen/js` on a
-// bench with no sibling answered ok with every node test skipped
-// (TestJsWriteRefusesEveryValueShape among them, #4936).
+// THE SERIALIZE.JS RUNTIME IS PART OF THE NODE HALF. The node halves of this
+// package import the serialize.js runtime, so a missing runtime fails the test
+// and names itself, on every lane; nothing skips. Every lookup of the runtime
+// goes through serializeJSDir. Before this, a bench with no sibling answered ok
+// with every node test skipped (TestJsWriteRefusesEveryValueShape among them,
+// #4936).
 
 // serializeJSDir finds the serialize.js runtime checkout: $SERIALIZE_JS
 // first, then the sibling checkout beside the repository.
@@ -54,11 +45,7 @@ func serializeJSDirIn(t testing.TB, env string, siblings []string) string {
 		}
 	}
 	const reason = "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout"
-	if os.Getenv("SCHEMA_SLOW") == "1" {
-		t.Fatalf("SCHEMA_SLOW=1 runs the node half, and its runtime is missing: %s (make serialize-siblings stages it)", reason)
-		return ""
-	}
-	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", reason)
+	t.Fatalf("the node half's runtime is missing: %s (make serialize-siblings stages it)", reason)
 	return ""
 }
 
@@ -74,14 +61,10 @@ func (r *lookupVerdictTB) Fatalf(format string, args ...any) {
 	r.verdict, r.text = "fail", fmt.Sprintf(format, args...)
 }
 
-func (r *lookupVerdictTB) Skip(args ...any) {
-	r.verdict, r.text = "skip", fmt.Sprint(args...)
-}
-
-// TestSerializeJSLookupHoldsTheLanePromise: a lane that declares node, or
-// runs the slow half, and has no runtime fails naming the runtime; a lane
-// that does neither skips; a staged runtime is found from $SERIALIZE_JS or a
-// sibling.
+// TestSerializeJSLookupHoldsTheLanePromise: a missing runtime fails naming the
+// runtime; nothing skips; a staged runtime is found from $SERIALIZE_JS or a
+// sibling. There are no lanes: no variable makes a missing runtime anything
+// but a failure.
 func TestSerializeJSLookupHoldsTheLanePromise(t *testing.T) {
 	empty := t.TempDir()
 	staged := t.TempDir()
@@ -92,31 +75,19 @@ func TestSerializeJSLookupHoldsTheLanePromise(t *testing.T) {
 		t.Fatal(err)
 	}
 	const reason = "no serialize.js runtime: set SERIALIZE_JS or stage the sibling checkout"
+	const missing = "the node half's runtime is missing: " + reason + " (make serialize-siblings stages it)"
 	for _, c := range []struct {
-		name, lane, env string
-		siblings        []string
-		verdict, text   string
+		name, env     string
+		siblings      []string
+		verdict, text string
 	}{
-		{"node lane, no runtime", "SCHEMA_REQUIRE_NODE", empty, []string{empty}, "fail",
-			"SCHEMA_REQUIRE_NODE=1 says this lane provides what the test needs, and it is missing: " + reason},
-		{"corpus lane, no runtime", "SCHEMA_REQUIRE_CORPUS", "", []string{empty}, "fail",
-			"SCHEMA_REQUIRE_CORPUS is set, so this lane is meant to have what the test needs, and it is missing: " + reason},
-		{"slow half, no runtime", "SCHEMA_SLOW", "", []string{empty}, "fail",
-			"SCHEMA_SLOW=1 runs the node half, and its runtime is missing: " + reason + " (make serialize-siblings stages it)"},
-		{"slow half, runtime as a sibling", "SCHEMA_SLOW", "", []string{empty, staged}, "run", staged},
-		{"tsc lane, no runtime", "SCHEMA_REQUIRE_TSC", "", []string{empty}, "skip", reason},
-		{"no lane, no runtime", "", "", []string{empty}, "skip", reason},
-		{"node lane, runtime from SERIALIZE_JS", "SCHEMA_REQUIRE_NODE", staged, []string{empty}, "run", staged},
-		{"node lane, runtime as a sibling", "SCHEMA_REQUIRE_NODE", "", []string{empty, staged}, "run", staged},
-		{"node lane, stale SERIALIZE_JS, sibling staged", "SCHEMA_REQUIRE_NODE", empty, []string{staged}, "run", staged},
+		{"no runtime", "", []string{empty}, "fail", missing},
+		{"SERIALIZE_JS names no runtime, no sibling", empty, []string{empty}, "fail", missing},
+		{"runtime from SERIALIZE_JS", staged, []string{empty}, "run", staged},
+		{"runtime as a sibling", "", []string{empty, staged}, "run", staged},
+		{"stale SERIALIZE_JS, sibling staged", empty, []string{staged}, "run", staged},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			for _, k := range []string{"SCHEMA_SLOW", "SCHEMA_REQUIRE_NODE", "SCHEMA_REQUIRE_TSC", "SCHEMA_REQUIRE_CORPUS"} {
-				t.Setenv(k, "")
-			}
-			if c.lane != "" {
-				t.Setenv(c.lane, "1")
-			}
 			rec := &lookupVerdictTB{TB: t, verdict: "run"}
 			got := serializeJSDirIn(rec, c.env, c.siblings)
 			if rec.verdict == "run" {

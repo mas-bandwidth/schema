@@ -34,13 +34,16 @@ static partial class Program
     }
 
     // In Debug, `write` must fire a write-side Debug.Assert; in Release the
-    // case is not run (the write is off the contract and nothing checks it).
+    // row cannot be answered, and it FAILS naming why: a row that did not run
+    // is never a pass.
     static void CheckAsserts(Action write, string what)
     {
 #if DEBUG
         try { write(); }
         catch (WriteAssertion) { return; }
         Check(false, what + ": no debug assert");
+#else
+        Check(false, what + ": asserts are off in this build: this row needs the assert build");
 #endif
     }
 }

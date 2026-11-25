@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -598,7 +597,6 @@ func expectedEnumSlot(t *testing.T, slots map[string]uint64, e *ir.Enum, name st
 // probe against the batch surface: `file` is the announcement, `batch_file` the
 // message-form wire, and `golden` the forged files beside them.
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, ann, batch, body string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	elixirBin := elixirBinary(t)
@@ -699,7 +697,6 @@ func assertElixirBoundsSource(t *testing.T, src, module string) {
 // runElixirModuleProbe runs one probe against an already generated
 // TableMessage module. The probe builds its announcements itself.
 func runElixirModuleProbe(t *testing.T, module []byte, probe string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	elixirBin := elixirBinary(t)

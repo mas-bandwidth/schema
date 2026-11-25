@@ -26,8 +26,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // runRecipe is one `go test ... -run <pattern>` recipe line.
@@ -437,9 +435,8 @@ type runPatternException struct {
 // until `make cards-generate` builds it; seven run inside test/go-tables, a
 // separate Go module whose generated replacements do not exist until `make`
 // builds them; and two are $(3) templates with no value until the caller
-// expands it; two pair an empty -run '^$' with -fuzz so only the fuzz target
-// runs; and slow-gate-coverage's pattern is emitted by tools/slowgatescan
-// when its recipe runs.
+// expands it; and two pair an empty -run '^$' with -fuzz so only the fuzz
+// target runs.
 var runPatternExceptions = []runPatternException{
 	{"make/python-fixed-proof-evolution.mk python-fixed-proof-evolution", "Make expands this aggregate selector; TestPythonFixedEvolutionCICoverage checks the expanded tagged test list and every selected case", "$(PYTHON_FIXED_EVOLUTION_AGGREGATE)"},
 	{"make/python-fixed-proof-evolution.mk $(PYTHON_FIXED_EVOLUTION_TARGETS)", "Make expands this per-row selector; TestPythonFixedEvolutionCICoverage checks every tagged test and subcase exactly once, with omission and duplicate controls", "$(PYTHON_FIXED_EVOLUTION_PATTERN_$(@:python-fixed-proof-evolution-row-%=%))"},
@@ -462,11 +459,9 @@ var runPatternExceptions = []runPatternException{
 	{"make/moo-text.mk tables-moo-json-negative-controls", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it", "TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)"},
 	{"make/moo-tables.mk test-moo-tables", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
 	{"make/moo-readiness.mk tables-moo-compiler-claims", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them", "Moo"},
+	{"make/name-buildability.mk name-buildability-run", "-run \"$$NAME_BUILDABILITY_RUN\" is the pattern schema-test sets per run (tools/schema-test/namebuild.go, runNameBuild), one alternative per asked case; TestRunNameBuildReadsWhatTheRunWrote holds that every asked subtest answers, and an answer of none fails by name", "$NAME_BUILDABILITY_RUN"},
 	{"Makefile define message_form_control", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion", "^$(3)$"},
 	{"make/js.mk define js_jstable_control", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion", "$(3)"},
-	{"Makefile slow-gate-coverage", "slow-gate-coverage: -run \"$$(go run ./tools/slowgatescan -emit-gated-run)\" is the gated tests' names, which tools/slowgatescan scans the tree for when the recipe runs, so the pattern has no literal value, and ./tools/slowgatescan in it is the program, not the package under test", "$(go run ./tools/slowgatescan -emit-gated-run)"},
-	{"Makefile slow-gate-coverage-codegen", "slow-gate-coverage-codegen: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, scoped to this shard's packages", "$(go run ./tools/slowgatescan -emit-gated-run -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))"},
-	{"Makefile slow-gate-coverage-rest", "slow-gate-coverage-rest: the same recipe-time pattern from tools/slowgatescan -emit-gated-run, scoped to this shard's packages", "$(go run ./tools/slowgatescan -emit-gated-run -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS))"},
 }
 
 type runRecipeBound struct {
@@ -619,13 +614,12 @@ func TestEveryRunPatternMatchesATest(t *testing.T) {
 	// This gate checks several hundred distinct (pattern, package) pairs. It
 	// compiles each package once, side by side, to list its tests, and matches
 	// every pattern against that listing; one `go test -list` per pair, one
-	// after another, was minutes under SCHEMA_SLOW=1 and ~116 s in a plain run
+	// after another, was ~116 s
 	// (measured 2026-11-09). It is
 	// a functional test of the whole makefile set, not a workflow-lint check, so
-	// it rides the SCHEMA_SLOW=1 lane (ci-full.yml's unit-rest row, which runs on
+	// it rides the nightly tier (ci-full.yml's unit-rest row, which runs on
 	// the merge and nightly triggers) instead of the per-commit lint job. The
 	// fast per-commit smoke is TestRunPatternGateRefusesAZeroMatchPattern above.
-	slowtest.Gate(t, "the Go toolchain (it compiles each package to list its tests)")
 	root := repoRoot(t)
 	offenders := checkRunPatterns(t, root, makefileFiles(t, root), runPatternExceptions)
 	for _, o := range offenders {

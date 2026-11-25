@@ -265,13 +265,13 @@ int main( int argc, char ** argv )
         /* FORM 3 IS GATED ON A LITTLE-ENDIAN HOST ONLY. The C fixed reader's
            copy ops land wire bytes in host order (kTableFixedCopy), so a
            big-endian host does not read form 3 back; that is an open defect of
-           the C fixed form, named here rather than hidden. The variable form
-           below is gated on both. */
+           the C fixed form, named here, and a form-3 case on a big-endian host
+           FAILS rather than passing over it. The variable form below is gated
+           on both. */
         if ( !cases[i].variable && soak_big_endian_host() )
         {
-            memset( &loaded[i], 0, sizeof( loaded[i] ) );
-            printf( "c tables soak: %s skipped: form 3 on a big-endian host is not gated (C fixed-form copy ops are host order)\n", cases[i].wire );
-            continue;
+            fprintf( stderr, "soak: FAIL %s: form 3 cannot be read back on a big-endian host (C fixed-form copy ops are host order)\n", cases[i].wire );
+            return 1;
         }
         loaded[i].codec = find_codec( cases[i].unit, cases[i].root );
         if ( loaded[i].codec == NULL )

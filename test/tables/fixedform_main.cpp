@@ -2677,9 +2677,9 @@ static void manifest_case( const char * corpus_dir )
     if ( !corpus )
     {
         // the corpus is another target's output; when it is not there this case
-        // has nothing to hold and says so rather than passing quietly
-        std::printf( "NOTE: build/fixedform-corpus is absent, manifest check skipped"
-                     " (run `make tables-fixedform-corpus`)\n" );
+        // cannot run, and a case that cannot run is a failure, named
+        check( false, "manifest: build/fixedform-corpus is absent, so the manifest case cannot run"
+                      " (run `make tables-fixedform-corpus`)" );
         return;
     }
     check( !manifest.empty(), "manifest: build/fixedform-corpus/manifest.txt exists and is not empty" );

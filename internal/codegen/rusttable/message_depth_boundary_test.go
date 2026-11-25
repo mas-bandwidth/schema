@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -299,7 +298,6 @@ fn main() {
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Rust toolchain (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runRustDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {

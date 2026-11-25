@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooKindHeldEscapeRefuses (R17: the newer reader reads old data, never
@@ -15,7 +13,6 @@ import (
 // retaining load and the text carrier all discard the whole read as
 // malformed. The old reader skipped it by its L and read the file.
 func TestMooKindHeldEscapeRefuses(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "tblvarevo1")

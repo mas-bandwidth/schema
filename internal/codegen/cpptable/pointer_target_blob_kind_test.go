@@ -34,7 +34,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -352,7 +351,6 @@ func cppBlobKindWrite(t *testing.T, dir string, cases []cppBlobKindCase) {
 
 func TestCppPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C++ compiler (it runs the generated reader over the shared vectors)")
 	repo := filepath.Join("..", "..", "..")
 	vectors := filepath.Join(repo, "testdata", "wire", "pointer-target-type", "blobkind")
 	manifest, err := os.ReadFile(filepath.Join(vectors, "MANIFEST.tsv"))

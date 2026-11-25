@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -51,7 +50,7 @@ func TestLuaCookWrite(t *testing.T) {
 			files, err := Generate(u)
 			if err != nil {
 				// the Lua target refuses this unit's kinds (docs/PORT-LUA.md)
-				t.Skipf("the Lua table backend does not generate this unit: %v", err)
+				t.Errorf("the Lua table backend does not generate this unit: %v", err)
 			}
 			m := tabletext.NewModel(u)
 			wire, err := os.ReadFile(filepath.Join(repo, r.wire))
@@ -179,7 +178,6 @@ func checkCookOrder(t *testing.T, caseName string, order int, lines []string, wa
 // attribution length) and requires the comparison against tablecook to go red.
 func TestLuaCookWriteNegativeControlsFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)

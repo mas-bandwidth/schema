@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -20,7 +19,6 @@ import (
 // cap would refuse; the Go engine reads the same text and is the reference.
 func TestJavaScriptJsonNumberAnyLength(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

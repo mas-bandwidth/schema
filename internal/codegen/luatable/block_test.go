@@ -10,7 +10,6 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -328,7 +327,6 @@ print("block-refusals-ok")
 // dump), and the pitch, bound, and base-alignment checks removed.
 func TestLuaBlockReadNegativeControlsFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	for _, tc := range []struct {
 		name   string
 		anchor string

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO, AND A NON-ZERO ONE REFUSES THE
@@ -19,7 +18,6 @@ import (
 // destination untouched; each control reads and saves back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	corpus := fixedCorpus(t)
 	var cases []string
 	for _, vec := range fixedvector.DeadBytes {
@@ -96,7 +94,6 @@ func TestFixedDeadBytes(t *testing.T) {
 // including dead tails whose offsets change when this reader widens storage.
 func TestFixedDeadBytesUseWriterLayout(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	older := `package writerdead
  union Choice {
  narrow int16
@@ -175,7 +172,6 @@ func TestFixedDeadBytesUseWriterLayout(t *testing.T) {
 // check pass. Declared deprecation retains a field; removal and narrowing do not.
 func TestFixedDeadBytesRejectRemovedWriterShape(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	cases := []struct{ name, older, reader string }{
 		{"field", "fixed table OriginalWriter { keep int32\n hidden ?int32 }", "fixed table OriginalWriter { keep int32 }"},
 		{"union-arm", "union Choice { narrow int16\n wide int64 }\nfixed table OriginalWriter { pick Choice }", "union Choice { wide int64 }\nfixed table OriginalWriter { pick Choice }"},

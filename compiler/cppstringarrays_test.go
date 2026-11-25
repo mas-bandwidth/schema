@@ -19,8 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -304,10 +302,9 @@ int main()
 // TestGoTableStringArraysAndJSONArrayRoot, its text-list rows).
 func TestCPPTableStringArrays(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated save path is C++: no c++ on PATH")
+		t.Fatal("the generated save path is C++: no c++ on PATH")
 	}
 	files, err := New().Generate(unitFromSource(t, cppStringArraysSchema), "cpp", Options{})
 	if err != nil {

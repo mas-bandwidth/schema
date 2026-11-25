@@ -7,19 +7,16 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestUnityFixedProofSuiteValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet and the live C++ oracle")
 	fixedproof.RunValueSuite(t, unityFixedProofRunner{})
 }
 
 func TestUnityFixedProofSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet and the live C++ oracle")
 	fixedproof.RunNegativeControlSuite(t, unityFixedProofRunner{})
 }
 

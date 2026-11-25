@@ -8,9 +8,7 @@
 # the runtime the claim is for. The first act of this script is the leg's own
 # runtime pin (test/elixir/runtime_pin.exs) with the two versions make/elixir.mk
 # compares against: off them it prints FAILED and halts before a single module
-# below is even compiled, so nothing is measured. SCHEMA_ELIXIR_ANY_OTP=1 is the
-# escape hatch: the numbers are printed under NOT CERTIFIED and the audit exits
-# 0, and `pin` refuses to write a budget at all.
+# below is even compiled, so nothing is measured.
 runtime_pin = fn [_manifest, otp_want, elixir_want | _] = argv ->
   System.argv([otp_want, elixir_want])
   Code.eval_file("test/elixir/runtime_pin.exs")
@@ -66,15 +64,20 @@ defmodule AllocAudit do
 
   def main([manifest, otp_want, elixir_want, mode | rest]) do
     budget_path = List.first(rest) || "test/conformance/elixir/alloc-budget.txt"
-    any_otp = System.get_env("SCHEMA_ELIXIR_ANY_OTP") == "1"
     ebin = System.get_env("ELIXIR_TABLES_EBIN") || "build/elixir-tables-ebin"
     Code.prepend_path(ebin)
 
-    {cases, skipped} = cases(parse(File.read!(manifest)))
+    {cases, unmeasurable} = cases(parse(File.read!(manifest)))
 
-    Enum.each(skipped, fn {name, why} ->
-      IO.puts("  #{String.pad_trailing(name, 24)} not measured: #{why}")
+    # an instance the leg cannot measure is a failure, named, never passed over
+    Enum.each(unmeasurable, fn {name, why} ->
+      IO.puts("FAILED: #{String.pad_trailing(name, 24)} not measured: #{why}")
     end)
+
+    if unmeasurable != [] do
+      IO.puts("FAILED: alloc-audit: #{length(unmeasurable)} instance(s) cannot be measured")
+      System.halt(1)
+    end
 
     if cases == [] do
       IO.puts(
@@ -101,8 +104,8 @@ defmodule AllocAudit do
     measured = Enum.map(cases, fn c -> {c, top(for _ <- 1..runs, do: measure(c))} end)
 
     case mode do
-      "pin" -> pin(measured, budget_path, any_otp, otp_want, elixir_want)
-      "audit" -> audit(measured, budget_path, any_otp, otp_want, elixir_want)
+      "pin" -> pin(measured, budget_path, otp_want, elixir_want)
+      "audit" -> audit(measured, budget_path, otp_want, elixir_want)
     end
   end
 
@@ -125,7 +128,7 @@ defmodule AllocAudit do
 
   # every `instance` whose unit has a <Unit>.Table module at the moment this
   # runs, and whose root that codec loads and saves back (a blob two slots name
-  # refuses the save, docs/SPEC-TABLES.md §2.5); the rest are named, not measured
+  # refuses the save, docs/SPEC-TABLES.md §2.5); a root it cannot carry FAILS, named
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
@@ -342,16 +345,7 @@ defmodule AllocAudit do
 
   # ---- the two modes ----
 
-  defp pin(measured, path, any_otp, otp_want, elixir_want) do
-    if any_otp do
-      IO.puts(
-        "FAILED: alloc-pin refuses to write #{path} under SCHEMA_ELIXIR_ANY_OTP=1: a budget " <>
-          "is pinned on OTP #{otp_want} with Elixir #{elixir_want} or not at all"
-      )
-
-      System.halt(1)
-    end
-
+  defp pin(measured, path, otp_want, elixir_want) do
     lines =
       Enum.map_join(measured, fn {c, {w, b, r}} ->
         print(c, {w, b, r}, "")
@@ -365,7 +359,7 @@ defmodule AllocAudit do
     )
   end
 
-  defp audit(measured, path, any_otp, otp_want, elixir_want) do
+  defp audit(measured, path, otp_want, elixir_want) do
     budget = read_budget(path)
     names = MapSet.new(measured, fn {c, _} -> c.name end)
 
@@ -421,13 +415,6 @@ defmodule AllocAudit do
         )
 
     cond do
-      any_otp ->
-        IO.puts(
-          "alloc-audit: NOT CERTIFIED — the figures above were read under SCHEMA_ELIXIR_ANY_OTP=1, " <>
-            "not on the pinned runtime alone (the pin wants OTP #{otp_want}, Elixir #{elixir_want}); " <>
-            "#{length(over)} over, #{length(lost)} lost, and nothing is certified"
-        )
-
       over == [] and lost == [] ->
         IO.puts(
           "alloc-audit: every case is inside its pinned budget (#{pinned} pinned, " <>

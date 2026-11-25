@@ -29,8 +29,8 @@
 #   --rounds N      measured rounds (default 7, §2.1/§2.4)
 #   --langs a,b,c   subset of cpp,c,go,rust,cs,js,java,dart,elixir,lobster,luau (default:
 #                   all nine, the languages the published table carries;
-#                   unavailable toolchains are skipped and recorded, a
-#                   skipped leg is a fact not a failure)
+#                   a leg whose toolchain is unavailable fails the pass,
+#                   named; leave it out with --langs)
 #   --compiler CXX  C++ compiler for the cpp legs and control legs
 #   --inline        run the §4.1 inline verdict pass per language afterwards
 #                   and backfill the inline column (bench/tools/inline-verdict.sh)
@@ -61,8 +61,8 @@ OUT=""
 ROUNDS=7
 # The default is the nine languages the published table carries: this driver
 # is the certification instrument, and a language it does not run by default
-# is a language no pass certifies. A leg whose toolchain is absent is skipped
-# and recorded (# skipped:), which is a fact, not a failure.
+# is a language no pass certifies. A leg whose toolchain is absent fails the
+# pass, named; a language is left out only by --langs.
 LANGS="cpp,c,go,rust,cs,js,java,dart,elixir,lobster,luau"
 COMPILER="${CXX:-c++}"
 INLINE=0
@@ -96,9 +96,9 @@ fi
 # final preamble will record must match what the toolchains actually resolve
 # (run.sh re-checks per leg; this refusal is cheap and saves a night).
 # Verify only the languages this pass will RUN (--langs): the gate refusing a
-# pass over a language it was told to skip inverted its own contract — a
-# skipped leg is a fact, not a failure (measured on the EPYC box: go 1.22.2
-# present, serialize.go absent, cpp/c pass refused). The whole --langs list
+# pass over a language --langs left out inverted its own contract (measured
+# on the EPYC box: go 1.22.2 present, serialize.go absent, cpp/c pass
+# refused). The whole --langs list
 # goes in, java/dart/elixir included: verify_runtime answers "nothing to
 # verify" for the codegen-only legs — the same answer it gives run.sh, which
 # is why the driver does not carry an exemption list of its own. ----
@@ -149,7 +149,9 @@ foreign_procs() {
 
 # linux only: the pinned core's /proc/stat line (100Hz ticks)
 core_stat() {
-    [ "$OS" = Linux ] && grep "^cpu${BENCH_CPU:-0} " /proc/stat || true
+    if [ "$OS" = Linux ]; then
+        grep "^cpu${BENCH_CPU:-0} " /proc/stat
+    fi
 }
 
 # ---- the quiet-window gate (ported from the EPYC driver) ----
@@ -194,8 +196,7 @@ leg() {
         FAILED_LEGS="$FAILED_LEGS $name"
     fi
     case "$name" in
-        # loud-ok: housekeeping between legs; a build server that is already gone has nothing to shut down, and pscheck refuses a lingering one by name
-        *-cs) dotnet build-server shutdown >> "$LOG" 2>&1 || true ;;
+        *-cs) dotnet build-server shutdown >> "$LOG" 2>&1 ;;
     esac
 }
 
@@ -229,7 +230,6 @@ sample_boundary
 # ---- rounds 0..N-1 (§2.4): every available language once per round ----
 
 AVAILABLE=""
-SKIPPED=""
 # one_leg <K> <lang> <twin a|b>: run one round leg. Twin b legs are the SAME
 # binary (--reuse-build always; twin a of round 0 — or control leg A for
 # cpp — built it) stamped as round K+ROUNDS so §2.4 duplicate detection
@@ -239,7 +239,6 @@ one_leg() {
     if [ "$twin" = b ]; then
         SUF="-b"; STAMP=$((K + ROUNDS)); REUSE_FLAG="--reuse-build"
         # twin b never runs before twin a has built (round 0 is a-first)
-        case " $AVAILABLE " in *" $lang "*) ;; *) return 0 ;; esac
     else
         [ "$K" -gt 0 ] && REUSE_FLAG="--reuse-build"
         # cpp reuses from ROUND 0 as well: control leg A just built this
@@ -248,20 +247,16 @@ one_leg() {
         # rebuilds it. (Round 0 still builds every OTHER language — the
         # control legs build only cpp.)
         [ "$lang" = cpp ] && REUSE_FLAG="--reuse-build"
-        if [ "$K" -gt 0 ]; then
-            case " $AVAILABLE " in *" $lang "*) ;; *) return 0 ;; esac   # went missing in round 0; recorded below
-        fi
     fi
     leg "round-$K-$lang$SUF" --only "$lang" --compiler "$COMPILER" --bare \
         --round "$K" $REUSE_FLAG --out "$W/round-$K-$lang$SUF.csv"
     if [ "$K" -eq 0 ] && [ "$twin" = a ]; then
-        if grep -q "^$lang," "$W/round-0-$lang.csv" 2>/dev/null; then
+        if [ -f "$W/round-0-$lang.csv" ] && grep -q "^$lang," "$W/round-0-$lang.csv"; then
             AVAILABLE="$AVAILABLE $lang"
         else
-            SKIPPED="$SKIPPED $lang"
-            log "SKIP $lang: round 0 produced no rows (toolchain or runner missing — see above)"
-            rm -f "$W/round-0-$lang.csv" "$W/FAILED-round-0-$lang"
-            FAILED_LEGS="$(echo "$FAILED_LEGS" | sed "s/ round-0-$lang//")"
+            log "FAIL $lang: round 0 produced no rows (toolchain or runner missing — see above); leave a language out with --langs"
+            echo "FAIL $lang: round 0 produced no rows (toolchain or runner missing) — see $LOG" >&2
+            exit 1
         fi
     fi
     # §2.4 provenance: stamp the round into the per-round CSV so
@@ -363,7 +358,6 @@ fi
     grep '^#' "$W/control-start.csv"
     echo "# rounds: $ROUNDS   interleaved: yes"
     echo "# langs:$(echo "$AVAILABLE" | tr -s ' ')"
-    [ -n "$(echo "$SKIPPED" | tr -d ' ')" ] && echo "# skipped:$(echo "$SKIPPED" | tr -s ' ') (toolchain or runner missing — see pass.log)"
     echo "# load_start: $LOAD_START"
     echo "# load_end: $LOAD_END"
     echo "# load_max: $LOAD_MAX"

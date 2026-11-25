@@ -9,13 +9,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestPythonFixedFormRefusedHash(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { x int8 }\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { x int16 }\n")
 	entry, _ := fixedproof.LineageEntryOf(old, "T")

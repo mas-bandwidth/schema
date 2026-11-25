@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -23,7 +22,6 @@ import (
 // the u64's own) every refusal here read.
 func TestElixirFlagsPastWidthRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	const reader = "package flagspast\nflags Cap { Trace, Verbose }\ntable Root { cap Cap }\nfixed table Fx { cap Cap }\n"
 	const newer = "package flagspast\nflags Cap { Trace, Verbose, Extra }\ntable Root { cap Cap }\nfixed table Fx { cap Cap }\n"
 	const narrow = "package flagspast\ntable Root { cap uint8 }\n"

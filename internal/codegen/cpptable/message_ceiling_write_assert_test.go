@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -143,16 +142,12 @@ func TestCppMessageCeilingWriteAssert(t *testing.T) {
 // of masking the value onto the wire.
 func TestCppMessageCeilingWriteAssertCompiled(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("generated C++ execution requires %s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	u := cppUnitFrom(t, cppMessageCeilingSchema)
 	files, err := cpp.Generate(u)

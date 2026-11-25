@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -149,7 +148,7 @@ end
 print("writes-refused-ok")
 `
 
-// luaVariantCost is what the slow half pays for this test (internal/slowtest).
+// luaVariantCost is what this test costs.
 const luaVariantCost = "the pinned Lua interpreter (dist/lua-5.4.8, make dist-lua) over two generated units"
 
 func luaVariantUnit(t *testing.T, src string) *ir.Unit {
@@ -178,7 +177,6 @@ func luaVariantRun(t *testing.T, u *ir.Unit, probe string, inputs map[string][]b
 
 func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luaVariantCost)
 
 	live := luaVariantUnit(t, luaVariantDeprecatedLiveSchema)
 	lines := luarun.HexLines(t, luaVariantRun(t, live, luaVariantLiveProbe, map[string][]byte{}))

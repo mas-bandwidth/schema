@@ -8,7 +8,6 @@
 --                  as `<instance>` and `<instance>-be`
 --   cook-foreign   byte-swap the file's magic word, open, `open\n` or `refuse\n`
 --   cook-forgery   open the forged file at the claimed extent and base
---   cook-reason    the same, the refusal's name or `ok`
 --
 -- through the emitted table_cookread.moo (open, layout) and table_cookwrite.moo
 -- (cook) and the descriptors the unit's <Base>Table modules register. The dump
@@ -285,20 +284,6 @@ return function(ctx: any): { [string]: Surface }
 			eachForgery(function(_, key, root, data, extent, lead)
 				return if open(key, root, data, extent, lead) == "ok" then "open\n" else "refuse\n"
 			end)
-		end,
-	}
-	surfaces["cook-reason"] = {
-		carried = carried,
-		run = function()
-			local reasons: { [string]: boolean } = {}
-			for _, r in ctx.kind("refusal") do
-				if r[3] == "cook" then
-					reasons[r[2]] = true
-				end
-			end
-			eachForgery(function(_, key, root, data, extent, lead)
-				return open(key, root, data, extent, lead) .. "\n"
-			end, reasons)
 		end,
 	}
 	-- THE COOK INPUT (§7.6): a recipe is `cook-write <instance> <json> <source>

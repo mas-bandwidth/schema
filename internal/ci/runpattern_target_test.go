@@ -25,7 +25,7 @@ func TestRunPatternExceptionsSurviveAnInsertedRule(t *testing.T) {
 		t.Fatalf("inserting a rule moved %d exception(s):\n%s", len(problems), strings.Join(problems, "\n"))
 	}
 
-	const key = "Makefile slow-gate-coverage"
+	const key = "make/go.mk tables-go-usage"
 	excepted := false
 	for _, e := range runPatternExceptions {
 		if e.where == key {
@@ -38,16 +38,16 @@ func TestRunPatternExceptionsSurviveAnInsertedRule(t *testing.T) {
 	}
 
 	renamed := maps.Clone(shifted)
-	renamed["Makefile"] = strings.Replace(renamed["Makefile"], "slow-gate-coverage: deps", "slow-gate-coverage-renamed: deps", 1)
-	if renamed["Makefile"] == shifted["Makefile"] {
-		t.Fatal("could not rename the slow-gate-coverage rule in the Makefile text")
+	renamed["make/go.mk"] = strings.Replace(renamed["make/go.mk"], "tables-go-usage: build", "tables-go-usage-renamed: build", 1)
+	if renamed["make/go.mk"] == shifted["make/go.mk"] {
+		t.Fatal("could not rename the tables-go-usage rule in the make/go.mk text")
 	}
 	assertOneStaleException(t, renamed, key, "renaming the rule")
 
 	changed := maps.Clone(shifted)
-	changed["Makefile"] = strings.Replace(changed["Makefile"], "$$(go run ./tools/slowgatescan -emit-gated-run)", "$$(go run ./tools/slowgatescan -emit-gated-run-changed)", 1)
-	if changed["Makefile"] == shifted["Makefile"] {
-		t.Fatal("could not change the slow-gate-coverage pattern in the Makefile text")
+	changed["make/go.mk"] = strings.Replace(changed["make/go.mk"], "-run '^TestUsage$$'", "-run '^TestUsageChanged$$'", 1)
+	if changed["make/go.mk"] == shifted["make/go.mk"] {
+		t.Fatal("could not change the tables-go-usage pattern in the make/go.mk text")
 	}
 	assertOneStaleException(t, changed, key, "changing the pattern")
 }
@@ -144,7 +144,7 @@ func TestPythonDynamicRunPatternBindingsAndCoverageWiring(t *testing.T) {
 		{"make/python-handtext.mk", "python-handtext-ci-coverage", "TestPythonHandtextCISelection"},
 	} {
 		s := files[tc.file]
-		for _, want := range []string{tc.target + ":", "SCHEMA_SLOW=1 go test -count=1 -tags schema_leg_python -run '^" + tc.test + "$$' ./internal/ci/", "test-python:"} {
+		for _, want := range []string{tc.target + ":", "go test -count=1 -tags schema_leg_python -run '^" + tc.test + "$$' ./internal/ci/", "test-python:"} {
 			if !strings.Contains(s, want) {
 				t.Errorf("%s lacks %q", tc.file, want)
 			}

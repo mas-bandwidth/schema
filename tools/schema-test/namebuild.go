@@ -161,8 +161,7 @@ func runNameBuildWith(ctx context.Context, argv []string, root, lang string, ins
 		return res, fmt.Errorf("make name-buildability-run: %w\n%s", runErr, tail(strings.Join(other, "\n"), 20))
 	case len(res) == 0:
 		// exit 0 with no verdict: the -run pattern matched no test (a
-		// language with no TestNameBuildability_<lang>, or a build without
-		// -tags namebuild_targets)
+		// language with no TestNameBuildability_<lang>)
 		return res, fmt.Errorf("make name-buildability-run answered none of the %d asked: %s matched no test\n%s", len(want), pattern, tail(strings.Join(other, "\n"), 20))
 	}
 	return res, nil

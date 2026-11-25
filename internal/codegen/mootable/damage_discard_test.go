@@ -5,14 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The controls remove the runtime's final discard, not the damage detection
 // or the assertions. Both inputs still report malformed, but return values.
 func TestMooDamageDiscardNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers)")
 	t.Parallel()
 	t.Run("retaining load", func(t *testing.T) {
 		g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})

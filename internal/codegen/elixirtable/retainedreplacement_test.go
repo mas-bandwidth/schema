@@ -9,14 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestRetainedReplacementCorpusElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir retained replacement follows the independent C++ shared corpus")
 	base := "../../../testdata/conformance/feature-witnesses/retained-replacement"
 	for _, shape := range []string{"table", "union", "fixed_table", "fixed_union", "keyed_table"} {
 		t.Run(shape, func(t *testing.T) {

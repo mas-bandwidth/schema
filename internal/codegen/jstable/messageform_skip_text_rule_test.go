@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -41,7 +40,6 @@ func skipTextAnnouncement() []byte {
 // zero byte is damage and the batch refuses. A well-formed payload is the
 // control: it reads, with one unknown.
 func TestJsMessageSkipHoldsTextToTheTextRule(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	const schemaSrc = `package probe
 

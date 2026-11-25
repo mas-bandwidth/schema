@@ -16,9 +16,8 @@
 //   - -skip removes a test only on a match that is not partial:
 //     `-skip TestGated/roundtrip` leaves TestGated running.
 //
-// The gates that credit a `go test` line with the tests it runs
-// (tools/slowgatescan, and the lane coverage gate) share this one reading, so
-// a selector cannot mean one thing to a gate and another to Go.
+// A check that credits a `go test` line with the tests it runs uses this one
+// reading, so a selector cannot mean one thing to a check and another to Go.
 package runmatch
 
 import (

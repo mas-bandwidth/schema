@@ -58,14 +58,14 @@ toolchain-lobster:
 # (internal/codegen/lobster) and the table surface
 # (internal/codegen/lobstertable), each under the pinned toolchain. The
 # fixed-form tests read the shared byte-oracle corpus, so it is built first,
-# and SCHEMA_REQUIRE_CORPUS=1 makes a missing oracle a failure rather than the
+# and the rule that nothing skips makes a missing oracle a failure rather than the
 # skip a bare `go test` takes. The package run is its own target,
 # test-lobster-packages, so ci-fast's Lobster rows can run it on a row of its
 # own; test-lobster runs it exactly as before.
 .PHONY: test-lobster test-lobster-packages update-goldens-lobster
 test-lobster: toolchain-lobster build/fixedform-corpus/.stamp test-lobster-packages
 test-lobster-packages: toolchain-lobster build/fixedform-corpus/.stamp
-	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
+	go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
 # build/conformance-lobster is the manifest's units generated for lobster, one
@@ -170,7 +170,8 @@ TEST_LEGS         += test-lobster
 TOOLCHAIN_LEGS    += lobster
 CONFORMANCE_LEG_lobster := build/conformance-lobster
 TOOLCHAIN_PINS_lobster := LOBSTER
-CONFORMANCE_LEGS  += $(call unless_skipped,lobster,build/conformance-lobster)
+CONFORMANCE_OF.lobster := build/conformance-lobster
+CONFORMANCE_LEGS  += $(CONFORMANCE_OF.lobster)
 BENCH_TABLES_LEGS += generated/bench/tables/lobster/.stamp
 GOLDENS_LEGS      += update-goldens-lobster
 
@@ -178,13 +179,13 @@ GOLDENS_LEGS      += update-goldens-lobster
 # test-lobster already includes these tests through its package-wide command.
 .PHONY: tables-lobster-view
 tables-lobster-view: toolchain-lobster
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
+	go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
 
 # THE PULL-REQUEST FORM of lobster-fixed-proof-qualification.yml (docs/CI-TIERS.md;
 # ci-fast.yml nightly-fast row lobster-fixed-proof): the four fixed-proof
 # gates against the live C++ oracle corpus. The workflow runs them nightly.
 .PHONY: lobster-fixed-proof-fast
 lobster-fixed-proof-fast: toolchain-lobster tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 LOBSTER="$(LOBSTER)" sh test/slowgate/proof lobster-fixed-proof-fast \
+	LOBSTER="$(LOBSTER)" sh test/slowgate/proof lobster-fixed-proof-fast \
 		"TestLobsterFixedProofSuiteValues TestLobsterFixedProofSuiteNegativeControl TestLobsterFixedProofEvolution TestLobsterFixedNestedUnionGuardNames" \
 		./internal/codegen/lobstertable -run "^(TestLobsterFixedProofSuiteValues|TestLobsterFixedProofSuiteNegativeControl|TestLobsterFixedProofEvolution|TestLobsterFixedNestedUnionGuardNames)$$" -count=1 -timeout 100s

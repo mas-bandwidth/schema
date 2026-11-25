@@ -14,7 +14,7 @@ import (
 )
 
 // runLongNumberUnit generates and runs the probe in a t.TempDir(), the house
-// pattern. The caller places this toolchain test behind the slow-half gate.
+// pattern. It shells out to the Go toolchain (functional).
 func runLongNumberUnit(t *testing.T, schema, testSource string) {
 	t.Helper()
 	u := unitFrom(t, schema)
@@ -50,7 +50,6 @@ func runLongNumberUnit(t *testing.T, schema, testSource string) {
 // is what makes the rule one rule (§16.2).
 func TestJsonLongNumberTokenLands(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the generated Go runtime")
 	runLongNumberUnit(t, `package probe
 fixed table Root {
 	f float64

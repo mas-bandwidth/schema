@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type gooseF32EndsRow struct {
@@ -152,7 +151,6 @@ fn main() {
 
 func TestGooseCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the generated unit)")
 	corpus := filepath.Join(root, "testdata", "conformance", "feature-witnesses", "compressed-f32-ends")
 	rows := gooseF32EndsRows(t, corpus)
 	_, files := cookUnitFiles(t, []string{filepath.Join(corpus, "Probe.schema")}, nil)

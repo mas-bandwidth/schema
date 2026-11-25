@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"hash/crc32"
@@ -22,7 +21,6 @@ func integrityTestSeal(data []byte) []byte {
 }
 
 func TestDartIntegrityNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/integrity-forms"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
 	if err != nil {

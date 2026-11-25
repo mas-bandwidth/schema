@@ -114,12 +114,15 @@ local function unit(name: string): any?
 		local T = require(base .. "schema_tables")
 		-- every table module registers its descriptors; requiring them is what
 		-- makes S.lookup(name) resolve a root. Not every schema file has a
-		-- table module, so a missing one is skipped, never fatal.
+		-- table module: one the target did not emit is not there to load, and
+		-- one that is there and raises fails the driver.
 		local modules = {}
 		for _, module in unitModules[name] or {} do
 			local okm, m = pcall(function() return require(base .. module) end)
 			if okm then
 				modules[#modules + 1] = m
+			elseif not string.find(tostring(m), "no module at", 1, true) then
+				error(m, 0)
 			end
 		end
 		return {
@@ -135,6 +138,11 @@ local function unit(name: string): any?
 		}
 	end)
 	if not ok then
+		-- a unit the target refused has no directory: its cases answer absent;
+		-- a unit that is there and fails to load fails the driver
+		if not string.find(tostring(u), "no module at", 1, true) then
+			error(u, 0)
+		end
 		units[name] = false
 		return nil
 	end
@@ -153,6 +161,9 @@ local function optional(u: any, module: string): any?
 	end
 	local ok, m = pcall(function() return require(u.base .. module) end)
 	if not ok then
+		if not string.find(tostring(m), "no module at", 1, true) then
+			error(m, 0)
+		end
 		u.optional[module] = false
 		return nil
 	end

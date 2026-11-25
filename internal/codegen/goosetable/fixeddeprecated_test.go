@@ -19,12 +19,10 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestFixedDeprecatedFieldIsCarried(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated reader and writer over the corpus)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	u := fixedUnit(t, "test/tables/FD1.schema")

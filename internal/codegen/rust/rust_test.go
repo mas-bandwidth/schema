@@ -147,7 +147,6 @@ func TestRenderArgOverflowGate(t *testing.T) {
 // union is re-exported via `pub use <mod>::*;` rather than marked as documentation-only,
 // and that its generated code imports the Stream trait so wire methods compile.
 func TestAssembleLibExportsUnionModule(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	const srcHome = `package unionexport
 type Marker {
@@ -225,9 +224,7 @@ union Event {
 		}
 	}
 
-	// The compile is the half of this test that proves the export: without
-	// cargo or the sibling runtime it is a skip the ledger reads, and a
-	// failure under SCHEMA_REQUIRE_CORPUS, never a pass.
+	// The compile is the half of this test that proves the export: without cargo or the sibling runtime it fails by name, never a pass.
 	if cargoBin == "" {
 		slowtest.Missing(t, "no cargo on PATH")
 	}

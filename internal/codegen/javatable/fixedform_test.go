@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -114,15 +113,14 @@ fixed table ByRoot
 // Pin identity==compiled on a sibling ByRoot `blob bytes(N)`, and the live-count
 // stain: count=1, slack 0xFF, after load object slack is zeros.
 func TestIdentityCompiledBytesN(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	javac, err := exec.LookPath("javac")
 	if err != nil {
-		t.Skip("javac not on PATH")
+		t.Fatalf("javac not on PATH: %v", err)
 	}
 	java, err := exec.LookPath("java")
 	if err != nil {
-		t.Skip("java not on PATH")
+		t.Fatalf("java not on PATH: %v", err)
 	}
 	files, err := Generate(unitFrom(t, `package probe
 
@@ -383,7 +381,6 @@ fixed table LiveRoot
 // `make tables-java-fixedform-arm-negative-control`, whose case reads a record
 // through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
@@ -517,22 +514,15 @@ func writeFixedJava(t *testing.T, dir, pkg string, files map[string][]byte) {
 }
 
 func javaTools(t *testing.T) (javac, javaBin string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if jc, j, ok := javaToolsLookup(t); ok {
 		return jc, j
 	}
-	// UNDER SCHEMA_REQUIRE_CORPUS (every make tables-java-* gate) OR THE CI
-	// SLOW HALF (ci-full.yml's unit-codegen-java rows), A MISSING JDK IS A
-	// FAILURE, never a skip: a skipped test exits 0, so the gate would read
-	// green having compiled nothing (slowtest.CorpusRequired). Found
-	// 2026-11-24 when three Java gates went red on main: the make targets'
-	// comments promised this and javaTools skipped anyway.
-	if slowtest.CorpusRequired() {
-		t.Fatalf("no working javac, and SCHEMA_REQUIRE_CORPUS (or CI with SCHEMA_SLOW=1) makes that a failure: set JAVAC/JAVA or install a JDK")
-	}
-	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
+	// A MISSING JDK IS A FAILURE, never a skip (Glenn, 2026-11-25: "NO
+	// SKIPS"): a skipped test exits 0, so a gate would read green having
+	// compiled nothing. The tests that need a JDK are functional.
+	t.Fatalf("no working javac: set JAVAC/JAVA or install a JDK")
 	return "", ""
 }
 
@@ -702,7 +692,6 @@ const fu1fu2Driver = `public final class Driver {
 //     14). Capped at 255 it lost the 256th variant on, each landing None as
 //     though this reader did not name it.
 func TestFixedHostileGuardAndOrdinal(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	javac, javaBin := javaTools(t)
 	u := schemaUnit(t, "FU1.schema")

@@ -17,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -27,7 +26,6 @@ import (
 // M5: Keyed arrays index by key, refused at both ends, and yield (key, value).
 func TestPythonKeyedAccessorCoversBothEnds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python keyed array accessor under both pins")
 	u := loadUnit(t, "package probe\nenum Slot { head, body, feet }\ntable Bag { gear [Slot]int32 }\n")
 	files, err := Generate(u)
 	if err != nil {
@@ -61,7 +59,6 @@ print("ok")
 
 func TestPythonKeyedBoundsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python keyed array negative controls")
 	u := loadUnit(t, "package probe\nenum Slot { head, body, feet }\ntable Bag { gear [Slot]int32 }\n")
 	baseFiles, err := Generate(u)
 	if err != nil {
@@ -204,7 +201,6 @@ func TestPythonWireByteOrderNegativeControl(t *testing.T) {
 // M14: Negative control for &node shared-node label in JSON text form.
 func TestPythonJsonSharedNodesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python json shared-node label negative control")
 	u := loadUnit(t, `package jsongraph
 table Node { name string(8) }
 table Root { a *Node
@@ -239,7 +235,6 @@ print(r.to_json())
 // I7: Negative control for cross-endian order-word refusal on block and cook.
 func TestPythonForeignOrderNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python foreign order-word negative control")
 	repo := filepath.Join("..", "..", "..")
 	u := loadUnitFiles(t, filepath.Join(repo, "tables", "block"))
 	files, err := Generate(u)
@@ -283,7 +278,6 @@ func pySplitMix64(state *uint64) uint64 {
 
 func TestPythonForgeryFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python block and cook forgery walk fuzz")
 	repo := filepath.Join("..", "..", "..")
 	bu := loadUnitFiles(t, filepath.Join(repo, "tables", "block"))
 	bFiles, err := Generate(bu)
@@ -425,7 +419,6 @@ print(f"ok {opened} {refused}")
 
 func TestPythonForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python block forgery fuzz negative control")
 	repo := filepath.Join("..", "..", "..")
 	bu := loadUnitFiles(t, filepath.Join(repo, "tables", "block"))
 	files, err := Generate(bu)
@@ -574,7 +567,6 @@ for i in range(%d):
 
 func TestPythonTextDifferential(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python 200-draw float text differential against Go engine")
 	if err := runPythonTextDifferential(t, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -582,7 +574,6 @@ func TestPythonTextDifferential(t *testing.T) {
 
 func TestPythonTextDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python float text differential negative control")
 	err := runPythonTextDifferential(t, func(files map[string][]byte) {
 		jt := string(files["floatdiff/_schema/json_table.py"])
 		anchor := "low, high = (6, 9) if single else (15, 17)"

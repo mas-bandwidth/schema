@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -26,7 +25,6 @@ import (
 // All values start at the sentinel 17; slot 2 is past the batch's count of 2,
 // so a reset of 0..count alone leaves it at 17. Storage for two owes 2 and 40.
 func TestCSharpMessageLoadCapacityFixture(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "backend", "Backend.schema"))
 	if err != nil {
 		t.Fatal(err)

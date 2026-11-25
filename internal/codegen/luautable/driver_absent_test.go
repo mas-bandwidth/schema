@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -76,7 +74,6 @@ func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, ab
 
 func TestLuauDriverWritesAbsentPerCase(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh and perl (it runs the Luau conformance driver)")
 	absent, ok, answer := driverAbsentRun(t, nil)
 	if !ok {
 		t.Fatal("the driver wrote no case_a.absent for an absent line")
@@ -94,7 +91,6 @@ func TestLuauDriverWritesAbsentPerCase(t *testing.T) {
 // a non-protocol line, and no case_a.absent is written.
 func TestLuauDriverAbsentNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh and perl (it runs the Luau conformance driver)")
 	const anchor = `elsif ($rest =~ /\Aabsent(?: (.+))?\z/s) {`
 	_, ok, _ := driverAbsentRun(t, func(s string) string {
 		if strings.Count(s, anchor) != 1 {

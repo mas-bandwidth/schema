@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -132,7 +131,6 @@ func mooDepth(t *testing.T, g *generatedUnit, wire []byte) depthOut {
 // plain read, and the frame kinds §4 counts differently — a scalar union arm
 // and a keyed slot's scalar element — keep the Go engine's verdict.
 func TestMooRetainKeepsAFieldNested128(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Depth.schema": retainDepthUnit})
 	cases := []depthFrameCase{
@@ -175,7 +173,6 @@ func TestMooRetainKeepsAFieldNested128(t *testing.T) {
 // TestMooRetainKeepsAFieldNested128NegativeControl puts the cap of 64 back in
 // an emitted table_retain.moo and requires the 65-body row red.
 func TestMooRetainKeepsAFieldNested128NegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Depth.schema": retainDepthUnit})
 	wire := depthWire(depthFrameCase{name: "65 bodies", bodies: 65})

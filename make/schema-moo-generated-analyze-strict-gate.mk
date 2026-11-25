@@ -20,7 +20,7 @@
 # MOO_PIN, and the moo in the same directory must report the pinned release.
 # Another analyzer is REFUSED by name; a missing one is "tool missing", never a
 # skip (toolchain-moo first, then the test's own resolution, which fails under
-# SCHEMA_SLOW=1).
+# the rule that nothing skips).
 #
 # One analyzer process over every module: about 3 s for 147 units on the
 # studio. The tests live in internal/codegen/moo (strictgate_test.go) so that
@@ -75,7 +75,7 @@ schema-moo-generated-analyze-strict-gate-pin-negative-control: toolchain-moo
 
 # LAYER 1's CONTROLS, AS MAKE TARGETS, so make/negative-controls.json can run
 # them on their own row (they also ride `make test-moo` and ci-full's emitter
-# row, where every internal/codegen/moo test runs under SCHEMA_SLOW=1).
+# row, where every internal/codegen/moo test runs under the rule that nothing skips).
 #
 # packet-wire-moo-negative-control: the type-wire golden gate's control. One
 # bool written twice in the generated writer, so exactly the goldens that
@@ -111,7 +111,7 @@ packet-wire-moo-emitter-negative-control: toolchain-moo
 		-out $(MOO_WIRE_NC_DIR)/wire.gotext internal/codegen/moo/wire.go
 	@printf '{"Replace":{"%s/internal/codegen/moo/wire.go":"%s/$(MOO_WIRE_NC_DIR)/wire.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(MOO_WIRE_NC_DIR)/overlay.json
-	@if SCHEMA_SLOW=1 go test -overlay=$(MOO_WIRE_NC_DIR)/overlay.json -count=1 -v ./internal/codegen/moo \
+	@if go test -overlay=$(MOO_WIRE_NC_DIR)/overlay.json -count=1 -v ./internal/codegen/moo \
 			-run '^TestMooTypeWireWritesTheGoldens$$' > $(MOO_WIRE_NC_DIR)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the moo golden gate stayed green with the bool written twice'; \
 		cat $(MOO_WIRE_NC_DIR)/log; exit 1; fi

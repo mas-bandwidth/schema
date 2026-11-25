@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -85,7 +84,6 @@ func TestWireMixedListDecodedValueDartNegativeControl(t *testing.T) {
 }
 
 func runMixedListProbe(t *testing.T, sabotage bool) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := buildUnit(t, listdemoMixedSchema)

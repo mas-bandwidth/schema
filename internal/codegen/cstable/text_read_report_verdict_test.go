@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -221,7 +219,6 @@ func csTextVerdictFailures(lines []csTextVerdictLine) []string {
 
 func TestCSharpTextReadReportVerdict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	files := csTextVerdictGenerate(t)
 	lines := csTextVerdictRun(t, files)
 	if fails := csTextVerdictFailures(lines); len(fails) != 0 {
@@ -231,7 +228,6 @@ func TestCSharpTextReadReportVerdict(t *testing.T) {
 
 func TestCSharpTextReadReportVerdictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 	files := csTextVerdictGenerate(t)
 
 	const write = "input.Report.Verdict = verdict;"

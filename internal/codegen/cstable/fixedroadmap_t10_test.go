@@ -32,7 +32,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -148,16 +147,12 @@ func t10Probes() []t10Probe {
 // t10Discover locates dotnet, the SDK's Roslyn compiler and the .NET ref pack.
 // It is the host-free twin of `dotnet run`: the CLI's build/run commands run a
 // first-time-use configurer that a sandboxed host refuses, so the harness calls
-// the compiler and the host directly. A missing toolchain follows t06's idiom:
-// skip by name when SCHEMA_REQUIRE_CORPUS is unset, fail by name when it is set
-// (the fixed-rows target sets it, so a missing dotnet/csc/ref pack can never
-// pass silently under that target).
+// the compiler and the host directly. A missing toolchain follows t06's idiom: it fails by name, so a missing dotnet/csc/ref pack can never pass silently.
 var (
 	t10dotnet, t10csc, t10refDir, t10refVersion string
 )
 
 func t10Discover(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10dotnet = os.Getenv("DOTNET")
@@ -191,10 +186,7 @@ func t10Discover(t *testing.T) {
 
 func t10MissingToolchain(t *testing.T, missing string) {
 	t.Helper()
-	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s", missing)
-	}
-	t.Skip(missing)
+	t.Fatalf("%s", missing)
 }
 
 var (
@@ -210,7 +202,6 @@ func t10Run(t *testing.T) ([]byte, error) {
 }
 
 func t10BuildAndRun(t *testing.T) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

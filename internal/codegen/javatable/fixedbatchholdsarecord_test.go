@@ -13,14 +13,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJavaFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 
 	repo := filepath.Join("..", "..", "..")
 	vector := filepath.Join(repo, "testdata", "wire", "fixed-empty-batch")

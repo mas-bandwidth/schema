@@ -55,7 +55,7 @@ cpp-hostile-bounds: $(CPP_BOUNDS_BUILD)/writer $(CPP_BOUNDS_BUILD)/bounds cpp-ho
 cpp-hostile-bounds-frames: $(CPP_BOUNDS_BUILD)/bounds.su
 	@status=0; \
 	for fn in badElementKindContent badElementKindUnion badElementKindTable TableMessageSkipBody 'TableMessageSkip(' TableMessageSkipElement SimStateLoadMessageBody; do \
-		lines=$$(grep -F "$$fn" $< || true); \
+		lines=$$(grep -F "$$fn" $<) || [ $$? -eq 1 ] || exit 1; \
 		if [ -z "$$lines" ]; then echo "FAIL frame $$fn: not in $<"; status=1; continue; fi; \
 		worst=$$(printf '%s\n' "$$lines" | awk -F'\t' '{ if ( $$2 + 0 > m ) m = $$2 + 0 } END { print m + 0 }'); \
 		if [ "$$worst" -gt $(CPP_BOUNDS_FRAME_BYTES) ]; then echo "FAIL frame $$fn: $$worst bytes, over $(CPP_BOUNDS_FRAME_BYTES)"; status=1; \

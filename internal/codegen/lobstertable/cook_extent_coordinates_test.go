@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +15,6 @@ import (
 // nested extents and wide elements at the reference's exact addresses.
 func TestLobsterCookExtentCoordinates(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "native Lobster extent bytes, map ordering and malformed spans")
 	selected := map[string]bool{"map_cells": true, "map_chunks": true, "map_full": true, "map_slots": true, "map_text": true, "map_runs": true, "list_scalars": true, "list_nested": true, "list_of_maps": true, "widelist_wide": true}
 	found := 0
 	for _, row := range cookWriteRows(t) {

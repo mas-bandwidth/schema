@@ -9,7 +9,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func init() {
@@ -28,7 +27,6 @@ func init() {
 
 func TestRubyFixedProofShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and C++ fixed-form oracle")
 	expected := map[string]map[string]string{
 		"utf8-values":               {"r0.s": `""`, "r1.s": `"hello"`, "r1.s_length": "5"},
 		"byte-buffers":              {"r0.blob_length": "0", "r1.blob_length": "6", "r1.blob[0]": "255", "r1.blob[1]": "0", "r1.blob[2]": "90", "r1.blob[5]": "3"},
@@ -111,7 +109,6 @@ puts "keyed-ok"
 
 func TestRubyFixedProofShapesText(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and C++ fixed-form oracle")
 	schema := "package probe\nfixed table T { s string(4) }\n"
 	u := fixedproof.ParseCheckUnit(t, schema)
 	tc := fixedproof.RowCase{ID: "shape-text", Schema: schema, Root: "T", Body: 8, Count: 1, CppSetup: `memcpy(value[0].s, "\xc3\xa9", 2); value[0].s_length = 2;`}
@@ -173,7 +170,6 @@ puts "text-ok"
 
 func TestRubyFixedProofShapesArrayBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and C++ fixed-form oracle")
 	old := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..2]uint16 }\n")
 	newer := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { a [..4]uint16 }\n")
 	tc := fixedproof.RowCase{ID: "bounds-old", Schema: "package probe\nfixed table T { a [..2]uint16 }\n", Root: "T", Body: 8, Count: 1, CppSetup: `value[0].a_count=2; value[0].a[0]=7; value[0].a[1]=9;`}
@@ -233,7 +229,6 @@ end
 
 func TestRubyFixedProofShapesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Ruby interpreters and C++ fixed-form oracle")
 	cases := []struct {
 		name, schema, setup, anchor, replacement string
 		body, offset                             int

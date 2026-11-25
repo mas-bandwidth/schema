@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -99,7 +98,6 @@ func javaR17Ints(b []byte) string {
 }
 
 func TestJavaR17FlagsPastWidthRefuse(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	older := unitFrom(t, javaR17Older)
 	newer := unitFrom(t, strings.Replace(javaR17Older, "Verbose }", "Verbose, Extra }", 1))

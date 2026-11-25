@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -207,7 +206,6 @@ func cookWriteStrictGate(t *testing.T, mutate func(t *testing.T, files map[strin
 // 0-based buffer mapping for [N]uint8, [..N]uint8 and [E]uint8 and to
 // schema-go's internal/tablecook bytes across both byte orders.
 func TestLuauCookWriteStrict(t *testing.T) {
-	slowtest.Gate(t, "luau")
 	t.Parallel()
 	if why := cookWriteStrictGate(t, nil); why != "" {
 		t.Fatal(why)
@@ -218,7 +216,6 @@ func TestLuauCookWriteStrict(t *testing.T) {
 // each runtime module that touches a byte array along the strict load -> save
 // -> cook -> open path and requires the gate to go red on each.
 func TestLuauCookWriteStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "luau")
 	t.Parallel()
 	for _, ctl := range []struct {
 		name string

@@ -40,7 +40,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -216,7 +215,6 @@ func signalingNaN(t *testing.T, mutate func(*testing.T, map[string][]byte)) []st
 }
 
 func TestMooWireSignalingNaNWideningAndLEBOverflow(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range signalingNaN(t, nil) {
 		t.Error(b)
@@ -292,7 +290,6 @@ func wideningLadder(t *testing.T, mutate func(*testing.T, map[string][]byte)) []
 }
 
 func TestMooWideningLadder(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range wideningLadder(t, nil) {
 		t.Error(b)
@@ -363,7 +360,6 @@ func mapReports(t *testing.T, mutate func(*testing.T, map[string][]byte)) []stri
 }
 
 func TestMooMapReadReports(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range mapReports(t, nil) {
 		t.Error(b)
@@ -381,7 +377,6 @@ func TestMooMapReadReports(t *testing.T) {
 //     cross-signedness cells and the map's key of another kind answer a
 //     value, and both gates go red.
 func TestMooWideningNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {

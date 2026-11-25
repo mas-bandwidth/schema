@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -120,7 +119,6 @@ func dartTextStringControlWire(t *testing.T) []byte {
 }
 
 func TestDartTextStringControlCharacters(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 
 	u := buildUnit(t, dartTextStringControlSchema)
@@ -164,7 +162,6 @@ func TestDartTextStringControlCharacters(t *testing.T) {
 }
 
 func TestDartTextStringControlCharactersNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 
 	wire := string(dartTextStringControlWire(t))

@@ -377,18 +377,27 @@ func TestCardFixtureRead(t *testing.T) {
 	}
 }
 
-// TestCardFixtureWrite writes the populated wire and JSON into the named source
-// fuzz directory. It runs only under CARDS_UPDATE_FIXTURE=1, so ordinary tests
-// read the committed evidence and never generate it.
+// TestCardFixtureWrite holds the populated wire and JSON in the named source
+// fuzz directory to what fixtureCard builds; under CARDS_UPDATE_FIXTURE=1
+// it writes them instead, and never under CI.
 func TestCardFixtureWrite(t *testing.T) {
+	wire, json := fixtureCard(t)
+	dir := filepath.Join("..", "..", "..", "tables", "cards", "fuzz")
 	if os.Getenv("CARDS_UPDATE_FIXTURE") != "1" {
-		t.Skip("fixture update requires CARDS_UPDATE_FIXTURE=1")
+		for name, want := range map[string][]byte{"card-populated.wire": wire, "card-populated.json": json} {
+			got, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatalf("the committed fixture %s is absent: %v", name, err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Errorf("the committed fixture %s is not what fixtureCard builds", name)
+			}
+		}
+		return
 	}
 	if os.Getenv("CI") != "" {
 		t.Fatal("CARDS_UPDATE_FIXTURE=1 under CI: a lane that rewrites the committed evidence compares nothing against it; unset it")
 	}
-	wire, json := fixtureCard(t)
-	dir := filepath.Join("..", "..", "..", "tables", "cards", "fuzz")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

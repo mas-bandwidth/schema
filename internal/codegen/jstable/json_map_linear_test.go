@@ -5,8 +5,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const jsJSONMapLinearSchema = "package probe\ntable Root\n{\n    names map[string(16)]int32\n    ids map[uint32]int32\n}\n"
@@ -64,7 +62,6 @@ func TestJavaScriptJSONMapReadIsLinear(t *testing.T) {
 	}
 
 	t.Run("count", func(t *testing.T) {
-		slowtest.Gate(t, "node (it runs the generated JSON read)")
 		counted := maps.Clone(files)
 		s := src
 		for _, anchor := range []struct{ from, counter string }{

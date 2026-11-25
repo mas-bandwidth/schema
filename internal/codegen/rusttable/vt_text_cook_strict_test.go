@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -219,7 +218,6 @@ fn main() {
 
 func TestRustTextCookWideningStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated text/cook/widening probe)")
 	keyedRequireRustc(t)
 	out, err := runVtTextCookWidening(t, nil)
 	if err != nil {
@@ -272,7 +270,6 @@ func requireRustRed(t *testing.T, what string, out []byte, err error, want strin
 // turn the strict gate red on its own message.
 func TestRustTextCookWideningStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated text/cook/widening probe)")
 	keyedRequireRustc(t)
 	t.Run("form", func(t *testing.T) {
 		t.Parallel()

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -34,7 +33,6 @@ table Root {
 // The count is wire input, not a fixture allocation: all payloads stay small.
 // Cap refusal must unwind nested decoders without inventing framing damage.
 func TestDartCountRefusalDiscardsTheWholeLoad(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	out, err := runCountRefusalProbe(t, nil)
 	if err != nil {
 		t.Fatalf("count refusal probe: %v\n%s", err, out)
@@ -44,7 +42,6 @@ func TestDartCountRefusalDiscardsTheWholeLoad(t *testing.T) {
 // Restore the old cap-as-damage branch in the generated units. The same
 // native inputs must reject it on both list and map refusals.
 func TestDartCountRefusalNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	out, err := runCountRefusalProbe(t, func(files map[string][]byte) {
 		changed := 0
 		for name, src := range files {

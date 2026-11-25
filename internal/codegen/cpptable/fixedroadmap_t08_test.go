@@ -14,8 +14,7 @@ package cpptable
 // oracle (build/fixedform-corpus, docs/SPEC-TABLES.md §3.4): the cpp runtime the
 // emitter lays down reads and writes the same bytes the reference wrote, so the
 // assertion is a byte fact and not a spelling one. The corpus is built by
-// `make tables-fixedform-corpus`; where it is absent the test SKIPS exactly the
-// way fixedversioning_test.go does (never a green over an unrun row).
+// `make tables-fixedform-corpus`; where it is absent the test fails by name, as fixedversioning_test.go does.
 
 import (
 	"bufio"
@@ -28,7 +27,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -377,7 +375,6 @@ func t08P1(t *testing.T) {
 // the first finding abort, which is what P3's sweep needs. A compile or a
 // non-zero exit fails the test, so a probe cannot pass by not running.
 func t08Probe(t *testing.T, units []*ir.Unit, probe string, asan bool) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

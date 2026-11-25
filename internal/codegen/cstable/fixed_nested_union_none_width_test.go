@@ -11,7 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -51,11 +50,9 @@ func nestedUnionNoneWidthSchema() string {
 
 // cppNestedUnionNoneWidthBytes generates the C++ fixed form, saves one record
 // through the generated writer and answers its body and layout bytes. The
-// probe prints each as hex; a missing C++ compiler is a skip, a failure under
-// SCHEMA_REQUIRE_CORPUS.
+// probe prints each as hex; a missing C++ compiler is a failure by name.
 func cppNestedUnionNoneWidthBytes(t *testing.T, src string) (body, layout []byte) {
 	t.Helper()
-	slowtest.Gate(t, "an external toolchain")
 
 	u := unitFrom(t, src)
 	files, err := cpp.Generate(u)

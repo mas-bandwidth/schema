@@ -84,7 +84,7 @@ test-go: tables-go-textform
 # unit's wires and reports.
 .PHONY: go-runtime tables-go-shared-runtime
 go-runtime:
-	SCHEMA_SLOW=1 SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
+	SCHEMA_WRITE_GORUNTIME=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run TestGoSharedRuntimePackageIsCurrent
 
 tables-go-shared-runtime:
 	sh test/slowgate/proof tables-go-shared-runtime \
@@ -167,7 +167,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 
 .PHONY: tables-go-json-walk
 tables-go-json-walk: build/tables-generated-go/.stamp
-	SCHEMA_SLOW=1 SCHEMA_GO_JSON_WALK_DIR="$(CURDIR)/build/tables-generated-go" \
+	SCHEMA_GO_JSON_WALK_DIR="$(CURDIR)/build/tables-generated-go" \
 		SCHEMA_GO_JSON_WALK_OUT="$(CURDIR)/build/json-walk-go" \
 		go test -count=1 -v ./internal/codegen/gotable -run '^TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)$$'
 
@@ -402,7 +402,7 @@ cards-example: cards-generate
 	@mkdir -p build/tables-generated-go/cards-future/probe
 	@printf '%s\n' 'package main' '' 'import (' '	"os"' '	"strings"' '' '	cardsfuture "cardsfuture"' ')' '' 'func main() {' '	var b cardsfuture.CardBuilder' '	if !b.Init() {' '		os.Exit(2)' '	}' '	r := b.GetRoot()' '	set := func(dst []byte, n *int32, s string) { copy(dst, s); *n = int32(len(s)) }' '	set(r.ID[:], &r.IDLength, "future-probe")' '	set(r.Sha[:], &r.ShaLength, strings.Repeat("e", 40))' '	r.Tier = cardsfuture.Tierpro' '	set(r.FutureNote[:], &r.FutureNoteLength, "future-value")' '	if !b.Lock() {' '		os.Exit(3)' '	}' '	size := cardsfuture.CardMeasure(b.AsConst())' '	w := make([]byte, size)' '	if cardsfuture.CardSave(b.AsConst(), w) != size {' '		os.Exit(4)' '	}' '	os.Stdout.Write(w)' '}' > build/tables-generated-go/cards-future/probe/main.go
 	cd build/tables-generated-go/cards-future && go run "$(CURDIR)/build/tables-generated-go/cards-future/probe" > $(CURDIR)/build/cards-example/testdata/future-note.wire
-	cd build/cards-example && go vet ./... && SCHEMA_SLOW=1 CARDS_SOURCE_ROOT=$(CURDIR) CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_FUTURE_WIRE=$(CURDIR)/build/cards-example/testdata/future-note.wire go test -count=1 -timeout 600s -v ./...
+	cd build/cards-example && go vet ./... && CARDS_SOURCE_ROOT=$(CURDIR) CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_FUTURE_WIRE=$(CURDIR)/build/cards-example/testdata/future-note.wire go test -count=1 -timeout 600s -v ./...
 
 # The read-only corpus gate (docs/SPEC-TABLES.md §4, §5, §6.6): the current
 # declaration must match the committed current-case declaration, and every
@@ -429,7 +429,7 @@ cards-corpus-create: cards-generate
 
 cards-test: cards-generate cards-corpus-check
 	./bin/schema check tables/cards
-	cd build/tables-generated-go/cards && go vet ./... && SCHEMA_SLOW=1 CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_SOURCE_ROOT=$(CURDIR) go test -v -count=1 -timeout 600s ./...
+	cd build/tables-generated-go/cards && go vet ./... && CARDS_DOC_PATH=$(CURDIR)/docs/CARDS.md CARDS_DECL_PATH=$(CURDIR)/tables/cards/Card.schema CARDS_SOURCE_ROOT=$(CURDIR) go test -v -count=1 -timeout 600s ./...
 	cd build/tables-generated-go/cards-initial && go vet ./...
 	cd build/tables-generated-go/cards-future && go vet ./...
 	go test -count=1 -timeout 600s ./internal/ci/ ./tools/agentsmap/
@@ -668,8 +668,8 @@ fuzz-generated-readers-go:
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
-	@# loud-ok: with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
-	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > build/conformance-go-fuzz-work.log 2>&1 || true
+	@# with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
+	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > build/conformance-go-fuzz-work.log 2>&1; echo "exited $$? (the verdict is read from build/conformance-go-fuzz-work.log below)"
 	@test -n "$$(ls -A build/conformance-go-fuzz-work/fixtures 2>/dev/null)" || \
 		{ cat build/conformance-go-fuzz-work.log; echo "tables-go-fuzz: the harness wrote no fixtures under build/conformance-go-fuzz-work/fixtures"; exit 1; }
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
@@ -695,7 +695,7 @@ define go_fuzz_sabotage
 	@rm -rf build/go-fuzz-$(1) && mkdir -p build/go-fuzz-$(1)
 	@sed '$(GO_FUZZ_SED_$(1))' internal/codegen/gotable/block.go > build/go-fuzz-$(1)/gotable-block.go.txt
 	@cmp -s internal/codegen/gotable/block.go build/go-fuzz-$(1)/gotable-block.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Go emitter sabotage did not apply"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL: the Go emitter sabotage did not apply"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/gotable/block.go":"%s/build/go-fuzz-$(1)/gotable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/go-fuzz-$(1)/overlay.json
 	go build -overlay build/go-fuzz-$(1)/overlay.json -o build/go-fuzz-$(1)/schema ./cmd/schema
@@ -920,7 +920,8 @@ test-go-packet: build/mustrun generated/go/.stamp generated/go-ludicrous/.stamp 
 
 CONFORMANCE_LEG_go := build/conformance-go
 TEST_LEGS         += test-go
-CONFORMANCE_LEGS  += $(call unless_skipped,go,build/conformance-go)
+CONFORMANCE_OF.go := build/conformance-go
+CONFORMANCE_LEGS  += $(CONFORMANCE_OF.go)
 BENCH_TABLES_LEGS += generated/bench/tables/go/.stamp
 REGISTRY_NA       += goldens:go toolchain:go
 REGISTRY_NA_WHY.goldens.go   := no committed table goldens; its packet goldens (testdata/golden/go) are rewritten by internal/goldens at the top of update-goldens
@@ -928,7 +929,7 @@ REGISTRY_NA_WHY.toolchain.go := go.mod's go line sets the floor and the go comma
 
 .PHONY: tables-go-wire-fuzz tables-go-wire-fuzz-negative-control
 tables-go-wire-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
+	go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver 'build/conformance-go wire-fuzz' --seed $(SEED) --n $(N)
 
 tables-go-wire-fuzz-negative-control: build/conformance-harness build/conformance-go
@@ -1033,7 +1034,6 @@ test-go: tables-go-retain
 
 .PHONY: tables-go-allocator tables-go-allocator-negative-controls tables-go-allocator-runtime-negative-control tables-go-retain-negative-controls
 tables-go-allocator:
-	@if [ "$${SCHEMA_GO_ALLOC_ANY_GO:-}" = 1 ]; then echo "Go allocation observation mode: NOT CERTIFIED"; fi
 	GOTOOLCHAIN=go1.26.0 sh test/slowgate/proof tables-go-allocator \
 		'TestAllocatorOwnershipAndStandaloneWriters' \
 		./internal/codegen/gotable -run '^TestAllocatorOwnershipAndStandaloneWriters$$' -count=1
@@ -1146,7 +1146,7 @@ GO_FUZZ_DRIVER ?= build/conformance-go
 GO_RELEASE_N ?= 100000
 .PHONY: tables-go-release-fuzz tables-go-release-negative-control
 tables-go-release-fuzz: build/conformance-harness build/conformance-go
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
+	go test -count=1 -timeout 600s ./internal/codegen/gotable -run '^TestGoFileLoadOfDamagedFeedChainIsRefused$$'
 	./build/conformance-harness wire-fuzz --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	./build/conformance-harness wire-fuzz --retain --driver '$(GO_FUZZ_DRIVER) wire-fuzz' --seed $(GO_RELEASE_SEED) --n $(GO_RELEASE_N)
 	$(MAKE) tables-go-builders N=$(GO_RELEASE_N) SEED=$(GO_RELEASE_SEED)
@@ -1226,11 +1226,11 @@ test-go: tables-go-versioning
 # how a §5 regression would have ridden into CI green, since the go-test job
 # runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
 # (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
-# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# sets the rule that nothing skips, which turns that skip into a FAILURE: under this
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
 tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
+	go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFixedRoadmapGoT02Plans|TestFixedRoadmapGoT12ConformanceHostile'
 	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL: move one byte of the WRITE TEMPLATE and the leg must go
@@ -1299,7 +1299,7 @@ test-go: tables-go-keyed tables-go-keyed-negative-control
 # panicking, and the gate must go red on the disagreeing runtime it now loads.
 .PHONY: tables-go-layout-contract tables-go-layout-contract-negative-control
 tables-go-layout-contract:
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$$'
+	go test -count=1 ./internal/codegen/gotable -run '^TestBlockLayoutContractRefusesADisagreeingRuntime$$'
 tables-go-layout-contract-negative-control:
 	sh test/go-tables/negative-control layout
 test-go: tables-go-layout-contract tables-go-layout-contract-negative-control
@@ -1345,7 +1345,7 @@ test-go: cards-conformance-go-negative-control
 # cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,
 # all sixteen subsets, through the emitter's own omit path (GenerateOmitting),
 # built and vetted against the sibling serialize.go. Part of the default gate:
-# it needs no SCHEMA_SLOW.
+# it needs no the rule that nothing skips.
 .PHONY: tables-go-subsets
 tables-go-subsets:
 	sh test/slowgate/proof tables-go-subsets \
@@ -1363,9 +1363,9 @@ test-go: tables-go-subsets
 # base.
 .PHONY: tables-go-text-differential tables-go-text-differential-negative-control
 tables-go-text-differential:
-	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
+	go test ./internal/codegen/gotable -run '^TestTextDifferential$$' -count=1
 tables-go-text-differential-negative-control:
-	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
+	go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential tables-go-text-differential-negative-control
 
 # FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
@@ -1376,9 +1376,9 @@ test-go: tables-go-text-differential tables-go-text-differential-negative-contro
 # writer's clause in turn, and each must turn the probe red on its own half.
 .PHONY: tables-go-finite-float tables-go-finite-float-negative-control
 tables-go-finite-float:
-	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestGoPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1
+	go test ./internal/codegen/gotable -run '^TestGoPlainFloatSpecialValuesAgreeAcrossForms$$' -count=1
 tables-go-finite-float-negative-control:
-	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestGoFiniteFloatNegativeControl$$' -count=1
+	go test ./internal/codegen/gotable -run '^TestGoFiniteFloatNegativeControl$$' -count=1
 test-go: tables-go-finite-float
 
 # The random-schema table differential (card
@@ -1387,13 +1387,13 @@ test-go: tables-go-finite-float
 # under -race, every read/write path, every damage, hostile JSON plants and the
 # compiler's engine in both directions. Nightly in certify.yml, never in
 # ci-fast or ci-full: SCHEMA_TABLE_DIFF=1, set only here, is what opts the two
-# tests in; ci-full's SCHEMA_SLOW=1 run of ./internal/fuzz skips them.
+# tests in; ci-full's the rule that nothing skips run of ./internal/fuzz skips them.
 TABLE_DIFF_FROM ?= 0
 TABLE_DIFF_TO ?= 200
 .PHONY: fuzz-tables-diff
 fuzz-tables-diff:
-	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_FROM=$(TABLE_DIFF_FROM) SCHEMA_TABLE_DIFF_TO=$(TABLE_DIFF_TO) go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
-	SCHEMA_SLOW=1 SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
+	SCHEMA_TABLE_DIFF=1 SCHEMA_TABLE_DIFF_FROM=$(TABLE_DIFF_FROM) SCHEMA_TABLE_DIFF_TO=$(TABLE_DIFF_TO) go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferential$$' -v
+	SCHEMA_TABLE_DIFF=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRandomTableDifferentialNegativeControl$$' -v
 
 # The property-based random-schema tests (card schema-go-rapid-property-tests):
 # rapid drives the SAME generator as the differential above, so a failure
@@ -1403,8 +1403,8 @@ fuzz-tables-diff:
 # them).
 .PHONY: fuzz-tables-props
 fuzz-tables-props:
-	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
-	SCHEMA_SLOW=1 SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
+	SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestProp' -rapid.checks=24 -v
+	SCHEMA_RAPID_PROPS=1 go test -count=1 -timeout 600s ./internal/fuzz/ -run '^TestRapidPropsNegativeControl$$' -rapid.checks=4 -v
 
 .PHONY: test-go
 test-go: deps
@@ -1421,7 +1421,7 @@ conformance-negative-control-go-message: build/conformance-harness build/conform
 # generated source and requires its gate's probe red on its own message.
 .PHONY: tables-go-message-form-negative-controls
 tables-go-message-form-negative-controls:
-	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -count=1 -timeout 600s \
+	go test ./internal/codegen/gotable -count=1 -timeout 600s \
 		-run '^(TestGoMessageFormGoldensNegativeControl|TestGoMessageFormRefusalsNegativeControl|TestGoMessageFormStrictNegativeControl|TestGoMessageFormVersioningNegativeControl|TestGoMessageFormFixedOnlyNegativeControl|TestGoWireIntegrityMessageFormNegativeControl)$$'
 
 test-go: conformance-negative-control-go-message tables-go-message-form-negative-controls
@@ -1444,7 +1444,7 @@ GO_DISCARD_NC := build/go-discard-nc
 .PHONY: tables-go-discard-negative-control
 tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
-	@SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadGo$$' ./internal/codegen/gotable
+	@go test -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadGo$$' ./internal/codegen/gotable
 	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {/if false {/' \
 	     -e 's/if n == 0 {/if false {/' \
 		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
@@ -1452,7 +1452,7 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+	@if go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
 			./internal/codegen/gotable > $(GO_DISCARD_NC)/fixed.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
@@ -1466,7 +1466,7 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
+	@if go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
 			./internal/codegen/gotable > $(GO_DISCARD_NC)/region.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/region.log; exit 1; \

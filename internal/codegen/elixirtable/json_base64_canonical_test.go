@@ -10,7 +10,7 @@ package elixirtable
 // bytes read, including the canonical spelling written with JSON escapes,
 // which the engine pins to unescape before the base64 rule
 // (internal/tabletext/base64escape_test.go). Running the generated Elixir
-// makes this a functional test, gated by slowtest.
+// makes this a functional test.
 
 import (
 	"bufio"
@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -118,7 +117,6 @@ func elixirJsonBase64CanonicalOracle(t *testing.T, rows []elixirJsonBase64Canoni
 
 func TestElixirJsonBase64Canonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	rows := elixirJsonBase64CanonicalRows(t)
 	want, wire := elixirJsonBase64CanonicalOracle(t, rows)

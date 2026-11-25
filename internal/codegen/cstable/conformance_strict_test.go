@@ -68,7 +68,6 @@ func csDriverSurface(t *testing.T, root, dll, surface, manifest string) string {
 }
 
 func TestCSharpDriverReadsStrictAndWritesBack(t *testing.T) {
-	slowtest.Gate(t, "dotnet and the conformance corpus")
 	root := csConformanceRoot(t)
 	dll := csConformanceBuild(t, root)
 
@@ -128,7 +127,6 @@ func TestCSharpDriverReadsStrictAndWritesBack(t *testing.T) {
 }
 
 func TestCSharpDriverReadsStrictAndWritesBackNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dotnet and the conformance corpus")
 	root := csConformanceRoot(t)
 	dll := csConformanceBuild(t, root)
 

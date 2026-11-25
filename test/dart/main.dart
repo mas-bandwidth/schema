@@ -53,6 +53,10 @@ final bool assertsEnabled = () {
 // (checked twin only — the release writer trusts by design).
 void expectAssert(void Function() fn, String what) {
   if (!assertsEnabled) {
+    check(
+      false,
+      '$what: asserts are off in this build: this row needs the assert build',
+    );
     return;
   }
   try {

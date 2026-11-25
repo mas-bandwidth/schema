@@ -8,14 +8,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPythonFixedIntegrityCRC(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python fixed-table CRC32C")
 	schema := "package probe\nfixed table T | integrity = \"crc32c\" { n int32 }\n"
 	u := fixedproof.ParseCheckUnit(t, schema)
 	tc := fixedproof.RowCase{ID: "fixed-crc", Schema: schema, Root: "T", Body: 4, Count: 2, CppSetup: "value[0].n = 7; value[1].n = 8;"}
@@ -73,7 +71,6 @@ print("ok")
 
 func TestPythonFixedIntegrityCRCNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed-table CRC32C negative controls")
 	schema := "package probe\nfixed table T | integrity = \"crc32c\" { n int32 }\n"
 	u := fixedproof.ParseCheckUnit(t, schema)
 	m := tabletext.NewModel(u)

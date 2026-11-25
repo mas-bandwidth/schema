@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -67,7 +66,6 @@ func namedField(t *testing.T, st *ir.Struct, name string) *ir.Field {
 
 func TestElixirLoadMessagesRefusesTextOffShape(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 
 	u := unitFrom(t, textOffShapeSchema)
 	m := tabletext.NewModel(u)

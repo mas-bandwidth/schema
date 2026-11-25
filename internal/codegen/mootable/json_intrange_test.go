@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -173,7 +172,6 @@ func intRangeRounded(src string) string {
 // one past it refuses, at 2^53 and at small bounds alike, as the Go engine
 // answers.
 func TestMooJsonIntegerRangeIsExact(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	for _, b := range intRangeRun(t, nil) {
 		t.Error(b)
@@ -184,7 +182,6 @@ func TestMooJsonIntegerRangeIsExact(t *testing.T) {
 // comparison and requires the one-past rows at 2^53 to go red, which is what
 // says the gate can see a rounded range test.
 func TestMooJsonIntegerRangeIsExactNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	bad := intRangeRun(t, intRangeRounded)
 	red := map[string]bool{}

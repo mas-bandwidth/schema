@@ -11,7 +11,7 @@
 //	<case>	<target,target,...>	<what broke>
 //
 // Each target's own package carries the test that generates and builds them
-// (behind slowtest.Gate): this package only lists the cases and generates one.
+// (a functional test): this package only lists the cases and generates one.
 // Every case is one the checker accepts: a case it refuses fails, because a
 // skipped case would stop proving anything and nobody would see it stop.
 package nameemit

@@ -23,7 +23,7 @@ copy_siblings "$out"
 main="$root/$source"
 if [ "$mode" = replacement ]; then
     anchor='const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });'
-    matches=$(grep -Fxc "$anchor" "$source" || true)
+    matches=$(grep -Fxc "$anchor" "$source") || [ $? -eq 1 ]
     [ "$matches" = 1 ] || { echo "negative control anchor matched $matches times, want 1" >&2; exit 1; }
     sed 's/fatal: true, ignoreBOM: true/fatal: false, ignoreBOM: true/' "$source" > "$out/main.mjs"
     if cmp -s "$source" "$out/main.mjs"; then echo 'negative control changed nothing' >&2; exit 1; fi

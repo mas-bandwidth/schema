@@ -67,47 +67,15 @@ func TestSerializeGoFindsTheRuntime(t *testing.T) {
 		}
 	})
 
-	t.Run("absent under SCHEMA_REQUIRE_CORPUS fails by name", func(t *testing.T) {
-		t.Setenv("SCHEMA_REQUIRE_CORPUS", "1")
+	t.Run("absent fails by name", func(t *testing.T) {
 		fake := &fakeTB{}
 		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
 			t.Fatalf("SerializeGo = %q, want empty on the fail branch", got)
 		}
 		if !fake.failed {
-			t.Fatal("SerializeGo under SCHEMA_REQUIRE_CORPUS did not fail")
-		}
-		if fake.skipped {
-			t.Fatal("SerializeGo under SCHEMA_REQUIRE_CORPUS also skipped")
+			t.Fatal("SerializeGo with no runtime did not fail")
 		}
 		assertAbsentMessage(t, fake.msg)
-	})
-
-	t.Run("absent with slow gate enabled fails by name", func(t *testing.T) {
-		t.Setenv("SCHEMA_REQUIRE_CORPUS", "")
-		t.Setenv("SCHEMA_SLOW", "1")
-		fake := &fakeTB{}
-		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
-			t.Fatalf("SerializeGo = %q, want empty on the fail branch", got)
-		}
-		if !fake.failed || fake.skipped {
-			t.Fatalf("SerializeGo with SCHEMA_SLOW: failed=%v skipped=%v", fake.failed, fake.skipped)
-		}
-		assertAbsentMessage(t, fake.msg)
-	})
-
-	t.Run("absent with slow gate disabled skips by marker", func(t *testing.T) {
-		t.Setenv("SCHEMA_REQUIRE_CORPUS", "")
-		t.Setenv("SCHEMA_SLOW", "")
-		fake := &fakeTB{}
-		if got := SerializeGo(fake, filepath.Join(t.TempDir(), "repo")); got != "" {
-			t.Fatalf("SerializeGo = %q, want empty on the skip branch", got)
-		}
-		if fake.failed || !fake.skipped {
-			t.Fatalf("SerializeGo without slow gate: failed=%v skipped=%v", fake.failed, fake.skipped)
-		}
-		if !strings.HasPrefix(fake.msg, gateSkipMarker) || !strings.HasSuffix(fake.msg, "run make deps") {
-			t.Fatalf("skip message %q must start with %q and end with run make deps", fake.msg, gateSkipMarker)
-		}
 	})
 
 	t.Run("the absolute environment override wins over the sibling", func(t *testing.T) {
@@ -134,15 +102,14 @@ func assertAbsentMessage(t *testing.T, msg string) {
 	}
 }
 
-// fakeTB stands in for a *testing.T so the fail and skip branches can be
-// exercised without failing or skipping the real test. Its embedded testing.TB
-// supplies the interface's unexported method; the two methods SerializeGo calls
+// fakeTB stands in for a *testing.T so the fail branch can be
+// exercised without failing the real test. Its embedded testing.TB
+// supplies the interface's unexported method; the methods SerializeGo calls
 // are overridden to record instead of exiting.
 type fakeTB struct {
 	testing.TB
-	failed  bool
-	skipped bool
-	msg     string
+	failed bool
+	msg    string
 }
 
 func (f *fakeTB) Helper() {}
@@ -150,21 +117,4 @@ func (f *fakeTB) Helper() {}
 func (f *fakeTB) Fatalf(format string, args ...any) {
 	f.failed = true
 	f.msg = fmt.Sprintf(format, args...)
-}
-
-func (f *fakeTB) Skipf(format string, args ...any) {
-	f.skipped = true
-	f.msg = fmt.Sprintf(format, args...)
-}
-func TestSerializeGoSkipMarkerMatchesSlowGateScanner(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join("..", "..", "tools", "slowgatescan", "main.go")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "const gateSkipMarker = \"" + gateSkipMarker + "\""
-	if !strings.Contains(string(data), want) {
-		t.Fatalf("slowtest skip marker %q differs from tools/slowgatescan's marker; expected %q", gateSkipMarker, want)
-	}
 }

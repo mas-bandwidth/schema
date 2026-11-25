@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // manifestLines is every line of the tables manifest of one kind, split.
@@ -185,7 +183,6 @@ func blockUnit(t *testing.T) *generatedUnit {
 // table_blockread.moo, and its reflective read, spelled as the block-dump
 // surface spells it, equals the pinned dump byte for byte.
 func TestMooBlockDumpsMatchTheCorpus(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
 	rows := manifestLines(t, "block")
 	byUnit := map[string]*generatedUnit{}
@@ -315,7 +312,6 @@ func (fg forgery) materialize(t *testing.T, base []byte) (data []byte, lead, ext
 // refusal gives is a diagnostic, never compared (docs/rulings.json
 // refusal-verdict-only), so a refusal is held to naming some reason.
 func TestMooBlockForgeriesAnswerTheirReasons(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
 	byUnit := map[string]*generatedUnit{}
 	fgs := forgeries(t, "block")
@@ -358,7 +354,6 @@ func forgeryVerdict(got string) string {
 // table_blockread.moo and requires that gate's comparison to go red: a float
 // read one bit off (the dump), and the pitch check removed (block_pitch opens).
 func TestMooBlockNegativeControls(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_blockread.moo)")
 	t.Parallel()
 	for _, c := range []struct{ name, anchor, repl string }{
 		{"dump", "\t\treturn bits\n", "\t\treturn bits + 1\n"},

@@ -24,7 +24,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -346,7 +345,6 @@ func luauFixedGroupBCase(t *testing.T, id string) fixedproof.RowCase {
 // back to its own.
 func TestLuauFixedProofGroupB(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	runner := &luauFixedGroupBRunner{}
 	for _, id := range luauFixedGroupBRows {
 		t.Run(id, func(t *testing.T) {
@@ -387,7 +385,6 @@ func TestLuauFixedProofGroupB(t *testing.T) {
 // last body byte.
 func TestLuauFixedProofGroupBNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	runner := &luauFixedGroupBRunner{}
 	for _, id := range luauFixedGroupBRows {
 		t.Run(id, func(t *testing.T) {

@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -96,7 +95,6 @@ func mooR17Wires(t *testing.T, out string) map[string][]byte {
 
 func TestMooFlagsMaskHeldToItsWidth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table readers and writers)")
 	narrow, _ := mooR17Unit(t, "Read, Write")
 	wide, wideAnnounce := mooR17Unit(t, "Read, Write, Exec")
 

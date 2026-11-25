@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -56,7 +55,6 @@ table Root
 // compared, never the reason (docs/rulings.json refusal-verdict-only).
 func TestLobsterJsonLargeObjectKeys(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	path := writeSchema(t, "Probe", jsonKeySetSchema)
 	g, err := generateLoadUnit(t, []string{path})
 	if err != nil {
@@ -147,7 +145,6 @@ table Root
 // or which check fired first (docs/rulings.json refusal-verdict-only).
 func TestLobsterJsonMapVerdicts(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	path := writeSchema(t, "Probe", jsonMapOrderSchema)
 	g, err := generateLoadUnit(t, []string{path})
 	if err != nil {

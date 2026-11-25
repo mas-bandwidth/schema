@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -32,7 +31,6 @@ func mapBlobProbe(t *testing.T, files map[string][]byte, probe string, inputs ma
 
 func TestPythonMapBlobManifest(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and mypy")
 	u := loadUnitPaths(t, "../../../tables/maps")
 	wire, err := os.ReadFile("../../../testdata/wire/tables/map_chunks.bin")
 	if err != nil {
@@ -85,7 +83,6 @@ print("ok")
 
 func TestPythonMapBlobSlots(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and mypy")
 	u := loadUnit(t, `package probe
  table Child { blobs map[int32]*bytes }
  table Root {

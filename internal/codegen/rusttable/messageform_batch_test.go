@@ -26,10 +26,8 @@ package rusttable
 // oracle's, and the upgraded value written back byte for byte as the oracle
 // writes it.
 //
-// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It skips by name
-// when rustc is absent and SCHEMA_REQUIRE_CORPUS is unset, and fails by name
-// when SCHEMA_REQUIRE_CORPUS=1, which is how `make tables-rust-message-batch`
-// runs it, so that target never passes on a SKIP. The Go half reads only the
+// A FUNCTIONAL TEST: it compiles and runs Rust with rustc. It fails by name when rustc is absent, which is how `make tables-rust-message-batch`
+// runs it, and a plain go test runs it the same way. The Go half reads only the
 // generator's output and the oracles: no clock, no socket, no network.
 
 import (
@@ -41,7 +39,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -67,8 +64,7 @@ func TestMessageFormBatchRust(t *testing.T) {
 		// "`fixed table T` may ride here and a variable table may not" (§3.3):
 		// a row whose root is a variable table (graph_tree's Scene) carries no
 		// verbs, and its absence is the conformance driver's `.absent`, never a
-		// pass here. Such rows are set aside before any subtest runs, so the
-		// target never reports a SKIP.
+		// pass here. Such rows are set aside before any subtest runs, so no subtest is left out below the root.
 		byUnit := map[string][]messageBatchRow{}
 		units := map[string]*ir.Unit{}
 		var names []string
@@ -343,17 +339,12 @@ func messageBatchTable(u *ir.Unit, name string) *ir.Struct {
 
 // ---- the probe -------------------------------------------------------------
 
-// messageBatchRustc is the functional gate: rustc on PATH, or a skip by name,
-// or — under SCHEMA_REQUIRE_CORPUS — a failure by name.
+// messageBatchRustc is the functional gate: rustc on PATH, or a failure by name.
 func messageBatchRustc(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the emitted message batch cannot be built or run: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the emitted message batch cannot be built or run: %v", err)
 	}
 }
 
@@ -379,7 +370,6 @@ func rustcHostLinker() []string {
 // needed. The probe prints one `BATCH <id> ok` or `BATCH <id> BAD <why>` line
 // per clause.
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := Generate(u)

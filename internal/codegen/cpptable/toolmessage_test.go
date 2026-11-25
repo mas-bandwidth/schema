@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -116,7 +115,6 @@ var cppToolMessageInstances = []string{
 
 func TestCppReadsEveryToolMessageInstance(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C++ compiler (it runs the generated fixed-form read over the message corpus)")
 	u := loadUnit(t, filepath.Join("..", "..", "..", "tables", "messages", "Messages.schema"))
 	files, err := cpp.Generate(u)
 	if err != nil {

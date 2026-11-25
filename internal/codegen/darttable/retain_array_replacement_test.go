@@ -10,14 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	for _, tc := range []struct {
 		dir, unit, root, vector                                  string
 		unknown, mismatch, duplicate, retained, lost, savedBytes int
@@ -103,7 +101,6 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
 }
 
 func TestDartRetainedTableArrayReplacement(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	for _, union := range []bool{false, true} {
 		t.Run(fmt.Sprintf("union_%v", union), func(t *testing.T) {
 			elem := "Item"

@@ -78,7 +78,8 @@ PROJECT
 
 if [ "$mode" = control ]; then
     anchor='public static bool Open(out SceneCook cook, IntPtr pointer, long length)'
-    n=$(cat "$out"/generated/*Cook.cs | grep -cF "$anchor" || true)
+    # grep -c exits 1 on a zero count (the check below names it); any other status fails
+    n=$(cat "$out"/generated/*Cook.cs | grep -cF "$anchor") || [ "$?" -eq 1 ]
     [ "$n" = 1 ] || { echo "control anchor matched $n times, want exactly 1" >&2; exit 1; }
     for f in "$out"/generated/*Cook.cs; do
         sed 's/public static bool Open(out SceneCook cook, IntPtr pointer, long length)/public static bool OpenMoved(out SceneCook cook, IntPtr pointer, long length)/' "$f" > "$f.tmp"

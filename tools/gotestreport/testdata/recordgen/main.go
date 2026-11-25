@@ -29,19 +29,12 @@ type record struct {
 }
 
 var cases = map[string][]record{
-	"f175-skip-then-pass":                      {{file: "1.jsonl", test: "TestRepeat", recordCase: "skip-then-pass", count: 2}},
-	"f175-control-skip-then-pass-not-provided": {{file: "1.jsonl", test: "TestRepeat", recordCase: "skip-then-pass", count: 2}},
-	"f175-control-pass-twice":                  {{file: "1.jsonl", test: "TestRepeat", count: 2}},
-	"f176-cleanup-after-required-skip":         {{file: "1.jsonl", test: "TestCleanup", recordCase: "cleanup-after-required-skip", count: 1}},
-	"f176-control-probe-then-slow-skip":        {{file: "1.jsonl", test: "TestEarlierLog", recordCase: "probe-then-slow-skip", count: 1}},
-	"f176-slow-log-then-unknown-skip":          {{file: "1.jsonl", test: "TestEarlierLog", recordCase: "slow-log-then-unknown-skip", count: 1}},
-	"f176-required-log-then-slow-skip":         {{file: "1.jsonl", test: "TestEarlierLog", recordCase: "required-log-then-slow-skip", count: 1}},
-	"f176-long-output-slow-skip":               {{file: "1.jsonl", test: "TestLong", recordCase: "long-output-slow-skip", count: 1}},
-	"f176-long-output-required-skip":           {{file: "1.jsonl", test: "TestLong", recordCase: "long-output-required-skip", count: 1}},
-	"f177-empty":                               {{file: "1.jsonl", literal: ""}},
-	"f177-budget-only":                         {{file: "1.jsonl", literal: budget}},
-	"f177-empty-beside-a-run":                  {{file: "1.jsonl", test: "TestPasses", count: 1}, {file: "2.jsonl", literal: ""}},
-	"f177-control-a-run":                       {{file: "1.jsonl", test: "TestPasses", count: 1}},
+	"f175-skip-then-pass":     {{file: "1.jsonl", test: "TestRepeat", recordCase: "skip-then-pass", count: 2}},
+	"f175-control-pass-twice": {{file: "1.jsonl", test: "TestRepeat", count: 2}},
+	"f177-empty":              {{file: "1.jsonl", literal: ""}},
+	"f177-budget-only":        {{file: "1.jsonl", literal: budget}},
+	"f177-empty-beside-a-run": {{file: "1.jsonl", test: "TestPasses", count: 1}, {file: "2.jsonl", literal: ""}},
+	"f177-control-a-run":      {{file: "1.jsonl", test: "TestPasses", count: 1}},
 	// f177-no-record holds case.txt and no record file: nothing to write
 }
 

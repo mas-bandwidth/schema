@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -20,7 +18,6 @@ import (
 // an OverflowException and round-trip byte for byte.
 func TestCSharpTablesCheckedBuild(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 	out, code := runCSharpCheckedBuild(t, csharpCheckedBuildFiles(t), true)
 	for _, row := range []string{"fixed_roundtrip", "variable_roundtrip", "json_negative"} {
 		if !strings.Contains(out, "ROW "+row+": ok") {
@@ -38,7 +35,6 @@ func TestCSharpTablesCheckedBuild(t *testing.T) {
 // able to fail.
 func TestCSharpTablesCheckedBuildNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 	files := csharpCheckedBuildFiles(t)
 	const site = "case 0: t.A = unchecked((sbyte)v);"
 	const bare = "case 0: t.A = (sbyte)v;"

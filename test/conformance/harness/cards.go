@@ -47,8 +47,9 @@ type cardResult struct {
 }
 
 // runCards runs the driver over every surface in the corpus and compares
-// against expected/. It returns false when any required surface fails or is
-// answered absent, and when zero cases run.
+// against expected/. It returns false when any surface fails or answers
+// absent (an absence is a case that did not run, never a pass), when a
+// required surface has no case, and when zero cases run.
 func runCards(w io.Writer, corpus, expected, driverCmd, require string, work string, driverFn cardsDriverFn) (bool, error) {
 	cases, err := readCardCases(filepath.Join(corpus, "MANIFEST.txt"))
 	if err != nil {
@@ -101,9 +102,7 @@ func runCards(w io.Writer, corpus, expected, driverCmd, require string, work str
 		switch {
 		case code == 2:
 			r.absent = true
-			if required[s] {
-				r.failures = append(r.failures, "the driver answered the required surface absent (exit 2)")
-			}
+			r.failures = append(r.failures, "the driver answered the surface absent (exit 2): a surface that did not run is never a pass")
 		case code != 0:
 			r.failures = append(r.failures, fmt.Sprintf("the driver exited %d", code))
 		default:
@@ -144,8 +143,8 @@ func runCards(w io.Writer, corpus, expected, driverCmd, require string, work str
 				}
 			}
 		}
-		if required[s] && r.missing > 0 {
-			r.failures = append(r.failures, fmt.Sprintf("%d case(s) answered absent on a required surface", r.missing))
+		if r.missing > 0 {
+			r.failures = append(r.failures, fmt.Sprintf("%d case(s) answered absent: a case that did not run is never a pass", r.missing))
 		}
 	}
 
@@ -257,8 +256,7 @@ func execCardsDriver(command string) cardsDriverFn {
 
 // printCards prints one line per surface and returns the verdict. The line is
 // `cards <surface> pass n/m +ka`, or FAIL with the first differing case and
-// byte offset, or absent. A required surface answered absent is a failure; a
-// non-required one is printed and not. A report that cannot be written is a
+// byte offset, or absent. An absence is a failure. A report that cannot be written is a
 // failed check: a verdict nobody can read is not a pass.
 func printCards(w io.Writer, results map[string]*cardResult, required map[string]bool) bool {
 	ok := true
@@ -274,9 +272,7 @@ func printCards(w io.Writer, results map[string]*cardResult, required map[string
 			ok = false
 		case r.absent:
 			fmt.Fprintf(&b, "cards %s absent\n", s)
-			if required[s] {
-				ok = false
-			}
+			ok = false
 		default:
 			m := r.total - r.missing
 			fmt.Fprintf(&b, "cards %s pass %d/%d", s, r.pass, m)

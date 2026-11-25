@@ -29,14 +29,13 @@ import (
 // byte, to the Go driver's reply for the same bytes (pinned in
 // testdata/messagefuzzarm/go-replies.bin, and re-checked against
 // build/conformance-go wherever the serialize.go sibling it links is present). It runs the Dart toolchain, so it is a functional test: it reaches the
-// SDK through dartBinary(t) and skips by name without one.
+// SDK through dartBinary(t) and fails by name without one.
 // dartMakeMu serializes repo-root `make` builds in darttable so a parallel test
 // never observes a half-generated build/tables-generated-dart tree while
 // build/conformance-dart is populating it.
 var dartMakeMu sync.Mutex
 
 func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	dart := dartBinary(t)

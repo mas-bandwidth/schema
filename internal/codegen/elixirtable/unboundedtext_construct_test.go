@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -14,7 +13,6 @@ import (
 
 func TestUnboundedTextConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir unbounded text wire JSON retaining inline blobs and text map keys")
 	source := strings.ReplaceAll(elixirTextListSource, "string(5)", "string") + `
  table Keys { names map[string]int32 }
  table Tiny { values [..2]string }
@@ -137,7 +135,6 @@ IO.puts("UNBOUNDED_TEXT_OK")
 
 func TestRetainedTextListPathsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir retained text-list indices and over-total refusal")
 	u := unitFrom(t, `package probe
  table Elem { value string(16)
  extra int32 }
@@ -174,7 +171,6 @@ IO.puts("RETAINED_TEXT_PATHS_OK")
 
 func TestUnboundedTextSmallUnitsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir unbounded text minimal generated units compile without warnings")
 	for _, field := range []string{"a []string", "a [..2]?string", "a map[string]int32"} {
 		t.Run(field, func(t *testing.T) {
 			u := unitFrom(t, "package probe\ntable R { "+field+" }\n")

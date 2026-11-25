@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -164,7 +163,6 @@ end
 // with 600 fraction digits, and a 600-digit integer past a uint64's domain.
 func TestLuauJsonLongNumberTokens(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "LongNumber.schema")
 	if err := os.WriteFile(path, []byte(jsonLongNumberSchema), 0o644); err != nil {

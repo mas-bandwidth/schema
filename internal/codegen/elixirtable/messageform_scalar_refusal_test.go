@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -34,7 +33,6 @@ type scalarOffShapeRow struct {
 
 func TestElixirSaveMessagesRefusesScalarOffShape(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

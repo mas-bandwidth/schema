@@ -19,7 +19,7 @@ package darttable
 // bytes. The Dart probe then (1) emits the same announcement, (2) reads the C++
 // announcement, (3) LoadMessages the C++ bytes and gets every value back
 // exactly, and (4) SaveMessages and MeasureMessages reproduce the C++ bytes. A
-// missing toolchain or sibling is a skip that names itself, never a green; the
+// missing toolchain or sibling is a failure that names itself, never a green; the
 // text clause at the end needs no toolchain and was red at BASE everywhere.
 
 import (
@@ -37,7 +37,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -109,7 +108,6 @@ func wideValues(t *testing.T) []wideValue {
 // one Wide with values and prints the announcement and the one-body batch as
 // hex, and returns both.
 func cppWideReference(t *testing.T, values []wideValue) (announce, message []byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	ser, err := filepath.Abs("../../../../serialize")
@@ -117,14 +115,14 @@ func cppWideReference(t *testing.T, values []wideValue) (announce, message []byt
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(ser, "serialize.h")); err != nil {
-		t.Skipf("named as not run: the sibling serialize runtime is not staged at %s, so the C++ reference's 128-bit storage type does not resolve", ser)
+		t.Fatalf("the sibling serialize runtime is not staged at %s, so the C++ reference's 128-bit storage type does not resolve", ser)
 	}
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skipf("named as not run: no C++ compiler (%s) for the reference", cxx)
+		t.Fatalf("no C++ compiler (%s) for the reference: %v", cxx, err)
 	}
 	u := unitFrom(t, wideSchema)
 	files, err := cpp.Generate(u)
@@ -227,7 +225,6 @@ func dartWideLiteral(v wideValue) string {
 // TestMessageFormWideScalarsMatchTheCppReferenceDart pins the 128-bit
 // message-form bytes against the C++ reference, both directions.
 func TestMessageFormWideScalarsMatchTheCppReferenceDart(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

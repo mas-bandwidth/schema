@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -28,7 +27,6 @@ import (
 // object key, held to the placed text's rules). Only the VERDICT is compared.
 func TestCSharpSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 
 	rows := append(csSkippedValueRows(t), csSkippedValueWalkRows(t)...)
 	out, code := csSkippedValueRun(t, rows)

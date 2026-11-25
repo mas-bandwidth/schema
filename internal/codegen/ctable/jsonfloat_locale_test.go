@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -30,10 +29,7 @@ func runCJsonFloatProbe(t *testing.T, mainSource string) {
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and cc is not found: %v", err)
-		}
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc is not found: %v", err)
 	}
 	u := unitFrom(t, cJsonFloatSchema)
 	files, err := cgen.Generate(u)
@@ -93,17 +89,16 @@ static int failures = 0;
 // byte for byte what the "C" locale gives, and the program's own locale is the
 // same after the call as before it.
 func TestCJsonFloatTextIsLocaleIndependent(t *testing.T) {
-	slowtest.Gate(t, "the C compiler and localedef")
 	if _, err := exec.LookPath("localedef"); err != nil {
-		t.Skip("building a multi-byte-point locale requires localedef")
+		t.Fatal("building a multi-byte-point locale requires localedef")
 	}
 	if _, err := os.Stat("/usr/share/i18n/locales/ps_AF"); err != nil {
-		t.Skip("the ps_AF locale source is not installed")
+		t.Fatal("the ps_AF locale source is not installed")
 	}
 	locDir := t.TempDir()
 	if out, err := testproc.Command(t, "localedef", "-i", "ps_AF", "-f", "UTF-8", filepath.Join(locDir, "ps_AF.UTF-8")).CombinedOutput(); err != nil {
 		if _, serr := os.Stat(filepath.Join(locDir, "ps_AF.UTF-8", "LC_NUMERIC")); serr != nil {
-			t.Skipf("localedef could not build the locale: %v\n%s", err, out)
+			t.Fatalf("localedef could not build the locale: %v\n%s", err, out)
 		}
 	}
 	// LOCPATH is how the probe finds the locale built above (so this test is
@@ -153,7 +148,6 @@ int main( void )
 // left there. (The C writer never put a NUL there; this holds it to that.)
 func TestCJsonToJsonWritesNothingPastTheSize(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	runCJsonFloatProbe(t, cJsonFloatPreamble+`
 int main( void )
 {
@@ -176,7 +170,6 @@ int main( void )
 // its length, on a float64 and on a float32 field.
 func TestCJsonNegativeZeroAnyLength(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 	runCJsonFloatProbe(t, cJsonFloatPreamble+`
 static const char * tokens[] = {
     "-0.0",

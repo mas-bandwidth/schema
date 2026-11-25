@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -15,7 +14,6 @@ import (
 // in the trailer; the third is refused by name and writes nothing.
 func TestLobsterWriterRefusesMoreThan4096Ids(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g := finiteGenerate(t, tablewire.IdCapSchema())
 	out := finiteRun(t, g, keyedRegistrations(g.u)+`
 def idcap(x:int, y:int):

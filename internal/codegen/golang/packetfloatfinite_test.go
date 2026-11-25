@@ -49,7 +49,6 @@ func TestGoPacketWriteRefusesNonFiniteFloat(t *testing.T) {
 // no panic, and the edge finite values round trip bit exact.
 func runPacketFloatFiniteProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated writer)")
 	const probe = `package t
 
 import (

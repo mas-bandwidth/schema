@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -115,7 +114,6 @@ func runDartWireIdFirstUse(t *testing.T, sabotage bool) ([]byte, error) {
 
 func TestDartWireIdFirstUseFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Dart generated plain and retaining readers")
 	if out, err := runDartWireIdFirstUse(t, false); err != nil {
 		t.Fatalf("ID order probe: %v\n%s", err, out)
 	}
@@ -123,7 +121,6 @@ func TestDartWireIdFirstUseFunctional(t *testing.T) {
 
 func TestDartWireIdFirstUseNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Dart generated plain and retaining readers")
 	out, err := runDartWireIdFirstUse(t, true)
 	if err == nil || !strings.Contains(string(out), "unused plain") {
 		t.Fatalf("ID-order sabotage escaped: %v\n%s", err, out)
@@ -133,7 +130,6 @@ func TestDartWireIdFirstUseNegativeControl(t *testing.T) {
 // An ID census must defer oversized array counts to the ordinary count refusal.
 func TestDartWireIdFirstUseCountLimit(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Dart generated count-limit probe")
 	u := unitFrom(t, `package probe
 table Root { values []int32 }`)
 	wire := formOneWire([]byte{1, 14, 6, 4, 0x80, 0x80, 0x80, 0x80, 8, 0}, []uint64{ir.TableWireId("values")})

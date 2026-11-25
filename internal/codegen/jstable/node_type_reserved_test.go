@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -22,7 +21,6 @@ import (
 // reads. graph_shared is the control: the same root and the same probe read a
 // lawful node table, so a refusal below is the rule and not the probe.
 func TestNodeRecordReservedTypeRefusedJavaScript(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	node := jsNode(t)

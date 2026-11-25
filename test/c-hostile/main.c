@@ -126,9 +126,10 @@ typedef struct
     int64_t size;
 } hc_case_t;
 
-static void hc_skip( const char * carrier, const char * why )
+static void hc_no_api( const char * carrier, const char * why )
 {
-    printf( "skip %s: %s\n", carrier, why );
+    /* a carrier this port has no API for is a failure, never a skip */
+    printf( "unbound %s: %s\n", carrier, why );
     answered = 1;
 }
 
@@ -147,19 +148,19 @@ static void * hc_run( void * arg )
         }
     }
     if ( b == NULL ) { printf( "unbound no C binding for %s %s\n", c->schema, c->table ); answered = 1; return NULL; }
-    if ( b->absent ) { hc_skip( c->carrier, b->absent ); return NULL; }
+    if ( b->absent ) { hc_no_api( c->carrier, b->absent ); return NULL; }
     if ( strcmp( c->carrier, "wire" ) == 0 )
     {
-        if ( b->wire ) b->wire( c->data, c->size ); else hc_skip( c->carrier, "no file-form load for this root" );
+        if ( b->wire ) b->wire( c->data, c->size ); else hc_no_api( c->carrier, "no file-form load for this root" );
     }
     else if ( strcmp( c->carrier, "wire_retain" ) == 0 )
     {
         if ( b->wire_retain ) b->wire_retain( c->data, c->size );
-        else hc_skip( c->carrier, b->wire_retain_skip ? b->wire_retain_skip : "no retaining load for this root" );
+        else hc_no_api( c->carrier, b->wire_retain_why ? b->wire_retain_why : "no retaining load for this root" );
     }
     else if ( strcmp( c->carrier, "text" ) == 0 )
     {
-        if ( b->text ) b->text( c->data, c->size ); else hc_skip( c->carrier, "no text read for this root" );
+        if ( b->text ) b->text( c->data, c->size ); else hc_no_api( c->carrier, "no text read for this root" );
     }
     else if ( strcmp( c->carrier, "message" ) == 0 || strcmp( c->carrier, "message_novocab" ) == 0 )
     {

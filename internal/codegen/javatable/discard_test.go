@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -325,7 +324,6 @@ func runDiscardJava(t *testing.T, edit func(map[string][]byte) int) (string, err
 // TestMessageFormBatchJava (damage_in_body_two, bytes_after_pad: zero bodies).
 func TestDamageDiscardsTheWholeLoadJava(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	out, err := runDiscardJava(t, nil)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -341,7 +339,6 @@ func TestDamageDiscardsTheWholeLoadJava(t *testing.T) {
 // gate's driver to go red on exactly that entry point.
 func TestDamageDiscardsTheWholeLoadJavaNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	cases := []struct {
 		name  string
 		guard *regexp.Regexp

@@ -6,15 +6,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The 96 real support rows (twelve interpreter, mode and arm streams, eight
 // shards each) replace only the expensive omnibus; focused pipe and planted
 // control tests must remain in the discovered package shards.
 func TestPythonCIWireFuzzStandalonePartition(t *testing.T) {
-	slowtest.Gate(t, "Python wire-fuzz CI plan")
 	out := pythonCIPlan(t)
 	var rows []struct {
 		Target, Package, Test string

@@ -65,7 +65,7 @@ VERIFY_FUZZ_DEPS_java   := toolchain-java build-conformance-java
 VERIFY_FUZZ_DEPS_dart   := toolchain-dart build/conformance-dart
 VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build-conformance-elixir
 
-VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/golang
+VERIFY_FUZZ_EXTRA_go    := go test -count=1 ./internal/codegen/golang
 
 define verify_compiled_fuzz_rules
 .PHONY: _verify-$(1)-fuzz _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message verify-$(1)-fuzz
@@ -195,7 +195,7 @@ _verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-be
 _verify-unity-conformance: toolchain-unity build/conformance-harness build/conformance-unity/.stamp unity-wire
 
 _verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-unity-conformance packet-defaults-unity packet-utf8-unity
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
+	go test -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
 
 # ---- go ----
 

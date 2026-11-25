@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -40,7 +39,6 @@ func skipTextMaxAnnouncement(max byte) []byte {
 // which no conforming writer emits. The skip path refuses it as the named
 // read does; the length at the announced max reads, with one unknown.
 func TestJsMessageSkipHoldsTextToTheAnnouncedMax(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	const schemaSrc = `package probe
 

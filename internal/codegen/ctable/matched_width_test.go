@@ -223,7 +223,6 @@ func gnuCC(t testing.TB, cc string) bool {
 }
 
 func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	cc := os.Getenv("CC")
 	if cc == "" {
@@ -242,7 +241,6 @@ func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
 }
 
 func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	cc := os.Getenv("CC")
@@ -250,7 +248,7 @@ func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, schema)

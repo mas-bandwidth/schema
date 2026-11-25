@@ -12,7 +12,7 @@ package luautable_test
 // bodies are luau-conformance-read-then-write's harness, not these rows.
 // This file does not touch that harness.
 //
-// Functional: the pinned Luau interpreter. SCHEMA_SLOW=1, or slowtest.Gate skips.
+// Functional: the pinned Luau interpreter; a missing one fails.
 
 import (
 	"bytes"
@@ -31,7 +31,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -333,7 +332,6 @@ func vtCellFailures(t *testing.T, c luauVTCell, patches []vtPatch) (fails []stri
 
 func TestLuauVtPointerCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (it runs the emitted table runtime)")
 	for _, c := range luauVTCells {
 		t.Run(c.row, func(t *testing.T) {
 			t.Parallel()
@@ -356,7 +354,6 @@ func TestLuauVtPointerCells(t *testing.T) {
 // the control.
 func TestLuauVtPointerCellsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (it runs the emitted table runtime)")
 	// Variable: shift every id-table entry, and write an id-table count one
 	// past the entries. Fixed: refuse every form-3 read, and write form 1.
 	// The anchors are bytes the emitter wrote into the temp dir.

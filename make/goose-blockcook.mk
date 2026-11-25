@@ -25,7 +25,7 @@ tables-goose-block-lead: build/conformance-goose
 .PHONY: tables-goose-block-negative-control
 tables-goose-block-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
+	go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
 
 # THE ACCELERATORS' HARNESS CONTROLS (group goose-blockcook): one clause of
 # the runtime broken in a copy of the generated units, and the harness must
@@ -58,8 +58,8 @@ GOOSE_ACCEL_FUZZ_N    ?= 20000
 # rule writes them before either starts, never two at once.
 .PHONY: goose-accel-fixtures
 goose-accel-fixtures: build/conformance-harness
-	@# loud-ok: with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
-	./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work > build/goose-accel-work.log 2>&1 || true
+	@# with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
+	./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work > build/goose-accel-work.log 2>&1; echo "exited $$? (the verdict is read from build/goose-accel-work.log below)"
 	@test -n "$$(ls -A build/goose-accel-work/fixtures 2>/dev/null)" || \
 		{ cat build/goose-accel-work.log; echo "goose-accel-fixtures: the harness wrote no fixtures under build/goose-accel-work/fixtures"; exit 1; }
 
@@ -158,7 +158,7 @@ GOOSE_AGREE_DIR := build/goose-agree-control
 .PHONY: tables-goose-accessor-descriptor-agreement tables-goose-accessor-negative-control
 tables-goose-accessor-descriptor-agreement:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
+	go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
 tables-goose-accessor-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@rm -rf $(GOOSE_AGREE_DIR) && mkdir -p $(GOOSE_AGREE_DIR)
@@ -166,7 +166,7 @@ tables-goose-accessor-negative-control:
 		internal/codegen/goosetable/accel.go > $(GOOSE_AGREE_DIR)/accel.go.txt
 	@grep -q SABOTAGED $(GOOSE_AGREE_DIR)/accel.go.txt || { echo "NEGATIVE CONTROL FAILED: the accessor sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/accel.go":"%s/$(GOOSE_AGREE_DIR)/accel.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_AGREE_DIR)/overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
+	@if go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
 			./internal/codegen/goosetable/ > $(GOOSE_AGREE_DIR)/log 2>&1; then \
 		cat $(GOOSE_AGREE_DIR)/log; echo "NEGATIVE CONTROL FAILED: a moved pointer accessor left the agreement green"; exit 1; fi
 	@grep -q 'DISAGREE ListNode.next' $(GOOSE_AGREE_DIR)/log || { \

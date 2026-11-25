@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -67,7 +66,6 @@ public final class WideLinearProbe {
 // from the token's significant digits, not from a whole-token decimal parse.
 func TestJavaTextLongWideNumberFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	javac, javaBin := javaToolsRequired(t)
 
 	type textCase struct {

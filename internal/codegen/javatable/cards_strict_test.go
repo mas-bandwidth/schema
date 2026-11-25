@@ -14,15 +14,14 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // TestJavaCardsStrict pins the Java cards facade, driver, and tests
 // (tables/cards/java) to the strict TableVariable.Report names and strict read
-// (docs/SPEC-TABLES.md §4, §6.5; docs/plans/strict-only.md), and (when javac
-// and java are available under SCHEMA_SLOW=1, as a functional test) compiles
+// (docs/SPEC-TABLES.md §4, §6.5; docs/plans/strict-only.md), and (as a functional
+// test that fails by name without javac and java) compiles
 // and runs CardsTest plus all nine card conformance surfaces (load, save,
 // render, parse, bounds, upgrade, edit, taskhash, view) against
 // tables/cards/conformance/expected/.
@@ -74,7 +73,7 @@ func findJavaToolsForCards(t *testing.T) (javac, java string, ok bool) {
 	if err1 == nil && err2 == nil {
 		return javac, java, true
 	}
-	t.Skipf("javac/java not on PATH: javac=%v java=%v", err1, err2)
+	t.Fatalf("javac/java not on PATH: javac=%v java=%v", err1, err2)
 	return "", "", false
 }
 
@@ -363,7 +362,6 @@ func TestJavaCardsStrict(t *testing.T) {
 		t.Fatalf("tables/cards/java sources are not on the strict TableVariable.Report names:\n%s", strings.Join(bad, "\n"))
 	}
 	t.Run("FunctionalJava", func(t *testing.T) {
-		slowtest.Gate(t, "functional test: javac/java builds and runs the Java cards facade, CardsTest, and 9 conformance surfaces")
 		javac, java, ok := findJavaToolsForCards(t)
 		if !ok {
 			return
@@ -441,7 +439,6 @@ func TestJavaCardsStrictNegativeControl(t *testing.T) {
 	}
 
 	t.Run("FunctionalJava", func(t *testing.T) {
-		slowtest.Gate(t, "functional test: javac/java negative controls for Java cards strict names and conformance surfaces")
 		javac, java, ok := findJavaToolsForCards(t)
 		if !ok {
 			return

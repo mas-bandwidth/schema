@@ -254,9 +254,6 @@ func TestLuaTableDamagedReportsAndResavesAgree(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			if c.name == "resave_list_kind_mismatch_keeps_field" {
-				t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
-			}
 			row, ok := rows[c.caseName]
 			if !ok {
 				t.Fatalf("no instance row %s", c.caseName)

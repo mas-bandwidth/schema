@@ -8,13 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestRustIntegrityNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (declared CRC across file, fixed and message forms)")
 	keyedRequireRustc(t)
 	fixture := "../../../testdata/conformance/feature-witnesses/integrity-forms"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))

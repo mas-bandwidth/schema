@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -19,7 +18,6 @@ import (
 // which announce_read accepts. Red when the refusal is removed.
 func TestLobsterAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	for _, row := range []struct {
 		entries int
 		refused bool

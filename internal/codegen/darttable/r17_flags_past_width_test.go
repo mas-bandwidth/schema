@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -103,7 +102,6 @@ func dartR17Ints(b []byte) string {
 }
 
 func TestDartR17FlagsPastWidthRefuse(t *testing.T) {
-	slowtest.Gate(t, "the Dart SDK (it runs the generated Dart)")
 	t.Parallel()
 	older := unitFrom(t, dartR17Older)
 	newer := unitFrom(t, strings.Replace(dartR17Older, "Verbose }", "Verbose, Extra }", 1))

@@ -4,8 +4,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const jsJSONWideFractionSchema = "package probe\ntable Root\n{\n    q fixed(48, 16) | min = -10, max = 10\n    n uint128\n}\n"
@@ -40,7 +38,6 @@ func TestJavaScriptJSONWideFractionDigitsRefusedEarly(t *testing.T) {
 	}
 
 	t.Run("count", func(t *testing.T) {
-		slowtest.Gate(t, "node (it runs the generated JSON read)")
 		if n := strings.Count(src, jsJSONWideFractionAnchor); n != 1 {
 			t.Fatalf("the counter anchor occurs %d times in %s: the runtime moved", n, home)
 		}

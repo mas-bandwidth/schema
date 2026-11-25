@@ -18,18 +18,30 @@ import (
 // LedgerPath is the unmoved ledger, from the repository root.
 const LedgerPath = "test/registry/unmoved.tsv"
 
-// KindSkipRed is a ledger line that is not a kind of test: one Go test whose
-// skip, when its condition is met, hides a test that is red. Its place is
-// "<package dir>:<TestName>", its count is the number of Skip sites the
-// extract finds in that test, and its reason names the red the skip hides and
-// the measurement that found it. The driver has no skip verdict, so the line
-// stays until the skip is gone: Check holds its count to the extract, and
-// KeepsSkipReds refuses a line that is added, grows, or leaves while its
-// skip is still reached (a renamed or moved test takes its line along).
-const KindSkipRed = "skip-red"
+// KindTier is a ledger line that is not a kind of test: the tier of one Go
+// test that has no registry row yet. Its place is "<package dir>:<TestName>",
+// its count is 1, and its reason starts with the tier ("functional: " or
+// "nightly: ") and says what the test needs (a toolchain, a built corpus, a
+// long run). It is where a removed skip's condition went: nothing inside a
+// test decides whether it runs (Glenn, 2026-11-25: "if you don't want to run
+// a test, don't run it (i mean at the root)"), so a test that needs a
+// toolchain is selected at the root by its tier. The line leaves when the
+// test gets its row, which carries the tier from then on. A Go test with no
+// tier line and no row is unit.
+const KindTier = "tier"
 
-// SkipRedPlace is the place a skip-red line names for a Go test.
-func SkipRedPlace(dir, test string) string { return dir + ":" + test }
+// TierPlace is the place a tier line names for a Go test.
+func TierPlace(dir, test string) string { return dir + ":" + test }
+
+// tierOf is a tier line's tier, from the start of its reason.
+func tierOf(l LedgerLine) (string, bool) {
+	for _, t := range []string{"functional", "nightly"} {
+		if strings.HasPrefix(l.Reason, t+": ") {
+			return t, true
+		}
+	}
+	return "", false
+}
 
 // LedgerLine counts the tests of one kind in one place that are not yet
 // registry rows, the layer that moves them in, and why they wait.
@@ -65,8 +77,19 @@ func ReadLedger(r io.Reader, name string) ([]LedgerLine, error) {
 		if err != nil || c < 1 {
 			return nil, fmt.Errorf("%s:%d: count %q is not a positive number", name, n, f[2])
 		}
-		if _, ok := kindOrder[f[0]]; !ok && f[0] != KindSkipRed {
+		if _, ok := kindOrder[f[0]]; !ok && f[0] != KindTier {
 			return nil, fmt.Errorf("%s:%d: unknown kind %q", name, n, f[0])
+		}
+		if f[0] == KindTier {
+			if c != 1 {
+				return nil, fmt.Errorf("%s:%d: a tier line names one test, so its count is 1, not %d", name, n, c)
+			}
+			if _, ok := tierOf(LedgerLine{Reason: f[4]}); !ok {
+				return nil, fmt.Errorf("%s:%d: a tier line's reason starts with its tier, \"functional: \" or \"nightly: \": %q", name, n, f[4])
+			}
+			if !strings.Contains(f[1], ":") {
+				return nil, fmt.Errorf("%s:%d: a tier line's place is <package dir>:<TestName>, not %q", name, n, f[1])
+			}
 		}
 		if strings.TrimSpace(f[3]) == "" || strings.TrimSpace(f[4]) == "" {
 			return nil, fmt.Errorf("%s:%d: a ledger line names the layer that moves it and why it waits", name, n)
@@ -233,7 +256,8 @@ func Runs(reg *testreg.Registry) map[string]string {
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
-// nothing is unparsed. It returns each disagreement, named.
+// every tier line names a Go test that exists and has no row; no Go test
+// reaches a Skip; nothing is unparsed. It returns each disagreement, named.
 func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	var problems []string
 	for _, u := range res.Unparsed {
@@ -243,9 +267,18 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	problems = append(problems, p...)
 	runs := Runs(reg)
 	exists := map[string]bool{}
+	goTests := map[string]Item{}
 	uncovered := map[string][]Item{}
 	for _, it := range res.Items {
 		exists[it.ID()] = true
+		if it.Kind == KindGoTest {
+			goTests[TierPlace(it.Dir, it.Name)] = it
+			for _, g := range it.Gates {
+				if site, ok := strings.CutPrefix(g, "skip: "); ok {
+					problems = append(problems, fmt.Sprintf("%s %s reaches a skip at %s: no test skips (Glenn, 2026-11-25: \"NO SKIPS\"); what the skip waited for is the test's tier, chosen at the root", it.Dir, it.Name, site))
+				}
+			}
+		}
 		if _, ok := runs[it.ID()]; ok {
 			continue
 		}
@@ -260,18 +293,15 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	sort.Strings(gone)
 	problems = append(problems, gone...)
-	skips := skipSites(res)
 	counted := map[string]LedgerLine{}
 	for _, l := range ledger {
-		if l.Kind == KindSkipRed {
-			n, ok := skips[l.Dir]
+		if l.Kind == KindTier {
+			it, ok := goTests[l.Dir]
 			switch {
 			case !ok:
 				problems = append(problems, fmt.Sprintf("%s:%d: %s %s names a Go test the repository does not hold: if the test was renamed or moved, set the place to its new name; if it was deleted, delete the line", LedgerPath, l.Line, l.Kind, l.Dir))
-			case n == 0:
-				problems = append(problems, fmt.Sprintf("%s:%d: %s %s counts %d skips, and the test has none: its skip is gone, so delete the line", LedgerPath, l.Line, l.Kind, l.Dir, l.Count))
-			case n != l.Count:
-				problems = append(problems, fmt.Sprintf("%s:%d: %s %s counts %d skips, and the test has %d: set it to %d, and say in the reason which skip hides the red", LedgerPath, l.Line, l.Kind, l.Dir, l.Count, n, n))
+			case covered[it.ID()] != "":
+				problems = append(problems, fmt.Sprintf("%s:%d: %s %s names a test registry row %s runs: the row carries its tier, so delete the line", LedgerPath, l.Line, l.Kind, l.Dir, covered[it.ID()]))
 			}
 			continue
 		}
@@ -300,25 +330,6 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	return problems
 }
 
-// skipSites is, for each Go test by its skip-red place, how many Skip sites
-// the extract found in it.
-func skipSites(res *Result) map[string]int {
-	out := map[string]int{}
-	for _, it := range res.Items {
-		if it.Kind != KindGoTest {
-			continue
-		}
-		n := 0
-		for _, g := range it.Gates {
-			if strings.HasPrefix(g, "skip: ") {
-				n++
-			}
-		}
-		out[SkipRedPlace(it.Dir, it.Name)] = n
-	}
-	return out
-}
-
 // NewWithoutRows names each test res holds that before (main's tree) did
 // not, and that no registry row runs. A count tells a ledger line it grew;
 // this tells which test grew it.
@@ -341,159 +352,33 @@ func NewWithoutRows(before, res *Result, reg *testreg.Registry) []string {
 	return problems
 }
 
-// SkipReds is the skip-red lines of a ledger, in order.
-func SkipReds(ledger []LedgerLine) []LedgerLine {
+// TierLines is the tier lines of a ledger, in order.
+func TierLines(ledger []LedgerLine) []LedgerLine {
 	var out []LedgerLine
 	for _, l := range ledger {
-		if l.Kind == KindSkipRed {
+		if l.Kind == KindTier {
 			out = append(out, l)
 		}
 	}
 	return out
 }
 
-// KeepsSkipReds holds the skip-red lines to the ledger they replace (main's
-// ledger old, read against main's tree before; res is this tree). A line is
-// never added and never grows. It may leave only when its test's skips are
-// gone, or its test is gone and no new test reaches its skips. A test renamed
-// or moved takes its line with it: the line under the new place is a carry,
-// not an addition, when its test is new (main's tree does not hold it), the
-// old test is gone, the new test reaches a skip the old one reached (the same
-// file and condition), and it counts no more skips; a line of the same count
-// is matched first, and each old line is carried once. A skip is told apart
-// from its line number, which edits move, by its file and its condition, and
-// only new tests are compared, so tests that share a helper's skip do not
-// hold each other's lines. Without before, a line whose test is gone cannot
-// be told from a rename, so it is refused.
-func KeepsSkipReds(old, now []LedgerLine, before, res *Result) []string {
-	was, is := map[string]LedgerLine{}, map[string]LedgerLine{}
-	for _, l := range SkipReds(old) {
-		was[l.Dir] = l
-	}
-	for _, l := range SkipReds(now) {
-		is[l.Dir] = l
-	}
-	skips := skipSites(res)
-	nowAt := skipKeys(res)
-	var beforeAt map[string]map[string]bool
-	var inBefore map[string]int
-	if before != nil {
-		beforeAt = skipKeys(before)
-		inBefore = skipSites(before)
-	}
-	isNew := func(place string) bool {
-		if before == nil {
-			return false
-		}
-		_, held := inBefore[place]
-		return !held
-	}
-	shares := func(a, b map[string]bool) string {
-		var hit []string
-		for k := range a {
-			if b[k] {
-				hit = append(hit, k)
-			}
-		}
-		sort.Strings(hit)
-		if len(hit) == 0 {
-			return ""
-		}
-		return hit[0]
-	}
-	// gone is each old line whose test this tree no longer holds: the only
-	// lines a renamed or moved test can carry.
-	gone := func(d LedgerLine) bool {
-		_, stays := is[d.Dir]
-		_, exists := skips[d.Dir]
-		return !stays && !exists
-	}
-	var problems []string
-	carried := map[string]bool{} // old place -> carried
-	from := map[string]string{}  // new place -> the old place it carries
-	for _, exact := range []bool{true, false} {
-		for _, l := range SkipReds(now) {
-			if _, ok := was[l.Dir]; ok || from[l.Dir] != "" || !isNew(l.Dir) {
-				continue
-			}
-			for _, d := range SkipReds(old) {
-				if carried[d.Dir] || !gone(d) || l.Count > d.Count || exact && l.Count != d.Count {
-					continue
-				}
-				if shares(beforeAt[d.Dir], nowAt[l.Dir]) != "" {
-					from[l.Dir], carried[d.Dir] = d.Dir, true
-					break
-				}
-			}
+// ApplyTiers sets each Go test's tier from its tier line.
+func ApplyTiers(res *Result, ledger []LedgerLine) {
+	tiers := map[string]string{}
+	for _, l := range TierLines(ledger) {
+		if t, ok := tierOf(l); ok {
+			tiers[l.Dir] = t
 		}
 	}
-	for _, l := range SkipReds(now) {
-		if b, ok := was[l.Dir]; ok {
-			if l.Count > b.Count {
-				problems = append(problems, fmt.Sprintf("%s:%d: %s %s grew from %d to %d skips: the ledger only shrinks, so add no skip to a test that hides a red", LedgerPath, l.Line, l.Kind, l.Dir, b.Count, l.Count))
-			}
-			continue
-		}
-		if from[l.Dir] == "" {
-			problems = append(problems, fmt.Sprintf("%s:%d: %s %s is a new ledger line: the ledger only shrinks, so remove the skip and fix the red it hides", LedgerPath, l.Line, l.Kind, l.Dir))
-		}
-	}
-	for _, l := range SkipReds(old) {
-		if _, kept := is[l.Dir]; kept || carried[l.Dir] {
-			continue
-		}
-		if n, ok := skips[l.Dir]; ok {
-			if n > 0 {
-				problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger, and the test still has %d skips: a skip that hides a red stays counted until the skip is gone", LedgerPath, l.Kind, l.Dir, n))
-			}
-			continue
-		}
-		if before == nil {
-			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger with its test, and without main's tree (--since) a removal cannot be told from a rename: pass --since", LedgerPath, l.Kind, l.Dir))
-			continue
-		}
-		var by []string
-		for place, at := range nowAt {
-			if _, lined := is[place]; lined || !isNew(place) {
-				continue
-			}
-			if site := shares(beforeAt[l.Dir], at); site != "" {
-				by = append(by, place+" (at "+site+")")
-			}
-		}
-		sort.Strings(by)
-		if len(by) > 0 {
-			problems = append(problems, fmt.Sprintf("%s: %s %s left the ledger with its test, and its skip is still reached by %s, a new test: a renamed or moved test takes its line, so set the line's place to the test that holds the skip", LedgerPath, l.Kind, l.Dir, strings.Join(by, ", ")))
-		}
-	}
-	return problems
-}
-
-// skipKeys is every Go test's skips, each as "file condition": its place in
-// the source less the line number.
-func skipKeys(res *Result) map[string]map[string]bool {
-	out := map[string]map[string]bool{}
-	for _, it := range res.Items {
+	for i, it := range res.Items {
 		if it.Kind != KindGoTest {
 			continue
 		}
-		for _, g := range it.Gates {
-			site, ok := strings.CutPrefix(g, "skip: ")
-			if !ok {
-				continue
-			}
-			pos, cond, _ := strings.Cut(site, " ")
-			if i := strings.LastIndex(pos, ":"); i >= 0 {
-				pos = pos[:i]
-			}
-			place := SkipRedPlace(it.Dir, it.Name)
-			if out[place] == nil {
-				out[place] = map[string]bool{}
-			}
-			out[place][strings.TrimSpace(pos+" "+cond)] = true
+		if t, ok := tiers[TierPlace(it.Dir, it.Name)]; ok {
+			res.Items[i].Tier = t
 		}
 	}
-	return out
 }
 
 func names(its []Item, n int) string {
@@ -510,7 +395,8 @@ func names(its []Item, n int) string {
 
 // Shrinks holds a ledger to the one it replaces (main's): no line may count
 // more than it did, and no place may be added. A new test gets a registry
-// row, never a ledger line. Skip-red lines are held by KeepsSkipReds.
+// row, never a ledger line. A tier line is not a count: it may be added or
+// removed, and Check holds it to a test that exists and has no row.
 func Shrinks(old, now []LedgerLine) []string {
 	before := map[string]LedgerLine{}
 	for _, l := range old {
@@ -518,8 +404,8 @@ func Shrinks(old, now []LedgerLine) []string {
 	}
 	var problems []string
 	for _, l := range now {
-		if l.Kind == KindSkipRed {
-			continue // KeepsSkipReds holds these
+		if l.Kind == KindTier {
+			continue
 		}
 		b, ok := before[l.key()]
 		switch {

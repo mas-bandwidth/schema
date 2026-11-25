@@ -8,14 +8,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPythonOptionalArrayPresentMinimum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	cases := []struct{ name, writer, reader, input, want string }{
 		{"empty", "?[..4]int32", "?[2..4]int32", `{"items":[]}`, "refuse"},
 		{"short", "?[..4]int32", "?[2..4]int32", `{"items":[7]}`, "refuse"},

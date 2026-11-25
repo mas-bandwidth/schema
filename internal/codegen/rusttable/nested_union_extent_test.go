@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -82,14 +81,12 @@ func runNestedUnionExtentProbe(t *testing.T, plant bool) (string, error) {
 }
 
 func TestRustNestedUnionArmExtent(t *testing.T) {
-	slowtest.Gate(t, "rustc: nested union arm extent")
 	if out, err := runNestedUnionExtentProbe(t, false); err != nil {
 		t.Fatalf("nested arm probe: %v\n%s", err, out)
 	}
 }
 
 func TestRustNestedUnionArmExtentNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "rustc: nested union arm extent mutation")
 	out, err := runNestedUnionExtentProbe(t, true)
 	if err == nil || !strings.Contains(out, "inner trailing retained=false") {
 		t.Fatalf("boundary omission did not fail named inner-arm witness: %v\n%s", err, out)

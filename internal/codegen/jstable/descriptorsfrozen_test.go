@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -33,7 +31,6 @@ import (
 // that leaves the codec graph open.
 func TestJavaScriptDescriptorsAreConstants(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it imports the generated module)")
 	node := jsNode(t)
 	work := t.TempDir()
 

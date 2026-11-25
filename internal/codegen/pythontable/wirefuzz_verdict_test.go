@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -26,7 +25,6 @@ import (
 // than treating every unretained record as an exhausted caller buffer.
 func TestPythonWireFuzzRetainLoss(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python retained-loss verdict pipe")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +90,6 @@ func TestPythonWireFuzzRetainLoss(t *testing.T) {
 // every interpreter, execution mode and arm, without reducing its roster.
 func TestPythonWireFuzzCIPartition(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make wire-fuzz support partition")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +147,6 @@ func wireFuzzPartitionIssue(rows, support []string) string {
 // the actual make fragment and requires the partition check to name the gap.
 func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make wire-fuzz support partition control")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +188,6 @@ func TestPythonWireFuzzCIPartitionNegativeControl(t *testing.T) {
 
 func TestPythonWireFuzzFileDispatch(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnit(t, "package fuzzdispatch\ntable Variable { x int32 }\nfixed table Fixed { x int32 }\n")
 	files, err := Generate(u)
 	if err != nil {
@@ -266,7 +261,6 @@ func TestPythonWireFuzzFileDispatch(t *testing.T) {
 
 func TestPythonWireFuzzVerdictPipe(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python wire fuzz verdict pipe")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +307,6 @@ func TestPythonWireFuzzVerdictPipe(t *testing.T) {
 
 func TestPythonWireFuzzVerdictPipeMixedBuilder(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python wire fuzz verdict pipe (mixed-builder arm)")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +320,6 @@ func TestPythonWireFuzzVerdictPipeMixedBuilder(t *testing.T) {
 
 func TestPythonWireFuzzVerdictPipeRetain(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python wire fuzz verdict pipe (retain arm)")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -459,7 +451,6 @@ func runPythonWireFuzzVerdictArm(t *testing.T, root, dir string, script []byte, 
 
 func TestPythonWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python wire fuzz verdict pipe negative control")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -520,7 +511,6 @@ func TestPythonWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 // in the driver and requires the shared oracle to observe the lost record.
 func TestPythonWireFuzzRetainNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python retaining verdict pipe negative control")
 	root, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

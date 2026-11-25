@@ -172,7 +172,7 @@ func sharedRun(t *testing.T, u *ir.Unit, testSource string, rt Runtime, edit fun
 			t.Fatal(err)
 		}
 	}
-	// not behind slowtest.Gate: the card's gate names this test and requires it
+	// the card's gate names this test and requires it
 	// to RUN, and it compiles two small units, as runGenerated does.
 	cmd := testproc.Command(t, "go", "test", "-count=1", "-v", ".")
 	cmd.Dir = dir
@@ -208,7 +208,6 @@ var constOverflow = regexp.MustCompile(`overflows|Version`)
 // produces identical wires and reports either way (docs/SPEC-TABLES.md §8.4).
 func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	for _, tc := range []struct{ name, schema, test string }{
 		{"fixed", sharedFixedSchema, sharedFixedTest},
 		{"variable", sharedVariableSchema, sharedVariableTest},
@@ -320,7 +319,6 @@ func TestGoSharedRuntimeIsOptionalAndEquivalent(t *testing.T) {
 func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
 	// every table corpus through the shared runtime: 73 s alone on a loaded
 	// bench and cancelled at the two-minute cap there, so it runs nightly
-	slowtest.Gate(t, "every table corpus through the shared runtime")
 	t.Parallel()
 	paths, err := filepath.Glob("../../../tables/*/*.schema")
 	if err != nil {

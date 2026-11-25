@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -326,7 +325,6 @@ func runCStrictProgram(t *testing.T, schema, main string) (string, error) {
 // refused without exhausting a small stack (CPP-1 checked on C).
 func TestCStrictReads(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (it compiles and runs the generated strict-read probe)")
 	out, err := runCStrictProgram(t, cStrictReadsSchema, cStrictReadsMain)
 	if err != nil {
 		t.Errorf("the strict-read probe failed: %v", err)

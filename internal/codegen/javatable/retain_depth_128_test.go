@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -19,7 +17,6 @@ import (
 // byte, and every REFUSED depth vector is refused by the retaining load too.
 func TestJavaRetainKeepsDepth128(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

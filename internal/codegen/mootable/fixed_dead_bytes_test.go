@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // EVERY DEAD BYTE IN A FIXED RECORD IS ZERO, THE WRITER'S IMAGE
@@ -19,7 +18,6 @@ import (
 // the same values and re-saving byte for byte; each changed file stains one
 // dead region and the moo load REFUSES THE WHOLE LOAD, so no record lands.
 func TestFixedDeadBytesAreZero(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	u := unitFromPath(t, "test/tables/DeadBytes.schema")

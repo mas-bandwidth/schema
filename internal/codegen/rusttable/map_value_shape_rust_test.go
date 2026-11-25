@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"os"
@@ -16,7 +15,6 @@ import (
 // Map[K]?T presence is distinct from ?map[K]T field presence: only null is
 // absent; every other JSON shape supplies a present value (§16.2).
 func TestRustMapValueShapeNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (map value shape and optional presence)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/map-value-shape")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))

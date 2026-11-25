@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,7 +21,6 @@ const cNodeTableLastValidSchema = `package validnodes
 // all-default node, and live arrays at their declared boundary. No input is
 // forged or replayed: both region and builder APIs hold their canonical bytes.
 func TestCNodeTableLastValidRoundTrips(t *testing.T) {
-	slowtest.Gate(t, "the C compiler: valid root node-table boundary")
 	u := unitFrom(t, cNodeTableLastValidSchema)
 	m := tabletext.NewModel(u)
 	var body strings.Builder

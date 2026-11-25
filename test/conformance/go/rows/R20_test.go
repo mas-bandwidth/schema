@@ -112,7 +112,6 @@ func r20Run(t *testing.T, repoRoot, name string, args ...string) {
 // lineage entry (docs/FIXED-FORM-ALGORITHM.md §5.2).
 func r20FixedProbe(t *testing.T, row, probe string) {
 	t.Helper()
-	f8Gate(t)
 	repoRoot, err := filepath.Abs(filepath.Join(".", "..", "..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)

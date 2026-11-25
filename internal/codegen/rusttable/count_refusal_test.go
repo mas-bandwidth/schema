@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -145,7 +144,6 @@ func rustCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short b
 }
 
 func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
-	slowtest.Gate(t, "rustc (the generated count-refusal and retention probe)")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
 	var body strings.Builder
@@ -272,7 +270,6 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 // the report's counters are per-language diagnostics and are not compared with
 // the oracle's.
 func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
-	slowtest.Gate(t, "rustc (the generated count-refusal diagnostic-prefix probe)")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
 	var body strings.Builder

@@ -7,8 +7,7 @@ package cstable
 // the read only skips is held to the JSON grammar alone. The rows are the
 // vectors under testdata/wire/json-flags-name-once; each is compared on the
 // verdict alone with the Go engine's (internal/tabletext), and the engine is
-// first held to the verdict the vectors state. Running the generated C# makes
-// this a functional test, gated by slowtest.
+// first held to the verdict the vectors state. Running the generated C# makes this a functional test.
 
 import (
 	"bufio"
@@ -21,7 +20,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -134,7 +132,6 @@ func csJsonFlagsNameOnceOracle(t *testing.T, rows []csJsonFlagsNameOnceRow) []st
 
 func TestCSJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK")
 
 	rows := csJsonFlagsNameOnceRows(t)
 	want := csJsonFlagsNameOnceOracle(t, rows)

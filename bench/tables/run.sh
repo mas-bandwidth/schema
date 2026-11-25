@@ -114,8 +114,9 @@ else
     } >> "$DRAFT"
 fi
 
-# Build every selected leg before starting any clock. A requested missing leg
-# is a failed pass; only unrequested default discovery may skip unavailable ports.
+# Build every selected leg before starting any clock. A leg that cannot build
+# (its toolchain or generated sources absent) is a failed pass, named; a leg is
+# left out only by --only at the root.
 LEGS=""
 for cmd in bench/tables/*/leg; do
     [ -f "$cmd" ] || continue
@@ -124,13 +125,7 @@ for cmd in bench/tables/*/leg; do
         case ",$ONLY," in *,$lang,*) ;; *) continue ;; esac
     fi
     echo "== $lang: build ==" >&2
-    status=0
-    "$cmd" build || status=$?
-    if [ "$status" = 2 ] && [ -z "$ONLY" ]; then
-        echo "SKIP $lang (toolchain or generated sources not present)" >&2
-        continue
-    fi
-    [ "$status" = 0 ] || { echo "FAIL $lang: build" >&2; exit 1; }
+    "$cmd" build || { echo "FAIL $lang: build (toolchain or generated sources missing, or the build failed; see above)" >&2; exit 1; }
     LEGS="$LEGS $lang"
 done
 [ -n "$LEGS" ] || { echo "no legs ran" >&2; exit 1; }

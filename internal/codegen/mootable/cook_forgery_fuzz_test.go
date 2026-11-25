@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
@@ -29,7 +28,6 @@ func mooCookSplitMix64(s *uint64) uint64 {
 // bounds.
 func TestMooCookForgeryFuzz(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo cook forgery walk fuzz")
 	u := mooBase64UnitFromSource(t, "package moocook\ntable Node { x int32\n next *Node }\ntable Root { head *Node\n label string(16) }\n")
 	m := tabletext.NewModel(u)
 	var tr tabletext.Report
@@ -100,7 +98,6 @@ print("ok " .. tostring(opened) .. " " .. tostring(walked) .. " " .. tostring(re
 // length bound check and verifies a truncated cook opens past the buffer.
 func TestMooCookForgeryFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo cook forgery fuzz negative control")
 	u := mooBase64UnitFromSource(t, "package moocook\ntable Node { x int32 }\ntable Root { head *Node\n label string(16) }\n")
 	m := tabletext.NewModel(u)
 	var tr tabletext.Report

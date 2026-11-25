@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -56,7 +55,6 @@ func pythonFixedIdentityLock(t *testing.T, paths []string) *lockfile.Unit {
 
 func TestPythonFixedIdentityRecordedV1(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins and the live C++ fixed-form writer")
 	c, u, paths, base := pythonFixedIdentityFixture(t, "writer-v1/wide")
 	old := pythonFixedIdentityLock(t, paths).Table("Row").Lineage[0]
 	if old.Wire != 0xcd3d85d3dddbe9d3 {
@@ -183,7 +181,6 @@ with open('saved','wb') as f:f.write(wire)
 
 func TestPythonFixedIdentityTrustedLayoutOnly(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins")
 	c, u, paths, _ := pythonFixedIdentityFixture(t, "writer-v6")
 	if _, _, err := compiler.UpdateSchemaLock(u, paths); err != nil {
 		t.Fatal(err)
@@ -247,7 +244,6 @@ assert Row.load(v.save()).a.n==11
 
 func TestPythonFixedIdentityRejectsUnrecordedSchemes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T { x int32 | min = 0, max = 10 }\n")
 	e, _ := fixedproof.LineageEntryOf(u, "T")
 	for _, control := range []string{"future", "erased", "layout-only-v2"} {

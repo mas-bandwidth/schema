@@ -10,14 +10,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestLuaCookAuthoredOptionalMap(t *testing.T) {
-	slowtest.Gate(t, "native authored optional-map storage")
 	dir := filepath.Join("..", "..", "..", "testdata", "conformance", "cook-authored-optional-map")
 	u := luarun.LoadUnit(t, filepath.Join(dir, "Probe.schema"))
 	files, err := Generate(u)
@@ -103,7 +101,6 @@ print("authored optional-map state passed")
 }
 
 func TestLuaCookSignedMapKeyOrder(t *testing.T) {
-	slowtest.Gate(t, "native signed cooked map key order")
 	for _, width := range []int{8, 16, 32, 64} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, _ := declaredFormsUnit(t, fmt.Sprintf("package probe\ntable Root { entries map[int%d]int32 }\n", width))

@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -63,7 +62,6 @@ func TestZeroVocabularyVerdict(t *testing.T) {
 
 func goZeroVocabularyVerdict(t *testing.T, u *ir.Unit) (announce, batch bool) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	files, err := gotable.GenerateRuntime(u, nil, gotable.RuntimeStandalone)
 	if err != nil {
 		t.Fatalf("generate the Go leg: %v", err)

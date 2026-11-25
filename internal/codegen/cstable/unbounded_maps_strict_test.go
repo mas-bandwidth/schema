@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -143,12 +142,10 @@ func unboundedMapsDupWire(t *testing.T) string {
 }
 
 func TestCSharpUnboundedTextAndMaps(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	probe := strings.Replace(unboundedMapsStrictProbe, "DUPWIRE", unboundedMapsDupWire(t), 1)
 	t15RunCS(t, unboundedTextSchema, probe)
 }
 
 func TestCSharpUnboundedTextAndMapsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t15RunCS(t, unboundedTextSchema, unboundedMapsStrictNegativeProbe)
 }

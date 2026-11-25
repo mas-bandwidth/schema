@@ -15,7 +15,6 @@ package javatable
 // after it (v.w at 88, no 0x5A left). REFUSE IS TOTAL: every counter is 0.
 import (
 	"encoding/binary"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,6 @@ import (
 const poison32 = "1515870810" // 0x5A5A5A5A
 
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_nested_append.bin")

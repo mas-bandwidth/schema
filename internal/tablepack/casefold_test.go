@@ -14,9 +14,7 @@ import (
 // github-runners play mounts). The directory is made under it and removed
 // after the test, and one that does not fold fails the test. Without it, the
 // temporary directory of the test is used where it folds. Where it does not,
-// the test fails when SCHEMA_REQUIRE_CASEFOLD is set (the nightly readiness
-// gate sets it) and skips otherwise, for the volume:aliases class of
-// .github/skip-ledger.txt.
+// the test fails naming the volume.
 func foldingWork(t *testing.T) string {
 	t.Helper()
 	if dir := os.Getenv("SCHEMA_CASEFOLD_DIR"); dir != "" {
@@ -45,10 +43,7 @@ func foldingWork(t *testing.T) string {
 	if err == nil {
 		return work
 	}
-	if os.Getenv("SCHEMA_REQUIRE_CASEFOLD") != "" {
-		t.Fatalf("SCHEMA_REQUIRE_CASEFOLD is set, SCHEMA_CASEFOLD_DIR is not, and %s does not fold names by case (%v): set SCHEMA_CASEFOLD_DIR to a directory on a case-folding volume (on a fleet runner, /srv/casefold/scratch)", work, err)
-	}
-	t.Skipf("this volume keeps Probe and probe apart, so two names differing by case are two directories here (SCHEMA_CASEFOLD_DIR names a case-folding directory to run it in): %v", err)
+	t.Fatalf("SCHEMA_CASEFOLD_DIR is not set and %s does not fold names by case (%v): set SCHEMA_CASEFOLD_DIR to a directory on a case-folding volume (on a fleet runner, /srv/casefold/scratch)", work, err)
 	return ""
 }
 

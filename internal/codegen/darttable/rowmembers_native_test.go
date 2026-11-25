@@ -7,13 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 func TestCookRowCursorMembersNativeDart(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	for _, variable := range []bool{false, true} {
 		t.Run(fmt.Sprint(variable), func(t *testing.T) {
 			schema := `package probe

@@ -11,7 +11,7 @@ package elixirtable
 // body it emits them with, so the harness is reachable on a tree that never
 // built the C++ reference corpus and never carries a sibling runtime checkout:
 // the compile-and-run half of this leg's fixed form is fixedversioning_test.go
-// and fixedroadmap_t01_test.go, which skip exactly there.
+// and fixedroadmap_t01_test.go, which fail exactly there.
 //
 // elixir/R4 [weak]: the hash is fnv1a64 over the layout bytes then DIGEST(T),
 // the digest computed at the hash site from the schema; a runtime never

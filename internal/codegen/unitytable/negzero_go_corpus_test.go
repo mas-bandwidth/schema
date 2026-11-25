@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // EVERY C# (unity) WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
@@ -29,7 +28,6 @@ import (
 // (a plain float's -0 rides), so a writer that normalized every float fails.
 func TestUnityCompressedNegZeroGoCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect: every writer over the compressed -0 corpus")
 	schema, rows := unityNegZeroGoCorpus(t)
 	files, err := unityGenerateFiles(fixedproof.ParseCheckUnit(t, schema), nil)
 	if err != nil {

@@ -27,7 +27,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -68,7 +67,6 @@ const t15OtherHash = 0x00ff00ff00ff00ff
 
 func TestFixedRoadmapJsT15GuardChain(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated modules)")
 	rows := []struct {
 		id  string
 		run func(t *testing.T)

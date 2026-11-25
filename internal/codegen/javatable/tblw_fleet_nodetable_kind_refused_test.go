@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -24,7 +23,6 @@ import (
 // damaged), and no counter or saved byte is compared.
 func TestJavaFixTblwFleetNodeTableKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	// Exact kind #140 mutant bytes (170 bytes, sha256
 	// 66b60d6e9d158cdabb0cf777b921f25bb810af40dcaf2260855b96840dafb53f):
 	// byte 21 (the kind byte of field ref 4, TableNodeWireId) changed from

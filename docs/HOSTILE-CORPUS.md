@@ -152,8 +152,8 @@ binary per port under AddressSanitizer and UndefinedBehaviorSanitizer and
 driven by `tools/hostilecorpusexec`, which runs each case in its own process
 with a 512 KiB case-thread stack and the per-case budget, so a crash, a
 sanitizer report or a hang fails only that case; a retaining load of a
-fixed-storage root, which neither port has, answers `SKIP`, and a skip passes only
-when the port's `known-skips.tsv` names its case; none is named today). Each carries the disagreements
+fixed-storage root, which neither port has, answers `SKIP`, and a skip fails
+the run: no list lets one pass). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
@@ -188,13 +188,10 @@ folder and by case name (`internal/ci/hostilecorpus/ledger.go`).
 - **The comparison is of the two sets.** A registered case that did not run, a
   name that ran and is not registered, a case run twice, and a run of nothing
   are each red by name. A matching count of the wrong cases is red.
-- **A case a port does not run is held by name with a reason**, in a file
-  beside the runner: `known-skips.tsv` (C, C++, Rust), the Lobster
-  `hostile-absent-schemas.tsv`, the Ruby `ruby-hostile-reader-unavailable.tsv`,
-  and for Goose `absent-carriers.tsv` and `absent-cases.tsv`. A held case that
-  runs, or that the corpus no longer has, is stale and red. Goose is the only
-  port with held cases today: it reads the `wire` and `packet` carriers, 17 of
-  the 192 cases.
+- **No case is held back** (Glenn, 2026-11-25: "NO SKIPS"). There is no list
+  of cases, carriers or schemas a port does not run: a case the port has no
+  reader for did not run, and the ledger is red on it by name until the port
+  reads it.
 - `tools/hostileledger` runs two negative controls on every log after a green
   check: the log with one case's lines removed, and the log with one case run
   under an unregistered name. Both must be red by name.

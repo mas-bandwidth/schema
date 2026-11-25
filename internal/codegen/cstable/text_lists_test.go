@@ -1,12 +1,10 @@
 package cstable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"testing"
 )
 
 func TestTextListCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	runCarryCS(t, `package probe
 table Root {
  names [..3]string(8)

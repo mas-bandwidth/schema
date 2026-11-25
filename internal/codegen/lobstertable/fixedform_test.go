@@ -2,7 +2,6 @@ package lobstertable_test
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -85,18 +84,13 @@ func TestLobsterFixedFormNegativeControl(t *testing.T) {
 // fixedCorpusDir is the C++ reference's byte oracle, built by
 // `make tables-fixedform-corpus`. It follows every other leg's corpus-reading
 // suite (cpptable's fixedversioning_test.go, and the contract ci-fast.yml's
-// go-test-touched names): a bare `go test` on a tree that never built the
-// oracle has nothing to read and says so, and under SCHEMA_REQUIRE_CORPUS —
-// which `make test-lobster` sets after building the corpus — a missing oracle
+// go-test-touched names): a missing oracle
 // is a failure, never a quiet skip.
 func fixedCorpusDir(t *testing.T) string {
 	t.Helper()
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", corpus, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not in %s: %v", corpus, err)
 	}
 	return corpus
 }

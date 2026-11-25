@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -363,10 +362,9 @@ func idtableRun(t *testing.T, files map[string][]byte) string {
 	return got
 }
 
-// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+// Functional (pythonBinary).
 func TestPythonVtIdtable(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	u := loadUnit(t, idtableSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -422,10 +420,9 @@ func TestPythonVtIdtable(t *testing.T) {
 // zero-length check, unknown-enum past-table check and unknown enum array
 // walk. Each must turn the probe red by name under each pinned interpreter.
 //
-// Functional (pythonBinary): run with SCHEMA_SLOW=1.
+// Functional (pythonBinary).
 func TestPythonVtIdtableNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	u := loadUnit(t, idtableSchema)
 	files, err := Generate(u)
 	if err != nil {

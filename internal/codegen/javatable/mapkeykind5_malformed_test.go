@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -28,7 +27,6 @@ import (
 // damaged, DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) and the leg
 // owes the refusal alone.
 func TestJavaFixMapKeyKind5Malformed(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -184,7 +182,6 @@ public final class Driver {
 // docs/SPEC-TABLES.md §2.8, §4): a repeated key refuses the whole load, on load
 // and on loadRetain, which keeps no tail, as the oracle refuses it.
 func TestJavaMapRepeatedKeyLastKindWins(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")

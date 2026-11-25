@@ -14,13 +14,10 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestCSharpTypedMeasureTotal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 
 	src, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "blobs", "Assets.schema"))
 	if err != nil {
@@ -48,7 +45,6 @@ func TestCSharpTypedMeasureTotal(t *testing.T) {
 
 func TestCSharpTypedMeasureTotalNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs the generated C#)")
 
 	src, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "blobs", "Assets.schema"))
 	if err != nil {

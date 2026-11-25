@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // I5 checks every residue, including a nonzero aligned base. Random forgery
@@ -103,7 +101,6 @@ end
 	return matched, mismatched
 }
 func TestMooBlockLead(t *testing.T) {
-	slowtest.Gate(t, "pinned moo over committed block images at every base lead 0..64")
 	n := len(manifestLines(t, "block"))
 	matched, mismatched := mooBlockLeadVerdicts(t, false)
 	t.Logf("lead matrix: %d matched, %d mismatched", matched, mismatched)
@@ -112,7 +109,6 @@ func TestMooBlockLead(t *testing.T) {
 	}
 }
 func TestMooBlockLeadNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "pinned moo with its actual block base-alignment check removed")
 	n := len(manifestLines(t, "block"))
 	matched, mismatched := mooBlockLeadVerdicts(t, true)
 	t.Logf("alignment sabotage: %d aligned cases unchanged, %d unaligned placements wrongly opened", matched, mismatched)

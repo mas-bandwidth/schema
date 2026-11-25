@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -293,7 +292,6 @@ for (const row of ` + string(rows) + `) {
 // require a failure by name.
 func jsBlobKindProbe(t *testing.T, u *ir.Unit, files map[string][]byte, probe string, patch func([]byte) []byte) (string, error) {
 	t.Helper()
-	slowtest.Gate(t, "node (it runs the generated module)")
 	gen, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)

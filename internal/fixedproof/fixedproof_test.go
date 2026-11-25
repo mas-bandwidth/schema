@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -401,10 +400,9 @@ func checkMemoryCeilingOverlap(t *testing.T) {
 // the Go test process keeps its full address space.
 func TestProbeAddressSpaceCeilingFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	apply := addressSpaceCeilingApply()
 	if apply == "" {
-		t.Skip("platform has no kernel address-space ceiling")
+		t.Fatal("this platform has no kernel address-space ceiling to probe")
 	}
 	dir := t.TempDir()
 	cpp := filepath.Join(dir, "ceil.cpp")

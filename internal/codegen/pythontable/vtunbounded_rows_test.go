@@ -33,7 +33,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -253,10 +252,9 @@ func vtUnboundedRowsFailures(t *testing.T, mutate func(*testing.T, map[string][]
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtUnboundedRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	fails, held := vtUnboundedRowsFailures(t, nil)
 	for _, f := range fails {
 		t.Error(f)
@@ -295,10 +293,9 @@ func vtUnboundedRowsEdit(module, from, to string) func(*testing.T, map[string][]
 // element too few, and the read stops refusing bytes left after an array's
 // elements.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtUnboundedRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	byValue := []string{"list_tables", "list_scalars", "list_empty", "list_erased", "list_mixed", "list_nested",
 		"list_of_maps", "list_migrates"}
 	byPointer := []string{"list_shared", "construct blobs_pointers"}

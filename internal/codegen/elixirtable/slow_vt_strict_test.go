@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -134,7 +133,6 @@ func slowVTWires(t *testing.T) (clean, over, unknown, trunc, dup []byte) {
 
 func TestElixirVariableSlowTestsStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	clean, over, unknown, trunc, dup := slowVTWires(t)
 	probe := slowVTProbe(hex.EncodeToString(clean), hex.EncodeToString(over), hex.EncodeToString(unknown), hex.EncodeToString(trunc), hex.EncodeToString(dup))
 	u := unitFrom(t, slowVTReaderSchema)
@@ -151,7 +149,6 @@ func TestElixirVariableSlowTestsStrict(t *testing.T) {
 // actually runs, not in a mock or in the test's expectations.
 func TestElixirVariableSlowTestsStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	clean, over, unknown, trunc, dup := slowVTWires(t)
 	probe := slowVTProbe(hex.EncodeToString(clean), hex.EncodeToString(over), hex.EncodeToString(unknown), hex.EncodeToString(trunc), hex.EncodeToString(dup))
 	u := unitFrom(t, slowVTReaderSchema)

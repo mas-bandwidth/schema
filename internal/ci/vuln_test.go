@@ -23,7 +23,7 @@ import (
 func TestVulnRecipeRunsThePinnedScannerSingular(t *testing.T) {
 	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("vuln recipe check requires make: %v", err)
+		t.Fatalf("vuln recipe check requires make: %v", err)
 	}
 	root := repoRoot(t)
 

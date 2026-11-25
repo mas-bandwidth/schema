@@ -56,15 +56,14 @@ func TestWriteRefusalPacketGooseSurface(t *testing.T) {
 
 // runWriteRefusalPacketGoose generates RefusalPacket.schema for Goose,
 // runs the probe beside the generated files with the pinned compiler, and
-// holds its verdicts against rows.txt. Behind slowtest.Gate (gooserun.Command
-// gates too): it compiles and runs Goose. Every value the rows name is
+// holds its verdicts against rows.txt. Its tier is functional:
+// it compiles and runs Goose. Every value the rows name is
 // representable in the Goose struct (an enum and a union tag are u8, bits(7)
 // is u32, counts and lengths are i32) except a [3]int16 holding another count
 // than 3: its storage is an i16[3], so the probe names those rows
 // unrepresentable and they are exempt.
 func runWriteRefusalPacketGoose(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the generated packet writer)")
 	if goose, why := gooserun.Compiler(); goose == "" {
 		t.Fatalf("the Goose compiler does not resolve: %s", why)
 	}

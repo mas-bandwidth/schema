@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -103,14 +102,12 @@ func cRetainHashZeroProbe(t *testing.T, sabotage bool) (string, error) {
 	return runCNodeRecordTerminatorProbe(t, u, body.String(), mutate)
 }
 func TestCRetainNestedHashZero(t *testing.T) {
-	slowtest.Gate(t, "generated C retained hash zero and sanitizers")
 	out, err := cRetainHashZeroProbe(t, false)
 	if err != nil {
 		t.Fatalf("retained hash zero: %v\n%s", err, out)
 	}
 }
 func TestCRetainNestedHashZeroNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "generated C retained hash zero negative control")
 	out, err := cRetainHashZeroProbe(t, true)
 	if err == nil {
 		t.Fatalf("hash-zero sabotage passed: %s", out)

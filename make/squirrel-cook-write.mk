@@ -11,10 +11,10 @@
 conformance-squirrel-cook-write: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@rm -rf build/conformance-squirrel-cook-write
 	@mkdir -p build/conformance-squirrel-cook-write
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@SQ="$(SQ)" ./build/conformance-harness run --only squirrel \
 		--work build/conformance-squirrel-cook-write/work \
-		> build/conformance-squirrel-cook-write/log 2>&1 || true
+		> build/conformance-squirrel-cook-write/log 2>&1; echo "exited $$? (the verdict is read from build/conformance-squirrel-cook-write/log below)"
 	@sh test/conformance/squirrel/cook-write-check build/conformance-squirrel-cook-write/log
 
 # THE CONTROL: the cook writer is re-emitted under build/ with an absent

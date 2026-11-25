@@ -14,7 +14,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -161,7 +160,6 @@ land("filled")
 // §16.2 rows [N]T, [..N]T, [E]T).
 func TestLuauJsonByteArrays(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Carton.schema")

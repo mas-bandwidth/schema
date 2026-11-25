@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -117,7 +116,6 @@ func buildCWriteContract(t *testing.T, dir string, release bool) string {
 
 func TestCWriteContractDebug(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (it compiles and runs the generated variable save, debug and release)")
 	u := unitFrom(t, cWriteContractSchema)
 	files, err := cgen.Generate(u)
 	if err != nil {

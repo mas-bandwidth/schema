@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -151,7 +150,6 @@ func dartCountedMinRun(t *testing.T, undermine func(map[string][]byte)) map[stri
 }
 
 func TestDartCountedMinElementsElideAtBornState(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 	want := dartCountedMinEngine(t)
 	got := dartCountedMinRun(t, nil)
@@ -163,7 +161,6 @@ func TestDartCountedMinElementsElideAtBornState(t *testing.T) {
 }
 
 func TestDartCountedMinElementsElideNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 	want := dartCountedMinEngine(t)
 	// the save's one birth judgement for every element kind (wirearrays.go

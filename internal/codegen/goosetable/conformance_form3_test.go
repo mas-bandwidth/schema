@@ -38,7 +38,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -751,7 +750,6 @@ func formThreeFailing(c *formThreeCorpus, got map[string]map[string]string) []st
 // for byte against the corpus, and every variable root answers through the flat
 // value table.
 func TestGooseDriverFormThreeDispatch(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the conformance driver)")
 	c := readFormThreeCorpus(t)
 	got := runFormThreeSurfaces(t, c, nil, false)
 	if failing := formThreeFailing(c, got); len(failing) > 0 {
@@ -764,7 +762,6 @@ func TestGooseDriverFormThreeDispatch(t *testing.T) {
 // — and requires the fixed-root rows to turn red while the variable rows stay
 // green.
 func TestGooseDriverFormThreeDispatchNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the conformance driver)")
 	c := readFormThreeCorpus(t)
 	got := runFormThreeSurfaces(t, c, nil, true)
 	for name, isFixed := range c.fixed {

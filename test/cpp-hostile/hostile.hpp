@@ -82,7 +82,7 @@
     } while ( 0 )
 
 // A FIXED root, held by value. C++ has no retaining load for one (its
-// LoadRetain is a deleted overload), so its wire_retain carrier answers skip.
+// LoadRetain is a deleted overload), so its wire_retain carrier answers unbound (a failure).
 #define HC_FIXED( TYPE ) \
     static int64_t hc_save_##TYPE( const void * v, uint8_t * b, int64_t n ) { return HC_NS::TYPE##Save( *(const HC_NS::TYPE *) v, b, n ); } \
     static void hc_accepted_##TYPE( const HC_NS::TYPE & value ) \
@@ -119,7 +119,7 @@
     row.table = TABLE; \
     row.wire = hc_wire_##TYPE; \
     row.text = hc_text_##TYPE; \
-    row.wire_retain_skip = "C++ has no retaining load for a fixed-storage root (its LoadRetain is a deleted overload)"
+    row.wire_retain_why = "C++ has no retaining load for a fixed-storage root (its LoadRetain is a deleted overload)"
 
 // A VARIABLE root: read into a caller-owned region sized by LoadMeasure; its
 // text is read into a builder whose Lock packs the same region form.

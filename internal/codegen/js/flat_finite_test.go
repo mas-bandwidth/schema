@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -36,7 +35,6 @@ func TestJsFlatRefusesNonFiniteBareFloats(t *testing.T) {
 	}
 
 	t.Run("wire", func(t *testing.T) {
-		slowtest.Gate(t, "node (it compiles and runs the generated flat codec)")
 		node := jsFlatNode(t)
 		for _, production := range []bool{false, true} {
 			label := "checked"

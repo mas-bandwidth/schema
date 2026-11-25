@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -147,7 +146,6 @@ func testDocRowsFromIR(u *ir.Unit) []docRow {
 }
 
 func javaDocRows(t *testing.T, javac, javaBin string, u *ir.Unit) []docRow {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := Generate(u)
