@@ -151,6 +151,7 @@ static void pin_message_vector( const char * name, const T & value,
     pin_table_golden( message_name, message, wrote_message );
 }
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_goldens()
 {
     // THE ANNOUNCEMENT: the message closure, 24 entries and 280 bytes, an ordinary form 1 FILE
@@ -249,6 +250,7 @@ static void test_message_form_goldens()
                             10, 3 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE BATCH (docs/SPEC-TABLES.md §3.3) ---------------------------------
 //
@@ -271,6 +273,7 @@ static void build_backend_envelopes( backenddemo::Envelope * three )
     build_backend_store( three[2].payload.purchase );
 }
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_batch()
 {
     static backenddemo::LoginRequest login;
@@ -352,6 +355,7 @@ static void test_message_form_batch()
     CHECK( wide_count == 256 && back[0].client_build == 1 && back[255].client_build == 256 );
     CHECK( !wide_report.damaged && !wide_report.refused );
 }
+#endif // TABLES_IN_PART
 
 // ---- the goldens READ BACK, against the connection's announced table -------
 
@@ -434,6 +438,7 @@ static void cross_message_golden( const char * name, const backenddemo::TableVoc
     }
 }
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_reload()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
@@ -493,6 +498,7 @@ static void test_message_form_reload()
         CHECK( memcmp( read.session_token, wrote.session_token, 32 ) == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- A WIDE VOCABULARY (docs/SPEC-TABLES.md §3.3) --------------------------
 //
@@ -502,6 +508,7 @@ static void test_message_form_reload()
 // at the near end. Red if a leg fixes the reference width, or sizes a batch as
 // though a reference were a byte.
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_wide_vocabulary()
 {
     // vocabdemo: the message closure is 130 entries, so a reference is 8 bits
@@ -600,6 +607,7 @@ static void test_message_form_wide_vocabulary()
         pin_table_golden( "vocab9_low", low_file, vocab9demo::Wide00Save( low, low_file, sizeof( low_file ) ) );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- PER-DIRECTION INDEPENDENCE (docs/SPEC-TABLES.md §3.3) -----------------
 //
@@ -608,6 +616,7 @@ static void test_message_form_wide_vocabulary()
 // units is the ordinary case, and each decodes the other's messages against
 // the vocabulary THAT peer announced. Red if a leg resolves against its own.
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_two_peers()
 {
     // peer A speaks backenddemo, peer B speaks vocabdemo
@@ -651,9 +660,11 @@ static void test_message_form_two_peers()
     CHECK( vocabdemo::Wide00LoadMessages( &b_read, &b_count, from_b, b_message, b_bytes, &b_report ) );
     CHECK( b_read.field_00_00 == 11 && b_read.field_00_12 == 22 );
 }
+#endif // TABLES_IN_PART
 
 // ---- THE REFUSALS THIS FORM ADDS (docs/SPEC-TABLES.md §3.3, §11) -----------
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_refusals()
 {
     static uint8_t announcement[4096];
@@ -779,6 +790,7 @@ static void test_message_form_refusals()
         CHECK( report.refused && report.reason == backenddemo::no_vocabulary );
     }
 }
+#endif // TABLES_IN_PART
 
 // set_bits writes one little-endian field of `width` bits at stream bit
 // `bit`. Bit 0 of the stream is the low bit of the byte after the form byte.
@@ -794,6 +806,7 @@ static void set_bits( uint8_t * damaged, int64_t bit, int64_t width, uint64_t va
 
 // ---- THE BATCH'S FIVE ANSWERS (docs/SPEC-TABLES.md §3.3) --------------------
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_five_answers()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
@@ -881,12 +894,14 @@ static void test_message_form_five_answers()
 
     // AND A POINTERED BATCH TAKES ONE REGION: held by test_message_form_pointered
 }
+#endif // TABLES_IN_PART
 
 // ---- DAMAGE IS TERMINAL FOR THE BATCH (docs/SPEC-TABLES.md §3.3) -----------
 //
 // Damage planted inside the SECOND body of three, and inside a NESTED body of
 // the second. Either damage refuses the entire batch and delivers no body.
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_damage_terminal()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
@@ -937,9 +952,11 @@ static void test_message_form_damage_terminal()
         CHECK( count == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE PAD, AND WHAT FOLLOWS IT (docs/SPEC-TABLES.md §3.3) ---------------
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_pad()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
@@ -991,6 +1008,7 @@ static void test_message_form_pad()
         CHECK( count == 0 );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE MASK'S WIDTH (docs/SPEC-TABLES.md §3.3, §4) -----------------------
 //
@@ -999,6 +1017,7 @@ static void test_message_form_pad()
 // out_of_range on both table forms, and every save holds the mask to W with a
 // debug assert (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH).
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_mask_width()
 {
     VOCABULARY( tabledemo, vocabulary );
@@ -1090,6 +1109,7 @@ static void test_message_form_mask_width()
     expect_storage_assert( "flags bit past W (fixed save)", [&] { (void) tabledemo::LoadoutConfigFixedSave( &past, 1, scratch, sizeof( scratch ) ); } );
 #endif
 }
+#endif // TABLES_IN_PART
 
 // ---- THE ANNOUNCEMENT'S TWO STRICT CHECKS, AND ITS TOLERANCE ---------------
 //
@@ -1142,6 +1162,7 @@ static int64_t backend_vocabulary_field( uint8_t * out, int64_t capacity )
     return at + n;
 }
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_announcement_check()
 {
     static uint8_t forged[8192];
@@ -1267,6 +1288,7 @@ static void test_message_form_announcement_check()
         pin_table_golden( "announce_unknown_field", forged, bytes );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE THREE RESERVED IDS WHERE THEY DO NOT BELONG (§3.1, §3.3, §5) ------
 //
@@ -1275,6 +1297,7 @@ static void test_message_form_announcement_check()
 // vocabulary refuses the announcement as malformed and sets no vocabulary. A
 // message body carries references and never an id, so it has no row here.
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_reserved_ids()
 {
     const uint64_t reserved[3] = { 0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFFFFFFFFEull, 0xFFFFFFFFFFFFFFFDull };
@@ -1382,6 +1405,7 @@ static void test_message_form_reserved_ids()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- A REFERENCE AT AND ABOVE THE ENTRY COUNT (§3.3) ------------------------
 //
@@ -1390,6 +1414,7 @@ static void test_message_form_reserved_ids()
 // slot and must resolve. The fields decoded before a bad reference stand,
 // and nothing after it is read.
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_reference_bound()
 {
     const backenddemo::TableVocabulary vocabulary = backend_connection();
@@ -1454,6 +1479,7 @@ static void test_message_form_reference_bound()
         pin_table_golden( "message_reference_last_slot", last, last_bytes );
     }
 }
+#endif // TABLES_IN_PART
 
 #endif // SCHEMA_TEST_MESSAGE_FORM_H
 
@@ -1573,6 +1599,7 @@ static void build_bases( basesdemo::Bases & value )
     value.narrow = 200;
 }
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_bases()
 {
     static uint8_t announcement[8192];
@@ -1625,7 +1652,9 @@ static void test_message_form_bases()
     CHECK( basesdemo::BasesSaveMessages( &read, 1, again, sizeof( again ), &report ) == bytes );
     CHECK( memcmp( again, message, (size_t) bytes ) == 0 );
 }
+#endif // TABLES_IN_PART
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_quantized()
 {
     // THE INDEX IS THE PACKET WIRE'S, bit for bit: 0.005 the rounding tie, 0.123
@@ -1682,9 +1711,11 @@ static void test_message_form_quantized()
         CHECK( decoded == packet_float( 6666, -100.0f, 100.0f, 0.01f ) );
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- A REFUSED FIRST ANNOUNCEMENT IS TERMINAL (docs/SPEC-TABLES.md §3.3) ----
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_refused_first()
 {
     static uint8_t announcement[4096];
@@ -1718,9 +1749,11 @@ static void test_message_form_refused_first()
     CHECK( body.refused && body.reason == backenddemo::no_vocabulary && !body.damaged && body.unknown == 0 );
     CHECK( out.client_build == 0 && count == 0 );
 }
+#endif // TABLES_IN_PART
 
 // ---- THE SIX FINDINGS OF schema#571 (docs/SPEC-TABLES.md §3.3) ------------
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_findings()
 {
     static uint8_t announcement[8192];
@@ -1856,6 +1889,7 @@ static void test_message_form_findings()
         }
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE COLD READ'S ROWS (docs/SPEC-TABLES.md §3.3, schema#557) -----------
 //
@@ -1870,6 +1904,7 @@ static bool is_wide_few( const basesdemo::TableMessageEntry & e )
     return e.kind == 14 && e.elem_kind == 8 && e.min == 2 && e.max == (int64_t) 0xFFFFFFFFull;
 }
 
+#if TABLES_IN_PART( 6 )
 static void test_message_form_cold_read()
 {
     static uint8_t announcement[8192];
@@ -2008,6 +2043,7 @@ static void test_message_form_cold_read()
         CHECK( count == 0 && read.few_count == basesdemo::Bases().few_count ); // never the negative a narrowed count lands
     }
 }
+#endif // TABLES_IN_PART
 
 // ---- THE WIDENING ROW ON THIS FORM (docs/SPEC-TABLES.md §3.3, §4) ----------
 
@@ -2020,6 +2056,7 @@ static void test_message_form_cold_read()
 //
 // Red where a reader treats the announced kind as a mismatch: the read
 // refuses as kind_mismatch and `widened` never moves.
+#if TABLES_IN_PART( 6 )
 static void test_message_form_widened()
 {
     static uint8_t a1_announcement[8192];
@@ -2051,3 +2088,4 @@ static void test_message_form_widened()
     CHECK( out.value.a == 1000 );       // the value is the writer's own, exactly
     CHECK( out.id == 7 && out.tail == 9 ); // and the siblings are intact
 }
+#endif // TABLES_IN_PART
