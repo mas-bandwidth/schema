@@ -421,6 +421,12 @@ jobs:
             go_dirs=$(awk '/\.go$/ { d = $0; if (!sub(/\/[^\/]*$/, "", d)) d = "."; if (!(d in seen)) { seen[d] = 1; print d } }' <<<"$files")
             for d in $go_dirs; do
               [ -d "$d" ] || continue
+              # A DIRECTORY THE DIFF EMPTIED OF GO is no package: a deleted
+              # last .go file (working/digesthash.go, gone from main and not
+              # from dev) named ./working, and `go test` and golangci-lint
+              # refused it (dispatch run 45441757243). compgen is a builtin,
+              # no fork per directory.
+              compgen -G "$d/*.go" >/dev/null || continue
               case "/$d/" in */testdata/*) continue ;; esac
               m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
               case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
