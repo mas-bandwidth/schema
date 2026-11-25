@@ -757,3 +757,37 @@ _conformance-corpus-goose: verify-toolchain-goose build/conformance-harness-vm b
 _conformance-corpus-lobster: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster
 	@rm -rf build/verify/conformance-corpus-lobster && mkdir -p build/verify/conformance-corpus-lobster $(VERIFY_RESULTS_DIR)
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm run --only lobster --claims --work build/verify/conformance-corpus-lobster --results $(VERIFY_RESULTS_DIR)/lobster.json
+
+# The retired verify-leg checks (test/registry/retired.tsv) run as
+# registry make rows: each name below is the literal rule its registry
+# row names (tools/schema-test, make adapter). The rule itself is the
+# templated verify-$(1) entrypoint above; this line only spells the
+# expanded name in the file that defines it, so the row and the extract
+# can hold the target to this file. No prerequisites, no recipe: the
+# templated rule's recipe is the check, unchanged.
+verify-goose-bench:
+verify-goose-conformance:
+verify-js-bench:
+verify-js-conformance:
+verify-js-fuzz:
+verify-lobster-bench:
+verify-lobster-conformance:
+verify-lobster-fuzz:
+verify-lua-bench:
+verify-lua-conformance:
+verify-lua-fuzz:
+verify-luau-bench:
+verify-luau-conformance:
+verify-luau-fuzz:
+verify-moo-bench:
+verify-moo-conformance:
+verify-moo-fuzz:
+verify-python-bench:
+verify-python-conformance:
+verify-python-fuzz:
+verify-ruby-bench:
+verify-ruby-conformance:
+verify-ruby-fuzz:
+verify-squirrel-bench:
+verify-squirrel-conformance:
+verify-squirrel-fuzz:

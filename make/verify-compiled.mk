@@ -388,3 +388,34 @@ _conformance-corpus-dart: toolchain-dart build/conformance-harness build/conform
 _conformance-corpus-elixir: toolchain-elixir build/conformance-harness $(VERIFY_ELIXIR_BUILD)
 	@rm -rf build/verify/conformance-corpus-elixir && mkdir -p build/verify/conformance-corpus-elixir $(VERIFY_RESULTS_DIR)
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/$(VERIFY_ELIXIR_EBIN)" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-corpus-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
+
+# The retired verify-leg checks (test/registry/retired.tsv) run as
+# registry make rows: each name below is the literal rule its registry
+# row names (tools/schema-test, make adapter). The rule itself is the
+# templated verify-$(1) entrypoint above; this line only spells the
+# expanded name in the file that defines it, so the row and the extract
+# can hold the target to this file. No prerequisites, no recipe: the
+# templated rule's recipe is the check, unchanged.
+verify-c-bench:
+verify-c-conformance:
+verify-c-fuzz:
+verify-cpp-bench:
+verify-cpp-fuzz:
+verify-cs-bench:
+verify-cs-conformance:
+verify-cs-fuzz:
+verify-dart-bench:
+verify-elixir-bench:
+verify-elixir-fuzz:
+verify-go-bench:
+verify-go-conformance:
+verify-go-fuzz:
+verify-java-bench:
+verify-java-conformance:
+verify-java-fuzz:
+verify-rust-bench:
+verify-rust-conformance:
+verify-rust-fuzz:
+verify-unity-bench:
+verify-unity-conformance:
+verify-unity-fuzz:
