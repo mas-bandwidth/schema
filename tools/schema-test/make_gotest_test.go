@@ -291,6 +291,17 @@ func TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone(t *testing.T) {
 			`{"Action":"output","Package":"example.com/x","Test":"TestB","Output":"planted skip\n"}`, `{"Action":"output","Package":"example.com/x","Test":"TestB","Output":"--- SKIP: TestB (0.00s)\n"}`,
 			`{"Action":"skip","Package":"example.com/x","Test":"TestB"}`),
 			gotestrunSkipLog, errors.New("exit status 1"), []string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "TestB skipped"},
+		{"a refusal of more skips than the summaries count", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
+			gotestrunSkipLog + "gotestrun: REFUSED: SKIPPED: 1 test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
+		{"two gotestrun runs, a skip each", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}) + goTestEvents([2]string{"TestC", "skip"}),
+			gotestrunSkipLog + "=== RUN   TestC\n    x_test.go:9: SKIP: the planted skip\n--- SKIP: TestC (0.00s)\nSKIPPED example.com/x TestC\n" +
+				"gotestrun: ran 1, passed 0, skipped 1, failed 0 across 1 package(s)\ngotestrun: REFUSED: SKIPPED: 1 test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB", "TestC"}, "TestC", []string{"TestA"}, "TestC skipped"},
+		{"a subtest skip in the log", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB/inner", "skip"}, [2]string{"TestB", "pass"}),
+			"=== RUN   TestB\n=== RUN   TestB/inner\n    x_test.go:9: SKIP: the planted skip\n    --- SKIP: TestB/inner (0.00s)\n--- PASS: TestB (0.00s)\n" +
+				"SKIPPED example.com/x TestB/inner\ngotestrun: ran 3, passed 2, skipped 1, failed 0 across 1 package(s)\ngotestrun: REFUSED: SKIPPED: 1 test(s) of this selection skipped themselves, so they did not run; a skip is a failure, and a test that is not to run is left out at the root\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "TestB skipped (inner)"},
 		{"a sibling's failure is not the package's", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "fail"}), "ok", errors.New("exit status 1"),
 			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "the planted failure"},
 		{"started twice, finished once", ev(`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"pass","Package":"example.com/x","Test":"TestA"}`,

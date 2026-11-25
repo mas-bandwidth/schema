@@ -487,7 +487,9 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 					ev.skipLines[o]++
 				}
 			}
-			delete(said, name) // a test skipped twice printed its output once
+			// said holds the output of every run of the test, so a test
+			// skipped in two runs has its lines counted once, not twice
+			delete(said, name)
 		}
 	}
 	return ev, nil
