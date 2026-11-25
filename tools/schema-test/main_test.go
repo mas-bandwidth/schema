@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -108,5 +109,75 @@ func TestGoTestEventsGiveOneVerdictEach(t *testing.T) {
 	}
 	if _, ok := got["d"]; ok {
 		t.Fatal("a test that never reported has a verdict")
+	}
+}
+
+// faultFake is an adapter with one fault: it crashes, hangs until its
+// context ends, reports a result nobody asked for, leaves an asked instance
+// out, or answers no test at all.
+type faultFake struct{ fault string }
+
+func (f faultFake) Answers(t testreg.Test) bool { return t.PerLang() && f.fault != "no-instance" }
+
+func (f faultFake) Run(ctx context.Context, _ string, insts []testreg.Instance) ([]testreg.Result, error) {
+	switch f.fault {
+	case "crash":
+		return nil, errors.New("exit status 2")
+	case "hang":
+		<-ctx.Done()
+		return nil, ctx.Err()
+	case "omit":
+		return nil, nil
+	}
+	var out []testreg.Result
+	for _, inst := range insts {
+		out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
+	}
+	if f.fault == "extra" {
+		out = append(out, testreg.Result{Instance: "go.functional.roundtrip.fam.stray", Verdict: testreg.Pass})
+	}
+	return out, nil
+}
+
+// TestTheCommandExitsNonZeroOnEveryAdapterFault runs the command line
+// against an adapter that crashes, times out, reports a stray result, omits
+// one, or has no instance: each is exit 1 with its reason and the counts line.
+func TestTheCommandExitsNonZeroOnEveryAdapterFault(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		fault string
+		args  []string
+		says  string
+	}{
+		{"crash", nil, "adapter fake crashed: exit status 2"},
+		{"hang", []string{"--timeout", "1ms"}, "adapter fake timed out"},
+		{"extra", nil, `reported "go.functional.roundtrip.fam.stray", which it was not asked for`},
+		{"omit", nil, "expected 1 instances to run, 0 ran"},
+		{"no-instance", nil, "adapter fake has no instance of roundtrip.fam.one"},
+	} {
+		args := append([]string{"run", "go.functional.roundtrip.fam.one"}, c.args...)
+		code, out := cli(t, faultFake{c.fault}, args...)
+		if code != 1 || !strings.Contains(out, c.says) || !strings.Contains(out, "schema-test FAIL: expected ") {
+			t.Errorf("%s: exit %d, want 1 saying %q and the counts line:\n%s", c.fault, code, c.says, out)
+		}
+	}
+}
+
+// TestARunThatSelectsNothingStillPrintsItsCounts: an unknown name, a query
+// matching 0 tests, an unknown group and an empty shard fail before any
+// instance runs, and still print the counts line, every count 0.
+func TestARunThatSelectsNothingStillPrintsItsCounts(t *testing.T) {
+	t.Parallel()
+	const counts = "schema-test FAIL: expected 0, ran 0, passed 0, failed 0, missing 0, unrepresentable 0"
+	for _, args := range [][]string{
+		{"run", "go.functional.roundtrip.fam.two"},
+		{"run", "go.nightly.*"},
+		{"run", "--group", "nope"},
+		{"run", "--lang", "go", "--shard", "2/2"},
+	} {
+		code, out := cli(t, envFake{}, args...)
+		if code != 1 || !strings.Contains(out, counts) {
+			t.Errorf("%v: exit %d, want 1 with %q:\n%s", args, code, counts, out)
+		}
 	}
 }

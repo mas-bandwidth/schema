@@ -130,13 +130,24 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 		}
 		return testreg.Cover(reg, ads).Print(stdout)
 	}
+	// A run that fails before any instance is chosen still prints the
+	// counts line: every run prints expected, ran, passed, failed and
+	// unrepresentable, and here every count is 0.
+	noRun := func(err error) error {
+		if sub == "run" {
+			if perr := (&testreg.Report{Problems: []string{err.Error()}}).Print(stdout); perr != nil {
+				return perr
+			}
+		}
+		return err
+	}
 	if *group != "" {
 		if !q.Empty() {
 			return usageError{"--group is a whole stored query: give it alone (with --shard)"}
 		}
 		g, ok := reg.Group(*group)
 		if !ok {
-			return fmt.Errorf("group %q is not in the registry", *group)
+			return noRun(fmt.Errorf("group %q is not in the registry", *group))
 		}
 		q = g.Query()
 	}
@@ -145,7 +156,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	sel, err := reg.Select(q)
 	if err != nil {
-		return err
+		return noRun(err)
 	}
 	instances := sel.Instances
 	what := q.String()
@@ -155,7 +166,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 			return err
 		}
 		if instances, err = testreg.Shard(instances, i, n); err != nil {
-			return err
+			return noRun(err)
 		}
 		what += " --shard " + *shard
 	}

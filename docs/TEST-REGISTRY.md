@@ -106,7 +106,9 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | a verdict other than pass or fail: there is no skipped verdict | `TestThereIsNoSkippedVerdict` |
 | a harness that logs a skip | `TestAHarnessSkipLineFails` |
 | a Go test that skips | `TestGoTestEventsGiveOneVerdictEach` |
-| the command's exit status on each of the above | `TestTheCommandExitsNonZeroOnEveryFailRule` |
+| the command's exit status: unknown name, 0 matches, no adapter, unknown group, empty shard | `TestTheCommandExitsNonZeroOnEveryFailRule` |
+| the command's exit status on an adapter crash, timeout, stray result, omitted result and missing instance | `TestTheCommandExitsNonZeroOnEveryAdapterFault` |
+| a run that selects nothing still prints its counts line, every count 0 | `TestARunThatSelectsNothingStillPrintsItsCounts` |
 
 The loader's refusals have one test each (`TestLoadRefuses*`). `TestTheDriverHasNoSkips`
 refuses any `Skip`, `SkipNow`, `Skipf` or `testing.Short()` in the driver's own
@@ -224,8 +226,8 @@ load-refusal rows), through the `go` and `lua` adapters, plus a plant for each.
   sabotage of generated code (tools/sabotage) fits the same `plant` contract.
 - **The nightly red list is the coverage matrix.** Every language without an
   adapter shows 36 MISSING (23 roundtrip, 13 load-refusal), and that is the work.
-- Cost: the `pr` group (110 names: 72 per-language, 38 language-free) runs in
-  about 7 s warm on a bench.
+- Cost: the `pr` group (`schema-test list --group pr` prints its count) runs
+  in about 7 s warm on a bench.
 
 ## Next layers
 
