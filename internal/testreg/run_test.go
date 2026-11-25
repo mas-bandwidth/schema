@@ -404,6 +404,33 @@ func TestAHeavyTestLeavesNoPartEmpty(t *testing.T) {
 	}
 }
 
+// TestAGoldenWritersRowsShareOneShard: a golden writer runs once for all the
+// rows a shard holds of it, so its rows are one block no cut splits, placed
+// where its first row is, even when another row sits between them; rows of
+// other adapters, and goldens of another writer, are cut as before.
+func TestAGoldenWritersRowsShareOneShard(t *testing.T) {
+	t.Parallel()
+	golden := func(name, writer string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "golden", Seconds: 5, Inputs: []byte(`{"writer":"` + writer + `","files":["x"]}`)}}
+	}
+	plain := func(name string) Instance {
+		return Instance{Full: name, Test: Test{Adapter: "gotest", Seconds: 5}}
+	}
+	all := []Instance{plain("a"), golden("w1", "pins-x"), golden("w2", "pins-x"), plain("b"), golden("w3", "pins-x"), golden("v1", "pins-y"), plain("c"), plain("d")}
+	parts := Parts(all, 3)
+	var got []string
+	for _, p := range parts {
+		var names []string
+		for _, i := range p {
+			names = append(names, i.Full)
+		}
+		got = append(got, strings.Join(names, ","))
+	}
+	if strings.Join(got, " | ") != "a,w1,w2,w3 | b,v1 | c,d" {
+		t.Fatalf("parts %q, want pins-x's three rows together, and the rest cut by seconds", got)
+	}
+}
+
 // TestCoverageShowsEveryCell: answered, unrepresentable and MISSING.
 func TestCoverageShowsEveryCell(t *testing.T) {
 	t.Parallel()
