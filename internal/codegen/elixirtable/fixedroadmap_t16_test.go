@@ -3,7 +3,9 @@ package elixirtable
 // FULL-WIDTH ENUM AND UNION ORDINALS ON THE ELIXIR LEG (docs/roadmap.sexp
 // node `fixed-tables`, leaf elixir/R31; docs/FIXED-FORM-ALGORITHM.md §4.1,
 // §5.2, §5.8 rows 5, 7 and 14). The same fixture as the Go and C legs: a
-// writer with 300 enum variants and 300 union arms, a reader with a subset,
+// writer with 300 enum variants and 300 union arms, a reader with 301 of each
+// (a SUPERSET: a reader that dropped any of the writer's variants or arms would
+// be an unlawful lineage entry, refused layout_malformed, §5.9 #30),
 // both guard lanes (the guard chain) stamped above MaxUint32, an 8-byte
 // ordinal through the 64-bit temporary, and a remap past the uint16 length
 // word refused by name as :plan_too_large.
@@ -56,7 +58,7 @@ func t16EWriterSchema() string {
 }
 
 func t16EReaderSchema() string {
-	return t16EFixture([]string{"v0", "v1", "v299"}, []string{"a0", "a299"}, []string{"a0", "a299"})
+	return t16EFixture(t16ENames("v", 301), t16ENames("a", 301), t16ENames("a", 301))
 }
 
 func t16EOverflowSchema() string {
@@ -156,17 +158,21 @@ const t16EProbeBody = `  {:ok, theirs} = R.parse_layout(Base.decode16!("@WRITER@
   check(ord != nil, "the compiled plan carries no ordinal entry")
   {:ordinal, _, _, _, _, remap} = ord
   check(elem(remap, 0) == 300, "the remap length word is #{elem(remap, 0)}, want the writer's 300")
-  check(elem(remap, 300) == 3, "remap[300] is #{elem(remap, 300)}, want the reader ordinal 3")
+  check(elem(remap, 300) == 300, "remap[300] is #{elem(remap, 300)}, want the reader ordinal 300")
   body = Base.decode16!("@BODY@")
   {image, _r2} = R.run(plan, body, T.root_fixed_prefill(), R.report())
-  <<many, picktag, payload::little-unsigned-32, toptag, innertag, innerpayload::little-unsigned-32, seq::little-unsigned-32>> = image
-  check(many == 3, "many landed #{many}, want the reader ordinal 3 of writer variant 300")
-  check(picktag == 2 and payload == 777, "pick landed tag #{picktag} payload #{payload}, want arm 2 / 777")
-  check(toptag == 2 and innertag == 2 and innerpayload == 888, "nested landed #{toptag}/#{innertag}/#{innerpayload}, want 2/2/888")
+  # THE READER'S 301 VARIANTS AND ARMS RIDE TWO-BYTE ORDINALS AND TAGS.
+  <<many::little-unsigned-16, picktag::little-unsigned-16, payload::little-unsigned-32,
+    toptag::little-unsigned-16, innertag, innerpayload::little-unsigned-32,
+    seq::little-unsigned-32>> = image
+  check(many == 300, "many landed #{many}, want the reader ordinal 300 of writer variant 300")
+  check(picktag == 300 and payload == 777, "pick landed tag #{picktag} payload #{payload}, want arm 300 / 777")
+  check(toptag == 300 and innertag == 2 and innerpayload == 888, "nested landed #{toptag}/#{innertag}/#{innerpayload}, want 300/2/888")
   check(seq == 9, "seq landed #{seq}, want 9")
   <<_::binary-size(2), rest::binary>> = body
   {fimage, _r3} = R.run(plan, <<301::little-unsigned-16>> <> rest, T.root_fixed_prefill(), R.report())
-  check(:binary.at(fimage, 0) == 0, "forged ordinal 301 must land None")
+  <<forged::little-unsigned-16, _::binary>> = fimage
+  check(forged == 0, "forged ordinal 301 must land None, got #{forged}")
   # BOTH GUARD LANES ABOVE MaxUint32 (§4.1): the copy fires only when both
   # 8-byte tags equal 0x1_0000_0001.
   gsrc = <<4294967297::little-unsigned-64, 4294967297::little-unsigned-64, 7, 7, 7, 7, 0, 0, 0, 0>>

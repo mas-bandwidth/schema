@@ -160,8 +160,10 @@ func t05E8(t *testing.T) {
 		"E8 an appended field's declared default is the prefill image")
 	t04Has(t, text, "image[o..o + z].copy_from_slice(&",
 		"E8 the hole an appended field leaves keeps its declared default")
-	t04Has(t, string(fixedRuntimeBody), "if !named && census {",
-		"E8 a field the reader NAMES is not an event; only an unnameable one censuses")
+	// A field the reader NAMES is not an event; an unnameable one is not
+	// counted either: it makes the entry UNLAWFUL (§5.2 MATCH, §5.9 #30).
+	t04Has(t, string(fixedRuntimeBody), t04Unlawful,
+		"E8 a writer field the reader cannot name is an unlawful entry, never a census")
 
 	// DEPRECATE: `b` retired in place. The slot stays where it is, so the
 	// layout and the hash do not move and the id is the same.
@@ -188,8 +190,8 @@ func t05E8(t *testing.T) {
 // nothing either.
 func t05R19(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
-	t04Has(t, runtime, "if !named && census {",
-		"R19 only a field the reader cannot name is an event")
+	t04Has(t, runtime, t04Unlawful,
+		"R19 a field the reader cannot name is no event to count but an unlawful entry")
 	t04Has(t, runtime, "Some(count) if raw != 0 && raw <= u64::from(*count) => {",
 		"R19 a variant the reader names remaps through the plan and moves nothing")
 	t04Has(t, runtime, "if mine.entry(mi + 1 + k).id == vid {",
@@ -205,17 +207,17 @@ func t05R19(t *testing.T) {
 			t.Errorf("R19: a `copy` entry moves %s (§5.4):\n%s", counter, copyArm)
 		}
 	}
-	// A clean read adds the COMPILE census once, after the loop, and the census
-	// of a lawful append is zero.
+	// A clean read lands no compile census: there is none (§5.4, §5.9 #30), so
+	// a lawful append moves every counter by exactly zero.
 	load := t04Fn(t05Module(t, "package probe\n\nfixed table Lineage\n{\n    seq int32 = 0\n}\n"), "lineage_fixed_load")
 	if load == "" {
 		t.Fatal("R19: lineage_fixed_load is not emitted")
 	}
-	t04Has(t, load, "report.unknown += census.0;",
-		"R19 the census lands once per endpoint and not per record")
-	t04Has(t, load, "let _ = census.1;",
-		"R19 the kind census stays on the plan and never lands on a read (strict-only)")
-	if strings.Contains(load, "kind_changed +=") {
+	t04Lacks(t, load, "report.unknown +=",
+		"R19 no census lands on a read")
+	t04Lacks(t, load, "census",
+		"R19 the load carries no compile census at all")
+	if strings.Contains(load, "kind_changed") {
 		t.Error("R19: the load lands the compile census's kind changes on the report")
 	}
 }
@@ -237,7 +239,6 @@ func t05E9(t *testing.T) {
 	}
 	for _, field := range []string{
 		"pub unknown: u32,",
-		"pub(crate) kind_changed: u32,",
 		"pub widened: u32,",
 		"pub(crate) held: u32,",
 		"pub damaged: bool,",
@@ -247,6 +248,9 @@ func t05E9(t *testing.T) {
 	} {
 		t04Has(t, report, field, "E9 the report's own fields")
 	}
+	// A KIND OFF EVERY LADDER IS AN UNLAWFUL ENTRY that refuses by name
+	// (§5.2 EMIT, §5.4, §5.9 #30), so the report carries no kind census.
+	t04Lacks(t, report, "kind_changed", "E9 the report carries no kind census")
 }
 
 // ---- rust/R16 -----------------------------------------------------------------
@@ -259,16 +263,17 @@ func t05E9(t *testing.T) {
 // value-landing ops move nothing.
 func t05R16(t *testing.T) {
 	runtime := string(fixedRuntimeBody)
-	// unknown: once per endpoint, at COMPILE, through the `census` flag, and the
-	// plan's number is carried onto the report once after the record loop.
-	t04Has(t, runtime, "if !named && census {",
-		"R16 unknown is once per endpoint at COMPILE")
+	// unknown: there is no compile census any more (§5.4, §5.9 #30). A writer
+	// field no reader field names makes the lineage entry UNLAWFUL, so no plan
+	// is laid and no read lands an unknown count, per endpoint or per record.
+	t04Has(t, runtime, t04Unlawful,
+		"R16 an unnameable writer field is an unlawful entry at COMPILE")
 	load := t04Fn(t05Module(t, "package probe\n\nfixed table Lineage\n{\n    seq int32 = 0\n}\n"), "lineage_fixed_load")
 	if load == "" {
 		t.Fatal("R16: lineage_fixed_load is not emitted")
 	}
-	t04Has(t, load, "report.unknown += census.0;",
-		"R16 the compile census lands once, after the record loop and not per record (ALGORITHM §5.9 #6)")
+	t04Lacks(t, load, "report.unknown +=",
+		"R16 no compile census lands on the read (ALGORITHM §5.9 #30)")
 	// widened: once per entry per record, and a folded run is ONE — the
 	// coalescing fold merges COPY entries only, so a widened run is never folded.
 	t04Has(t, runtime, "&& c.plan[out - 1].op == TableFixedOp::Copy",

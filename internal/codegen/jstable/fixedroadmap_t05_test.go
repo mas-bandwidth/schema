@@ -261,11 +261,15 @@ fixed table T
 		t.Error("R16: the coalescer folds a widen run; §5.9 #33 forbids a fold across a widen")
 	}
 
-	// `unknown` once per endpoint at COMPILE and never per record (§5.4 line 956):
-	// the MATCH carries the one census site, and the record loop carries none.
+	// `unknown` is never counted (§5.4, §5.9 #30): an unnamed writer field makes
+	// the lineage entry UNLAWFUL at the MATCH, which lays no plan, and the
+	// record loop carries no census either.
 	match := jsFn(src, "TableFixedMatchChildren")
-	if n := strings.Count(match, "report.unknown++"); n != 1 {
-		t.Errorf("R16: the MATCH at COMPILE carries report.unknown++ %d time(s), want the one site that runs once per unnamed writer's field", n)
+	if n := strings.Count(match, "report.unknown++"); n != 0 {
+		t.Errorf("R16: the MATCH at COMPILE carries report.unknown++ %d time(s); an unnamed writer field is unlawful, never counted", n)
+	}
+	if n := strings.Count(match, "plan.unlawful = true;"); n != 1 {
+		t.Errorf("R16: the MATCH at COMPILE marks an unnamed writer field unlawful %d time(s), want the one site", n)
 	}
 	if n := strings.Count(run, "report.unknown++"); n != 0 {
 		t.Errorf("R16: the record loop moves `unknown` %d time(s); §5.4 counts it once per endpoint and never per record", n)

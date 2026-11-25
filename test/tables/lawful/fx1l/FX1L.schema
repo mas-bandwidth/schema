@@ -1,0 +1,31 @@
+// FX1L.schema — FX1 as a LAWFUL older writer for FX2 (docs/FIXED-FORM-ALGORITHM.md
+// §5.1, §5.2 MATCH, §5.4 row 1, §5.9 #30). FX1 carries `gone`, which FX2 names
+// nowhere: a removal §5.1 refuses, so FX1 is an UNLAWFUL lineage entry for FX2
+// and a read of it is refused `layout_malformed` (test/tables/fixedform_main.cpp
+// holds that verdict). This writer is FX1 with `gone` taken out and nothing
+// else, so the edits FX2 makes that ARE lawful (the widened `narrow`, the
+// rename under `was`, the field and the nested type FX1 has no name for, the
+// `bytes(N)` row) are still read through a plan compiled from an older
+// writer's block.
+//
+// It sits in its own directory on purpose: it is in no lineage (FX2's is FX1),
+// and the checks drive it through COMPILE directly, the way v_case and
+// bytes_row_case drive theirs.
+package tblfx1l
+
+fixed table FxNested
+{
+    a int32 = 1 | min = 0, max = 1000
+    b int32 = 2 | min = 0, max = 1000
+}
+
+fixed table FxRoot
+{
+    keep    uint32 = 7
+    narrow  uint16 = 3
+    renamed int32 = 5 | min = 0, max = 1000
+    nested  FxNested
+    label   string(8) = "fx"
+    marks   [..4]int32
+    blob    bytes(6)
+}

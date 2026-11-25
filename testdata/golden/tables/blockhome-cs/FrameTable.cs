@@ -1399,8 +1399,6 @@ namespace Blockhome
             ReadOnlySpan<byte> planBytes = PartRowFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = PartRowFixedLineagePlans[pick];
@@ -1427,10 +1425,6 @@ namespace Blockhome
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PartRowFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -1499,8 +1493,6 @@ namespace Blockhome
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -14383,8 +14375,6 @@ namespace Blockhome
             ReadOnlySpan<byte> planBytes = PartFrameFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = PartFrameFixedLineagePlans[pick];
@@ -14411,10 +14401,6 @@ namespace Blockhome
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PartFrameFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -14483,8 +14469,6 @@ namespace Blockhome
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;

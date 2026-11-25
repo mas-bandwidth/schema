@@ -2153,11 +2153,12 @@ typedef struct tabledemo_table_fixed_fill_t
 } tabledemo_table_fixed_fill_t;
 
 /* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
-   path. unknown and kind_changed are THE COMPILE CENSUS — a writer field no
-   reader field names is counted ONCE PER ENDPOINT and never per record (§5.4) — and
-   a load carries them onto the report once, after the record loop, only on a
-   read that RETURNS. reason is the name a lineage entry that could not be
-   planned refuses under if a file ever selects it (§5.9 #4, #8). */
+   path. There is no compile census: a writer field no reader field names makes
+   the entry UNLAWFUL and lays no plan (§5.4, §5.9 #30). kind_changed is the
+   entry the load refuses KIND_MISMATCH BEFORE any record lands (the writer's ?T
+   into a bare T, ruling R2, or a narrowed scalar). reason is the name a lineage
+   entry that could not be planned refuses under if a file ever selects it
+   (§5.9 #4, #8, #30). */
 typedef struct tabledemo_table_fixed_lineage_plan_t
 {
     const tabledemo_table_fixed_entry_t * entries;
@@ -2165,7 +2166,6 @@ typedef struct tabledemo_table_fixed_lineage_plan_t
     int32_t guarded;
     const tabledemo_table_fixed_fill_t * fill;
     int32_t fill_count;
-    int32_t unknown;
     int32_t kind_changed;
     int reason;
 } tabledemo_table_fixed_lineage_plan_t;
@@ -2839,6 +2839,13 @@ typedef struct tabledemo_table_fixed_compiler_t
     int hostile;
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     uint32_t present;  /* the CURRENT optional's present byte plus one, 0 when none */
+    /* UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+       a writer field this reader does not name, or a pair whose kind moved off
+       every ladder. The entry is not a lawful widening of this reader, so no
+       plan is laid and a file under its hash refuses LAYOUT_MALFORMED. It is
+       never counted and read past. 1 is LAYOUT_MALFORMED; 3 is KIND_MISMATCH,
+       the writer's ?T into this reader's bare T (ruling R2, 2026-11-22). */
+    uint8_t unlawful;
     tabledemo_table_report_t * report;
 } tabledemo_table_fixed_compiler_t;
 
@@ -2946,48 +2953,29 @@ static SCHEMA_UNUSED uint32_t tabledemo_table_fixed_lay_fills( tabledemo_table_f
 static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_fixed_compiler_t * c,
     const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census );
+    uint32_t guard, uint64_t arg );
 
 /* table_fixed_match_children walks a TABLE's children on both sides.
 
-   The census flag is whether THIS entry is the FIRST time the writer's field is
-   seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-   ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-   writer's field dropped from a [4]Item is counted four times and the report says 4
-   where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11). */
+   A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
+   removal; a field is deprecated in place). A writer field no child of mine
+   names makes the lineage entry UNLAWFUL before any entry is laid: there is no
+   compile census to count (§5.4, §5.9 #30; §5.8 row 11 is that census, retired). */
 static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_fixed_compiler_t * c,
     const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
     const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
     int32_t my_child = mi + 1;
+    int32_t tc_at = ti + 1;
     /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
        backend's shape everywhere and not a C99 limitation: j and k are reused
-       by the census below, and a redeclaration inside the second pair of loops
+       by both pairs of loops below, and a redeclaration inside the second pair
        would shadow these two and trip -Wshadow. */
     uint32_t j, k;
-    for ( k = 0; k < me.children && my_child < mine->count; ++k )
-    {
-        const tabledemo_table_fixed_layout_entry_t mc = tabledemo_table_fixed_entry_at( mine, my_child );
-        int32_t their_child = ti + 1;
-        uint32_t their_off = their_at;
-        for ( j = 0; j < te.children && their_child < theirs->count; ++j )
-        {
-            const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, their_child );
-            if ( tc.id == mc.id )
-            {
-                tabledemo_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
-                break;
-            }
-            their_off += tc.size;
-            their_child += tabledemo_table_fixed_subtree( theirs, their_child );
-        }
-        my_child += tabledemo_table_fixed_subtree( mine, my_child );
-    }
-    /* EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown */
-    int32_t tc_at = ti + 1;
+    /* EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful */
     for ( j = 0; j < te.children && tc_at < theirs->count; ++j )
     {
         const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, tc_at );
@@ -3002,15 +2990,37 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_
             }
             mc_at += tabledemo_table_fixed_subtree( mine, mc_at );
         }
-        if ( !named && census && c->report != NULL ) { c->report->unknown++; }
+        if ( !named )
+        {
+            c->unlawful = 1;
+            return;
+        }
         tc_at += tabledemo_table_fixed_subtree( theirs, tc_at );
+    }
+    for ( k = 0; k < me.children && my_child < mine->count; ++k )
+    {
+        const tabledemo_table_fixed_layout_entry_t mc = tabledemo_table_fixed_entry_at( mine, my_child );
+        int32_t their_child = ti + 1;
+        uint32_t their_off = their_at;
+        for ( j = 0; j < te.children && their_child < theirs->count; ++j )
+        {
+            const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, their_child );
+            if ( tc.id == mc.id )
+            {
+                tabledemo_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                break;
+            }
+            their_off += tc.size;
+            their_child += tabledemo_table_fixed_subtree( theirs, their_child );
+        }
+        my_child += tabledemo_table_fixed_subtree( mine, my_child );
     }
 }
 
 static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_fixed_compiler_t * c,
     const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
     const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
@@ -3044,7 +3054,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             e.arg = arg;
             e.op = TABLEDEMO_K_TABLE_FIXED_PRESENT;
             tabledemo_table_fixed_push( c, e );
-            tabledemo_table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
+            tabledemo_table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
             break;
         }
         if ( te.kind != me.kind )
@@ -3063,8 +3073,10 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 tabledemo_table_fixed_push( c, e );
                 break;
             }
-            /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
-            if ( c->report != NULL ) { c->report->refused = 1, c->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; }
+            /* A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
+               REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4):
+               no plan is laid. The writer's ?T into my bare T is KIND_MISMATCH (R2). */
+            c->unlawful = ( te.kind == 35 ) ? (uint8_t) 3 : (uint8_t) 1;
             break;
         }
         switch ( me.kind )
@@ -3081,7 +3093,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 const uint32_t outer_present = c->present;
                 c->present = their_at + 1u;
-                tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
                 c->present = outer_present;
                 tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
                 e.src = their_at;
@@ -3097,7 +3109,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             }
             case 13: /* a nested table: match its fields */
             {
-                tabledemo_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
+                tabledemo_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
                 break;
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
@@ -3142,7 +3154,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 for ( i = 0; i < n; ++i )
                 {
                     tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                        mine, mi + 1, dst, at + i * d->stride, guard, arg, census && i == 0 );
+                        mine, mi + 1, dst, at + i * d->stride, guard, arg );
                 }
                 break;
             }
@@ -3162,7 +3174,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                     {
                         if ( tabledemo_table_fixed_entry_at( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                         tabledemo_table_fixed_compile_entry( c, theirs, tel, their_at + j * tee.size,
-                            mine, mel, dst, at + k * d->stride, guard, arg, census && k == 0 );
+                            mine, mel, dst, at + k * d->stride, guard, arg );
                         break;
                     }
                 }
@@ -3232,7 +3244,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                             tag.arm = ta.size; /* the WRITER's arm bytes, for the span past a narrower taken arm */
                             tabledemo_table_fixed_push( c, tag );
                             tabledemo_table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
-                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                             break;
                         }
                         their_arm += tabledemo_table_fixed_subtree( theirs, their_arm );
@@ -3392,11 +3404,15 @@ static SCHEMA_UNUSED int32_t tabledemo_table_fixed_compile( const tabledemo_tabl
     c.report = report;
     c.record = tabledemo_table_fixed_entry_at( theirs, 0 ).size;
     c.want_guarded = 0;
-    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1 );
+    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0 );
     plain = c.count;
     c.want_guarded = 1;
-    c.report = NULL; /* the unknown census is the first pass's; counting it twice would lie */
-    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1 );
+    c.report = NULL;
+    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0 );
+    /* AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is LAYOUT_MALFORMED, -4 the
+       writer's ?T into a bare T, KIND_MISMATCH (R2). Decided before overflow,
+       so a capacity retry never turns an unlawful entry into plan_too_large. */
+    if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE; }

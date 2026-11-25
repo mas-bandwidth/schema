@@ -22,30 +22,26 @@ import (
 // The read uses the writer's locked entry, never a plan compiled from wire data.
 // Values come from the C++ writer; faults are applied only after its clean file
 // has passed. No retired forward-read or run-time-layout-walk behavior is revived.
+//
+// THREE COLUMNS. `compiled=false`: FX1 reads the C++ writer's fx1.bin through its own
+// baked plan. `compiled=true`: FX2 is handed FX1's entry, and FX1 carries `gone`,
+// which FX2 names nowhere — §5.1 refuses a removal, so the entry is UNLAWFUL
+// (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30): the load refuses
+// layout_malformed with every counter at zero and both rows back at FX2's
+// declared defaults (SPEC-TABLES §6.5), on both poisons. `lawful`: the same
+// edits minus the removal — FX1 without `gone`, written here by this leg — read
+// through FX2: the widened `narrow`, the renamed field, and FX2's own `added`
+// and `extra` at their defaults, with unknown at zero.
 func TestJSFixedVersioningBytesAndDefaults(t *testing.T) {
 	slowtest.Gate(t, "native JavaScript fixed lineage controls")
 	corpus, node := jsFixedCorpus(t), jsNode(t)
 	older, newer := jsReadSchema(t, "FX1"), jsReadSchema(t, "FX2")
-	for _, compiled := range []bool{false, true} {
-		t.Run(fmt.Sprintf("compiled=%v", compiled), func(t *testing.T) {
-			reader, lineage := older, []string(nil)
-			extra := ""
-			widened, unknown := 0, 0
-			if compiled {
-				reader, lineage = newer, []string{older}
-				extra = `if (v.added !== 11 || v.extra.x !== 0 || v.extra.y !== 0) { fail("missing fields lost their defaults: " + show(v)); }`
-				widened, unknown = 2, 1
-			}
-			body := fmt.Sprintf(`
-const data = readFileSync(%q);
-const plan = TNewPlan(4096, 4096);
-const back = [new T(), new T()];
-for (const poison of [0x5A, 0xFF]) {
-  plan.image.fill(poison);
-  const r = new TableFixedReport();
-  const n = TLoad(back, 2, data, data.length, plan, r);
-  if (n !== 2 || r.refused || r.damaged || r.unknown !== %d || r.widened !== %d ||
-      r.mismatch || r.oor || r.repeated) { fail("FX1 C++ read: " + n + " " + reason(r)); }
+	const goneLine = "    gone    int32 = 9 | min = 0, max = 1000\n"
+	if !strings.Contains(older, goneLine) {
+		t.Fatalf("FX1.schema no longer declares %q: the lawful column derives its writer by removing it", goneLine)
+	}
+	lawfulOlder := strings.Replace(older, goneLine, "", 1)
+	const check = `
   const v = back[0];
   if (v.keep !== 4242 || v.narrow !== 40000 || v.nested.a !== 111 || v.nested.b !== 222 ||
       v.blobLength !== 4 || [222,173,190,239,0,0].some((b,i) => v.blob[i] !== b)) {
@@ -54,14 +50,84 @@ for (const poison of [0x5A, 0xFF]) {
   if (back[1].blobLength !== 0 || Array.from(back[1].blob).some(b => b !== 0)) {
     fail("empty bytes/slack after populated record: " + show(back[1]));
   }
-  %s
+`
+	t.Run("compiled=false", func(t *testing.T) {
+		body := fmt.Sprintf(`
+const data = readFileSync(%q);
+const plan = TNewPlan(4096, 4096);
+const back = [new T(), new T()];
+for (const poison of [0x5A, 0xFF]) {
+  plan.image.fill(poison);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 2, data, data.length, plan, r);
+  if (n !== 2 || r.refused || r.damaged || r.unknown || r.widened ||
+      r.mismatch || r.oor || r.repeated) { fail("FX1 C++ read: " + n + " " + reason(r)); }
+%s
 }
-`, filepath.Join(corpus, "fx1.bin"), unknown, widened, extra)
-			if out, err := jsRunVersionProbe(t, node, reader, lineage, 0, "FxRoot", body); err != nil {
-				t.Fatalf("C++ bytes/defaults: %v\n%s", err, out)
-			}
-		})
-	}
+`, filepath.Join(corpus, "fx1.bin"), check)
+		if out, err := jsRunVersionProbe(t, node, older, nil, 0, "FxRoot", body); err != nil {
+			t.Fatalf("C++ bytes/defaults: %v\n%s", err, out)
+		}
+	})
+	t.Run("compiled=true", func(t *testing.T) {
+		body := fmt.Sprintf(`
+const data = readFileSync(%q);
+const plan = TNewPlan(4096, 4096);
+const back = [new T(), new T()];
+const want = new T(); InitT(want);
+for (const poison of [0x5A, 0xFF]) {
+  for (const v of back) { v.keep = 4242; v.narrow = 40000; v.renamedTo = 808; v.added = 909; v.nested.a = 111; v.extra.x = 7; v.blobLength = 4; v.blob[0] = 222; }
+  plan.image.fill(poison);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 2, data, data.length, plan, r);
+  if (n !== -1 || r.refused !== TableFixedRefusal.LayoutMalformed || r.damaged) {
+    fail("FX2 over FX1's entry: the removed gone makes it UNLAWFUL and the load refuses layout_malformed: " + n + " " + reason(r));
+  }
+  if (r.unknown || r.widened || r.mismatch || r.oor || r.repeated) {
+    fail("FX2 over FX1's entry: a refusal moves no counter and there is no compile census: " + reason(r));
+  }
+  for (let k = 0; k < back.length; k++) {
+    if (show(back[k]) !== show(want)) { fail("row " + k + " is not at FX2's declared defaults after the refusal: " + show(back[k])); }
+  }
+}
+`, filepath.Join(corpus, "fx1.bin"))
+		if out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, "FxRoot", body); err != nil {
+			t.Fatalf("C++ bytes/defaults, unlawful entry: %v\n%s", err, out)
+		}
+	})
+	t.Run("lawful", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "fx1_lawful.bin")
+		write := fmt.Sprintf(`
+const { writeFileSync } = await import("node:fs");
+const rows = [new T(), new T()];
+InitT(rows[0]); InitT(rows[1]);
+rows[0].keep = 4242; rows[0].narrow = 40000; rows[0].nested.a = 111; rows[0].nested.b = 222;
+rows[0].blob[0] = 222; rows[0].blob[1] = 173; rows[0].blob[2] = 190; rows[0].blob[3] = 239; rows[0].blobLength = 4;
+const buf = new Uint8Array(TMeasure(2));
+if (TSave(rows, 2, buf) !== buf.length) { fail("the lawful FX1 wrote its two records"); }
+writeFileSync(%q, buf);
+`, file)
+		if out, err := jsRunVersionProbe(t, node, lawfulOlder, nil, 0, "FxRoot", write); err != nil {
+			t.Fatalf("lawful FX1's own save: %v\n%s", err, out)
+		}
+		body := fmt.Sprintf(`
+const data = readFileSync(%q);
+const plan = TNewPlan(4096, 4096);
+const back = [new T(), new T()];
+for (const poison of [0x5A, 0xFF]) {
+  plan.image.fill(poison);
+  const r = new TableFixedReport();
+  const n = TLoad(back, 2, data, data.length, plan, r);
+  if (n !== 2 || r.refused || r.damaged || r.unknown !== 0 || r.widened !== 2 ||
+      r.mismatch || r.oor || r.repeated) { fail("lawful FX1 read by FX2: " + n + " " + reason(r)); }
+%s
+  if (v.renamedTo !== 5 || v.added !== 11 || v.extra.x !== 0 || v.extra.y !== 0) { fail("missing fields lost their defaults: " + show(v)); }
+}
+`, file, check)
+		if out, err := jsRunVersionProbe(t, node, newer, []string{lawfulOlder}, 0, "FxRoot", body); err != nil {
+			t.Fatalf("lawful bytes/defaults: %v\n%s", err, out)
+		}
+	})
 }
 
 func TestJSFixedVersioningArmTextControls(t *testing.T) {

@@ -1,44 +1,69 @@
 package ctable
 
+// §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) is handed the
+// OLD writer's layout as a lineage entry. §5.1 refuses a removal, so a lawful
+// older writer never carries a field the reader lacks: the entry is UNLAWFUL,
+// COMPILE lays no plan for it and the load refuses `layout_malformed` with every
+// counter at zero — `unknown` included, because there is no compile census
+// (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30). After the refusal
+// every row handed in is back at its declared defaults (docs/SPEC-TABLES.md
+// §6.5), and a second load over freshly poisoned rows refuses the same way.
+
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
 
-// §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) reads the OLD
-// writer's lawful `old_unknown_census.bin` through the handed-in lineage entry.
-// Four elements each carry `a` and the removed `drop`, but `drop` is ONE field
-// of ONE endpoint (Item), so the compile census counts it ONCE: `unknown == 1`, and
-// a leg that counts once per ELEMENT would land `4` and pass a `>= 1` read. The
-// check asserts `== 1` exactly, and reads the same endpoint a SECOND time to prove
-// the census lands on every returning read (§5.9 #6), not once per run.
+// cUnlawfulBody is the probe body every unlawful-entry row shares. The harness
+// has already poisoned back[] (with `poison`) and run the first load; pass 1
+// poisons the rows again and loads a second time. Each pass must refuse
+// layout_malformed by name, move no counter, and leave every row at its
+// declared defaults (`check` is true of back[k] when it is). `load` is the
+// root's generated <snake>_fixed_load.
+func cUnlawfulBody(row, load, poison, check string) string {
+	return fmt.Sprintf(`
+    {
+        int pass;
+        for ( pass = 0; pass < 2; ++pass )
+        {
+            if ( pass == 1 )
+            {
+                for ( k = 0; k < 8; ++k ) { %[3]s }
+                memset( &r, 0, sizeof( r ) );
+                n = %[2]s( back, 8, data, len, plan, 4096, NULL, &r );
+            }
+            if ( n >= 0 ) { printf( "%[1]s pass %%d: the unlawful entry LOADED %%lld records\n", pass, (long long) n ); return 1; }
+            if ( !r.refused || r.reason != SCHEMA_TABLE_LAYOUT_MALFORMED || r.refuse_reason != 0 )
+                { printf( "%[1]s pass %%d: not refused layout_malformed: refused=%%d reason=%%d refuse_reason=%%d\n", pass, r.refused, r.reason, r.refuse_reason ); return 1; }
+            if ( r.unknown != 0 || r.widened != 0 || r.missing_required != 0 || r.non_finite_floats != 0 )
+                { printf( "%[1]s pass %%d: a refusal moved a counter: unknown=%%d widened=%%d missing=%%d nonfinite=%%d\n", pass, r.unknown, r.widened, r.missing_required, r.non_finite_floats ); return 1; }
+            for ( k = 0; k < 8; ++k )
+            {
+                if ( !( %[4]s ) ) { printf( "%[1]s pass %%d: row %%d is not at its declared defaults\n", pass, k ); return 1; }
+            }
+        }
+    }
+`, row, load, poison, check)
+}
+
+// cUnlawfulPoison runs the harness's poison over all eight rows.
+func cUnlawfulPoison(poison string) string {
+	return "    for ( k = 0; k < 8; ++k ) { " + poison + " }\n"
+}
+
+const (
+	cCensusPoison = `back[k].lead = 99u; back[k].trail = 88u; back[k].items[0].a = 5; back[k].items[1].a = 6; back[k].items[2].a = 7; back[k].items[3].a = 8;`
+	cCensusCheck  = `back[k].lead == 1u && back[k].trail == 2u && back[k].items[0].a == 0 && back[k].items[1].a == 0 && back[k].items[2].a == 0 && back[k].items[3].a == 0`
+)
+
 func TestFixedVersioningUnknownCensus(t *testing.T) {
 	corpus := cFixedCorpus(t)
 	newer := cReadSchema(t, "VNEW_unknown_census")
 	older := cReadSchema(t, "VOLD_unknown_census")
-
-	body := `
-    if ( n != 1 ) { printf( "unknown_census: n == %lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].lead != 1 || back[0].trail != 2 )
-        { printf( "unknown_census: a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-    if ( back[0].items[0].a != 10 || back[0].items[1].a != 11 || back[0].items[2].a != 12 || back[0].items[3].a != 13 )
-        { printf( "unknown_census: the four a values did not land: %d %d %d %d\n", back[0].items[0].a, back[0].items[1].a, back[0].items[2].a, back[0].items[3].a ); return 1; }
-    if ( r.unknown != 1 ) { printf( "unknown_census: unknown == %d, not exactly 1\n", r.unknown ); return 1; }
-    if ( r.widened != 0 )
-        { printf( "unknown_census: a counter moved on a clean backward read: u=%d w=%d\n", r.unknown, r.widened ); return 1; }
-    if ( r.refused || r.refuse_reason != 0 ) { printf( "unknown_census: a clean read refused: refused=%d refuse_reason=%d\n", r.refused, r.refuse_reason ); return 1; }
-    if ( r.reason != 0 ) { printf( "unknown_census: reason == %d, not 0\n", r.reason ); return 1; }
-    {
-        int64_t n2;
-        memset( &r, 0, sizeof( r ) );
-        n2 = census_fixed_load( back, 8, data, len, plan, 4096, NULL, &r );
-        if ( n2 != 1 ) { printf( "unknown_census: the SECOND read did not return one record: %lld\n", (long long) n2 ); return 1; }
-        if ( r.unknown != 1 ) { printf( "unknown_census: the SECOND read owes unknown == 1 again, not %d\n", r.unknown ); return 1; }
-    }
-`
-
+	body := cUnlawfulBody("unknown_census", "census_fixed_load", cCensusPoison, cCensusCheck)
 	out, err := cRunVersionProbe(t, newer, []string{older}, 0,
-		filepath.Join(corpus, "old_unknown_census.bin"), body, "")
+		filepath.Join(corpus, "old_unknown_census.bin"), body, cUnlawfulPoison(cCensusPoison))
 	if err != nil {
 		t.Fatalf("unknown_census: %v\n%s", err, out)
 	}

@@ -457,10 +457,9 @@ func t04R20(t *testing.T) {
 	if prefill[4] != 0x4d || prefill[5] != 0 || prefill[6] != 0 || prefill[7] != 0 {
 		t.Errorf("R20: the added field's bytes are % x, want 4d 00 00 00 — the declared default 77", prefill[4:8])
 	}
-	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
-	// time the writer's field is seen, and an array's element 0 is the only one
-	// that censuses.
-	t04Has(t, fixedRuntime, "if (!named && census) {", "R20 an unknown field is counted")
+	// A REMOVED WRITER FIELD makes the entry UNLAWFUL, refused and never counted
+	// (§5.4, §5.9 #30); a deprecated field keeps its slot and its name.
+	t04Has(t, fixedRuntime, "if (!named) {\n        plan.unlawful = true;", "R20 an unnamed writer field makes the entry unlawful")
 	t04Has(t, fixedRuntime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
 	t04Has(t, text, "report.unknown += censusUnknown;", "R20 the census lands once, after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.

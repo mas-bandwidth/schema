@@ -2429,14 +2429,16 @@ int planPartitionIsHeld(Int32List entries, int count, int split, String who) {
 }
 
 void planPartitionCase() {
-  // V1 READS V2'S LAYOUT. V2 inserts an arm in the MIDDLE of Effect, so the
-  // compiled plan carries guarded arm entries the identity plan does not, and
-  // the scalars and arrays around them are unguarded. The compile is the SAME
-  // walk the build runs for a locked peer: `theirs` is the writer's layout and
-  // `mine` is this build's own.
+  // V1 AND V2 ARE AN UNLAWFUL PAIR IN BOTH DIRECTIONS, so neither one is a
+  // partition case: V2 removes `b`, and V1 names none of V2's `c`, `gain` or
+  // `hex`. §5.2 MATCH makes a writer field the reader names nowhere UNLAWFUL —
+  // "a lawful older writer has no field the reader lacks" — so COMPILE lays no
+  // plan and answers -5, and a file under that hash refuses layout_damaged
+  // (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4, §5.9 #30). Both directions are
+  // held as that REFUSAL here; the shared corpus row `unknown_census` holds the
+  // load's verdict in every leg (docs/SPEC-CONFORMANCE.md).
   {
     final plan = v1.cfgFixedNewPlan();
-    final report = v1home.TableFixedReport();
     plan.theirs.parse(
       ByteData.sublistView(v2.cfgFixedLayout),
       0,
@@ -2449,31 +2451,16 @@ void planPartitionCase() {
       v1.cfgFixedDst,
       v1.cfgFixedCover,
       v1.cfgFixedCoverCount,
-      report,
-    );
-    check(made > 0, 'W6: V1 reading V2 compiles a plan (got $made)');
-    final guarded = planPartitionIsHeld(
-      plan.entries,
-      made,
-      plan.split,
-      'V1 identity reading V2\'s layout',
+      v1home.TableFixedReport(),
     );
     check(
-      guarded > 0,
-      'W6: the compiled plan really has a guarded half, so the case is not vacuous',
-    );
-    print(
-      'W6: V1<-V2 — $made entries, ${plan.split} unguarded then $guarded guarded, '
-      'no run coalesces across the split',
+      made == -5,
+      'W6: V1 reading V2 is UNLAWFUL (V1 names no `c`, `gain` or `hex`) and '
+      'COMPILE answers -5 (got $made)',
     );
   }
-
-  // AND THE OTHER DIRECTION, V2 READING V1, which is the §5 read: a newer
-  // build reading the older generation's bytes. The split is a property of the
-  // plan's order and not of which side is newer, so it holds here too.
   {
     final plan = v2.cfgFixedNewPlan();
-    final report = v2home.TableFixedReport();
     plan.theirs.parse(
       ByteData.sublistView(v1.cfgFixedLayout),
       0,
@@ -2486,20 +2473,52 @@ void planPartitionCase() {
       v2.cfgFixedDst,
       v2.cfgFixedCover,
       v2.cfgFixedCoverCount,
+      v2home.TableFixedReport(),
+    );
+    check(
+      made == -5,
+      'W6: V2 reading V1 is UNLAWFUL (V2 removed `b`) and COMPILE answers -5 '
+      '(got $made)',
+    );
+  }
+  print('W6: V1<-V2 and V2<-V1 are unlawful and refuse (-5), no plan laid');
+
+  // THE LAWFUL COMPILED CASE: FU2 READS FU1, the §5 read of a newer build over
+  // the older generation's bytes. FU2 appends `extra` and widens `mark` and
+  // `heat`, and both carry the union `pick`, so the compiled plan has guarded
+  // arm entries the scalars around them do not.
+  {
+    final plan = fu2.fuRootFixedNewPlan();
+    final report = fu2home.TableFixedReport();
+    plan.theirs.parse(
+      ByteData.sublistView(fu1.fuRootFixedLayout),
+      0,
+      fu1.fuRootFixedLayout.length,
+    );
+    final made = fu2home.TableFixedCompiler.compile(
+      plan,
+      fu2.fuRootFixedLayout,
+      ByteData.sublistView(fu2.fuRootFixedLayout),
+      fu2.fuRootFixedDst,
+      fu2.fuRootFixedCover,
+      fu2.fuRootFixedCoverCount,
       report,
     );
-    check(made > 0, 'W6: V2 reading V1 compiles a plan (got $made)');
+    check(made > 0, 'W6: FU2 reading FU1 compiles a plan (got $made)');
     final guarded = planPartitionIsHeld(
       plan.entries,
       made,
       plan.split,
-      'V2 identity reading V1\'s layout',
+      'FU2 reading FU1\'s layout',
     );
     check(
       guarded > 0,
-      'W6: V2 reading V1 really has a guarded half, so the case is not vacuous',
+      'W6: the compiled plan really has a guarded half, so the case is not vacuous',
     );
-    print('W6: V2<-V1 — $made entries, split ${plan.split}');
+    print(
+      'W6: FU2<-FU1 — $made entries, ${plan.split} unguarded then $guarded guarded, '
+      'no run coalesces across the split',
+    );
   }
 
   // A PLAN WITH NO GUARDED HALF AT ALL. FX1 carries no union, so every entry
@@ -2658,9 +2677,12 @@ void writeChecksDebugOnlyCase() {
 // image into exactly those. The identity plan lands every value byte, so its
 // list is EMPTY and the identity read pays nothing (fix 15).
 //
-// THE MEASUREMENT. A plan is compiled for the OLDER writer's layout — FX2
-// reads an FX1 record, the direction §5 keeps — and its entry landings and its
-// fill list are read off the plan itself. The fill is asserted to be the cover
+// THE MEASUREMENT. A plan is compiled for the OLDER writer's layout — FU2
+// reads an FU1 record, the direction §5 keeps, and a LAWFUL one: FU2 appends
+// `extra` and widens two fields, so `extra` is the hole — and its entry
+// landings and its fill list are read off the plan itself. (FX2 reading FX1 is
+// NOT this case: FX2 removed `gone`, so that entry is UNLAWFUL, lays no plan
+// and has no fill list; it is held below as the refusal it is.) The fill is asserted to be the cover
 // MINUS the landings: every value byte is landed or filled, never both and
 // never neither. Then the fill is RUN over an image poisoned with 0x5A: a byte
 // an entry lands must come back STILL POISON (the prefill did not write it)
@@ -2669,7 +2691,7 @@ void writeChecksDebugOnlyCase() {
 // covered nothing would leave the holes poisoned. This case fails either way,
 // and the identity plan is run through the same check as the limit case the
 // rule admits.
-void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
+void _w9Partition(String who, fu2home.TableFixedPlan plan, int body) {
   // WHAT THE PLAN LANDS, read off its own entries. A COUNT lands its four
   // length bytes and a TEXT lands its length word and its units; everything
   // else lands `size` bytes. This is the doc's own list of landings, not the
@@ -2677,9 +2699,9 @@ void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
   final landed = List<bool>.filled(body, false);
   final lands = Int32List(4);
   for (var i = 0; i < plan.count; i++) {
-    fx2home.TableFixedCompiler.entryLands(
+    fu2home.TableFixedCompiler.entryLands(
       plan.entries,
-      i * fx2home.TableFixedLane.lanes,
+      i * fu2home.TableFixedLane.lanes,
       lands,
     );
     for (var q = 0; q < 4; q += 2) {
@@ -2692,9 +2714,9 @@ void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
   }
   // the cover, which is the type's value bytes
   final cover = List<bool>.filled(body, false);
-  for (var c = 0; c < fx2.fxRootFixedCoverCount; c++) {
-    final lo = fx2.fxRootFixedCover[c * 2];
-    final hi = lo + fx2.fxRootFixedCover[c * 2 + 1];
+  for (var c = 0; c < fu2.fuRootFixedCoverCount; c++) {
+    final lo = fu2.fuRootFixedCover[c * 2];
+    final hi = lo + fu2.fuRootFixedCover[c * 2 + 1];
     for (var b = lo; b < hi && b < body; b++) {
       cover[b] = true;
     }
@@ -2723,10 +2745,10 @@ void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
   // AND THE FILL RUN WRITES ONLY THE HOLES. Poison the image and run it: the
   // landed bytes keep the poison, the holes take the declared default.
   final image = Uint8List(body)..fillRange(0, body, 0x5A);
-  fx2home.tableFixedFillRun(
+  fu2home.tableFixedFillRun(
     plan.fill,
     plan.fillCount,
-    fx2.fxRootFixedPrefill,
+    fu2.fuRootFixedPrefill,
     image,
   );
   for (var b = 0; b < body; b++) {
@@ -2738,7 +2760,7 @@ void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
       );
     } else if (cover[b]) {
       check(
-        image[b] == fx2.fxRootFixedPrefill[b],
+        image[b] == fu2.fuRootFixedPrefill[b],
         'W9: $who: hole $b was not prefilled with the declared default',
       );
     }
@@ -2746,23 +2768,49 @@ void _w9Partition(String who, fx2home.TableFixedPlan plan, int body) {
 }
 
 void w9PrefillUnwrittenOnly() {
-  final plan = fx2.fxRootFixedNewPlan();
-  check(
-    plan.theirs.parse(
+  // THE UNLAWFUL PAIR FIRST: FX2 removed `gone`, a writer field it names
+  // nowhere, so §5.2 MATCH makes FX1's entry UNLAWFUL and COMPILE answers -5
+  // with no plan and no fill (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4).
+  {
+    final unlawful = fx2.fxRootFixedNewPlan();
+    unlawful.theirs.parse(
       ByteData.sublistView(fx1.fxRootFixedLayout),
       0,
       fx1.fxRootFixedLayout.length,
+    );
+    final made = fx2home.TableFixedCompiler.compile(
+      unlawful,
+      fx2.fxRootFixedLayout,
+      ByteData.sublistView(fx2.fxRootFixedLayout),
+      fx2.fxRootFixedDst,
+      fx2.fxRootFixedCover,
+      fx2.fxRootFixedCoverCount,
+      fx2home.TableFixedReport(),
+    );
+    check(
+      made == -5,
+      'W9: FX2 reading FX1 is UNLAWFUL (FX2 removed `gone`) and COMPILE '
+      'answers -5 (got $made)',
+    );
+  }
+
+  final plan = fu2.fuRootFixedNewPlan();
+  check(
+    plan.theirs.parse(
+      ByteData.sublistView(fu1.fuRootFixedLayout),
+      0,
+      fu1.fuRootFixedLayout.length,
     ),
     'W9: the older writer\'s layout parses into the plan',
   );
-  final r = fx2home.TableFixedReport();
-  final made = fx2home.TableFixedCompiler.compile(
+  final r = fu2home.TableFixedReport();
+  final made = fu2home.TableFixedCompiler.compile(
     plan,
-    fx2.fxRootFixedLayout,
-    ByteData.sublistView(fx2.fxRootFixedLayout),
-    fx2.fxRootFixedDst,
-    fx2.fxRootFixedCover,
-    fx2.fxRootFixedCoverCount,
+    fu2.fuRootFixedLayout,
+    ByteData.sublistView(fu2.fuRootFixedLayout),
+    fu2.fuRootFixedDst,
+    fu2.fuRootFixedCover,
+    fu2.fuRootFixedCoverCount,
     r,
   );
   check(made > 0, 'W9: FX2 compiles a plan from FX1\'s layout (made $made)');
@@ -2771,34 +2819,34 @@ void w9PrefillUnwrittenOnly() {
     'W9: the compiled plan leaves holes, so the case is not vacuous '
     '(fillCount ${plan.fillCount})',
   );
-  _w9Partition('compiled', plan, fx2.fxRootFixedBodyBytes);
+  _w9Partition('compiled', plan, fu2.fuRootFixedBodyBytes);
 
   // THE LIMIT CASE THE RULE ADMITS (§4.3): the identity plan lands every value
   // byte, so its fill list is EMPTY and the fill run writes nothing.
-  final identity = fx2.fxRootFixedNewPlan();
+  final identity = fu2.fuRootFixedNewPlan();
   check(
     identity.theirs.parse(
-      ByteData.sublistView(fx2.fxRootFixedLayout),
+      ByteData.sublistView(fu2.fuRootFixedLayout),
       0,
-      fx2.fxRootFixedLayout.length,
+      fu2.fuRootFixedLayout.length,
     ),
     'W9: this build\'s own layout parses into the identity plan',
   );
-  final madeId = fx2home.TableFixedCompiler.compile(
+  final madeId = fu2home.TableFixedCompiler.compile(
     identity,
-    fx2.fxRootFixedLayout,
-    ByteData.sublistView(fx2.fxRootFixedLayout),
-    fx2.fxRootFixedDst,
-    fx2.fxRootFixedCover,
-    fx2.fxRootFixedCoverCount,
-    fx2home.TableFixedReport(),
+    fu2.fuRootFixedLayout,
+    ByteData.sublistView(fu2.fuRootFixedLayout),
+    fu2.fuRootFixedDst,
+    fu2.fuRootFixedCover,
+    fu2.fuRootFixedCoverCount,
+    fu2home.TableFixedReport(),
   );
   check(madeId > 0, 'W9: the identity compile wrote $madeId entries');
   check(
     identity.fillCount == 0,
     'W9: the identity plan\'s fill list is EMPTY, not ${identity.fillCount}',
   );
-  _w9Partition('identity', identity, fx2.fxRootFixedBodyBytes);
+  _w9Partition('identity', identity, fu2.fuRootFixedBodyBytes);
 }
 
 // ---------------------------------------------------------------------------

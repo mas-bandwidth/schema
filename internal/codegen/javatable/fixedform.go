@@ -2517,12 +2517,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        }\n")
 	g.pf("\n")
 	g.pf("        // STEP 8: the plan this endpoint resolves to, and the record size FROM THE\n")
-	g.pf("        // LOCK. The census is the plan's own numbers, carried to the bottom.\n")
+	g.pf("        // LOCK. An UNLAWFUL entry carries layoutMalformed and no plan (§5.4).\n")
 	g.pf("        TableFixed.Entry[] entries = Identity.plan;\n")
 	g.pf("        int made = Identity.plan.length;\n")
 	g.pf("        TableFixed.Prefill pre = Identity.prefill;\n")
 	g.pf("        short[] table = remap;\n")
-	g.pf("        int censusUnknown = 0;\n")
 	if entryBounds != nil {
 		g.pf("        // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("        // §4.6, bill §12.5): held after the plan run and before the scatter,\n")
@@ -2541,7 +2540,6 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            made = lane.count;\n")
 	g.pf("            pre = lane.prefill;\n")
 	g.pf("            table = lane.remap;\n")
-	g.pf("            censusUnknown = lane.unknown;\n")
 	if entryBounds != nil {
 		g.pf("            writerBounds = Lineage.bounds[pick];\n")
 	}
@@ -2601,10 +2599,8 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                at += (int) recordSize;\n")
 	g.pf("            }\n")
 	g.pf("        }\n")
-	g.pf("        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that\n")
-	g.pf("        // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how\n")
-	g.pf("        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).\n")
-	g.pf("        report.unknown += censusUnknown;\n")
+	g.pf("        // NO COMPILE CENSUS LANDS: a lawful lineage counts nothing, and an\n")
+	g.pf("        // unlawful one refused at STEP 8 (§5.4, §5.9 #30).\n")
 	g.pf("        return n;\n")
 	g.pf("    }\n")
 }

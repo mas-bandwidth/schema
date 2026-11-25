@@ -1,14 +1,14 @@
 package jstable
 
-// §5.4 row 11, `unknown_census`, NEW-READS-OLD over THREE records. The compile
-// census lands ONCE PER ENDPOINT and NEVER PER RECORD, and the landed one-record row
-// cannot close the second half of that clause: with one record "once per endpoint"
-// and "once per record" are the same number, 1. `Item.drop` is ONE field of ONE
-// endpoint, so `unknown` is asserted EXACTLY 1 across all three records — not 3 (a
-// per-record census) and not `>= 1` (which a per-element census of 4 would pass).
+// The three-record twin of unknown_census: many_unknown_census.bin carries
+// THREE records of the same Census root, and the NEW reader removes Item.drop.
+// The handed-in entry is UNLAWFUL whatever the record count (§5.4, §5.9 #30):
+// the load refuses `layout_malformed` before any record lands, `unknown` stays
+// zero (there is no census to count once per endpoint or once per record), and
+// every row handed in is back at its declared defaults (SPEC-TABLES §6.5), on a
+// first load and a second.
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -19,39 +19,9 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	newer := jsReadSchema(t, "VNEW_unknown_census")
 	older := jsReadSchema(t, "VOLD_unknown_census")
 	table := jsFixedRootName(t, older)
-	file := filepath.Join(corpus, "many_unknown_census.bin")
-
-	src := fmt.Sprintf(`
-const data = readFileSync(%q);
-const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
-const report = new TableFixedReport(); const r = report;
-const plan = TNewPlan(4096, 4096);
-// THE POISON (§5.7, §5.9 #17): a prefill that ran and one that never did look
-// alike over zeros, and a removed field's slot is the prefill's declared default.
-plan.image.fill(0x5A);
-const n = TLoad(back, back.length, data, data.length, plan, report);
-if (n !== 3) { fail("the manifest says this file carries 3 records, not " + n + " " + reason(r)); }
-if (r.refused !== 0 || r.damaged) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
-const want = [10, 11, 12, 13, 20, 21, 22, 23, 30, 31, 32, 33];
-for (let rec = 0; rec < 3; rec++) {
-  const got = back[rec];
-  if (got.lead !== 1 || got.trail !== 2) {
-    fail("record " + rec + ": the brackets either side of the removed field did not stand: " + show(got));
-  }
-  for (let i = 0; i < 4; i++) {
-    if (got.items[i].a !== want[rec * 4 + i]) {
-      fail("record " + rec + " items[" + i + "].a is " + got.items[i].a + ", the manifest says " + want[rec * 4 + i] + " — the removed drop moved a neighbour");
-    }
-  }
-}
-if (r.unknown !== 1) {
-  fail("unknown === 1 (once per endpoint, NEVER per record): Item.drop is one field of one endpoint, and three records owe one census, not " + r.unknown);
-}
-if (r.mismatch !== 0 || r.widened !== 0 || r.oor !== 0 || r.repeated !== 0) {
-  fail("a removed field is unknown, never a moved kind: " + reason(r));
-}
-`, file)
-
+	src := jsUnlawfulProbe(filepath.Join(corpus, "many_unknown_census.bin"), "unknown_census_many",
+		`back[k].lead = 99; back[k].trail = 88; for (let i = 0; i < 4; i++) { back[k].items[i].a = 5 + i; }`,
+		`back[k].lead === 1 && back[k].trail === 2 && back[k].items.every((it) => it.a === 0)`)
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 	if err != nil {
 		t.Fatalf("NEW-READS-OLD unknown_census many: %v\n%s", err, out)

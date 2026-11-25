@@ -192,9 +192,10 @@ func t12R14(t *testing.T) {
 // forward-read clamps are retired, each layout_newer now. A hash the lineage
 // does not hold is refused BEFORE any record and before any plan selection, on
 // the file's hash; the count and text clamps that REMAIN are the writer's
-// bounds carried by the plan (a backward read over a locked entry), and the
-// unknown-field count lands from the COMPILE census after a returning read,
-// never per record.
+// bounds carried by the plan (a backward read over a locked entry). There is
+// no unknown-field count: an entry naming a writer field this reader does not
+// is UNLAWFUL, and its lane refuses by its own Why before any record
+// (§5.4, §5.9 #30).
 func t12R15(t *testing.T) {
 	text := t12Retire(t, 0)
 	load := t12Load(t, text, "Lineage")
@@ -206,7 +207,13 @@ func t12R15(t *testing.T) {
 	if miss > records {
 		t.Error("R15: an unknown hash is not refused before the first record")
 	}
-	t12Has(t, load, "census_unknown = lane.Unknown;", "R15 unknown is the compile census")
+	why := strings.Index(load, "if (lane.Why != null)")
+	if why < 0 || why > records {
+		t.Error("R15: an unlawful lineage lane is not refused by its own Why before the first record")
+	}
+	if strings.Contains(load, "lane.Unknown") || strings.Contains(load, "census_unknown") {
+		t.Error("R15: the fixed compile census is back on the load")
+	}
 	runtime := t12Norm(text)
 	t12Has(t, runtime, "if (v < 0 || (uint)v > p.Size) { return \"count_over_bound\"; }", "R15 a count past the writer's bound refuses")
 	t12Has(t, runtime, "if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }", "R15 a length past the writer's span refuses")

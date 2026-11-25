@@ -3888,8 +3888,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderCameraFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderCameraFixedLineagePlans[pick];
@@ -3916,10 +3914,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderCameraFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -3988,8 +3982,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -4666,8 +4658,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderShipFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderShipFixedLineagePlans[pick];
@@ -4694,10 +4684,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderShipFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -4767,8 +4753,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -5393,8 +5377,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderTurretFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderTurretFixedLineagePlans[pick];
@@ -5421,10 +5403,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderTurretFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -5494,8 +5472,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -6135,8 +6111,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderMissileFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderMissileFixedLineagePlans[pick];
@@ -6163,10 +6137,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderMissileFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -6236,8 +6206,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -6881,8 +6849,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderDynamicPropFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderDynamicPropFixedLineagePlans[pick];
@@ -6909,10 +6875,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderDynamicPropFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -6982,8 +6944,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -7628,8 +7588,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderStaticPropFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderStaticPropFixedLineagePlans[pick];
@@ -7656,10 +7614,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderStaticPropFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -7729,8 +7683,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -8383,8 +8335,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderCosmeticPropFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderCosmeticPropFixedLineagePlans[pick];
@@ -8411,10 +8361,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderCosmeticPropFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -8484,8 +8430,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -9109,8 +9053,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderLaserFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderLaserFixedLineagePlans[pick];
@@ -9137,10 +9079,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderLaserFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -9210,8 +9148,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -9852,8 +9788,6 @@ namespace Blockdemo
             ReadOnlySpan<byte> planBytes = RenderExplosionFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             if (pick != 1)
             {
                 TableFixedLineagePlan lane = RenderExplosionFixedLineagePlans[pick];
@@ -9880,10 +9814,6 @@ namespace Blockdemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RenderExplosionFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
@@ -9953,8 +9883,6 @@ namespace Blockdemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
