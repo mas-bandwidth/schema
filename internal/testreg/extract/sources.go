@@ -299,6 +299,33 @@ var driverActions = []string{"actions/checkout@", "actions/upload-artifact@", "a
 // setRE is a line that only sets shell options: set -euo pipefail.
 var setRE = regexp.MustCompile(`^set(\s+[-+][a-zA-Z]+(\s+pipefail)?)+\s*$`)
 
+// targetRE finds a target the job names: a YAML key (`target: x`, also
+// `- target: x` in a block matrix) or a flow-style one (`"target":"x"`,
+// `target: x` inside braces).
+var targetRE = regexp.MustCompile(`(?:^|[\s{,-])"?target"?\s*:\s*("[^"]*"|'[^']*'|\$\{\{[^}]*\}\}|[^\s,}]+)`)
+
+// targetsAreProducers reports whether every target the job's lines name is
+// the matrix's own (${{ matrix.target }}) or a producer's (testreg.Producers).
+func targetsAreProducers(lines []string) bool {
+	producers := map[string]bool{}
+	for _, p := range testreg.Producers {
+		producers[p.Target] = true
+	}
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		for _, m := range targetRE.FindAllStringSubmatch(line, -1) {
+			v := strings.Trim(m[1], `"'`)
+			if strings.Join(strings.Fields(v), " ") == "${{ matrix.target }}" || producers[v] {
+				continue
+			}
+			return false
+		}
+	}
+	return true
+}
+
 // driverCommands are the commands a driver-only job's steps may run.
 var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-test ", "go run ./tools/schema-test/ "}
 
@@ -307,8 +334,15 @@ var driverCommands = []string{"go run ./tools/fullrun ", "go run ./tools/schema-
 // command (or a set -e line), every action one of driverActions or the
 // repository's setup actions (testreg.SetupActions, which run no test), and
 // no shell but tools/pgroup's. A job whose only work is setup actions (it
-// builds what the driver's rows read) is driver-only too.
+// builds what the driver's rows read) is driver-only too. A setup action
+// that takes a make target (produce) builds a producer's tree only: every
+// target: the job names, as a step input or in its matrix, must be
+// ${{ matrix.target }} or a testreg.Producers target, or the job is not
+// driver-only (a produce step aimed at any other target may run a check).
 func DriverOnly(lines []string) bool {
+	if !targetsAreProducers(lines) {
+		return false
+	}
 	runs := 0
 	setups := 0 // steps that use a setup action
 	block := -1 // the indent of a run: | step while inside its block

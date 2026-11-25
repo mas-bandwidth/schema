@@ -854,6 +854,9 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		"  empty:\n    runs-on: x\n" +
 		"  setup:\n    runs-on: x\n    steps:\n      - uses: actions/checkout@abc\n      - uses: ./.github/actions/merge-main\n      - uses: ./.github/actions/schema-test-setup\n        with:\n          lang: none\n      - run: go run ./tools/schema-test run --group pr --lang none --shard 1/2\n" +
 		"  produce:\n    runs-on: x\n    steps:\n      - uses: actions/checkout@abc\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n" +
+		"  producers:\n    runs-on: x\n    strategy:\n      matrix:\n        include: [{\"name\":\"lint-c\",\"target\":\"tables-c-clean-inputs\"}]\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
+		"  producecheck:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: tables-c-clean\n" +
+		"  producematrix:\n    runs-on: x\n    strategy:\n      matrix:\n        include: [{\"name\":\"c\",\"target\":\"tables-c-clean\"}]\n    steps:\n      - uses: ./.github/actions/produce\n        with:\n          mode: produce\n          target: ${{ matrix.target }}\n" +
 		"  local:\n    runs-on: x\n    steps:\n      - uses: ./.github/actions/eslint\n      - run: go run ./tools/fullrun merge\n"
 	res, err := Extract(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", ".github/workflows/n.yml": wf}))
 	if err != nil {
@@ -864,7 +867,7 @@ func TestADriverOnlyJobIsNotATest(t *testing.T) {
 		got = append(got, it.Name)
 	}
 	sort.Strings(got)
-	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "local", "mixed", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
+	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "local", "mixed", "producecheck", "producematrix", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
 		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }

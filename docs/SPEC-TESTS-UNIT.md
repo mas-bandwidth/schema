@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3135.
+Unit tests every language answers: 2. Language-free tests: 3136.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1929,7 +1929,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 260 tests
+#### `tooling` family `ci`, 261 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2168,7 +2168,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.squirrel-all-port-differential-detects-a-divergence` | `gotest` | Go test TestSquirrelAllPortDifferentialDetectsADivergence in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialDetectsADivergence` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:343` |
 | `none.unit.tooling.ci.squirrel-all-port-differential-normalizes-only-the-harness-equivalences` | `gotest` | Go test TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:426` |
 | `none.unit.tooling.ci.squirrel-all-port-differential-requires-comparisons` | `gotest` | Go test TestSquirrelAllPortDifferentialRequiresComparisons in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialRequiresComparisons` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:521` |
-| `none.unit.tooling.ci.squirrel-card-rows-fit-the-cap` | `gotest` | Go test TestSquirrelCardRowsFitTheCap in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelCardRowsFitTheCap` | the Go test passes | `internal/ci/squirrel_rowcap_test.go:32` |
+| `none.unit.tooling.ci.squirrel-card-rows-fit-the-cap` | `gotest` | Go test TestSquirrelCardRowsFitTheCap in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelCardRowsFitTheCap` | the Go test passes | `internal/ci/squirrel_rowcap_test.go:36` |
 | `none.unit.tooling.ci.squirrel-evidence-fixed-rows` | `gotest` | Go test TestSquirrelEvidenceFixedRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelEvidenceFixedRows` | the Go test passes | `internal/ci/squirrel_evidence_fixed_test.go:67` |
 | `none.unit.tooling.ci.squirrel-evidence-packet-and-doc-tags-rows` | `gotest` | Go test TestSquirrelEvidencePacketAndDocTagsRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelEvidencePacketAndDocTagsRows` | the Go test passes | `internal/ci/squirrel_evidence_packet_test.go:27` |
 | `none.unit.tooling.ci.squirrel-hostile-mismatch-set-rejects-drift` | `gotest` | Go test TestSquirrelHostileMismatchSetRejectsDrift in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelHostileMismatchSetRejectsDrift` | the Go test passes | `internal/ci/schema_squirrel_runs_hostile_corpus_test.go:124` |
@@ -2186,6 +2186,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.the-fixed-form-harnesses-run-per-pull-request` | `gotest` | Go test TestTheFixedFormHarnessesRunPerPullRequest in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheFixedFormHarnessesRunPerPullRequest` | the Go test passes | `internal/ci/ci_test.go:590` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js` | `gotest` | Go test TestTheGoTestJobClonesSerializeJS in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJS` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:57` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js-negative-control` | `gotest` | Go test TestTheGoTestJobClonesSerializeJSNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJSNegativeControl` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:72` |
+| `none.unit.tooling.ci.the-leg-gates-are-registry-rows` | `gotest` | Go test TestTheLegGatesAreRegistryRows in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLegGatesAreRegistryRows` | the Go test passes | `internal/ci/leg_gate_rows_test.go:33` |
 | `none.unit.tooling.ci.the-lint-shards-judge-every-line-once` | `gotest` | Go test TestTheLintShardsJudgeEveryLineOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLintShardsJudgeEveryLineOnce` | the Go test passes | `internal/ci/lint_shard_test.go:72` |
 | `none.unit.tooling.ci.the-parity-table-is-covered` | `gotest` | Go test TestTheParityTableIsCovered in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheParityTableIsCovered` | the Go test passes | `internal/ci/parity_table_test.go:18` |
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
