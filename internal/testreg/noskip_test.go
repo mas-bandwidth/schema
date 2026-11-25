@@ -141,34 +141,34 @@ var (
 	// a driver's verdict word for a row it did not run.
 	verdict = regexp.MustCompile(`["'](SKIP|SKIPPED|skip|skipped)["']|["'](?i:skipping|skipped)\b[^"']*["']|\bSKIP:`)
 	ledger  = regexp.MustCompile(`(?i)(^|[-_/])(known-)?skips?(-ledger)?\.(tsv|txt)$`)
-	// a variable named for skipping, set or read in a script
-.	skipAssign = regexp.MustCompile(`\b[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*=|\$\{?[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\b|^\s*-?\s*[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\s*:`)
-	// success on a missing tool: `exit 0` beside a probe for one
-.	exitZero  = regexp.MustCompile(`\bexit\s+0\b`)
+	// a variable named for skipping, set or read in a script.
+	skipAssign = regexp.MustCompile(`\b[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*=|\$\{?[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\b|^\s*-?\s*[A-Z][A-Z0-9_]*SKIP[A-Z0-9_]*\s*:`)
+	// success on a missing tool: `exit 0` beside a probe for one.
+	exitZero  = regexp.MustCompile(`\bexit\s+0\b`)
 	toolProbe = regexp.MustCompile(`\bcommand\s+-v\b|\bwhich\s|\bhash\s|\btype\s+-[pP]\b|\[\s+!\s+-[xfed]\s`)
-	// make's ignore-errors: a recipe line under `-`, or .IGNORE
-.	makeIgnore = regexp.MustCompile(`^\t[@+]*-[^-]|^\.IGNORE\s*:`)
-	// a workflow job or step run or not by a variable
-.	ifVar = regexp.MustCompile(`^\s*-?\s*if\s*:.*\b(vars|env)\.`)
+	// make's ignore-errors: a recipe line under `-`, or .IGNORE.
+	makeIgnore = regexp.MustCompile(`^\t[@+]*-[^-]|^\.IGNORE\s*:`)
+	// a workflow job or step run or not by a variable.
+	ifVar = regexp.MustCompile(`^\s*-?\s*if\s*:.*\b(vars|env)\.`)
 	// a test run's failure turned into a message: `go test ... || echo ...`
-	// with no exit after
-.	orEcho = regexp.MustCompile(`\b(go\s+test|ctest|cargo\s+test|dotnet\s+test|npm\s+test|pytest|mix\s+test|dart\s+test)\b[^|]*\|\|\s*(echo|printf)\b[^;}]*$`)
-	// errors no longer stop the script
-.	setPlusE = regexp.MustCompile(`(^|[;&|]\s*)set\s+\+[a-zA-Z]*e`)
-	// a compiled test binary told to skip
-.	binSkip = regexp.MustCompile(`\s-test\.(skip|short)\b`)
-	// a selection computed inline: if it fails, go test runs everything
-.	inlineSelect = regexp.MustCompile(`-run\s+"\$\$?\(`)
-	// a recipe chosen by whether a tool is on PATH
-.	makeProbe = regexp.MustCompile(`\$\(if\s+\$\(shell\s+(command\s+-v|which)\b`)
-	// a script run by a harness language's interpreter
-.	driverShebang = regexp.MustCompile(`python|node|ruby|perl|lua|elixir|dart|deno|bun|php`)
-	// a test framework's own skip
-.	nativeSkip = regexp.MustCompile(`\b(it|test|describe|context)\.skip\b|\bx(it|describe|test)\s*\(|#\[ignore\b|\bSkip\s*=\s*"|@tag\s+:?skip\b|@moduletag\s+:?skip\b|\bunittest\.skip|\bpytest\.mark\.skip|@Disabled\b|@Ignore\b|\bskip_if\b|\bskipTest\(`)
+	// with no exit after.
+	orEcho = regexp.MustCompile(`\b(go\s+test|ctest|cargo\s+test|dotnet\s+test|npm\s+test|pytest|mix\s+test|dart\s+test)\b[^|]*\|\|\s*(echo|printf)\b[^;}]*$`)
+	// errors no longer stop the script.
+	setPlusE = regexp.MustCompile(`(^|[;&|]\s*)set\s+\+[a-zA-Z]*e`)
+	// a compiled test binary told to skip.
+	binSkip = regexp.MustCompile(`\s-test\.(skip|short)\b`)
+	// a selection computed inline: if it fails, go test runs everything.
+	inlineSelect = regexp.MustCompile(`-run\s+"\$\$?\(`)
+	// a recipe chosen by whether a tool is on PATH.
+	makeProbe = regexp.MustCompile(`\$\(if\s+\$\(shell\s+(command\s+-v|which)\b`)
+	// a script run by a harness language's interpreter.
+	driverShebang = regexp.MustCompile(`python|node|ruby|perl|lua|elixir|dart|deno|bun|php`)
+	// a test framework's own skip.
+	nativeSkip = regexp.MustCompile(`\b(it|test|describe|context)\.skip\b|\bx(it|describe|test)\s*\(|#\[ignore\b|\bSkip\s*=\s*"|@tag\s+:?skip\b|@moduletag\s+:?skip\b|\bunittest\.skip|\bpytest\.mark\.skip|@Disabled\b|@Ignore\b|\bskip_if\b|\bskipTest\(`)
 )
 
-// script-like files: their lines are commands
-.func scriptKind(rel string, head []byte) string {
+// script-like files: their lines are commands.
+func scriptKind(rel string, head []byte) string {
 	base := filepath.Base(rel)
 	switch {
 	case base == "Makefile" || strings.HasSuffix(base, ".mk"):
