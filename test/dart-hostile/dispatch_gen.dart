@@ -29,6 +29,7 @@ const Map<String, String> tableUnits = <String, String>{
   'schemas/probe.schema': 'probe',
   'testdata/conformance/feature-witnesses/full/Features.schema': 'featurewitnesses',
   'test/tables/ValueDefaults.schema': 'tblvaluedefaults',
+  'test/tables/moodmap': 'tblmoodmap',
 };
 
 String lower(String s) => s.isEmpty ? s : s[0].toLowerCase() + s.substring(1);

@@ -294,7 +294,7 @@ func TestOnlyTheFastLaneRunsOnPushOrPullRequest(t *testing.T) {
 		check func(map[string]string) []string
 		wfs   map[string]string
 	}{
-		{"a hostile corpus back on push to main", nightlyOnlyErrors, plant("schema-c-runs-hostile-corpus.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
+		{"a nightly fuzz back on push to main", nightlyOnlyErrors, plant("schema-python-nightly-fuzz.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"ci-full back on pull requests", nightlyOnlyErrors, plant("ci-full.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on pull requests", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on push to main", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},

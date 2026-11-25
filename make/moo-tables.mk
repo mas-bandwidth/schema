@@ -25,9 +25,9 @@ test-moo: test-moo-tables
 # docs/FIXED-FORM-ALGORITHM.md): internal/codegen/mootable/fixedform_test.go
 # reads the C++ reference's byte oracle out of build/fixedform-corpus — the nine
 # corpus files (§7 row 1), every versioning row's two columns, the floor, and
-# §5.3's refusals cut from fx1.bin. The harness SKIPS on a tree that never built
-# the oracle, so this target builds it first and the rule that nothing skips makes
-# the skip a FAILURE.
+# §5.3's refusals cut from fx1.bin. The harness fails by name on a tree that
+# never built the oracle (docs/rulings.json no-skips), so this target builds it
+# first.
 .PHONY: tables-moo-fixed
 tables-moo-fixed: toolchain-moo build/fixedform-corpus/.stamp
 	$(GO_TEST) -count=1 ./internal/codegen/mootable/ -run 'TestMooFixed|TestMooReadStrict'

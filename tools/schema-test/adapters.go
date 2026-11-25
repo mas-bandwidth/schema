@@ -60,6 +60,26 @@ var conformance = harness{
 	},
 }
 
+// wireFuzzHarness is the wire fuzz's (make/wire-fuzz-rows.mk): make
+// wire-fuzz-deps-<lang> builds the leg's wire-fuzz driver, and make
+// wire-fuzz-adapter-<lang> answers the families wire-fuzz-vector (every
+// pinned vector, replayed exactly) and wire-fuzz (every arm at the run's seed)
+// in every configuration of the leg (test/conformance/harness/wirefuzz_registry.go).
+var wireFuzzHarness = harness{
+	Name:  "wire-fuzz",
+	Build: func(lang string) [][]string { return [][]string{{"make", "wire-fuzz-deps-" + lang}} },
+	Cmd: func(lang, work string) []string {
+		return []string{"make", "-s", "wire-fuzz-adapter-" + lang, "WFZ_WORK=" + work}
+	},
+}
+
+// wireFuzzFamilies are the families the wire-fuzz harness answers.
+var wireFuzzFamilies = map[string]bool{"wire-fuzz": true, "wire-fuzz-vector": true}
+
+// bitPhaseFamily is verify-bitphase's main sweep (test/verify-bitphase,
+// bitphase_rows.go), which the same --adapter answers.
+const bitPhaseFamily = "bit-phase"
+
 // bomEntry is the BOM entry gate's adapter (test/conformance/bom-entry
 // --adapter): the harness's adapter mode over
 // testdata/conformance/tables/bom-entry/MANIFEST.txt, the leg listing its
@@ -84,7 +104,7 @@ func harnessFor(t testreg.Test) (harness, bool) {
 	switch {
 	case isUnion(t):
 		return goUnion, true
-	case family == alignArrays.Name:
+	case family == alignArrays.Name || family == bitPhaseFamily:
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
@@ -92,8 +112,10 @@ func harnessFor(t testreg.Test) (harness, bool) {
 		return bomEntry, true
 	case family == nameBuild.Name:
 		return nameBuild, true
+	case wireFuzzFamilies[family]:
+		return wireFuzzHarness, true
 	}
-	return harness{}, false
+	return hostileHarnessFor(family)
 }
 
 // adapters are the adapters a language row may name: the families each
@@ -114,7 +136,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// to its harness for any language, and a case a language does not
 		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
-		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
+		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},

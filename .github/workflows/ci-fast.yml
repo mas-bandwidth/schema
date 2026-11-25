@@ -982,8 +982,8 @@ jobs:
           # lays down a package that imports the compiler's own packages, the
           # ones its templates in compiler/newleg.go name. Its fixture test,
           # cmd/schema TestNewLegZigWritesSkeletonAndFixturePasses, drives the
-          # built CLI and so runs only behind the rule that nothing skips, which no other row
-          # here sets: #4428 changed what the scaffold imports, and the red
+          # built CLI and is a functional test, which no other row here runs:
+          # #4428 changed what the scaffold imports, and the red
           # waited for ci-full. The job runs when the diff touches
           # compiler/newleg.go, that test's file, or a non-test .go file of a
           # main-module package in the import closure (go list -deps) of the
@@ -3070,15 +3070,12 @@ jobs:
             *) echo "::error::go-test-touched has no make row '$TARGET'"; exit 1 ;;
           esac
 
-      # A SKIP NAMES A REASON, AND THIS ROW COUNTS ITS SKIPS. A package row
-      # runs without the rule that nothing skips, so the slow gate's skips are what it expects
-      # and the ledger lists them by count; what it does not accept is a skip
-      # with no reason, a reason the ledger does not name, and a skip for
-      # something this row has: make, git, sh, a Linux host, and (off a broad
-      # diff) a run without -short. A make row runs its tests through
-      # test/slowgate/proof with the rule that nothing skips and the sibling runtimes
-      # cloned above, so a slow-gate skip or a missing sibling is red there;
-      # tables-go-fixedform also stages the fixed corpus, so a corpus skip is.
+      # ANY SKIP IS RED HERE (docs/rulings.json no-skips). A package row's
+      # go test record is read by tools/gotestreport, which fails the row on a
+      # skipped test whatever its reason. A make row runs its tests through
+      # test/slowgate/proof with the sibling runtimes cloned above, so a SKIP
+      # in its log or a missing sibling is red there; tables-go-fixedform also
+      # stages the fixed corpus, so a missing corpus is red too.
       - name: the test record — this row's go test, where any skip is red
         if: always()
         env:

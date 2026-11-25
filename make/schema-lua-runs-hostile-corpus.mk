@@ -7,8 +7,8 @@
 #
 # The tests live in internal/ci/schema_lua_runs_hostile_corpus_test.go. The
 # corpus is not on this BASE yet (it arrives through
-# lua-base-forward-merge-schema-go-r), so the rule that nothing skips makes an
-# absent corpus a named failure rather than a silent pass.
+# lua-base-forward-merge-schema-go-r), and an absent corpus is a named failure
+# rather than a silent pass (docs/rulings.json no-skips).
 .PHONY: schema-lua-runs-hostile-corpus
 schema-lua-runs-hostile-corpus: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \
@@ -17,14 +17,15 @@ schema-lua-runs-hostile-corpus: toolchain-lua
 	fi
 	@echo "lua hostile corpus: every verdict and decoded-value digest; a refusal on its verdict alone (Lua $(LUA_VERSION))"
 	GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 nice -n 19 sh test/slowgate/proof schema-lua-runs-hostile-corpus \
-		'TestSchemaLuaRunsHostileCorpus TestSchemaLuaHostileCorpusPlantedReader TestSchemaLuaHostileCorpusLane TestSchemaLuaHostileScorerOutcomes' \
-		./internal/ci -run '^(TestSchemaLuaRunsHostileCorpus|TestSchemaLuaHostileCorpusPlantedReader|TestSchemaLuaHostileCorpusLane|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
+		'TestHostileCorpus_lua TestSchemaLuaHostileScorerOutcomes' \
+		./internal/ci -run '^(TestHostileCorpus_lua|TestSchemaLuaHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 # THE PLANTED-BAD-PATTERN CONTROL: a wire reader bug goes into a scratch copy of
 # the emitted fixed.lua (the form gate refuses the form it carries, so the
 # accepted form-3 wire is refused: a changed verdict, since a refusal conforms on
 # its verdict alone), and the corpus comparison must go red. Red with the plant in, green with it
-# out; the heavy corpus replay stays nightly, this control rides every push.
+# out. Both run nightly as registry rows: the corpus as the hostile family, the
+# control as its own plant row.
 .PHONY: schema-lua-runs-hostile-corpus-planted
 schema-lua-runs-hostile-corpus-planted: toolchain-lua
 	@if [ ! -x "$(LUA)" ]; then \

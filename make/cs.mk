@@ -159,6 +159,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
 	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(1) generate --lang cs --out $(2)/shapes test/tables/shapes
+	$(1) generate --lang cs --out $(2)/moodmap test/tables/moodmap/MoodMap.schema
 	$(1) generate --lang cs --out $(2)/prior test/tables/prior/PriorNarrow.schema
 	$(1) generate --lang cs --out $(2)/surfaces test/tables/surfaces
 	$(1) generate --lang cs --out $(2)/announce4096 test/tables/announce4096
@@ -184,7 +185,7 @@ tables-cs-generate-into:
 	@mkdir -p $(OUT)
 	$(call tables_generate_cs_parallel,$(GEN),$(OUT))
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/moodmap/MoodMap.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs_parallel,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -846,9 +847,9 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 # SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
 # `go test ./...` on a tree that never built the oracle — and is exactly how a §5
 # regression would ride into CI green. So the target BUILDS THE ORACLE FIRST
-# (`tables-fixedform-corpus`, the reference's own dump, about 25 s) and then sets
-# the rule that nothing skips, which turns that skip into a FAILURE: under this name a
-# missing corpus can never pass silently.
+# (`tables-fixedform-corpus`, the reference's own dump, about 25 s); a missing
+# corpus fails by name (docs/rulings.json no-skips), so under this name it can
+# never pass silently.
 #
 # ONE ASSEMBLY, ONE BUILD, ONE RUN. The harness generates fifty-seven probes —
 # one per row per COLUMN (§5.9 #18) — into ONE project, each in the namespace its
@@ -910,11 +911,11 @@ tables-cs-fixed-roadmap:
 
 # THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
 # message-form ledger steps close against it. Every C# fixed-roadmap test and
-# the held message form run once here with DOTNET and
-# the rule that nothing skips, so a bare `go test` can never report green over C#
-# that never ran. The oracle is built first (tables-fixedform-corpus) because
-# t01's framing rows read the C++ reference's bytes; under
-# the rule that nothing skips a missing corpus is a failure, not a skip. The
+# the held message form run once here with DOTNET, and a missing SDK fails by
+# name (docs/rulings.json no-skips), so no run can report green over C# that
+# never ran. The oracle is built first (tables-fixedform-corpus) because
+# t01's framing rows read the C++ reference's bytes; a missing corpus is a
+# failure, not a skip. The
 # -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
 # row added later without being named here goes red. The graph connection
 # links the actual packet runtime and verifies its pinned announcement bytes;
@@ -1120,8 +1121,8 @@ define cs_clean_check
 	test $$st -eq 0 && echo "$(1): dotnet format and the analyzers clean over $(3)"
 endef
 
-# The SDK probe both gates share: a dotnet not on PATH SKIPS cleanly, and under
-# the rule that nothing skips that skip is a FAILURE (the corpus legs' idiom).
+# The SDK probe both gates share: a dotnet not on PATH is a FAILURE that names
+# it (docs/rulings.json no-skips).
 define cs_clean_probe
 	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
 		echo "FAIL $(1): $(DOTNET) is not installed"; exit 1; \
@@ -1132,7 +1133,7 @@ endef
 .PHONY: tables-cs-clean
 tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean)
-# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
+# loud-ok: the probe line above fails by name on a missing SDK (docs/rulings.json no-skips)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-run; fi
 
 .PHONY: tables-cs-clean-run
@@ -1156,7 +1157,7 @@ TABLES_CS_CLEAN_NEG := build/tables-cs-clean-negative
 .PHONY: tables-cs-clean-negative-control
 tables-cs-clean-negative-control: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean-negative-control)
-# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
+# loud-ok: the probe line above fails by name on a missing SDK (docs/rulings.json no-skips)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
 
 .PHONY: tables-cs-clean-negative-control-run
@@ -1195,7 +1196,7 @@ PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generate
 .PHONY: packet-clean-cs
 packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
 	$(call cs_clean_probe,packet-clean-cs)
-# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
+# loud-ok: the probe line above fails by name on a missing SDK (docs/rulings.json no-skips)
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory packet-clean-cs-run; fi
 
 .PHONY: packet-clean-cs-run
