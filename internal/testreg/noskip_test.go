@@ -54,17 +54,25 @@ import (
 //	               a Test's is; a TestMain that only prints and exits 0 or
 //	               returns on such an if, or never calls m.Run; a switch on
 //	               such a condition with a case that only returns; the
-//	               condition read through a helper of the package, or of a
-//	               package of this module, that reads one (if !have("luau"));
-//	               and the rest of the body under such an if (if have
-//	               { body } last, no else), unless that body only reports a
+//	               condition read through a helper of the package (a
+//	               function, a package variable holding one, or one declared
+//	               in the test), or of a package of any module of the tree
+//	               (the root's or a nested one's), that reads one (if
+//	               !have("luau")); and the rest of the body under such an if
+//	               (if have { body } last, only logs after it, no else or an
+//	               else that only logs), unless that body only reports a
 //	               check's failures or logs, or is a golden rewrite after the
 //	               comparison (slowtest.Rewriting)
 //	go-skip-print  in test code or under test/, a print or test log whose text
-//	               announces a skip (skipped, skipping, SKIP), or a formatted
-//	               line saying so handed back to be printed, unless it is a
-//	               failure's message or a failure follows it; a line built
-//	               into a buffer (&b) is a program or a report, not a notice
+//	               announces a skip (skipped, skipping, SKIP), directly, by a
+//	               "+", or through a constant or variable holding such text
+//	               or a line formatted to say so, or a formatted line saying
+//	               so handed back to be printed, unless it is a failure's
+//	               message or a failure follows it; a line built into a
+//	               buffer (&b) is a program or a report, not a notice. In
+//	               other Go (runners, tools), a print to the standard streams
+//	               saying a test, case, check, suite or gate was skipped,
+//	               unless it is a count of skips or names the skip a failure
 //	go-build-tag   a build constraint (//go:build or // +build) on a _test.go
 //	               file other than the platform, cgo, race, a Go release this
 //	               toolchain is at or past, or the schema_leg_<leg> build
@@ -88,7 +96,12 @@ import (
 //	make-ignore    a recipe line under make's `-`, or .IGNORE
 //	if-var         a workflow condition on vars. or env.
 //	repo-gate      a workflow condition comparing github.repository (or
-//	               _owner) with a literal: false here, or false on a fork
+//	               _owner, or github.event.repository's name) with a
+//	               literal, on one line or split across two: false here, or
+//	               false on a fork
+//	fork-gate      a workflow job kept off fork pull requests
+//	               (head.repo.full_name == github.repository) when no
+//	               workflow job runs on them (the fork lane, !=)
 //	native-skip    a test framework's own skip in a driver (it.skip, xit,
 //	               #[ignore], Skip = "...", @tag :skip, unittest.skip,
 //	               pytest.mark.skip, @Disabled, @Ignore, skip_if, skipTest)
@@ -99,8 +112,10 @@ import (
 // Not scanned, each for its reason: version control, and dependency and build
 // output known by its directory's name (node_modules, target, obj, deps and
 // the like) only while the checkout tracks no file under it, so a tracked
-// package in a directory of such a name is scanned (outside a checkout, as in
-// the planted tree, every such directory is scanned); third_party/ (vendored
+// package in a directory of such a name is scanned, every file of it, an
+// untracked new one too, while a directory below it with no tracked file is
+// output (outside a checkout, as in the planted tree, every such directory is
+// scanned); third_party/ (vendored
 // sibling code, owned by its own repository); working/ (scratch); docs
 // (prose about the rule, and history); and the files noSkipsExempt names,
 // each with its reason. A
@@ -123,12 +138,18 @@ func noSkips(root string) ([]string, error) {
 			if rel != "." && noSkipsSkipsDir(rel, d.Name(), tracked) {
 				return filepath.SkipDir
 			}
+			// inside a tracked output-named directory, a directory with no
+			// tracked file below it is output
+			if tracked != nil && rel != "." && !tracked[rel] && underOutputName(rel+"/x") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		// under a directory named like build output that the checkout
-		// tracks files in, only the tracked files are source: what sits
-		// beside them untracked is that output
-		if trackedFiles != nil && !trackedFiles[rel] && underOutputName(rel) {
+		// tracks files in, a package that holds a tracked file is source,
+		// an untracked new file in it too; a directory below with no
+		// tracked file is that output (pruned above)
+		if trackedFiles != nil && !trackedFiles[rel] && underOutputName(rel) && !tracked[path.Dir(rel)] {
 			return nil
 		}
 		if d.Type().IsRegular() {
@@ -155,8 +176,57 @@ func noSkips(root string) ([]string, error) {
 		}
 		out = append(out, found[i]...)
 	}
+	lane, err := forkLane(root, files)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, lane...)
 	sort.Strings(out)
 	return out, nil
+}
+
+var (
+	// a job kept off fork pull requests: it runs only when the head
+	// repository is this one.
+	forkOff = regexp.MustCompile(`head\.repo\.full_name\s*==\s*github\.repository\b|\bgithub\.repository\s*==\s*github\.event\.pull_request\.head\.repo\.full_name`)
+	// the fork lane: a job that runs exactly when the head repository is
+	// another one.
+	forkOn = regexp.MustCompile(`head\.repo\.full_name\s*!=\s*github\.repository\b|\bgithub\.repository\s*!=\s*github\.event\.pull_request\.head\.repo\.full_name`)
+)
+
+// forkLane holds a workflow job kept off fork pull requests to the fork
+// lane: some workflow job must run on exactly those pull requests, or a
+// fork's pull request runs none of the jobs kept off it and reads as green.
+// It names the first job kept off forks when no workflow has the lane.
+func forkLane(root string, files []string) ([]string, error) {
+	first, lane := "", false
+	for _, f := range files {
+		if !strings.HasPrefix(f, ".github/workflows/") || (!strings.HasSuffix(f, ".yml") && !strings.HasSuffix(f, ".yaml")) {
+			continue
+		}
+		if _, ok := noSkipsExempt[f]; ok {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		if err != nil {
+			return nil, err
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				continue
+			}
+			if forkOn.MatchString(line) {
+				lane = true
+			}
+			if first == "" && forkOff.MatchString(line) {
+				first = fmt.Sprintf("%s:%d: fork-gate: a job kept off fork pull requests, and no workflow job runs on them: %s", f, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+	if first == "" || lane {
+		return nil, nil
+	}
+	return []string{first}, nil
 }
 
 // eachParallel runs f(0..n-1) across the processors this test may use.
@@ -359,7 +429,8 @@ func noSkipsFile(path, rel string, probes *probeIndex) ([]string, error) {
 	hit := func(n int, rule, line string) {
 		out = append(out, fmt.Sprintf("%s:%d: %s: %s", rel, n, rule, strings.TrimSpace(line)))
 	}
-	for i, line := range strings.Split(string(data), "\n") {
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
 		n := i + 1
 		code := line
 		if kind != "" {
@@ -418,6 +489,10 @@ func noSkipsFile(path, rel string, probes *probeIndex) ([]string, error) {
 				hit(n, "if-var", line)
 			}
 			if repoGate.MatchString(code) {
+				hit(n, "repo-gate", line)
+			} else if i+1 < len(lines) && !repoGate.MatchString(lines[i+1]) &&
+				repoGate.MatchString(code+" "+strings.TrimSpace(lines[i+1])) {
+				// a condition split across two lines
 				hit(n, "repo-gate", line)
 			}
 		}
@@ -768,8 +843,47 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 	// on: the run reads as a pass having left something out. A message that
 	// is a failure (an error, a panic, a Fatal, or a print followed by one)
 	// refuses, and is not this.
-	// Test code, and the harness and drivers under test/.
-	noticeScope := strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "test/")
+	// In test code and under test/ (the harness and drivers), any such
+	// notice; in other Go (the runners and tools), a notice that says a
+	// test, case, check, suite or gate was skipped, and is neither a
+	// count of skips nor a message that names the skip a failure.
+	inTests := strings.HasSuffix(rel, "_test.go") || strings.HasPrefix(rel, "test/")
+	// a name that holds a notice: a constant or variable set to text that
+	// says skipped or skipping, or to a line formatted to say so (a path
+	// that names a skipped-value fixture is not one)
+	notices := map[string]string{}
+	noteNames := func(names []*ast.Ident, values []ast.Expr) {
+		for i, v := range values {
+			if i >= len(names) {
+				break
+			}
+			text := literalText(v)
+			if c, ok := v.(*ast.CallExpr); ok && strings.HasPrefix(callName(c), "Sprint") {
+				text = noticeText(c, nil)
+			}
+			if goSkipWords.MatchString(text) && !strings.Contains(text, "/") {
+				notices[names[i].Name] = text
+			}
+		}
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch v := n.(type) {
+		case *ast.ValueSpec:
+			noteNames(v.Names, v.Values)
+		case *ast.AssignStmt:
+			var ids []*ast.Ident
+			for _, l := range v.Lhs {
+				id, _ := l.(*ast.Ident)
+				if id == nil {
+					id = &ast.Ident{Name: ""}
+				}
+				ids = append(ids, id)
+			}
+			noteNames(ids, v.Rhs)
+		}
+		return true
+	})
+	delete(notices, "")
 	var stack []ast.Node
 	ast.Inspect(f, func(n ast.Node) bool {
 		if n == nil {
@@ -778,7 +892,10 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 		}
 		stack = append(stack, n)
 		call, ok := n.(*ast.CallExpr)
-		if !ok || !noticeScope || !announcesSkip(call) {
+		if !ok || !announcesSkip(call, notices) {
+			return true
+		}
+		if !inTests && !outsideNotice(noticeText(call, notices)) {
 			return true
 		}
 		switch name := callName(call); {
@@ -786,13 +903,18 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 			// a formatted line is a notice when it is handed back to be
 			// printed, and says in words that something was skipped (an
 			// upper-case SKIP there is a protocol line a test compares)
-			if _, ok := stack[len(stack)-2].(*ast.ReturnStmt); !ok || !announcesSkipInWords(call) {
+			if _, ok := stack[len(stack)-2].(*ast.ReturnStmt); !ok || !announcesSkipInWords(call, notices) {
 				return true
 			}
 		case strings.HasPrefix(name, "Fprint") && len(call.Args) > 0:
 			// a line written into a buffer (&b) is a program or a report
 			// being built, printed (and judged) elsewhere
 			if u, ok := call.Args[0].(*ast.UnaryExpr); ok && u.Op == token.AND {
+				return true
+			}
+			// outside test code, a line is printed when it goes to the
+			// standard streams; any other writer is a generator's output
+			if !inTests && !toStdStream(call.Args[0]) {
 				return true
 			}
 		}
@@ -1021,21 +1143,51 @@ var gateSelectors = map[string]int{
 // condition that calls one (if !have("luau") { return }) is a gate behind a
 // helper.
 type probeIndex struct {
-	module string
-	byDir  map[string]map[string]int
-	direct map[string]map[string]int // byDir before any call through an import
-	names  map[string]string         // package directory -> its package name
+	modules []goModule // longest path first
+	byDir   map[string]map[string]int
+	direct  map[string]map[string]int // byDir before any call through an import
+	names   map[string]string         // package directory -> its package name
+}
+
+// goModule is one module of the tree: its path and its directory.
+type goModule struct{ path, dir string }
+
+// dirOf is the tree directory an import path names, when it is a package
+// of one of the tree's modules.
+func (idx *probeIndex) dirOf(importPath string) (string, bool) {
+	for _, m := range idx.modules {
+		rest, ok := strings.CutPrefix(importPath, m.path)
+		if !ok || (rest != "" && !strings.HasPrefix(rest, "/")) {
+			continue
+		}
+		return path.Clean(path.Join(m.dir, strings.TrimPrefix(rest, "/"))), true
+	}
+	return "", false
 }
 
 // goProbeIndex reads every Go file under root once for its probes.
 func goProbeIndex(root string, files []string) (*probeIndex, error) {
 	idx := &probeIndex{byDir: map[string]map[string]int{}, names: map[string]string{}}
-	if mod, err := os.ReadFile(filepath.Join(root, "go.mod")); err == nil {
-		first, _, _ := strings.Cut(string(mod), "\n")
-		idx.module = strings.TrimSpace(strings.TrimPrefix(first, "module"))
-	} else if !os.IsNotExist(err) {
-		return nil, err
+	// every module of the tree, the root's and each nested one's (a go.mod
+	// below the root), so an import resolves to its directory whichever
+	// module it names
+	for _, f := range files {
+		if path.Base(f) != "go.mod" {
+			continue
+		}
+		mod, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(string(mod), "\n") {
+			if p, ok := strings.CutPrefix(strings.TrimSpace(line), "module "); ok {
+				idx.modules = append(idx.modules, goModule{path: strings.Trim(strings.TrimSpace(p), `"`), dir: path.Dir(f)})
+				break
+			}
+		}
 	}
+	// the longest module path first, so a nested module wins over its parent
+	sort.Slice(idx.modules, func(i, j int) bool { return len(idx.modules[i].path) > len(idx.modules[j].path) })
 	type fn struct {
 		key   string
 		kinds int
@@ -1073,13 +1225,7 @@ func goProbeIndex(root string, files []string) (*probeIndex, error) {
 			if im.Name != nil {
 				name = im.Name.Name
 			}
-			dir := ""
-			if rest, ok := strings.CutPrefix(p, idx.module); idx.module != "" && ok && (rest == "" || strings.HasPrefix(rest, "/")) {
-				dir = strings.TrimPrefix(rest, "/")
-				if dir == "" {
-					dir = "."
-				}
-			}
+			dir, _ := idx.dirOf(p)
 			imported[name] = dir
 		}
 		// what a body reads and calls: a call into a package of this module
@@ -1232,18 +1378,11 @@ func newGateReader(idx *probeIndex, f *ast.File, rel string) gateReader {
 		return g
 	}
 	g.local = idx.byDir[path.Dir(rel)]
-	if idx.module == "" {
-		return g
-	}
 	for _, im := range f.Imports {
 		p, _ := strconv.Unquote(im.Path.Value)
-		dir, ok := strings.CutPrefix(p, idx.module)
-		if !ok || (dir != "" && !strings.HasPrefix(dir, "/")) {
+		dir, ok := idx.dirOf(p)
+		if !ok {
 			continue
-		}
-		dir = strings.TrimPrefix(dir, "/")
-		if dir == "" {
-			dir = "."
 		}
 		name := idx.names[dir]
 		if im.Name != nil {
@@ -1500,6 +1639,15 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	{"p/w12_test.go", "package p\n\nimport (\n\t\"os/exec\"\n\t\"testing\"\n)\n\nfunc TestW12(t *testing.T) {\n\thave := func() bool {\n\t\t_, err := exec.LookPath(\"cc\")\n\t\treturn err == nil\n\t}\n\tif !have() {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
 	// a skip notice built of a literal and a value
 	{"p/w10_test.go", "package p\n\nimport \"testing\"\n\nfunc TestW10(t *testing.T) {\n\twhy := \"no seed\"\n\tt.Log(\"random pass skipped: \" + why)\n}\n", "go-skip-print"},
+	// a notice formatted into a variable, and one held in a constant
+	{"p/w13_test.go", "package p\n\nimport (\n\t\"fmt\"\n\t\"testing\"\n)\n\nfunc TestW13(t *testing.T) {\n\tfor _, r := range []string{\"a\"} {\n\t\tmsg := fmt.Sprintf(\"row %s skipped: not carried yet\", r)\n\t\tt.Log(msg)\n\t}\n}\n", "go-skip-print"},
+	{"p/w14_test.go", "package p\n\nimport \"testing\"\n\nconst notCarried = \"skipped: the form is not carried yet\"\n\nfunc TestW14(t *testing.T) {\n\tt.Log(notCarried)\n}\n", "go-skip-print"},
+	// a runner outside test code that says it skipped tests and goes on
+	{"tools/run/main.go", "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"skipping the luau tests: no interpreter\")\n}\n", "go-skip-print"},
+	// a gate behind a probe of a nested module
+	{"p/w15_test.go", "package p\n\nimport (\n\t\"testing\"\n\n\t\"example.com/nested/lib\"\n)\n\nfunc TestW15(t *testing.T) {\n\tif !lib.Have(\"cc\") {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
+	// a repository condition split across lines
+	{".github/workflows/cp.yml", "jobs:\n  a:\n    if: >-\n      github.repository ==\n      'someone/else'\n    steps:\n      - run: make check\n", "repo-gate"},
 	// a job that never runs unless the event names one repository
 	{".github/workflows/co.yml", "jobs:\n  a:\n    if: github.event.repository.full_name == 'someone/else'\n    steps:\n      - run: make check\n", "repo-gate"},
 	// a tracked package under directories named target and deps
@@ -1549,8 +1697,16 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 		"lib/lib.go": "package lib\n\nimport \"os/exec\"\n\nfunc Have(tool string) bool {\n\t_, err := exec.LookPath(tool)\n\treturn err == nil\n}\n",
 		// a gated body whose else fails is the check, not a skip
 		"q/s_test.go": "package q\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestS(t *testing.T) {\n\tif os.Getenv(\"HOME\") != \"\" {\n\t\tt.Log(\"home\")\n\t\tx := 1\n\t\t_ = x\n\t} else {\n\t\tt.Fatal(\"HOME is unset\")\n\t}\n}\n",
+		// a nested module and its probe
+		"n/go.mod":     "module example.com/nested\n",
+		"n/lib/lib.go": "package lib\n\nimport \"os/exec\"\n\nfunc Have(tool string) bool {\n\t_, err := exec.LookPath(tool)\n\treturn err == nil\n}\n",
+		// a tool that names a bench row it leaves out of a figure is not a
+		// test runner skipping a test
+		"tools/ledger/main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tfmt.Fprintf(os.Stderr, \"ledger: pair-lock skipped for a row over the INVALID line\\n\")\n}\n",
+		// the fork lane: the job that runs on fork pull requests
+		".github/workflows/fork-lane.yml": "jobs:\n  fork:\n    if: github.event.pull_request.head.repo.full_name != github.repository\n    steps:\n      - run: make check\n",
 		// a workflow job kept off fork pull requests compares no literal;
-		// fork pull requests run the fork lane's job instead (ci-fast.yml)
+		// fork pull requests run the fork lane's job instead (fork-lane.yml)
 		".github/workflows/cn.yml": "jobs:\n  a:\n    if: github.event.pull_request.head.repo.full_name == github.repository\n",
 	}
 	for f, body := range clean {
@@ -1599,7 +1755,7 @@ func TestNoSkipScansTrackedOutputNames(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	skip := "package q\n\nimport \"testing\"\n\nfunc TestY(t *testing.T) {\n\tt.Skip(\"later\")\n}\n"
-	for _, f := range []string{"deps/q/y_test.go", "deps/q/vendored_test.go", "target/q/y_test.go"} {
+	for _, f := range []string{"deps/q/y_test.go", "deps/q/new_test.go", "deps/q/vendor/z_test.go", "target/q/y_test.go"} {
 		path := filepath.Join(root, filepath.FromSlash(f))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -1619,8 +1775,38 @@ func TestNoSkipScansTrackedOutputNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found) != 1 || !strings.HasPrefix(found[0], "deps/q/y_test.go:6: go-skip: ") {
-		t.Fatalf("want the tracked deps/q skip alone (target/ holds no tracked file, deps/q/vendored_test.go is untracked), got %q", found)
+	if len(found) != 2 || !strings.HasPrefix(found[0], "deps/q/new_test.go:6: go-skip: ") || !strings.HasPrefix(found[1], "deps/q/y_test.go:6: go-skip: ") {
+		t.Fatalf("want the deps/q skips, the tracked one and the untracked new file beside it (target/ and deps/q/vendor/ hold no tracked file), got %q", found)
+	}
+}
+
+// TestNoSkipNamesAMissingForkLane: a workflow job kept off fork pull
+// requests is red when no workflow job runs on them (a fork's pull request
+// would run none of those jobs and read as green), and clean once a job
+// runs exactly when the head repository is another one.
+func TestNoSkipNamesAMissingForkLane(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	write := func(f, body string) {
+		path := filepath.Join(root, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".github/workflows/a.yml", "jobs:\n  a:\n    if: github.event.pull_request.head.repo.full_name == github.repository\n    steps:\n      - run: make check\n")
+	found, err := noSkips(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != 1 || !strings.HasPrefix(found[0], ".github/workflows/a.yml:3: fork-gate: ") {
+		t.Fatalf("want the job kept off forks named, with no fork lane, got %q", found)
+	}
+	write(".github/workflows/b.yml", "jobs:\n  fork:\n    if: github.event.pull_request.head.repo.full_name != github.repository\n    steps:\n      - run: make check\n")
+	if found, err = noSkips(root); err != nil || len(found) != 0 {
+		t.Fatalf("with the fork lane: got %q, %v, want clean", found, err)
 	}
 }
 
@@ -1652,16 +1838,75 @@ func endsInAFailure(b *ast.BlockStmt) bool {
 
 // announcesSkip is a print, a test log or a formatted line whose literal
 // text announces a skip.
-func announcesSkip(call *ast.CallExpr) bool {
+// noticeText is a call's literal text and the text of the notice names it
+// is handed.
+func noticeText(call *ast.CallExpr, notices map[string]string) string {
+	var parts []string
+	for _, a := range call.Args {
+		parts = append(parts, literalText(a))
+		ast.Inspect(a, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && notices[id.Name] != "" {
+				parts = append(parts, notices[id.Name])
+			}
+			return true
+		})
+	}
+	return strings.Join(parts, " ")
+}
+
+var (
+	// what a test runner skips: a test, a case, a check, a suite, a gate (in
+	// tools, a row, a leg or a pass names data: a bench row, a bench pass).
+	skipsATest = regexp.MustCompile(`(?i)\b(tests?|cases?|checks?|suites?|gates?)\b.{0,40}\bskipp(ed|ing)\b|\bskipp(ed|ing)\b.{0,40}\b(tests?|cases?|checks?|suites?|gates?)\b`)
+	// a message that names the skip a failure is a refusal.
+	skipRefused = regexp.MustCompile(`(?i)\bfail|\brefus|\bnot red\b|\bis a failure\b`)
+	// a count of skips is a report: %d skipped, 3 skipped.
+	skipCount = regexp.MustCompile(`(?i)(%d|\d)\W{0,3}(\w+\W{1,3}){0,2}skipp(ed|ing)\b|\bskipp(ed|ing)\W{0,3}(%d|\d)`)
+)
+
+// outsideNotice is a notice outside test code that says a test was skipped
+// and goes on: not a refusal and not a count.
+func outsideNotice(text string) bool {
+	return skipsATest.MatchString(text) && !skipRefused.MatchString(text) && !skipCount.MatchString(text)
+}
+
+// toStdStream is a writer that is os.Stdout or os.Stderr, or a stream named
+// stdout or stderr.
+func toStdStream(w ast.Expr) bool {
+	switch v := w.(type) {
+	case *ast.SelectorExpr:
+		id, ok := v.X.(*ast.Ident)
+		return ok && id.Name == "os" && (v.Sel.Name == "Stdout" || v.Sel.Name == "Stderr")
+	case *ast.Ident:
+		return v.Name == "stdout" || v.Name == "stderr"
+	}
+	return false
+}
+
+func announcesSkip(call *ast.CallExpr, notices map[string]string) bool {
 	name := callName(call)
 	if name != "print" && name != "println" && !strings.HasPrefix(name, "Print") && !strings.HasPrefix(name, "Fprint") &&
 		!strings.HasPrefix(name, "Sprint") && name != "Log" && name != "Logf" {
 		return false
 	}
 	for _, a := range call.Args {
-		if goSkipNotice.MatchString(literalText(a)) {
+		if goSkipNotice.MatchString(literalText(a)) || holdsNotice(a, notices) {
 			return true
 		}
+	}
+	return false
+}
+
+// holdsNotice is an argument that is a name holding a notice, or a "+"
+// with one.
+func holdsNotice(e ast.Expr, notices map[string]string) bool {
+	switch v := e.(type) {
+	case *ast.Ident:
+		return notices[v.Name] != ""
+	case *ast.BinaryExpr:
+		return v.Op == token.ADD && (holdsNotice(v.X, notices) || holdsNotice(v.Y, notices))
+	case *ast.ParenExpr:
+		return holdsNotice(v.X, notices)
 	}
 	return false
 }
@@ -1692,9 +1937,9 @@ func literalText(e ast.Expr) string {
 
 // announcesSkipInWords is a call whose literal text says skipped or
 // skipping.
-func announcesSkipInWords(call *ast.CallExpr) bool {
+func announcesSkipInWords(call *ast.CallExpr, notices map[string]string) bool {
 	for _, a := range call.Args {
-		if goSkipWords.MatchString(literalText(a)) {
+		if goSkipWords.MatchString(literalText(a)) || holdsNotice(a, notices) {
 			return true
 		}
 	}
