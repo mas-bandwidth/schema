@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -753,9 +754,17 @@ func part(units []Unit, k, n int) ([]Unit, error) {
 	if n < 1 || k < 1 || k > n {
 		return nil, fmt.Errorf("--part %d/%d: want 1 <= i <= n", k, n)
 	}
+	// every part takes every unit, whatever it is built for: a part
+	// cannot run one its runner cannot, and that is its red
+	var goos []string
+	for _, u := range units {
+		if u.GOOS != "" && !slices.Contains(goos, u.GOOS) {
+			goos = append(goos, u.GOOS)
+		}
+	}
 	bins := make([]Bench, n)
 	for i := range bins {
-		bins[i] = Bench{Host: fmt.Sprintf("part%d", i+1), Shards: 1}
+		bins[i] = Bench{Host: fmt.Sprintf("part%d", i+1), Shards: 1, GOOS: goos}
 	}
 	shards, err := assign(units, bins)
 	if err != nil {

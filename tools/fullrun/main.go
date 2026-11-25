@@ -4,8 +4,8 @@
 // extract finds that is not a registry row yet (the unmoved ledger's
 // tests), each by the command that runs it. It collects the reds.
 //
-//	fullrun launch --ref REF --bench HOST=SHARDS... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only]
-//	fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS... --out DIR [the same]
+//	fullrun launch --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only]
+//	fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [the same]
 //	fullrun watch --run DIR
 //	fullrun collect --run DIR
 //	fullrun merge --root DIR --parts DIR --out DIR [--only PATTERN]...
@@ -64,8 +64,8 @@ type usageError struct{ msg string }
 func (e usageError) Error() string { return e.msg }
 
 const usage = `usage:
-  fullrun launch --ref REF --bench HOST=SHARDS... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only] [--part I/N] [--work DIR]
-  fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS... --out DIR [the same]
+  fullrun launch --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [--tool-ref REF] [--only PATTERN]... [--env K=V]... [--seconds FILE] [--retries N] [--poll D] [--plan-only] [--part I/N] [--work DIR]
+  fullrun retest --reds REDS.tsv --ref REF --bench HOST=SHARDS[+GOOS]... --out DIR [the same]
   fullrun watch --run DIR
   fullrun collect --run DIR
   fullrun merge --root DIR --parts DIR --out DIR [--only PATTERN]...
@@ -271,21 +271,29 @@ func runErr(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	return usageError{fmt.Sprintf("unknown subcommand %q", sub)}
 }
 
-// parseBenches reads HOST=SHARDS values; a host named twice is refused.
+// parseBenches reads HOST=SHARDS values, each with the operating systems
+// besides Linux the bench runs tests for (HOST=SHARDS+windows); a host
+// named twice is refused.
 func parseBenches(vs []string) ([]Bench, error) {
 	var out []Bench
 	seen := map[string]bool{}
 	for _, v := range vs {
 		h, n, ok := strings.Cut(v, "=")
-		k, err := strconv.Atoi(n)
+		goos := strings.Split(n, "+")
+		k, err := strconv.Atoi(goos[0])
 		if !ok || h == "" || err != nil || k < 1 {
-			return nil, usageError{fmt.Sprintf("--bench %q is not HOST=SHARDS", v)}
+			return nil, usageError{fmt.Sprintf("--bench %q is not HOST=SHARDS[+GOOS]", v)}
+		}
+		for _, g := range goos[1:] {
+			if !osTags[g] || g == "linux" || g == "unix" {
+				return nil, usageError{fmt.Sprintf("--bench %q: %q is not an operating system besides linux", v, g)}
+			}
 		}
 		if seen[h] {
 			return nil, usageError{fmt.Sprintf("--bench %s is named twice", h)}
 		}
 		seen[h] = true
-		out = append(out, Bench{Host: h, Shards: k})
+		out = append(out, Bench{Host: h, Shards: k, GOOS: goos[1:]})
 	}
 	if len(out) == 0 {
 		return nil, usageError{"name the benches: --bench HOST=SHARDS"}

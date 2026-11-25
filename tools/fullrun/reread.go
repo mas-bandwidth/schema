@@ -15,12 +15,12 @@ import (
 // them.
 const rereadBackup = resultsFile + ".before-reread"
 
-// reread reads the logs of a finished shard's registry units again with
-// this build's schemaTestVerdicts and rewrites its results.jsonl, so a
-// verdict the launcher misread is corrected without running anything.
-// The results as the shard wrote them are kept in results.jsonl.before-reread.
-// A shard that has not finished, one a shard still holds, one already reread
-// and results that leave a name of the manifest without one are refused. A log that cannot be read as a whole
+// reread reads the logs of every unit a finished shard ran again with this
+// build's verdicts and rewrites its results.jsonl, so a verdict or a first
+// line the launcher misread is corrected without running anything. The
+// results as the shard wrote them are kept in results.jsonl.before-reread,
+// and a shard reread before is read again from them, never from a reread.
+// A shard that has not finished, one a shard still holds, and results that leave a name of the manifest without one are refused. A log that cannot be read as a whole
 // run (no exit line) is an error naming it, never a verdict.
 func reread(out string, log io.Writer) error {
 	mb, err := os.ReadFile(filepath.Join(out, "manifest.json"))
@@ -39,15 +39,18 @@ func reread(out string, log io.Writer) error {
 		return err
 	}
 	defer unlock()
-	if _, err := os.Stat(filepath.Join(out, rereadBackup)); err == nil {
-		return fmt.Errorf("%s: already reread (%s is there): not read again", out, rereadBackup)
-	}
 	path := filepath.Join(out, resultsFile)
-	orig, err := os.ReadFile(path)
+	backup := filepath.Join(out, rereadBackup)
+	from := path
+	kept := false
+	if _, err := os.Stat(backup); err == nil {
+		from, kept = backup, true
+	}
+	orig, err := os.ReadFile(from)
 	if err != nil {
 		return err
 	}
-	res, err := loadResults(path)
+	res, err := loadResults(from)
 	if err != nil {
 		return err
 	}
@@ -61,8 +64,8 @@ func reread(out string, log io.Writer) error {
 	for _, u := range m.Units {
 		units[u.ID] = u
 		for _, n := range u.Names {
-			if !have[u.ID+"\x00"+n.Name] {
-				return fmt.Errorf("%s: %s of unit %s has no result: not reread", path, n.Name, u.ID)
+			if u.Runs() && !have[u.ID+"\x00"+n.Name] {
+				return fmt.Errorf("%s: %s of unit %s has no result: not reread", from, n.Name, u.ID)
 			}
 		}
 	}
@@ -74,7 +77,7 @@ func reread(out string, log io.Writer) error {
 		if !ok {
 			return fmt.Errorf("%s: result %s names unit %s, which the manifest does not hold", out, r.Name, r.Unit)
 		}
-		if u.Kind != KindRegistry {
+		if !u.Runs() {
 			continue
 		}
 		k := key{r.Unit, r.Log}
@@ -88,7 +91,7 @@ func reread(out string, log io.Writer) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", filepath.Join(out, r.Log), err)
 			}
-			v = schemaTestVerdicts(body, u.Args, runErr)
+			v = unitVerdicts(u, body, runErr)
 			verdicts[k] = v
 		}
 		arg := ""
@@ -121,8 +124,10 @@ func reread(out string, log io.Writer) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(filepath.Join(out, rereadBackup), orig, 0o644); err != nil {
-		return err
+	if !kept {
+		if err := os.WriteFile(backup, orig, 0o644); err != nil {
+			return err
+		}
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, b.Bytes(), 0o644); err != nil {
@@ -131,7 +136,7 @@ func reread(out string, log io.Writer) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(log, "reread %s: %d registry results read again, %d changed: %d red to green, %d green to red\n", out, read, changed, toGreen, toRed)
+	_, err = fmt.Fprintf(log, "reread %s: %d results read again, %d changed from the results as written: %d red to green, %d green to red\n", out, read, changed, toGreen, toRed)
 	return err
 }
 

@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -340,6 +342,62 @@ func sanitize(id string) string {
 	return s
 }
 
+// unitArgv is the command a unit runs and the environment it runs in. A
+// Go unit in a nested module runs go in that module (go -C), naming its
+// package from there; one built for another operating system runs with
+// GOOS set (a bench that runs it executes the binary: captain's WSL hands
+// a .exe to Windows).
+func unitArgv(u Unit, schemaTest string, env map[string]string) ([]string, map[string]string) {
+	if u.GOOS != "" {
+		e := make(map[string]string, len(env)+1)
+		maps.Copy(e, env)
+		e["GOOS"] = u.GOOS
+		env = e
+	}
+	goArgv := []string{"go"}
+	dir := u.Dir
+	if u.Module != "" {
+		goArgv = append(goArgv, "-C", u.Module)
+		rel := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(u.Dir, "./"), u.Module), "/")
+		dir = "./" + rel
+		if rel == "" {
+			dir = "."
+		}
+	}
+	switch u.Kind {
+	case KindRegistry:
+		return append([]string{schemaTest, "run", "--timeout", "0"}, u.Args...), env
+	case KindGoTest:
+		argv := append(slices.Clip(goArgv), "test", "-count=1", "-timeout", "0", "-json")
+		if u.Tags != "" {
+			argv = append(argv, "-tags", u.Tags)
+		}
+		return append(argv, "-run", "^("+strings.Join(u.Args, "|")+")$", dir), env
+	case KindGoBench:
+		return append(goArgv, "test", "-count=1", "-timeout", "0", "-json", "-run", "^$", "-bench", "^("+strings.Join(u.Args, "|")+")$", "-benchtime", "1x", dir), env
+	case KindMake:
+		return []string{"make", "--no-print-directory", u.Args[0]}, env
+	}
+	return nil, env
+}
+
+// unitVerdicts reads a unit's output for a verdict for each of its args.
+func unitVerdicts(u Unit, out []byte, runErr error) map[string]Result {
+	switch u.Kind {
+	case KindRegistry:
+		return schemaTestVerdicts(out, u.Args, runErr)
+	case KindGoTest, KindGoBench:
+		return goTestVerdicts(out, u.Args, runErr, u.Kind == KindGoBench, u.Tags)
+	case KindMake:
+		v := Result{Verdict: Pass}
+		if runErr != nil {
+			v = Result{Verdict: Fail, First: firstFailLine(strings.Split(string(out), "\n"), fmt.Sprintf("make %s: %v", u.Args[0], runErr))}
+		}
+		return map[string]Result{u.Args[0]: v}
+	}
+	return nil
+}
+
 // runUnit runs one unit and returns a verdict for every one of its names.
 func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, logRel string) ([]Result, error) {
 	f, err := os.Create(filepath.Join(r.Out, logRel))
@@ -347,24 +405,18 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	var argv []string
+	argv, env := unitArgv(u, r.SchemaTest, env)
 	switch u.Kind {
-	case KindRegistry:
-		argv = append([]string{r.SchemaTest, "run", "--timeout", "0"}, u.Args...)
-	case KindGoTest:
-		argv = []string{"go", "test", "-count=1", "-timeout", "0", "-json"}
-		if u.Tags != "" {
-			argv = append(argv, "-tags", u.Tags)
-		}
-		argv = append(argv, "-run", "^("+strings.Join(u.Args, "|")+")$", u.Dir)
-	case KindGoBench:
-		argv = []string{"go", "test", "-count=1", "-timeout", "0", "-json", "-run", "^$", "-bench", "^(" + strings.Join(u.Args, "|") + ")$", "-benchtime", "1x", u.Dir}
+	case KindRegistry, KindGoTest, KindGoBench:
 	case KindMake:
-		argv = []string{"make", "--no-print-directory", u.Args[0]}
 	default:
 		return nil, fmt.Errorf("unit %s: a shard does not run a %s unit", u.ID, u.Kind)
 	}
-	logf(f, "# fullrun %s %s on %s, shard %s\n# %s\n", r.M.Run, u.ID, r.M.Bench, r.M.Shard, strings.Join(argv, " "))
+	shown := strings.Join(argv, " ")
+	if u.GOOS != "" {
+		shown = "GOOS=" + u.GOOS + " " + shown
+	}
+	logf(f, "# fullrun %s %s on %s, shard %s\n# %s\n", r.M.Run, u.ID, r.M.Bench, r.M.Shard, shown)
 	var out bytes.Buffer
 	start := r.Now()
 	runErr := r.Cmd(ctx, argv, env, io.MultiWriter(f, &out))
@@ -373,19 +425,7 @@ func (r *Runner) runUnit(ctx context.Context, u Unit, env map[string]string, log
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	var verdicts map[string]Result
-	switch u.Kind {
-	case KindRegistry:
-		verdicts = schemaTestVerdicts(out.Bytes(), u.Args, runErr)
-	case KindGoTest, KindGoBench:
-		verdicts = goTestVerdicts(out.Bytes(), u.Args, runErr, u.Kind == KindGoBench, u.Tags)
-	case KindMake:
-		v := Result{Verdict: Pass}
-		if runErr != nil {
-			v = Result{Verdict: Fail, First: firstFailLine(strings.Split(out.String(), "\n"), fmt.Sprintf("make %s: %v", u.Args[0], runErr))}
-		}
-		verdicts = map[string]Result{u.Args[0]: v}
-	}
+	verdicts := unitVerdicts(u, out.Bytes(), runErr)
 	per := secs / float64(len(u.Names))
 	results := make([]Result, len(u.Names))
 	for i, n := range u.Names {
@@ -403,8 +443,9 @@ var outcomeRE = regexp.MustCompile(`^(PASS|FAIL|MISSING|UNASKED|UNREPRESENTABLE)
 // is the asked names' own problem when their MISSING lines account for it.
 var shortRE = regexp.MustCompile(`^FAIL run: expected ([0-9]+) instances to run, ([0-9]+) ran$`)
 
-// summaryRE is the counts line schema-test's report ends with.
-var summaryRE = regexp.MustCompile(`^schema-test (?:PASS|FAIL): expected [0-9]+, ran [0-9]+, passed ([0-9]+),`)
+// summaryRE is the counts line schema-test's report ends with: PASS when
+// it exits 0, FAIL when it exits 1.
+var summaryRE = regexp.MustCompile(`^schema-test (PASS|FAIL): expected [0-9]+, ran [0-9]+, passed ([0-9]+),`)
 
 // schemaTestVerdicts reads schema-test run's outcome lines for the asked
 // names. A name with no outcome line fails, naming the run's first problem.
@@ -429,8 +470,19 @@ func schemaTestVerdicts(out []byte, asked []string, runErr error) map[string]Res
 	report := all
 	for i := len(all) - 1; i >= 0; i-- {
 		if m := summaryRE.FindStringSubmatch(strings.TrimRight(all[i], "\r")); m != nil {
-			summed, _ = strconv.Atoi(m[1])
+			summed, _ = strconv.Atoi(m[2])
 			report = all[:i+1]
+			// an adapter's output passed through can look like a summary;
+			// schema-test's own summary agrees with how it exited, and a
+			// run killed before its report did not exit 0 or 1
+			exit := "exit status 1"
+			if m[1] == "PASS" {
+				exit = "<nil>"
+			}
+			if got := fmt.Sprint(runErr); got != exit {
+				problems = append(problems, fmt.Sprintf("FAIL run: schema-test's summary says %s, but it exited %s", m[1], got))
+				runProblems++
+			}
 			break
 		}
 	}
@@ -659,23 +711,38 @@ func benchRan(lines []string, name string) bool {
 var (
 	goLineRE = regexp.MustCompile(`\.go:\d+: `)
 	failRE   = regexp.MustCompile(`(?i)(\berror\b|\bfail|refuse|panic:|\*\*\*|fatal|mismatch|not found|no such)`)
-	noiseRE  = regexp.MustCompile(`^(=== (RUN|PAUSE|CONT|NAME)|--- (PASS|SKIP)|PASS$|ok\s)`)
+	// warnRE is a warning: "warning: ...", or one a tool names itself or
+	// a place for ("x.c:3:5: warning: ...", "make: warning: ...").
+	warnRE  = regexp.MustCompile(`(?i)(^|: )warning: `)
+	noiseRE = regexp.MustCompile(`^(=== (RUN|PAUSE|CONT|NAME)|--- (PASS|SKIP)|PASS$|ok\s)`)
 )
 
 // firstFailLine is the line a reader of the log should see first: the
 // first test log line (file.go:N:), else the first line that says it
-// failed, else the last line, else def.
+// failed, else the last line, else def. A warning is passed over while a
+// line that is not one says the same; with none, the first warning that
+// says it failed is the line.
 func firstFailLine(lines []string, def string) string {
 	for _, l := range lines {
-		if goLineRE.MatchString(l) && !noiseRE.MatchString(strings.TrimSpace(l)) {
+		if goLineRE.MatchString(l) && !noiseRE.MatchString(strings.TrimSpace(l)) && !warnRE.MatchString(l) {
 			return clip(l)
 		}
 	}
+	warned := ""
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
-		if t != "" && !noiseRE.MatchString(t) && failRE.MatchString(t) {
+		if t == "" || noiseRE.MatchString(t) || !failRE.MatchString(t) {
+			continue
+		}
+		if !warnRE.MatchString(t) {
 			return clip(t)
 		}
+		if warned == "" {
+			warned = t
+		}
+	}
+	if warned != "" {
+		return clip(warned)
 	}
 	t := lastLine(strings.Join(lines, "\n"))
 	switch {

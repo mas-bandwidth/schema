@@ -66,7 +66,7 @@ func testLedger() []extract.LedgerLine {
 
 func testPlan(t *testing.T) []Unit {
 	t.Helper()
-	units, err := planUnits(testReg(t), testExtract(), testLedger(), map[string]float64{"./internal/x": 50})
+	units, err := planUnits(testReg(t), testExtract(), testLedger(), map[string]float64{"./internal/x": 50}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestPlanHoldsEveryTestOnce(t *testing.T) {
 func TestAssignDealsEachUnitOnceTheSameWayEveryTime(t *testing.T) {
 	t.Parallel()
 	units := testPlan(t)
-	benches := []Bench{{"a", 2}, {"b", 1}}
+	benches := []Bench{{Host: "a", Shards: 2}, {Host: "b", Shards: 1}}
 	s1, err := assign(units, benches)
 	if err != nil {
 		t.Fatal(err)
@@ -949,7 +949,7 @@ func TestUntarRefusesWhatIsNotAFileOrDirectory(t *testing.T) {
 // TestLaunchRefusesAShortSha: --sha names a whole commit.
 func TestLaunchRefusesAShortSha(t *testing.T) {
 	t.Parallel()
-	_, err := launch(context.Background(), Options{Sha: "5e80dac", Benches: []Bench{{"h", 1}}, OutRoot: t.TempDir(), Work: "w"},
+	_, err := launch(context.Background(), Options{Sha: "5e80dac", Benches: []Bench{{Host: "h", Shards: 1}}, OutRoot: t.TempDir(), Work: "w"},
 		&fakeRemote{}, func(time.Duration) {}, func() time.Time { return time.Unix(0, 0) }, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "40-hex") {
 		t.Fatalf("a short --sha: %v", err)
@@ -964,7 +964,7 @@ func TestARegistryRowTheExtractCannotReadIsARed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	units, err := planUnits(reg, testExtract(), testLedger(), nil)
+	units, err := planUnits(reg, testExtract(), testLedger(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1059,7 +1059,8 @@ func TestAShortRunTheMissingNamesExplainIsTheirs(t *testing.T) {
 }
 
 // TestRereadCorrectsARegistryVerdictFromItsLog: reread reads a finished
-// shard's registry logs again, rewrites the verdicts it misread, keeps
+// shard's logs again, every kind it runs, rewrites the verdicts and first
+// lines it misread, keeps
 // the results as written, leaves other units alone, and refuses a second
 // reread and a log with no exit line.
 func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
@@ -1070,7 +1071,7 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 	}
 	m := Manifest{Run: "r", Shard: "h-1", Bench: "h", Units: []Unit{
 		{ID: "registry/x", Kind: KindRegistry, Args: []string{"a", "b"}, Names: []Name{{Name: "a"}, {Name: "b"}}},
-		{ID: "gotest/y", Kind: KindGoTest, Args: []string{"TestY"}, Names: []Name{{Name: "y"}}},
+		{ID: "make/y", Kind: KindMake, Args: []string{"y"}, Names: []Name{{Name: "y"}}},
 	}}
 	mb, err := json.Marshal(m)
 	if err != nil {
@@ -1082,7 +1083,8 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 		"logs/1.log":    "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\nFAIL b (0.10s): wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n\n# exit: exit status 1, 1.0s\n",
 		resultsFile: `{"name":"a","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
 			`{"name":"b","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
-			`{"name":"y","unit":"gotest/y","verdict":"FAIL","first":"y broke","log":"logs/2.log","seconds":1}` + "\n",
+			`{"name":"y","unit":"make/y","verdict":"FAIL","first":"warning: a fixture failed to load","log":"logs/2.log","seconds":1}` + "\n",
+		"logs/2.log": "# fullrun r make/y on h, shard h-1\n# make --no-print-directory y\nwarning: a fixture failed to load\ny: 3 rows FAILED\nmake: *** [y] Error 1\n\n# exit: exit status 2, 1.0s\n",
 	}
 	for p, body := range files {
 		if err := os.WriteFile(filepath.Join(out, p), []byte(body), 0o644); err != nil {
@@ -1103,17 +1105,33 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 			t.Errorf("%s: %+v, want %s", r.Name, r, want[r.Name])
 		}
 	}
-	if res[1].First != "FAIL: wrong bytes" || res[2].First != "y broke" || res[0].Seconds != 0.5 {
+	if res[1].First != "FAIL: wrong bytes" || res[2].First != "y: 3 rows FAILED" || res[0].Seconds != 0.5 {
 		t.Errorf("reread results: %+v", res)
 	}
-	if !strings.Contains(log.String(), "2 registry results read again, 2 changed: 1 red to green") {
+	if !strings.Contains(log.String(), "3 results read again, 3 changed from the results as written: 1 red to green") {
 		t.Errorf("reread said: %s", log.String())
 	}
 	if b, err := os.ReadFile(filepath.Join(out, rereadBackup)); err != nil || string(b) != files[resultsFile] {
 		t.Errorf("the results as written were not kept: %v", err)
 	}
-	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "already reread") {
-		t.Errorf("a second reread: %v", err)
+	// a second reread reads the results as written again, not the reread
+	first, err := os.ReadFile(filepath.Join(out, resultsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Reset()
+	if err := reread(out, &log); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(filepath.Join(out, resultsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(first) || !strings.Contains(log.String(), "3 changed from the results as written") {
+		t.Errorf("a second reread: %s\n%s", log.String(), again)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, rereadBackup)); err != nil || string(b) != files[resultsFile] {
+		t.Errorf("a second reread changed the results as written: %v", err)
 	}
 	cut := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(cut, "logs"), 0o755); err != nil {
@@ -1136,11 +1154,11 @@ func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
 func TestRereadRefusesAShardThatHasNotFinished(t *testing.T) {
 	t.Parallel()
 	out := t.TempDir()
-	mb, err := json.Marshal(Manifest{Run: "r", Shard: "h-1", Units: []Unit{{ID: "u", Kind: KindGoTest, Names: []Name{{Name: "a"}, {Name: "b"}}}}})
+	mb, err := json.Marshal(Manifest{Run: "r", Shard: "h-1", Units: []Unit{{ID: "u", Kind: KindGoTest, Args: []string{"TestA", "TestB"}, Names: []Name{{Name: "a"}, {Name: "b"}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for p, body := range map[string]string{"manifest.json": string(mb), resultsFile: "{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\"}\n{\"name\":\"b\",\"unit\n"} {
+	for p, body := range map[string]string{"manifest.json": string(mb), "l.log": "# fullrun r u on h, shard h-1\n# go test\n\n# exit: exit status 1, 1.0s\n", resultsFile: "{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\",\"log\":\"l.log\"}\n{\"name\":\"b\",\"unit\n"} {
 		if err := os.WriteFile(filepath.Join(out, p), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -1155,7 +1173,7 @@ func TestRereadRefusesAShardThatHasNotFinished(t *testing.T) {
 		t.Errorf("results with a cut line nothing after it covers: %v", err)
 	}
 	// the shard ran the unit again after the cut, as a shard does
-	if err := os.WriteFile(filepath.Join(out, resultsFile), []byte("{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\"}\n{\"name\":\"b\",\"unit\n{\"name\":\"b\",\"unit\":\"u\",\"verdict\":\"PASS\"}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(out, resultsFile), []byte("{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\",\"log\":\"l.log\"}\n{\"name\":\"b\",\"unit\n{\"name\":\"b\",\"unit\":\"u\",\"verdict\":\"PASS\",\"log\":\"l.log\"}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := reread(out, io.Discard); err != nil {
@@ -1187,8 +1205,185 @@ func TestTwoOutcomesForOneNameAreTheRunsProblem(t *testing.T) {
 	if c := cut["c"]; c.Verdict != Fail || !strings.Contains(c.First, "no summary (exit: signal: killed)") {
 		t.Errorf("a pass from a run that printed no summary: %+v", c)
 	}
+	killed := schemaTestVerdicts([]byte("FAIL b: x\nPASS c\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"b", "c"}, errors.New("signal: killed"))
+	if c := killed["c"]; c.Verdict != Fail || !strings.Contains(c.First, "summary says FAIL, but it exited signal: killed") {
+		t.Errorf("a pass beside a summary a killed run did not print: %+v", c)
+	}
 	echoed := schemaTestVerdicts([]byte("PASS a\nPASS a (0.01s)\nPASS b (0.01s)\nschema-test PASS: expected 2, ran 2, passed 2, failed 0, missing 0, unrepresentable 0\nFAIL a: after the report\n"), []string{"a", "b"}, nil)
 	if a, b := echoed["a"], echoed["b"]; a.Verdict != Pass || b.Verdict != Pass {
 		t.Errorf("an adapter's echo of a pass, and a line after the summary: %+v %+v", a, b)
+	}
+}
+
+// TestANestedModuleTestRunsInItsModule: a Go test in a directory under a
+// nested go.mod runs go in that module (go -C), naming its package from
+// there, not from the repository's root, where go cannot find it.
+func TestANestedModuleTestRunsInItsModule(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, d := range []string{"test/go-tables/sub", "internal/x"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, m := range []string{"go.mod", "test/go-tables/go.mod"} {
+		if err := os.WriteFile(filepath.Join(root, m), []byte("module m\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	of := moduleOf(root)
+	for dir, want := range map[string]string{"test/go-tables/sub": "test/go-tables", "test/go-tables": "test/go-tables", "internal/x": "", ".": ""} {
+		if got := of(dir); got != want {
+			t.Errorf("moduleOf(%s) = %q, want %q", dir, got, want)
+		}
+	}
+	res := &extract.Result{Items: []extract.Item{
+		{Kind: extract.KindGoTest, Dir: "test/go-tables/sub", Name: "TestN", Tier: "unit"},
+		{Kind: extract.KindGoTest, Dir: "test/go-tables", Name: "TestM", Tier: "unit"},
+		{Kind: extract.KindGoTest, Dir: "test/go-tables", Name: "BenchmarkM", Tier: "nightly"},
+	}}
+	units, err := planUnits(testReg(t), res, nil, nil, of)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"gotest/test/go-tables/sub/001": "go -C test/go-tables test -count=1 -timeout 0 -json -run ^(TestN)$ ./sub",
+		"gotest/test/go-tables/001":     "go -C test/go-tables test -count=1 -timeout 0 -json -run ^(TestM)$ .",
+		"gobench/test/go-tables":        "go -C test/go-tables test -count=1 -timeout 0 -json -run ^$ -bench ^(BenchmarkM)$ -benchtime 1x .",
+	}
+	found := 0
+	for _, u := range units {
+		w, ok := want[u.ID]
+		if !ok {
+			continue
+		}
+		found++
+		argv, _ := unitArgv(u, "schema-test", nil)
+		if got := strings.Join(argv, " "); got != w {
+			t.Errorf("%s runs %q, want %q", u.ID, got, w)
+		}
+	}
+	if found != len(want) {
+		t.Errorf("the plan holds %d of the %d nested-module units: %+v", found, len(want), units)
+	}
+	root1, _ := unitArgv(Unit{Kind: KindGoTest, Dir: "./internal/x", Args: []string{"TestA"}}, "schema-test", nil)
+	if got := strings.Join(root1, " "); got != "go test -count=1 -timeout 0 -json -run ^(TestA)$ ./internal/x" {
+		t.Errorf("a test of the root module runs %q", got)
+	}
+}
+
+// TestAWindowsTestRunsOnABenchThatRunsWindows: a Go test built only for
+// Windows is a unit of its own, built with GOOS=windows, dealt only to a
+// bench that runs Windows tests (captain=N+windows); with no such bench it
+// is NOT RUN, naming what it needs.
+func TestAWindowsTestRunsOnABenchThatRunsWindows(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		gates        []string
+		source, want string
+	}{
+		{[]string{"build: windows"}, "tools/treelock/x_test.go:10", "windows"},
+		{nil, "tools/treelock/treelock_windows_test.go:10", "windows"},
+		{nil, "tools/treelock/lock_darwin_arm64_test.go:3", "darwin"},
+		{[]string{"build: !windows"}, "a/x_test.go:1", ""},
+		{[]string{"build: unix"}, "a/x_test.go:1", ""},
+		{[]string{"build: linux || windows"}, "a/x_test.go:1", ""},
+		{[]string{"build: schema_leg_moo"}, "a/x_test.go:1", ""},
+		{nil, "a/windows_test.go:1", ""},
+		{nil, "internal/codegen/js/serialize_js_lookup_test.go:1", ""},
+		{nil, "a/x_amd64_test.go:1", ""},
+	} {
+		if got := needsGOOS(c.gates, c.source); got != c.want {
+			t.Errorf("needsGOOS(%v, %s) = %q, want %q", c.gates, c.source, got, c.want)
+		}
+	}
+	res := &extract.Result{Items: []extract.Item{
+		{Kind: extract.KindGoTest, Dir: "tools/treelock", Name: "TestTreelockWindowsRefusal", Tier: "unit", Gates: []string{"build: windows"}, Source: "tools/treelock/treelock_windows_test.go:10"},
+		{Kind: extract.KindGoTest, Dir: "tools/treelock", Name: "TestTreelock", Tier: "unit", Source: "tools/treelock/treelock_test.go:10"},
+	}}
+	units, err := planUnits(testReg(t), res, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var win Unit
+	for _, u := range units {
+		if u.ID == "gotest/tools/treelock/goos-windows/001" {
+			win = u
+		}
+	}
+	if win.GOOS != "windows" || len(win.Args) != 1 || win.Args[0] != "TestTreelockWindowsRefusal" {
+		t.Fatalf("the Windows test's unit: %+v", win)
+	}
+	if _, env := unitArgv(win, "schema-test", map[string]string{"A": "1"}); env["GOOS"] != "windows" || env["A"] != "1" {
+		t.Errorf("a Windows unit runs with %v", env)
+	}
+	shards, err := assign(units, []Bench{{Host: "a", Shards: 2}, {Host: "captain", Shards: 1, GOOS: []string{"windows"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range shards {
+		for _, u := range s.Units {
+			if u.GOOS == "windows" && s.Bench != "captain" {
+				t.Errorf("a Windows unit dealt to %s", s.ID)
+			}
+		}
+	}
+	// no bench runs Windows: the unit is in no shard, and NOT RUN says why
+	benches := []Bench{{Host: "a", Shards: 2}}
+	shards, err = assign(units, benches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := &State{Dir: t.TempDir(), Units: units, Benches: benches}
+	for _, s := range shards {
+		for _, u := range s.Units {
+			if u.GOOS != "" {
+				t.Errorf("a Windows unit dealt to %s, which does not run Windows", s.ID)
+			}
+		}
+		st.Shards = append(st.Shards, &ShardState{Shard: s})
+	}
+	a, err := account(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, r := range a.Rows {
+		if r.Name.Name == "unmoved/go-test/tools/treelock/TestTreelockWindowsRefusal" {
+			seen = true
+			if r.Verdict != Fail || !strings.Contains(r.First, "no bench in this run runs windows tests") || !strings.Contains(r.First, "captain") {
+				t.Errorf("a Windows test no bench runs: %+v", r)
+			}
+		}
+	}
+	if !seen {
+		t.Error("the Windows test is not in the run's rows")
+	}
+	got, err := parseBenches([]string{"captain=2+windows", "a=4"})
+	if err != nil || len(got) != 2 || !got[0].Runs("windows") || got[1].Runs("windows") || !got[1].Runs("") {
+		t.Errorf("parseBenches: %+v, %v", got, err)
+	}
+	if _, err := parseBenches([]string{"a=4+linux"}); err == nil {
+		t.Error("a bench named for linux, which every bench runs, was taken")
+	}
+}
+
+// TestAWarningIsNotTheFirstLineBesideAFailure: a warning that says
+// something failed is passed over when a line that is not a warning says
+// so; when no other line does, the warning is the first line.
+func TestAWarningIsNotTheFirstLineBesideAFailure(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		lines []string
+		want  string
+	}{
+		{[]string{"warning: table WideBlob refused: past the fixed-form ceiling", "build ok", "rust fixed form: 21 FAILED", "make: *** [x] Error 1"}, "rust fixed form: 21 FAILED"},
+		{[]string{"x.c:3:5: warning: an error-prone cast", "unit.c:(.text+0x3a): undefined reference to `f'", "collect2: error: ld returned 1 exit status"}, "collect2: error: ld returned 1 exit status"},
+		{[]string{"warning: cards_test.go:12: a fixture failed to load", "cards_test.go:40: wrong bytes"}, "cards_test.go:40: wrong bytes"},
+		{[]string{"checking", "warning: go key order: the control failed to go red", "done"}, "warning: go key order: the control failed to go red"},
+	} {
+		if got := firstFailLine(c.lines, "make x: exit status 2"); got != c.want {
+			t.Errorf("firstFailLine(%q) = %q, want %q", c.lines, got, c.want)
+		}
 	}
 }
