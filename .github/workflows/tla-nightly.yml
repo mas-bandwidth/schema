@@ -63,7 +63,7 @@ jobs:
         run: go test ./internal/ci/... -count=1 -run TLA
 
       - name: the runner and its ledger pairing hold
-        run: go test ./tools/tlcrun -count=1
+        run: go test -race ./tools/tlcrun -count=1
 
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: runner.environment == 'github-hosted'

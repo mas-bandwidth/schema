@@ -145,7 +145,8 @@ func runAdapter(tlaDir string, tlc checker, tools string, parallel int, in io.Re
 		dir = scratch
 	}
 	// every verdict reached without TLC is reached here, before any run
-	// starts: the runs below write results under mu, and nothing else does
+	// starts; each run writes only its own slot of errs, and the verdicts
+	// are written from errs once every run is done: no run shares a map
 	var runs []adapterJob
 	for _, j := range jobs {
 		if _, done := results[j.req.Instance]; done {
@@ -157,24 +158,24 @@ func runAdapter(tlaDir string, tlc checker, tools string, parallel int, in io.Re
 		}
 		runs = append(runs, j)
 	}
-	var mu sync.Mutex
+	errs := make([]error, len(runs))
 	sem := make(chan struct{}, max(parallel, 1))
 	var wg sync.WaitGroup
-	for _, j := range runs {
+	for i, j := range runs {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			err := runOneWith(dir, j.row, tlc, j.in.Workers)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				fail(j.req, "%s (module %s) is not its RUNS.tsv run: %v", j.row.Config, j.row.Module, err)
-				return
-			}
-			results[j.req.Instance] = testreg.Result{Instance: j.req.Instance, Verdict: testreg.Pass}
+			errs[i] = runOneWith(dir, j.row, tlc, j.in.Workers)
 		})
 	}
 	wg.Wait()
+	for i, j := range runs {
+		if errs[i] != nil {
+			fail(j.req, "%s (module %s) is not its RUNS.tsv run: %v", j.row.Config, j.row.Module, errs[i])
+			continue
+		}
+		results[j.req.Instance] = testreg.Result{Instance: j.req.Instance, Verdict: testreg.Pass}
+	}
 	for _, q := range controls {
 		var sink strings.Builder
 		if err := runControls(tlaDir, tlc, &sink); err != nil {

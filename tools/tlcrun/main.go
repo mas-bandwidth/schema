@@ -54,13 +54,16 @@ func main() {
 	controls := flag.Bool("controls", false, "prove the runner goes red on three broken copies of tla/")
 	adapter := flag.Bool("adapter", false, "the test registry's harness: requests on stdin, one result line each on stdout")
 	parallel := flag.Int("parallel", defaultParallel(), "with -adapter: how many TLC processes run at once")
-	scratch := flag.String("scratch", "build", "where the scratch copies of tla/ (controls, plants) are made")
+	scratch := flag.String("scratch", "", "where TLC's working directories and the scratch copies of tla/ are made (default: build/ beside the -tla directory)")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "tlcrun: takes no arguments; it runs every config, never a chosen few")
 		os.Exit(2)
 	}
 	scratchRoot = *scratch
+	if scratchRoot == "" {
+		scratchRoot = filepath.Join(filepath.Dir(filepath.Clean(*tlaDir)), "build")
+	}
 	if *adapter {
 		if err := adapterMain(*tlaDir, *jar, *java, *parallel, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "tlcrun -adapter:", err)
@@ -112,7 +115,7 @@ func (r realTLC) withWorkers(n int) checker {
 }
 
 func (r realTLC) check(tlaDir, config, module string) (int, string, error) {
-	work, err := os.MkdirTemp("", "tla-tlc.")
+	work, err := scratchDir("tla-tlc.")
 	if err != nil {
 		return 0, "", err
 	}
@@ -310,18 +313,24 @@ func wantRefusal(err error, want string) error {
 	return nil
 }
 
-// scratchRoot is where copyDir makes its scratch copies: the system temporary
-// directory by default (a unit test's), and the repository's build/ when the
-// program runs (main), so a run writes only inside its working directory.
+// scratchRoot is where TLC's working directories and the scratch copies of
+// tla/ are made: build/ beside the tla/ directory when the program runs
+// (main), so a run writes only inside the repository; the system temporary
+// directory, where t.TempDir is too, in a unit test.
 var scratchRoot = ""
 
-func copyDir(src string) (string, error) {
+// scratchDir makes a scratch directory under scratchRoot.
+func scratchDir(prefix string) (string, error) {
 	if scratchRoot != "" {
 		if err := os.MkdirAll(scratchRoot, 0o755); err != nil {
 			return "", err
 		}
 	}
-	dst, err := os.MkdirTemp(scratchRoot, "tla-scratch.")
+	return os.MkdirTemp(scratchRoot, prefix)
+}
+
+func copyDir(src string) (string, error) {
+	dst, err := scratchDir("tla-scratch.")
 	if err != nil {
 		return "", err
 	}

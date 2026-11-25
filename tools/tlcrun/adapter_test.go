@@ -194,7 +194,8 @@ func TestTheAdapterEntryChecksTheToolsItRunsWith(t *testing.T) {
 
 // TestTheAdapterRunsConcurrentlyWithoutRacingItsVerdicts: verdicts reached
 // without TLC (a config with no row) and verdicts of runs in flight land in
-// one map; run under -race, none races another.
+// results; each run writes only its own slot, so under -race (tla-nightly.yml
+// runs this package with it) none races another.
 func TestTheAdapterRunsConcurrentlyWithoutRacingItsVerdicts(t *testing.T) {
 	t.Parallel()
 	dir := writeTree(t, adapterTree())
