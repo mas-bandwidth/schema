@@ -59,6 +59,12 @@ func goTestEvents(tests ...[2]string) string {
 // and exits with runErr: no make or go test runs.
 func fakeMakeGoTest(t *testing.T, events string, runErr error) makeGoTestAdapter {
 	t.Helper()
+	return fakeMakeGoTestLog(t, events, "ok", runErr)
+}
+
+// fakeMakeGoTestLog is fakeMakeGoTest whose make prints log.
+func fakeMakeGoTestLog(t *testing.T, events, log string, runErr error) makeGoTestAdapter {
+	t.Helper()
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -66,8 +72,18 @@ func fakeMakeGoTest(t *testing.T, events string, runErr error) makeGoTestAdapter
 	if err := os.MkdirAll(filepath.Join(root, "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// the root as the driver names it, relative (".", in a run): the events
+	// file must reach make by an absolute path all the same
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(wd, root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	recipe := "\t$(GO_TEST) -count=1 ./x\n"
-	return makeGoTestAdapter{root: root, mk: makeAdapter{
+	return makeGoTestAdapter{root: rel, mk: makeAdapter{
 		read: func(p string) ([]byte, error) {
 			if p != "make/x.mk" {
 				return nil, errors.New("no such file")
@@ -79,15 +95,15 @@ func fakeMakeGoTest(t *testing.T, events string, runErr error) makeGoTestAdapter
 		},
 		exec: func(ctx context.Context, _ []string) (string, error) {
 			p := testreg.EnvFrom(ctx)[GoTestJSONEnv]
-			if p == "" {
-				return "", errors.New("the events file was not named")
+			if !filepath.IsAbs(p) {
+				return "", errors.New("the events file was not named by an absolute path: " + p)
 			}
 			if events != "" {
 				if err := os.WriteFile(p, []byte(events), 0o644); err != nil {
 					return "", err
 				}
 			}
-			return "ok", runErr
+			return log, runErr
 		},
 	}}
 }
@@ -209,5 +225,95 @@ func TestAMakeGoTestTargetWithoutGoTestIsRefused(t *testing.T) {
 	got := runMakeGoTest(t, a, "TestA")
 	if r := got["TestA"]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "runs no go test through $(GO_TEST)") || ran {
 		t.Errorf("TestA: %+v (make ran: %v), want a fail before make runs", r, ran)
+	}
+}
+
+// TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone: a skip go test
+// reported is the skipped row's red by name, and the other rows keep their
+// verdicts though gotestrun's copy of the skip is in make's log; a skip the
+// log reports that no event names fails every row. A test started twice and
+// finished once is no pass, and neither is a test whose package failed
+// outside its tests. The plants: the log's skip refused before the events
+// are read (TestA goes red), runs counted as booleans (TestA passes on its
+// first run), and package-level fail events passed over.
+func TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone(t *testing.T) {
+	t.Parallel()
+	ev := func(lines ...string) string { return strings.Join(lines, "\n") + "\n" }
+	cases := []struct {
+		name, events, log string
+		runErr            error
+		rows              []string
+		red               string
+		green             []string
+		want              string
+	}{
+		{"a go test skip in the log", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}), "=== RUN   TestB\n--- SKIP: TestB (0.00s)\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "TestB skipped"},
+		{"a skip no event names", goTestEvents([2]string{"TestA", "pass"}), "SKIP: the recipe skipped its check\n", nil,
+			[]string{"TestA"}, "TestA", nil, "reported a skip"},
+		{"started twice, finished once", ev(`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"pass","Package":"example.com/x","Test":"TestA"}`,
+			`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"output","Package":"example.com/x","Output":"FAIL\texample.com/x\n"}`),
+			"ok", errors.New("exit status 2"), []string{"TestA"}, "TestA", nil, "started TestA 2 times and it finished 1"},
+		{"the package failed outside its tests", ev(`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"pass","Package":"example.com/x","Test":"TestA"}`,
+			`{"Action":"output","Package":"example.com/x","Output":"TestMain: leaked a goroutine\n"}`, `{"Action":"fail","Package":"example.com/x"}`),
+			"ok", nil, []string{"TestA"}, "TestA", nil, "TestMain: leaked a goroutine"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := runMakeGoTest(t, fakeMakeGoTestLog(t, c.events, c.log, c.runErr), c.rows...)
+			if r := got[c.red]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, c.want) {
+				t.Errorf("%s: %+v, want a fail saying %q", c.red, r, c.want)
+			}
+			for _, g := range c.green {
+				if got[g].Verdict != testreg.Pass {
+					t.Errorf("%s, which passed, is %+v: another row's skip is not its red", g, got[g])
+				}
+			}
+		})
+	}
+}
+
+// TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused: a target whose
+// recipes run a go test other than through $(GO_TEST) (a bare go test,
+// -json or not, or a variable that runs one) would run tests no events file
+// names, so its rows fail before make runs: the make vet the make adapter
+// applies refuses it. The plant is the vet's go test check left out: make
+// runs, and those tests are never held to a row.
+func TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused(t *testing.T) {
+	t.Parallel()
+	for _, other := range []string{"\tgo test -json ./y\n", "\t$(RUN_Y)\n"} {
+		a := fakeMakeGoTest(t, goTestEvents([2]string{"TestA", "pass"}), nil)
+		ran := false
+		a.mk.plan = func(context.Context, []string) (string, error) {
+			return fakeDatabase("GO_TEST = tools/gotestrun/gotest\nRUN_Y = go test -json ./y\n", "", "gate-check:\n\t$(GO_TEST) ./x\n"+other), errors.New("exit status 2")
+		}
+		exec := a.mk.exec
+		a.mk.exec = func(ctx context.Context, argv []string) (string, error) { ran = true; return exec(ctx, argv) }
+		got := runMakeGoTest(t, a, "TestA")
+		if r := got["TestA"]; r.Verdict != testreg.Fail || !strings.Contains(r.Reason, "$(GO_TEST)") || !strings.Contains(r.Reason, "go test") || ran {
+			t.Errorf("recipe line %q: TestA %+v (make ran: %v), want a fail before make runs", other, r, ran)
+		}
+	}
+}
+
+// TestAKilledMakeGoTestNamesTheTestsRunning: when the driver's deadline
+// kills make, the call's error names the Go tests the events show started
+// and unfinished, which the driver reports as its timeout. The context is
+// cancelled before make returns, so no real time passes. The plant is the
+// error without the events read: it names no test.
+func TestAKilledMakeGoTestNamesTheTestsRunning(t *testing.T) {
+	t.Parallel()
+	a := fakeMakeGoTest(t, goTestTimeoutReplay, errors.New("signal: killed"))
+	ctx, cancel := context.WithCancel(context.Background())
+	exec := a.mk.exec
+	a.mk.exec = func(c context.Context, argv []string) (string, error) {
+		log, err := exec(c, argv)
+		cancel() // the driver's deadline, reached while make ran
+		return log, err
+	}
+	_, err := a.Run(ctx, testreg.LangFree, []testreg.Instance{makeGoTestRow(t, "TestQuick"), makeGoTestRow(t, "TestBlocks")})
+	if err == nil || !strings.Contains(err.Error(), "the Go tests running were example.com/x TestBlocks") {
+		t.Errorf("a killed make-gotest call: %v, want the running test named", err)
 	}
 }

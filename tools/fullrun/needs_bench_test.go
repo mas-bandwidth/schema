@@ -279,3 +279,22 @@ func TestARunWithANeedNoBenchProvidesExitsNonZero(t *testing.T) {
 		})
 	}
 }
+
+// TestANeedNoOneBenchProvidesWholeIsNamed: a unit whose need and GOOS
+// two benches provide between them, but no one bench together, is NOT RUN
+// naming the combination, never the bare "no shard ran it". The plant is
+// lacks answering "" whenever each need has some bench.
+func TestANeedNoOneBenchProvidesWholeIsNamed(t *testing.T) {
+	t.Parallel()
+	u := Unit{ID: "gotest/x/goos-windows/001", GOOS: "windows", Requires: []string{"casefold"}}
+	benches := []Bench{{Host: "captain", Shards: 1, GOOS: []string{"windows"}}, {Host: "amd-1", Shards: 1, Provides: []string{"casefold"}}}
+	why := lacks(u, benches)
+	for _, w := range []string{"casefold on windows", "no bench in this run provides them all", "--bench HOST=SHARDS+casefold+windows"} {
+		if !strings.Contains(why, w) {
+			t.Errorf("lacks: %q does not say %q", why, w)
+		}
+	}
+	if why := lacks(u, append(benches, Bench{Host: "both", Shards: 1, GOOS: []string{"windows"}, Provides: []string{"casefold"}})); why != "" {
+		t.Errorf("a bench that takes the unit is there, and lacks says %q", why)
+	}
+}

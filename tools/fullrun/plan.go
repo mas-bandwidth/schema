@@ -752,7 +752,9 @@ func (b Bench) Takes(u Unit) bool {
 
 // lacks is why no bench of benches takes u for its needs, naming each
 // property no bench provides and each bench whose declaration of it its
-// probe refused, or "" when one provides them all.
+// probe refused, or "" when one bench takes it. A unit whose needs (and
+// GOOS) some benches provide between them but no one bench all together
+// names that.
 func lacks(u Unit, benches []Bench) string {
 	var missing []string
 	for _, r := range u.Requires {
@@ -761,7 +763,18 @@ func lacks(u Unit, benches []Bench) string {
 		}
 	}
 	if len(missing) == 0 {
-		return ""
+		if len(u.Requires) == 0 || slices.ContainsFunc(benches, func(b Bench) bool { return b.Takes(u) }) {
+			return ""
+		}
+		all := strings.Join(u.Requires, " and ")
+		if u.GOOS != "" {
+			all += " on " + u.GOOS
+		}
+		words := slices.Clone(u.Requires)
+		if u.GOOS != "" {
+			words = append(words, u.GOOS)
+		}
+		return fmt.Sprintf("it needs %s on one bench, and no bench in this run provides them all: name one that does with --bench HOST=SHARDS+%s", all, strings.Join(words, "+"))
 	}
 	why := fmt.Sprintf("it needs %s, which no bench in this run provides: name one that does with --bench HOST=SHARDS+%s", strings.Join(missing, " and "), strings.Join(missing, "+"))
 	var refused []string

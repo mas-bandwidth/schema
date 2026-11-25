@@ -129,7 +129,8 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | a call the driver's own deadline kills: named a timeout (TIMED OUT), with the call's limit and how long it ran, never a crash, and each row it left unreported fails by name | `TestADriverTimeoutNamesTheLimitAndTheRows` |
 | go test's own `-timeout` firing (gotest and make-gotest): the running test's row fails TIMED OUT naming the limit and how long it had run, every row the package never reached fails naming the test that was running, and a test that passed before the limit keeps its pass | `TestAGoTestTimeoutIsNamedNotACrash`, `TestAMakeGoTestTimeoutIsNamed` |
 | a make-gotest row: its Go test missing from the target's go test -json events, skipped (itself or a subtest), failed, a run of 0 tests, a Go test the target ran that no row names, or make failing outside every test | `TestAMakeGoTestRowIsReadByItsExactName`, `TestAMakeGoTestTargetWithoutGoTestIsRefused` |
-| a row that needs a machine property no bench of the run provides, or whose bench's declaration its probe refused: NOT RUN naming the need, never skipped | `TestAPlanNeverSendsARowToABenchThatLacksItsNeed`, `TestABenchDeclaresItsPropertiesAndTheProbeHoldsThem` |
+| a make-gotest row whose test started more often than it finished, or whose package failed outside its tests; a skip only make's log reports fails every row, while a skip go test reported is the skipped row's alone; a target running go test outside `$(GO_TEST)` is refused before make runs; make killed by the driver's deadline names the Go tests still running | `TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone`, `TestAMakeGoTestTargetRunningGoTestAnotherWayIsRefused`, `TestAKilledMakeGoTestNamesTheTestsRunning` |
+| a row that needs a machine property no bench of the run provides, that no one bench provides together with its other needs and GOOS, or whose bench's declaration its probe refused: NOT RUN naming the need, never skipped, and the run exits non-zero (launch, watch, collect and merge all do on any red) | `TestAPlanNeverSendsARowToABenchThatLacksItsNeed`, `TestABenchDeclaresItsPropertiesAndTheProbeHoldsThem`, `TestANeedNoOneBenchProvidesWholeIsNamed`, `TestARunWithANeedNoBenchProvidesExitsNonZero` |
 | an adapter times out (the deadline is an argument; the test hands in one already past) | `TestAnAdapterTimeoutFails` |
 | a build a call needs (a leg, a harness) runs before any call, outside every call's deadline and under one of its own, the limit a call has (`testreg.Preparer`); a plant prepares the rows it runs; a step already built answers without waiting for the checkout | `TestPrepareRunsBeforeAnyCallOutsideItsDeadline`, `TestABuildStepRunsInPrepare`, `TestAPlantPreparesTheRowsItRunsInTheCheckout`, `TestABuildStepAlreadyRunNeverWaitsForTheCheckout` |
 | a build that outlasts its deadline fails every row that needed it, naming the timeout | `TestAPrepareThatOutlastsItsDeadlineFailsByName` |
@@ -183,7 +184,11 @@ deals a unit to a bench that lacks one of its needs; a unit whose need no
 bench of the run provides is NOT RUN, naming the need, the refusals and the
 `--bench` word that declares it. A unit's needs are the union of its rows'
 (the Go tests of one package, or the rows of one make target, are one
-unit). The nightly parts declare `local=2+casefold`.
+unit). The nightly part jobs are generated (`schema-test ci`) with every
+need the registry holds as a runner label (`runs-on: [..., schema,
+casefold]`) and as a declared property (`--bench local=2+casefold`), so a
+part lands only on a runner that carries the label, and fullrun still
+probes it there. Captain's runners do not carry `casefold`.
 
 ## No skips
 
