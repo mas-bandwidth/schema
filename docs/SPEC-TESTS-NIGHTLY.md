@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 626. Language-free tests: 1349.
+Nightly tests every language answers: 626. Language-free tests: 1352.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -4007,6 +4007,13 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.schema-dart-strict-analyze.schema-dart-generated-strict-analyze-nested-default-negative-control` | `plant` | negative control schema-dart-generated-strict-analyze-nested-default-negative-control (group schema-dart-strict-analyze of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-dart-generated-strict-analyze-gate.mk`<br>`group: schema-dart-strict-analyze`<br>`make: schema-dart-generated-strict-analyze-nested-default-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2991` |
 
+#### `plant` family `single-pass-equivalence`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.single-pass-equivalence.tables-single-pass-drop-else-negative-control` | `plant` | negative control tables-single-pass-drop-else-negative-control (group single-pass-equivalence of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/c.mk`<br>`group: single-pass-equivalence`<br>`make: tables-single-pass-drop-else-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:878` |
+| `none.nightly.plant.single-pass-equivalence.tables-single-pass-hoist-define-negative-control` | `plant` | negative control tables-single-pass-hoist-define-negative-control (group single-pass-equivalence of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/c.mk`<br>`group: single-pass-equivalence`<br>`make: tables-single-pass-hoist-define-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:878` |
+
 #### `plant` family `squirrel-cards`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -4623,12 +4630,13 @@ a TLA+ model checks under TLC, or a code trace is a behaviour of the spec.
 
 a battery run as one step (a make target over a leg or a corpus): it passes when the step exits 0 with no skip; a migration item until its cases are named rows.
 
-#### `harness-run` family `make-c`, 3 tests
+#### `harness-run` family `make-c`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.nightly.harness-run.make-c.cards-c-test` | `make` | make cards-c-test (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: cards-c-test` | the target exits 0 with no skip in its log | `make/c.mk:2083` |
 | `none.nightly.harness-run.make-c.tables-c-fixedform` | `make` | make tables-c-fixedform (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-fixedform` | the target exits 0 with no skip in its log | `make/c.mk:1581` |
+| `none.nightly.harness-run.make-c.tables-single-pass-equivalence` | `make` | make tables-single-pass-equivalence (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-single-pass-equivalence` | the target exits 0 with no skip in its log | `make/c.mk:2590` |
 | `none.nightly.harness-run.make-c.test-c-recipe` | `make` | make test-c-recipe (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: test-c-recipe` | the target exits 0 with no skip in its log | `make/c.mk:1616` |
 
 #### `harness-run` family `make-c-fixed-default-copy`, 1 test

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2966.
+Unit tests every language answers: 2. Language-free tests: 2967.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -301,7 +301,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.cmd-schema.stale-cleanup-never-removes-what-this-run-wrote` | `gotest` | Go test TestStaleCleanupNeverRemovesWhatThisRunWrote in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestStaleCleanupNeverRemovesWhatThisRunWrote` | the Go test passes | `cmd/schema/generatedspelling_test.go:294` |
 | `none.unit.compiler.cmd-schema.wire-form-lines-report-a-refusal` | `gotest` | Go test TestWireFormLinesReportARefusal in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestWireFormLinesReportARefusal` | the Go test passes | `cmd/schema/checkexit_test.go:12` |
 
-#### `compiler` family `codegen-ccommon`, 6 tests
+#### `compiler` family `codegen-ccommon`, 7 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -309,6 +309,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.codegen-ccommon.header-guard-spelling` | `gotest` | Go test TestHeaderGuardSpelling in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestHeaderGuardSpelling` | the Go test passes | `internal/codegen/ccommon/guard_test.go:7` |
 | `none.unit.compiler.codegen-ccommon.packed-initializer-edges` | `gotest` | Go test TestPackedInitializerEdges in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestPackedInitializerEdges` | the Go test passes | `internal/codegen/ccommon/packed_test.go:29` |
 | `none.unit.compiler.codegen-ccommon.packed-initializer-shape` | `gotest` | Go test TestPackedInitializerShape in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestPackedInitializerShape` | the Go test passes | `internal/codegen/ccommon/packed_test.go:12` |
+| `none.unit.compiler.codegen-ccommon.rewrite-conditionals-as-emitted-switch` | `gotest` | Go test TestRewriteConditionalsAsEmittedSwitch in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestRewriteConditionalsAsEmittedSwitch` | the Go test passes | `internal/codegen/ccommon/asemitted_test.go:11` |
 | `none.unit.compiler.codegen-ccommon.single-pass-conditionals` | `gotest` | Go test TestSinglePassConditionals in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestSinglePassConditionals` | the Go test passes | `internal/codegen/ccommon/singlepass_test.go:12` |
 | `none.unit.compiler.codegen-ccommon.single-pass-conditionals-refuses` | `gotest` | Go test TestSinglePassConditionalsRefuses in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestSinglePassConditionalsRefuses` | the Go test passes | `internal/codegen/ccommon/singlepass_test.go:62` |
 

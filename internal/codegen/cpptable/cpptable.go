@@ -2687,9 +2687,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// it homeless or force one file to reach across the others and back.
 	maps.Copy(out, generateViewFiles(u, closure, anyVariable, anyKeyed, anyMap, anyList, anyExtent, blocks, variable, targets))
 	for name, data := range out {
-		// ONE BRANCH PER CONDITIONAL (ccommon.SinglePassConditionals): an
+		// ONE BRANCH PER CONDITIONAL (ccommon.SinglePassConditionals; as emitted
+		// only for make tables-single-pass-equivalence): an
 		// #else or #elif makes clang-format lay the whole file out again
-		text, err := ccommon.SinglePassConditionals(string(data))
+		text, err := ccommon.RewriteConditionals(string(data))
 		if err != nil {
 			return nil, fmt.Errorf("cpptable: %s: %w", name, err)
 		}

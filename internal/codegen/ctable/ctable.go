@@ -1064,9 +1064,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap, anyUnboundedText))
 	for name, data := range out {
-		// ONE BRANCH PER CONDITIONAL (ccommon.SinglePassConditionals): an
+		// ONE BRANCH PER CONDITIONAL (ccommon.SinglePassConditionals; as emitted
+		// only for make tables-single-pass-equivalence): an
 		// #else or #elif makes clang-format lay the whole file out again
-		text, err := ccommon.SinglePassConditionals(string(data))
+		text, err := ccommon.RewriteConditionals(string(data))
 		if err != nil {
 			return nil, fmt.Errorf("ctable: %s: %w", name, err)
 		}
