@@ -359,7 +359,7 @@ func t12P3(t *testing.T, corpus string) {
 // control over `new_int_widen.bin`.
 func t12P4(t *testing.T, corpus string) {
 	out := t12FixedFormRun(t, corpus)
-	const wantVerdict = "rust fixed form: the bytes are the C++ reference's — the union corpus with them — and the versioned path is the path"
+	const wantVerdict = "rust fixed form: the bytes are the C++ reference's — the union corpus with them — and a compiled plan over its own block lands what the identity plan lands"
 	if strings.Contains(out, "FAIL:") {
 		t.Fatalf("rust/P4: test/rust-fixedform negative controls reported a failure:\n%s", out)
 	}
