@@ -12979,7 +12979,11 @@ inline int64_t PhotoFixedLoadWalkBody( Photo * values, int64_t capacity, const u
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < PhotoFixedLineageCount; ++i )
     {
-        if ( PhotoFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( PhotoFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -13164,7 +13168,7 @@ inline int64_t PhotoFixedLoadWalkBody( Photo * values, int64_t capacity, const u
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

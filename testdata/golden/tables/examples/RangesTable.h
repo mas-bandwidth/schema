@@ -13145,7 +13145,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13212,7 +13212,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13279,7 +13279,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13346,7 +13346,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13406,7 +13406,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -32768ll )
@@ -13454,7 +13454,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13514,7 +13514,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -32768ll )
@@ -13562,7 +13562,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13622,7 +13622,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -32767ll )
@@ -13670,7 +13670,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13730,7 +13730,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -32767ll )
@@ -13778,7 +13778,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13838,7 +13838,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -13886,7 +13886,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13946,7 +13946,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -13994,7 +13994,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14054,7 +14054,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483647ll )
@@ -14102,7 +14102,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14162,7 +14162,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483647ll )
@@ -14210,7 +14210,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14270,7 +14270,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             int64_t decoded_v = (int64_t) decoded_wide;
@@ -14306,7 +14306,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14354,7 +14354,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide > 9223372036854775806ll )
@@ -14396,7 +14396,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14450,7 +14450,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -9223372036854775807ll )
@@ -14492,7 +14492,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14546,7 +14546,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -9223372036854775807ll )
@@ -14594,7 +14594,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14642,7 +14642,11 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( count_bits > 0 )
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                                if ( !r.get( raw, count_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
                                 n = raw + (uint64_t) entry.min;
                             }
                             if ( entry.elem_kind == 6 && !r.align() )
@@ -14656,7 +14660,10 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                 kept = 4;
                                 report->refused = true;
                                 report->refuse_reason = out_of_range;
-                                } else { kept = (int32_t) n;
+                            }
+                            else
+                            {
+                                kept = (int32_t) n;
                             }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
@@ -14683,7 +14690,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                                     if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                                     else if ( width_2 > 0 && width_2 < 64 )
                                     {
-                                        const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                        const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                         if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                                     }
                                     if ( decoded_wide_2 < -32768ll )
@@ -14728,7 +14735,11 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -14747,7 +14758,10 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                         kept = 4;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -14774,7 +14788,7 @@ inline bool RangedSignedLoadMessageBody( TableBitReader & r, const TableVocabula
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             if ( decoded_wide_2 < -32768ll )
@@ -17692,7 +17706,11 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                             if ( count_bits > 0 )
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                                if ( !r.get( raw, count_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
                                 n = raw + (uint64_t) entry.min;
                             }
                             if ( entry.elem_kind == 6 && !r.align() )
@@ -17706,7 +17724,10 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                                 kept = 4;
                                 report->refused = true;
                                 report->refuse_reason = out_of_range;
-                                } else { kept = (int32_t) n;
+                            }
+                            else
+                            {
+                                kept = (int32_t) n;
                             }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
@@ -17761,7 +17782,11 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -17780,7 +17805,10 @@ inline bool RangedUnsignedLoadMessageBody( TableBitReader & r, const TableVocabu
                         kept = 4;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -19839,7 +19867,11 @@ inline int64_t RangedSignedFixedLoadWalkBody( RangedSigned * values, int64_t cap
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RangedSignedFixedLineageCount; ++i )
     {
-        if ( RangedSignedFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RangedSignedFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -20024,7 +20056,7 @@ inline int64_t RangedSignedFixedLoadWalkBody( RangedSigned * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -20439,7 +20471,11 @@ inline int64_t RangedUnsignedFixedLoadWalkBody( RangedUnsigned * values, int64_t
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RangedUnsignedFixedLineageCount; ++i )
     {
-        if ( RangedUnsignedFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RangedUnsignedFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -20624,7 +20660,7 @@ inline int64_t RangedUnsignedFixedLoadWalkBody( RangedUnsigned * values, int64_t
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -20964,7 +21000,11 @@ inline int64_t RangedWidthsFixedLoadWalkBody( RangedWidths * values, int64_t cap
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RangedWidthsFixedLineageCount; ++i )
     {
-        if ( RangedWidthsFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RangedWidthsFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -21149,7 +21189,7 @@ inline int64_t RangedWidthsFixedLoadWalkBody( RangedWidths * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

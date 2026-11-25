@@ -1057,19 +1057,19 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 		if ir.TextListUnbounded(f) {
 			g.pf("%s    int32_t elem_len%s = 0;\n", ind, sfx)
 			g.pf("%s    const char * elem_text%s = schema_table_text_at_( ctx, ( %s ).value, elem_len%s );\n", ind, sfx, elemExpr, sfx)
-			g.pf("%s    if ( elem_text%s == NULL ) { %s }\n", ind, sfx, onBad)
+			g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( elem_text%s == NULL )", sfx), onBad, "")
 			g.pf("%s    %s += %s;\n", ind, into, framed("elem_len"+sfx))
 		} else {
 			m := ir.TextListValue(f).Type.Size
 			g.storageAssert(ind+"    ", "( "+elemExpr+" ).value_length", m)
-			g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) ( %s ).value, (uint64_t) ( %s ).value_length ) ) { %s }\n", ind, elemExpr, elemExpr, onBad)
+			g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( !TableUtf8Valid( (const uint8_t *) ( %s ).value, (uint64_t) ( %s ).value_length ) )", elemExpr, elemExpr), onBad, "")
 			g.pf("%s    %s += %s;\n", ind, into, framed(fmt.Sprintf("( %s ).value_length", elemExpr)))
 		}
 		g.pf("%s}\n", ind)
 	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f, f.Type.Name, fmt.Sprintf(access, i)))
-		g.pf("%s    if ( elem_bytes%s < 0 ) { %s }\n", ind, sfx, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( elem_bytes%s < 0 )", sfx), onBad, "")
 		if g.elemCache != "" {
 			// KEPT FOR THE WRITE LOOP BELOW: the element's own length prefix
 			// is this number, and re-deriving it walks the element again
@@ -1080,7 +1080,7 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    uint64_t elem_ref%s = 0;\n", ind, sfx)
 		g.emitDeprecatedVariantAssert(f, fmt.Sprintf(access, i), ind+"    ")
-		g.pf("%s    if ( !TableEnumRef( ids, %s, elem_ref%s ) ) { %s } // no variant names this value\n", ind, fmt.Sprintf(access, i), sfx, onBad)
+		g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( !TableEnumRef( ids, %s, elem_ref%s ) )", fmt.Sprintf(access, i), sfx), onBad, " // no variant names this value")
 		g.pf("%s    %s += TableLebBytes( elem_ref%s );\n%s}\n", ind, into, sfx, ind)
 	case tkNodeIndex:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
@@ -1105,7 +1105,7 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 	if kind != tkF32 && kind != tkF64 {
 		return
 	}
-	g.pf("%sif ( !TableFloatFinite( %s ) ) { %s } // a NaN or an infinity is refused (§3.3)\n", ind, expr, onBad)
+	g.emitIfBlock(ind, fmt.Sprintf("if ( !TableFloatFinite( %s ) )", expr), onBad, " // a NaN or an infinity is refused (§3.3)")
 }
 
 // emitRequiredRangeCheck is the writer's range check. A `| required` field's
@@ -1265,7 +1265,7 @@ func (g *tableGen) emitSlotIndexMeasure(f *ir.Field, expr, into, ind, onBad, sfx
 	t, pointee, index := f.Type.Name, "slot_pointee"+sfx, "slot_index"+sfx
 	g.pf("%s{\n%s    const %s * %s = %sAt( ctx, %s );\n", ind, ind, t, pointee, t, expr)
 	g.pf("%s    uint64_t %s = 0;\n", ind, index)
-	g.pf("%s    if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) ) { %s }\n", ind, pointee, pointee, index, onBad)
+	g.emitIfBlock(ind+"    ", fmt.Sprintf("if ( %s != NULL && !TableNumberingIndex( numbering, (const void *) %s, %s ) )", pointee, pointee, index), onBad, "")
 	g.pf("%s    %s += TableLebBytes( %s );\n%s}\n", ind, into, index, ind)
 }
 
@@ -1630,7 +1630,7 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 		switch kind {
 		case tkEnum:
 			g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, expr, g.fieldDefaultExpr(f))
-			g.pf("%sif ( !TableEnumNamed( %s ) ) { %s } // no variant names this value\n", ind, expr, onBad)
+			g.emitIfBlock(ind, fmt.Sprintf("if ( !TableEnumNamed( %s ) )", expr), onBad, " // no variant names this value")
 		default:
 			g.emitFloatCheck(kind, expr, ind, onBad)
 			g.pf("%sif ( %s ) { continue; } // a default slot elides\n", ind, g.fieldIsDefault(f, expr))
@@ -1647,12 +1647,12 @@ func (g *tableGen) emitKeyedSlotRides(f *ir.Field, kind int, ind, onBad string) 
 	switch kind {
 	case tkTable:
 		g.pf("%sconst int64_t elem_bytes = %s;\n", ind, g.measureCall(f, f.Type.Name, expr))
-		g.pf("%sif ( elem_bytes < 0 ) { %s }\n", ind, onBad)
+		g.emitIfBlock(ind, "if ( elem_bytes < 0 )", onBad, "")
 		g.pf("%[1]sif ( elem_bytes <= 1 )\n%[1]s{\n%[1]s    ids.truncate( slot_mark );\n%[1]s    continue;\n%[1]s} // an all-default slot elides\n", ind)
 	case tkEnum:
 		g.pf("%suint64_t element_ref = 0;\n", ind)
 		g.emitDeprecatedVariantAssert(f, expr, ind)
-		g.pf("%sif ( !TableEnumRef( ids, %s, element_ref ) ) { %s }\n", ind, expr, onBad)
+		g.emitIfBlock(ind, fmt.Sprintf("if ( !TableEnumRef( ids, %s, element_ref ) )", expr), onBad, "")
 	}
 }
 
@@ -2627,12 +2627,12 @@ func (g *tableGen) emitEnumRefLoadChecked(f *ir.Field, dst, ind, rdr, onBad stri
 	e := f.Type.Name
 	defID := enumDefaultWireId(f)
 	g.pf("%suint64_t variant_ref = 0;\n", ind)
-	g.pf("%sif ( !%s.getleb( variant_ref ) ) { %s }\n", ind, rdr, onBad)
+	g.emitIfBlock(ind, fmt.Sprintf("if ( !%s.getleb( variant_ref ) )", rdr), onBad, "")
 	if forbidDefault {
 		if defID == 0 {
-			g.pf("%sif ( variant_ref == 0 ) { %s }\n", ind, onBad)
+			g.emitIfBlock(ind, "if ( variant_ref == 0 )", onBad, "")
 		} else {
-			g.pf("%sif ( variant_ref != 0 && variant_ref <= (uint64_t) r.ids->count && r.ids->at( variant_ref ) == 0x%016xull ) { %s }\n", ind, defID, onBad)
+			g.emitIfBlock(ind, fmt.Sprintf("if ( variant_ref != 0 && variant_ref <= (uint64_t) r.ids->count && r.ids->at( variant_ref ) == 0x%016xull )", defID), onBad, "")
 		}
 	}
 	if g.elemNonDefaultVar != "" {
@@ -2643,10 +2643,10 @@ func (g *tableGen) emitEnumRefLoadChecked(f *ir.Field, dst, ind, rdr, onBad stri
 		}
 	}
 	if forbidDefault && defID == 0 {
-		g.pf("%sif ( variant_ref > (uint64_t) r.ids->count ) { %s }\n", ind, onBad)
+		g.emitIfBlock(ind, "if ( variant_ref > (uint64_t) r.ids->count )", onBad, "")
 	} else {
 		g.pf("%sif ( variant_ref == 0 ) { %s = %s::None; } // the zero reference is the enum's None\n", ind, dst, e)
-		g.pf("%selse if ( variant_ref > (uint64_t) r.ids->count ) { %s }\n", ind, onBad)
+		g.emitIfBlock(ind, "else if ( variant_ref > (uint64_t) r.ids->count )", onBad, "")
 	}
 	g.pf("%selse if ( !TableEnumValue( r.ids->at( variant_ref ), %s ) )\n%s{\n", ind, dst, ind)
 	g.pf("%s    %s = %s::None;\n%s    r.report->unknown++;%s\n%s}\n", ind, dst, e, ind, g.retainLostInline(), ind)
@@ -2871,43 +2871,45 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%suint64_t arm_ref = 0;\n", ind)
 		g.pf("%[1]sif ( !r.getleb( arm_ref ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%[1]sif ( arm_ref == 0 ) { value.%[2]s.type = %[3]sType::None; } // empty: the reference is the whole payload\n%[1]selse\n%[1]s{\n", ind, f.Name, un.Name)
-		g.pf("%[1]sif ( arm_ref > (uint64_t) r.ids->count )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
-		g.pf("%sconst uint64_t arm_id = r.ids->at( arm_ref );\n", ind)
-		g.pf("%[1]sif ( !r.has( 1 ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
-		g.pf("%sconst uint8_t arm_kind = r.get8();\n", ind)
-		g.pf("%suint64_t body_len = 0;\n", ind)
-		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", ind)
-		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
-		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
+		// the arm's whole read is the else branch's body: one level in
+		in := ind + "    "
+		g.pf("%[1]sif ( arm_ref > (uint64_t) r.ids->count )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", in)
+		g.pf("%sconst uint64_t arm_id = r.ids->at( arm_ref );\n", in)
+		g.pf("%[1]sif ( !r.has( 1 ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", in)
+		g.pf("%sconst uint8_t arm_kind = r.get8();\n", in)
+		g.pf("%suint64_t body_len = 0;\n", in)
+		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->damaged = true;\n%[1]s    return false;\n%[1]s}\n", in)
+		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", in, in)
+		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", in, in)
 		wasField := g.unionField
 		g.unionField = f
 		defer func() { g.unionField = wasField }()
 		for ai, v := range un.Variants {
-			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", ind, ir.TableWireId(v.WireName()), v.Name, ind)
-			g.pf("%s            if ( arm_kind != %d )\n%s            {\n", ind, armWireKind(v), ind)
+			g.pf("%s        case 0x%016xull: // %s\n%s        {\n", in, ir.TableWireId(v.WireName()), v.Name, in)
+			g.pf("%s            if ( arm_kind != %d )\n%s            {\n", in, armWireKind(v), in)
 			g.emitArmWiden(v, "value."+f.Name, "arm_kind", "sub", fmt.Sprintf("value.%s.type", f.Name),
-				un.Name+"Type::"+ir.GoExportName(v.Name), un.Name+"Type::None", ind+"                ")
-			g.pf("%s                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the\n", ind)
-			g.pf("%s                // arm skips by L, the union reads None, and the parent reads on\n", ind)
-			g.pf("%s                value.%s.type = %sType::None;\n", ind, f.Name, un.Name)
-			g.pf("%s                r.report->refused = true;\n%s                r.report->refuse_reason = kind_mismatch;\n%s                break;\n%s            }\n", ind, ind, ind, ind)
-			g.pf("%s            value.%s.type = %sType::%s;\n", ind, f.Name, un.Name, ir.GoExportName(v.Name))
+				un.Name+"Type::"+ir.GoExportName(v.Name), un.Name+"Type::None", in+"                ")
+			g.pf("%s                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the\n", in)
+			g.pf("%s                // arm skips by L, the union reads None, and the parent reads on\n", in)
+			g.pf("%s                value.%s.type = %sType::None;\n", in, f.Name, un.Name)
+			g.pf("%s                r.report->refused = true;\n%s                r.report->refuse_reason = kind_mismatch;\n%s                break;\n%s            }\n", in, in, in, in)
+			g.pf("%s            value.%s.type = %sType::%s;\n", in, f.Name, un.Name, ir.GoExportName(v.Name))
 			g.inStep(strconv.Itoa(ai), func() {
-				g.emitArmLoad(v, "value."+f.Name, ind+"            ", "sub",
+				g.emitArmLoad(v, "value."+f.Name, in+"            ", "sub",
 					fmt.Sprintf("value.%s.type", f.Name), un.Name+"Type::None", "")
 			})
-			g.pf("%s            break;\n%s        }\n", ind, ind)
+			g.pf("%s            break;\n%s        }\n", in, in)
 		}
-		g.pf("%s        default:\n", ind)
-		g.pf("%s            // an arm this reader cannot name: the value reads EMPTY and\n", ind)
-		g.pf("%s            // the body is skipped by its length, never misdecoded. The\n", ind)
-		g.pf("%s            // reset is explicit, not the prefill's: a repeated field id\n", ind)
-		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", ind)
-		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", ind)
-		g.pf("%s            value.%s.type = %sType::None;\n", ind, f.Name, un.Name)
-		g.pf("%s            r.report->unknown++;%s\n%s            break;\n", ind, g.retainLostInline(), ind)
-		g.pf("%s    }\n%s}\n", ind, ind)
-		g.pf("%sr.offset += (int64_t) body_len;\n", ind)
+		g.pf("%s        default:\n", in)
+		g.pf("%s            // an arm this reader cannot name: the value reads EMPTY and\n", in)
+		g.pf("%s            // the body is skipped by its length, never misdecoded. The\n", in)
+		g.pf("%s            // reset is explicit, not the prefill's: a repeated field id\n", in)
+		g.pf("%s            // must not leave an arm decoded by an earlier occurrence\n", in)
+		g.pf("%s            // standing (docs/SPEC-TABLES.md §4).\n", in)
+		g.pf("%s            value.%s.type = %sType::None;\n", in, f.Name, un.Name)
+		g.pf("%s            r.report->unknown++;%s\n%s            break;\n", in, g.retainLostInline(), in)
+		g.pf("%s    }\n%s}\n", in, in)
+		g.pf("%sr.offset += (int64_t) body_len;\n", in)
 		g.pf("%s}\n", ind)
 	case kind == tkTable:
 		g.pf("%suint64_t body_len = 0;\n", ind)
@@ -3992,7 +3994,7 @@ func (g *tableGen) countedBirthRides(f *ir.Field, ind, onBad string, message boo
 	case tableScalarKind(f) == tkTable:
 		g.pf("%sconst int32_t birth_mark = ids.count;\n", in)
 		g.pf("%sconst int64_t birth_bytes = %s;\n", in, g.measureCall(f, f.Type.Name, el))
-		g.pf("%sif ( birth_bytes < 0 ) { %s }\n", in, onBad)
+		g.emitIfBlock(in, "if ( birth_bytes < 0 )", onBad, "")
 		g.pf("%sids.truncate( birth_mark );\n", in)
 		g.pf("%sif ( birth_bytes > 1 ) { %s = true; }\n", in, rides)
 	case tableScalarKind(f) == tkUnion:

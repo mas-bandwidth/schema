@@ -12930,9 +12930,9 @@ inline bool DepthSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // squad
                 if ( !SquadSaveBody( ctx, numbering, w, ids, value.arm.squad ) )
-            {
-                return false;
-            }
+                {
+                    return false;
+                }
                 break;
             }
             case ForceType::Plain:
@@ -13260,104 +13260,104 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 if ( arm_ref == 0 ) { value.arm.type = ForceType::None; } // empty: the reference is the whole payload
                 else
                 {
-                if ( arm_ref > (uint64_t) r.ids->count )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint8_t arm_kind = r.get8();
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                {
-                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    if ( arm_ref > (uint64_t) r.ids->count )
                     {
-                        case 0xd5c2bb95d63e6331ull: // squad
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint64_t arm_id = r.ids->at( arm_ref );
+                    if ( !r.has( 1 ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint8_t arm_kind = r.get8();
+                    uint64_t body_len = 0;
+                    if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    {
+                        TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                         {
-                            if ( arm_kind != 13 )
+                            case 0xd5c2bb95d63e6331ull: // squad
                             {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.arm.type = ForceType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.arm.type = ForceType::Squad;
-                            SquadLoadBody( sub, nodes, value.arm.squad );
-                            if ( nodes.refused ) { return false; }
-                            if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->damaged = true; break; }
-                            break;
-                        }
-                        case 0xfd4d194e1652b207ull: // plain
-                        {
-                            if ( arm_kind != 4 )
-                            {
-                                if ( TableKindWidens( arm_kind, 4 ) )
+                                if ( arm_kind != 13 )
                                 {
-                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                    // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) )
-                                    {
-                                        value.arm.type = ForceType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    memset( (void *) &value.arm.plain, 0, sizeof( value.arm.plain ) ); // selection establishes the arm (§2.6)
-                                    int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
-                                    {
-                                        value.arm.type = ForceType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    int32_t decoded_v = (int32_t) widened_v;
-                                    value.arm.plain = decoded_v;
-                                    value.arm.type = ForceType::Plain;
-                                    r.report->widened++;
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.arm.type = ForceType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
                                     break;
                                 }
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.arm.type = ForceType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
+                                value.arm.type = ForceType::Squad;
+                                SquadLoadBody( sub, nodes, value.arm.squad );
+                                if ( nodes.refused ) { return false; }
+                                if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->damaged = true; break; }
                                 break;
                             }
-                            value.arm.type = ForceType::Plain;
-                            if ( sub.size != 4 ) { value.arm.type = ForceType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                            if ( !sub.has( 4 ) )
+                            case 0xfd4d194e1652b207ull: // plain
                             {
-                                value.arm.type = ForceType::None;
-                                r.report->damaged = true;
+                                if ( arm_kind != 4 )
+                                {
+                                    if ( TableKindWidens( arm_kind, 4 ) )
+                                    {
+                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                        // that is not that width is the arm's own framing damage (§3)
+                                        if ( sub.size != TableKindWidth( arm_kind ) )
+                                        {
+                                            value.arm.type = ForceType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        memset( (void *) &value.arm.plain, 0, sizeof( value.arm.plain ) ); // selection establishes the arm (§2.6)
+                                        int64_t widened_v = 0;
+                                        if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                        {
+                                            value.arm.type = ForceType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        int32_t decoded_v = (int32_t) widened_v;
+                                        value.arm.plain = decoded_v;
+                                        value.arm.type = ForceType::Plain;
+                                        r.report->widened++;
+                                        break;
+                                    }
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.arm.type = ForceType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.arm.type = ForceType::Plain;
+                                if ( sub.size != 4 ) { value.arm.type = ForceType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( !sub.has( 4 ) )
+                                {
+                                    value.arm.type = ForceType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                int32_t decoded_v = int32_t( sub.get32() );
+                                value.arm.plain = decoded_v;
                                 break;
                             }
-                            int32_t decoded_v = int32_t( sub.get32() );
-                            value.arm.plain = decoded_v;
-                            break;
+                            default:
+                                // an arm this reader cannot name: the value reads EMPTY and
+                                // the body is skipped by its length, never misdecoded. The
+                                // reset is explicit, not the prefill's: a repeated field id
+                                // must not leave an arm decoded by an earlier occurrence
+                                // standing (docs/SPEC-TABLES.md §4).
+                                value.arm.type = ForceType::None;
+                                r.report->unknown++;
+                                break;
                         }
-                        default:
-                            // an arm this reader cannot name: the value reads EMPTY and
-                            // the body is skipped by its length, never misdecoded. The
-                            // reset is explicit, not the prefill's: a repeated field id
-                            // must not leave an arm decoded by an earlier occurrence
-                            // standing (docs/SPEC-TABLES.md §4).
-                            value.arm.type = ForceType::None;
-                            r.report->unknown++;
-                            break;
                     }
-                }
-                r.offset += (int64_t) body_len;
+                    r.offset += (int64_t) body_len;
                 }
                 break;
             }
@@ -16975,9 +16975,9 @@ inline bool DepthSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 w.header( arm_ref, 13 );
                 w.putleb( (uint64_t) arm_payload ); // squad
                 if ( !SquadSaveBodyRetain( ctx, numbering, w, ids, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) ) )
-            {
-                return false;
-            }
+                {
+                    return false;
+                }
                 break;
             }
             case ForceType::Plain:
@@ -17316,104 +17316,104 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( arm_ref == 0 ) { value.arm.type = ForceType::None; } // empty: the reference is the whole payload
                 else
                 {
-                if ( arm_ref > (uint64_t) r.ids->count )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint8_t arm_kind = r.get8();
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                {
-                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    if ( arm_ref > (uint64_t) r.ids->count )
                     {
-                        case 0xd5c2bb95d63e6331ull: // squad
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint64_t arm_id = r.ids->at( arm_ref );
+                    if ( !r.has( 1 ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint8_t arm_kind = r.get8();
+                    uint64_t body_len = 0;
+                    if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    {
+                        TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                         {
-                            if ( arm_kind != 13 )
+                            case 0xd5c2bb95d63e6331ull: // squad
                             {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.arm.type = ForceType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.arm.type = ForceType::Squad;
-                            SquadLoadBodyRetain( sub, nodes, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) );
-                            if ( nodes.refused ) { return false; }
-                            if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->damaged = true; break; }
-                            break;
-                        }
-                        case 0xfd4d194e1652b207ull: // plain
-                        {
-                            if ( arm_kind != 4 )
-                            {
-                                if ( TableKindWidens( arm_kind, 4 ) )
+                                if ( arm_kind != 13 )
                                 {
-                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                    // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) )
-                                    {
-                                        value.arm.type = ForceType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    memset( (void *) &value.arm.plain, 0, sizeof( value.arm.plain ) ); // selection establishes the arm (§2.6)
-                                    int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
-                                    {
-                                        value.arm.type = ForceType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    int32_t decoded_v = (int32_t) widened_v;
-                                    value.arm.plain = decoded_v;
-                                    value.arm.type = ForceType::Plain;
-                                    r.report->widened++;
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.arm.type = ForceType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
                                     break;
                                 }
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.arm.type = ForceType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
+                                value.arm.type = ForceType::Squad;
+                                SquadLoadBodyRetain( sub, nodes, value.arm.squad, retain, TableRetainStepInto( path, 3, (uint32_t) ( 0 ) ) );
+                                if ( nodes.refused ) { return false; }
+                                if ( sub.offset != sub.size ) { value.arm.type = ForceType::None; r.report->damaged = true; break; }
                                 break;
                             }
-                            value.arm.type = ForceType::Plain;
-                            if ( sub.size != 4 ) { value.arm.type = ForceType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                            if ( !sub.has( 4 ) )
+                            case 0xfd4d194e1652b207ull: // plain
                             {
-                                value.arm.type = ForceType::None;
-                                r.report->damaged = true;
+                                if ( arm_kind != 4 )
+                                {
+                                    if ( TableKindWidens( arm_kind, 4 ) )
+                                    {
+                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                        // that is not that width is the arm's own framing damage (§3)
+                                        if ( sub.size != TableKindWidth( arm_kind ) )
+                                        {
+                                            value.arm.type = ForceType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        memset( (void *) &value.arm.plain, 0, sizeof( value.arm.plain ) ); // selection establishes the arm (§2.6)
+                                        int64_t widened_v = 0;
+                                        if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                        {
+                                            value.arm.type = ForceType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        int32_t decoded_v = (int32_t) widened_v;
+                                        value.arm.plain = decoded_v;
+                                        value.arm.type = ForceType::Plain;
+                                        r.report->widened++;
+                                        break;
+                                    }
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.arm.type = ForceType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.arm.type = ForceType::Plain;
+                                if ( sub.size != 4 ) { value.arm.type = ForceType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( !sub.has( 4 ) )
+                                {
+                                    value.arm.type = ForceType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                int32_t decoded_v = int32_t( sub.get32() );
+                                value.arm.plain = decoded_v;
                                 break;
                             }
-                            int32_t decoded_v = int32_t( sub.get32() );
-                            value.arm.plain = decoded_v;
-                            break;
+                            default:
+                                // an arm this reader cannot name: the value reads EMPTY and
+                                // the body is skipped by its length, never misdecoded. The
+                                // reset is explicit, not the prefill's: a repeated field id
+                                // must not leave an arm decoded by an earlier occurrence
+                                // standing (docs/SPEC-TABLES.md §4).
+                                value.arm.type = ForceType::None;
+                                r.report->unknown++; r.report->retain_lost++;
+                                break;
                         }
-                        default:
-                            // an arm this reader cannot name: the value reads EMPTY and
-                            // the body is skipped by its length, never misdecoded. The
-                            // reset is explicit, not the prefill's: a repeated field id
-                            // must not leave an arm decoded by an earlier occurrence
-                            // standing (docs/SPEC-TABLES.md §4).
-                            value.arm.type = ForceType::None;
-                            r.report->unknown++; r.report->retain_lost++;
-                            break;
                     }
-                }
-                r.offset += (int64_t) body_len;
+                    r.offset += (int64_t) body_len;
                 }
                 break;
             }

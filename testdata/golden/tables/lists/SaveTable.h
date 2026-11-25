@@ -14340,7 +14340,7 @@ inline bool PointLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -14388,7 +14388,7 @@ inline bool PointLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14448,7 +14448,7 @@ inline bool PointLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -14496,7 +14496,7 @@ inline bool PointLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -14845,9 +14845,9 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             w.header( arm_ref_hitsu, 13 );
                             w.putleb( (uint64_t) arm_payload_hitsu ); // point
                             if ( !PointSaveBody( w, ids, cursor_hits[elem_i_hits].point ) )
-            {
-                return false;
-            }
+                            {
+                                return false;
+                            }
                             break;
                         }
                         case HitType::Damage:
@@ -15028,11 +15028,17 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             {
                                 {
                                     uint64_t variant_ref = 0;
-                                    if ( !sub.getleb( variant_ref ) ) { r.report->damaged = true;
-                                break; }
+                                    if ( !sub.getleb( variant_ref ) )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     if ( variant_ref == 0 ) { ( *slot ) = Grade::None; } // the zero reference is the enum's None
-                                    else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                                break; }
+                                    else if ( variant_ref > (uint64_t) r.ids->count )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     else if ( !TableEnumValue( r.ids->at( variant_ref ), ( *slot ) ) )
                                     {
                                         ( *slot ) = Grade::None;
@@ -15946,7 +15952,11 @@ inline int64_t PlacementFixedLoadWalkBody( Placement * values, int64_t capacity,
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < PlacementFixedLineageCount; ++i )
     {
-        if ( PlacementFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( PlacementFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -16131,7 +16141,7 @@ inline int64_t PlacementFixedLoadWalkBody( Placement * values, int64_t capacity,
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -16398,7 +16408,11 @@ inline int64_t LogEntryFixedLoadWalkBody( LogEntry * values, int64_t capacity, c
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < LogEntryFixedLineageCount; ++i )
     {
-        if ( LogEntryFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( LogEntryFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -16583,7 +16597,7 @@ inline int64_t LogEntryFixedLoadWalkBody( LogEntry * values, int64_t capacity, c
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -16848,7 +16862,11 @@ inline int64_t PointFixedLoadWalkBody( Point * values, int64_t capacity, const u
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < PointFixedLineageCount; ++i )
     {
-        if ( PointFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( PointFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -17033,7 +17051,7 @@ inline int64_t PointFixedLoadWalkBody( Point * values, int64_t capacity, const u
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -21652,9 +21670,9 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             w.header( arm_ref_hitsu, 13 );
                             w.putleb( (uint64_t) arm_payload_hitsu ); // point
                             if ( !PointSaveBodyRetain( w, ids, cursor_hits[elem_i_hits].point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i_hits ) ), 2, (uint32_t) ( 0 ) ) ) )
-            {
-                return false;
-            }
+                            {
+                                return false;
+                            }
                             break;
                         }
                         case HitType::Damage:
@@ -21841,11 +21859,17 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             {
                                 {
                                     uint64_t variant_ref = 0;
-                                    if ( !sub.getleb( variant_ref ) ) { r.report->damaged = true;
-                                break; }
+                                    if ( !sub.getleb( variant_ref ) )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     if ( variant_ref == 0 ) { ( *slot ) = Grade::None; } // the zero reference is the enum's None
-                                    else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                                break; }
+                                    else if ( variant_ref > (uint64_t) r.ids->count )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     else if ( !TableEnumValue( r.ids->at( variant_ref ), ( *slot ) ) )
                                     {
                                         ( *slot ) = Grade::None;

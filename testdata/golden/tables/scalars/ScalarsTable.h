@@ -9120,7 +9120,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -9187,7 +9187,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -9254,7 +9254,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -9382,7 +9382,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -9719,7 +9719,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             }
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t( 1 ) << width ) - 1 ); }
                             }
                             serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw );
@@ -9821,7 +9821,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             }
                             if ( entry.packing != 1 && width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { raw = raw | ~( ( uint64_t( 1 ) << width ) - 1 ); }
                             }
                             serialize::uint128_t raw_v = ( serialize::uint128_t( (int64_t) raw < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw );
@@ -10005,7 +10005,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -10060,7 +10060,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( entry.elem_kind == 6 && !r.align() )
@@ -10074,7 +10078,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 3;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -10102,7 +10109,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             if ( decoded_wide_2 < -524288ll )
@@ -10165,7 +10172,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -10184,7 +10195,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 4;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -10318,7 +10332,7 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             const int64_t pre_clamp_2 = decoded_wide_2;
@@ -10369,7 +10383,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                             if ( count_bits > 0 )
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                                if ( !r.get( raw, count_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
                                 n = raw + (uint64_t) entry.min;
                             }
                             if ( entry.elem_kind == 6 && !r.align() )
@@ -10383,7 +10401,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                                 kept = 2;
                                 report->refused = true;
                                 report->refuse_reason = out_of_range;
-                                } else { kept = (int32_t) n;
+                            }
+                            else
+                            {
+                                kept = (int32_t) n;
                             }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
@@ -10438,7 +10459,11 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -10457,7 +10482,10 @@ inline bool SimStateLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         kept = 2;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -11133,7 +11161,7 @@ inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -11200,7 +11228,7 @@ inline bool PoseLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -12104,7 +12132,11 @@ inline int64_t SimStateFixedLoadWalkBody( SimState * values, int64_t capacity, c
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < SimStateFixedLineageCount; ++i )
     {
-        if ( SimStateFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( SimStateFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -12286,7 +12318,7 @@ inline int64_t SimStateFixedLoadWalkBody( SimState * values, int64_t capacity, c
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

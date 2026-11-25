@@ -12393,10 +12393,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                 {
                     uint64_t raw = 0;
                     if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
-                {
-                    report->damaged = true;
-                    return false;
-                    } value.tracking = raw != 0;
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.tracking = raw != 0;
                 }
                 break;
             }
@@ -13450,7 +13451,11 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                             if ( count_bits > 0 )
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                                if ( !r.get( raw, count_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
                                 n = raw + (uint64_t) entry.min;
                             }
                             if ( entry.elem_kind == 6 && !r.align() )
@@ -13464,7 +13469,10 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                 kept = 4;
                                 report->refused = true;
                                 report->refuse_reason = out_of_range;
-                                } else { kept = (int32_t) n;
+                            }
+                            else
+                            {
+                                kept = (int32_t) n;
                             }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
@@ -13491,7 +13499,7 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                     if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                                     else if ( width_2 > 0 && width_2 < 64 )
                                     {
-                                        const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                        const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                         if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                                     }
                                     if ( decoded_wide_2 < 0ll )
@@ -13536,7 +13544,11 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -13555,7 +13567,10 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         kept = 4;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -13582,7 +13597,7 @@ inline bool ShipEntryLoadMessageBody( TableBitReader & r, const TableVocabulary 
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             if ( decoded_wide_2 < 0ll )
@@ -13994,11 +14009,17 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSetti
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.difficulty = Difficulty::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.difficulty ) )
                 {
                     value.difficulty = Difficulty::None;
@@ -14641,7 +14662,11 @@ inline bool GlobalSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( entry.elem_kind == 6 && !r.align() )
@@ -14655,7 +14680,10 @@ inline bool GlobalSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                         kept = 3;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
@@ -16218,7 +16246,7 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.elem_packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
                             {
-                                const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
+                                const uint64_t sign_2 = uint64_t( 1 ) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t( 1 ) << width_2 ) - 1 ) ); }
                             }
                             const int64_t pre_clamp_2 = decoded_wide_2;
@@ -16276,7 +16304,11 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -16295,7 +16327,10 @@ inline bool PackConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                         kept = 3;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -17030,7 +17065,11 @@ inline int64_t GunnerSettingsFixedLoadWalkBody( GunnerSettings * values, int64_t
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < GunnerSettingsFixedLineageCount; ++i )
     {
-        if ( GunnerSettingsFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( GunnerSettingsFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -17215,7 +17254,7 @@ inline int64_t GunnerSettingsFixedLoadWalkBody( GunnerSettings * values, int64_t
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -17576,7 +17615,11 @@ inline int64_t ShipEntryFixedLoadWalkBody( ShipEntry * values, int64_t capacity,
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < ShipEntryFixedLineageCount; ++i )
     {
-        if ( ShipEntryFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( ShipEntryFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -17758,7 +17801,7 @@ inline int64_t ShipEntryFixedLoadWalkBody( ShipEntry * values, int64_t capacity,
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -18110,7 +18153,11 @@ inline int64_t GlobalSettingsFixedLoadWalkBody( GlobalSettings * values, int64_t
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < GlobalSettingsFixedLineageCount; ++i )
     {
-        if ( GlobalSettingsFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( GlobalSettingsFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -18295,7 +18342,7 @@ inline int64_t GlobalSettingsFixedLoadWalkBody( GlobalSettings * values, int64_t
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -18889,7 +18936,11 @@ inline int64_t PackConfigFixedLoadWalkBody( PackConfig * values, int64_t capacit
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < PackConfigFixedLineageCount; ++i )
     {
-        if ( PackConfigFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( PackConfigFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -19071,7 +19122,7 @@ inline int64_t PackConfigFixedLoadWalkBody( PackConfig * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -19996,11 +20047,17 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.difficulty = Difficulty::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.difficulty ) )
                 {
                     value.difficulty = Difficulty::None;

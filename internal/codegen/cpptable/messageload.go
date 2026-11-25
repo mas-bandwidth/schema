@@ -276,7 +276,7 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	g.pf("%s{\n%s    uint64_t n%s = (uint64_t) %s.min;\n", ind, ind, sfx, from)
 	g.pf("%s    const int64_t count_bits%s = TableBitsRequired( %s.min, %s.max );\n", ind, sfx, from, from)
 	g.pf("%s    if ( count_bits%s > 0 )\n%s    {\n", ind, sfx, ind)
-	g.pf("%s        uint64_t raw%s = 0;\n%s        if ( !r.get( raw%s, count_bits%s ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx, sfx)
+	g.pf("%[1]s        uint64_t raw%[2]s = 0;\n%[1]s        if ( !r.get( raw%[2]s, count_bits%[2]s ) )\n%[1]s        {\n%[1]s            report->damaged = true;\n%[1]s            return false;\n%[1]s        }\n", ind, sfx)
 	g.pf("%s        n%s = raw%s + (uint64_t) %s.min;\n%s    }\n", ind, sfx, sfx, from, ind)
 	if gate != "" && f.CountedOnWire() {
 		g.pf("%[1]s    if ( %[2]s && n%[3]s == 0 )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, gate, sfx)
@@ -287,7 +287,7 @@ func (g *tableGen) emitMessageReadArrayFromChecked(f *ir.Field, base, count, ind
 	// signed test against the bound untouched, and lands a negative count in
 	// the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
-	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
+	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n%[1]s    else\n%[1]s    {\n%[1]s        kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)
 	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
 		// A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3)
 		g.pf("%[1]s    if ( n%[2]s < (uint64_t) %[3]d ) // a count below the declared Min (§5.1 row 3)\n%[1]s    {\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, sfx, f.ArrayMin)
@@ -646,16 +646,16 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 			if f.HasDefault && f.DefBool {
 				defBit = 1
 			}
-			g.pf("%[1]s{\n                    uint64_t raw%[2]s = 0;\n                    if ( !r.get( raw%[3]s, 1 ) || ( %[4]s && raw%[5]s == %[6]d ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[7]s = raw%[8]s != 0;\n%[1]s}\n", ind, sfx, sfx, gate, sfx, defBit, lvalue, sfx)
+			g.pf("%[1]s{\n%[1]s    uint64_t raw%[2]s = 0;\n%[1]s    if ( !r.get( raw%[2]s, 1 ) || ( %[3]s && raw%[2]s == %[4]d ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    %[5]s = raw%[2]s != 0;\n%[1]s}\n", ind, sfx, gate, defBit, lvalue)
 		} else {
-			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 1 ) )\n%[1]s{\n%[1]s    report->damaged = true;\n%[1]s    return false;\n%[1]s    } %[4]s = raw%[5]s != 0;\n%[1]s}\n", ind, sfx, sfx, lvalue, sfx)
+			g.pf("%[1]s{\n%[1]s    uint64_t raw%[2]s = 0;\n%[1]s    if ( !r.get( raw%[2]s, 1 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    %[3]s = raw%[2]s != 0;\n%[1]s}\n", ind, sfx, lvalue)
 		}
 		return
 	case tkF64:
 		if gate != "" {
-			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    }\n                    const double decoded_d%[5]s = table_bits_to_double( raw%[6]s );\n                    if ( %[7]s && ( %[8]s ) )\n                    {\n                        report->damaged = true;\n                        return false;\n                    }\n                    %[9]s = decoded_d%[10]s;\n%[1]s}\n", ind, sfx, sfx, sfx, sfx, sfx, gate, g.fieldIsDefault(f, "decoded_d"+sfx), lvalue, sfx)
+			g.pf("%[1]s{\n%[1]s    uint64_t raw%[2]s = 0;\n%[1]s    if ( !r.get( raw%[2]s, 64 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    if ( !TableBitsFinite64( raw%[2]s ) )\n%[1]s    {\n%[1]s        TableNonFiniteFloat( report );\n%[1]s        return false;\n%[1]s    }\n%[1]s    const double decoded_d%[2]s = table_bits_to_double( raw%[2]s );\n%[1]s    if ( %[3]s && ( %[4]s ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    %[5]s = decoded_d%[2]s;\n%[1]s}\n", ind, sfx, gate, g.fieldIsDefault(f, "decoded_d"+sfx), lvalue)
 		} else {
-			g.pf("%[1]s{ uint64_t raw%[2]s = 0; if ( !r.get( raw%[3]s, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw%[4]s ) )\n%[1]s{\n%[1]s    TableNonFiniteFloat( report );\n%[1]s    return false;\n%[1]s    }\n                            %[5]s = table_bits_to_double( raw%[6]s );\n%[1]s}\n", ind, sfx, sfx, sfx, lvalue, sfx)
+			g.pf("%[1]s{\n%[1]s    uint64_t raw%[2]s = 0;\n%[1]s    if ( !r.get( raw%[2]s, 64 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n%[1]s    if ( !TableBitsFinite64( raw%[2]s ) )\n%[1]s    {\n%[1]s        TableNonFiniteFloat( report );\n%[1]s        return false;\n%[1]s    }\n%[1]s    %[3]s = table_bits_to_double( raw%[2]s );\n%[1]s}\n", ind, sfx, lvalue)
 		}
 		return
 	case tkF32:
@@ -716,7 +716,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 		holds("raw"+sfx, "0")
 		if signed {
 			g.pf("%s    if ( %s != 1 && width%s > 0 && width%s < 64 )\n%s    {\n", ind, packing, sfx, sfx, ind)
-			g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
+			g.pf("%s        const uint64_t sign%s = uint64_t( 1 ) << ( width%s - 1 );\n", ind, sfx, sfx)
 			g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { raw%s = raw%s | ~( ( uint64_t( 1 ) << width%s ) - 1 ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 			g.pf("%s    }\n", ind)
 			g.pf("%s    serialize::uint128_t raw_v%s = ( serialize::uint128_t( (int64_t) raw%s < 0 ? ~uint64_t( 0 ) : uint64_t( 0 ) ) << 64 ) | serialize::uint128_t( raw%s );\n", ind, sfx, sfx, sfx)
@@ -765,7 +765,7 @@ func (g *tableGen) emitMessageReadScalarFromEntryChecked(f *ir.Field, lvalue, in
 	g.pf("%s    if ( %s == 1 && !%s ) { decoded_wide%s = (int64_t) ( raw%s + (uint64_t) %s ); }\n", ind, packing, past, sfx, sfx, base)
 	if signed {
 		g.pf("%s    else if ( width%s > 0 && width%s < 64 )\n%s    {\n", ind, sfx, sfx, ind)
-		g.pf("%s        const uint64_t sign%s = uint64_t(1) << ( width%s - 1 );\n", ind, sfx, sfx)
+		g.pf("%s        const uint64_t sign%s = uint64_t( 1 ) << ( width%s - 1 );\n", ind, sfx, sfx)
 		g.pf("%s        if ( ( raw%s & sign%s ) != 0 ) { decoded_wide%s = (int64_t) ( raw%s | ~( ( uint64_t( 1 ) << width%s ) - 1 ) ); }\n", ind, sfx, sfx, sfx, sfx, sfx)
 		g.pf("%s    }\n", ind)
 	}

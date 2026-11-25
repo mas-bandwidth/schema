@@ -11191,7 +11191,7 @@ inline bool OnlyLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -11239,7 +11239,7 @@ inline bool OnlyLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -11573,147 +11573,147 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
                 if ( arm_ref == 0 ) { value.reach.type = ReachType::None; } // empty: the reference is the whole payload
                 else
                 {
-                if ( arm_ref > (uint64_t) r.ids->count )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint8_t arm_kind = r.get8();
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                {
-                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    if ( arm_ref > (uint64_t) r.ids->count )
                     {
-                        case 0x072ddab46af04ab7ull: // only
-                        {
-                            if ( arm_kind != 17 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.reach.type = ReachType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.reach.type = ReachType::Only;
-                            {
-                                uint64_t node_index = 0;
-                                if ( !sub.getleb( node_index ) )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                if ( sub.offset != sub.size )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                TableNodeResolve( nodes, value.reach.only, node_index, 0x31badbc06c5f0b97ull, r.report ); // *Only
-                            }
-                            break;
-                        }
-                        case 0xfa04f4ef1995407eull: // text
-                        {
-                            if ( arm_kind != 17 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.reach.type = ReachType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.reach.type = ReachType::Text;
-                            {
-                                uint64_t node_index = 0;
-                                if ( !sub.getleb( node_index ) )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                if ( sub.offset != sub.size )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                TableNodeResolve( nodes, value.reach.text, node_index, kTableStringTypeId, r.report ); // *string
-                            }
-                            break;
-                        }
-                        case 0xfd4d194e1652b207ull: // plain
-                        {
-                            if ( arm_kind != 4 )
-                            {
-                                if ( TableKindWidens( arm_kind, 4 ) )
-                                {
-                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                    // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) )
-                                    {
-                                        value.reach.type = ReachType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    memset( (void *) &value.reach.plain, 0, sizeof( value.reach.plain ) ); // selection establishes the arm (§2.6)
-                                    int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
-                                    {
-                                        value.reach.type = ReachType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    int32_t decoded_v = (int32_t) widened_v;
-                                    value.reach.plain = decoded_v;
-                                    value.reach.type = ReachType::Plain;
-                                    r.report->widened++;
-                                    break;
-                                }
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.reach.type = ReachType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.reach.type = ReachType::Plain;
-                            if ( sub.size != 4 ) { value.reach.type = ReachType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                            if ( !sub.has( 4 ) )
-                            {
-                                value.reach.type = ReachType::None;
-                                r.report->damaged = true;
-                                break;
-                            }
-                            int32_t decoded_v = int32_t( sub.get32() );
-                            value.reach.plain = decoded_v;
-                            break;
-                        }
-                        default:
-                            // an arm this reader cannot name: the value reads EMPTY and
-                            // the body is skipped by its length, never misdecoded. The
-                            // reset is explicit, not the prefill's: a repeated field id
-                            // must not leave an arm decoded by an earlier occurrence
-                            // standing (docs/SPEC-TABLES.md §4).
-                            value.reach.type = ReachType::None;
-                            r.report->unknown++;
-                            break;
+                        r.report->damaged = true;
+                        return false;
                     }
-                }
-                r.offset += (int64_t) body_len;
+                    const uint64_t arm_id = r.ids->at( arm_ref );
+                    if ( !r.has( 1 ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint8_t arm_kind = r.get8();
+                    uint64_t body_len = 0;
+                    if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    {
+                        TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                        {
+                            case 0x072ddab46af04ab7ull: // only
+                            {
+                                if ( arm_kind != 17 )
+                                {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.reach.type = ReachType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.reach.type = ReachType::Only;
+                                {
+                                    uint64_t node_index = 0;
+                                    if ( !sub.getleb( node_index ) )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    if ( sub.offset != sub.size )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableNodeResolve( nodes, value.reach.only, node_index, 0x31badbc06c5f0b97ull, r.report ); // *Only
+                                }
+                                break;
+                            }
+                            case 0xfa04f4ef1995407eull: // text
+                            {
+                                if ( arm_kind != 17 )
+                                {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.reach.type = ReachType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.reach.type = ReachType::Text;
+                                {
+                                    uint64_t node_index = 0;
+                                    if ( !sub.getleb( node_index ) )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    if ( sub.offset != sub.size )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableNodeResolve( nodes, value.reach.text, node_index, kTableStringTypeId, r.report ); // *string
+                                }
+                                break;
+                            }
+                            case 0xfd4d194e1652b207ull: // plain
+                            {
+                                if ( arm_kind != 4 )
+                                {
+                                    if ( TableKindWidens( arm_kind, 4 ) )
+                                    {
+                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                        // that is not that width is the arm's own framing damage (§3)
+                                        if ( sub.size != TableKindWidth( arm_kind ) )
+                                        {
+                                            value.reach.type = ReachType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        memset( (void *) &value.reach.plain, 0, sizeof( value.reach.plain ) ); // selection establishes the arm (§2.6)
+                                        int64_t widened_v = 0;
+                                        if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                        {
+                                            value.reach.type = ReachType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        int32_t decoded_v = (int32_t) widened_v;
+                                        value.reach.plain = decoded_v;
+                                        value.reach.type = ReachType::Plain;
+                                        r.report->widened++;
+                                        break;
+                                    }
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.reach.type = ReachType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.reach.type = ReachType::Plain;
+                                if ( sub.size != 4 ) { value.reach.type = ReachType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( !sub.has( 4 ) )
+                                {
+                                    value.reach.type = ReachType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                int32_t decoded_v = int32_t( sub.get32() );
+                                value.reach.plain = decoded_v;
+                                break;
+                            }
+                            default:
+                                // an arm this reader cannot name: the value reads EMPTY and
+                                // the body is skipped by its length, never misdecoded. The
+                                // reset is explicit, not the prefill's: a repeated field id
+                                // must not leave an arm decoded by an earlier occurrence
+                                // standing (docs/SPEC-TABLES.md §4).
+                                value.reach.type = ReachType::None;
+                                r.report->unknown++;
+                                break;
+                        }
+                    }
+                    r.offset += (int64_t) body_len;
                 }
                 break;
             }
@@ -12005,7 +12005,11 @@ inline int64_t OnlyFixedLoadWalkBody( Only * values, int64_t capacity, const uin
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < OnlyFixedLineageCount; ++i )
     {
-        if ( OnlyFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( OnlyFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -12190,7 +12194,7 @@ inline int64_t OnlyFixedLoadWalkBody( Only * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -14144,147 +14148,147 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
                 if ( arm_ref == 0 ) { value.reach.type = ReachType::None; } // empty: the reference is the whole payload
                 else
                 {
-                if ( arm_ref > (uint64_t) r.ids->count )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                const uint8_t arm_kind = r.get8();
-                uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) )
-                {
-                    r.report->damaged = true;
-                    return false;
-                }
-                {
-                    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
-                    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                    if ( arm_ref > (uint64_t) r.ids->count )
                     {
-                        case 0x072ddab46af04ab7ull: // only
-                        {
-                            if ( arm_kind != 17 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.reach.type = ReachType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.reach.type = ReachType::Only;
-                            {
-                                uint64_t node_index = 0;
-                                if ( !sub.getleb( node_index ) )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                if ( sub.offset != sub.size )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                TableNodeResolve( nodes, value.reach.only, node_index, 0x31badbc06c5f0b97ull, r.report ); // *Only
-                            }
-                            break;
-                        }
-                        case 0xfa04f4ef1995407eull: // text
-                        {
-                            if ( arm_kind != 17 )
-                            {
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.reach.type = ReachType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.reach.type = ReachType::Text;
-                            {
-                                uint64_t node_index = 0;
-                                if ( !sub.getleb( node_index ) )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                if ( sub.offset != sub.size )
-                                {
-                                    value.reach.type = ReachType::None;
-                                    r.report->damaged = true;
-                                    break;
-                                }
-                                TableNodeResolve( nodes, value.reach.text, node_index, kTableStringTypeId, r.report ); // *string
-                            }
-                            break;
-                        }
-                        case 0xfd4d194e1652b207ull: // plain
-                        {
-                            if ( arm_kind != 4 )
-                            {
-                                if ( TableKindWidens( arm_kind, 4 ) )
-                                {
-                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                    // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) )
-                                    {
-                                        value.reach.type = ReachType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    memset( (void *) &value.reach.plain, 0, sizeof( value.reach.plain ) ); // selection establishes the arm (§2.6)
-                                    int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
-                                    {
-                                        value.reach.type = ReachType::None;
-                                        r.report->damaged = true;
-                                        break;
-                                    }
-                                    int32_t decoded_v = (int32_t) widened_v;
-                                    value.reach.plain = decoded_v;
-                                    value.reach.type = ReachType::Plain;
-                                    r.report->widened++;
-                                    break;
-                                }
-                                // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
-                                // arm skips by L, the union reads None, and the parent reads on
-                                value.reach.type = ReachType::None;
-                                r.report->refused = true;
-                                r.report->refuse_reason = kind_mismatch;
-                                break;
-                            }
-                            value.reach.type = ReachType::Plain;
-                            if ( sub.size != 4 ) { value.reach.type = ReachType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                            if ( !sub.has( 4 ) )
-                            {
-                                value.reach.type = ReachType::None;
-                                r.report->damaged = true;
-                                break;
-                            }
-                            int32_t decoded_v = int32_t( sub.get32() );
-                            value.reach.plain = decoded_v;
-                            break;
-                        }
-                        default:
-                            // an arm this reader cannot name: the value reads EMPTY and
-                            // the body is skipped by its length, never misdecoded. The
-                            // reset is explicit, not the prefill's: a repeated field id
-                            // must not leave an arm decoded by an earlier occurrence
-                            // standing (docs/SPEC-TABLES.md §4).
-                            value.reach.type = ReachType::None;
-                            r.report->unknown++; r.report->retain_lost++;
-                            break;
+                        r.report->damaged = true;
+                        return false;
                     }
-                }
-                r.offset += (int64_t) body_len;
+                    const uint64_t arm_id = r.ids->at( arm_ref );
+                    if ( !r.has( 1 ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    const uint8_t arm_kind = r.get8();
+                    uint64_t body_len = 0;
+                    if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                    {
+                        r.report->damaged = true;
+                        return false;
+                    }
+                    {
+                        TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );
+                        switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                        {
+                            case 0x072ddab46af04ab7ull: // only
+                            {
+                                if ( arm_kind != 17 )
+                                {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.reach.type = ReachType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.reach.type = ReachType::Only;
+                                {
+                                    uint64_t node_index = 0;
+                                    if ( !sub.getleb( node_index ) )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    if ( sub.offset != sub.size )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableNodeResolve( nodes, value.reach.only, node_index, 0x31badbc06c5f0b97ull, r.report ); // *Only
+                                }
+                                break;
+                            }
+                            case 0xfa04f4ef1995407eull: // text
+                            {
+                                if ( arm_kind != 17 )
+                                {
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.reach.type = ReachType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.reach.type = ReachType::Text;
+                                {
+                                    uint64_t node_index = 0;
+                                    if ( !sub.getleb( node_index ) )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    if ( sub.offset != sub.size )
+                                    {
+                                        value.reach.type = ReachType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableNodeResolve( nodes, value.reach.text, node_index, kTableStringTypeId, r.report ); // *string
+                                }
+                                break;
+                            }
+                            case 0xfd4d194e1652b207ull: // plain
+                            {
+                                if ( arm_kind != 4 )
+                                {
+                                    if ( TableKindWidens( arm_kind, 4 ) )
+                                    {
+                                        // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                        // that is not that width is the arm's own framing damage (§3)
+                                        if ( sub.size != TableKindWidth( arm_kind ) )
+                                        {
+                                            value.reach.type = ReachType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        memset( (void *) &value.reach.plain, 0, sizeof( value.reach.plain ) ); // selection establishes the arm (§2.6)
+                                        int64_t widened_v = 0;
+                                        if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                        {
+                                            value.reach.type = ReachType::None;
+                                            r.report->damaged = true;
+                                            break;
+                                        }
+                                        int32_t decoded_v = (int32_t) widened_v;
+                                        value.reach.plain = decoded_v;
+                                        value.reach.type = ReachType::Plain;
+                                        r.report->widened++;
+                                        break;
+                                    }
+                                    // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
+                                    // arm skips by L, the union reads None, and the parent reads on
+                                    value.reach.type = ReachType::None;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = kind_mismatch;
+                                    break;
+                                }
+                                value.reach.type = ReachType::Plain;
+                                if ( sub.size != 4 ) { value.reach.type = ReachType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                if ( !sub.has( 4 ) )
+                                {
+                                    value.reach.type = ReachType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                int32_t decoded_v = int32_t( sub.get32() );
+                                value.reach.plain = decoded_v;
+                                break;
+                            }
+                            default:
+                                // an arm this reader cannot name: the value reads EMPTY and
+                                // the body is skipped by its length, never misdecoded. The
+                                // reset is explicit, not the prefill's: a repeated field id
+                                // must not leave an arm decoded by an earlier occurrence
+                                // standing (docs/SPEC-TABLES.md §4).
+                                value.reach.type = ReachType::None;
+                                r.report->unknown++; r.report->retain_lost++;
+                                break;
+                        }
+                    }
+                    r.offset += (int64_t) body_len;
                 }
                 break;
             }

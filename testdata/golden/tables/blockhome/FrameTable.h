@@ -7897,7 +7897,11 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -7916,7 +7920,10 @@ inline bool PartFrameLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         kept = 32;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -8498,7 +8505,11 @@ inline int64_t PartRowFixedLoadWalkBody( PartRow * values, int64_t capacity, con
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < PartRowFixedLineageCount; ++i )
     {
-        if ( PartRowFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( PartRowFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -8683,7 +8694,7 @@ inline int64_t PartRowFixedLoadWalkBody( PartRow * values, int64_t capacity, con
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -11942,7 +11953,11 @@ inline int64_t PartFrameFixedLoadWalkBody( PartFrame * values, int64_t capacity,
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < PartFrameFixedLineageCount; ++i )
     {
-        if ( PartFrameFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( PartFrameFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -12127,7 +12142,7 @@ inline int64_t PartFrameFixedLoadWalkBody( PartFrame * values, int64_t capacity,
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

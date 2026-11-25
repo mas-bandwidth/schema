@@ -747,11 +747,11 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 		g.pf("%sconst bool rides_%s = true; // position is identity in a fixed array of tables\n", ind, f.Name)
 	case tableScalarKind(f) == tkUnion:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( value.%s[i].type != %sType::None )\n            {\n                rides_%s = true;\n                break;\n            }\n        }\n",
-			ind, f.ArrayBound, f.Name, f.Type.Name, f.Name)
+		g.pf("%[1]sfor ( int32_t i = 0; i < %[2]d; i++ )\n%[1]s{\n%[1]s    if ( value.%[3]s[i].type != %[4]sType::None )\n%[1]s    {\n%[1]s        rides_%[3]s = true;\n%[1]s        break;\n%[1]s    }\n%[1]s}\n",
+			ind, f.ArrayBound, f.Name, f.Type.Name)
 	default:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ )\n        {\n            if ( %s )\n            {\n                rides_%s = true;\n                break;\n            }\n        }\n",
+		g.pf("%[1]sfor ( int32_t i = 0; i < %[2]d; i++ )\n%[1]s{\n%[1]s    if ( %[3]s )\n%[1]s    {\n%[1]s        rides_%[4]s = true;\n%[1]s        break;\n%[1]s    }\n%[1]s}\n",
 			ind, f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 	}
 }

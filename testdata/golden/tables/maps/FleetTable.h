@@ -13323,7 +13323,7 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -13371,7 +13371,7 @@ inline bool ShipConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -13857,7 +13857,7 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
-                                const uint64_t sign = uint64_t(1) << ( width - 1 );
+                                const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                             }
                             if ( decoded_wide < -2147483648ll )
@@ -13905,7 +13905,7 @@ inline bool ItemLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
-                        const uint64_t sign = uint64_t(1) << ( width - 1 );
+                        const uint64_t sign = uint64_t( 1 ) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t( 1 ) << width ) - 1 ) ); }
                     }
                     const int64_t pre_clamp = decoded_wide;
@@ -16396,7 +16396,11 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < ShipConfigFixedLineageCount; ++i )
     {
-        if ( ShipConfigFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( ShipConfigFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -16581,7 +16585,7 @@ inline int64_t ShipConfigFixedLoadWalkBody( ShipConfig * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -16850,7 +16854,11 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < ItemFixedLineageCount; ++i )
     {
-        if ( ItemFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( ItemFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -17035,7 +17043,7 @@ inline int64_t ItemFixedLoadWalkBody( Item * values, int64_t capacity, const uin
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

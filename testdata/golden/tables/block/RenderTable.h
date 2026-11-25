@@ -9659,11 +9659,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.ship_type = ShipType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.ship_type ) )
                 {
                     value.ship_type = ShipType::None;
@@ -9687,11 +9693,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -10673,10 +10685,11 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     uint64_t raw = 0;
                     if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
-                {
-                    report->damaged = true;
-                    return false;
-                    } value.has_target_lock = raw != 0;
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.has_target_lock = raw != 0;
                 }
                 break;
             }
@@ -10706,10 +10719,11 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     uint64_t raw = 0;
                     if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
-                {
-                    report->damaged = true;
-                    return false;
-                    } value.predicted_explode = raw != 0;
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.predicted_explode = raw != 0;
                 }
                 break;
             }
@@ -11252,11 +11266,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -12175,10 +12195,11 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     uint64_t raw = 0;
                     if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
-                {
-                    report->damaged = true;
-                    return false;
-                    } value.has_target_lock = raw != 0;
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.has_target_lock = raw != 0;
                 }
                 break;
             }
@@ -12657,11 +12678,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.missile_type = MissileType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.missile_type ) )
                 {
                     value.missile_type = MissileType::None;
@@ -12685,11 +12712,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -13858,11 +13891,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -13886,11 +13925,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -15081,11 +15126,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -15109,11 +15160,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -15541,10 +15598,17 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -16355,11 +16419,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -16383,11 +16453,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -16825,10 +16901,17 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -17620,11 +17703,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.laser_type = LaserType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.laser_type ) )
                 {
                     value.laser_type = LaserType::None;
@@ -17648,11 +17737,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -18070,10 +18165,17 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -18780,11 +18882,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.explosion_type = ExplosionType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.explosion_type ) )
                 {
                     value.explosion_type = ExplosionType::None;
@@ -18808,11 +18916,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -19240,10 +19354,17 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -21528,7 +21649,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21547,7 +21672,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 1;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21590,7 +21718,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21609,7 +21741,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 4096;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21652,7 +21787,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21671,7 +21810,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 1024;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21714,7 +21856,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21733,7 +21879,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 4096;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21776,7 +21925,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21795,7 +21948,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 4096;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21838,7 +21994,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21857,7 +22017,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 20000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21900,7 +22063,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21919,7 +22086,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 8192;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21962,7 +22132,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21981,7 +22155,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 32000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -22024,7 +22201,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -22043,7 +22224,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 32000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -22680,10 +22864,17 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -22755,10 +22946,17 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -22830,10 +23028,17 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -23530,10 +23735,17 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -23605,10 +23817,17 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -23680,10 +23899,17 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -23755,10 +23981,17 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 1.0 ) ) )
@@ -24897,7 +25130,11 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderCameraFixedLineageCount; ++i )
     {
-        if ( RenderCameraFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderCameraFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -25082,7 +25319,7 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -25498,7 +25735,11 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderShipFixedLineageCount; ++i )
     {
-        if ( RenderShipFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderShipFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -25683,7 +25924,7 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -26073,7 +26314,11 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderTurretFixedLineageCount; ++i )
     {
-        if ( RenderTurretFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderTurretFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -26258,7 +26503,7 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -26660,7 +26905,11 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderMissileFixedLineageCount; ++i )
     {
-        if ( RenderMissileFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderMissileFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -26845,7 +27094,7 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -27251,7 +27500,11 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderDynamicPropFixedLineageCount; ++i )
     {
-        if ( RenderDynamicPropFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderDynamicPropFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -27436,7 +27689,7 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -27842,7 +28095,11 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderStaticPropFixedLineageCount; ++i )
     {
-        if ( RenderStaticPropFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderStaticPropFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -28027,7 +28284,7 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -28438,7 +28695,11 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderCosmeticPropFixedLineageCount; ++i )
     {
-        if ( RenderCosmeticPropFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderCosmeticPropFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -28623,7 +28884,7 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -29015,7 +29276,11 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderLaserFixedLineageCount; ++i )
     {
-        if ( RenderLaserFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderLaserFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -29200,7 +29465,7 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }
@@ -29602,7 +29867,11 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderExplosionFixedLineageCount; ++i )
     {
-        if ( RenderExplosionFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderExplosionFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -29787,7 +30056,7 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

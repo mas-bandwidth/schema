@@ -905,7 +905,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
 	g.pf("    int32_t lineage_at = -1;\n")
 	g.pf("    for ( int32_t i = 0; i < %sFixedLineageCount; ++i )\n", st.Name)
-	g.pf("    {\n        if ( %sFixedLineage[i] == hash ) { lineage_at = i; break; }\n    }\n", st.Name)
+	g.pf("    {\n        if ( %sFixedLineage[i] == hash )\n        {\n            lineage_at = i;\n            break;\n        }\n    }\n", st.Name)
 	// STEP 5 AND STEP 6 (§5.3): SELECT BY HASH, then the floor. Outside the
 	// lineage is TableFixedReason::layout_unknown (§5.3 step 5, SPEC-TABLES §21.3): the lineage
 	// is oldest first with this build's own layout last, a retired mark means
@@ -1025,7 +1025,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                    for ( uint32_t j = 0; j < p.guard_count; ++j )\n                    {\n")
 	g.pf("                        const TableFixedGuardLink & l = %sFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];\n", st.Name)
 	g.pf("                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )\n                        {\n")
-	g.pf("                            matches = false;\n                                break;\n                        }\n")
+	g.pf("                            matches = false;\n                            break;\n                        }\n")
 	g.pf("                    }\n")
 	g.pf("                    if ( !matches ) { continue; }\n")
 	g.pf("                }\n                else\n                {\n")

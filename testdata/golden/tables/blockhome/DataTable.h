@@ -6975,10 +6975,17 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
                     }
                     const double decoded_d = table_bits_to_double( raw );
                     if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
@@ -9390,7 +9397,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -9409,7 +9420,10 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                         kept = 32;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -9452,7 +9466,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -9471,7 +9489,10 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                         kept = 4;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )

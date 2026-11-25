@@ -8477,7 +8477,11 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < FixedTableFixedLineageCount; ++i )
     {
-        if ( FixedTableFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( FixedTableFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -8662,7 +8666,7 @@ inline int64_t FixedTableFixedLoadWalkBody( FixedTable * values, int64_t capacit
                         if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
                         {
                             matches = false;
-                                break;
+                            break;
                         }
                     }
                     if ( !matches ) { continue; }

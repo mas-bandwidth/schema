@@ -324,11 +324,66 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
+// splitStatements separates a run of C++ statements written as one string
+// ("a = 1; return false;", or the same across lines) into one statement each,
+// so a caller's onBad lays out as clang-format lays out a block: a block of
+// one statement stays on the line, a longer one opens on its own lines. A
+// trailing `// comment` stays with the statement before it.
+func splitStatements(s string) []string {
+	var out []string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		depth := 0
+		start := 0
+		for i := 0; i < len(line); i++ {
+			switch line[i] {
+			case '(':
+				depth++
+			case ')':
+				depth--
+			case ';':
+				if depth != 0 {
+					continue
+				}
+				rest := strings.TrimSpace(line[i+1:])
+				if strings.HasPrefix(rest, "//") {
+					out = append(out, strings.TrimSpace(line[start:]))
+					start = len(line)
+					i = len(line)
+					continue
+				}
+				out = append(out, strings.TrimSpace(line[start:i+1]))
+				start = i + 1
+			}
+		}
+		if rest := strings.TrimSpace(line[start:]); rest != "" {
+			out = append(out, rest)
+		}
+	}
+	return out
+}
+
+// emitIfBlock writes `head { body }tail` the way clang-format keeps it: one
+// statement on the head's line, more than one as an Allman block with the
+// tail (a trailing comment) after the closing brace.
+func (g *tableGen) emitIfBlock(ind, head, body, tail string) {
+	stmts := splitStatements(body)
+	if len(stmts) == 1 {
+		g.pf("%s%s { %s }%s\n", ind, head, stmts[0], tail)
+		return
+	}
+	g.pf("%s%s\n%s{\n", ind, head, ind)
+	for _, st := range stmts {
+		g.pf("%s    %s\n", ind, st)
+	}
+	g.pf("%s}%s\n", ind, tail)
+}
+
 // emitIfActions lays out an already-separated sequence of C++ statements.
 // The caller owns the statements; this only supplies the block and indentation.
 func (g *tableGen) emitIfActions(ind, condition string, actions ...string) {
 	if len(actions) == 1 {
-		g.pf("%sif ( %s )\n        {\n            %s\n        }\n", ind, condition, actions[0])
+		g.pf("%[1]sif ( %[2]s )\n%[1]s{\n%[1]s    %[3]s\n%[1]s}\n", ind, condition, actions[0])
 		return
 	}
 	g.pf("%sif ( %s )\n%s{\n", ind, condition, ind)
