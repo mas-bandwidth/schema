@@ -2,27 +2,35 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
 // The random pass draws from the manifest seeds alone. A leg whose only live
-// roots are pinned vectors has an empty pool, and the run must name that
-// outcome rather than index [0] of nothing (test/conformance/README.md,
-// "The wire-fuzz driver"; docs/SPEC-TABLES.md §4.2).
+// roots are pinned vectors has an empty pool, and the run fails naming that
+// outcome rather than index [0] of nothing or passing having drawn nothing
+// (test/conformance/README.md, "The wire-fuzz driver"; docs/SPEC-TABLES.md
+// §4.2; docs/rulings.json no-skips).
 func TestWireFuzzRandomPassWithNoManifestSeed(t *testing.T) {
 	t.Parallel()
 	const seed = uint64(24845619678)
 
 	var drew []*wireMutant
-	line := randomPass(nil, 3, seed, 1000, func(m *wireMutant) {
+	err := randomPass(nil, 3, seed, 1000, func(m *wireMutant) {
 		drew = append(drew, m)
 	})
 	if len(drew) != 0 {
 		t.Fatalf("empty pool drew %d mutants, want 0", len(drew))
 	}
-	wantLine := "wire-fuzz: random pass skipped: no manifest seed is live (3 pinned vectors only)"
-	if line != wantLine {
-		t.Fatalf("empty pool line = %q, want %q", line, wantLine)
+	wantErr := "wire-fuzz: the random pass has no live manifest seed to draw from (3 pinned vectors only): a random pass that draws nothing fails"
+	if err == nil || err.Error() != wantErr {
+		t.Fatalf("empty pool error = %v, want %q", err, wantErr)
+	}
+	// the bounded stream fails the same way when its random share has no seed
+	v := &wireSeed{name: "pinned", wire: []byte{7, 8}, vector: true}
+	opts := wireFuzzOptions{seed: seed, n: 10, maxMutants: 5}
+	if err := emitBoundedStream([]*wireSeed{v}, nil, map[*wireSeed]int{v: 0}, opts, func(*wireMutant) {}); err == nil || err.Error() != strings.Replace(wantErr, "(3 ", "(1 ", 1) {
+		t.Fatalf("bounded stream over pinned vectors only: error = %v, want the no-live-seed failure", err)
 	}
 	if m := randomMutant(nil, seed, 0); m != nil {
 		t.Fatalf("randomMutant over an empty list = %+v, want nil", m)
@@ -42,10 +50,10 @@ func TestWireFuzzRandomPassWithNoManifestSeed(t *testing.T) {
 		"000102030405060708090a0b0c0d0e0f1011121314151617182c1a1b1c1d1e1f",
 	}
 	var got []*wireMutant
-	if line := randomPass([]*wireSeed{s}, 0, seed, 3, func(m *wireMutant) {
+	if err := randomPass([]*wireSeed{s}, 0, seed, 3, func(m *wireMutant) {
 		got = append(got, m)
-	}); line != "" {
-		t.Fatalf("one-seed pool line = %q, want none", line)
+	}); err != nil {
+		t.Fatalf("one-seed pool: %v", err)
 	}
 	if len(got) != len(want) {
 		t.Fatalf("one-seed pool drew %d mutants, want %d", len(got), len(want))
