@@ -162,7 +162,8 @@ func TestUpdateRepinsOnlyTheNamedGoldens(t *testing.T) {
 	calls := 0
 	a := goldenFake(checkout, written, &calls)
 	// b.bin is another row's pin, stale too: it is that row's to re-pin
-	reg, err := testreg.Parse("golden.jsonl", strings.NewReader(`{"rec":"type","name":"golden","what":"pinned","contract":"equal"}
+	reg, err := testreg.Parse("golden.jsonl", strings.NewReader(`{"rec":"lang","name":"go","write":"refuse","adapter":""}
+{"rec":"type","name":"golden","what":"pinned","contract":"equal"}
 {"rec":"tier","name":"functional","what":"a toolchain"}
 {"rec":"test","key":"golden.x.b","type":"golden","family":"x","case":"b","tier":"functional","checks":"b","inputs":{"writer":"pins-x","files":["testdata/g/b.bin"]},"expect":"same","scope":"none","adapter":"golden"}
 `))
