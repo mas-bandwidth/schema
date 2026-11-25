@@ -374,8 +374,9 @@ type plantRun struct {
 }
 
 // plantInTree is the edit form for real. A worktree of the checkout's HEAD
-// is added beside it (so ../serialize and the other siblings resolve as they
-// do for the checkout, and git answers in it), the checkout's tracked files
+// is added in a directory beside it, where the checkouts beside the checkout
+// are linked (so ../serialize.go resolves as it does for the checkout, and
+// git answers in it), the checkout's tracked files
 // are copied over it as they stand, the edits are applied, and the copy's
 // own schema-test, built from the sabotaged tree, runs the names there (a
 // plant of the runner itself reaches the runner), writing its report as
@@ -398,6 +399,9 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 		return plantRun{}, err
 	}
 	defer func() { _ = os.RemoveAll(parent) }()
+	if err := linkSiblings(root, parent); err != nil {
+		return plantRun{}, err
+	}
 	work := filepath.Join(parent, filepath.Base(root))
 	if log, err := gitIn(ctx, root, "worktree", "add", "--detach", "--quiet", work, "HEAD"); err != nil {
 		return plantRun{log: log}, fmt.Errorf("git worktree add: %w", err)
@@ -441,6 +445,29 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 		run.status[o.Full] = outcome{o.Status, o.Reason}
 	}
 	return run, nil
+}
+
+// linkSiblings links each checkout beside root (../serialize.go,
+// ../serialize) into parent, beside the planted copy, so the copy's build
+// finds its siblings where the checkout's own build finds them and builds as
+// the checkout does. A plain file beside root, and another plant's copy
+// (.schema-test-plant-*), are not linked.
+func linkSiblings(root, parent string) error {
+	beside := filepath.Dir(root)
+	entries, err := os.ReadDir(beside)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if name == filepath.Base(root) || strings.HasPrefix(name, ".schema-test-plant-") || !e.IsDir() && e.Type()&os.ModeSymlink == 0 {
+			continue
+		}
+		if err := os.Symlink(filepath.Join(beside, name), filepath.Join(parent, name)); err != nil {
+			return fmt.Errorf("linking the sibling %s beside the planted copy: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // gitIn runs git in dir and returns its combined output.

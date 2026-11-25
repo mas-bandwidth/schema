@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -246,5 +248,38 @@ func TestAPlantReachesACopyInAnotherEditedFile(t *testing.T) {
 		{File: "internal/b/b.go", Anchor: "y := 2", With: "y := 9"},
 	}, memRead(files), all); err != nil {
 		t.Fatalf("both copies sabotaged: %v", err)
+	}
+}
+
+// TestThePlantedCopyFindsItsSiblings: the checkouts beside the checkout
+// (../serialize.go) are linked beside the planted copy, so its build finds
+// them as the checkout's does; a plain file, the checkout itself and another
+// plant's copy are not.
+func TestThePlantedCopyFindsItsSiblings(t *testing.T) {
+	t.Parallel()
+	beside := t.TempDir()
+	root := filepath.Join(beside, "schema")
+	for _, d := range []string{root, filepath.Join(beside, "serialize.go"), filepath.Join(beside, ".schema-test-plant-1")} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(beside, "notes.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := os.MkdirTemp(beside, ".schema-test-plant-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := linkSiblings(root, parent); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.Readlink(filepath.Join(parent, "serialize.go")); err != nil || got != filepath.Join(beside, "serialize.go") {
+		t.Errorf("../serialize.go beside the copy: %q, %v", got, err)
+	}
+	for _, name := range []string{"schema", "notes.txt", ".schema-test-plant-1"} {
+		if _, err := os.Lstat(filepath.Join(parent, name)); err == nil {
+			t.Errorf("%s was linked beside the copy", name)
+		}
 	}
 }
