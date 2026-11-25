@@ -18,9 +18,10 @@ python-wirefuzz-$(1)-$(2)-$(3): build/conformance-harness build/conformance-pyth
 	@set -eu; \
 	if find build/conformance-python -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(PYTHON_WIRE_FUZZ_DIR); log=$(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).log; \
+	echo "$$@: seed $$(WIRE_FUZZ_RUN_SEED) (a red re-runs with: make $$@ SCHEMA_TEST_SEED=$$(WIRE_FUZZ_RUN_SEED))"; \
 	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(3)),--mixed-builder,$(if $(filter retain,$(3)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(PYTHON),$(PYTHON_FLOOR)) $(if $(filter dev,$(2)),-X dev,) -W error -I -B test/conformance/python/wirefuzz.py build/conformance-python' \
-	  --seed $(SEED) --n $(N) --failed $(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).bin
+	  --seed $$(WIRE_FUZZ_RUN_SEED) --n $(N) --failed $(PYTHON_WIRE_FUZZ_DIR)/$(1)-$(2)-$(3).bin
 endef
 $(foreach pin,current floor,$(foreach mode,normal dev,$(foreach arm,plain mixed retain,$(eval $(call python_wirefuzz_row,$(pin),$(mode),$(arm))))))
 

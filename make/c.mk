@@ -162,6 +162,7 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/jsonkeys test/tables/JsonKeys.schema
 	$(1) generate --lang c --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(1) generate --lang c --out $(2)/shapes test/tables/shapes
+	$(1) generate --lang c --out $(2)/moodmap test/tables/moodmap/MoodMap.schema
 	$(1) generate --lang c --out $(2)/prior test/tables/prior/PriorNarrow.schema
 	$(1) generate --lang c --out $(2)/surfaces test/tables/surfaces
 	$(1) generate --lang c --out $(2)/ann/announce4096 test/tables/announce4096
@@ -189,7 +190,7 @@ define tables_generate_side_by_side
 endef
 
 build/tables-generated-c/.stamp: export TABLES_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
-build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/moodmap/MoodMap.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-c
 	$(call tables_generate_side_by_side,TABLES_C_GENERATE)
 	@touch $@
@@ -207,6 +208,13 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 # these.
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
 
+# A unit that includes its *Block.h links its *Block.c. The header's
+# static SCHEMA_UNUSED wrappers call extern functions defined only there,
+# and the -O2 build dropped those unused wrappers (its driver links
+# without BackendBlock.c), while the -O0 negative control
+# (TABLES_CFLAGS_CONTROL) failed with 20 undefined references to 16
+# schema_backenddemo_*_block_* symbols.
+
 C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c \
 	$(patsubst tables/%.schema,build/tables-generated-c/%Table.c,$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS)) \
 	test/conformance/c/unit_tblw1.c build/tables-generated-c/w1/W1Table.c \
@@ -218,7 +226,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_blobdemo.c build/tables-generated-c/blobs/AssetsTable.c \
 	test/conformance/c/unit_vocab9demo.c build/tables-generated-c/vocab9/Vocab9Table.c \
 	test/conformance/c/unit_vocabdemo.c build/tables-generated-c/vocab/VocabTable.c \
-	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 	test/conformance/c/unit_tblr2.c build/tables-generated-c/r2/R2Table.c \
 	test/conformance/c/unit_tblr1.c build/tables-generated-c/r1/R1Table.c \
 	test/conformance/c/unit_tblk2.c build/tables-generated-c/k2/K2Table.c \
@@ -251,6 +259,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_cooktorture.c build/tables-generated-c/cooktorture/CookTortureTable.c build/tables-generated-c/cooktorture/CookTortureBlock.c \
 	test/conformance/c/unit_cooktorturewide.c build/tables-generated-c/cooktorturewide/CookTortureWideTable.c \
 	test/conformance/c/unit_shapes.c build/tables-generated-c/shapes/ShapesTable.c \
+	test/conformance/c/unit_tblmoodmap.c build/tables-generated-c/moodmap/MoodMapTable.c \
 	test/conformance/c/unit_tblprior.c build/tables-generated-c/prior/PriorNarrowTable.c \
 	test/conformance/c/unit_tblsurf.c build/tables-generated-c/surfaces/SurfacesTable.c \
 	test/conformance/c/unit_tblann4096.c build/tables-generated-c/ann/announce4096/AnnounceTable.c \
@@ -264,7 +273,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/surfaces -Ibuild/tables-generated-c/ann -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Ibuild/tables-generated-c/fixedevo -Ibuild/tables-generated-c/widelist -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
-	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses -Ibuild/tables-generated-c/varevo1 -Ibuild/tables-generated-c/varevo2 -Ibuild/tables-generated-c/varevo3 -Ibuild/tables-generated-c/cooktorture -Ibuild/tables-generated-c/cooktorturewide -Ibuild/tables-generated-c/shapes -Ibuild/tables-generated-c/prior -Ibuild/tables-generated-c/valuedefaults -Ibuild/tables-generated-c/packetunions
+	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses -Ibuild/tables-generated-c/varevo1 -Ibuild/tables-generated-c/varevo2 -Ibuild/tables-generated-c/varevo3 -Ibuild/tables-generated-c/cooktorture -Ibuild/tables-generated-c/cooktorturewide -Ibuild/tables-generated-c/shapes -Ibuild/tables-generated-c/moodmap -Ibuild/tables-generated-c/prior -Ibuild/tables-generated-c/valuedefaults -Ibuild/tables-generated-c/packetunions
 
 # THE DRIVER'S TRANSLATION UNITS COMPILE SIDE BY SIDE. One `$(CC) ... sources
 # -o driver` compiled every unit one after another; at -O2 that was 206 s on
@@ -394,7 +403,7 @@ build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_mai
 		-O2 -ffp-contract=off $(C_CONFORMANCE_INCLUDES) \
 		-DCONFORMANCE_NO_WREF_CASE \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -536,6 +545,7 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/jsonkeys test/tables/JsonKeys.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/shapes test/tables/shapes
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/moodmap test/tables/moodmap/MoodMap.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/prior test/tables/prior/PriorNarrow.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/surfaces test/tables/surfaces
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/ann/announce4096 test/tables/announce4096
@@ -702,7 +712,7 @@ build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_
 		-DSCHEMA_SOAK_NO_INTERPOSE -DCONFORMANCE_NO_WREF_CASE \
 		$(C_CONFORMANCE_INCLUDES) \
 		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -731,7 +741,7 @@ C_BE_NC := build/c-be-sabotage
 C_BE_NC_GEN := $(C_BE_NC)/generated
 C_BE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_BE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
 C_BE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c \
-	test/conformance/c/unit_backenddemo.c $(C_BE_NC_GEN)/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c $(C_BE_NC_GEN)/backend/BackendTable.c $(C_BE_NC_GEN)/backend/BackendBlock.c \
 	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
 	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 	$(C_BE_NC_GEN)/examples/TablesTable.c $(C_BE_NC_GEN)/examples/WideTable.c \
@@ -789,7 +799,7 @@ C_LE_NC := build/c-le-sabotage
 C_LE_NC_GEN := $(C_LE_NC)/generated
 C_LE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_LE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
 C_LE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c \
-	test/conformance/c/unit_backenddemo.c $(C_LE_NC_GEN)/backend/BackendTable.c \
+	test/conformance/c/unit_backenddemo.c $(C_LE_NC_GEN)/backend/BackendTable.c $(C_LE_NC_GEN)/backend/BackendBlock.c \
 	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
 	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 	$(C_LE_NC_GEN)/examples/TablesTable.c $(C_LE_NC_GEN)/examples/WideTable.c \
@@ -1207,7 +1217,7 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -DCONFORMANCE_NO_WREF_CASE $(C_CONFORMANCE_INCLUDES) \
 		build/c-soak-sabotage/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
-		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c build/tables-generated-c/backend/BackendBlock.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -1496,8 +1506,8 @@ test-c tables-c: tables-c-accessor-descriptor-agreement tables-c-accessor-negati
 # internal/tablepack) writes its own text from the leg's wire, byte-compared,
 # and packs the leg's text back to wire, byte-compared. The control caps the
 # emitted float32 writer at six significant digits in memory and must go red on
-# the text comparison. the rule that nothing skips makes a missing C compiler a
-# FAILURE rather than a skip.
+# the text comparison. A missing C compiler is a FAILURE that names it, never
+# a skip (docs/rulings.json no-skips).
 .PHONY: tables-c-text-differential tables-c-text-differential-negative-control
 tables-c-text-differential:
 	$(GO_TEST) ./internal/codegen/ctable/ -count=1 -timeout 600s -v -run '^TestCTextDifferentialAgainstTheGoEngine$$'
@@ -1597,11 +1607,9 @@ tables-c-fixedform: build/retiredskips build/schema_test_c_fixedform build/schem
 # compiles it with $(CC) against the generated header, and runs it.
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
-# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
-# a bare `go test ./...` on a tree that never built the oracle — and is exactly
-# how a §5 regression would have ridden into CI green. So the target BUILDS THE
-# ORACLE FIRST (`tables-fixedform-corpus`, the C++ reference's own dump) and then
-# sets the rule that nothing skips, which turns that skip into a FAILURE. Run the
+# harness fails by name when build/fixedform-corpus is absent (docs/rulings.json
+# no-skips), so the target BUILDS THE ORACLE FIRST (`tables-fixedform-corpus`,
+# the C++ reference's own dump) and a missing corpus can never pass. Run the
 # whole ctable package: the fixed roadmap framing tests also read this corpus,
 # and the former TestFixedVersioning filter left them outside the gate.
 .PHONY: tables-c-versioning
@@ -1660,9 +1668,8 @@ REGISTRY_NA_WHY.toolchain.c := builds with the host C compiler (CC), which nothi
 # THE VERSION IS PINNED (CLANG_FORMAT_MAJOR) because formatters move between
 # majors: CI installs clang-format $(CLANG_FORMAT_PIN) and a different major
 # fails by name rather than reporting drift that is the tool's. Where no
-# clang-format is installed the gate SKIPS, except where
-# the rule that nothing skips (CI sets it): a gate that always skips is no
-# gate.
+# clang-format is installed the gate fails naming it (docs/rulings.json
+# no-skips): a gate that passes without its tool is no gate.
 #
 # THE TABLE EMITTER IS NOT CLEAN YET, and its files ride a SHRINK-ONLY RATCHET,
 # make/c-format-allow.txt: a drifting file not listed fails, and a listed file

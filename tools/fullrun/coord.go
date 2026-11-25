@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -152,6 +153,9 @@ type Options struct {
 	// plan's units (a scheduled workflow's matrix job); merge accounts for
 	// the whole plan.
 	Part, Parts int
+	// PartGOOS runs the part named for an operating system instead: every
+	// unit of the plan built only for it, on a bench that runs it.
+	PartGOOS string
 	// Work is the bench directory runs keep their clones in: absolute, or
 	// relative to $HOME.
 	Work string
@@ -386,6 +390,9 @@ func launch(ctx context.Context, o Options, rm Remote, sleep func(time.Duration)
 		st.Run, st.Dir = nextDir(shaDir, "retest")
 	case len(o.Only) > 0:
 		st.Run, st.Dir = nextDir(shaDir, "only")
+	case o.PartGOOS != "":
+		st.Part = o.PartGOOS
+		st.Run, st.Dir = nextDir(shaDir, "part-"+o.PartGOOS)
 	case o.Parts > 0:
 		st.Part = fmt.Sprintf("%d/%d", o.Part, o.Parts)
 		st.Run, st.Dir = nextDir(shaDir, fmt.Sprintf("part-%d-of-%d", o.Part, o.Parts))
@@ -455,6 +462,12 @@ func launch(ctx context.Context, o Options, rm Remote, sleep func(time.Duration)
 			return st, err
 		}
 		prefix = fmt.Sprintf("p%d-", o.Part)
+	}
+	if o.PartGOOS != "" {
+		if units, err = goosPart(units, o.PartGOOS); err != nil {
+			return st, err
+		}
+		prefix = "p" + o.PartGOOS + "-"
 	}
 	st.Units = units
 	shards, err := assign(units, st.Benches)
@@ -754,7 +767,7 @@ func part(units []Unit, k, n int) ([]Unit, error) {
 		return nil, fmt.Errorf("--part %d/%d: want 1 <= i <= n", k, n)
 	}
 	// a part runs on a Linux runner: a unit built for another GOOS is in no
-	// part, and the merge reports it NOT RUN, naming the bench it needs
+	// numbered part; it is in the part named for its GOOS (goosPart)
 	bins := make([]Bench, n)
 	for i := range bins {
 		bins[i] = Bench{Host: fmt.Sprintf("part%d", i+1), Shards: 1}
@@ -769,4 +782,28 @@ func part(units []Unit, k, n int) ([]Unit, error) {
 		}
 	}
 	return nil, fmt.Errorf("--part %d/%d holds no unit: the plan has fewer units than parts", k, n)
+}
+
+// partGOOS are the operating systems a part can be named for. A numbered
+// part runs on a Linux runner and holds no unit built for another GOOS;
+// the part named for that GOOS holds every one of them, and runs on a
+// runner that runs that GOOS's tests (captain runs windows, through WSL).
+var partGOOS = []string{"windows", "darwin"}
+
+// goosPart is the part named for goos: exactly the plan's units built
+// only for it that a shard runs, as part deals only those.
+func goosPart(units []Unit, goos string) ([]Unit, error) {
+	if !slices.Contains(partGOOS, goos) {
+		return nil, fmt.Errorf("--part %s: a part is i/n or one of %s", goos, strings.Join(partGOOS, ", "))
+	}
+	var out []Unit
+	for _, u := range units {
+		if u.GOOS == goos && u.Runs() {
+			out = append(out, u)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("--part %s holds no unit: this plan holds no test built only for %s", goos, goos)
+	}
+	return out, nil
 }

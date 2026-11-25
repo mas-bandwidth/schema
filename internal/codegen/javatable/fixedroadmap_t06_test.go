@@ -125,8 +125,8 @@ func t06W4(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.damaged {
-		t.Fatalf("W4: a read of the narrower arm did not return clean: n=%d refused=%v reason=%s malformed=%v", r.n, r.refused, r.reason, r.damaged)
+	if r.n != 1 || r.refused {
+		t.Fatalf("W4: a read of the narrower arm did not return clean: n=%d refused=%v reason=%s", r.n, r.refused, r.reason)
 	}
 	if got := r.value["pick.plain.n"]; got != "303" {
 		t.Errorf("W4: pick.plain.n=%s, want the writer's 303", got)

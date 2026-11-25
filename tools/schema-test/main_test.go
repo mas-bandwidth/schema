@@ -250,9 +250,13 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	a := &harnessAdapter{}
 	for fam, want := range map[string]string{
 		"align-arrays":          "align-arrays",
+		"bit-phase":             "align-arrays",
 		"conformance-wire":      "conformance",
 		"conformance-json-read": "conformance",
 		"name-buildability":     "name-buildability",
+		"wire-fuzz":             "wire-fuzz",
+		"wire-fuzz-vector":      "wire-fuzz",
+		"wire-fuzz-release":     "",
 		"no-such-family":        "",
 	} {
 		h, ok := harnessFor(testreg.Test{Family: fam})
@@ -272,6 +276,12 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	}
 	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
 		t.Errorf("conformance build for lua: %q", got)
+	}
+	if got := wireFuzzHarness.Build("ruby"); len(got) != 1 || strings.Join(got[0], " ") != "make wire-fuzz-deps-ruby" {
+		t.Errorf("wire-fuzz build for ruby: %q", got)
+	}
+	if got := strings.Join(wireFuzzHarness.Cmd("ruby", "w"), " "); got != "make -s wire-fuzz-adapter-ruby WFZ_WORK=w" {
+		t.Errorf("wire-fuzz command for ruby: %q", got)
 	}
 	// an instance routed here with no harness is an error naming it, before
 	// anything builds or runs

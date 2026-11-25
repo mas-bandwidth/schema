@@ -194,6 +194,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Tblmoodmap.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Shapes.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -490,6 +494,10 @@ static partial class Program
         Row<Shapes.FixedBounds, Shapes.TableReport>("shapes", "FixedBounds", () => new Shapes.TableReport(), Copy,
             Shapes.Schema.FixedBoundsLoad, Shapes.Schema.FixedBoundsMeasure, Shapes.Schema.FixedBoundsSave,
             Shapes.Schema.FixedBoundsFromJson, Shapes.Schema.FixedBoundsToJsonMeasure, Shapes.Schema.FixedBoundsToJson),
+        // FL-19's map form (test/tables/moodmap), opted in by `list`
+        Row<Tblmoodmap.MoodMap, Tblmoodmap.TableReport>("tblmoodmap", "MoodMap", () => new Tblmoodmap.TableReport(), Copy,
+            Tblmoodmap.Schema.MoodMapLoad, Tblmoodmap.Schema.MoodMapMeasure, Tblmoodmap.Schema.MoodMapSave,
+            Tblmoodmap.Schema.MoodMapFromJson, Tblmoodmap.Schema.MoodMapToJsonMeasure, Tblmoodmap.Schema.MoodMapToJson),
         Row<Tblprior.Prior, Tblprior.TableReport>("tblprior", "Prior", () => new Tblprior.TableReport(), Copy,
             Tblprior.Schema.PriorLoad, Tblprior.Schema.PriorMeasure, Tblprior.Schema.PriorSave,
             Tblprior.Schema.PriorFromJson, Tblprior.Schema.PriorToJsonMeasure, Tblprior.Schema.PriorToJson),
@@ -2952,7 +2960,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nretain\nretain-save\nretain-refusal\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
+            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nretain\nretain-save\nretain-refusal\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\nunit tblmoodmap\n");
             return 0;
         }
         if (args.Length < 3)

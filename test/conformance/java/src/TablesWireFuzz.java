@@ -76,12 +76,25 @@ public final class TablesWireFuzz {
         return f.getInt(report);
     }
 
+    private static boolean flag(Object report, Class<?> type, String field) throws ReflectiveOperationException {
+        Field f;
+        try {
+            f = type.getField(field);
+        } catch (NoSuchFieldException absent) {
+            return false;
+        }
+        return f.getBoolean(report);
+    }
+
     private static void fill(Reply r, Object report, Class<?> type) throws ReflectiveOperationException {
         r.unknown = count(report, type, "unknown");
         r.widened = count(report, type, "widened");
         r.retained = count(report, type, "retained");
         r.retainLost = count(report, type, "retainLost");
-        r.damaged = type.getField("damaged").getBoolean(report);
+        // The fixed form's report has no malformed flag
+        // (docs/FIXED-FORM-ALGORITHM.md §5.3): a report without the field
+        // answers every failure by name, so its absence reads as false.
+        r.damaged = flag(report, type, "damaged");
         r.refused = type.getField("refused").getBoolean(report);
     }
 

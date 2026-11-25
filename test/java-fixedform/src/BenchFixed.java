@@ -117,7 +117,7 @@ public final class BenchFixed {
         final int n = bench.FixedTableFixed.load(v, v.length, golden,
                 bench.TableFixed.plan(8192), new short[8192], bench.FixedTableFixed.image(), r);
         check(n == 64, "the reference's corpus is sixty-four records, read " + n);
-        check(!r.refused && !r.damaged, "the corpus reads clean: refused=" + r.refused + " malformed=" + r.damaged);
+        check(!r.refused, "the corpus reads clean: refused=" + r.refused + " reason=" + r.reason);
         check(r.unknown == 0 && r.widened == 0,
                 "its own layout is the identity plan, and a clean read moves no counter");
 

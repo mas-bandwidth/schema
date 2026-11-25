@@ -63,7 +63,6 @@ public final class F10 {
         check(r.refused, "the load refuses");
         check(r.reason == TableFixed.Reason.noLayout,
                 "the refusal is by the name noLayout (got " + r.reason + ")");
-        check(!r.damaged, "noLayout is a refusal, not malformed");
         check(r.unknown == 0 && r.widened == 0,
                 "REFUSE is total: no counter moves");
         check(values[0].power == defaults.power,

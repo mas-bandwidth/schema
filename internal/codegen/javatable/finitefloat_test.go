@@ -252,8 +252,8 @@ public final class Driver {
         FxFixed.Value[] back = { new FxFixed.Value() };
         TableFixed.Report r = new TableFixed.Report();
         int n = FxFixed.load(back, 1, file, TableFixed.plan(1 << 14), new short[1 << 14], FxFixed.image(), r);
-        if (n == -1 && r.refused && r.reason == TableFixed.Reason.nonFiniteFloat && field.equals(r.nonFiniteFloat) && !r.damaged) { return ""; }
-        return "n=" + n + " refused=" + r.refused + " reason=" + r.reason + " field=" + r.nonFiniteFloat + " damaged=" + r.damaged;
+        if (n == -1 && r.refused && r.reason == TableFixed.Reason.nonFiniteFloat && field.equals(r.nonFiniteFloat)) { return ""; }
+        return "n=" + n + " refused=" + r.refused + " reason=" + r.reason + " field=" + r.nonFiniteFloat;
     }
 
     static String refusesWrite(Set s, long bits) {

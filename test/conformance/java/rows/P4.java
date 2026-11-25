@@ -96,7 +96,7 @@ public final class P4 {
         tblk1.TableFixed.Report repK1asK1 = new tblk1.TableFixed.Report();
         int nK1asK1 = tblk1.TableFixed.compile(mineK1, mineK1, tblk1.RootFixed.dest, planK1asK1, remapK1asK1, repK1asK1);
 
-        check(!repK1asK1.refused && !repK1asK1.damaged, "Lawful K1 compile neither refuses nor is damaged");
+        check(!repK1asK1.refused, "Lawful K1 compile does not refuse");
         check(repK1asK1.unknown == 0, "Lawful K1 compile produces unknown == 0");
         check(nK1asK1 > 0, "Lawful K1 compile produces " + nK1asK1 + " plan entries");
 
@@ -107,7 +107,7 @@ public final class P4 {
         tblk2.TableFixed.Report repK2asK2 = new tblk2.TableFixed.Report();
         int nK2asK2 = tblk2.TableFixed.compile(mineK2, mineK2, tblk2.RootFixed.dest, planK2asK2, remapK2asK2, repK2asK2);
 
-        check(!repK2asK2.refused && !repK2asK2.damaged, "Lawful K2 compile neither refuses nor is damaged");
+        check(!repK2asK2.refused, "Lawful K2 compile does not refuse");
         check(repK2asK2.unknown == 0, "Lawful K2 compile produces unknown == 0");
         check(nK2asK2 > 0, "Lawful K2 compile produces " + nK2asK2 + " plan entries");
 

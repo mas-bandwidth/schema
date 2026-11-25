@@ -62,8 +62,8 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		if r.n != 1 {
 			t.Errorf("%s: n=%d, want 1", tc.file, r.n)
 		}
-		if r.refused || r.damaged {
-			t.Errorf("%s: a clean read refused: refused=%v reason=%s malformed=%v", tc.file, r.refused, r.reason, r.damaged)
+		if r.refused {
+			t.Errorf("%s: a clean read refused: refused=%v reason=%s", tc.file, r.refused, r.reason)
 		}
 		if got := r.value["lead"]; got != "1" {
 			t.Errorf("%s: lead=%s, want 1", tc.file, got)

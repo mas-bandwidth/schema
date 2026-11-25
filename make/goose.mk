@@ -63,8 +63,8 @@ build/conformance-harness-goose: $(wildcard test/conformance/harness/*.go) $(GO_
 # compiler, AGAINST THE C++ REFERENCE'S BYTES: the fixed form's suite
 # (internal/codegen/goosetable/fixedform_test.go) reads every fixed root of
 # build/fixedform-corpus and must save it back byte for byte, so the corpus is
-# a prerequisite, and the rule that nothing skips makes a missing oracle a failure
-# rather than the skip a bare `go test` takes.
+# a prerequisite, and a missing oracle is a failure that names it, never a
+# skip (docs/rulings.json no-skips).
 .PHONY: test-goose test-goose-recipe update-goldens-goose
 test-goose: toolchain-goose build/fixedform-corpus/.stamp
 	$(MAKE) test-goose-recipe
@@ -81,8 +81,8 @@ update-goldens-goose: ;
 # goose): TestGooseFixedFormNegativeControl plants a layout byte, a body byte,
 # a count past its bound and a capacity one short into the reference's own
 # fixed-form files and requires the Goose reader to refuse each by its reason
-# and the oracle comparison to see the planted byte. It runs under
-# the rule that nothing skips, so a missing corpus is a failure, never a pass.
+# and the oracle comparison to see the planted byte. A missing corpus is a
+# failure that names it, never a pass (docs/rulings.json no-skips).
 \.PHONY: tables-goose-fixedform tables-goose-fixedform-negative-control
 tables-goose-fixedform: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose

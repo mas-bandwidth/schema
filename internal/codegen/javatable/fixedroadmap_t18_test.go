@@ -374,7 +374,6 @@ public final class @CLASS@ {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
            .append(" widened=").append(report.widened)
            .append(" nonFiniteFloat=").append(report.nonFiniteFloat)
@@ -928,16 +927,16 @@ func t18R27(t *testing.T) {
 		if pastBound > 0 {
 			// THE STRICT READ (docs/plans/strict-only.md): a value past the
 			// bound refuses the whole load; nothing lands to compare.
-			if l.n != -1 || !l.refused || l.damaged || (l.reason != "outOfRange" && l.reason != "countOverBound" && l.reason != "lengthOverBound") {
-				t.Errorf("R27: %s: %d value(s) past the bound did not refuse the load: n=%d refused=%v reason=%s damaged=%v", m.File, pastBound, l.n, l.refused, l.reason, l.damaged)
+			if l.n != -1 || !l.refused || (l.reason != "outOfRange" && l.reason != "countOverBound" && l.reason != "lengthOverBound") {
+				t.Errorf("R27: %s: %d value(s) past the bound did not refuse the load: n=%d refused=%v reason=%s", m.File, pastBound, l.n, l.refused, l.reason)
 			}
 			if l.unknown != 0 || l.widened != 0 {
 				t.Errorf("R27: %s: a refusal moved a counter: %+v", m.File, l.probeRun)
 			}
 			continue
 		}
-		if l.n != int(m.Records) || l.refused || l.damaged {
-			t.Errorf("R27: %s: the load answered n=%d refused=%v reason=%s damaged=%v, the manifest holds %d records", m.File, l.n, l.refused, l.reason, l.damaged, m.Records)
+		if l.n != int(m.Records) || l.refused {
+			t.Errorf("R27: %s: the load answered n=%d refused=%v reason=%s, the manifest holds %d records", m.File, l.n, l.refused, l.reason, m.Records)
 			continue
 		}
 		if m.Side != "hostile" && m.Side != "past" && (l.unknown != 0 || l.widened != 0) {
@@ -1027,8 +1026,10 @@ fixed table T
 // t18P3Probe is the byte-flip sweep (the C# twin: cstable/fixedroadmap_t08_test.go,
 // t08P3). One record through the generated save; every bit of every byte of the
 // file flipped in turn; each copy loaded through the generated load. A load
-// answers one of three ways and never a fourth: refused by name, malformed, or
-// values landed. A throw is the fourth answer; the JVM's bounds checks are the
+// answers one of three ways and never a fourth: refused by name (a framing
+// fault too: truncated, reservedNotZero, integrityMismatch; no malformed flag
+// on this form's report, docs/FIXED-FORM-ALGORITHM.md §5.3), a refusal by a
+// framing name counted apart, or values landed. A throw is the fourth answer; the JVM's bounds checks are the
 // sanitizer.
 const t18P3Probe = `package probe;
 
@@ -1045,7 +1046,7 @@ public final class Probe_p3 {
         }
         final TableFixed.Entry[] plan = TableFixed.plan(1 << 14);
         final short[] remap = new short[1 << 14];
-        int refused = 0, malformed = 0, landed = 0, bad = 0, flips = 0;
+        int refused = 0, framing = 0, landed = 0, bad = 0, flips = 0;
         final java.util.TreeMap<String, Integer> names = new java.util.TreeMap<>();
         for (int off = 0; off < good.length; off++) {
             for (int bit = 0; bit < 8; bit++) {
@@ -1056,18 +1057,19 @@ public final class Probe_p3 {
                     final TFixed.Value[] vals = { new TFixed.Value() };
                     final TableFixed.Report r = new TableFixed.Report();
                     final int n = TFixed.load(vals, 1, f, plan, remap, TFixed.image(), r);
-                    if (r.refused && r.damaged) {
-                        bad++;
-                        System.out.println("P3-FAIL byte " + off + " bit " + bit + ": refused AND malformed, two answers at once");
-                    } else if (r.refused) {
-                        refused++;
+                    if (r.refused) {
+                        if (r.reason == TableFixed.Reason.truncated
+                                || r.reason == TableFixed.Reason.reservedNotZero
+                                || r.reason == TableFixed.Reason.integrityMismatch) {
+                            framing++;
+                        } else {
+                            refused++;
+                        }
                         names.merge(String.valueOf(r.reason), 1, Integer::sum);
                         if (n != -1) {
                             bad++;
                             System.out.println("P3-FAIL byte " + off + " bit " + bit + ": refused " + r.reason + " with n=" + n);
                         }
-                    } else if (r.damaged) {
-                        malformed++;
                     } else if (n >= 1) {
                         landed++;
                     } else {
@@ -1080,7 +1082,7 @@ public final class Probe_p3 {
                 }
             }
         }
-        System.out.println("P3-COUNTS flips=" + flips + " refused=" + refused + " malformed=" + malformed
+        System.out.println("P3-COUNTS flips=" + flips + " refused=" + refused + " framing=" + framing
                 + " landed=" + landed + " fourth=" + bad + " refusals=" + names);
     }
 }
@@ -1093,7 +1095,7 @@ func t18P3(t *testing.T) {
 	t18RequireJava(t)
 	classes := t18Compile(t, t18P3Schema, map[string]string{"Probe_p3": t18P3Probe})
 	out := t07RunClass(t, classes, "probe.Probe_p3")
-	var flips, refused, malformed, landed, fourth int
+	var flips, refused, framing, landed, fourth int
 	for line := range strings.SplitSeq(out, "\n") {
 		if strings.HasPrefix(line, "P3-FAIL") {
 			t.Errorf("P3: %s", line)
@@ -1107,8 +1109,8 @@ func t18P3(t *testing.T) {
 					flips = n
 				case "refused":
 					refused = n
-				case "malformed":
-					malformed = n
+				case "framing":
+					framing = n
 				case "landed":
 					landed = n
 				case "fourth":
@@ -1124,11 +1126,11 @@ func t18P3(t *testing.T) {
 	if fourth != 0 {
 		t.Errorf("P3: %d flips answered a fourth way (a throw, or no answer)", fourth)
 	}
-	if refused == 0 || malformed == 0 || landed == 0 {
-		t.Errorf("P3: sweep saw refused=%d malformed=%d landed=%d, want all three answers and never a fourth", refused, malformed, landed)
+	if refused == 0 || framing == 0 || landed == 0 {
+		t.Errorf("P3: sweep saw refused=%d framing=%d landed=%d, want all three answers and never a fourth", refused, framing, landed)
 	}
-	if refused+malformed+landed+fourth != flips {
-		t.Errorf("P3: the answers (%d) do not add up to the flips (%d)", refused+malformed+landed+fourth, flips)
+	if refused+framing+landed+fourth != flips {
+		t.Errorf("P3: the answers (%d) do not add up to the flips (%d)", refused+framing+landed+fourth, flips)
 	}
 }
 

@@ -13,10 +13,10 @@
 # reader bug in a scratch copy and requires the same runner to go red; it is
 # the nightly half because it runs the corpus twice.
 .PHONY: schema-luau-runs-hostile-corpus schema-luau-runs-hostile-corpus-negative-control
-# The tests shell out to the pinned interpreter, so they sit behind
-# slowtest.Gate; both targets run them through test/slowgate/proof, which sets
-# the rule that nothing skips, refuses a gate skip and requires each named --- PASS, so a
-# skipped run can never pass as green.
+# The tests shell out to the pinned interpreter and fail by name without it
+# (docs/rulings.json no-skips); both targets run them through
+# test/slowgate/proof, which refuses a SKIP in the log and requires each named
+# --- PASS, so a run that tested nothing can never pass as green.
 schema-luau-runs-hostile-corpus: toolchain-luau
 	sh test/slowgate/proof schema-luau-runs-hostile-corpus \
 		'TestHostileCorpus_luau TestLuauHostileScorerOutcomes' \
