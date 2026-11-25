@@ -456,14 +456,15 @@ type expectation struct {
 // standard's verdict from a port the row names in carried-by, and the row's
 // uncarried verdict from every other port, which still answers with the
 // behaviour it had before the ruling. A row with no mark is owed by every port
-// as the standard states it. The exemptions come back beside the expectations
-// so a run prints them rather than skipping the row in silence.
-func hostileExpectations(m *Manifest, lang string) ([]expectation, []string) {
+// as the standard states it. It returns the expectations and nothing beside
+// them: there is no exemption of any kind (Glenn, 2026-11-25), so the type
+// has no place to carry one (TestHostileExpectationsCarryNoExemption).
+func hostileExpectations(m *Manifest, lang string) []expectation {
 	out := make([]expectation, 0, len(m.Hostiles))
 	for _, h := range m.Hostiles {
 		out = append(out, hostileExpectation(h, lang))
 	}
-	return out, nil
+	return out
 }
 
 // hostileExpectation is one hostile row's answer for lang: the verdict it
@@ -1042,12 +1043,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		// each surface's rows as this leg is asked them: the json-hostile
 		// battery's verdicts are the leg's own (hostileExpectations)
 		legWants := map[string][]expectation{}
-		exemptions := map[string][]string{}
 		for _, s := range surfaces {
 			legWants[s] = want[s]
 			// a run that cannot reach the battery does not read its saves
 			if s == "json-hostile" && hostileRuns(opts) {
-				legWants[s], exemptions[s] = hostileExpectations(m, d.lang)
+				legWants[s] = hostileExpectations(m, d.lang)
 				if err := attachHostileSaves(m, legWants[s]); err != nil {
 					return false, err
 				}
@@ -1287,9 +1287,6 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				r.failures = append(r.failures, fmt.Sprintf("%s; %d of %d row(s) unanswered%s\n%s",
 					describeExit(code), len(unanswered), len(legWant), nameRows(unanswered), indent(stderr, "    ")))
 				continue
-			}
-			for _, line := range exemptions[s] {
-				_, _ = io.WriteString(w, "conformance EXEMPTS "+line+"\n")
 			}
 			// A SURFACE A LEG LISTS AND RUNS OVER NO ROWS IS A FAILURE, NOT A
 			// PASS. `pass 0/0` reads as a green cell and proves nothing: a

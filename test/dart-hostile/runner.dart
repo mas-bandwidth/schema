@@ -2,12 +2,11 @@
 //
 // One raw input per manifest line, the port's generated reader underneath, and
 // the Go engine's committed verdict as the oracle. The corpus is read as files:
-// no network, no clock, no outside service. The runner prints one PASS count,
-// one FIX-CARD line per carried disagreement, and fails on a disagreement no
-// FIX-CARD names (or a FIX-CARD whose case has gone green), so the carried list
-// cannot rot into silence.
+// no network, no clock, no outside service. The runner prints one FAIL line per
+// disagreement, naming its case, and a summary count, and fails on any FAIL. A
+// disagreement is never excused by name.
 //
-//   dart run test/dart-hostile/runner.dart <corpus-dir> [known-findings.tsv]
+//   dart run test/dart-hostile/runner.dart <corpus-dir>
 //   dart run test/dart-hostile/runner.dart --show <corpus-dir> <case>
 //   dart run test/dart-hostile/runner.dart --scorer <scorer-outcomes.tsv>
 //
@@ -139,7 +138,7 @@ int scorer(String path) {
 Answer _unbound(String what) => Answer('error', 'unbound: no $what reader bound');
 
 // `--show <case>` prints the port's canonical text for one case, to diff by
-// hand against the engine's when a FIX-CARD is being worked.
+// hand against the engine's when a FAIL is being worked.
 var _show = false;
 
 Answer _accepted(String written) {
@@ -193,7 +192,7 @@ Answer _text(String schema, String table, Uint8List payload) {
   if (loaded.refused) return Answer('refuse', corpusReason(loaded.reason, payload));
   // THE WRITE AFTER AN ACCEPT IS NOT THE READ (F-070): a throw from the text
   // writer once the reader accepted is an execution failure, never the
-  // reader's damaged verdict a finding could carry.
+  // reader's damaged verdict.
   final String written;
   try {
     written = loaded.written();
@@ -677,14 +676,7 @@ String sha256Hex(List<int> message) {
   return h.map((v) => v.toRadixString(16).padLeft(8, '0')).join();
 }
 
-// ---- the manifest and the carried findings ----
-
-// A finding's answer: `accept <digest>` (this port's digest) or `refuse` (a
-// refusal, whatever its reason: docs/rulings.json refusal-verdict-only).
-final _answerForm = RegExp(r'^(accept \S+|refuse)$');
-
-bool _carries(String answer, Answer got) =>
-    (answer == 'refuse' && got.verdict == 'refuse') || (got.verdict == 'accept' && answer == 'accept ${got.detail}');
+// ---- the manifest ----
 
 List<List<String>> _rows(String path) => File(path)
     .readAsLinesSync()
@@ -706,8 +698,8 @@ Future<void> main(List<String> args) async {
   if (args.length == 2 && args[0] == '--scorer') {
     exit(scorer(args[1]));
   }
-  if (args.isEmpty || args.length > 2) {
-    stderr.writeln('usage: runner.dart <corpus-dir> [known-findings.tsv]');
+  if (args.length != 1) {
+    stderr.writeln('usage: runner.dart <corpus-dir>');
     stderr.writeln('       runner.dart --show <corpus-dir> <case>');
     stderr.writeln('       runner.dart --scorer <scorer-outcomes.tsv>');
     exit(2);
@@ -720,63 +712,27 @@ Future<void> main(List<String> args) async {
   final budgetEnv = Platform.environment['HOSTILE_CASE_BUDGET_MS'] ?? '';
   final budget = Duration(milliseconds: budgetEnv.isEmpty ? 5000 : int.parse(budgetEnv));
   final corpus = args[0];
-  // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where the
-  // answer is what this port gives the case today, `accept <digest>` or
-  // `refuse` (docs/HOSTILE-CORPUS.md). A finding carries that answer and no
-  // other (F-079).
-  final findings = <String, List<String>>{};
-  if (args.length == 2 && File(args[1]).existsSync()) {
-    for (final f in _rows(args[1])) {
-      if (f.length != 5 || !_answerForm.hasMatch(f[3])) {
-        stderr.writeln('${args[1]}: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated: ${f.join('\t')}');
-        exit(2);
-      }
-      findings[f[0]] = f;
-    }
-  }
   final manifest = _rows('$corpus/manifest.tsv');
-  var passed = 0, carried = 0;
-  final bad = <String>[], stale = <String>[];
-  final seen = <String>{};
+  var passed = 0;
+  final bad = <String>[];
   // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
   // name, which tools/hostileledger holds to the corpus folder.
   final ran = <String>[];
   for (final m in manifest) {
     final name = m[0], carrier = m[1], schema = m[2], table = m[3], input = m[4];
     final verdict = m[6], reason = m[7], digest = m[8];
-    seen.add(name);
     final want = wantAnswer(verdict, reason, digest);
     final payload = File('$corpus/$input').readAsBytesSync();
     final got = await isolated(carrier, schema, table, payload, budget);
     ran.add(name);
-    final finding = findings[name];
     if (agrees(got, want)) {
-      if (finding != null) {
-        stdout.writeln('STALE $name: FIX-CARD ${finding[1]} no longer reproduces');
-        stale.add(name);
-      } else {
-        passed++;
-      }
-      // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
-      // execution failure (F-070: a timeout, a crash, an unbound reader, a
-      // writer that threw after an accept), and never a different verdict or
-      // digest (F-079: a refusal under a finding for a wrong digest).
-    } else if (finding != null && _carries(finding[3], got)) {
-      stdout.writeln('FIX-CARD: ${finding[1]}: ${finding[2]} ${finding[4]} (got $got)');
-      carried++;
+      passed++;
     } else {
       stdout.writeln('FAIL $name carrier=$carrier got=$got want=$want');
       bad.add(name);
     }
   }
-  for (final name in findings.keys) {
-    if (!seen.contains(name)) {
-      stdout.writeln('STALE $name: FIX-CARD names no case the manifest carries');
-      stale.add(name);
-    }
-  }
-  stdout.writeln('${manifest.length} cases: $passed pass, $carried carried as FIX-CARD, '
-      '${bad.length} unexplained, ${stale.length} stale');
+  stdout.writeln('${manifest.length} cases: $passed pass, ${bad.length} unexplained');
   for (final name in ran) {
     stdout.writeln('hostile-ledger ran $name');
   }
@@ -784,7 +740,7 @@ Future<void> main(List<String> args) async {
   // One unit per manifest case. tools/mustrun holds the count to the one the
   // recipe registers for the committed corpus, so an emptied or shortened
   // manifest is red.
-  final failed = bad.length + stale.length;
+  final failed = bad.length;
   stdout.writeln('ran ${manifest.length}, failed $failed');
   exit(failed != 0 || manifest.isEmpty ? 1 : 0);
 }

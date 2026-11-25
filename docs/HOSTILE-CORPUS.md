@@ -26,11 +26,14 @@ test/go-hostile/
 make/checks/schema-shared-hostile-corpus.mk
     the gate and generator targets (included explicitly with the other
     make/checks gates).
-.github/workflows/schema-shared-hostile-corpus.yml
-    the nightly (schedule) and workflow_dispatch run of the drift gate and of
-    its negative controls; no pull request starts this workflow. The same
-    tests are Go tests of internal/ci, registry rows the pr group runs
-    (ci-fast.yml schema-test-pr) on every pull request and every push to main.
+tools/schema-test/hostile.go
+    the registry's hostile family: one row per manifest case, which every
+    language answers from one run of make schema-<lang>-runs-hostile-corpus
+    (each case's verdict is its line in that run; verdicts.go reads them).
+    The drift gate's and its control's tests are Go tests of internal/ci,
+    registry rows the pr group runs (ci-fast.yml schema-test-pr) on every pull
+    request and every push to main; the control's make target is a nightly
+    registry row.
 ```
 
 `internal/ci/hostilecorpus/wide/` is a second corpus directory in the same format: its own `manifest.tsv`, `inputs/` and schema, built and checked by the same `Generate` and `Verify`.
@@ -153,22 +156,15 @@ driven by `tools/hostilecorpusexec`, which runs each case in its own process
 with a 512 KiB case-thread stack and the per-case budget, so a crash, a
 sanitizer report or a hang fails only that case; a retaining load of a
 fixed-storage root, which neither port has, answers `SKIP`, and a skip fails
-the run: no list lets one pass). Each carries the disagreements
-its port still owes in a `known-findings.tsv` beside the runner and prints them
-as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
-FIX-CARD whose case has gone green.
+the run: no list lets one pass).
 
-A finding is `name`, `slug`, `input`, `answer` and one line, tab-separated. The
-answer is what the port gives the case today: `accept <digest>` (its own
-digest), or `refuse` (a refusal, whatever reason it names: the ruling
-`refusal-verdict-only`). A finding carries that answer and no other. A
-different digest, an accept where it records a refusal, a refusal where it
-records an accept, and any execution failure (a timeout, a crash, a writer
-that threw after an accept) are disagreements no FIX-CARD names, and fail the
-run (F-070, F-079). Every runner replays the committed carry controls in
-`internal/ci/hostilecorpus/testdata/carry` before its corpus run
-(`make/checks/hostile-carry-controls.sh`): a finding whose answer matches is
-carried, and one whose answer differs, or that records none, fails.
+No list carries a finding (docs/rulings.json `no-skips`). Every disagreement
+with the manifest, and every execution failure (a timeout, a crash, a writer
+that threw after an accept), is a `FAIL` line that names its case, and the
+registry reads each one as that case's red row
+(`internal/ci/hostilecorpus/verdicts.go`). No runner reads a findings file,
+and a `FIX-CARD` or `STALE` line inside the per-case block is no case's
+verdict, so it fails every case the run was asked for.
 
 ## The ledger
 
