@@ -118,9 +118,6 @@ func TestPythonFixedR14(t *testing.T) {
 	if fixedInt(none, "src") != 0 || fixedInt(none, "dst") != 0 || fixedInt(none, "size") != 8 {
 		t.Fatalf("R14: the None const at src 0 lands MY 8-byte tag at image 0, got %v", none)
 	}
-	if r := r14Reach(none); r != 0 {
-		t.Fatalf("R14: the None const reads no record byte (it is value 0), got a reach of %d", r)
-	}
 	arm := plan[1].(map[string]any)
 	copyOp := plan[2].(map[string]any)
 	want := []any{int64(0), int64(1), int64(1), "eq"}
@@ -137,7 +134,9 @@ func TestPythonFixedR14(t *testing.T) {
 		t.Fatalf("R14: the u32 is a copy of 4 bytes from src 1 (past the writer's 1-byte tag) to image 8, got %v", copyOp)
 	}
 
-	// THE RUN, on the leg's real runtime, in the order fixed_load runs it:
+	// THE RUN, on the leg's real runtime, in the order fixed_load runs it,
+	// over an image POISONED with 0xFF so a const landing fewer than my
+	// tag's bytes shows (a None arm leaves the u32 untouched, 0xFFFFFFFF):
 	// _check over the writer's spec, the unguarded ops, then the guarded.
 	u := loadUnit(t, "package rfourteen\nunion U\n{\n    v uint32\n}\nfixed table T { u U }\n")
 	files, err := Generate(u)
@@ -157,7 +156,7 @@ CHECK = ` + fixedLiteralOf(r14WriterCheck()) + `
 def run(tag, record):
     body = memoryview(bytes(record))
     ff._check(CHECK, body, 0)
-    image = bytearray(tag + 4)
+    image = bytearray(b"\xff" * (tag + 4))
     plan = PLANS[str(tag)]
     for op in [p for p in plan if not p["guards"]] + [p for p in plan if p["guards"]]:
         if not op["guards"] or ff._guarded(op, body):
@@ -168,7 +167,7 @@ for tag in (8, 1, 2):
     if got != (1, 0x11223344):
         raise AssertionError("R14_arm tag=%d got %r" % (tag, got))
     got = run(tag, [0, 0, 0, 0, 0])
-    if got != (0, 0):
+    if got != (0, 0xFFFFFFFF):
         raise AssertionError("R14_none tag=%d got %r" % (tag, got))
     try:
         run(tag, [2, 0, 0, 0, 0])

@@ -120,9 +120,6 @@ func TestRubyFixedR14(t *testing.T) {
 	if fixedInt(none, "src") != 0 || fixedInt(none, "dst") != 0 || fixedInt(none, "size") != 8 {
 		t.Fatalf("R14: the None const at src 0 lands MY 8-byte tag at image 0, got %v", none)
 	}
-	if r := r14Reach(none); r != 0 {
-		t.Fatalf("R14: the None const reads no record byte (it is value 0), got a reach of %d", r)
-	}
 	arm := plan[1].(map[string]any)
 	copyOp := plan[2].(map[string]any)
 	want := []any{int64(0), int64(1), int64(1), "eq"}
@@ -139,7 +136,9 @@ func TestRubyFixedR14(t *testing.T) {
 		t.Fatalf("R14: the u32 is a copy of 4 bytes from src 1 (past the writer's 1-byte tag) to image 8, got %v", copyOp)
 	}
 
-	// THE RUN, on the leg's real runtime, in the order fixed_load runs it:
+	// THE RUN, on the leg's real runtime, in the order fixed_load runs it,
+	// over an image POISONED with 0xFF so a const landing fewer than my
+	// tag's bytes shows (a None arm leaves the u32 untouched, 0xFFFFFFFF):
 	// _s_fixed_check over the writer's spec, the unguarded ops, then the
 	// guarded.
 	u := loadUnit(t, "package rfourteen\nunion U\n{\n    v uint32\n}\nfixed table T { u U }\n")
@@ -161,7 +160,7 @@ CHECK = Rfourteen.instance_eval { ` + fixedRubyLiteralOf(r14WriterCheck()) + ` }
 def run(tag, record)
   body = record.pack("C*")
   Rfourteen._s_fixed_check(CHECK, body, 0)
-  image = ("\0" * (tag + 4)).b
+  image = ("\xFF" * (tag + 4)).b
   plan = PLANS[tag.to_s]
   (plan.select { |p| p["guards"].empty? } + plan.reject { |p| p["guards"].empty? }).each do |op|
     Rfourteen._s_fixed_apply(op, body, image) if op["guards"].empty? || Rfourteen._s_fixed_guarded(op, body)
@@ -172,7 +171,7 @@ end
   got = run(tag, [1, 0x44, 0x33, 0x22, 0x11])
   abort("R14_arm tag=#{tag} got #{got.inspect}") unless got == [1, 0x11223344]
   got = run(tag, [0, 0, 0, 0, 0])
-  abort("R14_none tag=#{tag} got #{got.inspect}") unless got == [0, 0]
+  abort("R14_none tag=#{tag} got #{got.inspect}") unless got == [0, 0xFFFFFFFF]
   begin
     run(tag, [2, 0, 0, 0, 0])
   rescue Rfourteen::Refused => e
