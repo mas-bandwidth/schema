@@ -425,29 +425,34 @@ func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 	}
 }
 
-// TestARecipeThatRunsGoTestWithoutJSONFails: go test's plain output prints
-// nothing for a skipped test, so a target whose recipes (its own, its
-// prerequisites', a variable they expand, a target made by $(MAKE)) run go
-// test without -json fails before it runs, naming the command; -json on a
-// continuation line or in the variable counts, and a path that starts "go
-// test/" is no go test.
-func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
+// TestARecipeThatRunsGoTestOutsideTheWrapperFails: only $(GO_TEST)
+// (tools/gotestrun) reads every go test event back, so a target whose
+// recipes (its own, its prerequisites', a variable they expand, a target
+// made by $(MAKE)) run go test any other way fails before it runs, naming
+// the command: plain output prints nothing for a skipped test, a -json run
+// sent to a file never reaches the log, and a -json run that matches no
+// test passes having run nothing. go, $(GO) and ${GO} all count, and a path
+// that starts "go test/" is no go test.
+func TestARecipeThatRunsGoTestOutsideTheWrapperFails(t *testing.T) {
 	t.Parallel()
 	for recipe, fails := range map[string]bool{
-		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1": true,
-		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":        true,
-		"\tcd sub && go  test ./...":                                    true,
-		"\t$(call RUN_GO,./x)":                                          true,
-		"\t$(MAKE) --no-print-directory gate-inner":                     true,
-		// -json in a path is no -json flag
+		"\tSCHEMA_SLOW=1 go test ./internal/x -run '^TestA$$' -count=1":                            true,
+		"\t@if go test -count=1 ./x > log 2>&1; then exit 1; fi":                                   true,
+		"\tcd sub && go  test ./...":                                                               true,
+		"\t$(call RUN_GO,./x)":                                                                     true,
+		"\t$(MAKE) --no-print-directory gate-inner":                                                true,
 		"\t@if go test -v -overlay build/c-json-label-nc/overlay.json ./compiler; then exit 1; fi": true,
-		"\tgo test ./x > build/x-json.log":                              true,
-		"\tgo test -json=true ./x":                                      false,
-		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'": false,
-		"\tgo test -json ./x | tee build/x.json":                        false,
-		"\t$(GO_TEST_JSON) ./x":                                         false,
-		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":  false,
-		"\techo no go here":                                             false,
+		"\tgo test ./x > build/x-json.log":                                                         true,
+		"\tgo test -json=true ./x":                                                                 true,
+		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'":                            true,
+		"\tgo test -json ./x > build/events.json":                                                  true,
+		"\tgo test -json -run '^TestNope$$' ./x":                                                   true,
+		"\t$(GO_TEST_JSON) ./x":                                                                    true,
+		"\t$(GO) test -count=1 ./x":                                                                true,
+		"\t${GO} test -count=1 ./x":                                                                true,
+		"\t$(GO_TEST) -count=1 ./x -run '^TestA$$'":                                                false,
+		"\tprintf 'go test/conformance/go/driver\\n' > build/solo.txt":                             false,
+		"\techo no go here":                                                                        false,
 	} {
 		db := fakeDatabase("GO_TEST_JSON = go test -json\ndefine RUN_GO\ngo test $(1)\nendef\n", "",
 			"gate-check:\n"+recipe+"\n\ngate-inner:\n\tgo test ./inner\n")
@@ -458,7 +463,7 @@ func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 			}
 			continue
 		}
-		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "runs go test without -json") {
+		if r.Verdict != testreg.Fail || ran || !strings.Contains(r.Reason, "runs go test outside $(GO_TEST)") {
 			t.Errorf("%q: %+v, ran %v, want a fail before the target runs", recipe, r, ran)
 		}
 	}
