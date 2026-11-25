@@ -4733,7 +4733,7 @@ tables-lists-tool-cook: build/schema_test_listcook
 .PHONY: tables-lists-tool-cook-negative-control
 tables-lists-tool-cook-negative-control:
 	@rm -rf build/list-tool-cook-control && mkdir -p build/list-tool-cook-control
-	@sed -e 's@	c.at = alignUp(c.at, align)@	_ = align // SABOTAGED: the array is laid unaligned@' \
+	@sed -e 's@	c.at = alignUp(c.at, align)@	c.at = alignUp(c.at, align) + 1 // SABOTAGED: the array is laid one byte off its alignment@' \
 		internal/tablecook/extent.go > build/list-tool-cook-control/extent.go.txt
 	@cmp -s internal/tablecook/extent.go build/list-tool-cook-control/extent.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the carve sabotage patched nothing"; exit 1; } || true
