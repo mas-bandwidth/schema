@@ -951,3 +951,18 @@ leg's own allocator can see, and the answers every driver gives are unchanged.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC-TABLES §16.1: the C text read allocates nothing beyond the instance | `make tables-c-soak` (`schema_test_c_soak`, any count of two or more) | red before its fix on C: every JSON object heap-allocated its repeated-key set, 502 allocator calls a pass over the corpus (257,024 over 512) |
+
+### A block build writes an absent optional's held value
+
+The block form leaves inline storage where it is (SPEC-TABLES §19.3): an
+optional's value slot rides beside its presence companion, and a block read
+keeps whatever value an absent slot holds. A builder handed that record gives
+back the bytes it read. The shared case is the `block block_padded` row of the
+tables manifest: `testdata/wire/tables/block_padded.bin`, whose row 2 holds
+`counter = 18` with `counter#present = false` (bytes `12 00 00 00` at offset
+312, presence `00` at 316), pinned in `block/block_padded.dump`. A leg that
+rebuilds the block compares its build to the image byte for byte.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §19.3: an absent optional's value slot is written as held, so a block rebuilt from its own read equals the image | `block_padded` (row 2 `counter`), `TestLobsterBlockForm` (`internal/codegen/lobstertable`, slow tier) | red before its fix on Lobster: `block_write_field` returned early for an absent optional, writing the presence byte and leaving the value zero, so the rebuild differed at byte 312 |
