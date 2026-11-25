@@ -52,6 +52,26 @@
 #include "floatnan.h"
 #include "wirebuilder.h"
 
+// THE SUITE IN PARTS (make pins-wire-tables). Built as it always was, this file
+// is ONE translation unit that runs every test, and every TABLES_IN_PART block in
+// main() is compiled. Built with -DTABLES_PART=<n>, it compiles only the tests
+// main()'s block <n> runs: a test no RUN names is an unused static, which GCC
+// never generates, so each part's compile carries about its share of the
+// suite's code generation and the parts compile side by side. The pin row runs
+// the parts one after another, in block order, which is the order main() runs
+// them in. -Wunused-function is off in a part and only in a part: there the
+// other blocks' tests are unused by construction, while the one-unit builds
+// (schema_test_tables and every twin of it) keep it, so a test main() does not
+// list is still refused there. internal/ci's TestTablesSuitePartsCoverMain
+// holds the blocks to 1..TABLES_PARTS, every RUN inside one.
+#ifdef TABLES_PART
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#define TABLES_IN_PART( n ) ( TABLES_PART == ( n ) )
+#else
+#define TABLES_IN_PART( n ) 1
+#endif
+
 static int failures = 0;
 
 // ---- THE STEADY READ-PATH ALLOCATION AUDIT (docs/SPEC-TABLES.md "What
@@ -9514,6 +9534,7 @@ static int tests_failed = 0;
 
 int main()
 {
+#if TABLES_IN_PART( 1 )
     RUN( test_golden_wire );
     RUN( test_golden_seams );
     RUN( pin_graph_goldens );
@@ -9558,7 +9579,9 @@ int main()
     RUN( test_reflection );
     RUN( test_cross_file );
     RUN( test_parallel_shape );
+#endif
 
+#if TABLES_IN_PART( 2 )
     RUN( test_pointer_lifecycle );
     RUN( test_lock_layout_stable );
     RUN( test_pointer_shared_node );
@@ -9577,7 +9600,9 @@ int main()
     RUN( test_depth_agrees_through_by_value_nesting );
     RUN( test_descriptors_are_constant );
     RUN( test_cross_file_pointer_unit );
+#endif
 
+#if TABLES_IN_PART( 3 )
     RUN( test_json_corpus_round_trip );
     RUN( test_json_dialect );
     RUN( test_json_hostile_kinds );
@@ -9603,6 +9628,8 @@ int main()
     RUN( test_json_variable_class );
     RUN( test_message_golden_wire );
     RUN( test_message_golden_reload );
+#endif
+#if TABLES_IN_PART( 4 )
     RUN( test_message_three_depths );
     RUN( test_arm_retype_controls );
     RUN( test_arm_empty_payloads );
@@ -9627,6 +9654,8 @@ int main()
     RUN( test_pointer_arm_shares_a_node );
     RUN( test_union_arrays );
     RUN( test_union_arrays_elision );
+#endif
+#if TABLES_IN_PART( 5 )
     RUN( test_union_arrays_element_kind_mismatch );
     RUN( test_union_arrays_unknown_arm );
     RUN( test_union_arrays_json_hostile );
@@ -9651,8 +9680,10 @@ int main()
     RUN( test_blob_json );
     RUN( test_blob_reflection );
     RUN( test_json_fuzz_tokenizer );
+#endif
 
     // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3)
+#if TABLES_IN_PART( 6 )
     RUN( test_message_form_goldens );
     RUN( test_message_form_batch );
     RUN( test_message_form_reload );
@@ -9672,6 +9703,7 @@ int main()
     RUN( test_message_form_refused_first );
     RUN( test_message_form_findings );
     RUN( test_message_form_cold_read );
+#endif
 
     if ( failures > 0 )
     {
