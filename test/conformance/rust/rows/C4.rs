@@ -13,7 +13,7 @@
 // A fixed-form reader that meets ill-formed content in a `string(N)`'s USED
 // bytes must REFUSE the whole load — refused, under the refusal's own NAME
 // (`text_ill_formed`, the name the roadmap cell states), nothing decoded, no
-// counter moved, and `malformed` NOT fired. The verdict is the packet
+// counter moved (this form's report has no malformed flag). The verdict is the packet
 // reader's because this form has no `L` to continue past: a record is one
 // positional image, not a run of length-framed fields.
 //
@@ -110,14 +110,11 @@ fn c4_lawful_text_reads_clean() {
     let (n, values, report) = load(&record_with_label(b"abc"));
     checkf!(n == Some(1), "lawful text: the record reads one record: {report:?}");
     checkf!(
-        !report.refused && !report.damaged,
-        "lawful text: no refusal, no damage: {report:?}"
+        !report.refused,
+        "lawful text: no refusal: {report:?}"
     );
     checkf!(
-        report.oor == 0
-            && report.unknown == 0
-            && report.mismatch == 0
-            && report.widened == 0,
+        report.unknown == 0 && report.widened == 0,
         "lawful text: no counter moved: {report:?}"
     );
     checkf!(
@@ -140,9 +137,7 @@ fn c4_ill_formed_used_bytes_refuse_by_name() {
     let mut file = record_with_label(b"abc");
     file[label_byte_at(1)] = 0xFF; // "a\xFFc" — 0xFF cannot begin a UTF-8 sequence
     let (n, _, report) = load(&file);
-    // THE LAW, clause by clause. The leg does not implement the refusal
-    // (it defaults the field and counts `malformed`, the VARIABLE wire's
-    // verdict), so the first check is the committed RED:
+    // THE LAW, clause by clause:
     checkf!(
         report.refused,
         "ill-formed used bytes: the load REFUSES (fix 11): {report:?}"
@@ -157,14 +152,7 @@ fn c4_ill_formed_used_bytes_refuse_by_name() {
         "ill-formed used bytes: nothing is decoded, the load returns none"
     );
     checkf!(
-        !report.damaged,
-        "ill-formed used bytes: a refusal is not `malformed`, the flag stays down: {report:?}"
-    );
-    checkf!(
-        report.oor == 0
-            && report.unknown == 0
-            && report.mismatch == 0
-            && report.widened == 0,
+        report.unknown == 0 && report.widened == 0,
         "ill-formed used bytes: no counter moves on a refusal: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
@@ -191,8 +179,8 @@ fn c4_zero_byte_in_used_bytes_refuses_under_the_same_name() {
         report.reason.name()
     );
     checkf!(
-        n.is_none() && !report.damaged && report.oor == 0,
-        "zero among used bytes: nothing decoded, no flag, no counter: {report:?}"
+        n.is_none() && report.unknown == 0 && report.widened == 0,
+        "zero among used bytes: nothing decoded, no counter: {report:?}"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");
@@ -200,32 +188,44 @@ fn c4_zero_byte_in_used_bytes_refuses_under_the_same_name() {
 
 // THE FLIP SIDE, THE SAME ROW'S OWN WORDS: the content rules apply to the
 // USED units and NOTHING ELSE — UTF-8 validity over `v` bytes, never over
-// `N`. Ill-formed bytes in the SLACK (past the used length, inside the
-// declared bound) are not judged, do not refuse and move no counter.
+// `N`. Bytes in the SLACK (past the used length, inside the declared bound)
+// are not judged as text, so they never refuse `text_ill_formed`. They are
+// DEAD bytes, though, and a non-zero dead byte refuses the whole load as
+// `wire_damaged` (FIXED-FORM-ALGORITHM §3.1, §4.5, §5.3 step 11;
+// docs/rulings.json fixed-dead-bytes-are-zero). Until 2026-11-25 this test
+// said slack garbage reads on, which the dead-byte ruling retired.
 #[test]
-fn c4_ill_formed_slack_is_not_judged() {
+fn c4_ill_formed_slack_is_not_judged_as_text() {
     FAILURES.store(0, Ordering::Relaxed);
-    println!("C4: ill-formed bytes in the slack are not judged");
+    println!("C4: ill-formed bytes in the slack are dead bytes, not text");
     let mut file = record_with_label(b"ab");
     for k in 2..8 {
         file[label_byte_at(k)] = 0xFF; // garbage in the slack, used length stays 2
     }
-    let (n, values, report) = load(&file);
-    checkf!(n == Some(1), "slack garbage: the record reads on: {report:?}");
+    let (n, _, report) = load(&file);
+    checkf!(n.is_none() && report.refused, "slack garbage: the load REFUSES: {report:?}");
     checkf!(
-        !report.refused && !report.damaged,
-        "slack garbage: no refusal, no damage: {report:?}"
+        report.reason == TableFixedReason::WireDamaged,
+        "slack garbage: the refusal is the dead-byte rule's wire_damaged, never text_ill_formed, got {:?}",
+        report.reason.name()
     );
     checkf!(
-        report.oor == 0
-            && report.unknown == 0
-            && report.mismatch == 0
-            && report.widened == 0,
+        report.unknown == 0 && report.widened == 0,
         "slack garbage: no counter moved: {report:?}"
     );
+    let failures = FAILURES.load(Ordering::Relaxed);
+    assert_eq!(failures, 0, "{failures} assertion(s) failed");
+}
+
+// AND THE SLACK AT ZERO reads on: the used text lands, nothing is judged.
+#[test]
+fn c4_zero_slack_reads() {
+    FAILURES.store(0, Ordering::Relaxed);
+    let (n, values, report) = load(&record_with_label(b"ab"));
+    checkf!(n == Some(1) && !report.refused, "zero slack: the record reads: {report:?}");
     checkf!(
         values[0].label_length == 2 && &values[0].label[..2] == b"ab",
-        "slack garbage: the used text lands as written"
+        "zero slack: the used text lands as written"
     );
     let failures = FAILURES.load(Ordering::Relaxed);
     assert_eq!(failures, 0, "{failures} assertion(s) failed");

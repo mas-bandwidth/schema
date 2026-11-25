@@ -58,14 +58,18 @@ weights=$(while IFS= read -r p; do
 	printf '%s %s\n' "$w" "$p"
 done < "$universe") || exit 1
 # the assignment: heaviest first, each to the lightest shard (LPT); one line
-# `<shard> <path>` per entry of the universe
-printf '%s\n' "$weights" | LC_ALL=C sort -k1,1nr -k2,2 | awk -v n="$n" '
+# `<shard> <path>` per entry of the universe. Every stage reads and writes a
+# file, never a pipe: sh here may be a dash with no pipefail, and under set -e
+# a failed stage then stops the filter instead of a later one hiding it.
+printf '%s\n' "$weights" > "$tmp/weights"
+LC_ALL=C sort -k1,1nr -k2,2 "$tmp/weights" > "$tmp/sorted"
+awk -v n="$n" '
 	NF {
 		best = 1
 		for (s = 2; s <= n; s++) if (load[s] < load[best]) best = s
 		load[best] += $1
 		print best, $2
-	}' > "$tmp/assigned"
+	}' "$tmp/sorted" > "$tmp/assigned"
 # Y: in the universe and this shard's; C: not in the universe, so by cksum
 awk -v k="$k" -v key="$key" '
 	FNR == NR { shard[$2] = $1; next }
@@ -75,7 +79,8 @@ awk -v k="$k" -v key="$key" '
 		if (key == "dir") { q = $1; sub(/\/[^\/]*$/, "", q) }
 		if (q in shard) { if (shard[q] == k) print "Y\t" $0 }
 		else print "C\t" $0
-	}' "$tmp/assigned" - | while IFS= read -r tagged; do
+	}' "$tmp/assigned" - > "$tmp/tagged"
+while IFS= read -r tagged; do
 	p=${tagged#?	}
 	case "$tagged" in
 	Y*) printf '%s\n' "$p" ;;
@@ -87,11 +92,12 @@ awk -v k="$k" -v key="$key" '
 		if [ "$key" = dir ]; then
 			q=${q%/*}
 		fi
-		h=$(printf '%s' "$q" | cksum)
+		printf '%s' "$q" > "$tmp/key"
+		h=$(cksum < "$tmp/key")
 		h=${h%% *}
 		if [ $((h % n)) -eq $((k - 1)) ]; then
 			printf '%s\n' "$p"
 		fi
 		;;
 	esac
-done
+done < "$tmp/tagged"

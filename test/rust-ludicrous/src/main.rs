@@ -54,17 +54,14 @@ fn check_err(result: ludicrous::Result, what: &str) {
 // The generated writer holds its caller contracts with `debug_assert!` — the
 // Rust idiom, and what serialize.rs does for its own API misuse (src/stream.rs,
 // `misuse_check!`) — so a violation panics in debug and is compiled out of
-// release. The same shape as test/rust, test/java and test/dart.
-const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
+// release. So the assert row EXISTS ONLY IN THE DEBUG BUILD, as in test/rust:
+// expect_assert and its call are #[cfg(debug_assertions)].
 
 // expect_assert runs a writer-contract violation and demands the assertion
 // fires (checked twin only — the release writer trusts by design). The panic
 // hook is silenced for the duration: the panic IS the pass.
+#[cfg(debug_assertions)]
 fn expect_assert<F: FnOnce()>(f: F, what: &str) {
-    if !ASSERTS_ENABLED {
-        check(false, &format!("{what}: asserts are off in this build: this row needs the assert build"));
-        return;
-    }
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
@@ -302,6 +299,7 @@ fn main() {
         // the write-side degenerate contract: any raw but 3 * 2^16 asserts
         // before a single bit is written (debug only — the release writer
         // trusts its caller, SPEC §5)
+        #[cfg(debug_assertions)]
         expect_assert(
             || {
                 let mut bad = input;

@@ -46,18 +46,23 @@
 //   - the writer's record body is the values in that order, every field at
 //     its declared storage width (docs/SPEC-TABLES.md §3.4).
 // The OLD writer below spells the field `renamed` and declares its own
-// order [renamed, keep, gone] — a lawful order and a DIFFERENT position
-// from the reader's [.., renamed_to, ..], so a reader that paired by
-// POSITION would land `gone`'s bytes in the renamed field and this test
-// would red. The values are the fixedform corpus's own fixtures (the ones
-// test/rust-fixedform asserts): keep 4242, renamed 321, gone 9.
+// order [renamed, keep] — a lawful order and a DIFFERENT position from the
+// reader's [keep, narrow, renamed_to, ..], so a reader that paired by
+// POSITION would land `renamed`'s bytes in `keep` and this test would red.
+// The values are the fixedform corpus's own fixtures (the ones
+// test/rust-fixedform asserts): keep 4242, renamed 321. The writer carries
+// no field the reader cannot name: such a writer is UNLAWFUL and no plan is
+// laid for it (FIXED-FORM-ALGORITHM §5.2, the MATCH and EMIT row; until
+// 2026-11-25 this row's writer carried a third field, `gone`, and asserted
+// it was censused `unknown`, which that ruling retired)
 //
 // THE CONTROLS. (1) In-test, run on every invocation: the same read with
 // the reader's block copy patched so the renamed entry carries the NEW
 // name's hash — the exact wire a reader that ignores `was` would declare —
-// must lose the field to its declared default and census it unknown, while
-// `keep` still pairs: the pairing dies with the declared identity and with
-// nothing else. (2) The file-level control this card runs once by hand:
+// leaves the writer's `renamed` naming no reader field, so the compile
+// refuses it UNLAWFUL and no plan is laid, while the declared identity
+// compiles: the pairing dies with the declared identity and with nothing
+// else. (2) The file-level control this card runs once by hand:
 // patch the same eight bytes of the generated constant
 // (build/tables-generated-rust/tblfx2/src/fx2_fixed.rs, entry 3's id) and
 // the whole test goes red; restore and it is green again.
@@ -109,7 +114,7 @@ fn fnv1a64(name: &str) -> u64 {
 /// THE OLD WRITER'S LAYOUT, from the law: a u32 count then 17-byte entries
 /// (id u64 LE, kind u8, size u32 LE, children u32 LE — ir/fixedform.go
 /// TableFixedLayoutBytes). The root table first, then the fields in the
-/// writer's declared order [renamed, keep, gone]: kind 13 is a table, kind 8
+/// writer's declared order [renamed, keep]: kind 13 is a table, kind 8
 /// a u32, kind 4 an i32 (ir/tablekind.go), the root's size is the writer's
 /// whole record body, and a field's children are 0.
 ///
@@ -127,26 +132,23 @@ fn the_old_writer_block() -> Vec<u8> {
         push32(b, size);
         push32(b, children);
     };
-    push32(&mut b, 4); // the entry count
-    // the root: FxRoot, 12 body bytes, 3 fields
-    entry(&mut b, fnv1a64("FxRoot"), 13, 12, 3);
+    push32(&mut b, 3); // the entry count
+    // the root: FxRoot, 8 body bytes, 2 fields
+    entry(&mut b, fnv1a64("FxRoot"), 13, 8, 2);
     // `renamed` FIRST, under the name `was` declares
     entry(&mut b, fnv1a64("renamed"), 4, 4, 0);
     // `keep` second
     entry(&mut b, fnv1a64("keep"), 8, 4, 0);
-    // `gone` third — the field the reader does not carry at all
-    entry(&mut b, fnv1a64("gone"), 4, 4, 0);
     b
 }
 
 /// THE OLD WRITER'S RECORD BODY, in the writer's own order: renamed 321,
-/// keep 4242, gone 9 — the fixedform corpus's fixture values, every one at
+/// keep 4242 — the fixedform corpus's fixture values, every one at
 /// its declared width, nothing padded between them (§3.4).
 fn the_old_writer_record() -> Vec<u8> {
     let mut b = Vec::new();
     b.extend_from_slice(&321u32.to_le_bytes()); // renamed
     b.extend_from_slice(&4242u32.to_le_bytes()); // keep
-    b.extend_from_slice(&9u32.to_le_bytes()); // gone
     b
 }
 
@@ -156,23 +158,25 @@ fn the_old_writer_record() -> Vec<u8> {
 
 /// Compiles the plan from a locked layout (the test plays the lock),
 /// prefills the holes the plan does not cover from the declared defaults,
-/// runs the record over the plan, and scatters into the value surface —
-/// exactly fx_root_fixed_load's non-identity branch.
-fn e6_read(mine_bytes: &[u8], report: &mut TableFixedReport) -> FxRootRow {
+/// runs the record over the plan, scatters into the value surface and runs
+/// the bounds pass — exactly fx_root_fixed_load's non-identity branch. A
+/// writer the reader cannot pair is UNLAWFUL and compiles no plan: None.
+fn e6_read(mine_bytes: &[u8], report: &mut TableFixedReport) -> Option<FxRootRow> {
     let mine = TableFixedBlock::parse(mine_bytes).expect("the reader's layout parses");
     let locked = the_old_writer_block();
     let theirs = TableFixedBlock::parse(&locked).expect("the locked layout parses");
     let mut plan = [TableFixedEntry::default(); 512];
+    let mut guards = [TableFixedGuard::default(); 512];
     let mut remap = [0u16; 512];
     let n = table_fixed_compile(
         &theirs,
         &mine,
         &FX_ROOT_FIXED_COUNTED,
         &mut plan,
+        &mut guards,
         &mut remap,
         report,
-    );
-    let n = n.expect("the plan compiles");
+    )?;
     let mut image = [0u8; FX_ROOT_FIXED_BODY_BYTES];
     let mut cover = [0u8; FX_ROOT_FIXED_BODY_BYTES];
     let mut hole_buf = [TableFixedHole::default(); FX_ROOT_FIXED_BODY_BYTES];
@@ -181,18 +185,23 @@ fn e6_read(mine_bytes: &[u8], report: &mut TableFixedReport) -> FxRootRow {
         let (o, z) = (h.off as usize, h.size as usize);
         image[o..o + z].copy_from_slice(&FX_ROOT_FIXED_DEFAULTS[o..o + z]);
     }
-    table_fixed_run(&plan[..n], &[], &the_old_writer_record(), &mut image, report);
+    if !table_fixed_run(&plan[..n], &guards, &remap, &the_old_writer_record(), &mut image, report) {
+        return report.refuse(TableFixedReason::WireDamaged);
+    }
     let mut value = FxRootRow::default();
     fx_root_fixed_scatter(&image, &mut value, report);
-    // AND THE BOUND THE LOOP DOES NOT HOLD, the read's last pass (§3.4).
+    // AND THE BOUND THE LOOP DOES NOT HOLD, the read's last pass (§3.4): any
+    // value off its bound refuses (strict-only).
     let mut clamped = 0i32;
     let mut damaged = 0i32;
     fx_root_fixed_clamp_body(&mut value, &mut clamped, &mut damaged);
-    report.oor += clamped as u32;
     if damaged != 0 {
-        report.damaged = true;
+        return report.refuse(TableFixedReason::TextIllFormed);
     }
-    value
+    if clamped != 0 {
+        return report.refuse(TableFixedReason::OutOfRange);
+    }
+    Some(value)
 }
 
 // ---------------------------------------------------------------------------
@@ -232,13 +241,13 @@ fn e6_the_renamed_field_rides_the_declared_identity() {
 
 /// THE RENAME READS THROUGH THE DECLARED IDENTITY, AND MOVES NO COUNTER:
 /// the old writer's `renamed` bytes land in the value surface spelled
-/// `renamed_to`, the field the writer does not carry keeps its declared
-/// default, the reader cannot name `gone` (one unknown, and never the
-/// renamed field), and nothing else moves.
+/// `renamed_to`, the fields the writer does not carry keep their declared
+/// defaults, and nothing moves.
 #[test]
 fn e6_a_rename_reads_through_the_declared_identity_and_moves_no_counter() {
     let mut report = TableFixedReport::default();
-    let value = e6_read(&FX_ROOT_FIXED_BLOCK, &mut report);
+    let value = e6_read(&FX_ROOT_FIXED_BLOCK, &mut report)
+        .unwrap_or_else(|| panic!("a rename under `was` compiles a plan and reads: {report:?}"));
     assert!(
         value.renamed_to == 321,
         "the old writer's `renamed` bytes did not land in `renamed_to`: renamed_to={}",
@@ -260,17 +269,12 @@ fn e6_a_rename_reads_through_the_declared_identity_and_moves_no_counter() {
         value.narrow
     );
     assert!(
-        report.unknown == 1,
-        "the one field this reader cannot name is `gone`, and the renamed field must census nothing: unknown={}",
-        report.unknown
+        report.unknown == 0 && report.widened == 0,
+        "a rename through `was` is not a version, and no counter moves for it: unknown={} widened={}",
+        report.unknown, report.widened
     );
     assert!(
-        report.widened == 0 && report.mismatch == 0 && report.oor == 0,
-        "a rename through `was` is not a version, and no counter moves for it: widened={} kind_mismatch={} clamped={}",
-        report.widened, report.mismatch, report.oor
-    );
-    assert!(
-        !report.damaged && !report.refused && report.reason == TableFixedReason::None,
+        !report.refused && report.reason == TableFixedReason::None,
         "a rename under `was` reads clean: {:?}",
         report
     );
@@ -279,11 +283,11 @@ fn e6_a_rename_reads_through_the_declared_identity_and_moves_no_counter() {
 /// THE CONTROL, RUN ON EVERY INVOCATION (the law is not true trivially):
 /// the same read with the reader's block patched so the renamed entry
 /// carries the NEW name's hash — the exact wire a reader that ignores `was`
-/// would declare — must lose the field to its declared default, census it
-/// unknown beside `gone`, and still pair `keep`: the pairing dies with the
+/// would declare — leaves the writer's `renamed` naming no reader field: the
+/// pair is UNLAWFUL and no plan is laid (§5.2). The pairing dies with the
 /// declared identity and with nothing else.
 #[test]
-fn e6_control_a_wire_id_taken_from_the_new_name_loses_the_field() {
+fn e6_control_a_wire_id_taken_from_the_new_name_loses_the_pairing() {
     // the renamed entry is where the walk puts it: root + 2 fields down
     let mine = TableFixedBlock::parse(&FX_ROOT_FIXED_BLOCK).expect("this build's own layout parses");
     assert!(
@@ -297,18 +301,7 @@ fn e6_control_a_wire_id_taken_from_the_new_name_loses_the_field() {
     let mut report = TableFixedReport::default();
     let value = e6_read(&broken, &mut report);
     assert!(
-        value.renamed_to == 5,
-        "a block keyed by the NEW name must lose the field to its declared default: renamed_to={}",
-        value.renamed_to
-    );
-    assert!(
-        value.keep == 4242,
-        "the break must be the renamed field's alone: keep={}",
-        value.keep
-    );
-    assert!(
-        report.unknown == 2,
-        "with the declared identity gone, the old writer's `renamed` is one more field this reader cannot name: unknown={}",
-        report.unknown
+        value.is_none(),
+        "a block keyed by the NEW name must leave the old writer's `renamed` unpaired, an UNLAWFUL pair with no plan: {report:?}"
     );
 }

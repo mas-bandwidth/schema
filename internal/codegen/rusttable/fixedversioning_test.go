@@ -12,7 +12,7 @@ package rusttable
 //                    of them zero, because an append the reader knows is not an
 //                    event.
 //   OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//                    `layout_newer` BEFORE any record, reporting THE FILE'S
+//                    `layout_unknown` BEFORE any record, reporting THE FILE'S
 //                    HASH and nothing else, with no counter moved and
 //                    `malformed` false (§5.3's joint answer), and the
 //                    destination still the fresh value it went in as.
@@ -260,7 +260,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown`. §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
 	out := versionRun(t)
@@ -393,7 +393,7 @@ fn v_%[1]s_new_reads_old() {
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
     assert!(n.is_none(), "the non-finite float the older writer wrote was not refused: {:?} {:?}", n, report);
     assert_eq!(report.reason, TableFixedReason::NonFiniteFloat, "a NaN or an infinity owes non_finite_float: {:?}", report);
-    assert!(report.refused && !report.damaged, "a refusal by name, never damage: {:?}", report);
+    assert!(report.refused, "a refusal by name, never damage: {:?}", report);
     assert!(
         report.non_finite_float.ends_with(%[3]q),
         "the refusal names %[3]s, not {:?}", report.non_finite_float
@@ -427,7 +427,6 @@ fn v_%[1]s_new_reads_old() {
         !report.refused && report.reason == TableFixedReason::None,
         "a clean NEW-READS-OLD is not a refusal: {:?}", report
     );
-    assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
     assert!(
         report.unknown == 0,
         "counters moved on a clean backward read: {:?}", report
@@ -447,17 +446,13 @@ fn v_%[1]s_new_reads_old() {
         "the older reader did NOT refuse the newer writer's file: {:?} {:?}", n, report
     );
     assert_eq!(
-        report.reason.name(), "layout_newer",
-        "a hash in no lineage entry owes layout_newer, not {:?}", report.reason
+        report.reason.name(), "layout_unknown",
+        "a hash in no lineage entry owes layout_unknown, not {:?}", report.reason
     );
     assert!(report.refused, "a refusal by name sets refused: {:?}", report);
     assert_eq!(
         report.layout_hash, want,
-        "layout_newer reports THE FILE'S hash, {:#018x}, not {:#018x}", want, report.layout_hash
-    );
-    assert!(
-        !report.damaged,
-        "a refusal by name never sets malformed too (§5.3, the joint answer): {:?}", report
+        "layout_unknown reports THE FILE'S hash, {:#018x}, not {:#018x}", want, report.layout_hash
     );
     assert!(
         report.widened == 0 && report.unknown == 0,
@@ -486,7 +481,7 @@ fn v_%[1]s_new_reads_old() {
     ));
     assert!(n >= 1, "both directions read, so at least one record lands, not {n}");
     assert!(
-        !report.refused && report.reason == TableFixedReason::None && !report.damaged,
+        !report.refused && report.reason == TableFixedReason::None,
         "an EQUAL HASH is not a version: {:?}", report
     );`
 		}
@@ -495,7 +490,7 @@ fn v_%[1]s_new_reads_old() {
 			reader: "VOLD_" + r.row,
 			src: versionProbeSource(fmt.Sprintf(`
 /// %[1]s, OLD-REFUSES-NEW: the older reader given the widened writer's file
-/// refuses `+"`layout_newer`"+` BEFORE any record, on THE FILE'S HASH and nothing
+/// refuses `+"`layout_unknown`"+` BEFORE any record, on THE FILE'S HASH and nothing
 /// else, with no counter moved and nothing written (bill §12.4, §5.3).
 #[test]
 fn v_%[1]s_old_refuses_new() {
@@ -564,7 +559,6 @@ fn v_string_grow_forged_length() {
         report.refused && report.reason == TableFixedReason::OutOfRange,
         "a length past THE WRITER's span is an out_of_range refusal: {:?}", report
     );
-    assert!(!report.damaged, "a forged length is a refusal, not damage: {:?}", report);
     assert_eq!(values[0].text_length, 0, "a refused batch landed the record");
 }
 `, filepath.Join(corpus, "old_string_grow.bin"))),
@@ -580,7 +574,7 @@ fn v_string_grow_forged_length() {
 		{"floor_at", 0, `    // Nothing retired: the OLDEST file is AT the floor and it reads.
     let n = LOADFN(&mut values, &old_file, &mut plan, &mut remap, &mut report);
     assert!(
-        n.is_some() && !report.refused && !report.damaged,
+        n.is_some() && !report.refused,
         "a file AT the floor must read: {:?} {:?}", n, report
     );`},
 		{"floor_below", 1, `    // Entry 0 retired: the floor is 1, and the file one below it refuses
@@ -598,7 +592,7 @@ fn v_string_grow_forged_length() {
         "layout_unsupported carries the file's hash too: {:#018x} not {:#018x}", want, report.layout_hash
     );
     assert!(
-        !report.damaged && report.widened == 0 && report.unknown == 0,
+        report.widened == 0 && report.unknown == 0,
         "REFUSE is TOTAL: {:?}", report
     );
     let mut report2 = TableFixedReport::default();
@@ -644,7 +638,7 @@ fn v_%[1]s() {
 		reader: "VNEW_field_append",
 		older:  []string{"VOLD_field_append"},
 		src: versionProbeSource(fmt.Sprintf(`
-/// hash_unknown: a hash in NO lineage refuses layout_newer.
+/// hash_unknown: a hash in NO lineage refuses layout_unknown.
 #[test]
 fn v_hash_unknown() {
     let mut data = std::fs::read(%[1]q).expect("the reference's old_field_append.bin");
@@ -655,9 +649,8 @@ fn v_hash_unknown() {
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
     assert!(n.is_none(), "a stranger's hash is refused: {:?} {:?}", n, report);
-    assert_eq!(report.reason.name(), "layout_newer", "hash_unknown: {:?}", report.reason);
+    assert_eq!(report.reason.name(), "layout_unknown", "hash_unknown: {:?}", report.reason);
     assert_eq!(report.layout_hash, 0xDEAD_BEEF_CAFE_F00D, "the refusal carries the FILE'S hash");
-    assert!(!report.damaged, "a refusal by name is not damage: {:?}", report);
 }
 
 /// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from the
@@ -678,7 +671,6 @@ fn v_hash_known_bytes_differ() {
         report.reason.name(), "layout_malformed",
         "bytes that disagree with the lock's are layout_malformed, not {:?}", report.reason
     );
-    assert!(!report.damaged, "a refusal by name never sets the damage flag too: {:?}", report);
 }
 
 /// hash_identity: the reader's OWN hash selects the identity plan.
@@ -691,7 +683,7 @@ fn v_hash_identity() {
     let mut report = TableFixedReport::default();
     let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
     assert!(
-        n.is_some() && !report.refused && !report.damaged,
+        n.is_some() && !report.refused,
         "a reader's own file reads: {:?} {:?}", n, report
     );
     assert!(values[0].w == 777, "the identity plan lost a value: w={}", values[0].w);
@@ -717,7 +709,7 @@ fn v_lineage_merge() {
         let mut report = TableFixedReport::default();
         let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
         assert!(
-            n.is_some() && !report.refused && !report.damaged,
+            n.is_some() && !report.refused,
             "{name}: both pre-merge files read on the merged build: {:?} {:?}", n, report
         );
     }
@@ -748,7 +740,7 @@ fn v_lineage_merge() {
         let mut remap = vec![0u16; 4096];
         let mut report = TableFixedReport::default();
         assert_eq!(LOADFN(&mut rows, &bad, &mut plan, &mut remap, &mut report), None, "byte {forged} at {at}");
-        assert!(report.damaged && !report.refused, "{:?}", report);
+        assert!(report.refused && report.reason == TableFixedReason::WireDamaged, "{:?}", report);
         assert!(!rows[0].flag && !rows[0].note_present, "a damaged load left a caller value");
     }`
 		}
@@ -764,7 +756,7 @@ fn v_%[1]s() {
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
     assert_eq!(LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report), Some(3));
-    assert!(!report.refused && !report.damaged, "{:?}", report);
+    assert!(!report.refused, "{:?}", report);
     assert_eq!(report.widened, 6); // signed integer and float, three records
     assert!(values[0].flag && values[0].note_present);
     assert_eq!(values[0].note, 44);

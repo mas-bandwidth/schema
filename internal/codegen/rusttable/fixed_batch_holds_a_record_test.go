@@ -106,7 +106,7 @@ fn main() {
             let mut remap = vec![0u16; 4096];
             let mut report = TableFixedReport::default();
             let n = batch_fixed_load(&mut values, &none, &mut plan, &mut remap, &mut report);
-            if n.is_some() || (!report.damaged && !report.refused) {
+            if n.is_some() || (!report.refused) {
                 println!("no-record at cap {cap}: read {n:?}, not a refusal");
                 std::process::exit(1);
             }
@@ -117,7 +117,7 @@ fn main() {
         let mut report = TableFixedReport::default();
         let n = batch_fixed_load(&mut values, &one, &mut plan, &mut remap, &mut report);
         let name_ok = values[0].name_length == 5 && values[0].name[..5] == *b"hello";
-        if n != Some(1) || report.damaged || report.refused || values[0].a != 7 || !name_ok {
+        if n != Some(1) || report.refused || values[0].a != 7 || !name_ok {
             println!("one-record: n={n:?} a={} length={}", values[0].a, values[0].name_length);
             std::process::exit(1);
         }

@@ -448,7 +448,7 @@ tables-c-fuzz: build/schema_test_c_fuzz
 # else: the hour-long soak (the TABLES_C_SOAK_ITERATIONS default) that `make
 # test` runs at 512 passes, the forged-block fuzzer at five times the PR scale
 # under a second seed, and each one's planted control.
-C_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+C_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-c-release
 tables-c-release:
 	$(MAKE) -j$(C_RELEASE_JOBS) build/schema_test_c_soak build/schema_test_c_fuzz
@@ -1569,10 +1569,9 @@ build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/ta
 	@touch $@
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
-	test/c-tables/fixedform_layout.c \
-	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
+	test/c-tables/fixedform_v1.c \
 	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
-	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c \
+	test/c-tables/fixedform_fu1.c \
 	build/tables-generated-c-fixed/fx1/FX1Table.c build/tables-generated-c-fixed/fx2/FX2Table.c \
 	build/tables-generated-c-fixed/v1/V1Table.c build/tables-generated-c-fixed/v2/V2Table.c \
 	build/tables-generated-c-fixed/ut1/UT1Table.c build/tables-generated-c-fixed/ut2/UT2Table.c \

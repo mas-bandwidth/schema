@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2306.
+Functional tests every language answers: 2560. Language-free tests: 2313.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4895,12 +4895,21 @@ seeded mutations.
 |---|---|---|---|---|---|
 | `none.functional.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay` | `make` | make luau-nightly-fuzz-replay (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`target: luau-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:712` |
 
-#### `fuzz` family `make-verify-vm`, 2 tests
+#### `fuzz` family `make-verify-vm`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-1` | `make` | make verify-goose-fuzz-part-1 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-1` | the target exits 0 with no skip in its log | `make/verify-vm.mk:576` |
 | `none.functional.fuzz.make-verify-vm.verify-goose-fuzz-part-2` | `make` | make verify-goose-fuzz-part-2 (make/verify-vm.mk) exits 0 | `file: make/verify-vm.mk`<br>`target: verify-goose-fuzz-part-2` | the target exits 0 with no skip in its log | `make/verify-vm.mk:581` |
+
+#### `fuzz` family `verify-goose-fuzz-part-1`, 5 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-delivers-every-reply-before-a-stall` | `make-gotest` | Go test TestDispatchDeliversEveryReplyBeforeAStall in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchDeliversEveryReplyBeforeAStall` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:246` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-refuses-a-mutant-for-an-absent-entry` | `make-gotest` | Go test TestDispatchRefusesAMutantForAnAbsentEntry in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRefusesAMutantForAnAbsentEntry` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:190` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-refuses-a-truncated-roster` | `make-gotest` | Go test TestDispatchRefusesATruncatedRoster in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRefusesATruncatedRoster` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:201` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-refuses-an-entry-two-children-claim` | `make-gotest` | Go test TestDispatchRefusesAnEntryTwoChildrenClaim in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRefusesAnEntryTwoChildrenClaim` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:178` |
+| `none.functional.fuzz.verify-goose-fuzz-part-1.dispatch-routes-every-entry-to-its-unit-and-arm-in-order` | `make-gotest` | Go test TestDispatchRoutesEveryEntryToItsUnitAndArmInOrder in ./test/conformance/goose/wirefuzzdispatch, run by make verify-goose-fuzz-part-1 (make/verify-vm.mk) and read by name from its go test -json events | `file: make/verify-vm.mk`<br>`package: ./test/conformance/goose/wirefuzzdispatch`<br>`target: verify-goose-fuzz-part-1`<br>`test: TestDispatchRoutesEveryEntryToItsUnitAndArmInOrder` | the Go test passes in make verify-goose-fuzz-part-1's run, with no skip | `test/conformance/goose/wirefuzzdispatch/main_test.go:146` |
 
 ### Type `plant`
 
@@ -4969,6 +4978,12 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.lua-format.tables-lua-format-negative-control` | `plant` | negative control tables-lua-format-negative-control (group lua-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`group: lua-format`<br>`make: tables-lua-format-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:236` |
+
+#### `plant` family `make-cs-block-compile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.make-cs-block-compile.tables-cs-block-compile-negative-control` | `plant` | negative control tables-cs-block-compile-negative-control (excluded from the groups of make/negative-controls.json, its reason there): the cook row naming a table-only tag enum and a Begin overload naming a table storage class, planted in the C# emitter, each fail the C# block-pair build by name | `file: make/cs-block-compile.mk`<br>`group: (excluded)`<br>`make: tables-cs-block-compile-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3653` |
 
 #### `plant` family `moo`, 1 test
 
@@ -5077,7 +5092,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.codegen-golang.go-string-write-refuses-interior-nul-and-invalid-utf8` | `gotest` | Go test TestGoStringWriteRefusesInteriorNULAndInvalidUTF8 in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoStringWriteRefusesInteriorNULAndInvalidUTF8` | the Go test passes | `internal/codegen/golang/stringwrite_test.go:19` |
 | `none.functional.compiler.codegen-golang.go-union-then-fixed-byte-array-wire` | `gotest` | Go test TestGoUnionThenFixedByteArrayWire in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/golang/unionbytes_test.go:18` |
 
-#### `compiler` family `compiler`, 171 tests
+#### `compiler` family `compiler`, 172 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5140,7 +5155,8 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.corpus-non-canonical-spellings` | `gotest` | Go test TestCorpusNonCanonicalSpellings in ./compiler | `package: ./compiler`<br>`test: TestCorpusNonCanonicalSpellings` | the Go test passes | `compiler/corpus_non_canonical_test.go:30` |
 | `none.functional.compiler.compiler.cpp-blob-named-twice` | `gotest` | Go test TestCPPBlobNamedTwice in ./compiler | `package: ./compiler`<br>`test: TestCPPBlobNamedTwice` | the Go test passes | `compiler/cppblobshared_test.go:270` |
 | `none.functional.compiler.compiler.cpp-collection-widening` | `gotest` | Go test TestCppCollectionWidening in ./compiler | `package: ./compiler`<br>`test: TestCppCollectionWidening` | the Go test passes | `compiler/collectionwiden_test.go:13` |
-| `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment` | `gotest` | Go test TestCppCookExtentCanonicalAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:62` |
+| `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment` | `gotest` | Go test TestCppCookExtentCanonicalAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:87` |
+| `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment-linked` | `gotest` | Go test TestCppCookExtentCanonicalAlignmentLinked in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignmentLinked` | the Go test passes | `compiler/tablecookalignment_test.go:93` |
 | `none.functional.compiler.compiler.cpp-cook-open-node-alignment` | `gotest` | Go test TestCppCookOpenNodeAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookOpenNodeAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:14` |
 | `none.functional.compiler.compiler.cpp-default-binary-read-is-strict` | `gotest` | Go test TestCPPDefaultBinaryReadIsStrict in ./compiler | `package: ./compiler`<br>`test: TestCPPDefaultBinaryReadIsStrict` | the Go test passes | `compiler/cppstrictbinaryread_test.go:162` |
 | `none.functional.compiler.compiler.cpp-exact-integer-range-bounds` | `gotest` | Go test TestCPPExactIntegerRangeBounds in ./compiler | `package: ./compiler`<br>`test: TestCPPExactIntegerRangeBounds` | the Go test passes | `compiler/cppexactrange_test.go:47` |
@@ -5274,8 +5290,8 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.compiler.fuzz.random-table-bounds-pass` | `gotest` | Go test TestRandomTableBoundsPass in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableBoundsPass` | the Go test passes | `internal/fuzz/tablebounds_test.go:556` |
-| `none.functional.compiler.fuzz.random-table-gen-fixed-point` | `gotest` | Go test TestRandomTableGenFixedPoint in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPoint` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:25` |
-| `none.functional.compiler.fuzz.random-table-gen-fixed-point-plant-clamp` | `gotest` | Go test TestRandomTableGenFixedPointPlantClamp in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPointPlantClamp` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:130` |
+| `none.functional.compiler.fuzz.random-table-gen-fixed-point` | `gotest` | Go test TestRandomTableGenFixedPoint in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPoint` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:138` |
+| `none.functional.compiler.fuzz.random-table-gen-fixed-point-plant-clamp` | `gotest` | Go test TestRandomTableGenFixedPointPlantClamp in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenFixedPointPlantClamp` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:236` |
 | `none.functional.compiler.fuzz.random-table-json-plants` | `gotest` | Go test TestRandomTableJsonPlants in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableJsonPlants` | the Go test passes | `internal/fuzz/tablejsonplants_test.go:461` |
 
 #### `compiler` family `listwalk`, 1 test
@@ -5368,9 +5384,9 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.caa.self-test` | `make` | the CAA allowlist is exactly the linked logins, and main's tip is covered (reads GitHub with GITHUB\_TOKEN) | `file: make/caa-self-test.mk`<br>`target: caa-self-test` | the target exits 0 with no skip in its log | `make/caa-self-test.mk` |
+| `none.functional.tooling.caa.self-test` | `make` | the CAA allowlist is exactly the linked logins, and main's tip is covered (reads GitHub with GITHUB\_TOKEN) | `file: make/caa-self-test.mk`<br>`target: caa-self-test` | the target exits 0 with no skip in its log | `make/caa-self-test.mk:7` |
 
-#### `tooling` family `ci`, 50 tests
+#### `tooling` family `ci`, 51 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5381,6 +5397,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.conformance-legs-rebuild-negative-control` | `gotest` | Go test TestConformanceLegsRebuildNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceLegsRebuildNegativeControl` | the Go test passes | `internal/ci/conformancelegs_test.go:40` |
 | `none.functional.tooling.ci.constrained-test-gate-negative-control` | `gotest` | Go test TestConstrainedTestGateNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConstrainedTestGateNegativeControl` | the Go test passes | `internal/ci/silent_skips_test.go:276` |
 | `none.functional.tooling.ci.dist-python-stages-the-fleet-sdk` | `gotest` | Go test TestDistPythonStagesTheFleetSDK in ./internal/ci | `package: ./internal/ci`<br>`test: TestDistPythonStagesTheFleetSDK` | the Go test passes | `internal/ci/pythonsdk_test.go:23` |
+| `none.functional.tooling.ci.every-go-conformance-row-runs-exactly-once` | `gotest` | Go test TestEveryGoConformanceRowRunsExactlyOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryGoConformanceRowRunsExactlyOnce` | the Go test passes | `internal/ci/go_rows_run_once_test.go:43` |
 | `none.functional.tooling.ci.every-run-pattern-matches-a-test` | `gotest` | Go test TestEveryRunPatternMatchesATest in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryRunPatternMatchesATest` | the Go test passes | `internal/ci/runpattern_test.go:612` |
 | `none.functional.tooling.ci.go-fixed-corpus-pipeline-keeps-complete-test-recipe` | `gotest` | Go test TestGoFixedCorpusPipelineKeepsCompleteTestRecipe in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoFixedCorpusPipelineKeepsCompleteTestRecipe` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:10` |
 | `none.functional.tooling.ci.golden-rewrite-gate-over-a-fixture-tree` | `gotest` | Go test TestGoldenRewriteGateOverAFixtureTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewriteGateOverAFixtureTree` | the Go test passes | `internal/ci/golden_rewrites_test.go:84` |
@@ -5436,7 +5453,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.tooling.goldens.generated-text-names-no-machine` | `gotest` | Go test TestGeneratedTextNamesNoMachine in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGeneratedTextNamesNoMachine` | the Go test passes | `internal/goldens/generated_text_test.go:82` |
+| `none.functional.tooling.goldens.generated-text-names-no-machine` | `gotest` | Go test TestGeneratedTextNamesNoMachine in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestGeneratedTextNamesNoMachine` | the Go test passes | `internal/goldens/generated_text_test.go:151` |
 
 #### `tooling` family `gotestrun`, 1 test
 
@@ -5536,7 +5553,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.roadmap.lisp-renderer-suite` | `gotest` | Go test TestLispRendererSuite in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestLispRendererSuite` | the Go test passes | `tools/roadmap/tally_test.go:273` |
 | `none.functional.tooling.roadmap.regeneration-keeps-the-hand-text` | `gotest` | Go test TestRegenerationKeepsTheHandText in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRegenerationKeepsTheHandText` | the Go test passes | `tools/roadmap/tally_test.go:376` |
 | `none.functional.tooling.roadmap.roadmap-is-generated-from-the-data` | `gotest` | Go test TestRoadmapIsGeneratedFromTheData in ./tools/roadmap | `package: ./tools/roadmap`<br>`test: TestRoadmapIsGeneratedFromTheData` | the Go test passes | `tools/roadmap/tally_test.go:289` |
-| `none.functional.tooling.roadmap.suites` | `make` | the roadmap renderer and gate suites | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-test` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk` |
+| `none.functional.tooling.roadmap.suites` | `make` | the roadmap renderer and gate suites | `file: tools/roadmap/roadmap.mk`<br>`target: roadmap-test` | the target exits 0 with no skip in its log | `tools/roadmap/roadmap.mk:78` |
 
 #### `tooling` family `schema-test`, 3 tests
 
@@ -5586,10 +5603,10 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
-| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
-| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
-| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1719` |
+| `none.functional.lint.make-c.tables-c-clean-shard-1-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=1/4 (make/c.mk) exits 0: shard 1 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"1/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-2-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=2/4 (make/c.mk) exits 0: shard 2 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"2/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-3-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=3/4 (make/c.mk) exits 0: shard 3 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"3/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
+| `none.functional.lint.make-c.tables-c-clean-shard-4-of-4` | `make` | make tables-c-clean C\_FORMAT\_SHARD=4/4 (make/c.mk) exits 0: shard 4 of 4, and the 4 shards together judge every file once | `file: make/c.mk`<br>`target: tables-c-clean`<br>`tools: ["clang-format"]`<br>`vars: {"C_FORMAT_SHARD":"4/4"}` | the target exits 0 with no skip in its log | `make/c.mk:1718` |
 
 #### `lint` family `make-cpp`, 5 tests
 
@@ -5624,7 +5641,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
+| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:146` |
 
 #### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
 
@@ -5636,8 +5653,8 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-format` | `make` | make tables-lua-format (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-format` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:199` |
-| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck` | `make` | make tables-lua-luacheck (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-luacheck`<br>`tools: ["luacheck"]` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:129` |
+| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-format` | `make` | make tables-lua-format (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-format` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:206` |
+| `none.functional.lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck` | `make` | make tables-lua-luacheck (make/schema-lua-generated-luacheck-gate.mk) exits 0 | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`target: tables-lua-luacheck`<br>`tools: ["luacheck"]` | the target exits 0 with no skip in its log | `make/schema-lua-generated-luacheck-gate.mk:136` |
 
 #### `lint` family `make-schema-luau-generated-analyze-strict-gate`, 1 test
 
@@ -5649,7 +5666,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:50` |
+| `none.functional.lint.make-schema-moo-generated-analyze-strict-gate.schema-moo-generated-analyze-strict-gate` | `make` | make schema-moo-generated-analyze-strict-gate (make/schema-moo-generated-analyze-strict-gate.mk) exits 0 | `file: make/schema-moo-generated-analyze-strict-gate.mk`<br>`target: schema-moo-generated-analyze-strict-gate` | the target exits 0 with no skip in its log | `make/schema-moo-generated-analyze-strict-gate.mk:52` |
 
 ### Type `differential`
 
@@ -5659,7 +5676,7 @@ two implementations or two versions give the same answer.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.differential.make-schema-squirrel-all-port-differential.schema-squirrel-all-port-differential-fast` | `make` | make schema-squirrel-all-port-differential-fast (make/schema-squirrel-all-port-differential.mk) exits 0 | `file: make/schema-squirrel-all-port-differential.mk`<br>`target: schema-squirrel-all-port-differential-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-all-port-differential.mk:50` |
+| `none.functional.differential.make-schema-squirrel-all-port-differential.schema-squirrel-all-port-differential-fast` | `make` | make schema-squirrel-all-port-differential-fast (make/schema-squirrel-all-port-differential.mk) exits 0 | `file: make/schema-squirrel-all-port-differential.mk`<br>`target: schema-squirrel-all-port-differential-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-all-port-differential.mk:65` |
 
 ### Type `resource-bounds`
 
@@ -5740,12 +5757,6 @@ memory, allocation and depth limits are held.
 |---|---|---|---|---|---|
 | `none.functional.resource-bounds.luautable.luau-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuauJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luautable/json_write_depth_test.go:73` |
 
-#### `resource-bounds` family `make-python-hostile`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.make-python-hostile.schema-python-resource-bounds` | `make` | make schema-python-resource-bounds (make/python-hostile.mk) exits 0 | `file: make/python-hostile.mk`<br>`target: schema-python-resource-bounds` | the target exits 0 with no skip in its log | `make/python-hostile.mk:21` |
-
 #### `resource-bounds` family `make-schema-lua-resource-bounds`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5762,7 +5773,7 @@ memory, allocation and depth limits are held.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds` | `make` | make schema-ruby-resource-bounds (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:12` |
+| `none.functional.resource-bounds.make-schema-ruby-runs-hostile-corpus.schema-ruby-resource-bounds` | `make` | make schema-ruby-resource-bounds (make/schema-ruby-runs-hostile-corpus.mk) exits 0 | `file: make/schema-ruby-runs-hostile-corpus.mk`<br>`target: schema-ruby-resource-bounds` | the target exits 0 with no skip in its log | `make/schema-ruby-runs-hostile-corpus.mk:19` |
 
 #### `resource-bounds` family `make-schema-squirrel-resource-bounds`, 1 test
 
@@ -5794,6 +5805,12 @@ memory, allocation and depth limits are held.
 |---|---|---|---|---|---|
 | `none.functional.resource-bounds.rusttable.rust-write-depth-cap-counts-every-container` | `gotest` | Go test TestRustWriteDepthCapCountsEveryContainer in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/rusttable/depth_write_rust_test.go:71` |
 
+#### `resource-bounds` family `schema-python-resource-bounds`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.schema-python-resource-bounds.python-resource-bounds-hostile-shapes` | `make-gotest` | Go test TestPythonResourceBoundsHostileShapes in ./internal/codegen/pythontable, run by make schema-python-resource-bounds (make/python-hostile.mk) and read by name from its go test -json events | `file: make/python-hostile.mk`<br>`package: ./internal/codegen/pythontable`<br>`target: schema-python-resource-bounds`<br>`test: TestPythonResourceBoundsHostileShapes` | the Go test passes in make schema-python-resource-bounds's run, with no skip | `internal/codegen/pythontable/resource_bounds_test.go:249` |
+
 #### `resource-bounds` family `squirreltable`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -5814,8 +5831,8 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:411` |
-| `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:308` |
+| `none.functional.harness-run.make-c.tables-c-soak-compile-modes` | `make` | make tables-c-soak-compile-modes (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-soak-compile-modes` | the target exits 0 with no skip in its log | `make/c.mk:429` |
+| `none.functional.harness-run.make-c.tables-c-zero-cost` | `make` | make tables-c-zero-cost (make/c.mk) exits 0 | `file: make/c.mk`<br>`target: tables-c-zero-cost` | the target exits 0 with no skip in its log | `make/c.mk:317` |
 
 #### `harness-run` family `make-go`, 1 test
 
@@ -5827,15 +5844,15 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.makefile.conformance-cpp-tu-budget` | `make` | make conformance-cpp-tu-budget (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-cpp-tu-budget` | the target exits 0 with no skip in its log | `Makefile:5510` |
-| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
-| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
-| `none.functional.harness-run.makefile.python-tooling-tests` | `make` | make python-tooling-tests (Makefile) exits 0: every \*\_test.py outside the vendored trees | `file: Makefile`<br>`target: python-tooling-tests` | the target exits 0 with no skip in its log | `Makefile` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8506` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8515` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8470` |
-| `none.functional.harness-run.makefile.tables-block-zero-cost-cs` | `make` | make tables-block-zero-cost-cs (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cs` | the target exits 0 with no skip in its log | `Makefile:8481` |
-| `none.functional.harness-run.makefile.tables-fixedform-corpus` | `make` | make tables-fixedform-corpus (Makefile) exits 0 | `file: Makefile`<br>`siblings: ["../serialize"]`<br>`target: tables-fixedform-corpus` | the target exits 0 with no skip in its log | `Makefile:7186` |
+| `none.functional.harness-run.makefile.conformance-cpp-tu-budget` | `make` | make conformance-cpp-tu-budget (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-cpp-tu-budget` | the target exits 0 with no skip in its log | `Makefile:5523` |
+| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5273` |
+| `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8283` |
+| `none.functional.harness-run.makefile.python-tooling-tests` | `make` | make python-tooling-tests (Makefile) exits 0: every \*\_test.py outside the vendored trees | `file: Makefile`<br>`target: python-tooling-tests` | the target exits 0 with no skip in its log | `Makefile:8735` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8560` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8568` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-cpp` | `make` | make tables-block-zero-cost-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cpp` | the target exits 0 with no skip in its log | `Makefile:8524` |
+| `none.functional.harness-run.makefile.tables-block-zero-cost-cs` | `make` | make tables-block-zero-cost-cs (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-cs` | the target exits 0 with no skip in its log | `Makefile:8535` |
+| `none.functional.harness-run.makefile.tables-fixedform-corpus` | `make` | make tables-fixedform-corpus (Makefile) exits 0 | `file: Makefile`<br>`siblings: ["../serialize"]`<br>`target: tables-fixedform-corpus` | the target exits 0 with no skip in its log | `Makefile:7301` |
 
 ## Declared unrepresentable
 

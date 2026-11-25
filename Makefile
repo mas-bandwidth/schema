@@ -162,7 +162,10 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 # wants red, is $(GO_TEST_RED): red only when a test FAILED and none skipped,
 # so a skip or a build that broke is no red the control can take for its
 # sabotage caught. tools/schema-test's make adapter refuses a recipe that runs
-# go test without -json.
+# go test without -json. With SCHEMA_GOTEST_JSON set (tools/schema-test's
+# make-gotest adapter sets it), $(GO_TEST) also appends its go test -json
+# events to that file, so each Go test the target runs is a registry row
+# with its own verdict, read by name; $(GO_TEST_RED) writes none.
 GO_TEST = $(CURDIR)/tools/gotestrun/gotest
 GO_TEST_RED = $(CURDIR)/tools/gotestrun/gotest -red
 
@@ -5779,7 +5782,7 @@ tables-cpp-names-negative-control:
 # A 2 GiB input and a ~2.8 GiB output under Clang UBSan cost about twenty
 # seconds and do not fit the owner's two-minute per-commit rule, which is why
 # the test gates itself on SCHEMA_CERTIFY_INT32_MAX and this target sets it.
-CPP_RELEASE_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+CPP_RELEASE_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 .PHONY: tables-cpp-release
 tables-cpp-release:
 	$(MAKE) -j$(CPP_RELEASE_JOBS) $(CPP_RELEASE_DIR)/tables $(CPP_RELEASE_DIR)/maps $(CPP_RELEASE_DIR)/lists \
@@ -7773,7 +7776,7 @@ release-binaries:
 # runtime, the sibling $(SERIALIZE) or else the pinned one fetched into build/.
 RELEASE_DIFFERENTIAL_PREV ?=
 RELEASE_DIFFERENTIAL_FLAGS ?=
-RELEASE_DIFFERENTIAL_JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
+RELEASE_DIFFERENTIAL_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 # THE JUDGE CORPUS (tools/releasediff/testdata/judge-corpus): committed cases,
 # each two listings of what the packet drivers wrote and the verdict the
 # release owes on them, replayed through the differential's own Judge. The

@@ -118,9 +118,9 @@ func (s *scan) workflowMakeTargets(workflows []string) map[string]bool {
 	return out
 }
 
-// registryMakeTargets are the targets the registry's make rows run: CI
-// runs them through schema-test, so they are run by name as surely as a
-// workflow's own make line. A per-language row (no scope) whose target
+// registryMakeTargets are the targets the registry's make and make-gotest
+// rows run: CI runs them through schema-test, so they are run by name as
+// surely as a workflow's own make line. A per-language row (no scope) whose target
 // holds {lang} runs that target once for each language the registry lists,
 // as perLangClaims claims it, so each language's target counts the same. A
 // row only names a target; the target is counted only where a make file
@@ -154,7 +154,7 @@ func (s *scan) registryMakeTargets() map[string]bool {
 			}
 			continue
 		}
-		isMake := strings.Contains(line, `"adapter":"make"`)
+		isMake := strings.Contains(line, `"adapter":"make"`) || strings.Contains(line, `"adapter":"make-gotest"`)
 		isLang := strings.Contains(line, `"rec":"lang"`)
 		if !isMake && !isLang && !strings.Contains(line, testreg.LangPlaceholder) {
 			continue
@@ -182,7 +182,7 @@ func (s *scan) registryMakeTargets() map[string]bool {
 		case row.Rec != "test" || row.Inputs.Target == "":
 		case row.Scope == "" && strings.Contains(row.Inputs.Target, testreg.LangPlaceholder):
 			perLang = append(perLang, row.Inputs.Target)
-		case row.Adapter == "make":
+		case row.Adapter == "make", row.Adapter == "make-gotest":
 			out[row.Inputs.Target] = true
 		}
 	}
@@ -223,6 +223,12 @@ func (s *scan) makeTargets(files []string, nc, ci map[string]bool) {
 					s.res.Rules = map[string]bool{}
 				}
 				s.res.Rules[RuleID(rel, name)] = true
+				if s.res.RuleLines == nil {
+					s.res.RuleLines = map[string]int{}
+				}
+				if _, ok := s.res.RuleLines[RuleID(rel, name)]; !ok {
+					s.res.RuleLines[RuleID(rel, name)] = n
+				}
 				if name == ".PHONY" || strings.HasPrefix(name, ".") || nc[name] || seen[name] || !checkTarget.MatchString(name) && !ci[name] {
 					continue
 				}

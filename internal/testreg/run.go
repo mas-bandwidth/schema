@@ -254,6 +254,26 @@ func (rn *Runner) Plan(instances []Instance) *Plan {
 	return p
 }
 
+// timedOut names a call the driver's own deadline killed: the adapter, the
+// call, the limit the call had and how long it ran (by the runner's clock;
+// with none, the deadline itself), so a timeout never reads as a crash. Each
+// row the call left unreported carries this line by its own name.
+func (rn *Runner) timedOut(ctx context.Context, g group, start time.Time) string {
+	limit := "a deadline"
+	deadline, ok := ctx.Deadline()
+	switch {
+	case ok && rn.Now != nil:
+		limit = "its limit of " + deadline.Sub(start).Round(time.Millisecond).String()
+	case ok:
+		limit = "its deadline " + deadline.UTC().Format(time.RFC3339)
+	}
+	ran := ""
+	if rn.Now != nil {
+		ran = ", after it ran " + rn.clock().Sub(start).Round(time.Millisecond).String()
+	}
+	return fmt.Sprintf("adapter %s timed out: TIMED OUT: the driver killed call %s at %s%s", g.adapter, g.name, limit, ran)
+}
+
 // Run runs the instances and accounts for every one of them.
 func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	plan := rn.Plan(instances)
@@ -281,9 +301,9 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
 		switch {
 		case timedOut && err == nil:
-			err = fmt.Errorf("adapter %s timed out", g.adapter)
+			err = fmt.Errorf("%s", rn.timedOut(ctx, g, start))
 		case timedOut:
-			err = fmt.Errorf("adapter %s timed out: %w", g.adapter, err)
+			err = fmt.Errorf("%s: %w", rn.timedOut(ctx, g, start), err)
 		case err != nil:
 			err = fmt.Errorf("adapter %s crashed: %w", g.adapter, err)
 		}

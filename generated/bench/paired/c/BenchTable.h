@@ -134,7 +134,7 @@ typedef struct bench_table_report_t
        path. */
     uint64_t build_version_remote, build_version_own;
     /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
-       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_unknown carries the
        hash AND NOTHING ELSE, and layout_unsupported carries it too — the
        operator's other answer, a layout this build served and has retired
        (§5.9 #7). Zero on every other path, refusal or read. */
@@ -143,7 +143,7 @@ typedef struct bench_table_report_t
 
 /* THE FORM'S OWN REFUSALS, and the one every form shares: a float whose raw
    bits are a NaN or an infinity (docs/SPEC-TABLES.md §3.3). It takes 21, past
-   the message form's 3..6 and the fixed form's 7..20, so one report reason
+   the message form's 3..6 and the fixed form's 7..20 (layout_unknown takes 22), so one report reason
    names it whichever form a unit carries. */
 enum SCHEMA_BENCH_TABLE_REFUSAL_REASON
 {
@@ -1296,8 +1296,8 @@ enum
     SCHEMA_BENCH_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
     SCHEMA_BENCH_TABLE_PREVIOUS_FORM = 17,           /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
     /* THE BACKWARD-READ REFUSALS (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §4,
-       §6b). A hash this reader's LINEAGE does not hold is layout_newer — ship
-       the reader; a hash the lineage holds BELOW THE FLOOR is
+       §6b). A hash this reader's LINEAGE does not hold is layout_unknown (22,
+       below; layout_newer keeps 18 and is retired); a hash the lineage holds BELOW THE FLOOR is
        layout_unsupported — upgrade the client. They are the operator's two
        distinct answers and both carry the FILE'S hash (§5.9 #7).
 
@@ -1311,7 +1311,13 @@ enum
        string(N)'s used bytes that are not well-formed UTF-8 refuse the read
        by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
-    SCHEMA_BENCH_TABLE_TEXT_ILL_FORMED = 20
+    SCHEMA_BENCH_TABLE_TEXT_ILL_FORMED = 20,
+    /* A HASH THE LINEAGE DOES NOT HOLD (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5,
+       SPEC-TABLES §21.3): nothing in the lineage proves it newer, so step 5's
+       answer is layout_unknown in every leg, carrying THE FILE'S hash and
+       nothing else. layout_newer keeps 18 and no read answers it. This takes
+       22, past the shared non_finite_float's 21, so no value moves. */
+    SCHEMA_BENCH_TABLE_LAYOUT_UNKNOWN = 22
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -1452,7 +1458,7 @@ static SCHEMA_UNUSED bench_table_fixed_entry_t bench_table_fixed_entry_zero( voi
  * A fixed table reads BACKWARD and never forward. A file is matched on the
  * eight bytes of its header's hash against the lineage THE BUILD laid down, and
  * the layout it carries is held to a BYTE COMPARISON against the bytes the lock
- * recorded — never walked. A hash the lineage does not hold is layout_newer; a
+ * recorded — never walked. A hash the lineage does not hold is layout_unknown; a
  * hash it holds below the floor is layout_unsupported. NOTHING PARSES A
  * STRANGER'S LAYOUT, ON ANY PATH (§5.6). */
 
@@ -3528,7 +3534,7 @@ typedef struct bench_table_fixed_known_layout_t
 } bench_table_fixed_known_layout_t;
 
 /* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
-   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
+   entry holds is -1, which LOAD names layout_unknown (§5.3 step 5). */
 static SCHEMA_UNUSED int32_t bench_table_fixed_select( const bench_table_fixed_known_layout_t * known, int32_t count, uint64_t hash )
 {
     int32_t i;

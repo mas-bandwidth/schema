@@ -2618,6 +2618,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.depthWireLoad, mapdemo.depthWireSave);
     case 'mapdemo Docs':
       return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.docsWireLoad, mapdemo.docsWireSave);
+    case 'mapdemo EdgeRow':
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.edgeRowWireLoad, mapdemo.edgeRowWireSave);
     case 'mapdemo Fleet':
       return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.fleetWireLoad, mapdemo.fleetWireSave);
     case 'mapdemo Pairs':

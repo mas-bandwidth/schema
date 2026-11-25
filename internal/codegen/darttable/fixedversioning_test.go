@@ -10,7 +10,7 @@ package darttable
 //	                 of them zero, because an append the reader knows is not an
 //	                 event.
 //	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//	                 `layout_newer` BEFORE any record, reporting THE FILE'S
+//	                 `layout_unknown` BEFORE any record, reporting THE FILE'S
 //	                 HASH and nothing else, with no counter moved and
 //	                 `malformed` false (§5.3's joint answer).
 //
@@ -257,12 +257,12 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     final n = LOAD(values, values.length, data, data.length, plan, report);
     check(n == -1, 'load $pass: the older reader did not refuse the newer writer file: n=$n');
     check(
-      name(report.refused) == 'layout_newer',
-      'load $pass: a hash in no lineage entry owes layout_newer, not ${name(report.refused)}',
+      name(report.refused) == 'layout_unknown',
+      'load $pass: a hash in no lineage entry owes layout_unknown, not ${name(report.refused)}',
     );
     check(
       report.layoutHash == want,
-      'load $pass: layout_newer reports THE FILE hash: got ${report.layoutHash}, want $want',
+      'load $pass: layout_unknown reports THE FILE hash: got ${report.layoutHash}, want $want',
     );
     check(
       report.widened == 0 && report.unknown == 0,
@@ -292,7 +292,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown`. §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -360,14 +360,14 @@ func TestFixedVersioningHash(t *testing.T) {
 		}
 	}
 
-	// hash_unknown: a hash in no lineage refuses layout_newer, reporting the
+	// hash_unknown: a hash in no lineage refuses layout_unknown, reporting the
 	// FILE'S hash and nothing else.
 	t.Run("hash_unknown", func(t *testing.T) {
 		t.Parallel()
 		probe(t, `  final data = File(FILE).readAsBytesSync();
   ByteData.sublistView(data).setUint64(8, 0x0EADBEEFCAFEF00D, Endian.little);
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == -1 && name(report.refused) == 'layout_newer',
+  check(n == -1 && name(report.refused) == 'layout_unknown',
       'hash_unknown: n=$n ${name(report.refused)}');
   check(report.layoutHash == 0x0EADBEEFCAFEF00D, 'hash_unknown reports the file hash');
   check(report.refused != 0, 'hash_unknown is a refusal by name');`)

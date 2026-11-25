@@ -6,8 +6,9 @@
 //   `18` i128 | 16 bytes: the low 64-bit half, then the high half, two's
 //   complement for `18`, little-endian throughout
 //
-// And the clamping contract (docs/SPEC-TABLES.md:7294):
-//   A 128-bit integer clamps to its declared bounds in 128 bits
+// And the bounds contract (docs/FIXED-FORM-ALGORITHM.md §4.6, strict-only):
+//   a 128-bit integer off its declared bounds, compared in 128 bits, REFUSES
+//   the read `out_of_range`
 //
 // And the fixed-form payload (docs/FIXED-FORM-ALGORITHM.md:172):
 //   int128 / uint128 | 16 | the low 64-bit half, then the high
@@ -26,8 +27,8 @@
 // 64-bit half first then the high half (little-endian, two's complement).
 //
 // THE NEGATIVE CONTROL is the wrong wire: a byte flip in the 16-byte flux slot
-// that pushes the value outside the declared range. The clamp pass must count
-// it; restoring the bytes must make the test green again.
+// that pushes the value outside the declared range. The bounds pass must
+// refuse it; restoring the bytes must make the test green again.
 //
 // HOW THIS FILE REACHES THE GENERATED CODE: the same way E6.rs and C10.rs do
 // — by path, with no runtime, the fixed form's modules using none of serialize.
@@ -68,6 +69,9 @@ fn check(ok: bool, what: &str) {
     } else {
         let n = FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         println!("FAIL #{n} - {what}");
+        // A red fails ITS OWN test by name: the summary test below runs in
+        // parallel and cannot be relied on to see it.
+        panic!("FAIL - {what}");
     }
 }
 
@@ -109,7 +113,7 @@ fn vd_signed_128_positive_value_round_trips() {
     row.flux = TableI128(42);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == 42, "VD_signed_128: positive flux round-trips as 42");
-    check(report.oor == 0, "VD_signed_128: no clamping for a value in range");
+    check(!report.refused, "VD_signed_128: a value in range refuses nothing");
 }
 
 // ---- the law: a negative i128 round-trips ----
@@ -121,7 +125,7 @@ fn vd_signed_128_negative_value_round_trips() {
     row.flux = TableI128(-999999999);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == -999999999, "VD_signed_128: negative flux round-trips");
-    check(report.oor == 0, "VD_signed_128: no clamping for a value in range");
+    check(!report.refused, "VD_signed_128: a value in range refuses nothing");
 }
 
 // ---- the law: a value that exercises both halves (nonzero high 64 bits) ----
@@ -135,7 +139,7 @@ fn vd_signed_128_wide_value_round_trips() {
     row.flux = TableI128(expected);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == expected, "VD_signed_128: wide flux round-trips with both halves nonzero");
-    check(report.oor == 0, "VD_signed_128: no clamping for a value in range");
+    check(!report.refused, "VD_signed_128: a value in range refuses nothing");
 }
 
 // ---- the law: the byte encoding is low-half-first (little-endian) ----
@@ -165,24 +169,24 @@ fn vd_signed_128_byte_order_is_little_endian() {
 
 #[test]
 fn vd_signed_128_max_value_round_trips() {
-    println!("VD_signed_128: the maximum declared value round-trips without clamping");
+    println!("VD_signed_128: the maximum declared value round-trips");
     let mut row = BenchMixedRow::default();
     row.flux = TableI128(FLUX_MAX);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == FLUX_MAX, "VD_signed_128: max flux round-trips");
-    check(report.oor == 0, "VD_signed_128: max value is in range, no clamping");
+    check(!report.refused, "VD_signed_128: max value is in range, refuses nothing");
 }
 
 // ---- the law: minimum in-range value round-trips ----
 
 #[test]
 fn vd_signed_128_min_value_round_trips() {
-    println!("VD_signed_128: the minimum declared value round-trips without clamping");
+    println!("VD_signed_128: the minimum declared value round-trips");
     let mut row = BenchMixedRow::default();
     row.flux = TableI128(FLUX_MIN);
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == FLUX_MIN, "VD_signed_128: min flux round-trips");
-    check(report.oor == 0, "VD_signed_128: min value is in range, no clamping");
+    check(!report.refused, "VD_signed_128: min value is in range, refuses nothing");
 }
 
 // ---- the law: zero round-trips (default value) ----
@@ -193,176 +197,83 @@ fn vd_signed_128_zero_round_trips() {
     let row = BenchMixedRow::default();
     let (back, report) = round_trip(&row);
     check(back.value.flux.0 == 0, "VD_signed_128: zero flux round-trips");
-    check(report.oor == 0, "VD_signed_128: zero is in range, no clamping");
+    check(!report.refused, "VD_signed_128: zero is in range, refuses nothing");
 }
 
-// ---- the law: an out-of-range value is clamped on read ----
+// ---- the law: an out-of-range value REFUSES the read ----
+//
+// docs/FIXED-FORM-ALGORITHM.md §4.6, the bounds-pass row: a ranged scalar off
+// its declared range answers `out_of_range`, and the whole read refuses —
+// nothing lands, every row handed in goes back to its declared default
+// (SPEC-TABLES §6.5, strict-only). Until 2026-11-25 these tests asserted the
+// retired clamp-and-count answer through a report field, `oor`, that the
+// report no longer has.
 //
 // The writer's debug_assert rejects out-of-range values, so these tests
-// construct the wire by writing a zero record and patching the flux slot.
+// construct the wire by writing a lawful record and patching the flux slot.
 
-#[test]
-fn vd_signed_128_out_of_range_is_clamped() {
-    println!("VD_signed_128: a value above the max is clamped on read");
+fn file_with_flux_bytes(base: i128, patch: impl FnOnce(&mut [u8])) -> Vec<u8> {
     let measure = fixed_table_fixed_measure(1);
     let mut file = vec![0u8; measure];
-    let row = FixedTableRow { value: BenchMixedRow::default() };
+    let row = FixedTableRow { value: BenchMixedRow { flux: TableI128(base), ..BenchMixedRow::default() } };
     fixed_table_fixed_save(&[row], &mut file).expect("the writer saves the record");
     let body = file_body_offset();
-    let over_max: i128 = FLUX_MAX + 1;
-    file[body + FLUX_BODY_OFFSET..body + FLUX_BODY_OFFSET + FLUX_WIDTH]
-        .copy_from_slice(&over_max.to_le_bytes());
+    patch(&mut file[body + FLUX_BODY_OFFSET..body + FLUX_BODY_OFFSET + FLUX_WIDTH]);
+    file
+}
 
+fn check_refused(what: &str, file: &[u8]) {
+    let mut want = FixedTableRow::default();
+    fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, &mut want, &mut TableFixedReport::default());
     let mut values = [FixedTableRow::default(); 1];
+    values[0].value.flux = TableI128(77);
     let mut plan = [TableFixedEntry::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
-    let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the file");
-    check(n == 1, "VD_signed_128 OVER-MAX: the reader reads one record");
-    check(values[0].value.flux.0 == FLUX_MAX, "VD_signed_128 OVER-MAX: over-range flux is clamped to max");
-    check(report.oor >= 1, "VD_signed_128 OVER-MAX: the clamp counter is incremented");
+    let n = fixed_table_fixed_load(&mut values, file, &mut plan, &mut remap, &mut report);
+    check(n.is_none() && report.refused, &format!("{what}: the read is refused, never clamped and landed"));
+    check(report.reason == TableFixedReason::OutOfRange, &format!("{what}: refused out_of_range"));
+    check(
+        values[0].value.flux.0 == want.value.flux.0,
+        &format!("{what}: the row handed in is back at its declared default"),
+    );
 }
 
 #[test]
-fn vd_signed_128_below_min_is_clamped() {
-    println!("VD_signed_128: a value below the min is clamped on read");
-    let measure = fixed_table_fixed_measure(1);
-    let mut file = vec![0u8; measure];
-    let row = FixedTableRow { value: BenchMixedRow::default() };
-    fixed_table_fixed_save(&[row], &mut file).expect("the writer saves the record");
-    let body = file_body_offset();
-    let below_min: i128 = FLUX_MIN - 1;
-    file[body + FLUX_BODY_OFFSET..body + FLUX_BODY_OFFSET + FLUX_WIDTH]
-        .copy_from_slice(&below_min.to_le_bytes());
+fn vd_signed_128_over_max_refuses() {
+    println!("VD_signed_128: a value above the max refuses the read");
+    let file = file_with_flux_bytes(0, |s| s.copy_from_slice(&(FLUX_MAX + 1).to_le_bytes()));
+    check_refused("VD_signed_128 OVER-MAX", &file);
+}
 
-    let mut values = [FixedTableRow::default(); 1];
-    let mut plan = [TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = TableFixedReport::default();
-    let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the file");
-    check(n == 1, "VD_signed_128 BELOW-MIN: the reader reads one record");
-    check(values[0].value.flux.0 == FLUX_MIN, "VD_signed_128 BELOW-MIN: below-min flux is clamped to min");
-    check(report.oor >= 1, "VD_signed_128 BELOW-MIN: the clamp counter is incremented");
+#[test]
+fn vd_signed_128_below_min_refuses() {
+    println!("VD_signed_128: a value below the min refuses the read");
+    let file = file_with_flux_bytes(0, |s| s.copy_from_slice(&(FLUX_MIN - 1).to_le_bytes()));
+    check_refused("VD_signed_128 BELOW-MIN", &file);
 }
 
 // ---- the negative control: a byte flip in the flux slot ----
 //
-// This is the file-level control: break one byte in the flux slot (push the
-// value outside the declared range), run the test, it must go RED; restore and
-// it must go GREEN. The control runs inside the test binary: we write a lawful
-// file, flip one byte in the flux slot, and the scatter must read a value that
-// the clamp pass rejects.
+// Write a lawful file, flip one byte in the flux slot, and the bounds pass
+// must refuse it; the same write without the flip reads.
 //
 // FLUX_MAX - 100 has high word 0x00000000FFFFFFFF, low word 0xFFFFFFFFFFFFFF9C.
 // Flipping byte 15 (MSB of the high word, 0x00) with XOR 0xFF makes the high
-// word 0xFF000000FFFFFFFF — a negative value below FLUX_MIN — so the clamp
-// brings it to FLUX_MIN, not FLUX_MAX.
+// word 0xFF000000FFFFFFFF — a negative value below FLUX_MIN.
 
 #[test]
-fn vd_signed_128_negative_control_byte_flip_is_clamped() {
-    println!("VD_signed_128 NEGATIVE CONTROL: a byte flip in the flux slot is caught by the clamp");
-    let mut row = BenchMixedRow::default();
-    row.flux = TableI128(FLUX_MAX - 100); // well within range
-    let measure = fixed_table_fixed_measure(1);
-    let mut file = vec![0u8; measure];
-    let row_out = FixedTableRow { value: row };
-    fixed_table_fixed_save(&[row_out], &mut file).expect("the writer saves the record");
-    let body = file_body_offset();
-
-    // Flip the highest byte of the flux slot (byte 15), the MSB of the high
-    // word. The original high word is 0x00000000FFFFFFFF; XOR 0xFF makes it
-    // 0xFF000000FFFFFFFF, which is negative in i128 — below FLUX_MIN.
-    file[body + FLUX_BODY_OFFSET + FLUX_WIDTH - 1] ^= 0xFF;
-
-    let mut values = [FixedTableRow::default(); 1];
-    let mut plan = [TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = TableFixedReport::default();
-    let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the file");
-    check(n == 1, "VD_signed_128 NEGATIVE CONTROL: the reader reads one record");
-    // The byte flip pushed the value below FLUX_MIN; the clamp must fire.
-    check(report.oor >= 1, "VD_signed_128 NEGATIVE CONTROL: byte-flipped flux is clamped");
-    // The clamped value must equal FLUX_MIN (the flip makes it very negative).
-    check(values[0].value.flux.0 == FLUX_MIN, "VD_signed_128 NEGATIVE CONTROL: clamped value is FLUX_MIN");
+fn vd_signed_128_negative_control_byte_flip_refuses() {
+    println!("VD_signed_128 NEGATIVE CONTROL: a byte flip in the flux slot is refused");
+    let file = file_with_flux_bytes(FLUX_MAX - 100, |s| s[FLUX_WIDTH - 1] ^= 0xFF);
+    check_refused("VD_signed_128 NEGATIVE CONTROL", &file);
 
     // ---- RESTORE: same write without the flip must be GREEN ----
-    let mut file_ok = vec![0u8; measure];
-    fixed_table_fixed_save(&[row_out], &mut file_ok).expect("the writer saves the record again");
-    let mut values = [FixedTableRow::default(); 1];
-    let mut plan = [TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = TableFixedReport::default();
-    let n = fixed_table_fixed_load(&mut values, &file_ok, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the restored file");
-    check(n == 1, "VD_signed_128 RESTORE: the reader reads one record");
-    check(values[0].value.flux.0 == FLUX_MAX - 100, "VD_signed_128 RESTORE: the restored flux round-trips");
-    check(report.oor == 0, "VD_signed_128 RESTORE: no clamping on the restored file");
-}
-
-// ---- the negative control (in-binary): a crafted wire that pushes flux above range ----
-//
-// This is the same control the card asks for: break one constant in the
-// generated code (here, we simulate it by constructing a wire that the
-// reader's clamp pass must reject). The test binary carries both the
-// RED and the GREEN; the card's step 4b runs this test, then edits the
-// generated constant, then runs it again to prove it bites.
-
-#[test]
-fn vd_signed_128_negative_control_crafted_wire() {
-    println!("VD_signed_128 NEGATIVE CONTROL: a crafted wire with out-of-range flux");
-    // Write a lawful file, then corrupt the flux slot to carry FLUX_MAX + 1.
     let mut row = BenchMixedRow::default();
-    row.flux = TableI128(0); // zero is in range; the corruption is the control
-    let measure = fixed_table_fixed_measure(1);
-    let mut file = vec![0u8; measure];
-    let row_out = FixedTableRow { value: row };
-    fixed_table_fixed_save(&[row_out], &mut file).expect("the writer saves the record");
-    let body = file_body_offset();
-
-    // Overwrite the flux slot with FLUX_MAX + 1 in little-endian.
-    let over_max: i128 = FLUX_MAX + 1;
-    file[body + FLUX_BODY_OFFSET..body + FLUX_BODY_OFFSET + FLUX_WIDTH]
-        .copy_from_slice(&over_max.to_le_bytes());
-
-    let mut values = [FixedTableRow::default(); 1];
-    let mut plan = [TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = TableFixedReport::default();
-    let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the crafted file");
-    check(n == 1, "VD_signed_128 CRAFTED: the reader reads one record");
-    check(report.oor >= 1, "VD_signed_128 CRAFTED: the out-of-range flux is clamped");
-    check(values[0].value.flux.0 == FLUX_MAX, "VD_signed_128 CRAFTED: the clamped value is FLUX_MAX");
-}
-
-#[test]
-fn vd_signed_128_negative_control_below_min() {
-    println!("VD_signed_128 NEGATIVE CONTROL: a crafted wire with flux below min");
-    let mut row = BenchMixedRow::default();
-    row.flux = TableI128(0);
-    let measure = fixed_table_fixed_measure(1);
-    let mut file = vec![0u8; measure];
-    let row_out = FixedTableRow { value: row };
-    fixed_table_fixed_save(&[row_out], &mut file).expect("the writer saves the record");
-    let body = file_body_offset();
-
-    // Overwrite the flux slot with FLUX_MIN - 1 in little-endian.
-    let below_min: i128 = FLUX_MIN - 1;
-    file[body + FLUX_BODY_OFFSET..body + FLUX_BODY_OFFSET + FLUX_WIDTH]
-        .copy_from_slice(&below_min.to_le_bytes());
-
-    let mut values = [FixedTableRow::default(); 1];
-    let mut plan = [TableFixedEntry::default(); 512];
-    let mut remap = [0u16; 512];
-    let mut report = TableFixedReport::default();
-    let n = fixed_table_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the crafted file");
-    check(n == 1, "VD_signed_128 BELOW-MIN: the reader reads one record");
-    check(report.oor >= 1, "VD_signed_128 BELOW-MIN: the below-min flux is clamped");
-    check(values[0].value.flux.0 == FLUX_MIN, "VD_signed_128 BELOW-MIN: the clamped value is FLUX_MIN");
+    row.flux = TableI128(FLUX_MAX - 100);
+    let (back, report) = round_trip(&row);
+    check(back.value.flux.0 == FLUX_MAX - 100, "VD_signed_128 RESTORE: the restored flux round-trips");
+    check(!report.refused, "VD_signed_128 RESTORE: the restored file refuses nothing");
 }
 
 // ---- the summary ----

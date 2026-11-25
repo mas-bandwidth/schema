@@ -152,6 +152,10 @@ func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) 
 //   - a make target, by a make row whose inputs name its file and target;
 //     the rows of a sharded gate (each sets one *_SHARD var to K/N) share
 //     it: shards 1..N of one var and one N, each once, and no whole row;
+//   - a Go test a make target's recipe runs, by a make-gotest row whose
+//     inputs name its package and test (that test alone, never its whole
+//     package), and the target itself, which the make-gotest rows of one
+//     target share;
 //   - a negative control, by a plant row whose inputs name its make target
 //     and its group in make/negative-controls.json;
 //   - a data case that is a pinned output, by a golden row whose inputs name
@@ -181,6 +185,9 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
 	readCase := map[string]string{}   // a data case a make row reads, by the first such row
 	var readOrder []string
+	// a make target the make-gotest rows hold: its rows share it, and any
+	// other row that runs it is a second run
+	makeGoTestTarget := map[string]bool{}
 	// a sharded make target: its shard var and N, and the row of each K
 	type sharding struct {
 		var_, of string
@@ -306,6 +313,25 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					readCase[id] = t.Key
 					readOrder = append(readOrder, id)
 				}
+			}
+		case "make-gotest":
+			// one Go test a make target's recipe runs, read by name from the
+			// target's go test -json events: the row claims that test and no
+			// other (never its package), and the target, which every row of
+			// it shares as one make run
+			var in struct{ File, Target, Package, Test string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" || in.Package == "" || in.Test == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make-gotest row without a file, a target, a package and a test in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			target := Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}.ID()
+			switch prev, held := out[target]; {
+			case !held:
+				out[target] = t.Key
+				makeGoTestTarget[target] = true
+			case !makeGoTestTarget[target]:
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs make %s, which %s already runs", reg.Path, t.Line, t.Key, in.Target, prev))
 			}
 		case "plant":
 			var in struct{ Make, Group string }
@@ -772,6 +798,7 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	covered, p := CoveredIn(res, reg)
 	problems = append(problems, p...)
+	problems = append(problems, MakeSourceProblems(res, reg)...)
 	runs := Runs(res, reg)
 	exists := map[string]bool{}
 	goTests := map[string]Item{}
@@ -979,6 +1006,37 @@ func DroppedMakeTargets(before, res *Result) []string {
 			continue
 		}
 		problems = append(problems, fmt.Sprintf("make target %s (%s) is a test on main and no longer one here, though its rule stands: give it its registry row back, or remove the rule", it.Name, it.Dir))
+	}
+	return problems
+}
+
+// MakeSourceProblems holds each make row's source to the line its target's
+// rule is written on in the make file it names: the first line a rule of
+// that name starts on, the line the extract gives the target. A row whose
+// source names no line, another line, or a file other than its own is stale,
+// and is named with the line to set. A row naming a per-language target
+// ({lang}) or a rule no make file writes is CoveredIn's to name.
+func MakeSourceProblems(res *Result, reg *testreg.Registry) []string {
+	var problems []string
+	for _, t := range reg.Tests {
+		if t.Adapter != "make" {
+			continue
+		}
+		var in struct {
+			File   string `json:"file"`
+			Target string `json:"target"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil || in.File == "" || in.Target == "" || strings.Contains(in.Target, testreg.LangPlaceholder) {
+			continue
+		}
+		line, ok := res.RuleLines[RuleID(in.File, in.Target)]
+		if !ok {
+			continue
+		}
+		want := fmt.Sprintf("%s:%d", in.File, line)
+		if t.Source != want {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s source is %q, and %s is written at %s: set source to %q", reg.Path, t.Line, t.Key, t.Source, in.Target, want, want))
+		}
 	}
 	return problems
 }

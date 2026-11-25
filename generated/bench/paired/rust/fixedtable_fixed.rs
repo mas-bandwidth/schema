@@ -301,7 +301,7 @@ pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
 
 /// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
 /// a file is `layout_unsupported` — upgrade the client; outside the lineage
-/// altogether it is `layout_newer` — ship the reader. A retired entry stays
+/// altogether it is `layout_unknown`. A retired entry stays
 /// in the lineage forever, which is what keeps the two answers distinct.
 pub const FIXED_TABLE_FIXED_FLOOR: usize = 0;
 /// THE INDEX OF THIS BUILD'S OWN LAYOUT, which takes the IDENTITY plan.
@@ -367,7 +367,7 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// Returns the records read, or None on a refusal `report` names.
 ///
 /// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
-/// meets damage anywhere answers None with `malformed` set, and every record
+/// meets damage anywhere answers None, refused `wire_damaged`, and every record
 /// in `values` goes back to its declared defaults, so nothing the read
 /// decoded before or after the damage is a value to use.
 ///
@@ -398,9 +398,11 @@ fn fixed_table_fixed_load_records(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
+    // FRAMING DAMAGE IS A REFUSAL BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3,
+    // the condition table): this form's report has no malformed flag, so no
+    // first byte at all is `truncated`.
     if data.is_empty() {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::Truncated);
     }
     // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
     // the registry is ordered, so a byte this reader does not carry is named
@@ -415,14 +417,15 @@ fn fixed_table_fixed_load_records(
             _ => TableFixedReason::NewerForm,         // a byte no form defines
         });
     }
+    // FEWER THAN 20 BYTES — the 16-byte header and the layout's length word —
+    // is `truncated` (§5.3 step 2), the form byte having already answered.
     if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::Truncated);
     }
-    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
+    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3 step 2):
+    // `reserved_not_zero`.
     if data[1..TABLE_FIXED_HASH_AT].iter().any(|&b| b != 0) {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::ReservedNotZero);
     }
     let block_bytes = u32::from_le_bytes(
         data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
@@ -444,11 +447,12 @@ fn fixed_table_fixed_load_records(
     // fixed table reads BACKWARD and never forward: the hash the header
     // carries is TAKEN AS GIVEN — the definitions digest is not on the wire,
     // so the number cannot be re-derived from a file — and it is looked up in
-    // the lineage the BUILD laid down. A hash no entry holds is a writer ahead
-    // of this reader, and there is nothing to try.
+    // the lineage the BUILD laid down. A hash no entry holds is `layout_unknown`
+    // (§5.3 step 5, SPEC-TABLES §21.3): nothing in the lineage proves it newer,
+    // and `layout_newer` is retired. There is nothing to try.
     let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
-        // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
-        return report.refuse_layout(TableFixedReason::LayoutNewer, hash);
+        // THE FILE'S HASH, AND NOTHING ELSE (§5.9 #7).
+        return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);
     };
     // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot
     // fire: a comparison no value satisfies is not emitted, for the same
@@ -480,11 +484,11 @@ fn fixed_table_fixed_load_records(
     // the caller's slice stays in the signature as the capacity it always was.
     let _ = remap;
     // A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (§5.3 step 9, §22.6):
-    // a header and a layout followed by no record is truncation, at any
-    // capacity. A record size of 8 or less, or a ragged tail, is the same.
+    // a header and a layout followed by no record is `truncated`, at any
+    // capacity. A record size of 8 or less, or a ragged tail, is the same
+    // refusal by the same name (§5.3 step 9, the condition table).
     if rest.is_empty() || record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
-        report.damaged = true;
-        return None;
+        return report.refuse(TableFixedReason::Truncated);
     }
     let n = rest.len() / record_bytes;
     if n > values.len() {
@@ -493,13 +497,12 @@ fn fixed_table_fixed_load_records(
     // THE DEAD-BYTE CHECK PASS (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
     // §5.3 step 11; docs/rulings.json fixed-dead-bytes-are-zero): every byte
     // no live value covers is zero, and a non-zero one refuses the whole load
-    // BEFORE any record lands. An absent optional's payload, a counted array's
+    // BEFORE any record lands, as wire_damaged. An absent optional's payload, a counted array's
     // slots past its count, a text's or bytes' units past its length, and an
     // inactive union arm are the four dead regions.
     for k in 0..n {
         if fixed_table_fixed_dead(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {
-            report.damaged = true;
-            return None;
+            return report.refuse(TableFixedReason::WireDamaged);
         }
     }
     // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
@@ -523,12 +526,17 @@ fn fixed_table_fixed_load_records(
             let z = h.size as usize;
             image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
         }
-        table_fixed_run(entries, guards, table, &record[8..], &mut image, report);
+        if !table_fixed_run(entries, guards, table, &record[8..], &mut image, report) {
+            report.widened = widened_before;
+            return report.refuse(TableFixedReason::WireDamaged);
+        }
         fixed_table_fixed_scatter(&image, &mut values[k], report);
-        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than
-        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.
-        if report.damaged {
-            return None;
+        // DAMAGE REFUSES THE WHOLE LOAD BY NAME: a bool or present byte other
+        // than 0 or 1 on live data, or a plan reach past the record
+        // (FIXED-FORM-ALGORITHM §4.5, §5.3); the caller resets.
+        if report.wire_damage != 0 {
+            report.widened = widened_before;
+            return report.refuse(TableFixedReason::WireDamaged);
         }
         // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
         // FIRST, before the bounds pass, over the storage the run just wrote,
