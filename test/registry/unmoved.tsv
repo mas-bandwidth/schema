@@ -22,7 +22,7 @@ go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's a
 go-test	internal/codegen/elixirtable	273	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/goose	10	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/goosetable	176	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	internal/codegen/gotable	378	L5	per-language (go) Go tests: go's adapter runs them when their families move in
+go-test	internal/codegen/gotable	375	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/gotable/fuzzunit	35	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	internal/codegen/java	19	L5	per-language (java) Go tests: java's adapter runs them when their families move in
 go-test	internal/codegen/javatable	224	L5	per-language (java) Go tests: java's adapter runs them when their families move in

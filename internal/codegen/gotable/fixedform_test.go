@@ -2,13 +2,11 @@ package gotable
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -506,36 +504,6 @@ func TestHashCheckedLast(t *testing.T) {
 	}
 }
 `)
-}
-
-func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
-	t.Helper()
-	u := unitFrom(t, schema)
-	packet, err := golang.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(out, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range packet {
-		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for name, data := range tables {
-		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	mod := fmt.Sprintf("module %s\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\nreplace github.com/mas-bandwidth/serialize.go/v2 => %q\n", pkg, runtime)
-	if err := os.WriteFile(filepath.Join(out, "go.mod"), []byte(mod), 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // TestFixedTableSaveAndLoadAreFormThree is the runtime half: a DECLARED fixed
