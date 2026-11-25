@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 656. Language-free tests: 2902.
+Unit tests every language answers: 687. Language-free tests: 2865.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -431,7 +431,7 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.arm-init.union-read-uses-declared-initial-values` | the generated union read constructs a fresh payload with the same constructor the backend emits for that payload type, and never calls a constructor that does not exist | `inputs.tests` (181 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/c/arm_init_test.go:11` |
-| `L.unit.codegen.arm-init.union-selection-initializes-construction-defaults` | selecting a union arm initialises the arm's construction defaults in generated source | `inputs.tests` (209 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/java/arm_init_test.go:124` |
+| `L.unit.codegen.arm-init.union-selection-initializes-construction-defaults` | selecting a union arm initialises the arm's construction defaults in generated source | `inputs.tests` (313 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/java/arm_init_test.go:124` |
 
 #### `codegen` family `armmin`, 1 test
 
@@ -451,11 +451,12 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.unit.codegen.blobref-name.blob-ref-name` | a schema type or table named like the generated blob reference class is refused by name. | `tests: {"python":{"package":"./internal/codegen/pythontable","test":"TestPythonBlobRefName"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/pythontable/blobref_name_test.go:10` |
 
-#### `codegen` family `block-range-limits`, 1 test
+#### `codegen` family `block-range-limits`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.block-range-limits.block-range-checks-elide-storage-limits` | generated block range checks leave out comparisons against the storage type's own limits | `inputs.tests` (193 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/block_range_limits_test.go:19` |
+| `L.unit.codegen.block-range-limits.float-range-ends-at-field-width` | the generated block range check holds a float32 field against range ends spelled at float32 width, never as double ends, so a max of 0.1 admits the float32 0.1 | `inputs.tests` (207 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/block_range_limits_test.go:53` |
 
 #### `codegen` family `blockbuild`, 1 test
 
@@ -878,6 +879,13 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.unit.codegen.elixir-specialized-runtime.variable-runtime-carries-only-clauses-the-unit-can-reach` | the variable-form runtime carries only the clauses its unit can reach, so an empty uncarried list and a unit with no extent emit without those refusals and walk | `inputs.tests` (117 bytes, held in the registry row's `inputs.tests`) | the elixir Go test for the case (inputs.tests) passes | `internal/codegen/elixirtable/specialized_runtime_test.go:21` |
 
+#### `codegen` family `enum-surface`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.codegen.enum-surface.extent-is-max` | every declared enum and every union's tag enum exports its extent as Max | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumExtentEmitted"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/golang_test.go:87` |
+| `L.unit.codegen.enum-surface.no-enum-count` | a generated enum exports its variant count as its Max and exports no Count | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumDeclaredCountEmitted"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/golang_test.go:164` |
+
 #### `codegen` family `expr`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -1103,6 +1111,24 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.fixedwide.fixed-form128-bit-leaves` | int128, uint128 and fixed(112,16) leaves of a fixed record occupy sixteen bytes low half first, match the reference bytes and load back | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/fixedwide_test.go:25` |
+
+#### `codegen` family `flags-surface`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.codegen.flags-surface.count-and-wire-bits` | a four-variant flags exports Count as 4 and spends exactly 4 wire bits on write and read | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestFlagsCountAndWireBits"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/golang_test.go:363` |
+
+#### `codegen` family `flat-fallback`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.codegen.flat-fallback.re-emits-items-not-pieces` | a packed run that falls back to the per-field form re-emits its items, never its pieces: a \[2\]float64 field emits one element loop per direction, and a nested struct split by the run cap names its fields only through the nested value | `inputs.tests` (185 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/csharp/csharp_test.go:67` |
+
+#### `codegen` family `float-const`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.codegen.float-const.bare-float-const-exports-float64` | a bare float const is exported as the same float64-typed constant the explicit float64 annotation exports | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestBareFloatConstExportsTypedFloat64"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/golang_test.go:56` |
 
 #### `codegen` family `float32-default`, 1 test
 
@@ -1852,11 +1878,10 @@ generated source compiles and is clean.
 | `L.unit.codegen.ruby-fixedchunk.fixed-literal-chunks-long-arrays` | A long array literal in generated fixed source is chunked. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/fixedchunk_test.go:13` |
 | `L.unit.codegen.ruby-fixedchunk.fixed-literal-chunks-nested-long-arrays` | A long array nested inside a hash inside an array in generated fixed source is chunked at every level that is long. | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/rubytable/fixedchunk_test.go:52` |
 
-#### `codegen` family `rulings-r2-r5-r9`, 3 tests
+#### `codegen` family `rulings-r2-r5-r9`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.unit.codegen.rulings-r2-r5-r9.ruling-r2-optional-into-bare-refuses-kind-mismatch` | the emitted runtime refuses a kind mismatch when an optional value is read into a bare field | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/rulings_r2_r5_r9_test.go:60` |
 | `L.unit.codegen.rulings-r2-r5-r9.ruling-r5-load-measure-parts-emitted` | a variable root emits a load-measure that reports data and attribution parts | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestRulingR5LoadMeasurePartsEmittedGo"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/rulings_r2_r5_r9_test.go:78` |
 | `L.unit.codegen.rulings-r2-r5-r9.ruling-r9-max-bytes-zero-is-not-the-default` | the announcement byte bound is the caller max bytes alone and zero is not the default | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/rulings_r2_r5_r9_test.go:86` |
 
@@ -1974,6 +1999,12 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.trailer.table-ids-write-bulk-properties` | the emitted bulk writer of the table-ids block checks capacity once, copies ids in bulk with explicit little-endian handling, stores the entry count at the tail and advances the offset without a gap | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestTableIdsWriteBulkProperties"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cpptable/trailer_test.go:10` |
+
+#### `codegen` family `union-surface`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.codegen.union-surface.surface-emitted` | a union exports its tag enum with Max, its value type, its write and read entry points and its max-bits constant | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestUnionSurfaceEmitted"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/golang_test.go:264` |
 
 #### `codegen` family `unity-misc`, 4 tests
 
@@ -2121,12 +2152,11 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.unit.codegen.write-asserts.packet-write-asserts-rows8-and10` | The emitted packet write asserts a string is well-formed with no zero byte and a compressed float is finite and inside its range. | `tests: {"unity":{"package":"./internal/codegen/unity","test":"TestUnityPacketWriteAssertsRows8And10"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unity/write_asserts_test.go:16` |
 
-#### `codegen` family `write-text`, 2 tests
+#### `codegen` family `write-text`, 1 test
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.codegen.write-text.packet-write-validates-string-content` | The emitted packet writer validates a string's used bytes: no zero byte and well-formed UTF-8. | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/dart/write_text_test.go:12` |
-| `L.unit.codegen.write-text.packet-writers-check-string-text` | The emitted packet writers check a string's used bytes for well-formed text and refuse an off-contract value. | `tests: {"js":{"package":"./internal/codegen/js","test":"TestPacketWritersCheckStringText"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/js/write_text_test.go:15` |
 
 #### `codegen` family `writerefusal-emit`, 2 tests
 
@@ -2448,6 +2478,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.unit.plant.cpp-discard-controls.discard-controls-current-names-negative-control` | planting a retired spelling in the real recipe, emitter, gate and manifest makes the name gate flag each plant | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/discard_controls_test.go:220` |
 
+#### `plant` family `cpp-standalone-headers`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.plant.cpp-standalone-headers.sweep-count-fires` | the cpp Go test TestStandaloneSweepCountFires passes: the C++ standalone-header sweep's own unit count check fires on a lost unit | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestStandaloneSweepCountFires"}}` | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/standalone_headers_test.go:147` |
+
 #### `plant` family `dart-byteorder`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2623,6 +2659,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.unit.plant.unboundeddescriptor.unbounded-descriptor-check-catches-a-wrong-column` | a descriptor row for unbounded containers that loses the unbounded tell or carries a wrong bound is refused and the field is named | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/unboundeddescriptor_test.go:62` |
 
+#### `plant` family `union-align-bytes`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.plant.union-align-bytes.union-then-fixed-byte-array-wire-negative-control` | restoring the pre-fix alignment analysis, which treats a fixed byte array after a union as aligned, turns the union-then-byte-array wire check red | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/csharp/unionbytes_test.go:91` |
+
 #### `plant` family `variableclass-strict`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -2652,6 +2694,79 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.unit.plant.wirefuzz-repeated-id.wire-fuzz-repeated-field-id-negative-control` | Removing the duplicate refusals from the emitted walk makes the repeated-field check fail. | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/wirefuzz_repeated_id_test.go:124` |
+
+### Type `compiler`
+
+the compiler or IR itself (parse, check, plan), with no generated language involved.
+
+#### `compiler` family `c-format`, 6 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.c-format.format-is-idempotent` | the c Go test TestFormatIsIdempotent passes: the C source formatter leaves house-layout text unchanged | `tests: {"c":{"package":"./internal/codegen/cfmt","test":"TestFormatIsIdempotent"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cfmt/format_test.go:39` |
+| `L.unit.compiler.c-format.format-keeps-unary-operators-apart` | the c Go test TestFormatKeepsUnaryOperatorsApart passes: the C source formatter keeps adjacent unary operators two tokens | `tests: {"c":{"package":"./internal/codegen/cfmt","test":"TestFormatKeepsUnaryOperatorsApart"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cfmt/format_test.go:102` |
+| `L.unit.compiler.c-format.format-leaves-alone-what-it-cannot-read` | the c Go test TestFormatLeavesAloneWhatItCannotRead passes: the C source formatter leaves unparseable C text unchanged | `tests: {"c":{"package":"./internal/codegen/cfmt","test":"TestFormatLeavesAloneWhatItCannotRead"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cfmt/format_test.go:59` |
+| `L.unit.compiler.c-format.format-moves-whitespace-only` | the c Go test TestFormatMovesWhitespaceOnly passes: the C source formatter changes whitespace and no token | `tests: {"c":{"package":"./internal/codegen/cfmt","test":"TestFormatMovesWhitespaceOnly"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cfmt/format_test.go:48` |
+| `L.unit.compiler.c-format.format-writes-the-house-layout` | the c Go test TestFormatWritesTheHouseLayout passes: the C source formatter writes the pinned clang-format house layout | `tests: {"c":{"package":"./internal/codegen/cfmt","test":"TestFormatWritesTheHouseLayout"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cfmt/format_test.go:22` |
+| `L.unit.compiler.c-format.same-tokens-refuses-a-changed-stream` | the c Go test TestSameTokensRefusesAChangedStream passes: the C source formatter's token-stream guard refuses changed output | `tests: {"c":{"package":"./internal/codegen/cfmt","test":"TestSameTokensRefusesAChangedStream"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cfmt/format_test.go:79` |
+
+#### `compiler` family `c-header-guard`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.c-header-guard.guard-spelling` | the c Go test TestHeaderGuardSpelling passes: the C header include guard spelling and its byte escapes | `tests: {"c":{"package":"./internal/codegen/ccommon","test":"TestHeaderGuardSpelling"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/ccommon/guard_test.go:7` |
+| `L.unit.compiler.c-header-guard.guards-distinct` | the c Go test TestHeaderGuardDistinct passes: C header include guard spellings stay distinct valid C identifiers | `tests: {"c":{"package":"./internal/codegen/ccommon","test":"TestHeaderGuardDistinct"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/ccommon/guard_test.go:26` |
+
+#### `compiler` family `c-qualify`, 7 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.c-qualify.escaped-leaves-the-platform-alone` | the c Go test TestQualifyEscapedLeavesThePlatformAlone passes: C name escaping leaves the platform's uint8\_t, memcpy and NULL alone | `inputs.tests` (97 bytes, held in the registry row's `inputs.tests`) | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/escape_test.go:15` |
+| `L.unit.compiler.c-qualify.leaves-feature-test-macros` | the c Go test TestQualifyLeavesFeatureTestMacros passes: C name qualification leaves the C library's feature-test macros unqualified | `tests: {"c":{"package":"./internal/codegen/cqualify","test":"TestQualifyLeavesFeatureTestMacros"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:179` |
+| `L.unit.compiler.c-qualify.one-map-across-files` | the c Go test TestQualifyIsOneMapAcrossFiles passes: C name qualification respells a name across every header and .c file | `tests: {"c":{"package":"./internal/codegen/cqualify","test":"TestQualifyIsOneMapAcrossFiles"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:104` |
+| `L.unit.compiler.c-qualify.qualifies-a-feature-macro-a-header-declares` | the c Go test TestQualifyQualifiesAFeatureMacroAHeaderDeclares passes: C name qualification qualifies a feature-test macro a schema header declares | `inputs.tests` (105 bytes, held in the registry row's `inputs.tests`) | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:194` |
+| `L.unit.compiler.c-qualify.refuses-a-collision` | the c Go test TestQualifyRefusesACollision passes: C name qualification refuses two names that qualify to one symbol | `tests: {"c":{"package":"./internal/codegen/cqualify","test":"TestQualifyRefusesACollision"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:120` |
+| `L.unit.compiler.c-qualify.spellings` | the c Go test TestQualifySpellings passes: the C package-prefixed spelling rules for types, functions and macros | `tests: {"c":{"package":"./internal/codegen/cqualify","test":"TestQualifySpellings"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:61` |
+| `L.unit.compiler.c-qualify.two-units-share-only-the-runtime` | the c Go test TestTwoUnitsShareOnlyTheRuntime passes: two C packages' qualified names share nothing but the runtime header | `tests: {"c":{"package":"./internal/codegen/cqualify","test":"TestTwoUnitsShareOnlyTheRuntime"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:132` |
+
+#### `compiler` family `c-runtime-header`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.c-runtime-header.version-tracks-its-text` | the c Go test TestRuntimeHeaderVersionTracksItsText passes: the shared C runtime header's version follows its own text | `tests: {"c":{"package":"./internal/codegen/cqualify","test":"TestRuntimeHeaderVersionTracksItsText"}}` | the c Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cqualify_test.go:159` |
+
+#### `compiler` family `cpp-qualify`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.cpp-qualify.keeps-user-and-platform-apart` | the cpp Go test TestQualifyCppKeepsUserAndPlatformApart passes: C++ name qualification keeps user names apart from platform names and macros | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cqualify/cpp_test.go:27` |
+
+#### `compiler` family `go-godoc`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.go-godoc.on-every-export` | the go Go test TestGodocOnEveryExport passes: Go godoc comment on every exported generated identifier | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGodocOnEveryExport"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:143` |
+
+#### `compiler` family `go-initialisms`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.go-initialisms.on-members` | the go Go test TestGoInitialismsOnMembers passes: Go initialism spelling of generated member names | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoInitialismsOnMembers"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:126` |
+| `L.unit.compiler.go-initialisms.on-top-level-names` | the go Go test TestGoInitialismsOnTopLevelNames passes: Go initialism spelling of generated top-level names | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoInitialismsOnTopLevelNames"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:244` |
+
+#### `compiler` family `go-stringer`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.go-stringer.enum-and-flags-name-methods` | the go Go test TestEnumAndFlagsNameMethods passes: Go String methods on generated enums, union tags and flags | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumAndFlagsNameMethods"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:188` |
+
+#### `compiler` family `go-tidy`, 3 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.unit.compiler.go-tidy.drops-the-noise` | the go Go test TestTidyDropsTheNoise passes: the Go source tidy pass drops redundant locals, parentheses and conversions | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestTidyDropsTheNoise"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:92` |
+| `L.unit.compiler.go-tidy.hoist-renames-only-what-collides` | the go Go test TestHoistRenamesOnlyWhatCollides passes: the Go source tidy pass's block-local renaming | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestHoistRenamesOnlyWhatCollides"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:206` |
+| `L.unit.compiler.go-tidy.leaves-no-bare-blocks` | the go Go test TestTidyLeavesNoBareBlocks passes: the Go source tidy pass leaves no bare blocks | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestTidyLeavesNoBareBlocks"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/tidy_test.go:61` |
 
 ### Type `bench`
 
@@ -2937,22 +3052,6 @@ memory, allocation and depth limits are held.
 
 Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
-### Type `codegen`
-
-generated source compiles and is clean.
-
-#### `codegen` family `cpptable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.codegen.cpptable.cpp-block-float-range-ends-are-held-at-the-field-width` | `gotest` | Go test TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` | the Go test passes | `internal/codegen/cpptable/block_range_limits_test.go:65` |
-
-#### `codegen` family `ctable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.codegen.ctable.c-block-float-range-ends-are-held-at-the-field-width` | `gotest` | Go test TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth` | the Go test passes | `internal/codegen/ctable/block_range_limits_test.go:53` |
-
 ### Type `fuzz`
 
 seeded mutations.
@@ -2971,16 +3070,6 @@ seeded mutations.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.fuzz.tabletext.fuzz-read-text` | `gotest` | Go test FuzzReadText in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: FuzzReadText` | the Go test passes | `internal/tabletext/text_test.go:397` |
-
-### Type `plant`
-
-a negative control: a named test run against a deliberately broken build must come out red.
-
-#### `plant` family `cpptable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.plant.cpptable.standalone-sweep-count-fires` | `gotest` | Go test TestStandaloneSweepCountFires in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestStandaloneSweepCountFires` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:147` |
 
 ### Type `compiler`
 
@@ -3189,65 +3278,6 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.cmd-schema.split-wire-files-refuses-a-misspelled-schema-extension` | `gotest` | Go test TestSplitWireFilesRefusesAMisspelledSchemaExtension in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestSplitWireFilesRefusesAMisspelledSchemaExtension` | the Go test passes | `cmd/schema/checkexit_test.go:39` |
 | `none.unit.compiler.cmd-schema.stale-cleanup-never-removes-what-this-run-wrote` | `gotest` | Go test TestStaleCleanupNeverRemovesWhatThisRunWrote in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestStaleCleanupNeverRemovesWhatThisRunWrote` | the Go test passes | `cmd/schema/generatedspelling_test.go:294` |
 | `none.unit.compiler.cmd-schema.wire-form-lines-report-a-refusal` | `gotest` | Go test TestWireFormLinesReportARefusal in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestWireFormLinesReportARefusal` | the Go test passes | `cmd/schema/checkexit_test.go:12` |
-
-#### `compiler` family `codegen-ccommon`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.compiler.codegen-ccommon.header-guard-distinct` | `gotest` | Go test TestHeaderGuardDistinct in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestHeaderGuardDistinct` | the Go test passes | `internal/codegen/ccommon/guard_test.go:26` |
-| `none.unit.compiler.codegen-ccommon.header-guard-spelling` | `gotest` | Go test TestHeaderGuardSpelling in ./internal/codegen/ccommon | `package: ./internal/codegen/ccommon`<br>`test: TestHeaderGuardSpelling` | the Go test passes | `internal/codegen/ccommon/guard_test.go:7` |
-
-#### `compiler` family `codegen-cfmt`, 6 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.compiler.codegen-cfmt.format-is-idempotent` | `gotest` | Go test TestFormatIsIdempotent in ./internal/codegen/cfmt | `package: ./internal/codegen/cfmt`<br>`test: TestFormatIsIdempotent` | the Go test passes | `internal/codegen/cfmt/format_test.go:39` |
-| `none.unit.compiler.codegen-cfmt.format-keeps-unary-operators-apart` | `gotest` | Go test TestFormatKeepsUnaryOperatorsApart in ./internal/codegen/cfmt | `package: ./internal/codegen/cfmt`<br>`test: TestFormatKeepsUnaryOperatorsApart` | the Go test passes | `internal/codegen/cfmt/format_test.go:102` |
-| `none.unit.compiler.codegen-cfmt.format-leaves-alone-what-it-cannot-read` | `gotest` | Go test TestFormatLeavesAloneWhatItCannotRead in ./internal/codegen/cfmt | `package: ./internal/codegen/cfmt`<br>`test: TestFormatLeavesAloneWhatItCannotRead` | the Go test passes | `internal/codegen/cfmt/format_test.go:59` |
-| `none.unit.compiler.codegen-cfmt.format-moves-whitespace-only` | `gotest` | Go test TestFormatMovesWhitespaceOnly in ./internal/codegen/cfmt | `package: ./internal/codegen/cfmt`<br>`test: TestFormatMovesWhitespaceOnly` | the Go test passes | `internal/codegen/cfmt/format_test.go:48` |
-| `none.unit.compiler.codegen-cfmt.format-writes-the-house-layout` | `gotest` | Go test TestFormatWritesTheHouseLayout in ./internal/codegen/cfmt | `package: ./internal/codegen/cfmt`<br>`test: TestFormatWritesTheHouseLayout` | the Go test passes | `internal/codegen/cfmt/format_test.go:22` |
-| `none.unit.compiler.codegen-cfmt.same-tokens-refuses-a-changed-stream` | `gotest` | Go test TestSameTokensRefusesAChangedStream in ./internal/codegen/cfmt | `package: ./internal/codegen/cfmt`<br>`test: TestSameTokensRefusesAChangedStream` | the Go test passes | `internal/codegen/cfmt/format_test.go:79` |
-
-#### `compiler` family `codegen-cqualify`, 9 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.compiler.codegen-cqualify.qualify-cpp-keeps-user-and-platform-apart` | `gotest` | Go test TestQualifyCppKeepsUserAndPlatformApart in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifyCppKeepsUserAndPlatformApart` | the Go test passes | `internal/codegen/cqualify/cpp_test.go:27` |
-| `none.unit.compiler.codegen-cqualify.qualify-escaped-leaves-the-platform-alone` | `gotest` | Go test TestQualifyEscapedLeavesThePlatformAlone in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifyEscapedLeavesThePlatformAlone` | the Go test passes | `internal/codegen/cqualify/escape_test.go:15` |
-| `none.unit.compiler.codegen-cqualify.qualify-is-one-map-across-files` | `gotest` | Go test TestQualifyIsOneMapAcrossFiles in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifyIsOneMapAcrossFiles` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:104` |
-| `none.unit.compiler.codegen-cqualify.qualify-leaves-feature-test-macros` | `gotest` | Go test TestQualifyLeavesFeatureTestMacros in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifyLeavesFeatureTestMacros` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:179` |
-| `none.unit.compiler.codegen-cqualify.qualify-qualifies-a-feature-macro-a-header-declares` | `gotest` | Go test TestQualifyQualifiesAFeatureMacroAHeaderDeclares in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifyQualifiesAFeatureMacroAHeaderDeclares` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:194` |
-| `none.unit.compiler.codegen-cqualify.qualify-refuses-a-collision` | `gotest` | Go test TestQualifyRefusesACollision in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifyRefusesACollision` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:120` |
-| `none.unit.compiler.codegen-cqualify.qualify-spellings` | `gotest` | Go test TestQualifySpellings in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestQualifySpellings` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:61` |
-| `none.unit.compiler.codegen-cqualify.runtime-header-version-tracks-its-text` | `gotest` | Go test TestRuntimeHeaderVersionTracksItsText in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestRuntimeHeaderVersionTracksItsText` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:159` |
-| `none.unit.compiler.codegen-cqualify.two-units-share-only-the-runtime` | `gotest` | Go test TestTwoUnitsShareOnlyTheRuntime in ./internal/codegen/cqualify | `package: ./internal/codegen/cqualify`<br>`test: TestTwoUnitsShareOnlyTheRuntime` | the Go test passes | `internal/codegen/cqualify/cqualify_test.go:132` |
-
-#### `compiler` family `codegen-csharp`, 3 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.compiler.codegen-csharp.c-sharp-union-then-fixed-byte-array-wire-negative-control` | `gotest` | Go test TestCSharpUnionThenFixedByteArrayWireNegativeControl in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpUnionThenFixedByteArrayWireNegativeControl` | the Go test passes | `internal/codegen/csharp/unionbytes_test.go:91` |
-| `none.unit.compiler.codegen-csharp.flat-fallback-re-emits-items-not-pieces` | `gotest` | Go test TestFlatFallbackReEmitsItemsNotPieces in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestFlatFallbackReEmitsItemsNotPieces` | the Go test passes | `internal/codegen/csharp/csharp_test.go:67` |
-| `none.unit.compiler.codegen-csharp.union-selection-initializes-construction-defaults` | `gotest` | Go test TestUnionSelectionInitializesConstructionDefaults in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestUnionSelectionInitializesConstructionDefaults` | the Go test passes | `internal/codegen/csharp/arm_init_test.go:124` |
-
-#### `compiler` family `codegen-golang`, 14 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.compiler.codegen-golang.bare-float-const-exports-typed-float64` | `gotest` | Go test TestBareFloatConstExportsTypedFloat64 in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestBareFloatConstExportsTypedFloat64` | the Go test passes | `internal/codegen/golang/golang_test.go:56` |
-| `none.unit.compiler.codegen-golang.enum-and-flags-name-methods` | `gotest` | Go test TestEnumAndFlagsNameMethods in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestEnumAndFlagsNameMethods` | the Go test passes | `internal/codegen/golang/tidy_test.go:188` |
-| `none.unit.compiler.codegen-golang.enum-declared-count-emitted` | `gotest` | Go test TestEnumDeclaredCountEmitted in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestEnumDeclaredCountEmitted` | the Go test passes | `internal/codegen/golang/golang_test.go:164` |
-| `none.unit.compiler.codegen-golang.enum-extent-emitted` | `gotest` | Go test TestEnumExtentEmitted in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestEnumExtentEmitted` | the Go test passes | `internal/codegen/golang/golang_test.go:87` |
-| `none.unit.compiler.codegen-golang.flags-count-and-wire-bits` | `gotest` | Go test TestFlagsCountAndWireBits in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestFlagsCountAndWireBits` | the Go test passes | `internal/codegen/golang/golang_test.go:363` |
-| `none.unit.compiler.codegen-golang.flat-fallback-re-emits-items-not-pieces` | `gotest` | Go test TestFlatFallbackReEmitsItemsNotPieces in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestFlatFallbackReEmitsItemsNotPieces` | the Go test passes | `internal/codegen/golang/golang_test.go:490` |
-| `none.unit.compiler.codegen-golang.go-flat-floats-are-finite-only` | `gotest` | Go test TestGoFlatFloatsAreFiniteOnly in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoFlatFloatsAreFiniteOnly` | the Go test passes | `internal/codegen/golang/golang_test.go:687` |
-| `none.unit.compiler.codegen-golang.go-initialisms-on-members` | `gotest` | Go test TestGoInitialismsOnMembers in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoInitialismsOnMembers` | the Go test passes | `internal/codegen/golang/tidy_test.go:126` |
-| `none.unit.compiler.codegen-golang.go-initialisms-on-top-level-names` | `gotest` | Go test TestGoInitialismsOnTopLevelNames in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoInitialismsOnTopLevelNames` | the Go test passes | `internal/codegen/golang/tidy_test.go:244` |
-| `none.unit.compiler.codegen-golang.godoc-on-every-export` | `gotest` | Go test TestGodocOnEveryExport in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGodocOnEveryExport` | the Go test passes | `internal/codegen/golang/tidy_test.go:143` |
-| `none.unit.compiler.codegen-golang.hoist-renames-only-what-collides` | `gotest` | Go test TestHoistRenamesOnlyWhatCollides in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestHoistRenamesOnlyWhatCollides` | the Go test passes | `internal/codegen/golang/tidy_test.go:206` |
-| `none.unit.compiler.codegen-golang.tidy-drops-the-noise` | `gotest` | Go test TestTidyDropsTheNoise in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestTidyDropsTheNoise` | the Go test passes | `internal/codegen/golang/tidy_test.go:92` |
-| `none.unit.compiler.codegen-golang.tidy-leaves-no-bare-blocks` | `gotest` | Go test TestTidyLeavesNoBareBlocks in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestTidyLeavesNoBareBlocks` | the Go test passes | `internal/codegen/golang/tidy_test.go:61` |
-| `none.unit.compiler.codegen-golang.union-surface-emitted` | `gotest` | Go test TestUnionSurfaceEmitted in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestUnionSurfaceEmitted` | the Go test passes | `internal/codegen/golang/golang_test.go:264` |
 
 #### `compiler` family `compiler`, 444 tests
 
@@ -6538,6 +6568,30 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.unity-misc.dense-bodies-batch-and-fold` | `unity` | Unity batch and inline core speed technique |
 | `codegen.unity-misc.every-declaration-is-an-unmanaged-struct` | `unity` | Unity serializable unmanaged structs |
 | `codegen.unity-misc.refuses-a-generated-name-collision` | `unity` | Unity generated unit-level name collision |
+| `compiler.c-format.format-is-idempotent` | `c` | the C source formatter leaves house-layout text unchanged |
+| `compiler.c-format.format-keeps-unary-operators-apart` | `c` | the C source formatter keeps adjacent unary operators two tokens |
+| `compiler.c-format.format-leaves-alone-what-it-cannot-read` | `c` | the C source formatter leaves unparseable C text unchanged |
+| `compiler.c-format.format-moves-whitespace-only` | `c` | the C source formatter changes whitespace and no token |
+| `compiler.c-format.format-writes-the-house-layout` | `c` | the C source formatter writes the pinned clang-format house layout |
+| `compiler.c-format.same-tokens-refuses-a-changed-stream` | `c` | the C source formatter's token-stream guard refuses changed output |
+| `compiler.c-header-guard.guard-spelling` | `c` | the C header include guard spelling and its byte escapes |
+| `compiler.c-header-guard.guards-distinct` | `c` | C header include guard spellings stay distinct valid C identifiers |
+| `compiler.c-qualify.escaped-leaves-the-platform-alone` | `c` | C name escaping leaves the platform's uint8\_t, memcpy and NULL alone |
+| `compiler.c-qualify.leaves-feature-test-macros` | `c` | C name qualification leaves the C library's feature-test macros unqualified |
+| `compiler.c-qualify.one-map-across-files` | `c` | C name qualification respells a name across every header and .c file |
+| `compiler.c-qualify.qualifies-a-feature-macro-a-header-declares` | `c` | C name qualification qualifies a feature-test macro a schema header declares |
+| `compiler.c-qualify.refuses-a-collision` | `c` | C name qualification refuses two names that qualify to one symbol |
+| `compiler.c-qualify.spellings` | `c` | the C package-prefixed spelling rules for types, functions and macros |
+| `compiler.c-qualify.two-units-share-only-the-runtime` | `c` | two C packages' qualified names share nothing but the runtime header |
+| `compiler.c-runtime-header.version-tracks-its-text` | `c` | the shared C runtime header's version follows its own text |
+| `compiler.cpp-qualify.keeps-user-and-platform-apart` | `cpp` | C++ name qualification keeps user names apart from platform names and macros |
+| `compiler.go-godoc.on-every-export` | `go` | Go godoc comment on every exported generated identifier |
+| `compiler.go-initialisms.on-members` | `go` | Go initialism spelling of generated member names |
+| `compiler.go-initialisms.on-top-level-names` | `go` | Go initialism spelling of generated top-level names |
+| `compiler.go-stringer.enum-and-flags-name-methods` | `go` | Go String methods on generated enums, union tags and flags |
+| `compiler.go-tidy.drops-the-noise` | `go` | the Go source tidy pass drops redundant locals, parentheses and conversions |
+| `compiler.go-tidy.hoist-renames-only-what-collides` | `go` | the Go source tidy pass's block-local renaming |
+| `compiler.go-tidy.leaves-no-bare-blocks` | `go` | the Go source tidy pass leaves no bare blocks |
 | `fuzz.goose-main.dispatch-delivers-every-reply-before-a-stall` | `goose` | Goose wirefuzz dispatcher harness |
 | `fuzz.goose-main.dispatch-refuses-a-mutant-for-an-absent-entry` | `goose` | Goose wirefuzz dispatcher harness |
 | `fuzz.goose-main.dispatch-refuses-a-truncated-roster` | `goose` | Goose wirefuzz dispatcher harness |
@@ -6591,6 +6645,7 @@ Each test's subject exists in one language only (that language's own generated s
 | `name-check.ruby-identifier-corpus.identifier-corpus` | `ruby` | Ruby method and constant names (to\_h, public\_send, NAMES) reserved only in Ruby |
 | `plant.c-vt-strict-api.variable-tests-strict-api-negative-control` | `c` | C retired API spelling control |
 | `plant.cpp-discard-controls.discard-controls-current-names-negative-control` | `cpp` | C++ negative-control recipe naming control |
+| `plant.cpp-standalone-headers.sweep-count-fires` | `cpp` | the C++ standalone-header sweep's own unit count check fires on a lost unit |
 | `plant.dart-byteorder.byte-order-is-explicit-negative-control` | `dart` | Reversed witness for the scan of Dart ByteData calls missing their Endian argument, a host-API default no other language has. |
 | `plant.elixir-alloc-budget.alloc-budget-pinned-negative-control` | `elixir` | negative control of the Elixir allocation budget gate |
 | `plant.go-alloc.allocation-gate-can-red` | `go` | control of Go testing.AllocsPerRun and escape analysis |

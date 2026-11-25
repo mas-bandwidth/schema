@@ -350,7 +350,7 @@ A timing comparison of the language's own code shapes or its runtime's speed; it
 | ruby | fixed-proof-suite, packet |
 | unity | misc |
 
-#### Memory, allocation, GC and concurrency (46 rows)
+#### Memory, allocation, GC and concurrency (47 rows)
 
 The language runtime's own memory model: allocation counts and budgets, garbage collection, reference counting, atom tables, race detection; other runtimes have none of these to test.
 
@@ -359,7 +359,7 @@ The language runtime's own memory model: allocation counts and budgets, garbage 
 | cpp | review-coverage |
 | cs | cstable |
 | elixir | alloc-budget (2), allocaudit, fixed-keyed-save-keys, fixedsave-names, offsets |
-| go | alloc (7), array-length-cache, blockbuild, fixedloadallocs, goleg-size-core, messagesets, sizebudget, soak (3), strictdefault-alloc, strictreadalloc |
+| go | alloc (7), array-length-cache, blockbuild, fixedloadallocs, goleg-size-core, messagesets, sizebudget, soak (3), strictdefault-alloc, strictreadalloc, string-write |
 | java | fixedloadalloc, variablenoscratch (3) |
 | js | float32-accessor-shape |
 | lobster | release (4) |
@@ -368,15 +368,15 @@ The language runtime's own memory model: allocation counts and budgets, garbage 
 | python | retain |
 | rust | message-review |
 
-#### Toolchain verdicts on generated code (67 rows)
+#### Toolchain verdicts on generated code (75 rows)
 
 A formatter, linter, analyser or compiler check that exists only for that language (gofmt, vet, clippy, rustfmt, mypy, rubocop, stylua, luau-analyze, dart analyze, google-java-format, compiler warnings).
 
 | language | families (rows) |
 |---|---|
-| c | format, matched-width, misc, strict-c11-locale, vt-strict-api |
-| cpp | reasonenum, widelist-warning-inventory |
-| cs | checked-build, cstable |
+| c | format (7), matched-width, misc, strict-c11-locale, vt-strict-api |
+| cpp | reasonenum, standalone-headers, widelist-warning-inventory |
+| cs | checked-build (2), cstable |
 | dart | cookarms-analyze, fixedanalyze, int128-table (2), messageform-batch |
 | elixir | emitformat (2), emptyelement, retainpointerwarnings, retainwarnings, specialized-runtime, variableformat |
 | go | declaredforms, fixedoracle, generatedtext, subsets, surface, usagerecipe |
@@ -390,14 +390,14 @@ A formatter, linter, analyser or compiler check that exists only for that langua
 | ruby | rubytable |
 | rust | arraymin-len-zero, bool-condition-parens, fixedclass, generated-lint, hostile-corpus, message-clippy |
 
-#### Modules, packages and loading (90 rows)
+#### Modules, packages and loading (99 rows)
 
 How the language finds and loads code: module and package names, require paths, imports, include placement, file layout, vendored runtime files.
 
 | language | families (rows) |
 |---|---|
-| c | fixedroadmap-t18 |
-| cpp | misc, nativemapping, review-coverage, review-fixes, spec-agreement |
+| c | cook-enum-arm, fixedroadmap-t18, header-guard (2), qualify (4), runtime-header |
+| cpp | misc, nativemapping, review-coverage, review-fixes, spec-agreement, standalone-headers |
 | cs | leb |
 | elixir | cardsgate-external, filemodule (5) |
 | go | announce-cap-modes, fuzzunit, header, leb, runtimehome, sharedruntime, soak, uncoveredemitters |
@@ -413,15 +413,16 @@ How the language finds and loads code: module and package names, require paths, 
 | rust | cardsform, misc, rusttable (2) |
 | squirrel | loader, misc, runtime-rebuild |
 
-#### Names the language reserves (27 rows)
+#### Names the language reserves (33 rows)
 
 Generated names that would collide with the language's own keywords, builtins or class members; the collision set is the language's.
 
 | language | families (rows) |
 |---|---|
-| cpp | armsetter (2), misc, review-fixes, spec-agreement |
+| c | qualify (3) |
+| cpp | armsetter (2), misc, qualify, review-fixes, spec-agreement |
 | dart | blockbuild-names, cooknames, cookwrite, misc, rowmembers, rowmembers-native |
-| go | reservedescape, unions |
+| go | initialisms (2), reservedescape, unions |
 | java | variableunions |
 | js | builtin-shadow (2), cursor-names (2), fixedform-inplace |
 | lobster | fixed-guard-names, runtime-global-names |
@@ -431,7 +432,7 @@ Generated names that would collide with the language's own keywords, builtins or
 | squirrel | misc |
 | unity | misc |
 
-#### Emitted source shape (63 rows)
+#### Emitted source shape (66 rows)
 
 The shape of the source the language's emitter writes (literal suffixes, guards, accessor and constructor forms, emitter line budgets), which has no counterpart in another language's source.
 
@@ -442,7 +443,7 @@ The shape of the source the language's emitter writes (literal suffixes, guards,
 | cs | cstable (2), elem-cache, fixedform-csunions (2) |
 | dart | byteorder |
 | elixir | fixedform (5), helper-name |
-| go | jsonseams, measurebody (2), prune, putleb, refat (3), requirednodefault, retain, sourceseams (2), unreferencedhelpers |
+| go | jsonseams, measurebody (2), prune, putleb, refat (3), requirednodefault, retain, sourceseams (2), tidy (3), unreferencedhelpers |
 | java | doc-unicode-escape (3), variablenoscratch |
 | js | fixedlanes-agree |
 | lua | jsonkeyliteral, typedsave |
@@ -487,7 +488,7 @@ The language leg's own make targets, CI lanes, conformance-driver plumbing, test
 | squirrel | misc |
 | unity | fixed-harness |
 
-#### Language semantics the generated code must respect (18 rows)
+#### Language semantics the generated code must respect (19 rows)
 
 A rule of the language itself (integer overflow, struct padding and alignment, number model, operator ambiguity, constant shadowing, enum underlying types) that the generated code works within.
 
@@ -495,14 +496,14 @@ A rule of the language itself (integer overflow, struct padding and alignment, n
 |---|---|
 | c | bool, identity (2), json-placed, offsets |
 | cpp | range-assert-wide, reasonenum |
-| cs | fixedform, wideclamp |
+| cs | checked-build, fixedform, wideclamp |
 | dart | floatinline |
 | lobster | const-names (2), misc |
 | lua | read |
 | rust | misc (2) |
 | squirrel | interpreter-pin, misc |
 
-#### Generator details (28 rows)
+#### Generator details (30 rows)
 
 How that language's generator builds or prunes its output (reset methods, helper pruning, emission order, string splitting, instruction counts), with no counterpart in another generator.
 
@@ -513,7 +514,7 @@ How that language's generator builds or prunes its output (reset methods, helper
 | cs | fixedform |
 | dart | byteorder |
 | elixir | fixedform |
-| go | blockbuild, countedtail (2), refuseenumfixed, sizebudget, surface, unreferencedhelpers (2) |
+| go | blockbuild, countedtail (2), godoc, refuseenumfixed, sizebudget, stringer, surface, unreferencedhelpers (2) |
 | goose | gooserun-use, registry |
 | lua | blockeligibility, fixedorder, format, typedsave, view-unit-retained |
 | python | pointer-graph-equality |

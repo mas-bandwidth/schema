@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 4982. Language-free tests: 2245.
+Functional tests every language answers: 5005. Language-free tests: 2173.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -3397,7 +3397,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.flat-compressed-float.flat-compressed-float-clamps-the-top-of-range` | a flat compressed float whose step count is in the top range clamps to the maximum integer on write | `tests: {"js":{"package":"./internal/codegen/js","test":"TestJsFlatCompressedFloatClampsTheTopOfRange"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/js/flat_compressed_float_test.go:26` |
+| `L.functional.encode.flat-compressed-float.flat-compressed-float-clamps-the-top-of-range` | a flat compressed float whose step count is in the top range clamps to the maximum integer on write | `inputs.tests` (189 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/js/flat_compressed_float_test.go:26` |
 
 #### `encode` family `float32conv`, 1 test
 
@@ -3495,7 +3495,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.misc.compressed-float-clamps-the-top-of-range` | a compressed float writer clamps the quantized integer to the step count at the top of the range | `inputs.tests` (195 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/java/java_test.go:62` |
+| `L.functional.encode.misc.compressed-float-clamps-the-top-of-range` | a compressed float writer clamps the quantized integer to the step count at the top of the range | `inputs.tests` (290 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/java/java_test.go:62` |
 
 #### `encode` family `negzero-store`, 1 test
 
@@ -3555,7 +3555,7 @@ a value written from scratch gives exactly the expected bytes.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.encode.union-align-bytes.union-then-fixed-byte-array-wire` | a fixed byte array after a union field is written per byte with no padding, matching the pinned wire layout, and reads back | `inputs.tests` (169 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rust/union_align_bytes_test.go:19` |
+| `L.functional.encode.union-align-bytes.union-then-fixed-byte-array-wire` | a fixed byte array after a union field is written per byte with no padding, matching the pinned wire layout, and reads back | `inputs.tests` (349 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rust/union_align_bytes_test.go:19` |
 
 #### `encode` family `verdicts-1122`, 1 test
 
@@ -4626,6 +4626,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.builderjsonlocked.builder-from-json-locked-refuses-into-the-report` | reading JSON into a builder on a locked arena resets the report first and then refuses into it by name. | `inputs.tests` (102 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/builderjsonlocked_test.go:9` |
 
+#### `write-refusal` family `c-cook-enum-arm`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.c-cook-enum-arm.defines-assert-hook` | the c Go test TestCCookEnumArmDefinesAssertHook passes: a C table header defines the schema\_assert macro hook and includes assert.h before its first use | `tests: {"c":{"package":"./internal/codegen/ctable","test":"TestCCookEnumArmDefinesAssertHook"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
+
 #### `write-refusal` family `carries`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5190,6 +5196,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.csunity-verdicts.verdicts-deprecated-write-asserts` | writing a deprecated variant is refused by the debug write assert while the same value without it writes | `tests: {"cs":{"package":"./internal/codegen/cstable","test":"TestCSVerdictsDeprecatedWriteAsserts"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/cstable/csunity_verdicts_test.go:309` |
 
+#### `write-refusal` family `declared-deprecated-enum`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.declared-deprecated-enum.cook-refuses-before-any-byte` | a cook of the declared-deprecated-enum witness writes the live variant Next in both byte orders and refuses the deprecated variant Old and the ordinal 9 past the variant set before any destination byte moves | `inputs.tests` (324 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/cstable/declared_deprecated_enum_cook_test.go:92` |
+
 #### `write-refusal` family `deprecatedblockwrite`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5220,6 +5232,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.fixed-evolution-proof.fixed-evolution-writing` | every byte a fixed save does not write is zero on every record of a batch, and an out-of-contract value is refused by name with nothing written | `tests: {"moo":{"package":"./internal/codegen/mootable","test":"TestMooFixedEvolutionWriting"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/mootable/fixed_evolution_proof_test.go:1216` |
 | `L.functional.write-refusal.fixed-evolution-proof.fixed-proof-writing` | every byte a fixed save does not write is zero, bytes(N) takes its length and N bytes, and out-of-contract values are refused | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseFixedProofWriting"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/goosetable/fixed_evolution_proof_test.go:526` |
+
+#### `write-refusal` family `fixed-root-save-offcontract`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.fixed-root-save-offcontract.root-save-refuses-off-contract` | a fixed root's file save refuses every value its fixed save refuses without raising, and writes the lawful twin at each boundary | `inputs.tests` (112 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/squirreltable/fixedrootsave_writerefusal_test.go:48` |
 
 #### `write-refusal` family `fixed-save-contract`, 1 test
 
@@ -5424,6 +5442,12 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 |---|---|---|---|---|
 | `L.functional.write-refusal.messagemeasure-contract.message-measure-refuses-what-save-refuses` | measuring a message batch refuses exactly the values that saving it refuses, and a value that saves measures to exactly the bytes written, with and without the integrity trailer | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/gotable/messagemeasure_contract_test.go:11` |
 
+#### `write-refusal` family `packet-write-finite`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.write-refusal.packet-write-finite.lone-float-write-refuses-non-finite` | a packet write of a lone float32 or float64 field refuses NaN and infinity before the value is written | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoPacketWriteRefusesNonFiniteFloat"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/golang/packetfloatfinite_test.go:21` |
+
 #### `write-refusal` family `packetwritebareint`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -5434,7 +5458,7 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.write-refusal.packetwritebits.packet-write-refuses-wide-bits` | a packet writer refuses a bits(N) value outside its range as a lone field, in a packed run and as an array element, and the maximum value writes and reads back | `tests: {"elixir":{"package":"./internal/codegen/elixir","test":"TestElixirPacketWriteRefusesWideBits"}}` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/elixir/packetwritebits_test.go:19` |
+| `L.functional.write-refusal.packetwritebits.packet-write-refuses-wide-bits` | a packet writer refuses a bits(N) value outside its range as a lone field and in a packed run, and the maximum value writes and reads back | `inputs.tests` (183 bytes, held in the registry row's `inputs.tests`) | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/elixir/packetwritebits_test.go:19` |
 
 #### `write-refusal` family `packetwritenoninteger`, 1 test
 
@@ -5954,6 +5978,12 @@ hostile bytes are refused in every build, with the named reason.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.load-refusal.clampednamefield.clamped-refusal-names-field` | a strict read of a wire whose scalar is past its bound refuses as out of range and names the field, including a field of a nested table. | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestGoClampedRefusalNamesField"}}` | refused on load, in every build (verdict only) | `internal/codegen/gotable/clampednamefield_test.go:10` |
+
+#### `load-refusal` family `compressed-float-finite`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.load-refusal.compressed-float-finite.read-refuses-non-finite-top-step` | a packet read of a compressed float whose top step dequantizes past the largest float32 refuses the non-finite value on the per-field and packed paths, and a declaration whose every step is finite carries no such guard | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoCompressedFloatReadIsFinite"}}` | refused on load, in every build (verdict only) | `internal/codegen/golang/compressedfinite_test.go:61` |
 
 #### `load-refusal` family `conformance-cook-forgery`, 121 tests
 
@@ -7299,7 +7329,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.flat-finite.flat-refuses-non-finite-bare-floats` | a flat reader refuses a bare float whose raw bits are NaN or infinity | `tests: {"js":{"package":"./internal/codegen/js","test":"TestJsFlatRefusesNonFiniteBareFloats"}}` | refused on load, in every build (verdict only) | `internal/codegen/js/flat_finite_test.go:23` |
+| `L.functional.load-refusal.flat-finite.flat-refuses-non-finite-bare-floats` | a flat reader refuses a bare float whose raw bits are NaN or infinity | `inputs.tests` (172 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/js/flat_finite_test.go:23` |
 
 #### `load-refusal` family `forgeryfuzz`, 1 test
 
@@ -9056,6 +9086,12 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.functional.codegen.cook-write.cook-region-writer-honours-declared-forms` | a pointered root whose forms declaration includes cook gets the region writer and its layout, and one that does not gets neither. | `inputs.tests` (108 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/cook_write_test.go:403` |
 
+#### `codegen` family `cpp-standalone-headers`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.codegen.cpp-standalone-headers.every-table-header-compiles-standalone` | the cpp Go test TestEveryGeneratedTableHeaderCompilesStandalone passes: every generated C++ header compiles as a translation unit's first and only include | `inputs.tests` (106 bytes, held in the registry row's `inputs.tests`) | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
+
 #### `codegen` family `dart-blockbuild-names`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -9085,6 +9121,12 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.descriptorsconst.descriptors-are-constants` | the generated reflection descriptors cannot be changed once the module has loaded | `inputs.tests` (364 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/rusttable/descriptorsconst_test.go:162` |
+
+#### `codegen` family `enum-name`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.codegen.enum-name.takes-the-enum-type` | the generated enum name function takes the enum type itself, so a typed enum field and a union tag pass to it without conversion | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestEnumNameTakesTheEnumType"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/golang_test.go:552` |
 
 #### `codegen` family `enumtypeword`, 1 test
 
@@ -9545,7 +9587,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.codegen.name-buildability.name-corpus-builds` | the generated code for the name corpus builds under the toolchain | `inputs.tests` (232 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/c/name_buildability_test.go:21` |
+| `L.functional.codegen.name-buildability.name-corpus-builds` | the generated code for the name corpus builds under the toolchain | `inputs.tests` (309 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/c/name_buildability_test.go:21` |
 
 #### `codegen` family `nested-table-union-order`, 4 tests
 
@@ -9601,6 +9643,12 @@ generated source compiles and is clean.
 |---|---|---|---|---|
 | `L.functional.codegen.packet-protocol.packet-protocol-id` | packet protocol identifiers, including a high-bit id, are generated with their exact values | `tests: {"lobster":{"package":"./internal/codegen/lobster","test":"TestLobsterPacketProtocolID"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/packet_protocol_test.go:17` |
 
+#### `codegen` family `packet-read-termination`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.codegen.packet-read-termination.read-ends-with-end-check` | every exported packet read of a type or union ends with the stream's end check, and a nested value is read without it | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoPacketReadEndsWithEndCheck"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/golang/packetend_test.go:33` |
+
 #### `codegen` family `packet-union-align`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -9629,7 +9677,7 @@ generated source compiles and is clean.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.codegen.packet-write-cfloat.packet-write-c-float-range` | a packet write of a float declared as a C float refuses values outside the float range | `tests: {"lobster":{"package":"./internal/codegen/lobster","test":"TestLobsterPacketWriteCFloatRange"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/packet_write_cfloat_test.go:115` |
+| `L.functional.codegen.packet-write-cfloat.packet-write-c-float-range` | a packet write of a float declared as a C float refuses values outside the float range | `inputs.tests` (197 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/packet_write_cfloat_test.go:115` |
 
 #### `codegen` family `python-message`, 1 test
 
@@ -9697,6 +9745,12 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.ruby-misc.skeleton` | a unit that declares nothing generates its namespace deterministically, every declaration kind and identifier rule refuses by name with a negative control, and the namespace loads warning-free under the pinned interpreters | `tests: {"ruby":{"package":"./internal/codegen/ruby","test":"TestRubySkeleton"}}` | the ruby Go test for the case (inputs.tests) passes | `internal/codegen/ruby/ruby_test.go:259` |
+
+#### `codegen` family `rulings-r2-r5-r9`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.codegen.rulings-r2-r5-r9.ruling-r2-optional-into-bare-refuses-kind-mismatch` | the emitted runtime refuses a kind mismatch when an optional value is read into a bare field | `inputs.tests` (210 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/rulings_r2_r5_r9_test.go:60` |
 
 #### `codegen` family `rust-message-review`, 1 test
 
@@ -10069,6 +10123,12 @@ generated source compiles and is clean.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.codegen.write-mechanism.write-mechanism-placed` | The emitted writer places the write mechanism so a write into too small storage refuses. | `tests: {"lobster":{"package":"./internal/codegen/lobster","test":"TestLobsterWriteMechanismPlaced"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobster/write_mechanism_test.go:21` |
+
+#### `codegen` family `write-text`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.codegen.write-text.packet-writers-check-string-text` | The emitted packet writers check a string's used bytes for well-formed text and refuse an off-contract value. | `inputs.tests` (188 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/js/write_text_test.go:15` |
 
 ### Type `golden`
 
@@ -10443,6 +10503,12 @@ one schema version reads or writes another's data.
 | `L.functional.evolution.fixed-grown-bound.fixed-form-grown-bound` | records written by the reference under a smaller fixed array bound read under the grown bound with every grown slot holding its born element | `inputs.tests` (277 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_grown_bound_test.go:14` |
 | `L.functional.evolution.fixed-grown-bound.fixed-form-grown-bound-on-the-reference-bytes` | a counted array grown by a newer schema reads the older writer's reference bytes with the absent slots zero-filled | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/luatable/fixed_grown_bound_test.go:81` |
 
+#### `evolution` family `fixed-lineage-kind-moved`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.evolution.fixed-lineage-kind-moved.kind-moved-in-array-of-tables` | a newer reader whose array-of-tables element field moved from int32 to string(8) refuses the older unknown\_census file as an unlawful lineage entry before any record, with no counter moved and every row at its declared defaults, on two reads | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/fixedevolve_test.go:198` |
+
 #### `evolution` family `fixed-numeric-ladders`, 2 tests
 
 | full name | checks | inputs | expected result | source |
@@ -10496,6 +10562,22 @@ one schema version reads or writes another's data.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.functional.evolution.fixed-strict.fixed-one-read-enum-widen` | a forged old enum ordinal inside the new enum's range is refused because the writer's extent is validated before the destination range | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/lobstertable/fixed_strict_test.go:164` |
+
+#### `evolution` family `fixed-unlawful-lineage`, 4 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.evolution.fixed-unlawful-lineage.grown-array-control-loads` | a newer reader handed an older lineage entry whose array grew loads every record of the older file | `inputs.tests` (109 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:196` |
+| `L.functional.evolution.fixed-unlawful-lineage.unlawful-corpus` | every case of the shared unlawful-lineage corpus (internal/fixedunlawful) is answered: a newer reader handed an unlawful older lineage entry refuses the older file before any record lands, with no counter moved and the rows handed in at their declared defaults, on two loads, and the lawful control loads its values | `inputs.tests` (1209 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixed_unlawful_corpus_test.go:128` |
+| `L.functional.evolution.fixed-unlawful-lineage.unlawful-edit-rows` | a newer reader handed an older lineage entry that removed a union arm, an enum variant or a keyed key, shrank an array, narrowed text or bytes, or moved a kind off the ladder refuses the load as layout malformed, and one that unwrapped an optional refuses it as a kind mismatch | `inputs.tests` (104 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:178` |
+| `L.functional.evolution.fixed-unlawful-lineage.unlawful-entry-rows` | a newer reader handed an older lineage entry with a writer field it names nowhere (at the root or in an array of tables), a kind moved off every ladder, or an optional unwrapped to a bare field refuses the file before any record, the optional case as a kind mismatch, with no counter moved and every row at its declared defaults, on two loads | `tests: {"unity":{"package":"./internal/codegen/unitytable","test":"TestUnityFixedUnlawfulLineage"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/unitytable/fixed_unlawful_lineage_test.go:21` |
+
+#### `evolution` family `fixed-versioning`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.evolution.fixed-versioning.kind-moved` | a newer reader handed the kind\_moved lineage entry (v is int32 to the writer and float32 to the reader) refuses old\_kind\_moved.bin before any record lands, and every row handed in is back at its declared defaults | `inputs.tests` (871 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/fixedversioning_kind_moved_test.go:18` |
+| `L.functional.evolution.fixed-versioning.v1l-lawful-writer-for-v2` | the V2 reader handed the lawful older writer V1L's layout as a lineage entry loads a V1L record with the values V1L wrote | `tests: {"go":{"package":"./internal/codegen/gotable","test":"TestFixedV1LIsALawfulWriterForV2"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixed_v1l_lawful_test.go:19` |
 
 #### `evolution` family `fixedcfloat`, 2 tests
 
@@ -11568,10 +11650,11 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|
 | `L.functional.plant.countstop.count-refusal-stops-the-builder-negative-control` | putting back the read that continues past a map count refusal makes the count-stop check go red | `inputs.tests` (123 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/countstop_test.go:86` |
 
-#### `plant` family `cs-checked-build`, 1 test
+#### `plant` family `cs-checked-build`, 2 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
+| `L.functional.plant.cs-checked-build.packet-checked-build-negative-control` | the cs Go test TestCSharpPacketCheckedBuildNegativeControl passes: stripping a C# unchecked marking turns the checked-arithmetic build red | `inputs.tests` (99 bytes, held in the registry row's `inputs.tests`) | the cs Go test for the case (inputs.tests) passes | `internal/codegen/csharp/checked_build_test.go:42` |
 | `L.functional.plant.cs-checked-build.tables-checked-build-negative-control` | a generated load site that loses its unchecked marking must make the checked build go red. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | the cs Go test for the case (inputs.tests) passes | `internal/codegen/cstable/checked_build_test.go:36` |
 
 #### `plant` family `cycle`, 1 test
@@ -13487,6 +13570,18 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 |---|---|---|---|---|
 | `L.functional.compiler.cpp-widelist-warning-inventory.widelist-warning-inventory` | The generated code for the wide-list fixture is built with warnings enabled, and every emitted file is scanned so no omitted file or unrecorded warning passes silently. | `tests: {"cpp":{"package":"./internal/codegen/cpptable","test":"TestCppWidelistWarningInventory"}}` | the cpp Go test for the case (inputs.tests) passes | `internal/codegen/cpptable/widelist_warning_inventory_test.go:21` |
 
+#### `compiler` family `cs-checked-build`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.compiler.cs-checked-build.packet-checked-build` | the cs Go test TestCSharpPacketCheckedBuild passes: C# packet sources compiled with checked arithmetic raise no overflow | `tests: {"cs":{"package":"./internal/codegen/csharp","test":"TestCSharpPacketCheckedBuild"}}` | the cs Go test for the case (inputs.tests) passes | `internal/codegen/csharp/checked_build_test.go:21` |
+
+#### `compiler` family `go-string-write`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.compiler.go-string-write.utf8-check-allocates-nothing` | the go Go test TestGoStringWriteCheckAllocatesNothing passes: Go string conversion heap allocation in the UTF-8 write check | `tests: {"go":{"package":"./internal/codegen/golang","test":"TestGoStringWriteCheckAllocatesNothing"}}` | the go Go test for the case (inputs.tests) passes | `internal/codegen/golang/stringwrite_alloc_test.go:20` |
+
 #### `compiler` family `goose-registry`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14820,6 +14915,14 @@ memory, allocation and depth limits are held.
 |---|---|---|---|---|
 | `L.functional.resource-bounds.json-stack.json-high-key-count` | a JSON object with a very large number of keys reads in constant stack space and counts repeated keys with last-wins exactly | `tests: {"cs":{"package":"./internal/codegen/cstable","test":"TestJsonHighKeyCountCSharp"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/json_stack_test.go:11` |
 
+#### `resource-bounds` family `json-write-depth`, 3 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.functional.resource-bounds.json-write-depth.counts-every-container` | a text write of a chain of nodes whose last empty container sits at nesting depth 128 writes, and the writer refuses the chain whose last container sits at depth 129 | `inputs.tests` (1857 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/ctable/json_depth_write_c_test.go:70` |
+| `L.functional.resource-bounds.json-write-depth.counts-flags` | a text write of a chain whose last empty flags value sits at nesting depth 128 writes and reads back, and the writer refuses the chain whose flags value sits at depth 129 | `inputs.tests` (175 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/jsonwrite_flags_depth_test.go:11` |
+| `L.functional.resource-bounds.json-write-depth.typed-field-writer-at-depth` | the typed text writer's own field writer, called at field depth 128, writes each container field, and called at depth 129 refuses it | `tests: {"goose":{"package":"./internal/codegen/goosetable","test":"TestGooseJsonWriteDepthCapTyped"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/goosetable/json_write_depth_test.go:255` |
+
 #### `resource-bounds` family `jsondecimal-bounded`, 1 test
 
 | full name | checks | inputs | expected result | source |
@@ -14991,50 +15094,6 @@ memory, allocation and depth limits are held.
 ## Language-free tests
 
 Each runs once, as `none.functional.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
-
-### Type `write-refusal`
-
-writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
-
-#### `write-refusal` family `cstable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.write-refusal.cstable.c-sharp-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/cstable/declared_deprecated_enum_cook_test.go:92` |
-
-#### `write-refusal` family `ctable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.write-refusal.ctable.c-cook-enum-arm-defines-assert-hook` | `gotest` | Go test TestCCookEnumArmDefinesAssertHook in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCCookEnumArmDefinesAssertHook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
-
-#### `write-refusal` family `javatable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.write-refusal.javatable.java-declared-deprecated-enum-cook` | `gotest` | Go test TestJavaDeclaredDeprecatedEnumCook in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaDeclaredDeprecatedEnumCook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/declared_deprecated_enum_cook_test.go:23` |
-
-#### `write-refusal` family `squirreltable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.write-refusal.squirreltable.squirrel-fixed-root-save-refuses-off-contract` | `gotest` | Go test TestSquirrelFixedRootSaveRefusesOffContract in ./internal/codegen/squirreltable | `package: ./internal/codegen/squirreltable`<br>`test: TestSquirrelFixedRootSaveRefusesOffContract` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/squirreltable/fixedrootsave_writerefusal_test.go:48` |
-
-#### `write-refusal` family `unitytable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.write-refusal.unitytable.unity-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/unitytable/declared_deprecated_enum_cook_test.go:86` |
-
-### Type `codegen`
-
-generated source compiles and is clean.
-
-#### `codegen` family `cpptable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
 
 ### Type `golden`
 
@@ -16793,110 +16852,6 @@ the generated source or output for a schema and language equals its pinned file.
 | `none.functional.golden.wire-tables-forms.wire-tables-varevo-retain-v1-save` | `golden` | testdata/wire/tables/varevo\_retain\_v1\_save.bin is exactly what make pins-wire-tables-forms writes from its generator | `files: ["testdata/wire/tables/varevo_retain_v1_save.bin"]`<br>`writer: pins-wire-tables-forms` | every file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/wire/tables/varevo_retain_v1_save.bin:1` |
 | `none.functional.golden.wire-tables-forms.wire-tables-varevo-retain-v2-full` | `golden` | testdata/wire/tables/varevo\_retain\_v2\_full.bin is exactly what make pins-wire-tables-forms writes from its generator | `files: ["testdata/wire/tables/varevo_retain_v2_full.bin"]`<br>`writer: pins-wire-tables-forms` | every file equals the writer's output byte for byte, and the writer writes no uncommitted file beside it | `testdata/wire/tables/varevo_retain_v2_full.bin:1` |
 
-### Type `evolution`
-
-one schema version reads or writes another's data.
-
-#### `evolution` family `cpptable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.cpptable.cpp-fixed-unlawful-corpus` | `gotest` | Go test TestCppFixedUnlawfulCorpus in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/cpptable/fixed_unlawful_corpus_test.go:96` |
-| `none.functional.evolution.cpptable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/cpptable/fixedversioning_kind_moved_test.go:18` |
-
-#### `evolution` family `cstable`, 3 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.cstable.c-sharp-fixed-unlawful-corpus` | `gotest` | Go test TestCSharpFixedUnlawfulCorpus in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/cstable/fixed_unlawful_corpus_test.go:103` |
-| `none.functional.evolution.cstable.c-sharp-lineage-optional-unwrapped-is-kind-mismatch` | `gotest` | Go test TestCSharpLineageOptionalUnwrappedIsKindMismatch in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpLineageOptionalUnwrappedIsKindMismatch` | the Go test passes | `internal/codegen/cstable/fixedlineage_kind_moved_test.go:156` |
-| `none.functional.evolution.cstable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/cstable/fixedversioning_kind_moved_test.go:18` |
-
-#### `evolution` family `ctable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.ctable.c-fixed-unlawful-corpus` | `gotest` | Go test TestCFixedUnlawfulCorpus in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/ctable/fixed_unlawful_corpus_test.go:128` |
-| `none.functional.evolution.ctable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/ctable/fixedversioning_kind_moved_test.go:18` |
-
-#### `evolution` family `darttable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.darttable.dart-fixed-unlawful-corpus` | `gotest` | Go test TestDartFixedUnlawfulCorpus in ./internal/codegen/darttable | `package: ./internal/codegen/darttable`<br>`test: TestDartFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/darttable/fixed_unlawful_corpus_test.go:93` |
-| `none.functional.evolution.darttable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/darttable | `package: ./internal/codegen/darttable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/darttable/fixedversioning_kind_moved_test.go:19` |
-
-#### `evolution` family `elixirtable`, 4 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.elixirtable.elixir-fixed-unlawful-corpus` | `gotest` | Go test TestElixirFixedUnlawfulCorpus in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestElixirFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/elixirtable/fixed_unlawful_corpus_test.go:53` |
-| `none.functional.evolution.elixirtable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_kind_moved_test.go:21` |
-| `none.functional.evolution.elixirtable.fixed-versioning-unlawful-entry-control-loads` | `gotest` | Go test TestFixedVersioningUnlawfulEntryControlLoads in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningUnlawfulEntryControlLoads` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:196` |
-| `none.functional.evolution.elixirtable.fixed-versioning-unlawful-entry-refuses` | `gotest` | Go test TestFixedVersioningUnlawfulEntryRefuses in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningUnlawfulEntryRefuses` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:178` |
-
-#### `evolution` family `goosetable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.goosetable.goose-fixed-form-kind-moved-unlawful` | `gotest` | Go test TestGooseFixedFormKindMovedUnlawful in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedFormKindMovedUnlawful` | the Go test passes | `internal/codegen/goosetable/fixedevolve_test.go:198` |
-| `none.functional.evolution.goosetable.goose-fixed-unlawful-corpus` | `gotest` | Go test TestGooseFixedUnlawfulCorpus in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/goosetable/fixed_unlawful_corpus_test.go:60` |
-
-#### `evolution` family `gotable`, 3 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.gotable.fixed-unlawful-corpus` | `gotest` | Go test TestFixedUnlawfulCorpus in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/gotable/fixed_unlawful_corpus_test.go:85` |
-| `none.functional.evolution.gotable.fixed-v1-l-is-a-lawful-writer-for-v2` | `gotest` | Go test TestFixedV1LIsALawfulWriterForV2 in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedV1LIsALawfulWriterForV2` | the Go test passes | `internal/codegen/gotable/fixed_v1l_lawful_test.go:19` |
-| `none.functional.evolution.gotable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/gotable/fixedversioning_kind_moved_test.go:14` |
-
-#### `evolution` family `javatable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.javatable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/javatable/fixedversioning_kind_moved_test.go:17` |
-| `none.functional.evolution.javatable.java-fixed-unlawful-corpus` | `gotest` | Go test TestJavaFixedUnlawfulCorpus in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/javatable/fixed_unlawful_corpus_test.go:84` |
-
-#### `evolution` family `jstable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.jstable.js-fixed-unlawful-corpus` | `gotest` | Go test TestJSFixedUnlawfulCorpus in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/jstable/fixed_unlawful_corpus_test.go:113` |
-| `none.functional.evolution.jstable.js-fixed-versioning-kind-moved` | `gotest` | Go test TestJSFixedVersioningKindMoved in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedVersioningKindMoved` | the Go test passes | `internal/codegen/jstable/fixedversioning_kind_moved_test.go:20` |
-
-#### `evolution` family `lobstertable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.lobstertable.lobster-fixed-unlawful-corpus` | `gotest` | Go test TestLobsterFixedUnlawfulCorpus in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/lobstertable/fixed_unlawful_corpus_test.go:86` |
-
-#### `evolution` family `luatable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.luatable.lua-fixed-unlawful-corpus` | `gotest` | Go test TestLuaFixedUnlawfulCorpus in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luatable/fixed_unlawful_corpus_test.go:104` |
-
-#### `evolution` family `luautable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.luautable.luau-fixed-unlawful-corpus` | `gotest` | Go test TestLuauFixedUnlawfulCorpus in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luautable/fixed_unlawful_corpus_test.go:86` |
-| `none.functional.evolution.luautable.luau-fixed-versioning-kind-moved` | `gotest` | Go test TestLuauFixedVersioningKindMoved in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedVersioningKindMoved` | the Go test passes | `internal/codegen/luautable/fixedversioning_kind_moved_test.go:14` |
-
-#### `evolution` family `rusttable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.rusttable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/rusttable/fixedversioning_kind_moved_test.go:16` |
-| `none.functional.evolution.rusttable.rust-fixed-unlawful-corpus` | `gotest` | Go test TestRustFixedUnlawfulCorpus in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/rusttable/fixed_unlawful_corpus_test.go:80` |
-
-#### `evolution` family `unitytable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.evolution.unitytable.unity-fixed-unlawful-corpus` | `gotest` | Go test TestUnityFixedUnlawfulCorpus in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/unitytable/fixed_unlawful_corpus_test.go:81` |
-| `none.functional.evolution.unitytable.unity-fixed-unlawful-lineage` | `gotest` | Go test TestUnityFixedUnlawfulLineage in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedUnlawfulLineage` | the Go test passes | `internal/codegen/unitytable/fixed_unlawful_lineage_test.go:21` |
-
 ### Type `fuzz`
 
 seeded mutations.
@@ -17056,31 +17011,6 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.cmd-schema.shared-s3-gate` | `gotest` | Go test TestSharedS3Gate in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestSharedS3Gate` | the Go test passes | `cmd/schema/shared_s3_gate_test.go:133` |
 | `none.functional.compiler.cmd-schema.three-refusals-print-the-version-once` | `gotest` | Go test TestThreeRefusalsPrintTheVersionOnce in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestThreeRefusalsPrintTheVersionOnce` | the Go test passes | `cmd/schema/versiononce_test.go:14` |
 | `none.functional.compiler.cmd-schema.unformatted-and-formatted-units-agree` | `gotest` | Go test TestUnformattedAndFormattedUnitsAgree in ./cmd/schema | `package: ./cmd/schema`<br>`test: TestUnformattedAndFormattedUnitsAgree` | the Go test passes | `cmd/schema/main_test.go:178` |
-
-#### `compiler` family `codegen-csharp`, 4 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.compiler.codegen-csharp.c-sharp-packet-checked-build` | `gotest` | Go test TestCSharpPacketCheckedBuild in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpPacketCheckedBuild` | the Go test passes | `internal/codegen/csharp/checked_build_test.go:21` |
-| `none.functional.compiler.codegen-csharp.c-sharp-packet-checked-build-negative-control` | `gotest` | Go test TestCSharpPacketCheckedBuildNegativeControl in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpPacketCheckedBuildNegativeControl` | the Go test passes | `internal/codegen/csharp/checked_build_test.go:42` |
-| `none.functional.compiler.codegen-csharp.c-sharp-union-then-fixed-byte-array-wire` | `gotest` | Go test TestCSharpUnionThenFixedByteArrayWire in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/csharp/unionbytes_test.go:40` |
-| `none.functional.compiler.codegen-csharp.name-corpus-builds-cs` | `gotest` | Go test TestNameCorpusBuildsCs in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestNameCorpusBuildsCs` | the Go test passes | `internal/codegen/csharp/name_buildability_test.go:22` |
-
-#### `compiler` family `codegen-golang`, 11 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.compiler.codegen-golang.enum-name-takes-the-enum-type` | `gotest` | Go test TestEnumNameTakesTheEnumType in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestEnumNameTakesTheEnumType` | the Go test passes | `internal/codegen/golang/golang_test.go:552` |
-| `none.functional.compiler.codegen-golang.go-compressed-float-clamps-the-top-of-range` | `gotest` | Go test TestGoCompressedFloatClampsTheTopOfRange in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoCompressedFloatClampsTheTopOfRange` | the Go test passes | `internal/codegen/golang/golang_test.go:587` |
-| `none.functional.compiler.codegen-golang.go-compressed-float-read-is-finite` | `gotest` | Go test TestGoCompressedFloatReadIsFinite in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoCompressedFloatReadIsFinite` | the Go test passes | `internal/codegen/golang/compressedfinite_test.go:61` |
-| `none.functional.compiler.codegen-golang.go-flat-compressed-float-clamps-top-step` | `gotest` | Go test TestGoFlatCompressedFloatClampsTopStep in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoFlatCompressedFloatClampsTopStep` | the Go test passes | `internal/codegen/golang/flatcompressedclamp_test.go:22` |
-| `none.functional.compiler.codegen-golang.go-packet-read-ends-with-end-check` | `gotest` | Go test TestGoPacketReadEndsWithEndCheck in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoPacketReadEndsWithEndCheck` | the Go test passes | `internal/codegen/golang/packetend_test.go:33` |
-| `none.functional.compiler.codegen-golang.go-packet-write-refuses-non-finite-float` | `gotest` | Go test TestGoPacketWriteRefusesNonFiniteFloat in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoPacketWriteRefusesNonFiniteFloat` | the Go test passes | `internal/codegen/golang/packetfloatfinite_test.go:21` |
-| `none.functional.compiler.codegen-golang.go-packet-write-refuses-off-range-compressed-float` | `gotest` | Go test TestGoPacketWriteRefusesOffRangeCompressedFloat in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoPacketWriteRefusesOffRangeCompressedFloat` | the Go test passes | `internal/codegen/golang/compressedrange_test.go:22` |
-| `none.functional.compiler.codegen-golang.go-packet-write-refuses-wide-bits` | `gotest` | Go test TestGoPacketWriteRefusesWideBits in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoPacketWriteRefusesWideBits` | the Go test passes | `internal/codegen/golang/packetbitswidth_test.go:43` |
-| `none.functional.compiler.codegen-golang.go-string-write-check-allocates-nothing` | `gotest` | Go test TestGoStringWriteCheckAllocatesNothing in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoStringWriteCheckAllocatesNothing` | the Go test passes | `internal/codegen/golang/stringwrite_alloc_test.go:20` |
-| `none.functional.compiler.codegen-golang.go-string-write-refuses-interior-nul-and-invalid-utf8` | `gotest` | Go test TestGoStringWriteRefusesInteriorNULAndInvalidUTF8 in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoStringWriteRefusesInteriorNULAndInvalidUTF8` | the Go test passes | `internal/codegen/golang/stringwrite_test.go:19` |
-| `none.functional.compiler.codegen-golang.go-union-then-fixed-byte-array-wire` | `gotest` | Go test TestGoUnionThenFixedByteArrayWire in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestGoUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/golang/unionbytes_test.go:18` |
 
 #### `compiler` family `compiler`, 171 tests
 
@@ -17654,81 +17584,6 @@ two implementations or two versions give the same answer.
 
 memory, allocation and depth limits are held.
 
-#### `resource-bounds` family `cpptable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.cpptable.cpp-text-write-depth-cap-counts-every-container` | `gotest` | Go test TestCppTextWriteDepthCapCountsEveryContainer in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppTextWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/cpptable/json_depth_write_cpp_test.go:132` |
-
-#### `resource-bounds` family `cstable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.cstable.c-sharp-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestCSharpJSONWriteDepthCapCountsEveryContainer in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpJSONWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/cstable/json_write_depth_test.go:71` |
-
-#### `resource-bounds` family `ctable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.ctable.c-text-write-depth-cap-counts-every-container` | `gotest` | Go test TestCTextWriteDepthCapCountsEveryContainer in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCTextWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/ctable/json_depth_write_c_test.go:70` |
-
-#### `resource-bounds` family `darttable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.darttable.dart-write-depth-cap-counts-every-container` | `gotest` | Go test TestDartWriteDepthCapCountsEveryContainer in ./internal/codegen/darttable | `package: ./internal/codegen/darttable`<br>`test: TestDartWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/darttable/depth_write_dart_test.go:119` |
-
-#### `resource-bounds` family `elixirtable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.elixirtable.elixir-json-write-depth-counts-every-container` | `gotest` | Go test TestElixirJSONWriteDepthCountsEveryContainer in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestElixirJSONWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/elixirtable/json_write_depth_test.go:102` |
-
-#### `resource-bounds` family `goosetable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.goosetable.goose-json-write-depth-cap-typed` | `gotest` | Go test TestGooseJsonWriteDepthCapTyped in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseJsonWriteDepthCapTyped` | the Go test passes | `internal/codegen/goosetable/json_write_depth_test.go:255` |
-| `none.functional.resource-bounds.goosetable.goose-json-write-depth-cap-variable` | `gotest` | Go test TestGooseJsonWriteDepthCapVariable in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseJsonWriteDepthCapVariable` | the Go test passes | `internal/codegen/goosetable/json_write_depth_test.go:131` |
-
-#### `resource-bounds` family `gotable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.gotable.go-json-write-depth-counts-every-container` | `gotest` | Go test TestGoJsonWriteDepthCountsEveryContainer in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestGoJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/gotable/jsonwrite_containers_depth_test.go:16` |
-| `none.functional.resource-bounds.gotable.go-json-write-depth-counts-flags` | `gotest` | Go test TestGoJsonWriteDepthCountsFlags in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestGoJsonWriteDepthCountsFlags` | the Go test passes | `internal/codegen/gotable/jsonwrite_flags_depth_test.go:11` |
-
-#### `resource-bounds` family `javatable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.javatable.java-json-write-depth-counts-every-container` | `gotest` | Go test TestJavaJsonWriteDepthCountsEveryContainer in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/javatable/java_json_write_depth_test.go:145` |
-
-#### `resource-bounds` family `jstable`, 2 tests
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.jstable.js-json-write-depth-counts-every-container` | `gotest` | Go test TestJsJsonWriteDepthCountsEveryContainer in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJsJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/jstable/json_write_containers_depth_test.go:13` |
-| `none.functional.resource-bounds.jstable.js-json-write-depth-counts-flags` | `gotest` | Go test TestJsJsonWriteDepthCountsFlags in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJsJsonWriteDepthCountsFlags` | the Go test passes | `internal/codegen/jstable/json_write_flags_depth_test.go:11` |
-
-#### `resource-bounds` family `lobstertable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.lobstertable.lobster-json-write-depth-counts-every-container` | `gotest` | Go test TestLobsterJsonWriteDepthCountsEveryContainer in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/lobstertable/json_depth_write_test.go:77` |
-
-#### `resource-bounds` family `luatable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.luatable.lua-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuaJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luatable/jsonwritedepth_test.go:72` |
-
-#### `resource-bounds` family `luautable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.luautable.luau-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuauJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luautable/json_write_depth_test.go:73` |
-
 #### `resource-bounds` family `make-python-hostile`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -17758,42 +17613,6 @@ memory, allocation and depth limits are held.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.resource-bounds.make-schema-squirrel-resource-bounds.schema-squirrel-resource-bounds-fast` | `make` | make schema-squirrel-resource-bounds-fast (make/schema-squirrel-resource-bounds.mk) exits 0 | `file: make/schema-squirrel-resource-bounds.mk`<br>`target: schema-squirrel-resource-bounds-fast` | the target exits 0 with no skip in its log | `make/schema-squirrel-resource-bounds.mk:30` |
-
-#### `resource-bounds` family `mootable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.mootable.moo-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestMooJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/mootable | `package: ./internal/codegen/mootable`<br>`test: TestMooJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/mootable/json_depth_cap_test.go:152` |
-
-#### `resource-bounds` family `pythontable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.pythontable.python-json-write-depth-counts-every-container` | `gotest` | Go test TestPythonJsonWriteDepthCountsEveryContainer in ./internal/codegen/pythontable | `package: ./internal/codegen/pythontable`<br>`test: TestPythonJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/pythontable/json_keybytes_test.go:66` |
-
-#### `resource-bounds` family `rubytable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.rubytable.ruby-json-write-depth-counts-every-container` | `gotest` | Go test TestRubyJsonWriteDepthCountsEveryContainer in ./internal/codegen/rubytable | `package: ./internal/codegen/rubytable`<br>`test: TestRubyJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/rubytable/json_keybytes_depth_test.go:90` |
-
-#### `resource-bounds` family `rusttable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.rusttable.rust-write-depth-cap-counts-every-container` | `gotest` | Go test TestRustWriteDepthCapCountsEveryContainer in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/rusttable/depth_write_rust_test.go:71` |
-
-#### `resource-bounds` family `squirreltable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.squirreltable.squirrel-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestSquirrelJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/squirreltable | `package: ./internal/codegen/squirreltable`<br>`test: TestSquirrelJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/squirreltable/json_write_depth_test.go:104` |
-
-#### `resource-bounds` family `unitytable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.functional.resource-bounds.unitytable.unity-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestUnityJSONWriteDepthCapCountsEveryContainer in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityJSONWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/unitytable/json_write_depth_test.go:73` |
 
 ### Type `harness-run`
 
@@ -17849,6 +17668,7 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.c-matched-width.gcc-fortify-silence-follows-gnu-not-the-word-gcc` | `c` | gcc fortify warning silencing |
 | `codegen.c-strict-c11-locale.generated-table-compiles-under-strict11` | `c` | the generated C compiles cleanly under strict C11 compiler flags |
 | `codegen.c-vt-strict-api.variable-tests-strict-api` | `c` | C retired API spelling gate |
+| `codegen.cpp-standalone-headers.every-table-header-compiles-standalone` | `cpp` | every generated C++ header compiles as a translation unit's first and only include |
 | `codegen.dart-blockbuild-names.block-build-count-parameters-do-not-shadow-runtime` | `dart` | Dart local and parameter name collisions in generated Dart |
 | `codegen.dart-cookwrite.cook-write-float-helpers-do-not-claim-table-names` | `dart` | Dart top-level helper names must not collide with schema names |
 | `codegen.dart-rowmembers-native.cook-row-cursor-members-native` | `dart` | Dart row cursor member names versus field accessors, run on the Dart VM |
@@ -17912,6 +17732,8 @@ Each test's subject exists in one language only (that language's own generated s
 | `codegen.squirrel-misc.loader-resolves-only-its-directory` | `squirrel` | Squirrel loader module resolution |
 | `compiler.cpp-reasonenum.generated-headers-compile-under-clang-and-gxx-werror` | `cpp` | C++ headers compile clang and g++ -Werror |
 | `compiler.cpp-widelist-warning-inventory.widelist-warning-inventory` | `cpp` | the inventory of C++ compiler warnings the generated code is built with |
+| `compiler.cs-checked-build.packet-checked-build` | `cs` | C# packet sources compiled with checked arithmetic raise no overflow |
+| `compiler.go-string-write.utf8-check-allocates-nothing` | `go` | Go string conversion heap allocation in the UTF-8 write check |
 | `compiler.goose-registry.registry-compiles` | `goose` | registry compiles under Goose compiler |
 | `compiler.unity-fixed-harness.fixed-dialect-ms-build` | `unity` | Unity C# 9 netstandard2.1 MSBuild |
 | `encode.go-blockbuild.block-builder-storage-and-parallel-fill` | `go` | the Go block builder's own storage and goroutine parallel fill |
@@ -17941,6 +17763,7 @@ Each test's subject exists in one language only (that language's own generated s
 | `name-check.python-evolution-ci.vt-evolution-ci-coverage` | `python` | Python CI selection covers the evolution tests |
 | `name-check.python-wirefuzz-verdict.wire-fuzz-ci-partition` | `python` | Python make and CI target matrix |
 | `plant.c-control-grep.negative-control-grep-dialects` | `c` | make/c.mk grep dialect guards |
+| `plant.cs-checked-build.packet-checked-build-negative-control` | `cs` | stripping a C# unchecked marking turns the checked-arithmetic build red |
 | `plant.cs-checked-build.tables-checked-build-negative-control` | `cs` | C# checked/unchecked compilation control |
 | `plant.go-blockbuild.block-builder-race-negative-control` | `go` | Go race detection control for the block builder's parallel fill |
 | `plant.lobster-release.table-load-unlinks-what-the-root-does-not-reach-negative-control` | `lobster` | Lobster reference counting needs cycles and unreached nodes unlinked |
@@ -17986,3 +17809,4 @@ Each test's subject exists in one language only (that language's own generated s
 | `roundtrip.ruby-fixed-proof-suite.fixed-shape-compare` | `ruby` | timing comparison of Ruby code shapes in the Ruby runtime; no format rule |
 | `roundtrip.squirrel-misc.sqrun-round-trips-inputs` | `squirrel` | the sqrun helper that feeds inputs to the Squirrel interpreter in these tests |
 | `soak.lua-soak.load-soak` | `lua` | Lua GC allocation drift over repeated loads |
+| `write-refusal.c-cook-enum-arm.defines-assert-hook` | `c` | a C table header defines the schema\_assert macro hook and includes assert.h before its first use |
