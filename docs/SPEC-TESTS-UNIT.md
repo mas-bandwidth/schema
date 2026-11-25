@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2794.
+Unit tests every language answers: 2. Language-free tests: 2795.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3036,7 +3036,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 56 tests
+#### `tooling` family `testreg`, 57 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3080,6 +3080,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.no-skip-exemptions-are-current` | `gotest` | every file the skip scan does not read exists and has a reason (Go test TestNoSkipExemptionsAreCurrent in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipExemptionsAreCurrent` | the Go test passes | `internal/testreg/noskip_test.go:961` |
 | `none.unit.tooling.testreg.no-skip-mechanism-anywhere` | `gotest` | no skip mechanism anywhere in the repository: no Skip, testing.Short, skip or lane variable, early return on a gate or opt-out build tag in Go; no \|\| true, continue-on-error, if: false, branch skip, go test -skip or -short, skip variable or skip announcement in a script, recipe or workflow; no skip verdict in a driver of any language; no skip ledger file (Go test TestNoSkipMechanismAnywhere in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipMechanismAnywhere` | the Go test passes: the scan names nothing | `internal/testreg/noskip_test.go:773` |
 | `none.unit.tooling.testreg.no-skip-mechanism-is-planted` | `gotest` | one planted skip of each kind in a scratch tree is named by file, line and rule, and the scaffolding beside them (a wire reader's Skip, a value knob, a failing tool lookup, docs, testdata, comments) is not (Go test TestNoSkipMechanismIsPlanted in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipMechanismIsPlanted` | the Go test passes | `internal/testreg/noskip_test.go:846` |
+| `none.unit.tooling.testreg.no-skip-scans-tracked-output-names` | `gotest` | in a scratch checkout, a skip in a tracked package under a directory named deps is found and an untracked directory named target is pruned (Go test TestNoSkipScansTrackedOutputNames in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipScansTrackedOutputNames` | the Go test passes | `internal/testreg/noskip_test.go:1377` |
 | `none.unit.tooling.testreg.shards-cover-every-name-exactly-once` | `gotest` | Go test TestShardsCoverEveryNameExactlyOnce in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestShardsCoverEveryNameExactlyOnce` | the Go test passes | `internal/testreg/run_test.go:312` |
 | `none.unit.tooling.testreg.shards-weigh-by-measured-seconds` | `gotest` | Go test TestShardsWeighByMeasuredSeconds in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestShardsWeighByMeasuredSeconds` | the Go test passes | `internal/testreg/run_test.go:358` |
 | `none.unit.tooling.testreg.the-addenda-give-a-refusal-its-verdict-only` | `gotest` | a refusal's expected result in the addenda is its verdict only; reason text in the row is never written | `package: ./internal/testreg`<br>`test: TestTheAddendaGiveARefusalItsVerdictOnly` | the Go test passes | `internal/testreg/addenda_test.go:157` |

@@ -169,7 +169,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 tables-go-json-walk: build/tables-generated-go/.stamp
 	SCHEMA_GO_JSON_WALK_DIR="$(CURDIR)/build/tables-generated-go" \
 		SCHEMA_GO_JSON_WALK_OUT="$(CURDIR)/build/json-walk-go" \
-		go test -count=1 -v ./internal/codegen/gotable -run '^TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)$$'
+		go test -count=1 -v ./internal/codegen/gotable -run '^(TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)|TestJsonWalkGeneratedGoTables)$$'
 
 # THE GO TABLE LEG's generated packages. Each unit is its own MODULE, because
 # a generated package names its schema's `package` and Go resolves an import by
@@ -1220,13 +1220,9 @@ test-go: tables-go-versioning
 # OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
 # alone (§5.3).
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
-# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
-# a bare `go test ./...` on a tree that never built the oracle — and is exactly
-# how a §5 regression would have ridden into CI green, since the go-test job
-# runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
-# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
-# sets the rule that nothing skips, which turns that skip into a FAILURE: under this
+# THE TARGET BUILDS THE ORACLE FIRST (`tables-fixedform-corpus`, the C++
+# reference's own dump, about 7 s): the suite's harness fails by name when
+# build/fixedform-corpus is absent (docs/rulings.json no-skips), so under this
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
 tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
@@ -1345,7 +1341,7 @@ test-go: cards-conformance-go-negative-control
 # cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,
 # all sixteen subsets, through the emitter's own omit path (GenerateOmitting),
 # built and vetted against the sibling serialize.go. Part of the default gate:
-# it needs no the rule that nothing skips.
+# it needs nothing built first.
 .PHONY: tables-go-subsets
 tables-go-subsets:
 	sh test/slowgate/proof tables-go-subsets \
@@ -1386,8 +1382,9 @@ test-go: tables-go-finite-float
 # generated VALID units through compiler.New().Generate, the generated Go leg
 # under -race, every read/write path, every damage, hostile JSON plants and the
 # compiler's engine in both directions. Nightly in certify.yml, never in
-# ci-fast or ci-full: SCHEMA_TABLE_DIFF=1, set only here, is what opts the two
-# tests in; ci-full's the rule that nothing skips run of ./internal/fuzz skips them.
+# ci-fast or ci-full: both tests are tier nightly in test/registry, so the
+# root leaves them out of every per-commit run of ./internal/fuzz by name
+# (docs/rulings.json no-skips).
 TABLE_DIFF_FROM ?= 0
 TABLE_DIFF_TO ?= 200
 .PHONY: fuzz-tables-diff

@@ -20,7 +20,7 @@ loader.exec_module(m)
 # What the checker must refuse lives in a data file beside it: a go test -json
 # action that is neither pass nor fail, and native lines announcing a test
 # that did not run.
-PLANTS = json.loads((ROOT/"test/conformance/nightly-readiness-plants.json").read_text(encoding="utf-8"))
+PLANTS = json.loads((ROOT/"test/conformance/nightly-readiness.plants.json").read_text(encoding="utf-8"))
 NOT_RUN = PLANTS["not_run_action"]
 
 
