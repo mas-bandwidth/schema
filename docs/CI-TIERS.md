@@ -30,8 +30,8 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3136 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4862 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `unit` | 3137 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4866 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
 | `nightly` | 2436 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
@@ -382,9 +382,9 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 11/79 | 3 | 38.7 |
 | `none` | 12/79 | 27 | 51.8 |
 | `none` | 13/79 | 7 | 50.0 |
-| `none` | 14/79 | 31 | 50.0 |
-| `none` | 15/79 | 37 | 51.5 |
-| `none` | 16/79 | 79 | 54.3 |
+| `none` | 14/79 | 32 | 51.0 |
+| `none` | 15/79 | 39 | 52.1 |
+| `none` | 16/79 | 80 | 56.7 |
 | `none` | 17/79 | 2 | 49.0 |
 | `none` | 18/79 | 128 | 51.4 |
 | `none` | 19/79 | 33 | 50.8 |
@@ -415,7 +415,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 44/79 | 107 | 57.9 |
 | `none` | 45/79 | 56 | 53.0 |
 | `none` | 46/79 | 70 | 59.0 |
-| `none` | 47/79 | 269 | 53.3 |
+| `none` | 47/79 | 270 | 54.3 |
 | `none` | 48/79 | 14 | 57.6 |
 | `none` | 49/79 | 34 | 48.9 |
 | `none` | 50/79 | 23 | 52.8 |
@@ -448,7 +448,7 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `none` | 77/79 | 31 | 48.4 |
 | `none` | 78/79 | 35 | 57.7 |
 | `none` | 79/79 | 90 | 58.5 |
-| **every row** | **403 jobs** | **51552** | **20508.0** |
+| **every row** | **403 jobs** | **51557** | **20513.0** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or

@@ -30,7 +30,21 @@ class FixedLoadReport(LoadReport):
         self.layout_hash = 0
 
 
+# A READ PAST THE BYTES IT WAS HANDED REFUSES BY NAME, in every build. A
+# slice past the end of a record is SHORT, not an error, in Python: an integer
+# read there came back 0, a copy landed fewer bytes and shrank the image, and a
+# dead span read as zero, so a plan reaching past a short record answered a
+# wrong value SILENTLY. No lawful plan reaches there (every entry is bounded by
+# the WRITER's declared record at generate time, docs/FIXED-FORM-ALGORITHM.md
+# §4.2 and §5.2 PLAN, fix 3); a forged one refuses layout_record_too_large, the
+# name §5.2 gives an entry that reaches past the writer's record.
+def _within(data: bytes | bytearray | memoryview, at: int, end: int) -> None:
+    if at < 0 or end > len(data):
+        raise Refused("layout_record_too_large", "a plan entry reads past the writer's record")
+
+
 def _integer(data: bytes | bytearray | memoryview, at: int, width: int, signed: bool = False) -> int:
+    _within(data, at, at + width)
     return int.from_bytes(data[at:at + width], "little", signed=signed)
 
 
@@ -39,11 +53,13 @@ def _store(out: bytearray, at: int, width: int, value: int, signed: bool = False
 
 
 def _dead(data: bytes | bytearray | memoryview, begin: int, end: int) -> None:
+    _within(data, begin, end)
     if any(data[begin:end]):
         raise Refused("wire_damaged", "nonzero bytes outside the live extent")
 
 
 def _bool(data: bytes | bytearray | memoryview, at: int) -> bool:
+    _within(data, at, at + 1)
     value = data[at]
     if value > 1:
         raise Refused("wire_damaged", "a bool or presence byte is not 0 or 1")
@@ -314,9 +330,21 @@ def _guarded(op: _Spec, source: memoryview) -> bool:
     return True
 
 
+def _reach(kind: str, size: int) -> int:
+    """How many record bytes past src one op reads: a const reads none."""
+    if kind in ("copy", "widen", "ordinal"):
+        return size
+    if kind in ("widenf", "count"):
+        return 4
+    if kind == "text":
+        return 4 + size
+    return 0
+
+
 def _apply(op: _Spec, source: memoryview, image: bytearray) -> int:
     src, dst, size = op["src"], op["dst"], op["size"]
     kind = op["op"]
+    _within(source, src, src + _reach(kind, size))
     if kind == "copy":
         image[dst:dst + size] = source[src:src + size]
     elif kind == "widen":

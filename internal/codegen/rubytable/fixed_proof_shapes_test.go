@@ -242,20 +242,29 @@ func TestRubyFixedProofShapesNegativeControl(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name, schema, setup, anchor, replacement string
-		body, offset                             int
+		body, offset, count                      int
 		value                                    byte
 	}{
-		{"text", "package probe\nfixed table T { s string(4) }\n", `memcpy(value[0].s, "ab", 2); value[0].s_length=2;`, `if str.include?("\x00")`, `if false`, 8, 5, 0},
+		{"text", "package probe\nfixed table T { s string(4) }\n", `memcpy(value[0].s, "ab", 2); value[0].s_length=2;`, `if str.include?("\x00")`, `if false`, 8, 5, 1, 0},
 		{"array", "package probe\nfixed table T { a [..2]uint16 }\n", `value[0].a_count=2; value[0].a[0]=7; value[0].a[1]=9;`, `if count < min_bound || count > spec["bound"]
           raise Refused.new("count_over_bound")`, `if count < min_bound || count > spec["bound"] + 1
-          raise Refused.new("count_over_bound")`, 8, 0, 3},
+          raise Refused.new("count_over_bound")`, 8, 0, 2, 3},
 	}
+	// THE ARRAY FAULT RIDES THE FIRST OF TWO RECORDS. With the count bound
+	// widened by one, the forged count 3 makes the check pass walk a third
+	// element past the record's eight bytes. On the LAST record that walk
+	// reads past the end of the file, which the runtime refuses by name
+	// (layout_record_too_large, since 2026-11-25), so the mutant is refused
+	// even with the bound widened and the control cannot see the widening.
+	// On the first record it reads the next record's bytes, in the file, so
+	// only the widened bound stands between the forged count and a silent
+	// read: the control holds what it says.
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			u := fixedproof.ParseCheckUnit(t, tc.schema)
-			wire, _ := fixedproof.CppOracle(t, fixedproof.RowCase{Schema: tc.schema, Root: "T", Body: int64(tc.body), Count: 1, CppSetup: tc.setup}, u)
-			wire[len(wire)-tc.body+tc.offset] = tc.value
+			wire, _ := fixedproof.CppOracle(t, fixedproof.RowCase{Schema: tc.schema, Root: "T", Body: int64(tc.body), Count: tc.count, CppSetup: tc.setup}, u)
+			wire[len(wire)-(tc.count-1)*(8+tc.body)-tc.body+tc.offset] = tc.value // record 0 of count; each record is an 8-byte hash, then body
 			var files map[string][]byte
 			var err error
 			if tc.name == "array" {

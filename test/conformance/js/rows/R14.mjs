@@ -160,10 +160,12 @@ function entries(plan) {
 }
 
 // THE UNION'S None CONST: op 5 (const), aux 0 (None), unguarded, the writer's
-// arm count in meta's low byte and the writer's tag width in meta >>> 8.
+// WHOLE arm count in meta's low 24 bits and the writer's tag width in meta >>> 24.
 const OP_CONST = 5;
+const ARMS = (meta) => meta & 0xffffff;
+const TAGW = (meta) => meta >>> 24;
 function noneConst(plan) {
-  return entries(plan).find(([op, , , aux, meta]) => op === OP_CONST && aux === 0 && (meta & 0xff) !== 0);
+  return entries(plan).find(([op, , , aux, meta]) => op === OP_CONST && aux === 0 && ARMS(meta) !== 0);
 }
 
 // RUN a compiled plan over one writer record into a fresh image of `bytes`.
@@ -221,10 +223,10 @@ function run(plan, record, bytes) {
     const [, src, size, , meta, guard] = none;
     check(src === 0, `the None const reads the writer's tag at its offset 0, got ${src}`);
     check(size === 8, `the None const LANDS my 8-byte tag, got ${size}`);
-    check((meta >>> 8) === 1, `the None const reads the WRITER's 1-byte tag, never 8: got ${meta >>> 8}`);
-    check((meta & 0xff) === 1, `it carries the writer's arm count, 1: got ${meta & 0xff}`);
+    check(TAGW(meta) === 1, `the None const reads the WRITER's 1-byte tag, never 8: got ${TAGW(meta)}`);
+    check(ARMS(meta) === 1, `it carries the writer's arm count, 1: got ${ARMS(meta)}`);
     check(guard === -1, `the None const is unguarded (TableFixedNoGuard, -1), got ${guard}`);
-    check(src + (meta >>> 8) <= 5, "its reach, 0 + 1, is inside the writer's record of 5");
+    check(src + TAGW(meta) <= 5, "its reach, 0 + 1, is inside the writer's record of 5");
   }
   check(entries(plan).some(([op, src, size]) => op === 0 && src === 1 && size === 4),
     "the u32 arm is a copy of 4 bytes from src 1, past the WRITER's 1-byte tag");
@@ -284,6 +286,58 @@ function run(plan, record, bytes) {
     const ok = TableFixedParseLayout(bytes, 0, bytes.length, v);
     check(!ok && v.refusal === TableFixedRefusal.LayoutRecordTooLarge,
       `the parse refuses ${what} under the same layout_record_too_large`);
+  }
+}
+
+// ---- 6. A WRITER UNION OF MORE THAN 255 ARMS CHECKS ITS None CONST ---------
+//
+// THE LAW: docs/FIXED-FORM-ALGORITHM.md §4.6 — a tag past the WRITER's own arm
+// set is out_of_range, refused by name in the bounds pass, before any
+// destination byte is written; §5.2 EMIT kind 15 — the None const reads the
+// writer's raw tag at the writer's tag width and carries the writer's arm count.
+// Until 2026-11-25 this leg carried the arm count in ONE byte of meta and
+// stored 0 for a count past 255, and 0 reads as "no check": a forged tag past
+// a 300-arm writer's set landed None silently. The vector is forged from the
+// law (no corpus holds a 300-arm lock layout): a 2-byte tag (300 > 255) over
+// 300 u8 arms (kind 6, size 1), record 3; my side grows the tag to 4.
+{
+  const N = 300;
+  const big = (tag) => {
+    const rows = [[1, 13, tag + 1, 1], [7, 15, tag + 1, N]];
+    for (let i = 0; i < N; i++) { rows.push([100 + i, 6, 1, 0]); }
+    return block(rows);
+  };
+  const bigDst = (tag) => {
+    const rows = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < N; i++) { rows.push(tag, 0, 0, 0, 0); }
+    return new Int32Array(rows);
+  };
+  const t = parse(big(2));
+  check(t.ok, "the 300-arm writer layout (tag 2, record 3) parses under §1.1");
+  for (const myTag of [2, 4]) {
+    const plan = new TableFixedPlan(4096, myTag + 1, 4096);
+    const report = new TableFixedReport();
+    const made = t.ok ? TableFixedCompile(t.v, big(myTag), bigDst(myTag), plan, report) : NaN;
+    check(made > 0 && made === plan.count && !plan.overflow && !plan.hostile && !plan.unlawful,
+      `300 arms, tag 2 -> ${myTag}: the plan compiles whole (${made} entries)`);
+    const none = noneConst(plan);
+    check(none !== undefined && ARMS(none[4]) === N && TAGW(none[4]) === 2,
+      `300 arms, tag 2 -> ${myTag}: the None const carries the WHOLE arm count 300 and tag width 2, got ${none && ARMS(none[4])}/${none && TAGW(none[4])}`);
+    const read = (lo, hi) => run(plan, [lo, hi, 0], myTag + 1);
+    {
+      const { image, report: r } = read(300 & 0xff, 300 >>> 8);
+      check(r.refused === 0 && new DataView(image.buffer).getUint16(0, true) === 300,
+        `300 arms, tag 2 -> ${myTag}: the last arm, 300, lands, got ${TableFixedRefusalName(r.refused)}`);
+    }
+    {
+      const { image, report: r } = read(0, 0);
+      check(r.refused === 0 && image.every((x) => x === 0), `300 arms, tag 2 -> ${myTag}: tag 0 reads as None`);
+    }
+    for (const forged of [301, 0x1ff, 0xffff]) {
+      const { report: r } = read(forged & 0xff, forged >>> 8);
+      check(r.refused === TableFixedRefusal.OutOfRange,
+        `300 arms, tag 2 -> ${myTag}: a forged writer tag ${forged} refuses out_of_range, got ${TableFixedRefusalName(r.refused)}`);
+    }
   }
 }
 

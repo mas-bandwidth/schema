@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3134.
+Unit tests every language answers: 2. Language-free tests: 3135.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1092,7 +1092,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.languages.tagged-languages-are-the-tagged-sources` | `gotest` | Go test TestTaggedLanguagesAreTheTaggedSources in ./internal/languages | `package: ./internal/languages`<br>`test: TestTaggedLanguagesAreTheTaggedSources` | the Go test passes | `internal/languages/languages_test.go:131` |
 | `none.unit.compiler.languages.unity-is-never-a-language` | `gotest` | Go test TestUnityIsNeverALanguage in ./internal/languages | `package: ./internal/languages`<br>`test: TestUnityIsNeverALanguage` | the Go test passes | `internal/languages/languages_test.go:146` |
 
-#### `compiler` family `lockfile`, 170 tests
+#### `compiler` family `lockfile`, 171 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1261,6 +1261,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.lockfile.type-leaving-the-closure-refused` | `gotest` | Go test TestTypeLeavingTheClosureRefused in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestTypeLeavingTheClosureRefused` | the Go test passes | `internal/lockfile/lockclosure_test.go:637` |
 | `none.unit.compiler.lockfile.un-deprecate-refused` | `gotest` | Go test TestUnDeprecateRefused in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestUnDeprecateRefused` | the Go test passes | `internal/lockfile/lockfile_test.go:455` |
 | `none.unit.compiler.lockfile.union-arm-tables-pass-their-own-lineage-layouts` | `gotest` | Go test TestUnionArmTablesPassTheirOwnLineageLayouts in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestUnionArmTablesPassTheirOwnLineageLayouts` | the Go test passes | `internal/lockfile/unionarm_test.go:23` |
+| `none.unit.compiler.lockfile.validate-layout-union-tag-width-is-exactly-an-ordinal-width` | `gotest` | Go test TestValidateLayoutUnionTagWidthIsExactlyAnOrdinalWidth in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestValidateLayoutUnionTagWidthIsExactlyAnOrdinalWidth` | the Go test passes | `internal/lockfile/union_tag_width_test.go:27` |
 | `none.unit.compiler.lockfile.value-list-round-trips` | `gotest` | Go test TestValueListRoundTrips in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestValueListRoundTrips` | the Go test passes | `internal/lockfile/lockclosure_test.go:711` |
 | `none.unit.compiler.lockfile.was-rename-is-not-a-change` | `gotest` | Go test TestWasRenameIsNotAChange in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestWasRenameIsNotAChange` | the Go test passes | `internal/lockfile/lockfile_test.go:271` |
 | `none.unit.compiler.lockfile.widen-scalar-taken-as-a-change-to-record` | `gotest` | Go test TestWidenScalarTakenAsAChangeToRecord in ./internal/lockfile | `package: ./internal/lockfile`<br>`test: TestWidenScalarTakenAsAChangeToRecord` | the Go test passes | `internal/lockfile/lockfile_test.go:418` |

@@ -118,6 +118,8 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
   def self._s_fixed_seal_crc: (String data) -> String
   def self._s_fixed_form_refusal: (Integer form, Integer b0) -> String
   def self._s_fixed_open_crc: (String data, ?Integer form) -> String
+  def self._s_fixed_within: (String data, Integer at, Integer stop) -> void
+  def self._s_fixed_reach: (String kind, Integer size) -> Integer
   def self._s_fixed_int: (String data, Integer at, Integer width, bool signed) -> Integer
   def self._s_fixed_store: (String out, Integer at, Integer width, Integer value) -> void
   def self._s_fixed_dead: (String data, Integer from, Integer stop) -> void
