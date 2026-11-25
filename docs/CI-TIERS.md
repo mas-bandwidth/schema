@@ -73,6 +73,7 @@ next table. Every job of every other workflow is a row here.
 | `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
 | `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
+| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr` |
 | `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
 | `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
 | `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
@@ -174,6 +175,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-engine-is-the-oracle.yml` | covered | `ci-policy` | TestSchemaEngineIsTheOracle* are not slow-gated, so ci-policy runs them on every pull request |
 | `schema-name-buildability.yml` | covered | `go-test-touched`, `verify-leg` | `go-test-touched` runs `internal/check` (`TestNameBuildabilityCorpus`, holding every probe row's checker verdict) and per-leg codegen tests; building and loading all 18 targets across every accepted probe row (`make name-buildability`) stays nightly |
 | `lobster-fixed-proof-qualification.yml` | fast | `lobster-fixed-proof` | the four fixed-proof gates against the live C++ corpus: 63 s nightly (run 44994152761), 50 s cold on amd-2 |
+| `schema-test-nightly.yml` | covered | `schema-test` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list |
 | `tla-nightly.yml` | covered | `ci-policy` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
 | `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
