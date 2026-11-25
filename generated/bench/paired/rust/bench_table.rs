@@ -2170,6 +2170,7 @@ pub fn bench_mixed_json_write(v: &BenchMixed, w: &mut Jw, depth: usize, label: u
     json_newline(&mut w.out, depth + 1);
     json_escape("entities", &mut w.out);
     w.out.push_str(": ");
+    if depth + 1 > JSON_DEPTH_CAP { w.refused = true; }
     if v.entities.is_empty() || v.entities.len() > 8 { w.refused = true; }
     if v.entities.is_empty() {
         w.out.push_str("[]");
@@ -2188,6 +2189,7 @@ pub fn bench_mixed_json_write(v: &BenchMixed, w: &mut Jw, depth: usize, label: u
     json_newline(&mut w.out, depth + 1);
     json_escape("stats", &mut w.out);
     w.out.push_str(": ");
+    if depth + 1 > JSON_DEPTH_CAP { w.refused = true; }
     if v.stats.len() > 80 { w.refused = true; }
     if v.stats.is_empty() {
         w.out.push_str("[]");
@@ -2212,6 +2214,7 @@ pub fn bench_mixed_json_write(v: &BenchMixed, w: &mut Jw, depth: usize, label: u
     json_newline(&mut w.out, depth + 1);
     json_escape("loadout", &mut w.out);
     w.out.push_str(": ");
+    if depth + 1 > JSON_DEPTH_CAP { w.refused = true; }
     if v.loadout.len() != 4 { w.refused = true; }
     if v.loadout.is_empty() {
         w.out.push_str("[]");
@@ -2448,6 +2451,7 @@ pub fn mixed_entity_json_write(v: &MixedEntity, w: &mut Jw, depth: usize, label:
     json_newline(&mut w.out, depth + 1);
     json_escape("damage", &mut w.out);
     w.out.push_str(": ");
+    if depth + 1 > JSON_DEPTH_CAP { w.refused = true; }
     {
         const NAMES: [&str; 8] = ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"];
         let bits: u64 = v.damage;
