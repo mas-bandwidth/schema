@@ -77,6 +77,8 @@ var (
 	linkInPlace = regexp.MustCompile(`-o \$@(\s|$)`)
 	// the shared .next or .prev directory, not one named for its build.
 	corpusSharedTemp = regexp.MustCompile(`build/fixedform-corpus\.(next|prev)(\s|/|;|$)`)
+	// mv run as a command anywhere in the corpus recipe.
+	anyMv = regexp.MustCompile(`(^|[\s;&|{(])mv\s`)
 )
 
 // atomicWriteProblems names every shared build product in files (make file
@@ -108,8 +110,10 @@ func atomicWriteProblems(files map[string]string) []string {
 		bad = append(bad, atomicCorpusFile+": "+target+" writes a shared build/fixedform-corpus.next or .prev, which another build clears under it")
 	case !strings.Contains(recipe, "next=build/fixedform-corpus.next.$$$$;") || !strings.Contains(recipe, "prev=build/fixedform-corpus.prev.$$$$;"):
 		bad = append(bad, atomicCorpusFile+": "+target+" does not write build/fixedform-corpus.next.$$$$ and set the live one aside as build/fixedform-corpus.prev.$$$$")
-	case !strings.Contains(recipe, "$(CORPUS_RENAME) $$live $$prev ") || !strings.Contains(recipe, "$(CORPUS_RENAME) $$next $$live ") || !corpusRenameIsRename(files[atomicCorpusFile]) || strings.Contains(recipe, "mv $$next") || strings.Contains(recipe, "mv build/fixedform-corpus "):
-		bad = append(bad, atomicCorpusFile+": "+target+" does not swap the corpus with rename(2) (CORPUS_RENAME), never mv, which moves a directory inside one another build put in first")
+	case !strings.Contains(recipe, "$(CORPUS_RENAME) $$live $$prev.$$try ") || !strings.Contains(recipe, "$(CORPUS_RENAME) $$next $$live ") || !strings.Contains(recipe, "$(CORPUS_RENAME) $$p $$live ") || !corpusRenameIsRename(files[atomicCorpusFile]) || anyMv.MatchString(recipe):
+		bad = append(bad, atomicCorpusFile+": "+target+" does not swap the corpus (and put it back on a failure) with rename(2) (CORPUS_RENAME), never mv, which moves a directory inside one another build put in first")
+	case !strings.Contains(recipe, `printf '%s\n' "$$sum" > $$next/.stamp`) || !strings.Contains(recipe, `test "$$(cat $$live/.stamp)" = "$$sum"`):
+		bad = append(bad, atomicCorpusFile+": "+target+" does not record its inputs in .stamp and keep another build's corpus only when that record is its own")
 	}
 	return bad
 }
@@ -119,7 +123,7 @@ func atomicWriteProblems(files map[string]string) []string {
 func corpusRenameIsRename(src string) bool {
 	for _, line := range strings.Split(src, "\n") {
 		if v, ok := strings.CutPrefix(line, "CORPUS_RENAME = "); ok {
-			return strings.HasPrefix(v, "perl -e ") && strings.Contains(v, "rename($$f, $$t)")
+			return strings.HasPrefix(v, "perl -e ") && strings.Contains(v, "exit 0 if rename($$f, $$t);")
 		}
 	}
 	return false
@@ -153,8 +157,11 @@ func TestSharedBuildProductsAreWrittenAtomically(t *testing.T) {
 		{filepath.Join("make", "c.mk"), `-o $@.tmp.$$$$ -lm && mv -f $@.tmp.$$$$ $@ || { rm -f $@.tmp.$$$$; exit 1; }`, `-o $@ -lm`, "build/conformance-c"},
 		{"Makefile", `next=build/fixedform-corpus.next.$$$$;`, `next=build/fixedform-corpus.next;`, "fixedform-corpus/.stamp"},
 		{"Makefile", `prev=build/fixedform-corpus.prev.$$$$;`, `prev=build/fixedform-corpus.prev;`, "fixedform-corpus/.stamp"},
-		{"Makefile", `{ $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST ||`, `{ mv $$next $$live ||`, "fixedform-corpus/.stamp"},
+		{"Makefile", `$(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST; rc=$$?;`, `mv $$next $$live; rc=$$?;`, "fixedform-corpus/.stamp"},
+		{"Makefile", `then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST; fi;`, `then mv $$p $$live; fi;`, "fixedform-corpus/.stamp"},
 		{"Makefile", `exit 0 if rename($$f, $$t);`, `exit 0 if system("mv", $$f, $$t) == 0;`, "fixedform-corpus/.stamp"},
+		// another build's corpus kept whatever it was built from
+		{"Makefile", `test "$$(cat $$live/.stamp)" = "$$sum"`, `true`, "fixedform-corpus/.stamp"},
 		// a failed link renamed in all the same
 		{"Makefile", `-o $@.tmp.$$$$ ./cmd/schema && mv -f`, `-o $@.tmp.$$$$ ./cmd/schema; mv -f`, "bin/schema"},
 	}

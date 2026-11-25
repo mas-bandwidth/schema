@@ -3824,7 +3824,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8761` |
+| `none.nightly.plant.makefile.wire-fuzz-roster-negative-control` | `make` | make wire-fuzz-roster-negative-control (Makefile) exits 0 | `file: Makefile`<br>`target: wire-fuzz-roster-negative-control` | the target exits 0 with no skip in its log | `Makefile:8772` |
 
 #### `plant` family `message-form-count`, 1 test
 
@@ -5098,8 +5098,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 |---|---|---|---|---|---|
 | `none.nightly.tooling.makefile.docs-check` | `make` | make docs-check (Makefile) exits 0 | `file: Makefile`<br>`target: docs-check` | the target exits 0 with no skip in its log | `Makefile:5291` |
 | `none.nightly.tooling.makefile.shape-gate` | `make` | make shape-gate (Makefile) exits 0 | `file: Makefile`<br>`target: shape-gate` | the target exits 0 with no skip in its log | `Makefile:5357` |
-| `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8113` |
-| `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8117` |
+| `none.nightly.tooling.makefile.vuln` | `make` | make vuln (Makefile) exits 0 | `file: Makefile`<br>`target: vuln` | the target exits 0 with no skip in its log | `Makefile:8124` |
+| `none.nightly.tooling.makefile.vuln-strict` | `make` | make vuln-strict (Makefile) exits 0 | `file: Makefile`<br>`target: vuln-strict` | the target exits 0 with no skip in its log | `Makefile:8128` |
 
 #### `tooling` family `roadmap`, 3 tests
 
@@ -5226,7 +5226,7 @@ performance or timing.
 | `none.nightly.bench.makefile.bench-paired-check` | `make` | make bench-paired-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-check` | the target exits 0 with no skip in its log | `Makefile:5163` |
 | `none.nightly.bench.makefile.bench-paired-gate` | `make` | make bench-paired-gate (Makefile) exits 0 | `file: Makefile`<br>`target: bench-paired-gate` | the target exits 0 with no skip in its log | `Makefile:5168` |
 | `none.nightly.bench.makefile.bench-table-check` | `make` | make bench-table-check (Makefile) exits 0 | `file: Makefile`<br>`target: bench-table-check` | the target exits 0 with no skip in its log | `Makefile:5146` |
-| `none.nightly.bench.makefile.tables-fixedform-bench-corpus` | `make` | make tables-fixedform-bench-corpus (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-bench-corpus` | the target exits 0 with no skip in its log | `Makefile:7625` |
+| `none.nightly.bench.makefile.tables-fixedform-bench-corpus` | `make` | make tables-fixedform-bench-corpus (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-bench-corpus` | the target exits 0 with no skip in its log | `Makefile:7636` |
 
 ### Type `lint`
 
@@ -5289,7 +5289,7 @@ two implementations or two versions give the same answer.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.differential.makefile.release-differential` | `make` | make release-differential (Makefile) exits 0 | `file: Makefile`<br>`target: release-differential` | the target exits 0 with no skip in its log | `Makefile:7833` |
+| `none.nightly.differential.makefile.release-differential` | `make` | make release-differential (Makefile) exits 0 | `file: Makefile`<br>`target: release-differential` | the target exits 0 with no skip in its log | `Makefile:7844` |
 
 ### Type `resource-bounds`
 
@@ -5766,7 +5766,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 | `none.nightly.harness-run.makefile.conformance-shared` | `make` | make conformance-shared (Makefile) exits 0 | `file: Makefile`<br>`target: conformance-shared` | the target exits 0 with no skip in its log | `Makefile:6894` |
 | `none.nightly.harness-run.makefile.tables-block-gate2-smoke` | `make` | make tables-block-gate2-smoke (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-gate2-smoke` | the target exits 0 with no skip in its log | `Makefile:2316` |
 | `none.nightly.harness-run.makefile.tables-fixedform-asan` | `make` | make tables-fixedform-asan (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-asan` | the target exits 0 with no skip in its log | `Makefile:7194` |
-| `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7604` |
+| `none.nightly.harness-run.makefile.tables-fixedform-corpus-check` | `make` | make tables-fixedform-corpus-check (Makefile) exits 0 | `file: Makefile`<br>`target: tables-fixedform-corpus-check` | the target exits 0 with no skip in its log | `Makefile:7615` |
 | `none.nightly.harness-run.makefile.tables-fixedform-plain` | `make` | make tables-fixedform-plain (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.harness-run-makefile-tables-fixedform-plain`<br>`inputs.reads` (707 bytes, held in the registry row's `inputs.reads`)<br>`target: tables-fixedform-plain` | the target exits 0 with no skip in its log | `Makefile:7188` |
 | `none.nightly.harness-run.makefile.test` | `make` | make test (Makefile) exits 0 | `file: Makefile`<br>`inputs.reads` (212 bytes, held in the registry row's `inputs.reads`)<br>`target: test` | the target exits 0 with no skip in its log | `Makefile:212` |
 | `none.nightly.harness-run.makefile.test-core-tables-1` | `make` | make test-core-tables-1 (Makefile) exits 0 | `file: Makefile`<br>`target: test-core-tables-1` | the target exits 0 with no skip in its log | `Makefile:3649` |
@@ -5933,7 +5933,7 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 | `none.nightly.ci-plumbing.makefile.bin-schema` | `make` | make bin/schema (Makefile) exits 0 | `file: Makefile`<br>`target: bin/schema` | the target exits 0 with no skip in its log | `Makefile:155` |
 | `none.nightly.ci-plumbing.makefile.build-conformance-cpp` | `make` | make build/conformance-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-cpp` | the target exits 0 with no skip in its log | `Makefile:5525` |
 | `none.nightly.ci-plumbing.makefile.build-conformance-harness` | `make` | make build/conformance-harness (Makefile) exits 0 | `file: Makefile`<br>`target: build/conformance-harness` | the target exits 0 with no skip in its log | `Makefile:5429` |
-| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.ci-plumbing-makefile-build-fixedform-corpus-stamp`<br>`reads: ["test/tables/fnz/negative_zero.bin","test/tables/fnz/negative_zero_control.bin"]`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7317` |
+| `none.nightly.ci-plumbing.makefile.build-fixedform-corpus-stamp` | `make` | make build/fixedform-corpus/.stamp (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.ci-plumbing-makefile-build-fixedform-corpus-stamp`<br>`reads: ["test/tables/fnz/negative_zero.bin","test/tables/fnz/negative_zero_control.bin"]`<br>`target: build/fixedform-corpus/.stamp` | the target exits 0 with no skip in its log | `Makefile:7318` |
 | `none.nightly.ci-plumbing.makefile.build-hostile-values-stamp` | `make` | make build/hostile-values/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/hostile-values/.stamp` | the target exits 0 with no skip in its log | `Makefile:3417` |
 | `none.nightly.ci-plumbing.makefile.build-pack-text-stamp` | `make` | make build/pack-text/.stamp (Makefile) exits 0 | `file: Makefile`<br>`target: build/pack-text/.stamp` | the target exits 0 with no skip in its log | `Makefile:3384` |
 | `none.nightly.ci-plumbing.makefile.build-schema-test` | `make` | make build/schema\_test (Makefile) exits 0 | `file: Makefile`<br>`target: build/schema_test` | the target exits 0 with no skip in its log | `Makefile:238` |
@@ -5958,9 +5958,9 @@ a step that provisions or builds what other tests run on (a pinned toolchain, a 
 | `none.nightly.ci-plumbing.makefile.build-tables-pack-root-bin` | `make` | make build/tables-pack-root.bin (Makefile) exits 0 | `file: Makefile`<br>`target: build/tables-pack-root.bin` | the target exits 0 with no skip in its log | `Makefile:3356` |
 | `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp` | `make` | make build/wire-fuzz-cpp (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp` | the target exits 0 with no skip in its log | `Makefile:5563` |
 | `none.nightly.ci-plumbing.makefile.build-wire-fuzz-cpp-asan` | `make` | make build/wire-fuzz-cpp-asan (Makefile) exits 0 | `file: Makefile`<br>`target: build/wire-fuzz-cpp-asan` | the target exits 0 with no skip in its log | `Makefile:5569` |
-| `none.nightly.ci-plumbing.makefile.deps` | `make` | make deps (Makefile) exits 0 | `file: Makefile`<br>`target: deps` | the target exits 0 with no skip in its log | `Makefile:7539` |
+| `none.nightly.ci-plumbing.makefile.deps` | `make` | make deps (Makefile) exits 0 | `file: Makefile`<br>`target: deps` | the target exits 0 with no skip in its log | `Makefile:7550` |
 | `none.nightly.ci-plumbing.makefile.registry` | `make` | make registry (Makefile) exits 0 | `file: Makefile`<br>`target: registry` | the target exits 0 with no skip in its log | `Makefile:6937` |
-| `none.nightly.ci-plumbing.makefile.serialize-siblings` | `make` | make serialize-siblings (Makefile) exits 0 | `file: Makefile`<br>`target: serialize-siblings` | the target exits 0 with no skip in its log | `Makefile:7525` |
+| `none.nightly.ci-plumbing.makefile.serialize-siblings` | `make` | make serialize-siblings (Makefile) exits 0 | `file: Makefile`<br>`target: serialize-siblings` | the target exits 0 with no skip in its log | `Makefile:7536` |
 | `none.nightly.ci-plumbing.makefile.toolchain` | `make` | make toolchain (Makefile) exits 0 | `file: Makefile`<br>`target: toolchain` | the target exits 0 with no skip in its log | `Makefile:6994` |
 
 ## Declared unrepresentable

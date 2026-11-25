@@ -7296,13 +7296,14 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 # the old one is removed after. A reader that looks in that moment finds no
 # corpus and fails by name, never a half-written one; a run builds the
 # corpus once before its rows (a prepare step), so its rows do not rebuild
-# it. Both renames are rename(2) itself (CORPUS_RENAME), never mv: the live
+# it. Every rename is rename(2) itself (CORPUS_RENAME), never mv: the live
 # corpus another build already moved aside is no error (ENOENT), and when
 # another build put its corpus in first, mv would move this one INSIDE it,
-# where rename refuses: this build then keeps the other's whole corpus when it
-# is newer than the dump it was to be built by, and removes its own. A
-# failure puts the live corpus back. A directory a killed build left (its
-# pid no longer running) is removed by the next build.
+# where rename refuses. .stamp holds the cksum of the dump and its inputs,
+# taken before the dump ran: this build keeps another's corpus only when
+# that record is its own, and otherwise sets it aside and tries once more.
+# A failure puts the live corpus back (by rename, never into another's).
+# What a killed build left beside the corpus (over an hour old) is removed.
 # ---- rowan/corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
@@ -7316,20 +7317,30 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixe
 CORPUS_RENAME = perl -e 'my ($$f, $$t, $$code, @ok) = @ARGV; exit 0 if rename($$f, $$t); for my $$e (@ok) { exit $$code if $$!{$$e} } die "rename $$f -> $$t: $$!\n"'
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin
 	@next=build/fixedform-corpus.next.$$$$; prev=build/fixedform-corpus.prev.$$$$; live=build/fixedform-corpus; \
-	for d in build/fixedform-corpus.next.* build/fixedform-corpus.prev.*; do \
-	  if test -e "$$d" && ! kill -0 "$${d##*.}" 2>/dev/null; then rm -rf "$$d"; fi; \
+	fail() { rm -rf $$next; \
+	  for p in $$prev.2 $$prev.1; do \
+	    if test -d $$p; then \
+	      if test ! -e $$live; then $(CORPUS_RENAME) $$p $$live 0 ENOTEMPTY EEXIST; fi; \
+	      rm -rf $$p; \
+	    fi; \
+	  done; \
+	  echo "corpus: $$1" >&2; exit 1; }; \
+	find build -mindepth 1 -maxdepth 1 -name 'fixedform-corpus.*.*' -mmin +60 -exec rm -rf {} + || fail "cannot sweep what killed builds left"; \
+	sum=$$(cksum build/schema_test_fixedform_dump test/tables/fnz/negative_zero.bin test/tables/fnz/negative_zero_control.bin) || fail "cannot read the dump's inputs"; \
+	{ rm -rf $$next && mkdir -p $$next; } || fail "cannot make $$next"; \
+	echo "./build/schema_test_fixedform_dump $$next"; \
+	./build/schema_test_fixedform_dump $$next || fail "the dump failed"; \
+	test -s $$next/manifest.txt || fail "manifest.txt missing"; \
+	printf '%s\n' "$$sum" > $$next/.stamp || fail "cannot write $$next/.stamp"; \
+	for try in 1 2; do \
+	  $(CORPUS_RENAME) $$live $$prev.$$try 0 ENOENT || fail "cannot set $$live aside"; \
+	  $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST; rc=$$?; \
+	  if test $$rc = 0; then break; fi; \
+	  test $$rc = 3 || fail "cannot put $$next in as $$live"; \
+	  if test -f $$live/.stamp && test "$$(cat $$live/.stamp)" = "$$sum"; then rm -rf $$next; break; fi; \
+	  test $$try = 1 || fail "another build twice put in a corpus of other inputs"; \
 	done; \
-	rm -rf $$next $$prev && mkdir -p $$next && \
-	echo "./build/schema_test_fixedform_dump $$next" && \
-	./build/schema_test_fixedform_dump $$next && \
-	{ test -s $$next/manifest.txt || { echo "corpus: manifest.txt missing" >&2; false; }; } && \
-	touch $$next/.stamp && \
-	$(CORPUS_RENAME) $$live $$prev 0 ENOENT && \
-	{ $(CORPUS_RENAME) $$next $$live 3 ENOTEMPTY EEXIST || \
-	  { test $$? = 3 && { test $$live/.stamp -nt build/schema_test_fixedform_dump || \
-	    { echo "corpus: another build put in $$live, older than the dump it was to be built by" >&2; false; }; } && rm -rf $$next; }; } && \
-	rm -rf $$prev || \
-	{ rm -rf $$next; if test ! -e $$live && test -d $$prev; then mv $$prev $$live; fi; exit 1; }
+	rm -rf $$prev.1 $$prev.2
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
