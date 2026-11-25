@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3023.
+Unit tests every language answers: 2. Language-free tests: 3027.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1433,8 +1433,8 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tablewire.bytes-field-framing-across-leb-widths` | `gotest` | Go test TestBytesFieldFramingAcrossLebWidths in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestBytesFieldFramingAcrossLebWidths` | the Go test passes | `internal/tablewire/bytesframing_test.go:19` |
 | `none.unit.compiler.tablewire.canonical-retaining-fuzz-inputs-read` | `gotest` | Go test TestCanonicalRetainingFuzzInputsRead in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCanonicalRetainingFuzzInputsRead` | the Go test passes | `internal/tablewire/retainingcanonical_test.go:16` |
 | `none.unit.compiler.tablewire.cell-is-default-judges-text-by-its-bytes` | `gotest` | Go test TestCellIsDefaultJudgesTextByItsBytes in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCellIsDefaultJudgesTextByItsBytes` | the Go test passes | `internal/tablewire/celldefault_text_test.go:27` |
-| `none.unit.compiler.tablewire.compressed-f32-ends-corpus` | `gotest` | Go test TestCompressedF32EndsCorpus in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCompressedF32EndsCorpus` | the Go test passes | `internal/tablewire/compressed_f32_ends_corpus_test.go:55` |
-| `none.unit.compiler.tablewire.compressed-neg-zero-go-corpus` | `gotest` | Go test TestCompressedNegZeroGoCorpus in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCompressedNegZeroGoCorpus` | the Go test passes | `internal/tablewire/compressed_negzero_corpus_test.go:75` |
+| `none.unit.compiler.tablewire.compressed-f32-ends-corpus` | `gotest` | Go test TestCompressedF32EndsCorpus in ./internal/tablewire | `inputs.files` (1686 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/tablewire`<br>`test: TestCompressedF32EndsCorpus` | the Go test passes | `internal/tablewire/compressed_f32_ends_corpus_test.go:55` |
+| `none.unit.compiler.tablewire.compressed-neg-zero-go-corpus` | `gotest` | Go test TestCompressedNegZeroGoCorpus in ./internal/tablewire | `inputs.files` (2018 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/tablewire`<br>`test: TestCompressedNegZeroGoCorpus` | the Go test passes | `internal/tablewire/compressed_negzero_corpus_test.go:75` |
 | `none.unit.compiler.tablewire.compressed-neg-zero-writer-witness-pins` | `gotest` | Go test TestCompressedNegZeroWriterWitnessPins in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCompressedNegZeroWriterWitnessPins` | the Go test passes | `internal/tablewire/compressed_negzero_witness_test.go:25` |
 | `none.unit.compiler.tablewire.compressed-neg-zero-written-as-plus-zero` | `gotest` | Go test TestCompressedNegZeroWrittenAsPlusZero in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCompressedNegZeroWrittenAsPlusZero` | the Go test passes | `internal/tablewire/compressed_negzero_write_test.go:91` |
 | `none.unit.compiler.tablewire.compressed-negative-zero-stores-plus-zero` | `gotest` | Go test TestCompressedNegativeZeroStoresPlusZero in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestCompressedNegativeZeroStoresPlusZero` | the Go test passes | `internal/tablewire/negzero_store_test.go:35` |
@@ -3048,7 +3048,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 121 tests
+#### `tooling` family `schema-test`, 124 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3127,6 +3127,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.extract-refuses-a-grown-ledger` | `gotest` | Go test TestExtractRefusesAGrownLedger in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesAGrownLedger` | the Go test passes | `tools/schema-test/extract_test.go:133` |
 | `none.unit.tooling.schema-test.extract-refuses-a-stale-tier-line` | `gotest` | Go test TestExtractRefusesAStaleTierLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesAStaleTierLine` | the Go test passes | `tools/schema-test/extract_test.go:194` |
 | `none.unit.tooling.schema-test.extract-refuses-a-test-that-skips` | `gotest` | Go test TestExtractRefusesATestThatSkips in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesATestThatSkips` | the Go test passes | `tools/schema-test/extract_test.go:97` |
+| `none.unit.tooling.schema-test.feature-witness-plan` | `gotest` | Go test TestFeatureWitnessPlan in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessPlan` | the Go test passes | `tools/schema-test/featurewitness_test.go:173` |
+| `none.unit.tooling.schema-test.feature-witness-rows-cover-the-corpus` | `gotest` | Go test TestFeatureWitnessRowsCoverTheCorpus in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessRowsCoverTheCorpus` | the Go test passes | `tools/schema-test/featurewitness_test.go:132` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:105` |
 | `none.unit.tooling.schema-test.go-test-plain-output-in-the-log-fails` | `gotest` | Go test TestGoTestPlainOutputInTheLogFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestPlainOutputInTheLogFails` | the Go test passes | `tools/schema-test/make_test.go:466` |
 | `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:214` |
@@ -3162,6 +3164,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.the-planted-copy-finds-its-siblings` | `gotest` | Go test TestThePlantedCopyFindsItsSiblings in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedCopyFindsItsSiblings` | the Go test passes | `tools/schema-test/plant_test.go:258` |
 | `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |
+| `none.unit.tooling.schema-test.the-registry-holds-every-feature-witness-case` | `gotest` | Go test TestTheRegistryHoldsEveryFeatureWitnessCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryFeatureWitnessCase` | the Go test passes | `tools/schema-test/featurewitness_test.go:24` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-hostile-case` | `gotest` | Go test TestTheRegistryHoldsEveryHostileCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryHostileCase` | the Go test passes | `tools/schema-test/hostile_test.go:45` |
 | `none.unit.tooling.schema-test.the-registry-holds-every-tables-case` | `gotest` | Go test TestTheRegistryHoldsEveryTablesCase in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRegistryHoldsEveryTablesCase` | the Go test passes | `tools/schema-test/tables_test.go:31` |
 | `none.unit.tooling.schema-test.the-runs-seed-is-printed-and-handed-to-every-adapter` | `gotest` | Go test TestTheRunsSeedIsPrintedAndHandedToEveryAdapter in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheRunsSeedIsPrintedAndHandedToEveryAdapter` | the Go test passes | `tools/schema-test/seed_cli_test.go:32` |
@@ -3330,7 +3333,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 28 tests
+#### `tooling` family `testreg-extract`, 29 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3348,6 +3351,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-per-language-row-runs-each-languages-target` | `gotest` | Go test TestAPerLanguageRowRunsEachLanguagesTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowRunsEachLanguagesTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:496` |
 | `none.unit.tooling.testreg-extract.a-per-language-rows-target-no-make-file-defines-is-named` | `gotest` | Go test TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:779` |
 | `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:411` |
+| `none.unit.tooling.testreg-extract.a-row-naming-a-jsonl-file-reads-every-line` | `gotest` | Go test TestARowNamingAJsonlFileReadsEveryLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowNamingAJsonlFileReadsEveryLine` | the Go test passes | `internal/testreg/extract/extract_test.go:787` |
 | `none.unit.tooling.testreg-extract.a-subtest-row-claims-its-subtest` | `gotest` | Go test TestASubtestRowClaimsItsSubtest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASubtestRowClaimsItsSubtest` | the Go test passes | `internal/testreg/extract/extract_test.go:219` |
 | `none.unit.tooling.testreg-extract.a-test-that-skips-is-refused` | `gotest` | Go test TestATestThatSkipsIsRefused in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestATestThatSkipsIsRefused` | the Go test passes | `internal/testreg/extract/extract_test.go:298` |
 | `none.unit.tooling.testreg-extract.a-union-row-covers-each-languages-go-test` | `gotest` | Go test TestAUnionRowCoversEachLanguagesGoTest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAUnionRowCoversEachLanguagesGoTest` | the Go test passes | `internal/testreg/extract/langtest_test.go:54` |
