@@ -340,6 +340,7 @@ defmodule Driver do
     _ = manifest
     Enum.each(@surfaces, &IO.puts/1)
     IO.puts("unit shapes")
+    IO.puts("unit tblmoodmap")
   end
 
   def main([manifest, "block-lead"]) do

@@ -365,6 +365,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblg1:test/tables/G1.schema \
 	backenddemo:tables/backend vocabdemo:tables/vocab vocab9demo:tables/vocab9 \
 	shapes:test/tables/shapes tblprior:test/tables/prior/PriorNarrow.schema \
+	tblmoodmap:test/tables/moodmap/MoodMap.schema \
 	tblsurf:test/tables/surfaces tblann4096:test/tables/announce4096 tblann4097:test/tables/announce4097
 
 # THE PAIRED BENCH UNIT is TWO SCHEMA FILES AS ONE UNIT
@@ -376,7 +377,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/moodmap/MoodMap.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-rust
 	@# Each unit is its own crate directory, so the units generate in parallel:
 	@# serial, this loop was ~35 s of the 2-minute input-family

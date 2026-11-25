@@ -285,7 +285,7 @@ if (mode == "list") {
                      "forgery", "cook-forgery",
                      "cook-write", "message", "message-prior", "retain", "retain-save", "retain-refusal",
                      "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-                     "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "unit shapes"]) print(name + "\n");
+                     "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "unit shapes", "unit tblmoodmap"]) print(name + "\n");
   return;
 }
 

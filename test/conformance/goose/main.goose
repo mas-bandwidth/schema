@@ -1340,7 +1340,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\nunit tblmoodmap\n");
         return;
     }
     // THE BATCH (test/conformance/goose/driver, "THE BATCH"): one compile of

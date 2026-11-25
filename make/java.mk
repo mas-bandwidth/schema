@@ -216,6 +216,7 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk testdata/conformance
 	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
 	rm -rf build/tables-generated-java/prior && ./bin/schema generate --lang java --out build/tables-generated-java/prior test/tables/prior/PriorNarrow.schema
 	rm -rf build/tables-generated-java/shapes && ./bin/schema generate --lang java --out build/tables-generated-java/shapes test/tables/shapes/Shapes.schema
+	rm -rf build/tables-generated-java/moodmap && ./bin/schema generate --lang java --out build/tables-generated-java/moodmap test/tables/moodmap/MoodMap.schema
 	# THE 2026-11-22 SURFACES (test/conformance/README.md): tblsurf's roots. The
 	# announcement-cap units tblann4096 and tblann4097 are NOT on this classpath:
 	# the Java emitter's RootFixed for a 4095-variant enum does not compile
@@ -1749,6 +1750,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
 		build/tables-generated-java/prior/*.java build/tables-generated-java/shapes/*.java \
+		build/tables-generated-java/moodmap/*.java \
 		build/tables-generated-java/surfaces/*.java \
 		build/tables-generated-java/tblann4096/*.java \
 		build/tables-generated-java/tblann4097/*.java \

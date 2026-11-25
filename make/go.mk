@@ -215,6 +215,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema' \
 		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
 		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
+		'build/tables-generated-go/moodmap test/tables/moodmap/MoodMap.schema' \
 		'build/tables-generated-go/packetunions test/tables/packetunions/PacketUnions.schema' \
 		'build/tables-generated-go/messages tables/messages' \
 		'build/tables-generated-go/stream tables/stream' \
@@ -272,6 +273,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,writebounds,writebounds)
 	$(call go_table_module,cooktorturewide,cooktorturewide)
 	$(call go_table_module,shapes,shapes)
+	$(call go_table_module,moodmap,tblmoodmap)
 	$(call go_table_module,valuedefaults,tblvaluedefaults)
 	$(call go_table_module,packetunions,tblpacketunions)
 	$(call go_table_module,m1,tblm1)
