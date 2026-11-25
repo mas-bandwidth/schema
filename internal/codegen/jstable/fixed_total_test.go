@@ -162,7 +162,7 @@ for(const [name,why,mutate,text] of cases){
 for(const bytes of [base,textBase]){
  const back=[new m.Row(),new m.Row()],r=new m.TableFixedReport();
  const n=m.RowFixedLoad(back,2,bytes,bytes.length,m.RowFixedNewPlan(),r);
- if(n!==2||r.refused!==0||r.damaged||back[0].lead!==11||back[1].lead!==12||back[1].tail!==102)fail("lawful bounds and neighbors");
+ if(n!==2||r.refused!==0||("damaged" in r)||back[0].lead!==11||back[1].lead!==12||back[1].tail!==102)fail("lawful bounds and neighbors");
  const saved=new Uint8Array(bytes.length);
  if(m.RowFixedSave(back,2,saved)!==bytes.length||!saved.every((x,i)=>x===bytes[i]))fail("lawful byte identity");
 }

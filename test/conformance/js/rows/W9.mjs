@@ -159,7 +159,7 @@ check(prefill[0] === 0x04 && prefill[1] === 0 && prefill[2] === 0 && prefill[3] 
   check(value.bannerLength === 3 && value.banner[0] === 0x68 && value.banner[1] === 0x65 &&
     value.banner[2] === 0x79 && plan.image[4] === 3,
     "only those: the ranges an entry covers keep the WRITER'S bytes — \"hey\", not the default 4 and not the stain");
-  check(!report.damaged && report.refused === 0 && report.oor === 0 &&
+  check(!("damaged" in report) && report.refused === 0 && report.oor === 0 &&
     report.unknown === 0 && report.mismatch === 0,
     `the prefill moves nothing else: verdict clean, counters 0 (clamped=${report.oor})`);
 }

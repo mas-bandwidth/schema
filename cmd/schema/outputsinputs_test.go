@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/atomicfile"
+	"github.com/mas-bandwidth/schema/v2/internal/testvolume"
 )
 
 // inputTree is a pack tree as the reviewer's reproduction has it: a field
@@ -133,7 +134,7 @@ func TestOutputsRefusedInsideTheInputTreeBySpelling(t *testing.T) {
 		{"unicode", "café", "café"},
 	} {
 		t.Run(sp.name, func(t *testing.T) {
-			root := t.TempDir()
+			root := testvolume.Folding(t)
 			tree := filepath.Join(root, sp.made)
 			writeTestFile(t, filepath.Join(tree, "level.json"), "7")
 			if _, err := os.Lstat(filepath.Join(root, sp.other)); err != nil {

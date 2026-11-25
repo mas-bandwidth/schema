@@ -73,7 +73,7 @@ function readRecord(bytes) {
 
 const clean = readRecord(file);
 const countersOf = (r) => [r.oor, r.unknown, r.widened, r.repeated, r.mismatch];
-check(clean.n === 1 && !clean.r.damaged && clean.r.refused === 0 &&
+check(clean.n === 1 && !("damaged" in clean.r) && clean.r.refused === 0 &&
   JSON.stringify(countersOf(clean.r)) === JSON.stringify([0, 0, 0, 0, 0]),
   `baseline: the zeroed-slack record reads clean (n=${clean.n}, clamped=${clean.r.oor})`);
 
@@ -138,7 +138,7 @@ for (const [what, stain] of [
   const stained = new Uint8Array(file);
   stain(stained);
   const dirty = poisonedRead(stained);
-  check(dirty.n === -1 && dirty.r.refused === home.TableFixedRefusal.WireDamaged && !dirty.r.damaged,
+  check(dirty.n === -1 && dirty.r.refused === home.TableFixedRefusal.WireDamaged && !("damaged" in dirty.r),
     `dead bytes are zero: ${what} refuses the whole load wire_damaged (n=${dirty.n}, refused=${home.TableFixedRefusalName(dirty.r.refused)})`);
   check(JSON.stringify(countersOf(dirty.r)) === JSON.stringify([0, 0, 0, 0, 0]),
     `moves no counter: ${what} counts nothing (${JSON.stringify(countersOf(dirty.r))})`);

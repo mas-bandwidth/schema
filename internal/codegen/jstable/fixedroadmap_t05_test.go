@@ -79,7 +79,7 @@ const report = new TableFixedReport(); const r = report;
 const plan = TNewPlan(4096, 4096);
 plan.image.fill(0x5A);
 const n = TLoad(back, back.length, data, data.length, plan, report);
-if (!(n >= 1 && !r.damaged && r.refused === 0)) {
+if (!(n >= 1 && !("damaged" in r) && r.refused === 0)) {
   fail("a clean NEW-READS-OLD is not a refusal: n=" + n + " " + reason(r));
 }
 %s

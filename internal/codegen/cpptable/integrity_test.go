@@ -371,21 +371,22 @@ int main()
     hex( pbuf, sp, "PLAIN" );
     hex( kbuf, sk, "KEYED" );
     // THE READ (§2.14): the trailer's own last byte flipped, and the trailer cut
-    // off, are both damage and land no record (the Go oracle's flipped-bit and
-    // cut-trailer rows, integrityfixed_test.go).
+    // off, both REFUSE integrity_mismatch and land no record (the Go oracle's
+    // flipped-bit and cut-trailer rows, integrityfixed_test.go). The fixed
+    // form's report has no malformed flag (docs/FIXED-FORM-ALGORITHM.md §5.3).
     Reading back[3];
     TableReport report;
     uint8_t bad[1 << 18];
     memcpy( bad, kbuf, (size_t) sk ); bad[sk-1] ^= 0x01;
     if ( ReadingFixedLoad( back, 3, bad, sk, NULL, 0, NULL, &report ) >= 0 ||
-         !report.damaged || report.refused || report.damage_reason != integrity_mismatch )
-        { printf( "READ flipped trailer was not named damage\n" ); return 1; }
+         report.damaged || !report.refused || report.reason != integrity_mismatch )
+        { printf( "READ flipped trailer was not refused integrity_mismatch\n" ); return 1; }
     TableReport report2;
     uint8_t cut[1 << 18];
     memcpy( cut, kbuf, (size_t) ( sk - 1 ) );
     if ( ReadingFixedLoad( back, 3, cut, sk - 1, NULL, 0, NULL, &report2 ) >= 0 ||
-         !report2.damaged || report2.refused || report2.damage_reason != integrity_mismatch )
-        { printf( "READ cut trailer was not named damage\n" ); return 1; }
+         report2.damaged || !report2.refused || report2.reason != integrity_mismatch )
+        { printf( "READ cut trailer was not refused integrity_mismatch\n" ); return 1; }
     return 0;
 }
 `

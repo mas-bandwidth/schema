@@ -41,7 +41,7 @@ view.setUint32(found + 4, 7, true); /* the forge */
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || r.damaged || r.oor !== 0) {
+if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || ("damaged" in r) || r.oor !== 0) {
   fail("writer_bound_count: a count past the WRITER's 4 owes count_over_bound, never the reader's 8: n=" + n + " " + reason(r));
 }
 if (back[0].valsCount !== 0 || back[0].lead !== 1 || back[0].trail !== 2) {

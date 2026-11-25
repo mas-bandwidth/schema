@@ -1567,6 +1567,9 @@ static SCHEMA_UNUSED int bench_table_json_write_value( bench_table_json_out_t * 
 
 /* ---- reading ---- */
 
+/* the read's one pool of repeated-key sets (the keys of one object, below) */
+typedef struct bench_table_json_key_pool_t bench_table_json_key_pool_t;
+
 typedef struct bench_table_json_in_t
 {
     const char * text;
@@ -1575,6 +1578,7 @@ typedef struct bench_table_json_in_t
     bench_table_report_t * report;
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
     void * graph;
+    bench_table_json_key_pool_t * pool; /* NULL: the walk's key sets live on the heap */
     char key_buf[BENCH_K_TABLE_JSON_MAX_KEY];
 } bench_table_json_in_t;
 
@@ -2409,13 +2413,22 @@ static SCHEMA_UNUSED void bench_table_json_skipped_close( bench_table_json_in_t 
    the read, in every object of the text, whatever the key names — a field, a
    key no field has, a key inside a value the walk only skips. Every object
    walked keeps every key it decodes, as the key's place in the text and the
-   hash of its decoded bytes, in an open-addressed set: on the stack for an
-   object of a few keys and on the heap past that, so the set is as large as
-   the object's own keys and never limited by the table's width. Two keys are
-   the same key when their DECODED bytes are, so an escape spells the same key
-   as the character it names. The stack set is small (eight keys at half
-   load) because one lives in every frame of a text nested to the depth cap. */
+   hash of its decoded bytes, in an open-addressed set. Two keys are the same
+   key when their DECODED bytes are, so an escape spells the same key as the
+   character it names.
+
+   WHERE THE SETS LIVE: in ONE pool per read, on the entry point's frame, and
+   never in the walk's own frames — a set per frame is what a text nested to the
+   depth cap cannot afford on a small thread stack. The sets nest exactly as the
+   objects do, so the pool is a stack: an object's set starts at the pool's top,
+   a child's set opens above it and is closed before the parent adds its next
+   key, so a set only ever grows while it is the top one, and grows in place.
+   The read allocates NOTHING while the open sets fit the pool (§2); a set that
+   outgrows it moves to the heap, so the set is as large as the object's own
+   keys and never limited by the table's width. A walk with no pool (a probe)
+   keeps its sets on the heap. */
 #define BENCH_K_TABLE_JSON_KEYS_LOCAL 16
+#define BENCH_K_TABLE_JSON_KEY_POOL 512
 
 #ifndef schema_allocate
 #define schema_allocate( bytes ) calloc( 1, (size_t) ( bytes ) )
@@ -2430,24 +2443,39 @@ typedef struct bench_table_json_key_t
     uint64_t hash; /* of the key's decoded bytes */
 } bench_table_json_key_t;
 
+struct bench_table_json_key_pool_t
+{
+    bench_table_json_key_t slots[BENCH_K_TABLE_JSON_KEY_POOL];
+    int64_t top; /* one past the last slot an open set holds */
+};
+
 typedef struct bench_table_json_keys_t
 {
     bench_table_json_key_t * slots;
-    int64_t capacity; /* 0 until the first unknown key, then a power of two */
+    int64_t capacity; /* 0 until the first key, then a power of two */
     int64_t count;
+    bench_table_json_key_pool_t * pool; /* the read's pool, or NULL */
+    int64_t mark;            /* where this set starts in the pool */
+    int heap;                /* 1: slots is the heap's, not the pool's */
 } bench_table_json_keys_t;
 
-static SCHEMA_UNUSED void bench_table_json_keys_init( bench_table_json_keys_t * keys )
+static SCHEMA_UNUSED void bench_table_json_keys_init( bench_table_json_in_t * in, bench_table_json_keys_t * keys )
 {
     keys->slots = NULL;
     keys->capacity = 0;
     keys->count = 0;
+    keys->pool = in->pool;
+    keys->mark = in->pool != NULL ? in->pool->top : 0;
+    keys->heap = 0;
 }
 
 static SCHEMA_UNUSED void bench_table_json_keys_free( bench_table_json_keys_t * keys )
 {
-    if ( keys->slots != NULL ) { schema_release( keys->slots ); }
+    if ( keys->heap && keys->slots != NULL ) { schema_release( keys->slots ); }
+    if ( keys->pool != NULL ) { keys->pool->top = keys->mark; }
     keys->slots = NULL;
+    keys->capacity = 0;
+    keys->heap = 0;
 }
 
 /* the key a slot holds, decoded again from the text, against this one */
@@ -2464,6 +2492,68 @@ static SCHEMA_UNUSED int bench_table_json_key_equal( const bench_table_json_in_t
     return held_length == length && memcmp( held, key, (size_t) length ) == 0;
 }
 
+/* Grows a set to twice its capacity (the first growth gives it
+   kTableJsonKeysLocal slots). 1: grown; 0: it could not grow (in->bad). */
+static SCHEMA_UNUSED int bench_table_json_keys_grow( bench_table_json_in_t * in, bench_table_json_keys_t * keys )
+{
+    const int64_t capacity = keys->capacity == 0 ? BENCH_K_TABLE_JSON_KEYS_LOCAL : keys->capacity * 2;
+    bench_table_json_key_pool_t * pool = keys->pool;
+    bench_table_json_key_t * grown;
+    int64_t j;
+    int64_t i;
+    if ( (uint64_t) capacity > SIZE_MAX / sizeof( bench_table_json_key_t ) )
+    {
+        in->bad = 1;
+        return 0;
+    }
+    /* IN PLACE, in the pool, while this set is the top one and the grown
+       set fits with its live keys held densely just past it */
+    if ( pool != NULL && !keys->heap && pool->top == keys->mark + keys->capacity &&
+        keys->mark + capacity + keys->count <= BENCH_K_TABLE_JSON_KEY_POOL )
+    {
+        bench_table_json_key_t * region = pool->slots + keys->mark;
+        bench_table_json_key_t * held = region + capacity;
+        int64_t n = 0;
+        for ( j = 0; j < keys->capacity; j++ )
+        {
+            if ( region[j].at != 0 ) { held[n++] = region[j]; }
+        }
+        memset( region, 0, (size_t) capacity * sizeof( bench_table_json_key_t ) );
+        for ( j = 0; j < n; j++ )
+        {
+            i = (int64_t) ( held[j].hash & (uint64_t) ( capacity - 1 ) );
+            while ( region[i].at != 0 ) { i = ( i + 1 ) & ( capacity - 1 ); }
+            region[i] = held[j];
+        }
+        pool->top = keys->mark + capacity;
+        keys->slots = region;
+        keys->capacity = capacity;
+    }
+    else
+    {
+        grown = (bench_table_json_key_t *) schema_allocate( capacity * (int64_t) sizeof( bench_table_json_key_t ) );
+        if ( grown == NULL )
+        {
+            in->bad = 1;
+            return 0;
+        }
+        memset( grown, 0, (size_t) capacity * sizeof( bench_table_json_key_t ) );
+        for ( j = 0; j < keys->capacity; j++ )
+        {
+            if ( keys->slots[j].at == 0 ) { continue; }
+            i = (int64_t) ( keys->slots[j].hash & (uint64_t) ( capacity - 1 ) );
+            while ( grown[i].at != 0 ) { i = ( i + 1 ) & ( capacity - 1 ); }
+            grown[i] = keys->slots[j];
+        }
+        /* the pool region this set held, if any, is given back */
+        bench_table_json_keys_free( keys );
+        keys->slots = grown;
+        keys->capacity = capacity;
+        keys->heap = 1;
+    }
+    return 1;
+}
+
 /* 1: the key is new to its object and now held; 0: the object already holds
    it; -1: the set could not grow, and the walk stops (in->bad). quote is the
    key's opening quote in the text. */
@@ -2474,34 +2564,7 @@ static SCHEMA_UNUSED int bench_table_json_keys_add( bench_table_json_in_t * in, 
     int64_t i;
     int32_t k;
     for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
-    if ( ( keys->count + 1 ) * 2 > keys->capacity )
-    {
-        const int64_t capacity = keys->capacity == 0 ? BENCH_K_TABLE_JSON_KEYS_LOCAL : keys->capacity * 2;
-        bench_table_json_key_t * grown;
-        int64_t j;
-        if ( (uint64_t) capacity > SIZE_MAX / sizeof( bench_table_json_key_t ) )
-        {
-            in->bad = 1;
-            return -1;
-        }
-        grown = (bench_table_json_key_t *) schema_allocate( capacity * (int64_t) sizeof( bench_table_json_key_t ) );
-        if ( grown == NULL )
-        {
-            in->bad = 1;
-            return -1;
-        }
-        memset( grown, 0, (size_t) capacity * sizeof( bench_table_json_key_t ) );
-        for ( j = 0; j < keys->capacity; j++ )
-        {
-            if ( keys->slots[j].at == 0 ) { continue; }
-            i = (int64_t) ( keys->slots[j].hash & (uint64_t) ( capacity - 1 ) );
-            while ( grown[i].at != 0 ) { i = ( i + 1 ) & ( capacity - 1 ); }
-            grown[i] = keys->slots[j];
-        }
-        bench_table_json_keys_free( keys );
-        keys->slots = grown;
-        keys->capacity = capacity;
-    }
+    if ( ( keys->count + 1 ) * 2 > keys->capacity && !bench_table_json_keys_grow( in, keys ) ) { return -1; }
     mask = keys->capacity - 1;
     for ( i = (int64_t) ( hash & (uint64_t) mask ); keys->slots[i].at != 0; i = ( i + 1 ) & mask )
     {
@@ -2611,7 +2674,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_container( bench_table_json_in_t 
     bench_table_json_keys_t keys;
     int ok;
     if ( close != '}' ) { return bench_table_json_skip_members( in, close, depth, NULL ); }
-    bench_table_json_keys_init( &keys );
+    bench_table_json_keys_init( in, &keys );
     ok = bench_table_json_skip_members( in, close, depth, &keys );
     bench_table_json_keys_free( &keys );
     return ok;
@@ -4123,7 +4186,7 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
 {
     bench_table_json_keys_t keys;
     int ok;
-    bench_table_json_keys_init( &keys );
+    bench_table_json_keys_init( in, &keys );
     ok = bench_table_json_read_table_members( in, base, info, depth, first_key, first_length, first_quote, &keys );
     bench_table_json_keys_free( &keys );
     return ok;
@@ -4160,6 +4223,7 @@ static SCHEMA_UNUSED int bench_table_json_read( void * value, const bench_table_
 {
     bench_table_report_t ignored;
     bench_table_json_in_t in;
+    bench_table_json_key_pool_t pool;
     int ok;
     int32_t missing_before;
     memset( &ignored, 0, sizeof( ignored ) );
@@ -4169,6 +4233,8 @@ static SCHEMA_UNUSED int bench_table_json_read( void * value, const bench_table_
     in.report = report != NULL ? report : &ignored;
     in.bad = 0;
     in.graph = NULL;
+    pool.top = 0;
+    in.pool = &pool;
     info->reset( value );
     if ( text == NULL || bytes < 0 )
     {

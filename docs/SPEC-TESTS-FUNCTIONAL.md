@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2246.
+Functional tests every language answers: 2468. Language-free tests: 2245.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -5153,7 +5153,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-requires-every-requested-language` | `gotest` | Go test TestTablePassRequiresEveryRequestedLanguage in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRequiresEveryRequestedLanguage` | the Go test passes | `bench/tools/table_pass_test.go:79` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 59 tests
+#### `tooling` family `ci`, 58 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5198,7 +5198,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.python-usage-fragments-run-negative-control` | `gotest` | Go test TestPythonUsageFragmentsRunNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestPythonUsageFragmentsRunNegativeControl` | the Go test passes | `internal/ci/python_usage_fragments_test.go:166` |
 | `none.functional.tooling.ci.registry-complete-negative-controls` | `gotest` | Go test TestRegistryCompleteNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestRegistryCompleteNegativeControls` | the Go test passes | `internal/ci/registrycomplete_test.go:29` |
 | `none.functional.tooling.ci.registry-covers-every-target` | `gotest` | Go test TestRegistryCoversEveryTarget in ./internal/ci | `package: ./internal/ci`<br>`test: TestRegistryCoversEveryTarget` | the Go test passes | `internal/ci/registrycomplete_test.go:16` |
-| `none.functional.tooling.ci.ruby-generated-strict-gate` | `gotest` | Go test TestRubyGeneratedStrictGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGate` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:120` |
 | `none.functional.tooling.ci.ruby-generated-strict-gate-fast` | `gotest` | Go test TestRubyGeneratedStrictGateFast in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGateFast` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:264` |
 | `none.functional.tooling.ci.ruby-generated-strict-gate-planted-pattern` | `gotest` | Go test TestRubyGeneratedStrictGatePlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyGeneratedStrictGatePlantedPattern` | the Go test passes | `internal/ci/ruby_generated_strict_gate_test.go:154` |
 | `none.functional.tooling.ci.ruby-usage-fragments-run` | `gotest` | Go test TestRubyUsageFragmentsRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestRubyUsageFragmentsRun` | the Go test passes | `internal/ci/ruby_usage_fragments_test.go:119` |

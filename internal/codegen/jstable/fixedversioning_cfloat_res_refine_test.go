@@ -48,7 +48,7 @@ if (r.oor !== 0) {
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("counters moved on a clean backward read: " + reason(r));
 }
-if (r.damaged) { fail("a clean NEW-READS-OLD is not malformed: " + reason(r)); }
+if (("damaged" in r)) { fail("a clean NEW-READS-OLD is not malformed: " + reason(r)); }
 if (r.refused !== 0) { fail("a clean NEW-READS-OLD is not a refusal: " + reason(r)); }
 `, filepath.Join(corpus, "old_cfloat_res_refine.bin"), aim)
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)

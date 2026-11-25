@@ -43,9 +43,18 @@ schema-squirrel-all-port-differential: schema-squirrel-all-port-differential-tre
 # every leg built and run. The Go test builds it through this target when no
 # make target hands it a tree, so a plain go test (the registry's row) compares
 # a tree made from this checkout, never one an earlier run left in build/.
-.PHONY: schema-squirrel-all-port-differential-tree
-schema-squirrel-all-port-differential-tree: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
+#
+# What the tree is made from (the harness, the cook, the toolchain and every
+# leg) is its own target, -legs: those are shared with every other make of the
+# run, so the Go test's row declares -legs as its need
+# (test/registry/go-needs.txt) and the driver builds them in Prepare, under its
+# hold on the checkout; the test's own make of -tree then finds them up to
+# date and writes only its tree.
+.PHONY: schema-squirrel-all-port-differential-tree schema-squirrel-all-port-differential-legs
+schema-squirrel-all-port-differential-legs: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
 	$(if $(strip $(CONFORMANCE_LEGS)),@$(MAKE) --no-print-directory $(CONFORMANCE_LEGS))
+
+schema-squirrel-all-port-differential-tree: schema-squirrel-all-port-differential-legs
 	@rm -rf $(SQUIRREL_DIFFERENTIAL_WORK)
 	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK)
 

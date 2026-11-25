@@ -609,7 +609,7 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 # The registered count: fixedform.mjs prints "ran N, failed M" (one unit per
 # check) and tools/mustrun holds N to this number, measured on amd-3; a commit
 # that adds or removes a check changes it.
-JS_FIXED_FORM_CHECKS := 191
+JS_FIXED_FORM_CHECKS := 197
 .PHONY: tables-js-fixed-form
 tables-js-fixed-form: build/retiredskips build/mustrun build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
 	cd $(CURDIR) && ./build/retiredskips -leg js -- $(MUSTRUN) -name tables-js-fixed-form -count $(JS_FIXED_FORM_CHECKS) -- $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus

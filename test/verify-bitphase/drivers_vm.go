@@ -205,7 +205,11 @@ for line in (d / "manifest.tsv").read_text().splitlines():
     raw = (d / fname).read_bytes()
     cls = getattr(bp, tname)
     if kind == "valid":
-        val = cls.read(raw)
+        # a valid vector refused names itself, as every compiled leg's does
+        try:
+            val = cls.read(raw)
+        except bp.Refused as e:
+            raise AssertionError(f"FAILED: read {fname}: {e}") from None
         got = val.write()
         if got != raw:
             raise AssertionError(f"FAILED: bytes {fname}: got {len(got)} want {len(raw)}")
@@ -272,7 +276,12 @@ File.readlines(File.join(dir, "manifest.tsv"), chomp: true).each do |line|
   raw = File.binread(File.join(dir, fname))
   cls = Bitphase.const_get(tname)
   if kind == "valid"
-    val = cls.read(raw)
+    # a valid vector refused names itself, as every compiled leg's does
+    begin
+      val = cls.read(raw)
+    rescue Bitphase::Refused => e
+      raise "FAILED: read #{fname}: #{e.message}"
+    end
     got = val.write
     raise "FAILED: bytes #{fname}" unless got == raw
   else

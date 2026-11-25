@@ -20,6 +20,7 @@ import (
 func TestAUnionLanguageWithNoGoTestIsRed(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	writeNoNeeds(t, root)
 	if err := os.MkdirAll(filepath.Join(root, "g"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +81,7 @@ func TestAUnionCallCarriesItsBuildTags(t *testing.T) {
 func TestAUnionCallRunsUnderItsPackageLockWithItsTags(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	writeNoNeeds(t, root)
 	for name, src := range map[string]string{
 		"go.mod":      "module x\n\ngo 1.25\n",
 		"g/a_test.go": "package g\n\nimport \"testing\"\n\nfunc TestHere(t *testing.T) {}\n",
