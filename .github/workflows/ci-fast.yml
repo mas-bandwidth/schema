@@ -3272,7 +3272,7 @@ jobs:
           - name: lint-rust
             target: tables-rust-clippy-inputs
             pins: ''
-            paths: bin/schema build/tables-generated-rust
+            paths: bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses
           - name: lint-lua
             target: tables-lua-luacheck-inputs
             pins: ''
