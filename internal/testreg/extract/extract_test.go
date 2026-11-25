@@ -861,3 +861,81 @@ func TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed(t *testing.T) {
 		t.Errorf("an empty stem matched a pattern rule")
 	}
 }
+
+// TestARowNamingAJsonlFileReadsEveryLine: a .jsonl file's lines are cases
+// of their own (dataCases names each for its line), so a row naming the
+// file claims no stem for it; it reads every line, so each line case counts
+// as the row's in Check, and a line case no row's file names is unmoved.
+func TestARowNamingAJsonlFileReadsEveryLine(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line1", Source: "testdata/corpus/cases.jsonl:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "cases/line2", Source: "testdata/corpus/cases.jsonl:2"},
+		{Kind: KindDataCase, Dir: "testdata/other", Name: "cases/line1", Source: "testdata/other/cases.jsonl:1"},
+	}}
+	row := testreg.Test{Key: "roundtrip.conformance-wire.cases", Inputs: []byte(`{"surface":"wire","case":"cases","files":["testdata/corpus/cases.jsonl"],"driver":"test/conformance/{lang}/driver"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz", Adapter: "corpus"}}, Tests: []testreg.Test{row}}
+	ledger := []LedgerLine{{Kind: KindDataCase, Dir: "testdata/other", Count: 1}}
+	if p := Check(res, reg, ledger); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	// the row gone, its two line cases are unmoved again
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Langs: reg.Langs}, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("a dropped row: %v", p)
+	}
+	// a row no ready language answers reads nothing
+	idle := &testreg.Registry{Path: "r.jsonl", Langs: []testreg.Lang{{Name: "zz"}}, Tests: []testreg.Test{row}}
+	if p := Check(res, idle, ledger); !strings.Contains(strings.Join(p, "\n"), "testdata/corpus: 2 tests are neither registry rows") {
+		t.Fatalf("an unanswered row: %v", p)
+	}
+}
+
+// TestAGoTestSubtestRowClaimsTheSubtest: a row that names a subtest claims
+// Test/sub, and the parent row still claims Test. The subtest is held when
+// that Test exists. It does not cover the parent, and a second row for the
+// same subtest is named. A subtest whose test the repository does not hold
+// is named. A subtest name with a slash is not a claim.
+func TestAGoTestSubtestRowClaimsTheSubtest(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindGoTest, Dir: "compiler", Name: "TestParent", Source: "compiler/x_test.go:1"},
+	}}
+	parent := gotestRow("compiler.compiler.parent", "./compiler", "TestParent")
+	child := testreg.Test{Key: "compiler.compiler.child", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestParent","subtest":"Player.schema"}`)}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child}}
+	if p := Check(res, reg, nil); len(p) != 0 {
+		t.Fatalf("parent and its subtest: %v", p)
+	}
+	covered, problems := Covered(reg)
+	if len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	if covered["go-test compiler TestParent"] != "compiler.compiler.parent" {
+		t.Errorf("parent claim: %v", covered)
+	}
+	if covered["go-test compiler TestParent/Player.schema"] != "compiler.compiler.child" {
+		t.Errorf("subtest claim: %v", covered)
+	}
+	onlyChild := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{child}}
+	p := Check(res, onlyChild, nil)
+	joined := strings.Join(p, "\n")
+	if !strings.Contains(joined, "TestParent") || strings.Contains(joined, "does not hold") {
+		t.Fatalf("a subtest row does not cover its parent, and the subtest is held: %v", p)
+	}
+	again := child
+	again.Key = "compiler.compiler.again"
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, child, again}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), "already runs") {
+		t.Fatalf("two rows for one subtest: %v", p)
+	}
+	orphan := testreg.Test{Key: "compiler.compiler.orphan", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestGone","subtest":"X.schema"}`)}
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, orphan}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), "registry row compiler.compiler.orphan runs go-test compiler TestGone/X.schema, which the repository does not hold") {
+		t.Fatalf("orphan subtest: %v", p)
+	}
+	slash := testreg.Test{Key: "compiler.compiler.slash", Adapter: "gotest", Inputs: []byte(`{"package":"./compiler","test":"TestParent","subtest":"a/b"}`)}
+	p = Check(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{parent, slash}}, nil)
+	if !strings.Contains(strings.Join(p, "\n"), `names subtest "a/b"`) {
+		t.Fatalf("slash: %v", p)
+	}
+}

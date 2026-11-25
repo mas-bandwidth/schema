@@ -104,18 +104,30 @@ func harnessFor(t testreg.Test) (harness, bool) {
 	switch {
 	case isUnion(t):
 		return goUnion, true
+	case family == textformFamily:
+		return textformHarness, true
+	case family == csRowsFamily:
+		return csRowsHarness, true
+	case family == gooseFamily:
+		return gooseHarness, true
+	case family == luauVecFamily:
+		return luauHarness, true
 	case family == alignArrays.Name || family == bitPhaseFamily:
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
 	case family == bomEntry.Name:
 		return bomEntry, true
+	case family == featureWitnessFamily:
+		return featureWitness, true
 	case family == nameBuild.Name:
 		return nameBuild, true
 	case wireFuzzFamilies[family]:
 		return wireFuzzHarness, true
 	case family == tablesHarness.Name:
 		return tablesHarness, true
+	case family == jsontestFamily:
+		return jsontestHarness, true
 	}
 	return hostileHarnessFor(family)
 }
