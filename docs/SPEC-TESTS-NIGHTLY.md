@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 201. Language-free tests: 71.
+Nightly tests every language answers: 208. Language-free tests: 71.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -22,6 +22,16 @@ read bytes, write them back, same bytes.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.nightly.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-writes-conformance` | the fixed-form plan and writer conform to the spec rows for argument and metadata lanes, nested union tags and counters | `inputs.tests` (383 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t08_test.go:20` |
+
+### Type `decode`
+
+bytes read give exactly the expected value.
+
+#### `decode` family `fixed-valid-data`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.decode.fixed-valid-data.fixed-valid-data-rows` | Every valid-data row of the fixed form is accepted by the reader and reported as passing. | `tests: {"cs":{"package":"./internal/codegen/cstable","test":"TestCSharpFixedValidDataRows"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixed_valid_data_test.go:93` |
 
 ### Type `codegen`
 
@@ -231,6 +241,43 @@ generated source compiles and is clean.
 | `L.nightly.codegen.name-buildability.tb-max-items` | name-buildability tb\_max\_items: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: tb_max_items`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/tb\_max\_items passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:318` |
 | `L.nightly.codegen.name-buildability.u-pick` | name-buildability u\_pick: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: u_pick`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/u\_pick passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:316` |
 
+### Type `fuzz`
+
+seeded mutations.
+
+#### `fuzz` family `nightly-fuzz`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.nightly-fuzz.nightly-fuzz` | a nightly fuzz campaign over the corpus agrees with the reference engine on every mutant | `tests: {"squirrel":{"package":"./internal/codegen/squirreltable","test":"TestSquirrelNightlyFuzz"}}` | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_test.go:85` |
+
+#### `fuzz` family `nightly-fuzz-readers`, 2 tests
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.fuzz.nightly-fuzz-readers.nightly-fuzz-strict` | a nightly fuzz campaign of the strict readers over every mutant gives the expected verdict on each | `inputs.tests` (98 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_readers_test.go:170` |
+| `L.nightly.fuzz.nightly-fuzz-readers.nightly-fuzz-text-json` | a nightly fuzz campaign of the text and JSON readers over every mutant gives the expected verdict on each | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/squirreltable/nightly_fuzz_readers_test.go:202` |
+
+### Type `plant`
+
+a negative control: a named test run against a deliberately broken build must come out red.
+
+#### `plant` family `fixed-valid-data`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.plant.fixed-valid-data.fixed-valid-data-rows-negative-control` | A faulted expected value in the bool valid-data check makes the valid-data checks go red. | `inputs.tests` (100 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/cstable/fixed_valid_data_test.go:114` |
+
+### Type `bench`
+
+performance or timing.
+
+#### `bench` family `moo-fixed-hotpath-bench`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.bench.moo-fixed-hotpath-bench.fixed-hot-path-bench` | the fixed hot path against the pre-cut baseline stays within the recorded bar | `tests: {"moo":{"package":"./bench/tables/moo","test":"TestMooFixedHotPathBench"}}` | the moo Go test for the case (inputs.tests) passes | `bench/tables/moo/fixed_hotpath_bench_test.go:170` |
+
 ### Type `lint`
 
 generated or runtime code is clean under the language's strict analyser.
@@ -240,6 +287,16 @@ generated or runtime code is clean under the language's strict analyser.
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
 | `L.nightly.lint.luau-strict-analyze.at-id-cap` | the generated Luau modules of a unit announcing exactly 4096 vocabulary entries (the most a reader takes) pass luau-analyze --mode=strict; the 4097-entry unit is refused at run time and not analysed | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauStrictAnalyzeAtIdCap"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/announce_cap_test.go:35` |
+
+### Type `differential`
+
+two implementations or two versions give the same answer.
+
+#### `differential` family `fixedoneverdict`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.differential.fixedoneverdict.generated-fixed-one-verdict-every-byte` | substituting every value of every byte past the header of each fixed root's record, the generated fixed read gives the engine's verdict | `inputs.tests` (103 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fuzzunit/fixedoneverdict_test.go:19` |
 
 ## Language-free tests
 
@@ -413,4 +470,5 @@ Each test's subject exists in one language only (that language's own generated s
 
 | test | language | reason |
 |---|---|---|
+| `bench.moo-fixed-hotpath-bench.fixed-hot-path-bench` | `moo` | performance measurement of this language's own interpreter runtime |
 | `lint.luau-strict-analyze.at-id-cap` | `luau` | luau-analyze strict type checking of a generated 4096-entry Luau module; only Luau has this analyser |

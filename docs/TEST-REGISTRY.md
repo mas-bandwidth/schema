@@ -327,6 +327,189 @@ ruling, 2026-11-25, easy for Glenn to overrule):
   for the case is red, never left out
   (`TestLoadRefusesAnUnrepresentableLineOnAUnionRow`).
 
+The intrinsic rows, grouped by subject, each group with its one-line reason
+(the rows carry their own reasons; `schema-test coverage` lists them):
+
+
+#### Timing and benchmarks (14 rows)
+
+A timing comparison of the language's own code shapes or its runtime's speed; it measures that language's code, and no format rule is in it.
+
+| language | families (rows) |
+|---|---|
+| python | enumbench, evolution-shape, fixed-proof-suite, json-scan, mapbench (2), message, shape-compare (2), unionbench, vtunbounded |
+| ruby | fixed-proof-suite, packet |
+| unity | misc |
+
+#### Memory, allocation, GC and concurrency (47 rows)
+
+The language runtime's own memory model: allocation counts and budgets, garbage collection, reference counting, atom tables, race detection; other runtimes have none of these to test.
+
+| language | families (rows) |
+|---|---|
+| cpp | review-coverage |
+| cs | cstable |
+| elixir | alloc-budget (2), allocaudit, fixed-keyed-save-keys, fixedsave-names, offsets |
+| go | alloc (7), array-length-cache, blockbuild, fixedloadallocs, goleg-size-core, messagesets, sizebudget, soak (3), strictdefault-alloc, strictreadalloc |
+| java | fixedloadalloc, variablenoscratch (3) |
+| js | float32-accessor-shape, float32-default |
+| lobster | release (4) |
+| lua | alloc (4), fixedlineage, soak (2) |
+| moo | fixedform-unit-lock, unit-lock-scope |
+| python | retain |
+| rust | message-review |
+
+#### Toolchain verdicts on generated code (67 rows)
+
+A formatter, linter, analyser or compiler check that exists only for that language (gofmt, vet, clippy, rustfmt, mypy, rubocop, stylua, luau-analyze, dart analyze, google-java-format, compiler warnings).
+
+| language | families (rows) |
+|---|---|
+| c | format, matched-width, misc, strict-c11-locale, vt-strict-api |
+| cpp | reasonenum, widelist-warning-inventory |
+| cs | checked-build, cstable |
+| dart | cookarms-analyze, fixedanalyze, int128-table (2), messageform-batch |
+| elixir | emitformat (2), emptyelement, retainpointerwarnings, retainwarnings, specialized-runtime, variableformat |
+| go | declaredforms, fixedoracle, generatedtext, subsets, surface, usagerecipe |
+| goose | registry (2) |
+| java | canonical (2), canonical-shapes (4), maxbits (2), wire-packet-defaults |
+| js | fixedcheck-empty-blocks, variable-helper-closure |
+| lua | format (3) |
+| luau | strict-analyze |
+| moo | analyze, analyze-outcome, fixedform-rows, strictgate (3), tablesmoo (3), wire-packet-defaults (2) |
+| python | fixedform, misc (2), packet, reflection-corpus |
+| ruby | rubytable |
+| rust | arraymin-len-zero, bool-condition-parens, fixedclass, generated-lint, hostile-corpus, message-clippy |
+
+#### Modules, packages and loading (90 rows)
+
+How the language finds and loads code: module and package names, require paths, imports, include placement, file layout, vendored runtime files.
+
+| language | families (rows) |
+|---|---|
+| c | fixedroadmap-t18 |
+| cpp | misc, nativemapping, review-coverage, review-fixes, spec-agreement |
+| cs | leb |
+| elixir | cardsgate-external, filemodule (5) |
+| go | announce-cap-modes, fuzzunit, header, leb, runtimehome, sharedruntime, soak, uncoveredemitters |
+| goose | names (2) |
+| java | jdkshadow (2) |
+| js | binding-names, dts, union-import |
+| lobster | accelerator-overlay, descriptor-overlay, fixed-overlay, lobstertable, misc, reflection-names (2), runtime-definitions, runtime-package-names (2), unit-view (3), unit-view-vocabulary, unit-view-zero-cost (2), view-listing |
+| lua | blockeligibility (2), blocklayoutonce, constants, read, standalone (2), typeview |
+| luau | casecollision, collision, misc (2), overlay-fixed, overlay-fixed-a, overlay-fixed-b, overlay-fixed-d, overlay-fixed-e, serialize-bitpacker-present (2), wire-packet-defaults |
+| moo | analyze, cards-evidence, emitter-names, json-golden, misc, tablesmoo, tablesmoonames (2) |
+| python | misc (3), package-collision, porting-parity (2), reflection-corpus, runtime-names-reserved, vtfixedclass-value-collision |
+| ruby | misc |
+| rust | cardsform, misc, rusttable (2) |
+| squirrel | loader, misc, runtime-rebuild |
+
+#### Names the language reserves (28 rows)
+
+Generated names that would collide with the language's own keywords, builtins or class members; the collision set is the language's.
+
+| language | families (rows) |
+|---|---|
+| cpp | armsetter (2), misc, review-fixes, spec-agreement |
+| dart | blockbuild-names, cooknames, cookwrite, misc, rowmembers, rowmembers-native |
+| go | enumtypeword, reservedescape, unions |
+| java | variableunions |
+| js | builtin-shadow (2), cursor-names (2), fixedform-inplace |
+| lobster | fixed-guard-names, runtime-global-names |
+| python | message, misc |
+| ruby | identifier-corpus |
+| rust | fixedclass |
+| squirrel | misc |
+| unity | misc |
+
+#### Emitted source shape (64 rows)
+
+The shape of the source the language's emitter writes (literal suffixes, guards, accessor and constructor forms, emitter line budgets), which has no counterpart in another language's source.
+
+| language | families (rows) |
+|---|---|
+| c | control-grep, expr (3), fixedform-r2, identity, offsets, vt-strict-api, zero-width |
+| cpp | conformance-driver-reads-generated, expr, hostile-corpus-rules, json-utf8-comment, review-coverage (4), review-fixes (2), spec-agreement, union-invalid-tag-save |
+| cs | cstable (2), elem-cache, fixedform-csunions (2) |
+| dart | byteorder |
+| elixir | fixedform (6), helper-name |
+| go | jsonseams, measurebody (2), prune, putleb, refat (3), requirednodefault, retain, sourceseams (2), unreferencedhelpers |
+| java | doc-unicode-escape (3), variablenoscratch |
+| js | fixedlanes-agree |
+| lua | jsonkeyliteral, typedsave |
+| luau | review1121 (3), stringlit |
+| moo | misc (2) |
+| python | wire-packet-defaults |
+| ruby | fixedchunk (2) |
+| unity | misc |
+
+#### Runtime internals (21 rows)
+
+A detail of the language's own runtime or bridge (stream latches, typed tables, integer libraries, report objects) that no other runtime has.
+
+| language | families (rows) |
+|---|---|
+| cs | elem-cache |
+| go | announce-cap-modes, array-length-cache, sharedruntime (4) |
+| goose | registry, value-bridge |
+| js | serialize-lookup, wirerows-conformance |
+| lua | armslot, constants |
+| luau | fixed-hotpath-bench |
+| moo | checkedbuild (2), checkedbuild-leb, fixed-hotpath-bench, read-latch (2) |
+| squirrel | unpinnedvm |
+
+#### Build, CI and test-driver wiring (34 rows)
+
+The language leg's own make targets, CI lanes, conformance-driver plumbing, test helpers and negative-control recipes, which wire that language's tests and carry no format rule.
+
+| language | families (rows) |
+|---|---|
+| c | retain-emit, sabotage-anchor |
+| cpp | discard-controls (2) |
+| cs | checked-build, fixedrows-target |
+| elixir | messageform-batch-target |
+| go | writerefusal-store (2) |
+| goose | diewithparent, gooserun-use (2), main (5) |
+| java | absent-spill, loadfixedroot |
+| js | gatecoverage, messageverdict-wiring |
+| lua | constants, typedsave |
+| luau | driver-absent (2) |
+| python | evolution-ci, fixed-proof-ci-selection, hostile-corpus, scalar-widen, wire-packet-defaults, wirefuzz-verdict (2) |
+| squirrel | misc |
+| unity | fixed-harness |
+
+#### Language semantics the generated code must respect (19 rows)
+
+A rule of the language itself (integer overflow, struct padding and alignment, number model, operator ambiguity, constant shadowing, enum underlying types) that the generated code works within.
+
+| language | families (rows) |
+|---|---|
+| c | bool, identity (2), json-placed, offsets, widelist-align16 |
+| cpp | range-assert-wide, reasonenum |
+| cs | fixedform, wideclamp |
+| dart | floatinline |
+| lobster | const-names (2), misc |
+| lua | read |
+| rust | misc (2) |
+| squirrel | interpreter-pin, misc |
+
+#### Generator details (28 rows)
+
+How that language's generator builds or prunes its output (reset methods, helper pruning, emission order, string splitting, instruction counts), with no counterpart in another generator.
+
+| language | families (rows) |
+|---|---|
+| c | expr, misc |
+| cpp | misc, nativemapping, reset, review-coverage, spec-agreement, unbounded-map-insert |
+| cs | fixedform |
+| dart | byteorder |
+| elixir | fixedform |
+| go | blockbuild, countedtail (2), refuseenumfixed, sizebudget, surface, unreferencedhelpers (2) |
+| goose | gooserun-use, registry |
+| lua | blockeligibility, fixedorder, format, typedsave, view-unit-retained |
+| python | pointer-graph-equality |
+| unity | misc |
+
 ## How each kind of test fits
 
 Every test of every kind is a registry row run by this driver; a kind that fits
