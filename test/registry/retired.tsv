@@ -278,6 +278,7 @@ ci-fast.yml	verify-dart-fuzz	make	_verify-dart-fuzz	-	none
 ci-fast.yml	build-cpp-conformance-account	script	python3 make/conformance-handoff.py produce --leg cpp --prebuilt-compiler	-	none
 ci-fast.yml	input-family-cpp-conformance	make	check-inputaccount-cpp	tooling.inputaccount.conformance-cpp	none
 ci-fast.yml	input-family-elixir-conformance	script	inputaccount -family conformance-corpus -leg elixir (and its canaries)	-	none
+# A per-PR row that ran inputaccount -merge would fail because this checkout does not hold the input-family matrix's same-run shard records, so it would not run the check that job runs (the union of those records). The records are not invented here, and this check is not moved to nightly.
 ci-fast.yml	input-family-merge	script	inputaccount: the conformance-corpus shard records' union holds every input owed	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-c	-	none
 ci-fast.yml	conformance-rows	make	conformance-rows-cpp	-	none
