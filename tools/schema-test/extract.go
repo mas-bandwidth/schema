@@ -188,6 +188,9 @@ func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
 		case extract.KindDataCase, extract.KindDriver:
 			return "L4", "corpus data and harnesses: each language's adapter answers them when their family moves in"
 		case extract.KindNegativeControl:
+			if dir == "(excluded)" {
+				return "L6b, L7", "the controls make/negative-controls.json excludes, each with its reason there (an alias, a parameterized worker, the body its wrapper calls, a leg that runs its own): none runs alone, so each moves in with the job that runs it"
+			}
 			return "L5, L6b", "negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job"
 		case extract.KindMakeTarget:
 			return "L3, L5, L6b, L7", "make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job"
