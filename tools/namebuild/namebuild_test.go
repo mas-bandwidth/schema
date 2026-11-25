@@ -47,48 +47,23 @@ func TestPlanCoversTheCorpus(t *testing.T) {
 	}
 }
 
-// TestOwedLedgerIsWellFormed is the ledger's fast half: owed.txt parses, and
-// every line names a target and a builds row (ReadOwed).
-func TestOwedLedgerIsWellFormed(t *testing.T) {
+// TestTheRetiredOwedLedgerIsRefused: the owed ledger that held failing jobs
+// back from red is retired; the corpus carries none, and a planted one is
+// refused.
+func TestTheRetiredOwedLedgerIsRefused(t *testing.T) {
 	t.Parallel()
-	rows, err := ReadRows(corpus)
-	if err != nil {
+	if err := RefuseRetiredOwed(corpus); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadOwed(corpus, rows); err != nil {
+	dir := t.TempDir()
+	if err := RefuseRetiredOwed(dir); err != nil {
+		t.Fatalf("an empty directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, RetiredOwedFile), []byte("cpp n_x owed: a planted cause\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// TestJudgeHoldsTheLedgerExact plants each way a ledger can lie: a stale
-// line (the job passes) and a failure on a job the ledger does not name both
-// fail the run; only a ledgered failure is owed.
-func TestJudgeHoldsTheLedgerExact(t *testing.T) {
-	t.Parallel()
-	owedJob := Job{Case: "n_x", Target: "dart"}
-	owed := map[Job]Owed{owedJob: {Job: owedJob, Cause: "a planted cause", Line: 3}}
-	broke := fmt.Errorf("error: planted")
-	for _, c := range []struct {
-		name string
-		j    Job
-		err  error
-		want string
-	}{
-		{"pass", Job{Case: "n_x", Target: "cpp"}, nil, Pass},
-		{"ledgered failure is owed", owedJob, broke, OwedRun},
-		{"stale ledger line fails", owedJob, nil, Fail},
-		{"unledgered failure fails", Job{Case: "n_x", Target: "rust"}, broke, Fail},
-	} {
-		got, err := Judge(c.j, c.err, owed)
-		if got != c.want {
-			t.Errorf("%s: verdict %s, want %s", c.name, got, c.want)
-		}
-		if (got == Fail) != (err != nil) {
-			t.Errorf("%s: verdict %s with error %v", c.name, got, err)
-		}
-		if c.name == "stale ledger line fails" && (err == nil || !strings.Contains(err.Error(), "STALE OWED")) {
-			t.Errorf("stale line: %v, want a STALE OWED error naming the line", err)
-		}
+	if err := RefuseRetiredOwed(dir); err == nil || !strings.Contains(err.Error(), "retired") {
+		t.Fatalf("a planted ledger was not refused: %v", err)
 	}
 }
 
@@ -100,8 +75,7 @@ func TestNameBuildability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	owed, err := ReadOwed(corpus, rows)
-	if err != nil {
+	if err := RefuseRetiredOwed(corpus); err != nil {
 		t.Fatal(err)
 	}
 	absRoot, err := filepath.Abs(root)
@@ -156,30 +130,25 @@ func TestNameBuildability(t *testing.T) {
 		}
 	}
 
-	type result struct{ pass, fail, owed int }
+	type result struct{ pass, fail int }
 	var mu sync.Mutex
 	summary := map[string]*result{}
 	for _, tg := range Targets {
 		summary[tg] = &result{}
 	}
-	var failures, owedRuns []string
-	// record judges a job against the owed ledger and answers the error the
-	// job's subtest fails on: nil for a pass and for an owed failure
+	var failures []string
+	// record counts a job and answers the error its subtest fails on: every
+	// job that does not build and load is red
 	record := func(j Job, err error) error {
 		mu.Lock()
 		defer mu.Unlock()
-		verdict, ferr := Judge(j, err, owed)
-		switch verdict {
-		case Pass:
+		if err == nil {
 			summary[j.Target].pass++
-		case OwedRun:
-			summary[j.Target].owed++
-			owedRuns = append(owedRuns, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(err)))
-		default:
-			summary[j.Target].fail++
-			failures = append(failures, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(ferr)))
+			return nil
 		}
-		return ferr
+		summary[j.Target].fail++
+		failures = append(failures, fmt.Sprintf("%-28s %-9s %s", j.Case, j.Target, FirstError(err)))
+		return err
 	}
 	// Unity builds share the dialect's serialize project under test/unity,
 	// so they take turns; every other build owns its directory.
@@ -197,23 +166,18 @@ func TestNameBuildability(t *testing.T) {
 	})
 
 	var sb strings.Builder
-	sb.WriteString("name-buildability per-target summary (jobs passed / failed / owed in " + OwedFile + "):\n")
+	sb.WriteString("name-buildability per-target summary (jobs passed / failed):\n")
 	total := result{}
 	for _, tg := range Targets {
 		r := summary[tg]
 		total.pass += r.pass
 		total.fail += r.fail
-		total.owed += r.owed
-		fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail %4d owed\n", tg, r.pass, r.fail, r.owed)
+		fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail\n", tg, r.pass, r.fail)
 	}
-	fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail %4d owed\n", "all", total.pass, total.fail, total.owed)
+	fmt.Fprintf(&sb, "  %-9s %4d pass %4d fail\n", "all", total.pass, total.fail)
 	slices.Sort(failures)
 	for _, f := range failures {
 		sb.WriteString("  FAIL " + f + "\n")
-	}
-	slices.Sort(owedRuns)
-	for _, f := range owedRuns {
-		sb.WriteString("  OWED " + f + "\n")
 	}
 	t.Log(sb.String())
 	// NAMEBUILD_SUMMARY names a file the summary is written to as well, so

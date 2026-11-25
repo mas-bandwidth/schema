@@ -140,7 +140,7 @@ go-test	tools/hostileledger	8	L3	language-free Go tests: the gotest adapter runs
 go-test	tools/inputaccount	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/matrix	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/mustrun	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/namebuild	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	tools/namebuild	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/negativecontrols	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/pgroup	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/releasebin	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -1379,7 +1379,7 @@ data-case	testdata/moo-wire-fuzz-pinned-controls/no-final-newline	1	L4	corpus da
 data-case	testdata/moo-wire-fuzz-pinned-controls/no-final-newline/pins	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/moo-wire-fuzz-pinned-controls/unlisted-saved	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/moo-wire-fuzz-pinned-controls/unlisted-saved/pins	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/name-buildability	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/name-buildability	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit/enum_kind	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit/table_Math	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
