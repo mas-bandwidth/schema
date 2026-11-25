@@ -352,9 +352,6 @@ func main() {
 		if err != nil {
 			fatalf("%v", err)
 		}
-		if err := refuseRetiredRetainRefusalLedger(*manifest); err != nil {
-			fatalf("%v", err)
-		}
 		if err := writeRegistryRows(os.Stdout, rows); err != nil {
 			fatalf("%v", err)
 		}

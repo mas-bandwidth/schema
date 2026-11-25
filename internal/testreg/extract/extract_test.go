@@ -47,19 +47,21 @@ func Testhelper(t *testing.T) {}
 
 func TestMain(m *testing.M) {}
 `,
-	"pkg/b_test.go":                 "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
-	"pkg/testdata/fixture_test.go":  "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
-	"Makefile":                      "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nnc-one:\n\ttrue\n\nlib-check: ; true\n",
-	"make/negative-controls.json":   `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
-	".github/workflows/ci.yml":      "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n  # a comment\n  build:\n    runs-on: x\n",
-	"testdata/corpus/cases.jsonl":   "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
-	"testdata/corpus/x.in":          "in",
-	"testdata/corpus/x.out":         "out",
-	"testdata/corpus/README.md":     "doc",
-	"test/conformance/zz/driver.py": "print()",
-	"test/conformance/zz/src/a.py":  "print()",
-	"tla/m/MCSpec.cfg":              "INIT Init",
-	"working/x_test.go":             "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
+	"pkg/b_test.go":                  "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
+	"pkg/testdata/fixture_test.go":   "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
+	"Makefile":                       "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nnc-one:\n\ttrue\n\nlib-check: ; true\n",
+	"make/negative-controls.json":    `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
+	".github/workflows/ci.yml":       "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n  # a comment\n  build:\n    runs-on: x\n  rows:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group pr --shard 1/2\n  plan:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test langs --ready\n      - run: add_reader ./tools/schema-test ;;\n",
+	"testdata/corpus/cases.jsonl":    "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
+	"testdata/corpus/x.in":           "in",
+	"testdata/corpus/x.out":          "out",
+	"testdata/corpus/README.md":      "doc",
+	"test/conformance/zz/driver.py":  "print()",
+	"test/conformance/zz/src/a.py":   "print()",
+	"tla/m/MCSpec.cfg":               "INIT Init",
+	"working/x_test.go":              "package x\n\nimport \"testing\"\n\nfunc TestScratch(t *testing.T) {}\n",
+	"test/u/obj/Debug/gen.cs":        "// a dotnet build output file, never a test\n",
+	"test/u/bin/Debug/x/u.deps.json": "{}\n",
 }
 
 func writeFixture(t *testing.T, files map[string]string) string {
@@ -79,7 +81,9 @@ func writeFixture(t *testing.T, files map[string]string) string {
 
 // TestExtractFindsEveryKind: the fixture's tests, each of its kind, with
 // the gates that decide its tier; fixtures under testdata, scratch under
-// working/, TestMain and a lower-case Testhelper are not tests.
+// working/, build output under obj/, TestMain and a lower-case Testhelper
+// are not tests, and nor is
+// a workflow job that runs the driver (its tests are the rows it runs).
 func TestExtractFindsEveryKind(t *testing.T) {
 	t.Parallel()
 	res, err := Extract(writeFixture(t, fixture))
@@ -108,6 +112,7 @@ func TestExtractFindsEveryKind(t *testing.T) {
 		"negative-control g1 nc-one [functional] ",
 		"workflow-job .github/workflows/ci.yml build [functional] ",
 		"workflow-job .github/workflows/ci.yml lint [functional] ",
+		"workflow-job .github/workflows/ci.yml plan [functional] ",
 		"data-case pkg/testdata fixture_test [functional] ",
 		"data-case testdata/corpus cases/line4 [functional] ",
 		"data-case testdata/corpus cases/one [functional] ",
@@ -327,6 +332,9 @@ func TestReadLedgerRefusesABadLine(t *testing.T) {
 		{"go-test\ta\t0\tL3\twhy\n", `count "0" is not a positive number`},
 		{"go-test\ta\tx\tL3\twhy\n", `count "x" is not a positive number`},
 		{"gotest\ta\t1\tL3\twhy\n", `unknown kind "gotest"`},
+		// a skip is a fail under the driver, so no ledger line accounts
+		// for one: the skip-red kind is gone
+		{"skip-red\ta:TestX\t1\tL5\tred\n", `unknown kind "skip-red"`},
 		{"go-test\ta\t1\t\twhy\n", "names the layer that moves it and why"},
 		{"go-test\ta\t1\tL3\twhy\n# c\ngo-test\ta\t2\tL3\twhy\n", "u.tsv:3: go-test a is already counted at line 1"},
 	} {
@@ -349,7 +357,7 @@ func TestLedgerCountsWhatIsUnmoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	reg := &testreg.Registry{Tests: []testreg.Test{gotestRow("tooling.pkg.plain", "./pkg", "TestPlain")}}
-	lines := Ledger(res, reg, func(kind, dir string) (string, string) { return "L9", "fixture" })
+	lines := Ledger(res, reg, func(kind, dir string, _ []Item) (string, string) { return "L9", "fixture" })
 	var b strings.Builder
 	if err := WriteLedger(&b, "# h\n", lines); err != nil {
 		t.Fatal(err)
@@ -399,7 +407,7 @@ func TestEveryTestIsARowOrInTheLedger(t *testing.T) {
 // language that answers the row. A language-free row's inputs index nothing,
 // and a data case no row reads is still unmoved. Only what runs counts: the
 // driver of a language with no adapter is unmoved, and a row no ready
-// language answers (none has an adapter, or each owes it) indexes nothing.
+// language answers (none has an adapter, or each declares it unrepresentable) indexes nothing.
 func TestARowIndexesTheCorpusItReads(t *testing.T) {
 	t.Parallel()
 	res := &Result{Items: []Item{
@@ -486,5 +494,39 @@ func TestWhatGitIgnoresIsNotATest(t *testing.T) {
 	}
 	if _, err := Extract(broken); err == nil || !strings.Contains(err.Error(), "to leave out what git ignores") {
 		t.Fatalf("a .git that git cannot read: %v", err)
+	}
+}
+
+// TestADriverOnlyJobIsNotATest: a workflow job whose steps only check out,
+// move artifacts and call the driver runs no test of its own; a job that
+// also runs a make target (on its own line or after a shell operator),
+// uses another action, runs under another shell, or runs nothing at all is
+// still a test.
+func TestADriverOnlyJobIsNotATest(t *testing.T) {
+	t.Parallel()
+	wf := "on: [schedule]\njobs:\n" +
+		"  driver:\n    runs-on: x\n    defaults:\n      run:\n        shell: go run ./tools/pgroup -- bash -e {0}\n    steps:\n      - uses: actions/checkout@abc # v7\n      - run: |\n          set -euo pipefail\n          go run ./tools/fullrun launch --part 1/2\n      - uses: actions/upload-artifact@def\n        with:\n          path: |\n            out/REDS.tsv\n      - run: go run ./tools/schema-test run --group nightly\n" +
+		"  mixed:\n    runs-on: x\n    steps:\n      - run: |\n          go run ./tools/fullrun merge\n          make test-all\n" +
+		"  action:\n    runs-on: x\n    steps:\n      - uses: some/checker@abc\n      - run: go run ./tools/fullrun merge\n" +
+		"  shell:\n    runs-on: x\n    defaults:\n      run:\n        shell: python {0}\n    steps:\n      - run: go run ./tools/fullrun merge\n" +
+		"  chained:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group x && make verify-all\n" +
+		"  continued:\n    runs-on: x\n    steps:\n      - run: go run ./tools/schema-test run --group x\n          && make test-all\n      - uses: actions/checkout@abc\n" +
+		"  flow:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - {run: make test-all}\n" +
+		"  bare:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - run:\n          make test-all\n" +
+		"  spaced:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      -   run: make test-all\n" +
+		"  setchain:\n    runs-on: x\n    steps:\n      - run: |\n          set -e; make test-all\n          go run ./tools/fullrun merge\n" +
+		"  alias:\n    runs-on: x\n    steps:\n      - run: go run ./tools/fullrun merge\n      - *tests\n" +
+		"  empty:\n    runs-on: x\n"
+	res, err := Extract(writeFixture(t, map[string]string{"go.mod": "module example.com/fx\n", ".github/workflows/n.yml": wf}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, it := range res.Items {
+		got = append(got, it.Name)
+	}
+	sort.Strings(got)
+	if want := []string{"action", "alias", "bare", "chained", "continued", "empty", "flow", "mixed", "setchain", "shell", "spaced"}; !slices.Equal(got, want) {
+		t.Errorf("jobs counted as tests: %v, want %v", got, want)
 	}
 }

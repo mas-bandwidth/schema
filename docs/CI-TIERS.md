@@ -121,10 +121,11 @@ next table. Every job of every other workflow is a row here.
 |---|---|---|---|
 | `fork-pull-request` | `ci-fast.yml` | fork-PR | always red: a fork's pull request runs no code here |
 | `plan` | `ci-fast.yml` | per-PR, main, dispatch | always: names the diff, the packages and the legs |
-| `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
+| `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: the policy checks that are not Go tests (slow-gate scan, bench parse, python tooling tests); the policy Go tests are `schema-test-pr` rows |
 | `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr` |
+| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test extract` |
+| `schema-test-pr` | `ci-fast.yml` | per-PR, main, dispatch | always: `schema-test run --group pr --shard i/N`, the registry's unit and functional tests cut by measured seconds |
 | `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
 | `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
 | `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
@@ -146,7 +147,7 @@ next table. Every job of every other workflow is a row here.
 | `input-family-elixir-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir corpus account; runs on lang-clean's uploaded elixir build |
 | `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
-| `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
+| `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | always: the schema-test-pr shards and the tables-go-fixedform row read it |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
 | `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
@@ -200,7 +201,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-rust-runs-hostile-corpus.yml` | fast | `hostile-rust` | debug profile 32 s (run 44982389122); release profile and control nightly |
 | `schema-squirrel-runs-hostile-corpus.yml` | fast | `hostile-squirrel` | 24 s (run 45004138819) |
 | `schema-unity-runs-hostile-corpus.yml` | fast | `hostile-unity` | corpus 25 s (run 44982450182) |
-| `schema-shared-hostile-corpus.yml` | covered | `ci-policy` | its tests (drift and control) are not slow-gated, so ci-policy runs them in internal/ci on every pull request |
+| `schema-shared-hostile-corpus.yml` | covered | `schema-test-pr` | its tests (drift and control) are registry rows of internal/ci, so the pr group runs them on every pull request |
 | `schema-lua-resource-bounds.yml` | fast | `bounds-lua` | 9 + 10 s (run 44980779456) |
 | `schema-luau-resource-bounds.yml` | fast | `bounds-luau` | 15 s (run 44983802065) |
 | `schema-python-resource-bounds.yml` | fast | `bounds-python` | 25 s (run 44980674960) |
@@ -217,17 +218,17 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-dart-nightly-fuzz.yml` | fast | `replay-dart`, `verify-dart-fuzz` | replay 16 s (run 44980533495); the 24M-case campaign (127 s) stays nightly; verify-dart-fuzz runs the seeded smoke |
 | `schema-lua-nightly-fuzz.yml` | fast | `replay-lua`, `verify-leg` | the 600 s campaign stays nightly |
 | `schema-luau-nightly-fuzz.yml` | fast | `replay-luau`, `verify-leg` | the 600 s campaign stays nightly |
-| `schema-moo-nightly-fuzz.yml` | covered | `verify-leg`, `ci-policy` | verify-leg (moo, fuzz) runs the seeded wire, JSON and message fuzz; ci-policy runs the wiring test; the 100-round campaign (195 s) stays nightly |
+| `schema-moo-nightly-fuzz.yml` | covered | `verify-leg`, `schema-test-pr` | verify-leg (moo, fuzz) runs the seeded wire, JSON and message fuzz; the pr group runs the wiring test; the 100-round campaign (195 s) stays nightly |
 | `schema-python-nightly-fuzz.yml` | covered | `verify-leg` | verify-leg (python, fuzz) runs the seeded wire fuzz on both arms; the 500k-case matrix (130-430 s a row) stays nightly |
 | `schema-ruby-nightly-fuzz.yml` | covered | `verify-leg` | as python: 170-410 s a row nightly |
-| `schema-squirrel-nightly-fuzz.yml` | covered | `verify-leg`, `ci-policy` | ci-policy runs the harness tests; the 128 s campaign stays nightly |
+| `schema-squirrel-nightly-fuzz.yml` | covered | `verify-leg`, `schema-test-pr` | the pr group runs the harness tests; the 128 s campaign stays nightly |
 | `schema-squirrel-all-port-differential.yml` | fast | `differential-squirrel` | the comparison and its planted control, 8 s; the whole differential (721 s) stays nightly |
-| `schema-lua-version-differential.yml` | held | `make schema-lua-version-differential` (32 s) | RED ON MAIN: run 44994938828, Lua 5.3 fails beyond the documented refusal. The static half runs in `ci-policy`. Add the row when the nightly is green |
-| `schema-engine-is-the-oracle.yml` | covered | `ci-policy` | TestSchemaEngineIsTheOracle* are not slow-gated, so ci-policy runs them on every pull request |
-| `schema-name-buildability.yml` | covered | `go-test-touched`, `verify-leg` | `go-test-touched` runs `internal/check` (`TestNameBuildabilityCorpus`, holding every probe row's checker verdict) and per-leg codegen tests; building and loading all 18 targets across every accepted probe row (`make name-buildability`) stays nightly |
+| `schema-lua-version-differential.yml` | held | `make schema-lua-version-differential` (32 s) | RED ON MAIN: run 44994938828, Lua 5.3 fails beyond the documented refusal. The static half runs in `schema-test-pr`. Add the row when the nightly is green |
+| `schema-engine-is-the-oracle.yml` | covered | `schema-test-pr` | TestSchemaEngineIsTheOracle* are registry rows, so the pr group runs them on every pull request |
+| `schema-nightly.yml` | covered | `schema-test` | the whole test set through the one launcher (tools/fullrun): every registry instance of every tier and language, and every test the unmoved ledger still holds, by its own command. The `schema-test` job runs the registry's `pr` group on every pull request; the rest of the set runs only at night, and a fixer re-runs a night's reds on a bench with `fullrun retest` |
 | `lobster-fixed-proof-qualification.yml` | fast | `lobster-fixed-proof` | the four fixed-proof gates against the live C++ corpus: 63 s nightly (run 44994152761), 50 s cold on amd-2 |
 | `schema-test-nightly.yml` | covered | `schema-test` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list |
-| `tla-nightly.yml` | covered | `ci-policy` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
+| `tla-nightly.yml` | covered | `schema-test-pr` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
 | `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed`, `cs-block-compile`, `cs-block-compile-negative-control`, `hostile-lobster` | ci-fast is ci-full selected by path. `hostile-lobster` (24 s cold on a bench) is the lobster hostile corpus's pull-request form; go's (106 s, not light) and goose's (red on main) run nightly as certify.yml nightly-gates rows. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |

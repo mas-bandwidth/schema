@@ -1,6 +1,6 @@
 // Package namebuild is the name-buildability nightly (SPEC §4.6, File-name
 // safety and Platform-name safety). A unit `schema check` accepts generates
-// code that builds and loads in all 18 targets (Rowan's ruling, 2026-11-21:
+// code that builds and loads in every target (Rowan's ruling, 2026-11-21:
 // strict wins, the same in every language). testdata/name-buildability holds
 // the name-shadowing survey's probe cases, one pair of files per case, and
 // cases.tsv says what each takes:
@@ -14,15 +14,19 @@
 // refuses at generate is a defect, and the checker runs the emitters' name
 // rules so it refuses such a name itself.
 //
-// A builds row a target cannot build is red in the nightly: no list holds a
-// job back (owed.go: the owed ledger is retired).
+// A builds row a target cannot build yet fails, by name, until it builds:
+// there is no list of expected failures (Glenn, 2026-11-25: no skip and no
+// exemption list of any kind).
 //
-// TestNameBuildability is the nightly: it builds the
-// compiler, generates every builds row in every
-// target, and builds and loads each output, every child through
-// internal/testproc. Its last line is the per-target summary.
+// The nightly is one test per target, TestNameBuildability_<target>, with a
+// subtest per builds row named by its case: each subtest is one registry
+// instance, <lang>.nightly.codegen.name-buildability.<case> (RegistryRows),
+// and schema-test runs it by that name. Each builds the compiler once per
+// run, generates the row in its target, and builds and loads the output,
+// every child through internal/testproc. The run's last lines are the
+// per-target summary.
 //
-//	go test -count=1 -timeout=0 -parallel 4 ./tools/namebuild
+//	go test -count=1 -timeout=0 -parallel 4 -run '^TestNameBuildability_' ./tools/namebuild
 //
 // The toolchains are read from the environment under the make fragments'
 // names (CC, CXX, DOTNET, DART, CARGO, GO, JAVAC, JAVA, NODE, PYTHON, RUBY,
@@ -35,17 +39,22 @@ package namebuild
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
-// Targets are the 18 --lang spellings, one per target: 17 languages, with
-// C# twice (modern and unity).
+// Targets are the --lang spellings, one per generator, with C# twice
+// (modern and unity); TestTargetsAreTheGenerators holds them to the
+// generators the compiler registers.
 var Targets = []string{
 	"c", "cpp", "cs", "unity", "dart", "rust", "go", "java", "js",
 	"python", "ruby", "elixir", "lua", "luau", "moo", "squirrel", "goose", "lobster",
@@ -63,9 +72,17 @@ type Row struct {
 	Verdict string   // RefuseAtCheck or Builds
 	Names   []string // a refuse-at-check row's named target
 	Note    string
+	Line    int // its line in cases.tsv
 }
 
-// ReadRows reads dir/cases.tsv.
+// caseName is what go test keeps unchanged as a subtest name: printable
+// ASCII with no space and no "/". A case is a subtest, and go test rewrites
+// a space, splits at "/" and suffixes a repeat, so a name outside it would
+// never match its registry row's subtest.
+var caseName = regexp.MustCompile(`^[\x21-\x2e\x30-\x7e]+$`)
+
+// ReadRows reads dir/cases.tsv. A case name go test would rewrite, and a
+// case named twice, are refused by line.
 func ReadRows(dir string) ([]Row, error) {
 	f, err := os.Open(filepath.Join(dir, "cases.tsv"))
 	if err != nil {
@@ -73,6 +90,7 @@ func ReadRows(dir string) ([]Row, error) {
 	}
 	defer func() { _ = f.Close() }() // read-only: a close error loses nothing
 	var rows []Row
+	seen := map[string]int{}
 	sc := bufio.NewScanner(f)
 	for n := 1; sc.Scan(); n++ {
 		line := sc.Text()
@@ -83,7 +101,14 @@ func ReadRows(dir string) ([]Row, error) {
 		if len(col) != 4 {
 			return nil, fmt.Errorf("cases.tsv:%d: %d columns, want 4 (case, verdict, names, note)", n, len(col))
 		}
-		r := Row{Case: col[0], Verdict: col[1], Note: col[3]}
+		r := Row{Case: col[0], Verdict: col[1], Note: col[3], Line: n}
+		if !caseName.MatchString(r.Case) {
+			return nil, fmt.Errorf("cases.tsv:%d: case %q holds a space, a \"/\" or a byte outside printable ASCII (go test would rename it as a subtest)", n, r.Case)
+		}
+		if prev, dup := seen[r.Case]; dup {
+			return nil, fmt.Errorf("cases.tsv:%d: case %s again (first at line %d)", n, r.Case, prev)
+		}
+		seen[r.Case] = n
 		if col[2] != "-" {
 			r.Names = strings.Split(col[2], ",")
 		}
@@ -115,6 +140,108 @@ func Plan(rows []Row) []Job {
 		}
 	}
 	return jobs
+}
+
+// THE REGISTRY ROWS (docs/TEST-REGISTRY.md). Each builds row of cases.tsv is
+// one per-language test of the registry, codegen.name-buildability.<case>,
+// tier nightly; its instance for a language is the subtest <case> of
+// TestNameBuildability_<lang>, which schema-test's corpus adapter runs by
+// that name (tools/schema-test, nameBuildRun).
+
+// Family is the registry family of the name-buildability rows.
+const Family = "name-buildability"
+
+// Package is the Go package the rows' tests are in, as go test names it.
+const Package = "./tools/namebuild"
+
+// TestPrefix starts every per-target test's name.
+const TestPrefix = "TestNameBuildability_"
+
+// LangPlaceholder stands for the language in a row's inputs: one row serves
+// every language.
+const LangPlaceholder = testreg.LangPlaceholder
+
+// TestName is the per-target test of target.
+func TestName(target string) string { return TestPrefix + target }
+
+// Inputs are a name-buildability row's inputs: the Go test (with
+// LangPlaceholder for the language) and its subtest, the case.
+type Inputs struct {
+	Package string `json:"package"`
+	Test    string `json:"test"`
+	Subtest string `json:"subtest"`
+}
+
+// RegistryCase spells a case directory as a registry case: lower case, with
+// "_" as "-", and a trailing "_" (a probe of a name with a trailing
+// underscore) as "-tail", since a registry case cannot end in "-".
+func RegistryCase(c string) string {
+	s := c
+	if t, ok := strings.CutSuffix(s, "_"); ok {
+		s = t + "-tail"
+	}
+	s = strings.ToLower(strings.ReplaceAll(s, "_", "-"))
+	for strings.Contains(s, "--") {
+		s = strings.ReplaceAll(s, "--", "-")
+	}
+	return strings.TrimPrefix(s, "-")
+}
+
+type registryRow struct {
+	Rec    string `json:"rec"`
+	Key    string `json:"key"`
+	Type   string `json:"type"`
+	Family string `json:"family"`
+	Case   string `json:"case"`
+	Tier   string `json:"tier"`
+	Checks string `json:"checks"`
+	Inputs Inputs `json:"inputs"`
+	Expect string `json:"expect"`
+	Source string `json:"source"`
+}
+
+// RegistryRows are the registry lines of rows' builds rows, in cases.tsv
+// order. Two cases that spell one registry case are refused, naming both.
+func RegistryRows(rows []Row) ([]string, error) {
+	seen := map[string]string{}
+	var out []string
+	for _, r := range rows {
+		if r.Verdict != Builds {
+			continue
+		}
+		rc := RegistryCase(r.Case)
+		if prev, dup := seen[rc]; dup {
+			return nil, fmt.Errorf("cases %s and %s are both the registry case %s", prev, r.Case, rc)
+		}
+		seen[rc] = r.Case
+		b, err := json.Marshal(registryRow{
+			Rec: "test", Key: "codegen." + Family + "." + rc, Type: "codegen", Family: Family, Case: rc, Tier: "nightly",
+			Checks: "name-buildability " + r.Case + ": the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6)",
+			Inputs: Inputs{Package: Package, Test: TestPrefix + LangPlaceholder, Subtest: r.Case},
+			Expect: "the Go test " + TestPrefix + "<lang>/" + r.Case + " passes: generate, build and load all succeed",
+			Source: fmt.Sprintf("testdata/name-buildability/cases.tsv:%d", r.Line),
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, string(b))
+	}
+	return out, nil
+}
+
+// SplitRegistry splits registry text into the lines that are not
+// name-buildability rows (as text, each with its newline) and those that are.
+func SplitRegistry(src string) (kept string, rows []string) {
+	var sb strings.Builder
+	for line := range strings.Lines(src) {
+		body := strings.TrimSuffix(line, "\n")
+		if strings.HasPrefix(body, `{"rec":"test",`) && strings.Contains(body, `,"family":"`+Family+`",`) {
+			rows = append(rows, body)
+			continue
+		}
+		sb.WriteString(line)
+	}
+	return sb.String(), rows
 }
 
 // Runner runs one child in dir with env added to the environment and returns

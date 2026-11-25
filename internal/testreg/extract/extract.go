@@ -108,11 +108,12 @@ func (s *scan) rel(p string) string {
 }
 
 // skipDir is a directory no test lives in: version control, dependencies,
-// build output, and the sibling checkouts and agent scratch kept beside or
-// inside a clone.
+// build output (a dotnet build leaves obj/ beside its project and
+// bin/Debug or bin/Release in it), and the sibling checkouts and agent
+// scratch kept beside or inside a clone.
 func skipDir(rel, name string) bool {
 	switch name {
-	case ".git", "node_modules", "_build", "deps", "target", ".dart_tool", "__pycache__", ".venv":
+	case ".git", "node_modules", "_build", "deps", "target", "obj", "Debug", "Release", ".dart_tool", "__pycache__", ".venv":
 		return true
 	}
 	switch rel {
@@ -291,4 +292,21 @@ func driverDir(rel string) string {
 		}
 	}
 	return strings.Join(parts, "/")
+}
+
+// LangOf is the language a path names: a segment that is a language, or
+// one that starts with it and ends in a known suffix (ctable, gotable,
+// pythonsdk...).
+func LangOf(dir string, langs map[string]bool) string {
+	for seg := range strings.SplitSeq(dir, "/") {
+		if langs[seg] {
+			return seg
+		}
+		for _, suffix := range []string{"table", "tables", "leg", "sdk", "gen", "emit", "view", "runtime"} {
+			if l, ok := strings.CutSuffix(seg, suffix); ok && langs[l] {
+				return l
+			}
+		}
+	}
+	return ""
 }

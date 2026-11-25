@@ -949,9 +949,6 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		return false, fmt.Errorf("the corpus has %d must-refuse row(s) that cannot fail:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}
 
-	if err := refuseRetiredRetainRefusalLedger(manifestPath); err != nil {
-		return false, err
-	}
 	wireRefusals := map[string]Instance{}
 	for _, instance := range m.Instances {
 		if instance.WireRefused {

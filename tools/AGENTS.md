@@ -23,7 +23,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `matrix/` | 3.0.0 proof gate | `go test ./tools/matrix` | `make proof` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
 | `mustrun/` | harness wrapper: exit status plus a registered ran N count | `go test ./tools/mustrun` | `build/mustrun -name X -count N -- cmd` |
-| `namebuild/` | name-buildability nightly, all 18 targets | `go test ./tools/namebuild` | `make name-buildability` |
+| `namebuild/` | name-buildability nightly, every target | `go test ./tools/namebuild` | `make name-buildability` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
 | `nightlyrows/` | ci-fast nightly-fast matrix row selector | `go test ./internal/nightlyrows` | `go run ./tools/nightlyrows -files diff-files.txt -broad no` |
 | `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |
@@ -36,7 +36,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
 | `sabotage/` | negative-control sabotages | `go test ./tools/negativecontrols` | `go run ./tools/sabotage` |
 | `schema-test/` | the one test driver: run, list, coverage, extract | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test run --group nightly` |
-| `testguard/` | holds a row's test results to its suites, baseline and coverage tables; every skip is red | `go test ./tools/testguard` | `go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD...` |
+| `testguard/` | holds a row's test results to its suites, baseline and coverage tables; every skip is red | `go test ./tools/testguard` | `go run ./tools/testguard check --config CONFIG.tsv RECORD...` |
 | `tlcrun/` | TLC runner held to tla/RUNS.tsv | `go test ./tools/tlcrun` | `bash tla/run-tlc.sh` |
 | `treelock/` | generated-tree lock | `go test ./tools/treelock` | `go test ./tools/treelock` |
 | `vacuoustests/` | vacuous-test analyzer command | `go test ./internal/vacuous` | `go run ./tools/vacuoustests -all` |

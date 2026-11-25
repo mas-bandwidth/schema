@@ -2,12 +2,11 @@ package testreg
 
 import "testing"
 
-// The owed record held a language's instance of a test out of the ready
-// query and reported it MISSING without running it. It is retired under the
-// no-skips ruling (docs/rulings.json): Load refuses the line, so the list
-// cannot come back.
-func TestLoadRefusesTheRetiredOwedRecord(t *testing.T) {
+// TestLoadRefusesAnOwedRecord: there is no owed record (Glenn, 2026-11-25:
+// no skips and no exemption list of any kind). A test a language fails is an
+// ordinary red row, so a line that would excuse one is refused by name.
+func TestLoadRefusesAnOwedRecord(t *testing.T) {
 	t.Parallel()
 	bad := `{"rec":"owed","test":"roundtrip.fam.one","lang":"go","reason":"go answers it absent today"}` + "\n"
-	refused(t, fixture+bad, "fixture.jsonl:15:", "the owed record is retired")
+	refused(t, fixture+bad, "fixture.jsonl:15:", "an owed record is an exemption list")
 }

@@ -173,7 +173,10 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 			"$(MAKE) test-core-tables-2",
 			"$(MAKE) test-core-tables-3",
 			"TEST_LEGS_LOOP",
-			"go test ./...",
+			// tools/namebuild's per-target tests are nightly registry rows:
+			// the package's other tests are chosen at the root by name
+			"go test $$(go list ./... | grep -v '/tools/namebuild$$')",
+			`sel=$$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$$sel" ./tools/namebuild`,
 		}
 		if !slices.Equal(recipeCmds, wantCmds) {
 			errs = append(errs, fmt.Sprintf("Makefile test: recipe commands = %q, want exact sharded delegation %q", recipeCmds, wantCmds))
@@ -252,7 +255,8 @@ func checkCertifyParallelPolicy(certifyYAML, makefile string, registeredLegs []s
 		"make test-core-tables-2",
 		"make test-core-tables-3",
 		"make deps",
-		"go test ./...",
+		"go test $(go list ./... | grep -v '/tools/namebuild$')",
+		`sel=$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$sel" ./tools/namebuild`,
 		"go test ./internal/fuzz/",
 		"test/generated-tree/verify",
 		"make fuzz-tables-go FUZZTIME=10m",
@@ -366,7 +370,7 @@ func TestCertifyParallelShardsCoverFullMakeTest(t *testing.T) {
 		{
 			name: "unsharded recipe line added to Makefile test:",
 			cf:   certifyYAML,
-			mk:   strings.Replace(makefile, "\tgo test ./...\n", "\tgo test ./...\n\t$(MAKE) unsharded-new-gate\n", 1),
+			mk:   strings.Replace(makefile, "\tgo test $$(go list ./... | grep -v '/tools/namebuild$$')\n", "\tgo test $$(go list ./... | grep -v '/tools/namebuild$$')\n\t$(MAKE) unsharded-new-gate\n", 1),
 		},
 		{
 			name: "monolithic make test reintroduced into inline-gate",

@@ -78,11 +78,11 @@ type squirrelOutRoot struct {
 // absence is a feature the port does not carry, and the conformance matrix
 // already names it. A surface the Squirrel leg did not answer is not walked.
 //
-// One answer the harness credits without holding it to bytes is not
-// comparable either, and is not counted: a read-into `unrepresentable` (the
+// Two answers the harness credits without holding them to bytes are not
+// comparable either, and are not counted: a read-into `unrepresentable` (the
 // leg's fixed load always takes a capacity, so the row has no call to hold,
 // FL-17; the harness credits it on a fixed-nocap or retain-fixed row and
-// fails it on any other). Every retain-refusal answer is compared.
+// fails it on any other).
 func compareSquirrelAgainstPorts(work string) (int, []string, []string, error) {
 	out := filepath.Join(work, "out")
 	entries, err := os.ReadDir(out)
@@ -146,7 +146,6 @@ func compareSquirrelAgainstPorts(work string) (int, []string, []string, error) {
 					(string(mine) == "unrepresentable\n" || string(theirs) == "unrepresentable\n") {
 					continue
 				}
-
 				comparisons++
 				compared[other.lang] = true
 				if !bytes.Equal(normalizeDifferentialAnswer(surface.Name(), name, mine),
@@ -441,8 +440,8 @@ func TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences(t *test
 // TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut holds the one
 // answer the harness credits without bytes to exactly its reach: a read-into
 // `unrepresentable` on either side is not compared, while `unrepresentable`
-// on another surface still diverges, and every retain-refusal answer is
-// compared for every leg.
+// on another surface still diverges. Every retain-refusal answer is compared:
+// no ledger excuses a leg's (2026-11-25, docs/rulings.json no-skips).
 func TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut(t *testing.T) {
 	t.Parallel()
 
@@ -452,9 +451,8 @@ func TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut(t *testing.T) {
 	}{
 		{"read-into unrepresentable there", "go", "read-into", "ri_retain_fixed", "read\nzeroed\n", "unrepresentable\n", false, false},
 		{"read-into unrepresentable here", "go", "read-into", "ri_fixed_5000", "unrepresentable\n", "read\n5000\n", false, false},
-		{"retain-refusal second save", "lobster", "retain-refusal", "retain_refusal_body.wire", "AAAA", "AAAABBBB", true, true},
-		{"retain-refusal answer", "lobster", "retain-refusal", "retain_refusal_body", "read\nrefused\nsaved\n", "read\nread\nsaved\n", true, true},
-		{"retain-refusal another leg", "goose", "retain-refusal", "retain_refusal_body.wire", "AAAA", "AAAABBBB", true, true},
+		{"a retain-refusal second save", "lobster", "retain-refusal", "retain_refusal_body.wire", "AAAA", "AAAABBBB", true, true},
+		{"a retain-refusal answer", "lobster", "retain-refusal", "retain_refusal_body", "read\nrefused\nsaved\n", "read\nread\nsaved\n", true, true},
 		{"unrepresentable off read-into", "go", "report", "ri_fixed_5000", "unrepresentable\n", "read\n5000\n", true, true},
 	}
 	for _, tc := range cases {

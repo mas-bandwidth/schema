@@ -9,33 +9,17 @@
 # and says what it needs. It is where a removed skip's condition went: the
 # test is chosen at the root by its tier. --write-ledger carries them over.
 # kind	place	count	layer	reason
-go-test	bench/corpus	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	bench/paired	82	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	bench/tables/moo	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
-go-test	bench/tools	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	bench/tools/realpacket-gen	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	cmd/schema	100	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	compiler	615	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/baseline	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/check	123	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	324	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci/hostilecorpus	10	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	compiler	9	L5	Go tests behind a leg's build tag (schema_leg_<leg>): that language's adapter runs them
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
-go-test	internal/codegen/ccommon	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/codegen/cfmt	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cpp	28	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
 go-test	internal/codegen/cpptable	182	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
-go-test	internal/codegen/cqualify	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/codegen/csharp	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cstable	171	L5	per-language (cs) Go tests: cs's adapter runs them when their families move in
 go-test	internal/codegen/ctable	187	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/dart	13	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/darttable	279	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/elixirtable	291	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
-go-test	internal/codegen/golang	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/goose	10	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/goosetable	194	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/gotable	395	L5	per-language (go) Go tests: go's adapter runs them when their families move in
@@ -63,95 +47,27 @@ go-test	internal/codegen/squirrel	15	L5	per-language (squirrel) Go tests: squirr
 go-test	internal/codegen/squirreltable	223	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
 go-test	internal/codegen/unity	6	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
 go-test	internal/codegen/unitytable	37	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
-go-test	internal/docgate	12	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/errdiscard	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/execref	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/fixedproof	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/fixedvector	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/format	20	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/fuzz	33	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/githooks	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/goldens	34	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/goname	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/inputfamilies	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/languages	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/listwalk	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/lockfile	170	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/mapwalk	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/memceiling	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/modulemove	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/modulemove/pincorpus	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/nightlyrows	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/parser	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/pathid	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/provesran	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/publicapi	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/recipescan	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/rfc3339	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/runmatch	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/scanner	11	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/slowtest	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablecook	33	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablenames	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablepack	35	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tabletext	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablewire	233	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/testinputs	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/testproc	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/testselect	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/vacuous	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/version	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/viewlisting	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	ir	96	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tables/cards	36	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tables/cards/example	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/tablewire	3	L6	Go benchmarks: the bench adapter runs them
+go-test	tables/cards	36	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
+go-test	tables/cards/example	1	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tables/goruntime	3	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/elixir	2	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	362	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lua	2	L5	per-language (lua) Go tests: lua's adapter runs them when their families move in
 go-test	test/conformance/luau	2	L5	per-language (luau) Go tests: luau's adapter runs them when their families move in
 go-test	test/conformance/moo	2	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
-go-test	test/conformance/packet	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/python	2	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	test/conformance/ruby	2	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	test/conformance/squirrel	2	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
-go-test	test/cs-hostile/gen	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/go-tables	18	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/go-tables	18	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	test/packet-write-bareint/lobster	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
-go-test	test/unity-hostile/gen	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-bitphase	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-canonical	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-tablegen	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/agentsmap	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/cellmerge	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/fixedtwin	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestreport	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrows	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrun	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/hostilecorpusexec	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/hostileledger	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/inputaccount	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/matrix	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/mustrun	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/namebuild	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/negativecontrols	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/pgroup	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasebin	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasediff	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasetag	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasetargets	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/roadmap	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/testguard	44	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/tlcrun	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/treelock	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/wirefuzzrelease	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner of that platform runs them
 make-target	Makefile	37	L6	make gates: the make adapter runs them
 make-target	make/bench-check.mk	1	L6	make gates: the make adapter runs them
 make-target	make/c-fixed-default-copy.mk	1	L6	make gates: the make adapter runs them
@@ -226,7 +142,6 @@ make-target	make/moo-packet-write-bareint.mk	1	L6	make gates: the make adapter r
 make-target	make/moo-tables.mk	1	L6	make gates: the make adapter runs them
 make-target	make/moo-tagged.mk	1	L6	make gates: the make adapter runs them
 make-target	make/moo.mk	1	L6	make gates: the make adapter runs them
-make-target	make/name-buildability.mk	1	L6	make gates: the make adapter runs them
 make-target	make/python-array-growth.mk	2	L6	make gates: the make adapter runs them
 make-target	make/python-array-root.mk	1	L6	make gates: the make adapter runs them
 make-target	make/python-blob-wire-driver.mk	1	L6	make gates: the make adapter runs them
@@ -702,7 +617,7 @@ negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the pl
 negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	13	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	31	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	32	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg-gates-nightly.yml	6	L7	workflow jobs: CI is generated from the registry
@@ -739,7 +654,6 @@ workflow-job	.github/workflows/schema-luau-runs-hostile-corpus.yml	2	L7	workflow
 workflow-job	.github/workflows/schema-moo-generated-analyze-strict-gate.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-name-buildability.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
@@ -1189,11 +1103,6 @@ data-case	test/tables/valuedefaults/vd_fixed_values	1	L4	corpus data and harness
 data-case	test/tables/valuedefaults/vd_var_defaults	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/valuedefaults/vd_var_values	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/widenbound	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-python-legs/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	70	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	427	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fslowtest	45	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-selectors/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	139	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-bitphase	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -2271,207 +2180,12 @@ driver	test/table-base64/cs	1	L4	corpus data and harnesses: each language's adap
 driver	test/table-base64/python	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/testguard	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-driver	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity-hostile/units	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity/serialize	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/verify-bitphase/cpp	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-tier	bench/paired:TestBuiltGateOnly	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	bench/paired:TestLocalProcessMonitor	1	L3	functional: reads the real host process monitor (ps/load)
-tier	bench/paired:TestQuietWindowStopsOwnedRunnerAndRetainsRefusal	1	L3	functional: needs a child test process (it runs this test binary again) (was slowtest.Gate)
 tier	bench/tables/moo:TestMooFixedHotPathBench	1	L5	nightly: SCHEMA_MOO_FIXED_BENCH gate removed: timed bench on a quiet host
-tier	bench/tools:TestANewerPassRefusedByRuleTwoThreeDoesNotDisarmTheAxis	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestARegressionAcrossMachinesIsNotAnAxis	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestASingleLegExperimentFileIsNotAPointOnTheAxis	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestAggregatePrintsEveryRowOfACurrentCorpusPass	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestAggregatePrintsTheCodegenOnlyLegs	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestAggregateRefusesALanguageTheListDoesNotKnowByName	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestAggregateRefusesAPathTheListDoesNotKnow	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestBandsReadsThePriorFilesItIsGiven	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestCLegRegressionOnTheSameMachineIsRed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestControlMedianRefusalNamesTheFile	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestCppLegRegressionIsStillRed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPGOIsATwoPassNativeBuildForCAndCpp	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockBandWidensWithTheSpreads	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockDoesNotLockAnInvalidWindow	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockGatesOnlyTheNewestCertifiedPassOnTheAxis	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockPassInsideTheBandIsGreen	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockPassOutsideTheBandIsRed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockRedsWhenTheNewestCertifiedPassLeavesTheBand	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestPairLockSittingOutsideTheBandWarnsAndExitsZero	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestRenderAwkAndThePairLockAgreeOnTheSameSitting	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestTablePassInterleavesAfterEveryBuild	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestTablePassRefusesFailedProducerWithoutPublishingRows	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestTablePassRequiresEveryRequestedLanguage	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	bench/tools:TestTwoRegressedFilesInOneCommitCannotResetTheAxis	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	cmd/schema:TestARealSizeLimitDamagesNoFile	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestARealSizeLimitFormatsADirectoryAllOrNothing	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestARetiredMemberStaysRetiredAcrossAPackageRename	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestAWrongFileIsNamedByEveryReader	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckClassifiesPublishedArtifacts	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckNamesEveryFileTheToolWrites	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckNamesTheShippedCookAndBlock	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckPrintsTheFormLineBeforeTheUnit	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckRefusesAFileWithNoFormByte	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckRefusesUnknownLeadingBytesAndListsTheKnown	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCheckReportsTheFormByteFirst	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCommandsRefuseOutputsOverWhatTheyRead	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCookBlobSharedRefuses	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCookVerboseNamesEachRead	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCookVerboseOverAWireFileReportsOnce	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestCookWithoutVerbosePrintsNoReport	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestFmtDirectoryPreservesEarlierFilesOnParseError	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateChecksEveryLanguagesWords	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateCppRefusesHeaderCollidingPackageNames	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateEveryTargetRefusesEveryLanguagesWords	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateGoAfterACaseOnlySourceRename	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateGoCompilesGoOnlyWords	1	L3	functional: needs go build and the compiled schema binary; one go build per Go-only reserved word (was slowtest.Gate)
-tier	cmd/schema:TestGenerateGoRefusesGoReservedWords	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateGoRemovesStaleSurfaceFiles	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGenerateOverAReadOnlyFileThroughTheCLI	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestGeneratedSpellingCorpus	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestHelpListsNewLeg	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestLockWriterHistoricalImportCLI	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestNewLegExistingLanguageIsARefusal	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestNewLegMissingLanguageIsARefusal	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestNewLegZigWritesSkeletonAndFixturePasses	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestNewLegZigYieldsABuildingTestingSkeleton	1	L3	functional: needs go build and the compiled schema binary; go build, go vet and make over a copied tree (was slowtest.Gate)
-tier	cmd/schema:TestOnlyFmtWritesTheSchemaFile	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestOutputInputsCorpus	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPackMessageAnnounceRefusalPreservesOutputs	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPairedCommandsKeepTheExistingPair	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPairedPublishCorpus	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPinCorpusGoResolution	1	L3	functional: needs Go and Git resolve a pseudo-version against a local repository; go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPinCorpusSpellingsThroughTheCommand	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPinMovesEveryGenerateLine	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPinReadOnlyDirectoryChangesNothing	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPinWritesAPathGoCanResolve	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPythonSurfaceCLI	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestPythonSurfaceCLIBehavior	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestReadOnlyTreeRunsEveryReadingCommand	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestRootNameTreeCorpus	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestSharedS3Gate	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestThreeRefusalsPrintTheVersionOnce	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	cmd/schema:TestUnformattedAndFormattedUnitsAgree	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	compiler:TestCPPBlobNamedTwice	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPDefaultBinaryReadIsStrict	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPExactIntegerRangeBounds	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPFromJsonIsStrict	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPJSONArrayRoot	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPJSONOptionalMapValues	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPMapPresence	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPOneSidedIntegerRange	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPOptionalMapJsonNullResetsToEmpty	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPRequiredExactFieldHasNoDefault	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPRequiredFieldRefusesWhenMissing	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPRequiredInOffBranch	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPRequiredKeyedArrayAndEmptyNestedTable	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPRequiredPast512Fields	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPRequiredRefusalReachesStrictCallers	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPTableStringArrays	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPTextFormDocumentEdits	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPTextFormDocumentVectors	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPTextFormIntegralNumbersFunctional	1	L3	functional: needs generated C++ text-form reader (was slowtest.Gate)
-tier	compiler:TestCPPTextFormSharing	1	L3	functional: needs the C++ and Go compilers (was slowtest.Gate)
-tier	compiler:TestCPPTimestampTextStrictRFC3339	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCPPUnboundedDescriptorIsExplicit	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCTableAnnouncementDistinctQuantizedShapes	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableAnnouncementFailureClearsEntries	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableArrayElementKindsClosed	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableBlobRuntimeFollowsTheCensus	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCTableBlobSizeRefusal	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableCookAndBlockRefusals	1	L3	functional: needs a C/C++ compiler; an external toolchain (was slowtest.Gate)
-tier	compiler:TestCTableCookCanonical	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCTableCookCountedArrayTailZero	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCTableDeadCheckDefault_Probed	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableDeadCheckDefault_Unprobed	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableFallbackRefusalSetsRefused	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableFixedMeasureCountAsserted	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableFloatRungIsTheFiniteTestAndTheConversion	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCTableGraphCheckedOverEveryPointer	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableKeyedBounds	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableKeyedScalarSlotExactLength	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableKeyedSlotReadOnce	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableKeyedUnnamedSlotChecked	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableMapWideningCount	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableMessageEvolution	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableMessageOrderAndMembership	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableMessageSave	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableNodeTypeReservedIdRefused	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableOpenDistinctnessVerdict	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTablePlainLoadIsStrict	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTablePointerArmFraming	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTablePointerHeaderIncludesFromCxx	1	L3	functional: needs the C and C++ compilers, once per generated table header (was slowtest.Gate)
-tier	compiler:TestCTableReachThroughUnknownUnionAndKeyed	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRefOrdinalBytes	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRefOrdinalSharedId	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRetainBlobNamedOnce	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRetainFile	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRetainFramedDepth	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRetainKeepsDepth128	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRetainRefusedByName	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableRetainRefusesWhatLoadRefuses	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableSkipCountsKeyedNesting	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableUnknownUnionCountsItsLevel	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableUnnamedRecordBodyChecked	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableViewListing	1	L3	functional: needs the C compiler, once per corpus unit (was slowtest.Gate)
-tier	compiler:TestCTableViewOutsideClosure	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireAllocatorFailures	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireBlobIdentity	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireBlobSharedRefused	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireDeepFrames	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireDefaultRecovery	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireGraphIdentity	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireJsonIntegerDomain	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireMaps	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireNestedLists	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireReferenceBoundary	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCTableWireWidening	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCUfixedBridgeRuntimeAgainstSerializeC	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCheckedCookGoConsumers	1	L3	functional: needs the generated Go hostile cook consumer (was slowtest.Gate)
-tier	compiler:TestCheckedCookGoConsumersNegativeControls	1	L3	functional: needs the generated Go checked-cook negative controls (was slowtest.Gate)
-tier	compiler:TestCookAbsentOptionalPayloadZero	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestCorpusNonCanonicalSpellings	1	L3	functional: needs the Go toolchain (it builds and runs the vector generator) (was slowtest.Gate)
-tier	compiler:TestCppCollectionWidening	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppCookExtentCanonicalAlignment	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppCookOpenNodeAlignment	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppHiddenUnionExtentRefusal	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppPortableSigned128Writer	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableAnnouncementDistinctQuantizedShapes	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableBlobThunksFollowTheCensus	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableFixedClampOmitsEmptyUnionSwitch	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableFloatRungIsTheFiniteTestAndTheConversion	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableHeaderAndPut128Bytes	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableOmitsEmptyTypeIdSwitch	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableRefOrdinalBytes	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableRefOrdinalSharedId	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableRetainFramedDepth	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableSaveMeasureCacheBytes	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableWidenArmWidthFollowsTheCensus	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableWidenListWidthFollowsTheCensus	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableWidenRuntimeAbsentFromALadderlessUnit	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableWidenSignedFollowsTheCensus	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppTableWidenUnsignedFollowsTheCensus	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestCppVariableWideAlignment	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	compiler:TestCsRefAt	1	L3	functional: needs dotnet (was slowtest.Gate)
-tier	compiler:TestCsTypedVsDynamicWireEquivalence	1	L3	functional: needs dotnet (was slowtest.Gate)
-tier	compiler:TestFlagsElementWidening	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestFunctionalCTableReachWalkBoundedByBody	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestGeneratedConstantsCompileToCheckerValues	1	L3	functional: needs the C, C++, Go, Node, Rust, .NET, Dart and Java toolchains (each compiles and runs the generated constants) (was slowtest.Gate)
-tier	compiler:TestGoUnitViewCorpus	1	L3	functional: needs the Go toolchain, once per corpus unit (was slowtest.Gate)
-tier	compiler:TestIssue611JsonUnsignedOverflowLandsCeiling	1	L3	functional: needs the Go and .NET toolchains (they compile and run the generated packages) (was slowtest.Gate)
-tier	compiler:TestIssue710CTableBounds	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestIssue710ListRefusal	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestIssue710PacketStringBounds	1	L3	nightly: testing.Short gate removed: long run
-tier	compiler:TestIssue710TableRecovery	1	L3	functional: needs a C/C++ compiler (was slowtest.Gate)
-tier	compiler:TestIssue715Base64ReaderDefaults	1	L3	functional: needs a C/C++ compiler; dotnet; the Go toolchain (it compiles and runs the generated reader) (was slowtest.Gate)
-tier	compiler:TestIssue746Base64WriterInt32MaxUBSan	1	L3	nightly: SCHEMA_CERTIFY_INT32_MAX gate removed: 2 GiB certify run
-tier	compiler:TestIssue759PacketBoolLayoutAgreesWithTable	1	L3	functional: needs the C compiler (cc) (was slowtest.Gate)
-tier	compiler:TestJavaUnitsNamedLikePlatformTypesCompile	1	L3	functional: needs javac (it compiles three generated units) (was slowtest.Gate)
-tier	compiler:TestJsDeclarationsBesideTypeScriptTypeNamesTypeCheck	1	L3	functional: needs tsc (it type-checks the generated declarations) (was slowtest.Gate)
-tier	compiler:TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks	1	L3	functional: needs node, serialize.js and tsc (they run and type-check the generated modules) (was slowtest.Gate)
 tier	compiler:TestMooGeneratesTheConstructsItCarries	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooModuleKeyScanGoesRed	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooModuleNamesAtCheck	1	L3	functional: built with -tags schema_leg_moo
@@ -2480,102 +2194,7 @@ tier	compiler:TestMooRegistersItsTableCarriers	1	L3	functional: built with -tags
 tier	compiler:TestMooShipsTheLockLineage	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooTableModuleKeysAreClaimed	1	L3	functional: built with -tags schema_leg_moo
 tier	compiler:TestMooTargetCarriesTheTableCorpus	1	L3	functional: built with -tags schema_leg_moo
-tier	compiler:TestNewLegBenchScaffoldIsUnavailable	1	L3	functional: needs the generated leg script (it runs it as a subprocess) (was slowtest.Gate)
-tier	compiler:TestNewLegZigFixturePasses	1	L3	functional: needs the Go toolchain (it compiles and runs the generated zig leg fixture) (was slowtest.Gate)
-tier	compiler:TestPacketTextHostileFuzz	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	compiler:TestPacketTextHostileFuzzNegativeControl	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	compiler:TestPythonDriverListScalarKinds	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonDriverListSubset	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonDriverScalarValueDefaults	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonEvolutionOldWriterFunctional	1	L3	functional: needs a C/C++ compiler; pinned Python, mypy and C++ evolution wire (was slowtest.Gate)
-tier	compiler:TestPythonEvolutionRenameNegativeControls	1	L3	functional: needs pinned Python rename negative controls (was slowtest.Gate)
-tier	compiler:TestPythonFixedWriterLock	1	L3	functional: needs the pinned Python interpreters (was slowtest.Gate)
-tier	compiler:TestPythonFixedWriterLockNegativeControl	1	L3	functional: needs the pinned Python interpreters (was slowtest.Gate)
-tier	compiler:TestPythonHostedFloatFunctional	1	L3	functional: needs a C/C++ compiler; pinned Python, mypy and C++ hosted float wire (was slowtest.Gate)
-tier	compiler:TestPythonHostedFloatNegativeControls	1	L3	functional: needs pinned Python hosted float negative controls (was slowtest.Gate)
-tier	compiler:TestPythonNodeTableLastThroughDriver	1	L3	functional: needs public Python compiler and pinned readers (was slowtest.Gate)
-tier	compiler:TestPythonOptionalEnumArrays	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonOptionalFloatFunctional	1	L3	functional: needs a C/C++ compiler; pinned Python, mypy and C++ optional floats (was slowtest.Gate)
-tier	compiler:TestPythonOptionalFloatNegativeControls	1	L3	functional: needs pinned Python optional float negative controls (was slowtest.Gate)
-tier	compiler:TestPythonOptionalMapDriverFunctional	1	L3	functional: needs both pinned Python interpreters (was slowtest.Gate)
-tier	compiler:TestPythonReflectionDriverPacketOnly	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonReflectionDriverPacketUnionNegativeControl	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonReflectionSurfaceSelection	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonRequiredPublicArrayEvolution	1	L3	functional: needs both pinned Python interpreters (was slowtest.Gate)
-tier	compiler:TestPythonRequiredPublicGuards	1	L3	functional: needs both pinned Python interpreters (was slowtest.Gate)
-tier	compiler:TestPythonRequiredPublicNondefault	1	L3	functional: needs both pinned Python interpreters (was slowtest.Gate)
-tier	compiler:TestPythonRequiredPublicShapes	1	L3	functional: needs both pinned Python interpreters and strict mypy (was slowtest.Gate)
-tier	compiler:TestPythonScalarNodeLastHelperNames	1	L3	functional: needs public scalar helper name collision (was slowtest.Gate)
-tier	compiler:TestPythonScalarNodeTableLastFastGuardControl	1	L3	functional: needs public scalar fast reader node order fault control (was slowtest.Gate)
-tier	compiler:TestPythonScalarNodeTableLastPrecedenceControl	1	L3	functional: needs public scalar fast reader precedence fault control (was slowtest.Gate)
-tier	compiler:TestPythonScalarNodeTableLastThroughDriver	1	L3	functional: needs public scalar fast reader and node table order (was slowtest.Gate)
-tier	compiler:TestPythonSurfaceBehavior	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestPythonTextListTotalRead	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	compiler:TestRepeatedArrayTailDefaults	1	L3	functional: needs the C compiler (cc); the C++ compiler (was slowtest.Gate)
-tier	compiler:TestRubyFixedWriterLock	1	L3	functional: needs both pinned Ruby interpreters (was slowtest.Gate)
-tier	compiler:TestRubyFixedWriterLockNegativeControl	1	L3	functional: needs both pinned Ruby interpreters (was slowtest.Gate)
-tier	compiler:TestRustEverySchemaNameIsReachable	1	L3	functional: needs the Rust toolchain (it builds each generated crate and a test naming its schema names) (was slowtest.Gate)
-tier	compiler:TestSpecBlobTargetOutsideClosureRefused	1	L3	functional: needs the Go toolchain (it builds and runs the blob-kind vector generator) (was slowtest.Gate)
-tier	compiler:TestSpecFixedFormEdges	1	L3	functional: needs the Go toolchain (it runs the vector generator) (was slowtest.Gate)
-tier	compiler:TestSpecPointerTargetTypeChecked	1	L3	functional: needs the Go toolchain (it builds and runs the vector generator) (was slowtest.Gate)
-tier	compiler:TestSquirrelCarriesOptionalVariableClosure	1	L3	functional: needs the pinned Squirrel interpreter (was slowtest.Gate)
-tier	compiler:TestSquirrelCarriesTextListsAndArrayRoot	1	L3	functional: needs the pinned Squirrel interpreter (was slowtest.Gate)
-tier	compiler:TestSquirrelCarriesUnboundedText	1	L3	functional: needs the pinned Squirrel interpreter (was slowtest.Gate)
-tier	compiler:TestTableClosureCountDefaults	1	L3	functional: needs a C/C++ compiler; dotnet; the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
 tier	compiler:TestTableRuntimeNamesAreClaimedMoo	1	L3	functional: built with -tags schema_leg_moo
-tier	compiler:TestTestgenLuau	1	L3	functional: needs the pinned Luau interpreter and the schema-go oracle (was slowtest.Gate)
-tier	compiler:TestUnityFixedFormMatchesCpp	1	L3	functional: needs dotnet; dotnet and the C++ compiler (was slowtest.Gate)
-tier	compiler:TestUnityPacketWireGoldens	1	L3	functional: needs dotnet (was slowtest.Gate)
-tier	compiler:TestUnityTableSurfaceAndBoolIntFrame	1	L3	functional: needs dotnet (was slowtest.Gate)
-tier	internal/ci:TestCertifyParallelShardsCoverFullMakeTest	1	L3	functional: needs make on PATH (was t.Skip, now t.Fatal)
-tier	internal/ci:TestConformanceLegsRebuildFromTheirInputs	1	L3	functional: needs make on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestConformanceLegsRebuildNegativeControl	1	L3	functional: needs make on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestDistPythonStagesTheFleetSDK	1	L3	functional: needs make on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestEveryRunPatternMatchesATest	1	L3	functional: needs the Go toolchain (it compiles each package to list its tests) (was slowtest.Gate)
-tier	internal/ci:TestLuaAllocationCounterCounts	1	L3	functional: needs lua (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuaBinaryRebuildsWhenRuntimeChanges	1	L3	functional: needs make on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestLuaResourceBoundsHostileShapes	1	L3	functional: needs lua (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuaResourceBoundsPlantedPattern	1	L3	functional: needs lua (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauAllocationCounterCounts	1	L3	functional: needs luau (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauGeneratedAnalyzeStrictGate	1	L3	functional: needs luau-analyze (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauGeneratedAnalyzeStrictGatePlantedPattern	1	L3	functional: needs luau-analyze (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauResourceBoundsHostileShapes	1	L3	functional: needs luau (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauResourceBoundsPlantedPattern	1	L3	functional: needs luau (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauRunsHostileCorpus	1	L3	functional: needs luau (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauRunsHostileCorpusPlantedPattern	1	L3	functional: needs luau (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestLuauVocabularyDefaultEntryBound	1	L3	functional: needs luau (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestPythonCICorpusProvenanceAndDamageControls	1	L3	functional: needs shell (offline corpus artifact and refusal controls) (was slowtest.Gate)
-tier	internal/ci:TestPythonCIPlannerProvisionsFixedCorpus	1	L3	functional: needs Go package listing (Python CI matrix) (was slowtest.Gate)
-tier	internal/ci:TestPythonCISupportCoversEveryPrerequisite	1	L3	functional: needs make (Python support prerequisite closure) (was slowtest.Gate)
-tier	internal/ci:TestPythonCIWireFuzzStandalonePartition	1	L3	functional: needs Python wire-fuzz CI plan (was slowtest.Gate)
-tier	internal/ci:TestPythonCompilerCIShardCoverage	1	L3	functional: needs Go compiler tests and Python CI planner (was slowtest.Gate)
-tier	internal/ci:TestPythonFixedEvolutionCICoverage	1	L3	functional: needs Go discovery and fixed evolution CI selection (was slowtest.Gate)
-tier	internal/ci:TestPythonHandtextCISelection	1	L3	functional: needs make and Go test listing (hand-text support rows) (was slowtest.Gate)
-tier	internal/ci:TestPythonUsageFragmentsRun	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	internal/ci:TestPythonUsageFragmentsRunNegativeControl	1	L3	functional: needs the pinned Python toolchain (pyrun: make dist-python)
-tier	internal/ci:TestRegistryCompleteNegativeControls	1	L3	functional: needs make on PATH via registryComplete/registryNA (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestRegistryCoversEveryTarget	1	L3	functional: needs make on PATH via registryComplete (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestRubyGeneratedStrictGate	1	L3	functional: needs both pinned Ruby interpreters and strict analyzers (was slowtest.Gate)
-tier	internal/ci:TestRubyGeneratedStrictGateFast	1	L3	functional: needs both pinned Ruby interpreters and RuboCop (was slowtest.Gate)
-tier	internal/ci:TestRubyGeneratedStrictGatePlantedPattern	1	L3	functional: needs both pinned Ruby interpreters and strict analyzers (was slowtest.Gate)
-tier	internal/ci:TestRubyUsageFragmentsRun	1	L3	functional: needs the pinned Ruby toolchain (rubyrun: make dist-ruby)
-tier	internal/ci:TestRubyUsageFragmentsRunNegativeControl	1	L3	functional: needs the pinned Ruby toolchain (rubyrun: make dist-ruby)
-tier	internal/ci:TestSchemaLuaHostileCorpusPlantedReader	1	L3	functional: needs lua (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestSchemaLuaRunsHostileCorpus	1	L3	functional: needs lua (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestSchemaMooRunsHostileCorpus	1	L3	functional: needs moo (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestSchemaMooRunsHostileCorpusPlantedReader	1	L3	functional: needs moo (the pinned release) (was slowtest.Gate)
-tier	internal/ci:TestSchemaRubyHostileCorpusPlantedReader	1	L3	functional: needs both pinned Ruby interpreters (was slowtest.Gate)
-tier	internal/ci:TestSchemaRubyResourceBoundsHostileShapes	1	L3	functional: needs both pinned Ruby interpreters (was slowtest.Gate)
-tier	internal/ci:TestSchemaRubyResourceBoundsPlantedPattern	1	L3	functional: needs both pinned Ruby interpreters (was slowtest.Gate)
-tier	internal/ci:TestSchemaRubyRunsHostileCorpus	1	L3	functional: needs both pinned Ruby interpreters (was slowtest.Gate)
-tier	internal/ci:TestSchemaSquirrelAllPortDifferential	1	L3	functional: needs the harness output of make schema-squirrel-all-port-differential (was t.Skip, now t.Fatalf)
-tier	internal/ci:TestSerializeFetchTriesTheMirrorFirst	1	L3	functional: needs make and git on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun	1	L3	functional: needs make and git on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestSiblingsPresentMakeDepsFetchesNothing	1	L3	functional: needs make and git on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestSquirrelRunsHostileCorpus	1	L3	functional: needs the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input (was slowtest.Gate)
-tier	internal/ci:TestSquirrelRunsHostileCorpusPlant	1	L3	functional: needs the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input (was slowtest.Gate)
-tier	internal/ci:TestVulnRecipeRunsThePinnedScannerSingular	1	L3	functional: needs make on PATH (was t.Skipf, now t.Fatalf)
-tier	internal/ci:TestWideScalarProbeModuleBoundary	1	L3	functional: needs make on PATH (was t.Skipf, now t.Fatalf)
 tier	internal/codegen/c:TestFixedByteArrayAfterUnionWireC	1	L5	functional: needs the c compiler and the serialize.c sibling (was slowtest.Gate)
 tier	internal/codegen/c:TestNameCorpusBuildsC	1	L5	functional: needs the C compiler and the serialize.c sibling (was slowtest.Gate)
 tier	internal/codegen/c:TestUnionArmSetterSetsTagAndArmC	1	L5	functional: needs the c compiler and the serialize.c sibling (was slowtest.Gate)
@@ -2713,10 +2332,6 @@ tier	internal/codegen/cpptable:TestPointerNamingAnOpenNodeIsRefusedCPP	1	L5	func
 tier	internal/codegen/cpptable:TestRefusedLoadsHandBackNothingCPP	1	L5	functional: needs an external toolchain (was slowtest.Gate)
 tier	internal/codegen/cpptable:TestTwoRefusalsFirstNamesTheReadCPP	1	L5	functional: needs the C++ compiler (c++) (was slowtest.Gate)
 tier	internal/codegen/cpptable:TestUnboundedStringMapInsertAndFind	1	L5	functional: needs a C++17 compiler (was slowtest.Gate)
-tier	internal/codegen/csharp:TestCSharpPacketCheckedBuild	1	L3	functional: needs the .NET SDK (it compiles and runs the generated C# packet probe) (was slowtest.Gate)
-tier	internal/codegen/csharp:TestCSharpPacketCheckedBuildNegativeControl	1	L3	functional: needs the .NET SDK (it compiles and runs the generated C# packet probe) (was slowtest.Gate)
-tier	internal/codegen/csharp:TestCSharpUnionThenFixedByteArrayWire	1	L3	functional: needs dotnet (it compiles and runs the generated C# packet probe) (was slowtest.Gate)
-tier	internal/codegen/csharp:TestNameCorpusBuildsCs	1	L3	functional: needs the .NET SDK and the serialize.cs sibling (was slowtest.Gate)
 tier	internal/codegen/cstable:TestArrayRootCSharp	1	L5	functional: needs an external toolchain; the .NET SDK (was slowtest.Gate)
 tier	internal/codegen/cstable:TestCSJsonBase64Canonical	1	L5	functional: needs an external toolchain; the .NET SDK (was slowtest.Gate)
 tier	internal/codegen/cstable:TestCSJsonCommentIsWellFormedUTF8	1	L5	functional: needs an external toolchain; the .NET SDK (was slowtest.Gate)
@@ -3451,17 +3066,6 @@ tier	internal/codegen/elixirtable:TestWireCountBoundedRetainElixir	1	L5	function
 tier	internal/codegen/elixirtable:TestWireCountRefusalElixir	1	L5	functional: needs an external toolchain; the Elixir toolchain (was slowtest.Gate)
 tier	internal/codegen/elixirtable:TestWireCountRefusalElixirNegativeControl	1	L5	functional: needs an external toolchain; the Elixir toolchain (was slowtest.Gate)
 tier	internal/codegen/elixirtable:TestWireFuzzRegressionsElixir	1	L5	functional: needs Elixir wire-fuzz construct regressions; an external toolchain (was slowtest.Gate)
-tier	internal/codegen/golang:TestEnumNameTakesTheEnumType	1	L3	functional: needs the Go toolchain (it compiles the generated code) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoCompressedFloatClampsTheTopOfRange	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoCompressedFloatReadIsFinite	1	L3	functional: needs the Go toolchain (it compiles and runs the generated reader) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoFlatCompressedFloatClampsTopStep	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoPacketReadEndsWithEndCheck	1	L3	functional: needs the Go toolchain (it compiles and runs the generated reader) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoPacketWriteRefusesNonFiniteFloat	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoPacketWriteRefusesOffRangeCompressedFloat	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoPacketWriteRefusesWideBits	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoStringWriteCheckAllocatesNothing	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoStringWriteRefusesInteriorNULAndInvalidUTF8	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
-tier	internal/codegen/golang:TestGoUnionThenFixedByteArrayWire	1	L3	functional: needs the Go toolchain (it compiles and runs the generated writer) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestFixedCompressedNegZeroRead	1	L5	functional: needs goose (it runs the generated reader over the fixed-form corpus) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestFixedDeadBytesAreZero	1	L5	functional: needs goose (it runs the generated reader over the fixed-form corpus) (was slowtest.Gate)
 tier	internal/codegen/goosetable:TestFixedDeprecatedFieldIsCarried	1	L5	functional: needs goose (it runs the generated reader and writer over the corpus) (was slowtest.Gate)
@@ -5493,12 +5097,12 @@ tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionStrict	1	L5	functiona
 tier	internal/codegen/rubytable:TestRubyFixedProofEvolutionValues	1	L5	functional: needs the pinned Ruby interpreters and live C++ oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapes	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesControlRows	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (the control rows of TestRubyFixedProofShapes, run once under their own name)
+tier	internal/codegen/rubytable:TestRubyFixedProofUnionsOptionalsControlRows	1	L5	functional: needs the pinned interpreters and live C++ fixed-form oracle (the control rows of TestRubyFixedProofUnionsOptionals, run once under their own name)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesArrayBounds	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesNegativeControl	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofShapesText	1	L5	functional: needs the pinned Ruby interpreters and C++ fixed-form oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofSuite	1	L5	functional: needs both Ruby pins and the C++ fixed-form corpus (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofUnionsOptionals	1	L5	functional: needs the pinned interpreters and live C++ fixed-form oracle (was slowtest.Gate)
-tier	internal/codegen/rubytable:TestRubyFixedProofUnionsOptionalsControlRows	1	L5	functional: needs the pinned interpreters and live C++ fixed-form oracle (the control rows of TestRubyFixedProofUnionsOptionals, run once under their own name)
 tier	internal/codegen/rubytable:TestRubyFixedProofValues	1	L5	functional: needs pinned Ruby and the C++ fixed oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofValuesFloatBounds	1	L5	functional: needs pinned Ruby and the C++ fixed oracle (was slowtest.Gate)
 tier	internal/codegen/rubytable:TestRubyFixedProofValuesNegativeControl	1	L5	functional: needs pinned Ruby and the C++ fixed oracle (was slowtest.Gate)
@@ -5803,42 +5407,6 @@ tier	internal/codegen/unitytable:TestUnityVTUnsortedMapEntriesSortCanonicallyAnd
 tier	internal/codegen/unitytable:TestUnityVariableWriterStoresCompressedNegZeroAsPositive	1	L5	functional: needs dotnet Roslyn csc Unity dialect compressed -0 on the variable writer (was slowtest.Gate)
 tier	internal/codegen/unitytable:TestUnityVerdicts	1	L5	functional: needs dotnet Roslyn csc Unity dialect verdicts (was slowtest.Gate)
 tier	internal/codegen/unitytable:TestUnityWriterRefusesMoreThan4096Ids	1	L5	functional: needs dotnet Roslyn csc Unity dialect id table maximum (was slowtest.Gate)
-tier	internal/docgate:TestExamplesCompile	1	L3	functional: needs the target compilers (it compiles the pages' code examples) (was slowtest.Gate)
-tier	internal/docgate:TestTutorialGoCrossing	1	L3	functional: needs go, c++ and the CLI it builds (it walks the tutorial's Go crossing) (was slowtest.Gate)
-tier	internal/fixedproof:TestEvolutionContractNegativeControlFunctional	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	internal/fixedproof:TestEvolutionSuiteVerdictAndCallerCapacity	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	internal/fixedproof:TestProbeAddressSpaceCeilingFunctional	1	L3	functional: needs the C++ compiler (was slowtest.Gate)
-tier	internal/fixedvector:TestDeadBytesVectors	1	L3	functional: needs the fixed-form corpus (was slowtest.Gate)
-tier	internal/fixedvector:TestDeprecatedFieldVectors	1	L3	functional: needs the C++ reference's corpus (make tables-fixedform-corpus) (was slowtest.Gate)
-tier	internal/fixedvector:TestNegativeZeroVectors	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	internal/fuzz:FuzzGeneratedCompiles	1	L3	functional: needs clang (the C/C++ compiler) (was slowtest.Gate)
-tier	internal/fuzz:TestPropRefusalNeverSilent	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestPropRoundTripEveryForm	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestPropStrictReadsAgree	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestRandomTableBoundsPass	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
-tier	internal/fuzz:TestRandomTableDifferential	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestRandomTableDifferentialNegativeControl	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestRandomTableGenFixedPoint	1	L3	nightly: 100 nested go test compiles of generated units, 175 s on 2 threads and past 40 min on one CPU; needs the Go toolchain
-tier	internal/fuzz:TestRandomTableGenFixedPointPlantClamp	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
-tier	internal/fuzz:TestRandomTableIntegrityUnits	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/fuzz:TestRandomTableJsonPlants	1	L3	functional: needs the Go toolchain (it compiles and runs generated units); the Go toolchain (it compiles and runs the generated unit) (was slowtest.Gate)
-tier	internal/fuzz:TestRapidPropsNegativeControl	1	L3	nightly: nightly-only env gate removed: random-schema campaign
-tier	internal/goldens:TestGeneratedTextNamesNoMachine	1	L3	functional: needs every unit generated for every target (was slowtest.Gate)
-tier	internal/listwalk:TestListWalkHalfRidesTheListBearingUnits	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	internal/mapwalk:TestMapWalkHalfRidesTheMapBearingUnits	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	internal/memceiling:TestHeapPanicsPastTheCeiling	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/memceiling:TestStartKillsADescendantPastTheCeiling	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	internal/publicapi:TestExternalGeneratorRegisters	1	L3	nightly: testing.Short gate removed: long run
-tier	internal/publicapi:TestExternalModuleBuildsTheCLI	1	L3	nightly: testing.Short gate removed: long run
-tier	internal/publicapi:TestExternalVocabularyFilteringPreservesFreshCompiler	1	L3	functional: needs go build and the compiled schema binary (was slowtest.Gate)
-tier	internal/publicapi:TestRequireGoSourceFiresOnAnEmptyPackage	1	L3	functional: needs go list (was slowtest.Gate)
-tier	internal/tablecook:TestCookCheckReadsTheReferencesMapHoldingCook	1	L3	functional: needs a built artifact or corpus; it fails by name now where it skipped
-tier	internal/tablecook:TestUnboundedTextAllShapesAndGeneratedGoEquivalence	1	L3	functional: needs an external toolchain; the Go toolchain (it compiles and runs the generated table code) (was slowtest.Gate)
-tier	internal/tabletext:TestTextBase64PaddingIsTheWalks	1	L3	functional: needs the Go toolchain (it builds and runs the generated unit) (was slowtest.Gate)
-tier	internal/tablewire:TestMessageAnnounceIdMatchNegativeControl	1	L3	functional: needs the Go toolchain (it reruns the tablewire tests with an overlay) (was slowtest.Gate)
-tier	internal/tablewire:TestMessageIntegrityIndependentJavaScript	1	L3	functional: needs node (independent message integrity writer) (was slowtest.Gate)
-tier	internal/tablewire:TestRequiredCorpusGeneratedGo	1	L3	functional: needs Go (it checks independent required-field corpus bytes) (was slowtest.Gate)
-tier	internal/viewlisting:TestUnitViewListingMatchesTheIR	1	L3	functional: needs the generated listings make tables-view writes (SCHEMA_VIEW_LISTING_DIR); passed silently without them
 tier	test/conformance/elixir:TestWriteRefusalPacketElixir	1	L5	functional: needs the Elixir toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/elixir:TestWriteRefusalPacketElixirSurface	1	L5	functional: needs the Elixir toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/go/rows:TestRowF8	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
@@ -5854,55 +5422,6 @@ tier	test/conformance/go/rows:TestRowR6	1	L5	functional: shells out to go and bi
 tier	test/conformance/go/rows:TestRowW13	1	L5	functional: shells out to go and bin/schema (SCHEMA_SLOW gate removed)
 tier	test/conformance/goose/writerefusalpacket:TestWriteRefusalPacketGoose	1	L5	functional: needs the Goose toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/goose/writerefusalpacket:TestWriteRefusalPacketGooseSurface	1	L5	functional: needs the Goose toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/harness:TestCCollectionCookDifferential	1	L3	functional: same built native legs
-tier	test/conformance/harness:TestCCollectionDifferential	1	L3	functional: needs SCHEMA_C_COLLECTIONS_DRIVER/SCHEMA_CPP_COLLECTIONS_DRIVER built by make tables-c-collections-fuzz
-tier	test/conformance/harness:TestCanonicalJSONWriterCodegenStrict	1	L3	functional: needs node (the JavaScript runtime) (was slowtest.Gate)
-tier	test/conformance/harness:TestCheckoutReadinessRevisionFailsClosed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestClaimSkipsAbsentSurface	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestClaimedAbsentFails	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCompleteRunRefusesEveryAbsence	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCoverageCannotPassWithoutCheckoutProvenance	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCoverageImplementationFailureCannotBeOverriddenByReceipts	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCrossReadAcceptsAFaithfulPort	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCrossReadPortBytesNotCpps	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCrossReadReferenceRefuses	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCrossReadReferenceResavesDifferently	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestCrossReadSkipsAbsentCases	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestDartBuilderRefusalAndRetentionVectors	1	L3	functional: needs SCHEMA_DART_ROSTER_DRIVER built
-tier	test/conformance/harness:TestDartPlainRosterAllRoots	1	L3	functional: needs SCHEMA_DART_ROSTER_DRIVER built
-tier	test/conformance/harness:TestDartReservedNodeTypeVectors	1	L3	functional: needs SCHEMA_DART_ROSTER_DRIVER built
-tier	test/conformance/harness:TestDartRetainingRosterAllRoots	1	L3	functional: needs SCHEMA_DART_ROSTER_DRIVER built
-tier	test/conformance/harness:TestGooseDriverWritesPriorRefused	1	L3	functional: runs the goose driver with repo-root-relative paths (test/conformance/answer-lines.pl)
-tier	test/conformance/harness:TestHarnessFailsADriverThatPrintsADiagnosticOnStdout	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestHarnessFailsASurfaceRunThatPrintsOnStdout	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestLegThatAnswersNothingIsRed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestLimitTheGrownRowsReachADriver	1	L3	functional: needs the Go toolchain (materialise builds and runs cookgen) (was slowtest.Gate)
-tier	test/conformance/harness:TestLobsterDriverWritesPriorRefused	1	L3	functional: runs lobster driver; lobster/hooks.lobster relative to repo root
-tier	test/conformance/harness:TestLuauDriverWritesPriorRefused	1	L3	functional: runs the luau driver from repo root
-tier	test/conformance/harness:TestMooDriverWritesPriorRefused	1	L3	functional: runs moo driver; moo/split.pl relative to repo root
-tier	test/conformance/harness:TestOriginalNineCoverageManifestReportAndRefusals	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestOriginalNineCoverageRequiresRoadmapAndRuntimeAcceptance	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestOriginalNineCoverageWorkflowReportsBeforeFailure	1	L3	functional: needs an external toolchain; bash (the coverage workflow shell) (was slowtest.Gate)
-tier	test/conformance/harness:TestOriginalNineFlagCannotSilentlyWeakenAcceptance	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestPopulatedFeatureWitnessNativePins	1	L3	functional: needs generated Go (independent populated implementation witnesses) (was slowtest.Gate)
-tier	test/conformance/harness:TestReadinessResolvesRevisionOnceAndReportsIt	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestReferenceCaseAbsent	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestReferenceSurfaceExitsTwo	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestReferenceSurfaceMissingFromList	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestRegistryDiscoversAPlantedLanguage	1	L3	functional: needs make and sh (the conformance registry tools) (was slowtest.Gate)
-tier	test/conformance/harness:TestRoadmapCheckerFindsRepositoryFromHarnessDirectory	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestRunWithErrorsOnAFilterThatSelectsNothing	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestRunWithNoLegIsRed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestSurfaceWithNoRowsIsRed	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestSurfacesRestrictTheRun	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestTheGrownRowsReachADriver	1	L3	functional: needs the Go toolchain (materialise builds and runs cookgen) (was slowtest.Gate)
-tier	test/conformance/harness:TestTickedAbsentFails	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestTickedAbsentSurfaceFails	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestUnclaimedAbsentIsCoverage	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestUntickedAbsentIsCoverage	1	L3	functional: needs an external toolchain (was slowtest.Gate)
-tier	test/conformance/harness:TestVMDriversSetWriteRefusalValuesExactly	1	L3	functional: needs make and the pinned Lua, Luau and MOO interpreters (it runs their conformance drivers) (was slowtest.Gate)
-tier	test/conformance/harness:TestWriteRefusalPacket	1	L3	functional: needs the Go toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/harness:TestWriteRefusalPacketSurface	1	L3	functional: needs the Go toolchain (it compiles and runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/js:TestWriteRefusalPacketJS	1	L5	functional: needs node (it runs the generated packet writer in both tiers) (was slowtest.Gate)
 tier	test/conformance/js:TestWriteRefusalPacketJSSurface	1	L5	functional: needs node (it runs the generated packet writer in both tiers) (was slowtest.Gate)
 tier	test/conformance/lobster:TestWriteRefusalPacketLobster	1	L5	functional: needs the Lobster toolchain (it runs the generated packet writer) (was slowtest.Gate)
@@ -5913,18 +5432,7 @@ tier	test/conformance/luau:TestWriteRefusalPacketLuau	1	L5	functional: needs the
 tier	test/conformance/luau:TestWriteRefusalPacketLuauSurface	1	L5	functional: needs the pinned Luau interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/moo:TestWriteRefusalPacketMoo	1	L5	functional: needs the pinned moo interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/moo:TestWriteRefusalPacketMooSurface	1	L5	functional: needs the pinned moo interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	test/conformance/packet:TestPacketCarrier	1	L3	functional: needs cc, c++, go, cargo, node and lua (it builds and runs one driver per language) (was slowtest.Gate)
-tier	test/conformance/packet:TestPacketConstantDefaultWriters	1	L3	functional: needs the C and C++ compilers and serialize runtimes (was slowtest.Gate)
 tier	test/conformance/python:TestWriteRefusalPacketPython	1	L5	functional: needs the pinned Python interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/python:TestWriteRefusalPacketPythonSurface	1	L5	functional: needs the pinned Python interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/ruby:TestWriteRefusalPacketRuby	1	L5	functional: needs the pinned Ruby interpreter (it runs the generated packet writer) (was slowtest.Gate)
 tier	test/conformance/ruby:TestWriteRefusalPacketRubySurface	1	L5	functional: needs the pinned Ruby interpreter (it runs the generated packet writer) (was slowtest.Gate)
-tier	tools/agentsmap:TestSkippedDirectoriesHoldNoTrackedFile	1	L3	functional: needs a git checkout and git (was t.Skipf, now t.Fatalf)
-tier	tools/namebuild:TestNameBuildability	1	L3	nightly: 3582 toolchain build jobs, about 50 min on a reserved slot; needs every target toolchain
-tier	tools/pgroup:TestEnvWallStopsTheGroupAndNamesTheRule	1	L3	functional: needs sh and sleep (was slowtest.Gate)
-tier	tools/pgroup:TestOrphanDiesWithTheCommand	1	L3	functional: needs sh and sleep (was slowtest.Gate)
-tier	tools/pgroup:TestOrphanOutlivesABareCommand	1	L3	functional: needs sh and sleep (was slowtest.Gate)
-tier	tools/pgroup:TestWallStopsTheGroup	1	L3	functional: needs sh and sleep (was slowtest.Gate)
-tier	tools/roadmap:TestLispRendererSuite	1	L3	functional: needs a toolchain (sbcl); it fails by name now where it skipped
-tier	tools/roadmap:TestRegenerationKeepsTheHandText	1	L3	functional: needs a toolchain (sbcl); it fails by name now where it skipped
-tier	tools/roadmap:TestRoadmapIsGeneratedFromTheData	1	L3	functional: needs a toolchain (sbcl); it fails by name now where it skipped

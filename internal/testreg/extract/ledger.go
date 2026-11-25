@@ -114,8 +114,11 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 }
 
 // Covered reports, for each item a registry row runs, the row's key. A Go
-// test is covered by a gotest row whose inputs name its package and test; a
-// TLC configuration by a model-check row whose inputs name it.
+// test is covered by a gotest row whose inputs name its package and test, or
+// by a per-language row whose inputs name its package and a test named with
+// testreg.LangPlaceholder, which covers that test for every language the
+// registry lists (tools/namebuild's TestNameBuildability_<lang>); a TLC
+// configuration by a model-check row whose inputs name it.
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	out := map[string]string{}
@@ -137,6 +140,23 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				continue
 			}
 			out[id] = t.Key
+			continue
+		}
+		if t.Adapter != "gotest" && t.PerLang() {
+			var in struct{ Package, Test string }
+			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
+				continue // a corpus row whose inputs name no per-language Go test
+			}
+			for _, l := range reg.Langs {
+				if l.Name == testreg.LangFree {
+					continue
+				}
+				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
+				// every case row of the family names the same test
+				if _, seen := out[id]; !seen {
+					out[id] = t.Key
+				}
+			}
 			continue
 		}
 		if t.Adapter != "gotest" {
@@ -168,8 +188,8 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // owns.
 //
 // Only what runs counts: a row indexes its files only when some language
-// answers it (a ready language, one with an adapter, that neither owes it nor
-// declares it unrepresentable), and its driver only for those languages. A
+// answers it (a ready language, one with an adapter, that does not declare it
+// unrepresentable), and its driver only for those languages. A
 // row no adapter answers, and the driver of a language with no adapter, stay
 // unmoved.
 func Indexed(reg *testreg.Registry) map[string]string {
@@ -398,26 +418,27 @@ func Shrinks(old, now []LedgerLine) []string {
 }
 
 // Ledger is the ledger that counts exactly what res holds and reg does not
-// run, each line's layer and reason given by plan(kind, place).
-func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string) (layer, reason string)) []LedgerLine {
+// run, each line's layer and reason given by plan(kind, place, the unmoved
+// tests).
+func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string, items []Item) (layer, reason string)) []LedgerLine {
 	covered := Runs(reg)
-	count := map[string]int{}
+	names := map[string][]Item{}
 	var order []string
 	for _, it := range res.Items {
 		if _, ok := covered[it.ID()]; ok {
 			continue
 		}
 		k := it.Kind + "\t" + it.Dir
-		if count[k] == 0 {
+		if len(names[k]) == 0 {
 			order = append(order, k)
 		}
-		count[k]++
+		names[k] = append(names[k], it)
 	}
 	out := make([]LedgerLine, 0, len(order))
 	for _, k := range order {
 		kind, dir, _ := strings.Cut(k, "\t")
-		layer, reason := plan(kind, dir)
-		out = append(out, LedgerLine{Kind: kind, Dir: dir, Count: count[k], Layer: layer, Reason: reason})
+		layer, reason := plan(kind, dir, names[k])
+		out = append(out, LedgerLine{Kind: kind, Dir: dir, Count: len(names[k]), Layer: layer, Reason: reason})
 	}
 	return out
 }

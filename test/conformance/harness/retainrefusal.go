@@ -222,25 +222,3 @@ func scoreRetainRefusal(lang, answer string, e expectation, r *result) {
 	r.pass++
 	r.mark(e.name, outcomePass)
 }
-
-// RetiredRetainRefusalLedger names the per-leg list that once scored a
-// failing retain-refusal answer as owed instead of red. It is retired under
-// the no-skips ruling (docs/rulings.json): every case runs and is scored as
-// every other row, and a wrong answer is red. The harness refuses to run
-// while a file by this name sits beside the manifest, so the list cannot come
-// back without someone deleting this check first.
-const RetiredRetainRefusalLedger = "retain-refusal-owed.txt"
-
-// refuseRetiredRetainRefusalLedger fails when the retired ledger is present
-// beside manifestPath.
-func refuseRetiredRetainRefusalLedger(manifestPath string) error {
-	path := filepath.Join(filepath.Dir(manifestPath), RetiredRetainRefusalLedger)
-	_, err := os.Stat(path)
-	if err == nil {
-		return fmt.Errorf("%s is present: the retain-refusal ledger is retired (docs/rulings.json, no-skips); every case runs and a wrong answer is red, so delete the file", path)
-	}
-	if !os.IsNotExist(err) {
-		return err
-	}
-	return nil
-}

@@ -3778,7 +3778,11 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	# leg, so a red names the leg. Every registered leg runs (issue #599).
 	@set -e; for leg in $(TEST_LEGS); do \
 		echo "$(MAKE) $$leg"; $(MAKE) $$leg; done
-	go test ./...
+	# tools/namebuild's per-target tests are the registry's nightly
+	# name-buildability rows (make name-buildability-run); the rest of the
+	# package runs here, chosen at the root by name (tools/gotestselect)
+	go test $$(go list ./... | grep -v '/tools/namebuild$$')
+	sel=$$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$$sel" ./tools/namebuild
 
 
 # ---------------------------------------------------------------------------
@@ -4998,7 +5002,11 @@ update-goldens-steps: packet-defaults-goldens conformance-pin
 	# Cook-write snapshots carry the build version too; update both byte orders
 	# through the engine after the reference wire pins have been regenerated.
 	./build/conformance-harness generate
-	go test ./...
+	# tools/namebuild's per-target tests are the registry's nightly
+	# name-buildability rows (make name-buildability-run); the rest of the
+	# package runs here, chosen at the root by name (tools/gotestselect)
+	go test $$(go list ./... | grep -v '/tools/namebuild$$')
+	sel=$$(go run ./tools/gotestselect ./tools/namebuild) || exit 1; go test -run "$$sel" ./tools/namebuild
 
 # the cross-language serialize profiling harness (bench/README.md): builds and
 # runs whichever language runners are available, Release flags, results CSV
@@ -8516,7 +8524,7 @@ wire-fuzz-roster-negative-control:
 	python3 test/conformance/wire_fuzz_complete_test.py
 
 # The python tooling tests, one second together: every *_test.py outside the
-# vendored trees runs here per pull request (ci-fast ci-policy, `rest`), so a
+# vendored trees runs here per pull request (ci-fast ci-policy), so a
 # red nightly-readiness contract is seen on the change that reddens it.
 .PHONY: python-tooling-tests
 python-tooling-tests:

@@ -24,6 +24,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
 // Names are the top-level tests, fuzz targets and examples `go test` would
@@ -75,7 +77,10 @@ func isTestName(name, prefix string) bool {
 
 // Nightly is every Go test whose tier is nightly, as "<dir>:<Name>" with dir
 // slash-separated and relative to root: the tier lines of
-// test/registry/unmoved.tsv and the gotest rows of test/registry/registry.jsonl.
+// test/registry/unmoved.tsv, the gotest rows of test/registry/registry.jsonl,
+// and its per-language rows whose test is named with testreg.LangPlaceholder
+// (tools/namebuild's TestNameBuildability_{lang}), one test per language the
+// registry lists.
 func Nightly(root string) (map[string]bool, error) {
 	out := map[string]bool{}
 	ledger, err := os.ReadFile(filepath.Join(root, "test", "registry", "unmoved.tsv"))
@@ -95,16 +100,29 @@ func Nightly(root string) (map[string]bool, error) {
 	defer reg.Close() //nolint:errcheck // read-only
 	rs := bufio.NewScanner(reg)
 	rs.Buffer(make([]byte, 1<<20), 1<<20)
+	var langs, perLang []string
 	for n := 1; rs.Scan(); n++ {
 		var row struct {
-			Rec, Tier, Adapter string
-			Inputs             struct{ Package, Test string }
+			Rec, Tier, Adapter, Scope, Name string
+			Inputs                          struct{ Package, Test string }
 		}
 		if err := json.Unmarshal(rs.Bytes(), &row); err != nil {
 			return nil, fmt.Errorf("registry.jsonl:%d: %w", n, err)
 		}
-		if row.Rec == "test" && row.Adapter == "gotest" && row.Tier == "nightly" && row.Inputs.Test != "" {
-			out[strings.TrimPrefix(row.Inputs.Package, "./")+":"+row.Inputs.Test] = true
+		place := strings.TrimPrefix(row.Inputs.Package, "./") + ":" + row.Inputs.Test
+		switch {
+		case row.Rec == "lang" && row.Name != testreg.LangFree:
+			langs = append(langs, row.Name)
+		case row.Rec != "test" || row.Tier != "nightly" || row.Inputs.Test == "":
+		case row.Adapter == "gotest":
+			out[place] = true
+		case row.Scope == "" && row.Inputs.Package != "" && strings.Contains(row.Inputs.Test, testreg.LangPlaceholder):
+			perLang = append(perLang, place)
+		}
+	}
+	for _, p := range perLang {
+		for _, l := range langs {
+			out[strings.ReplaceAll(p, testreg.LangPlaceholder, l)] = true
 		}
 	}
 	return out, rs.Err()

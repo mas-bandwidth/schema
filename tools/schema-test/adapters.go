@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -17,11 +18,14 @@ import (
 // harness is a program that runs one family's instances for any language it
 // is given: it reads request lines on its standard input and writes one
 // result line per request (internal/testreg's protocol). Build is what has to
-// exist before it runs for a language; Cmd is its command line for one.
+// exist before it runs for a language; Cmd is its command line for one. A
+// harness with Run answers its instances itself instead of through Cmd
+// (nameBuild: Go subtests run through make), after its Build.
 type harness struct {
 	Name  string
 	Build func(lang string) [][]string
 	Cmd   func(lang, work string) []string
+	Run   func(ctx context.Context, lang string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error)
 }
 
 // alignArrays is test/verify-bitphase --adapter: the align-arrays family's
@@ -64,6 +68,8 @@ func harnessFor(family string) (harness, bool) {
 		return alignArrays, true
 	case strings.HasPrefix(family, conformanceFamilyPrefix):
 		return conformance, true
+	case family == nameBuild.Name:
+		return nameBuild, true
 	}
 	return harness{}, false
 }
@@ -85,10 +91,14 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// to its harness for any language, and a case a language does not
 		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
-		"gotest":      goTestAdapter{log: log},
+		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
 		"model-check": modelCheckAdapter{build: b, log: log},
 	}
 }
+
+// goTestJobs is how many Go packages the gotest adapter runs at once: half
+// the machine, since each package's own tests run in parallel too.
+func goTestJobs() int { return min(8, max(1, runtime.NumCPU()/2)) }
 
 // withPlant adds the plant adapter, which runs its targets through rn.
 func withPlant(ads map[string]testreg.Adapter, rn *testreg.Runner) {
@@ -159,6 +169,14 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 			if err := a.build.run(ctx, step); err != nil {
 				return all, err
 			}
+		}
+		if h.Run != nil {
+			res, err := h.Run(ctx, lang, byHarness[name], a.log)
+			all = append(all, res...)
+			if err != nil {
+				return all, fmt.Errorf("%s harness for %s: %w", fam, lang, err)
+			}
+			continue
 		}
 		// each call has its own work folder: a plant runs its target while
 		// the same language's own instances may be running

@@ -11,6 +11,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
 )
 
+// A retain-refusal case a leg answers wrongly is red like every other row:
+// there is no ledger that excuses one (Glenn, 2026-11-25: no exemptions).
 
 func retainRefusalCase(t *testing.T, saved, before, wire string) (string, expectation) {
 	t.Helper()
@@ -143,27 +145,5 @@ func TestGenerateRetainRefusalsWritesOnlyUnderItsRoot(t *testing.T) {
 		if string(got) != want {
 			t.Fatalf("%s under the temporary root differs from the committed golden", name)
 		}
-	}
-}
-
-// The retired retain-refusal ledger (retainrefusal.go) held named cases back
-// from red. A file by its name beside the manifest stops the run and the
-// registry rows, and the committed corpus carries none.
-func TestTheRetiredRetainRefusalLedgerIsRefused(t *testing.T) {
-	dir := t.TempDir()
-	manifest := filepath.Join(dir, "MANIFEST.txt")
-	if err := refuseRetiredRetainRefusalLedger(manifest); err != nil {
-		t.Fatalf("no ledger beside the manifest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, RetiredRetainRefusalLedger), []byte("lobster row owed: a cause\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	err := refuseRetiredRetainRefusalLedger(manifest)
-	if err == nil || !strings.Contains(err.Error(), "retired") {
-		t.Fatalf("a planted ledger was not refused: %v", err)
-	}
-	chdirRepoRoot(t)
-	if err := refuseRetiredRetainRefusalLedger(defaultManifest); err != nil {
-		t.Fatal(err)
 	}
 }
