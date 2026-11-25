@@ -98,7 +98,6 @@ const (
 	outcomeFail   = "fail"
 	outcomeAbsent = "absent" // `<case>.absent`, a missing feature
 	outcomeNamed  = "named"  // the row's named writer refusal (§2.5)
-	outcomeOwed   = "owed"   // a retain-refusal case its ledger line owes (retainrefusal.go)
 )
 
 // mark records what one case came to.
@@ -950,10 +949,6 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		return false, fmt.Errorf("the corpus has %d must-refuse row(s) that cannot fail:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}
 
-	owedRR, err := loadRetainRefusalLedger(manifestPath, m)
-	if err != nil {
-		return false, err
-	}
 	wireRefusals := map[string]Instance{}
 	for _, instance := range m.Instances {
 		if instance.WireRefused {
@@ -1062,9 +1057,6 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 								probe := &result{total: len(want[sr.surface])}
 								for _, e := range want[sr.surface] {
 									if notAsked.has(sr.surface, e.name) {
-										continue
-									}
-									if _, owed := owedRR.owes(d.lang, sr.surface, e.name); owed {
 										continue
 									}
 									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
@@ -1199,11 +1191,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					continue
 				}
 				pass, named, missing := r.pass, r.named, r.missing
-				if why, owed := owedRR.owes(d.lang, s, e.name); owed {
-					scoreOwedRetainRefusal(w, d.lang, filepath.Join(out, e.name), e, why, r)
-				} else {
-					scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
-				}
+				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
 				switch {
 				case r.pass > pass:
 					r.verdict(e.name, "pass")

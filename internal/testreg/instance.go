@@ -212,8 +212,7 @@ func (r *Registry) Select(q Query) (Selection, error) {
 	in := func(vs []string, v string) bool { return len(vs) == 0 || contains(vs, v) }
 	keep := func(lang string, t Test) bool {
 		l, _ := r.Lang(lang)
-		_, owed := r.OwedBy(t.Key, lang)
-		ready := !t.PerLang() || (l.Ready() && !owed)
+		ready := !t.PerLang() || l.Ready()
 		return in(q.Langs, lang) && in(q.Tiers, t.Tier) && in(q.Types, t.Type) && in(q.Families, t.Family) && (!q.Ready || ready)
 	}
 	var sel Selection

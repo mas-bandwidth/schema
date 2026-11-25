@@ -170,21 +170,6 @@ func TestTheRegistryHoldsEveryConformanceCase(t *testing.T) {
 	for _, problem := range compareCorpusRows(want, got) {
 		t.Error(problem)
 	}
-	owed, err := corpusOwed(defaultManifest, m, rows)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantOwed := map[string]string{}
-	for _, o := range owed {
-		b, err := json.Marshal(o)
-		if err != nil {
-			t.Fatal(err)
-		}
-		wantOwed[o.Lang+" "+o.Test] = string(b)
-	}
-	for _, problem := range compareCorpusRows(wantOwed, registryCorpusOwed(t, filepath.FromSlash(testreg.DefaultPath))) {
-		t.Error("owed " + problem)
-	}
 	if len(rows) == 0 {
 		t.Fatal("the corpus has no rows")
 	}
@@ -215,62 +200,6 @@ func registryCorpusLines(t *testing.T, path string) map[string]string {
 		t.Fatal(err)
 	}
 	return got
-}
-
-// registryCorpusOwed is every owed line of the registry file whose test is a
-// corpus row, by "<lang> <test>".
-func registryCorpusOwed(t *testing.T, path string) map[string]string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := map[string]string{}
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	for sc.Scan() {
-		var head struct {
-			Rec  string `json:"rec"`
-			Test string `json:"test"`
-			Lang string `json:"lang"`
-		}
-		if json.Unmarshal(sc.Bytes(), &head) != nil || head.Rec != "owed" {
-			continue
-		}
-		if parts := strings.SplitN(head.Test, ".", 3); len(parts) < 2 || !strings.HasPrefix(parts[1], corpusFamilyPrefix) {
-			continue
-		}
-		got[head.Lang+" "+head.Test] = sc.Text()
-	}
-	if err := sc.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return got
-}
-
-// TestTheCorpusOwesExactlyTheHarnessLedger: corpusOwed turns each ledger
-// line into one owed line, and a ledgered case the corpus has no row for is
-// an error, never dropped.
-func TestTheCorpusOwesExactlyTheHarnessLedger(t *testing.T) {
-	dir := t.TempDir()
-	manifest := filepath.Join(dir, "MANIFEST.txt")
-	m := &Manifest{RetainRefusals: []RetainRefusal{{Name: "retain_refusal_body"}, {Name: "retain_refusal_frame"}}}
-	rows := []corpusRow{{Key: "load-refusal.conformance-retain-refusal.retain-refusal-body", Inputs: corpusInputs{Surface: "retain-refusal", Case: "retain_refusal_body"}}}
-	write := func(text string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, RetainRefusalOwed), []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("# owed\ngo retain_refusal_body owed: the store keeps its tail\n")
-	owed, err := corpusOwed(manifest, m, rows)
-	if err != nil || len(owed) != 1 || owed[0].Lang != "go" || owed[0].Test != rows[0].Key || !strings.Contains(owed[0].Reason, "the store keeps its tail") {
-		t.Fatalf("one ledger line: %+v, %v", owed, err)
-	}
-	write("go retain_refusal_frame owed: no row for it\n")
-	if _, err := corpusOwed(manifest, m, rows); err == nil || !strings.Contains(err.Error(), "the corpus has no retain-refusal row retain_refusal_frame") {
-		t.Fatalf("a ledgered case with no row: %v", err)
-	}
 }
 
 // compareCorpusRows names every disagreement between the corpus's rows and

@@ -19,7 +19,6 @@ report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
 retain-refusal/<case>.before.bin  the save of the first read, retained records and all (generated)
 retain-refusal/<case>.after.bin   the save after the refused read: the first value alone (generated)
-retain-refusal-owed.txt  the exact set of retain-refusal rows a leg owes
 rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
@@ -268,9 +267,8 @@ json-write-into <case> <instance>
   plain save), or a refusal where the leg binds a store to the root it
   loaded. `make conformance-generate` writes both saves from the engine and
   checks the first wire retains, the second is refused and the plain save is
-  what is left. A row a leg does not answer yet is a line
-  `<leg> <case> owed: <cause>` in `retain-refusal-owed.txt`; the set is
-  exact, so a ledgered row the leg answers correctly is red.
+  what is left. A row a leg answers wrongly is red, like every other row:
+  no ledger excuses one.
 - **`report`** is bytes read by another schema version. `reports.txt` supplies
   `read` or `refused`, keyed by case. An accepted row also owes its complete
   value at `report-values/<case>.json` and its canonical write-back wire at

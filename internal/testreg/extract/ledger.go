@@ -212,9 +212,8 @@ func Indexed(reg *testreg.Registry) map[string]string {
 		}
 		var answering []string
 		for _, l := range reg.Langs {
-			_, owed := reg.OwedBy(t.Key, l.Name)
 			_, unrep := reg.Unrepresentable(t.Key, l.Name)
-			if l.Ready() && !owed && !unrep {
+			if l.Ready() && !unrep {
 				answering = append(answering, l.Name)
 			}
 		}
