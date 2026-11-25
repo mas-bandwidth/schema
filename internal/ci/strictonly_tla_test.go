@@ -102,7 +102,8 @@ func TestStrictOnlyModelsAreRecorded(t *testing.T) {
 // that one EXTENDS and every file no row records, are hashed into the row's
 // model_sha256. Editing any of them without recording the run again leaves the
 // row stale, and the controls below prove a changed recorded or unrecorded
-// model or config is named. tla/run-tlc.sh runs the same inputs on the nightly.
+// model or config is named. The registry's model rows run the same inputs nightly
+// (tools/schema-test's model-check adapter; .github/workflows/tla-nightly.yml).
 func TestTLARunsHashEveryModelAndConfig(t *testing.T) {
 	t.Parallel()
 	tlaDir := filepath.Join(repoRoot(t), "tla")

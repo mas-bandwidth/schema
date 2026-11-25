@@ -1,8 +1,10 @@
 name: TLA nightly
 
-# Run TLC over every config under tla/, after checking that each recorded run
-# still hashes the model and config it measured. The hash check is
-# internal/ci/strictonly_tla_test.go; tla/run-tlc.sh executes the same cases.
+# Check that each recorded TLC run still hashes the model and config it
+# measured (internal/ci/strictonly_tla_test.go) and that the runner pairs
+# tla/ with tla/RUNS.tsv, then run TLC over every config: each is a registry
+# `model` row, run through tools/schema-test (the note before the TLC step
+# says how).
 #
 # THE SLOT, 04:53 UTC: after the 03:00-04:17 per-language cluster and clear of
 # nightly-conformance.yml (05:41), ci-full.yml (07:10) and certify.yml (09:17).
@@ -56,14 +58,18 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+
+      - name: the recorded model hashes are current
+        run: go test ./internal/ci/... -count=1 -run TLA
+
+      - name: the runner and its ledger pairing hold
+        run: go test -race ./tools/tlcrun -count=1
+
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: runner.environment == 'github-hosted'
         with:
           distribution: 'temurin'
           java-version: '21'
-
-      - name: the recorded model hashes are current
-        run: go test ./internal/ci/... -count=1 -run TLA
 
       - name: locate the TLC jar
         run: |
@@ -76,15 +82,17 @@ jobs:
             echo "TLC_JAR=$jar" >> "$GITHUB_ENV"
           fi
 
-      - name: the runner and its ledger pairing hold
-        run: go test ./tools/tlcrun -count=1
+      # TLC ITSELF RUNS THROUGH THE ONE TEST DRIVER (docs/TEST-REGISTRY.md):
+      # every config under tla/ is a `model` row of test/registry/registry.jsonl,
+      # judged against its tla/RUNS.tsv row exactly as tla/run-tlc.sh judged
+      # it (tools/schema-test's model-check adapter, tools/tlcrun -adapter),
+      # and the runner's three controls and the model-check plants are `plant`
+      # rows. schema-test extract holds every config to a row. They run here,
+      # so this job is red when, and only when, a model or a control is:
+      # schema-test-nightly.yml runs them too, inside --group nightly, which
+      # is red by intent until every language has an adapter.
+      - name: run TLC over tla/, every config held to its RUNS.tsv row
+        run: go run ./tools/schema-test run --type model --timeout 0
 
-      - name: the runner refuses three broken trees
-        # the wrong violation with the right exit code, a config error in
-        # place of a violation, and a config with no row: tools/tlcrun -controls
-        run: bash tla/run-tlc.sh -controls
-
-      - name: run TLC over tla/
-        # every .cfg, each held to its RUNS.tsv row: the named invariant for a
-        # reversed witness, the recorded distinct states for an exhaustive run
-        run: bash tla/run-tlc.sh
+      - name: the runner's controls and the model-check plants go red
+        run: go run ./tools/schema-test run --family model-check --timeout 0

@@ -45,15 +45,17 @@ var harnesses = map[string]harness{
 //
 // The language-free kinds have one adapter each: gotest runs a Go test by
 // name, plant runs a negative control (a named test against a broken build,
-// which must come out red). docs/TEST-REGISTRY.md lists the kinds still to
-// come (goldens, lint gates, TLC runs and trace checks, benches) and the
-// contract each will have.
+// which must come out red), model-check runs a TLC configuration held to its
+// recorded run. docs/TEST-REGISTRY.md lists the kinds still to come
+// (goldens, lint gates, trace checks, benches) and the contract each will
+// have.
 func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
-		"go":     &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
-		"lua":    &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
-		"gotest": goTestAdapter{log: log},
+		"go":          &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
+		"lua":         &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
+		"gotest":      goTestAdapter{log: log},
+		"model-check": modelCheckAdapter{build: b, log: log},
 	}
 }
 
