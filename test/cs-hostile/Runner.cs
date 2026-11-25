@@ -3,9 +3,10 @@
 // One raw input per manifest line, the port's generated reader underneath, and
 // the Go engine's committed verdict as the oracle. The corpus is read as files:
 // no network, no clock read by any reader. The runner prints one PASS line per
-// case it agrees with, one FIX-CARD line per carried disagreement, one SKIP
-// line per case whose carrier the port has no reader for, and fails on a
-// disagreement no FIX-CARD names (or a FIX-CARD whose case has gone green).
+// case it agrees with, one FIX-CARD line per carried disagreement, and fails
+// on a case whose carrier the port has no reader for (a FAIL line, never a
+// pass) and on a disagreement no FIX-CARD names (or a FIX-CARD whose case
+// has gone green).
 //
 // usage: cshostile <corpus-dir> <known-findings.tsv>
 //        cshostile --scorer <scorer-outcomes.tsv>
@@ -387,12 +388,12 @@ static class Runner
         }
         foreach (Thread t in threads) { t.Join(); }
 
-        int passed = 0, carried = 0, skipped = 0;
+        int passed = 0, carried = 0;
         var bad = new List<string>();
         var stale = new List<string>();
         // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
-        // name, which tools/hostileledger holds to the corpus folder. A skip
-        // is no answer, so a skipped case is a case not run.
+        // name, which tools/hostileledger holds to the corpus folder. A case
+        // whose carrier has no reader is no answer, and it fails below.
         var ranNames = new List<string>();
         foreach (Case c in cases)
         {
@@ -404,16 +405,9 @@ static class Runner
             findings.TryGetValue(c.Name, out string[] finding);
             if (c.Got.StartsWith("skip: ", StringComparison.Ordinal))
             {
-                if (finding != null)
-                {
-                    Console.WriteLine("STALE " + c.Name + ": FIX-CARD " + finding[1] + " names a case this port skips");
-                    stale.Add(c.Name);
-                }
-                else
-                {
-                    Console.WriteLine("SKIP " + c.Name + " carrier=" + c.Carrier + ": " + c.Got.Substring(6));
-                    skipped++;
-                }
+                // a carrier this port has no reader for is a failure, never a skip
+                Console.WriteLine("FAIL " + c.Name + " carrier=" + c.Carrier + ": no reader for this carrier: " + c.Got.Substring(6));
+                bad.Add(c.Name);
             }
             else if (H.Agrees(c.Got, want))
             {
@@ -451,7 +445,7 @@ static class Runner
                 stale.Add(name);
             }
         }
-        Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, " + skipped + " skipped, "
+        Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, "
             + bad.Count + " unexplained, " + stale.Count + " stale");
         foreach (string name in ranNames)
         {
@@ -459,9 +453,9 @@ static class Runner
         }
         Console.WriteLine("hostile-ledger end");
         // The count line build/mustrun reads: a case is RUN when the port
-        // answered it (a pass or a carried FIX-CARD). A SKIP is not run, so a
-        // case that starts skipping moves the count off the one the recipe
-        // registers, and an empty manifest runs nothing and is red.
+        // answered it (a pass or a carried FIX-CARD) or failed it. A case
+        // with no reader for its carrier is a failure, and an empty manifest
+        // runs nothing and is red.
         int ran = passed + carried + bad.Count;
         Console.WriteLine("cs-hostile: ran " + ran + ", failed " + (bad.Count + stale.Count));
         return bad.Count == 0 && stale.Count == 0 && ran > 0 ? 0 : 1;

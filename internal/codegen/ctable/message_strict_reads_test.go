@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -315,7 +314,6 @@ int main(void)
 // refused).
 func TestCMessageStrictReads(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (it compiles and runs the generated message strict-read probe)")
 	u := unitFrom(t, strictReadsSchema)
 	entries := strictReadsVocabulary(t, u)
 	ann := depthBoundaryEncodeAnnouncement(0x0102030405060708, ir.TableVocabularyBytes(entries))

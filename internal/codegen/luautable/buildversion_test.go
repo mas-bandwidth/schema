@@ -40,7 +40,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -223,7 +222,6 @@ func buildVersionGate(t *testing.T, mutate func(t *testing.T, files map[string][
 }
 
 func TestLuauBuildVersion(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted block and cook runtimes)")
 	t.Parallel()
 	allBuildVersionGate := buildVersionGate(t, nil)
 	for clause, whys := range allBuildVersionGate {
@@ -242,7 +240,6 @@ func TestLuauBuildVersion(t *testing.T) {
 //   - cook-write: the writer stamps a version off by one;
 //   - cook-check: the cook check skips the version word.
 func TestLuauBuildVersionNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted block and cook runtimes)")
 	t.Parallel()
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {

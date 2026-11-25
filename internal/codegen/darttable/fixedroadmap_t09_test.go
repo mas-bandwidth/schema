@@ -31,7 +31,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -76,7 +75,6 @@ void main() {
 // the generated libraries beside a GENERATED probe and runs the probe with the
 // leg's own toolchain (§5.9 #18). It returns the probe's combined output.
 func t09Capability(t *testing.T, src, body, checks string, records int) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, src)

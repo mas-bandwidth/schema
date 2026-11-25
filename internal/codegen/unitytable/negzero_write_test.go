@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE VARIABLE WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0 (docs/SPEC-TABLES.md
@@ -22,7 +21,6 @@ import (
 // and a fixed table's leaf. A plain float keeps its -0 (the control row).
 func TestUnityVariableWriterStoresCompressedNegZeroAsPositive(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect compressed -0 on the variable writer")
 	schema, rows := unityNegZeroWitness(t)
 	files, err := unityGenerateFiles(fixedproof.ParseCheckUnit(t, schema), nil)
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestUnityReview1121Reads holds the C# (unity) share of the 2026-11-21 review:
@@ -19,7 +18,6 @@ import (
 // units share one assembly so one can announce to the other.
 func TestUnityReview1121Reads(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect review 2026-11-21 reads")
 
 	files := map[string][]byte{}
 	for prefix, src := range map[string]string{"rcv_": unityReview1121Rcv, "snd_": unityReview1121Snd} {

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -25,7 +24,6 @@ import (
 //   - SaveMessages measures before it writes: a buffer that is too short
 //     answers -1 with every byte untouched (docs/SPEC-TABLES.md §3.3).
 func TestDartReportsAndWriteRefusalsMatchGo(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	const schema = `package probe
 
 table Wired {

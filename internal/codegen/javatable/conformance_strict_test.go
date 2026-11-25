@@ -69,7 +69,6 @@ func javaDriverSurface(t *testing.T, root, surface, manifest string) string {
 }
 
 func TestJavaDriverSurfacesStrict(t *testing.T) {
-	slowtest.Gate(t, "the JDK and the conformance corpus")
 	root := javaConformanceRoot(t)
 	javaConformanceBuild(t, root)
 
@@ -154,7 +153,6 @@ func TestJavaDriverSurfacesStrict(t *testing.T) {
 }
 
 func TestJavaDriverSurfacesStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the JDK and the conformance corpus")
 	root := javaConformanceRoot(t)
 	javaConformanceBuild(t, root)
 

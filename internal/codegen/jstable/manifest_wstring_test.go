@@ -3,13 +3,10 @@ package jstable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJSManifestWideLiteralChecksEveryCodeUnit(t *testing.T) {
-	slowtest.Gate(t, "node (wide literal manifest assertion)")
 	assertion, ok := jsManifestCompare("value", `u"A\uD83D\uDE00\uFFFF"`)
 	if !ok {
 		t.Fatal("wide manifest value was silently omitted")

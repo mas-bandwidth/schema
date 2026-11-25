@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -62,7 +61,6 @@ func TestArmMinEmitted(t *testing.T) {
 // plants the old reader back (no minimum) and must go red.
 func TestArmMinJSONRefusesElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	probe := `
 defmodule Probe do
   def check(true, _), do: :ok
@@ -121,7 +119,6 @@ table VarRoot { pick Pick }
 // variable-wire minimum check out and must go red.
 func TestArmMinVariableWireElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	schema := filepath.Join(t.TempDir(), "Loose.schema")
 	if err := os.WriteFile(schema, []byte(armMinLooseSchema), 0o600); err != nil {
 		t.Fatal(err)
@@ -182,7 +179,6 @@ IO.puts("ok")
 // rescue and must go red.
 func TestArmMinSaveReturnsErrorElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	probe := `
 defmodule Probe do
   def check(true, _), do: :ok
@@ -292,7 +288,6 @@ var countedMinCases = []countedMinCase{
 // back (a born array always rides, a bare arm reads as []).
 func TestCountedMinElementsMatchEngineElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	schema := filepath.Join(t.TempDir(), "CountedMin.schema")
 	if err := os.WriteFile(schema, []byte(countedMinElemsSchema), 0o600); err != nil {
 		t.Fatal(err)

@@ -34,7 +34,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -45,7 +44,6 @@ import (
 // compiles and runs it. @S@ expands to the root's snake-case prefix. A nonzero
 // probe exit is a failure by name, printed to stderr.
 func cT10Run(t *testing.T, src, root, body string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := cUnitOf(t, src)

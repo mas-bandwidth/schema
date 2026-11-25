@@ -79,9 +79,13 @@ jobs:
             . /opt/nova/sdk/env.sh
           fi
           # the runner's toolchains, as verify-leg hands them to make (each
-          # leg's make file reads them with ?=); a missing one is left unset,
-          # so that leg's build fails by name
-          if command -v cargo >/dev/null; then export RUSTUP_BIN="$(dirname "$(command -v cargo)")"; fi
-          if command -v erl >/dev/null && command -v elixir >/dev/null; then export BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"; fi
+          # leg's make file reads them with ?=); a missing one fails the step
+          # here, by name
+          cargo=$(command -v cargo) || { echo "::error::no cargo on PATH: the rust leg cannot run"; exit 1; }
+          erl=$(command -v erl) || { echo "::error::no erl on PATH: the elixir leg cannot run"; exit 1; }
+          elixir=$(command -v elixir) || { echo "::error::no elixir on PATH: the elixir leg cannot run"; exit 1; }
+          RUSTUP_BIN="$(dirname "$cargo")"
+          BEAM_PATH="$(dirname "$erl"):$(dirname "$elixir")"
+          export RUSTUP_BIN BEAM_PATH
           export DART=dart JAVA=java JAVAC=javac NODE=node
           go run ./tools/schema-test run --group nightly --timeout 0

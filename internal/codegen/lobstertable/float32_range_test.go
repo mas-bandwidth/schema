@@ -4,8 +4,6 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COMPRESSED FLOAT'S RANGE IS HELD AT FLOAT32 (docs/SPEC.md §4.6;
@@ -52,7 +50,6 @@ probe(0x3DCCCCCD, 0x3F333332)
 
 func TestLobsterFloat32RangeHeldAtFloat32(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g := finiteGenerate(t, float32RangeSchema)
 	out := finiteRun(t, g, "import .json\n"+float32RangeBody, nil)
 	if len(out) != 6 {

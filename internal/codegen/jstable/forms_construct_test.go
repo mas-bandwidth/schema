@@ -8,13 +8,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaScriptFormsConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes declared form exports and closure helpers)")
 	for _, mixed := range []bool{false, true} {
 		src := `package probe
 fixed table Hidden | forms="wire" { n int32 }

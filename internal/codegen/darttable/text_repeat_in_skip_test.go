@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -104,7 +103,6 @@ func dartTextRepeatSkipWire(t *testing.T) []byte {
 }
 
 func TestDartTextRepeatedKeyInSkippedValueRefuses(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 
 	u := buildUnit(t, dartTextRepeatSkipSchema)
@@ -135,7 +133,6 @@ func TestDartTextRepeatedKeyInSkippedValueRefuses(t *testing.T) {
 }
 
 func TestDartTextRepeatedKeyInSkippedValueNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 
 	wire := string(dartTextRepeatSkipWire(t))

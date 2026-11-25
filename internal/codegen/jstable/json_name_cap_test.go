@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -58,7 +56,6 @@ table Closed
 // for that cap. The verdict is read or refused; the reason is not compared.
 func TestJsJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 
 	const dir = "../../../testdata/wire/json-read-closed"

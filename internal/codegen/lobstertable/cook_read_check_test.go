@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -105,7 +104,6 @@ print("cycle " + (if probe.RootReadCook(cyclic): "record" else: "refused"))
 // verdict for each forged file (Uncook runs Check first).
 func cookCheckRun(t *testing.T, sabotage func(string) string) (lobster, reference []string, cycle string) {
 	t.Helper()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g, err := generateLoadUnit(t, []string{writeSchema(t, "Probe", cookCheckSchema)})
 	if err != nil {
 		t.Fatal(err)

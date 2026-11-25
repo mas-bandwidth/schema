@@ -34,7 +34,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -283,10 +282,9 @@ func vtOptionalFailures(t *testing.T, c vtOptionalCell, mutate func(*testing.T, 
 // TestPythonVtOptionalRows holds both optional rows over every manifest
 // instance and construct they name, under both pinned interpreters.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtOptionalRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, c := range vtOptionalCells {
 		t.Run(c.row, func(t *testing.T) {
 			t.Parallel()
@@ -409,10 +407,9 @@ func vtOptionalCellOf(name string) string {
 // pointer-against-optional kind_mismatch verdicts, are the shared table
 // frame's (load.py, fixedform.py's form gate) and are held by verdict here.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtOptionalRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	controlled := map[string]int{}
 	for _, ctl := range vtOptionalControls {
 		cells := map[string]bool{}

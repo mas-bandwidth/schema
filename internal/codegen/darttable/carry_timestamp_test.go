@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -21,7 +20,6 @@ import (
 )
 
 func TestDartTimestampNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/timestamp"
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
 	if err != nil {

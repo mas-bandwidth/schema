@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -21,7 +20,6 @@ import (
 // must refuse the whole load; in-range rows still read whole.
 func TestOneSidedRangeConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir one-sided range native boundaries")
 	base := "../../../testdata/conformance/feature-witnesses/one-sided-range/"
 	schema, err := os.ReadFile(base + "Probe.schema")
 	if err != nil {
@@ -202,7 +200,6 @@ Probe.check(message_size==byte_size(message),field<>" message measure")
 
 func TestOneSidedRangeClosureElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir one-sided ranges in optional and array slots")
 	const schema = `package probe
  enum Key { A, B }
  fixed table Small { value int32 | min = -2 }

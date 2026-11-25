@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -17,7 +16,6 @@ import (
 
 func TestUnionArrayElementKindsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir array-arm inner kind mismatch clears the selected union in both readers")
 	u := unitFrom(t, `package armarraykind
  enum Mode { A }
  type Cell { value int32 }
@@ -142,7 +140,6 @@ end
 
 func TestPinnedUnionArrayElementKindElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir permanent union-array mismatched element kind replay")
 	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin")

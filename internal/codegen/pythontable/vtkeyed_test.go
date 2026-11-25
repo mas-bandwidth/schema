@@ -540,7 +540,7 @@ func pyKeyedDamageRun(t *testing.T, schema string, damages []pyKeyedDamage) (*ir
 	return u, field, keys
 }
 
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtKeyed(t *testing.T) {
 	t.Parallel()
 	t.Run("constructs", func(t *testing.T) {
@@ -614,7 +614,7 @@ func TestPythonVtKeyed(t *testing.T) {
 // without the wire check, and the unknown-table-slot damage gate must go red
 // on the payload with bytes after its terminator.
 //
-// Functional (pyrun): run with SCHEMA_SLOW=1.
+// Functional (pyrun).
 func TestPythonVtKeyedNegativeControl(t *testing.T) {
 	t.Parallel()
 	t.Run("descending-order", pyKeyedDescendingControl)

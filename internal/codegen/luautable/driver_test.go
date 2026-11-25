@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -23,7 +22,6 @@ import (
 // in its own t.TempDir(), and holds that the staging landed there.
 func TestLuauDriverListsItsSurfaces(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the conformance driver")
 	root := repoRoot(t)
 	luau, why := luaurun.Interpreter()
 	if luau == "" {

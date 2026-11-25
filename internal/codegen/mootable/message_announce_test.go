@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -105,7 +104,6 @@ fixed table Probe { x int32 }
 }
 
 func TestMooAnnounceReadHoldsTheWireAloneRules(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g := announcePackage(t)
 	cases := announceCases(tablewire.Announce(g.unit))
@@ -132,7 +130,6 @@ func TestMooAnnounceReadHoldsTheWireAloneRules(t *testing.T) {
 }
 
 func TestMooAnnounceReadHoldsTheWireAloneRulesNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g := announcePackage(t)
 	cases := announceCases(tablewire.Announce(g.unit))

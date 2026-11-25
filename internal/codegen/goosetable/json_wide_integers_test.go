@@ -29,7 +29,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonIntegersSchema is the vectors' unit plus a typed and a variable table
@@ -193,7 +192,6 @@ var jsonIntegerSiteRows = []struct {
 
 func TestGooseJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it reads and writes every shared json-integers vector)")
 	rows := readJSONIntegerVectors(t)
 	if len(rows) == 0 {
 		t.Fatal("the shared json-integers vectors are empty")

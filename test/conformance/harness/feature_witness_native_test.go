@@ -21,7 +21,6 @@ var updateFeatureWitnesses = flag.Bool("update-feature-witnesses", false, "rewri
 // Pins come from compiled generated Go, independently of the neutral codec
 // used by implementationAudit. Normal runs compare and never rewrite them.
 func TestPopulatedFeatureWitnessNativePins(t *testing.T) {
-	slowtest.Gate(t, "generated Go (independent populated implementation witnesses)")
 	t.Chdir("../../..")
 	c := compiler.New()
 	u, err := c.Load([]string{"testdata/conformance/feature-witnesses/full/Features.schema"})

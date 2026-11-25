@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -128,7 +127,6 @@ var reflectionUnsupportedKind = regexp.MustCompile(`(?m)(?:^|[[:space:]])(?:code
 
 func TestPythonReflectionCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	units := reflectionUnits(t)
 	if len(units) == 0 {
 		t.Fatal("units is empty: the loop below would check nothing")
@@ -184,7 +182,6 @@ func reflectionFirstDiff(want, got string) string {
 
 func TestPythonReflectionCorpusNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreter")
 	cases := []struct{ name, file, from, to, line string }{
 		{"drop-table", "_schema/unit_view.py", `    ViewType("Record", "Records.schema", True, _descriptors["Record"], "Record documentation.", ("visible", )),` + "\n", "", "union Choice arm 1"},
 		{"table-doc", "_schema/unit_view.py", `"Record documentation.", ("visible", ))`, `"drift", ("visible", ))`, "table Record"},
@@ -259,7 +256,6 @@ table Record { rank Grade }
 
 func TestPythonReflectionVocabularyNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreter")
 	u := loadUnit(t, reflectionVocabularySchema)
 	for _, name := range []string{"constant", "enum-id", "type-id"} {
 		t.Run(name, func(t *testing.T) {
@@ -364,7 +360,6 @@ func TestPythonReflectionStrictShardPlan(t *testing.T) {
 
 func TestPythonReflectionStrictTypes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned strict mypy")
 	shard, err := reflectionStrictShard(os.Getenv("PYTHON_REFLECTION_STRICT_SHARD"))
 	if err != nil {
 		t.Fatal(err)

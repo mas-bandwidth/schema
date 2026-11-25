@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"strings"
 	"testing"
 )
@@ -10,7 +9,6 @@ import (
 // Long, shallow JSON must use constant stack space. Repeated keys also pin the
 // exact duplicate count and last-wins value against the independent model.
 func TestJsonHighKeyCountCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	const count = 100000
 	var fields, keyed, skipped, mapped, flags strings.Builder
 	for i := range count {
@@ -46,7 +44,6 @@ table Root {
 }
 
 func TestJsonKeyedBeyond512CSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	var schema strings.Builder
 	schema.WriteString("package probe\nenum Keys {\n")
 	for i := range 513 {

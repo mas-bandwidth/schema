@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const blockEligibilityEligibleSchema = `package eligible
@@ -132,7 +131,6 @@ func TestLuaBlockEligibilityRuntimeIsUnitDependent(t *testing.T) {
 // unit must still refuse its ineligible roots.
 func TestLuaBlockEligibilitySharedOutputFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional block eligibility across units")
 	dir := t.TempDir()
 	luarun.WriteFiles(t, dir, blockEligibilityFiles(t, "Eligibility", blockEligibilitySchema))
 	luarun.WriteFiles(t, dir, blockEligibilityFiles(t, "Eligible", blockEligibilityEligibleSchema))
@@ -151,7 +149,6 @@ func TestLuaBlockEligibilitySharedOutputFunctional(t *testing.T) {
 // must still refuse the mixed unit's ineligible roots.
 func TestLuaBlockEligibilityLoadOrderFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional block eligibility load order")
 	pureDir := t.TempDir()
 	mixedDir := t.TempDir()
 	luarun.WriteFiles(t, pureDir, blockEligibilityFiles(t, "Eligible", blockEligibilityEligibleSchema))
@@ -172,7 +169,6 @@ package.path = %q .. "/?.lua;" .. package.path
 
 func TestLuaBlockEligibilityFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional block eligibility")
 	if got := blockEligibilityGate(t, "", "", ""); len(got) != 0 {
 		t.Fatalf("ineligible block accepted: %v", got)
 	}
@@ -180,7 +176,6 @@ func TestLuaBlockEligibilityFunctional(t *testing.T) {
 
 func TestLuaBlockEligibilityNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional block eligibility controls")
 	for _, tc := range []struct{ file, anchor, replacement, clause string }{
 		{"blockbuild.lua", "if desc.block_eligible ~= true then return nil, \"bad_layout\" end -- BlockMaxBytes", "if false then return nil, \"bad_layout\" end -- BlockMaxBytes", "maximum"},
 		{"blockbuild.lua", "if desc ~= nil and desc.block_eligible ~= true then return nil, \"bad_layout\" end -- Begin", "if false then return nil, \"bad_layout\" end -- Begin", "begin"},

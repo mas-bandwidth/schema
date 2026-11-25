@@ -19,7 +19,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -29,13 +28,12 @@ func TestFixedRoadmapCppT14CompressedFloats(t *testing.T) {
 	t.Parallel()
 	t.Run("cpp/R30", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 		cxx := os.Getenv("CXX")
 		if cxx == "" {
 			cxx = "c++"
 		}
 		if _, err := exec.LookPath(cxx); err != nil {
-			t.Skipf("c++: %v", err)
+			t.Fatalf("c++: %v", err)
 		}
 		t14Cite(t)
 		src := t14CppEmit(t, t14Schema(0.1), nil)

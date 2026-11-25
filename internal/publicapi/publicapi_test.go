@@ -38,7 +38,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -93,7 +92,6 @@ func requireGoSource(t *testing.T, dir, pkg string) {
 // failing the test with the toolchain's own message.
 func goBuild(t *testing.T, dir, pkg, binPath string) {
 	t.Helper()
-	slowtest.Gate(t, "go build and the compiled schema binary")
 	requireGoSource(t, dir, pkg)
 	cmd := exec.Command("go", "build", "-o", binPath, pkg)
 	cmd.Dir = dir
@@ -122,9 +120,6 @@ func run(t *testing.T, binPath string, args ...string) string {
 // does. cmd/schema is inside this module, so its imports of internal/ are
 // legal there, and its //go:embed files (help/ai.md) come with the module.
 func TestExternalModuleBuildsTheCLI(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: builds two compilers")
-	}
 	root := repoRoot(t)
 	work := t.TempDir()
 
@@ -290,9 +285,6 @@ func readTree(t *testing.T, dir string) map[string][]byte {
 // checks its output against the same walk performed here, in-module, over the
 // same public API.
 func TestExternalGeneratorRegisters(t *testing.T) {
-	if testing.Short() {
-		t.Skip("-short: builds a compiler")
-	}
 	root := repoRoot(t)
 	work := t.TempDir()
 	bin := filepath.Join(work, "client")
@@ -349,7 +341,6 @@ func wantClientOutput(t *testing.T) string {
 // package holding only a test file has zero non-test Go source, the count
 // reads zero, and requireGoSource refuses it.
 func TestRequireGoSourceFiresOnAnEmptyPackage(t *testing.T) {
-	slowtest.Gate(t, "go list")
 	dir := t.TempDir()
 	files := map[string]string{
 		"go.mod":    "module emptypkg\n\ngo 1.26\n",

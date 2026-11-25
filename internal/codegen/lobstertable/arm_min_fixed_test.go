@@ -4,8 +4,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COUNTED [A..B] HOLDS A INSIDE A UNION ARM (ruling R10): the fixed form's
@@ -16,7 +14,6 @@ import (
 // the conformance rows armmin_fix_count_{0,1}.
 func TestLobsterUnionArmCountedMinimum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	schema, err := os.ReadFile("../../../tables/examples/Tables.schema")
 	if err != nil {
 		t.Fatal(err)

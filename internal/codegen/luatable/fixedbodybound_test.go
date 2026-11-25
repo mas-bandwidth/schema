@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE RECORD-BODY BOUND (docs/FIXED-FORM-ALGORITHM.md §6, §1.1 rule 6;
@@ -17,8 +15,8 @@ import (
 // body is refused by the reader. Only the verdict is compared
 // (docs/rulings.json refusal-verdict-only).
 //
-// This is a functional test: it runs the pinned Lua interpreter, so it sits
-// behind SCHEMA_SLOW=1. It takes no real time, opens no socket and uses no
+// This is a functional test: it runs the pinned Lua interpreter, so it needs
+// the pinned Lua. It takes no real time, opens no socket and uses no
 // network.
 const fixedBodyAtBoundSchema = `package probe
 
@@ -38,7 +36,6 @@ fixed table Past
 
 func TestLuaFixedRecordBodyBound(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 
 	t.Run("a 65536-byte body saves and loads", func(t *testing.T) {
 		t.Parallel()

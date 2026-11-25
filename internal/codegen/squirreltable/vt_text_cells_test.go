@@ -11,8 +11,7 @@ package squirreltable_test
 // fault in a copy of runtime/json.nut (the emitted schema_table_json.nut) and
 // runs sqrun to verify the strict read goes red.
 //
-// Functional: runs the pinned Squirrel interpreter via sqrun under
-// slowtest.Gate; the source gate takes no real time, sockets, or network.
+// Functional: runs the pinned Squirrel interpreter via sqrun; the source gate takes no real time, sockets, or network.
 
 import (
 	"fmt"
@@ -22,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // vtTextFindings checks the strict text read's rule over the real artifacts.
@@ -190,7 +188,6 @@ func TestSquirrelVtTextCells(t *testing.T) {
 	if f := vtTextFindings(driver, jsonSrc); len(f) > 0 {
 		t.Fatalf("the strict text read's rule is not held: %v", f)
 	}
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	got := runVtTextProbe(t, nil)
 	if fails := checkVtTextProbe(got); len(fails) > 0 {
 		for _, f := range fails {
@@ -227,7 +224,6 @@ func TestSquirrelVtTextCellsNegativeControl(t *testing.T) {
 		}
 	}
 
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	if fails := checkVtTextProbe(runVtTextProbe(t, nil)); len(fails) > 0 {
 		t.Fatalf("unplanted probe already red: %v", fails)
 	}

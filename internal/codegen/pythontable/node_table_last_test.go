@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -23,17 +22,14 @@ table Crews {
 `
 
 func TestPythonNodeTableLast(t *testing.T) {
-	slowtest.Gate(t, "pinned Python node table order and Go wire oracle")
 	nodeTableLastProbe(t, "")
 }
 
 func TestPythonNodeTableLastNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "pinned Python node table order fault control")
 	nodeTableLastProbe(t, "decode")
 }
 
 func TestPythonNodeTableLastPrecedenceControl(t *testing.T) {
-	slowtest.Gate(t, "pinned Python diagnostic precedence fault control")
 	nodeTableLastProbe(t, "walk")
 }
 

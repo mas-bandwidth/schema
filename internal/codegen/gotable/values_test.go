@@ -55,7 +55,6 @@ func runGeneratedUnit(t *testing.T, u *ir.Unit, testSource string, edit func(map
 		}
 	}
 	args := append([]string{"test", "-count=1"}, flags...)
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", append(args, ".")...)
 	cmd.Dir = dir
 	return cmd.CombinedOutput()

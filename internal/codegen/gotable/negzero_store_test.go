@@ -56,8 +56,7 @@ func TestCompressedFloatVariableWriteFoldsNegativeZero(t *testing.T) {
 	}
 }
 
-// TestCompressedFloatVariableWriteNegativeZeroBytes is the run half (behind the
-// slow gate): the generated writer's bytes for -0 equal its bytes for +0.
+// TestCompressedFloatVariableWriteNegativeZeroBytes is the run half (functional): the generated writer's bytes for -0 equal its bytes for +0.
 func TestCompressedFloatVariableWriteNegativeZeroBytes(t *testing.T) {
 	runGenerated(t, negZeroStoreSchema, negZeroStoreProbe)
 }

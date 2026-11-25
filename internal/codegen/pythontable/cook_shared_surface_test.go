@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -16,7 +15,6 @@ import (
 
 func TestPythonCookSharedBlobSurface(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters and conformance driver")
 	u := loadUnit(t, `package sharedsurface
  table Root {
   left *bytes

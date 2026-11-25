@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
@@ -42,7 +41,6 @@ fixed table Root { stamp uint64 = 5
 	}
 	t.Run("both-byte-orders", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "dart")
 		dir := t.TempDir()
 		for name, data := range files {
 			if !strings.Contains(name, "/") {
@@ -168,7 +166,6 @@ func TestCookWriteGuardedAndTextArrayRootsDart(t *testing.T) {
 			t.Errorf("%s has no cook writer (SPEC-TABLES §7.6)", root)
 		}
 	}
-	slowtest.Gate(t, "dart")
 	dir := t.TempDir()
 	for name, data := range files {
 		if !strings.Contains(name, "/") {
@@ -319,7 +316,6 @@ void main(){
 // Legal table names cannot collide with the cook writer's float scratch.
 func TestCookWriteDartFloatHelpersDoNotClaimTableNames(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 fixed table Float32 { value float32 }
 fixed table Float32Bits { value float32 }

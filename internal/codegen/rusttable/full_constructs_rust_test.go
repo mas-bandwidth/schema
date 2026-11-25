@@ -3,7 +3,6 @@ package rusttable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -14,7 +13,6 @@ import (
 )
 
 func TestRustFullConstructWitnessNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (all eleven constructs populated together)")
 	keyedRequireRustc(t)
 	base := "../../../testdata/conformance/feature-witnesses/full/"
 	schema, e := os.ReadFile(base + "Features.schema")

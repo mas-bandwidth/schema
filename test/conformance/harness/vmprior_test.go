@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE MESSAGE-PRIOR ANSWER THROUGH THE VM SHIMS (FORMAT.md `message-prior`;
@@ -36,7 +34,7 @@ func priorTree(t *testing.T, leg string, extra ...string) (dir, manifest, out st
 	t.Helper()
 	for _, tool := range []string{"sh", "perl", "awk"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("no %s on PATH", tool)
+			t.Fatalf("no %s on PATH", tool)
 		}
 	}
 	root := filepath.Join("..", "..", "..")
@@ -110,7 +108,6 @@ func mustPriorAnswers(t *testing.T, leg, out string) {
 
 func TestLuauDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh and perl (it runs the Luau conformance driver)")
 	dir, manifest, out := priorTree(t, "luau", "main.luau")
 	luau := standIn(t, dir, "luau", priorStandIn)
 	runPriorDriver(t, dir, "luau", manifest, out, "LUAU="+luau)
@@ -119,7 +116,6 @@ func TestLuauDriverWritesPriorRefused(t *testing.T) {
 
 func TestMooDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh and perl (it runs the MOO conformance driver)")
 	dir, manifest, out := priorTree(t, "moo", "main.moo", "stage.pl", "split.pl")
 	if err := os.MkdirAll(filepath.Join(dir, "gen", "tblprior"), 0o755); err != nil {
 		t.Fatal(err)
@@ -141,7 +137,6 @@ func TestMooDriverWritesPriorRefused(t *testing.T) {
 
 func TestLobsterDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh, awk and perl (it runs the Lobster conformance driver)")
 	dir, manifest, out := priorTree(t, "lobster", "main.lobster")
 	unit := filepath.Join(dir, "units", "tblprior")
 	if err := os.MkdirAll(unit, 0o755); err != nil {
@@ -174,20 +169,9 @@ func mooLiteral(s string) string {
 
 func TestGooseDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh, awk and perl (it runs the Goose conformance driver)")
-	dir, manifest, out := priorTree(t, "goose", "main.goose", "unit.goose")
 	// the driver runs the program once per unit the surface's lines name, in
 	// the unit's generated directory beside the glue it writes there
-	if err := os.WriteFile(manifest, []byte("unit tblprior x.schema\n"+priorManifest), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	unit := filepath.Join(dir, "units", "tblprior")
-	if err := os.MkdirAll(unit, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(unit, "PriorNarrowTable.goose"), []byte("namespace tblprior;\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	dir, manifest, out := gooseBatchTree(t)
 	goose := standIn(t, dir, "goose", `for a; do last=$prev; prev=$a; done
 [ "$prev" = tblprior ] || { echo "stand-in: ran unit $prev" >&2; exit 1; }
 `+priorStandIn)

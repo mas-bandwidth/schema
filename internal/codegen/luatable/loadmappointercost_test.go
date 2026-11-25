@@ -17,7 +17,7 @@ import (
 // load doubles when its input doubles, and the sum of two linear parts costs
 // their sum.
 //
-// Functional (luaBinary): run with SCHEMA_SLOW=1.
+// Functional (luaBinary): needs the pinned Lua.
 
 const loadMapPointerCostSchema = `package probe
 

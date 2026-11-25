@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -17,12 +16,10 @@ import (
 // retaining read refuses it too. The old read accepted the over-wide value (PR
 // #2775 clamped it to the top of the field), so the probe is red on that code.
 //
-// It runs elixir, so it is a functional test: make tables-elixir-... runs it
-// under SCHEMA_REQUIRE_CORPUS=1, where a missing toolchain fails by name;
-// without that variable and without Elixir it skips by name (elixirBinary).
+// It runs elixir, so it is a functional test: make tables-elixir-... runs it;
+// a missing toolchain fails by name (elixirBinary).
 func TestElixirBitsPastWidthRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := bitsPastWidthProbe(t)
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
@@ -40,7 +37,6 @@ func TestElixirBitsPastWidthRefuses(t *testing.T) {
 // page. A missing anchor fails the test.
 func TestElixirBitsPastWidthRefusesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := bitsPastWidthProbe(t)
 	elixirPatch(t, files, bitsJSONClampAnchor, "      {v, report}")

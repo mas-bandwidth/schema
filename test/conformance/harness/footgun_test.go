@@ -201,7 +201,7 @@ func runFake(t *testing.T, mode string, only string) (string, bool, error) {
 	}
 	var out bytes.Buffer
 	ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, drivers,
-		filepath.Join(t.TempDir(), "work"), "", "", opts)
+		filepath.Join(t.TempDir(), "work"), "", opts)
 	return out.String(), ok, err
 }
 
@@ -246,15 +246,14 @@ func TestDriverListingAnUnknownSurfaceIsRed(t *testing.T) {
 	}
 }
 
-// TestDriverListingARetiredSurfaceIsNamed: a retired surface name (drivers
-// still list cook-reason and block-reason) is not refused, but it is not
-// dropped in silence either: the run names it.
-func TestDriverListingARetiredSurfaceIsNamed(t *testing.T) {
-	out, ok, err := runFake(t, "retired", "")
-	if err != nil || !ok {
-		t.Fatalf("a driver listing a retired surface was refused: %v\n%s", err, out)
+// TestDriverListingARetiredSurfaceIsRed: a retired surface is not run, so a
+// driver that lists one names a surface nothing runs; it is refused by name,
+// never ignored.
+func TestDriverListingARetiredSurfaceIsRed(t *testing.T) {
+	out, _, err := runFake(t, "retired", "")
+	if err == nil || !strings.Contains(err.Error(), "retired surface(s) the harness no longer runs: cook-reason") {
+		t.Fatalf("a driver listing the retired surface cook-reason was not refused by name: %v\n%s", err, out)
 	}
-	mustSay(t, out, []string{"conformance IGNORES cook-reason listed by the go leg: retired surface(s), not run and not scored", footer}, nil)
 }
 
 // TestDriverAnsweringSomeRowsIsRed: a row left unanswered fails by name.
@@ -323,22 +322,21 @@ func TestSurfacesFilterMatchingNothingIsRed(t *testing.T) {
 	writeFile(t, registry, "go /nonexistent/driver\n")
 	var out bytes.Buffer
 	_, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, registry,
-		filepath.Join(t.TempDir(), "work"), "nosuchleg", "", runOptions{strictRows: true})
+		filepath.Join(t.TempDir(), "work"), "nosuchleg", runOptions{strictRows: true})
 	if err == nil || !strings.Contains(err.Error(), "conformance ran no leg") {
 		t.Fatalf("a run whose --only matched no leg was not refused: %v\n%s", err, out.String())
 	}
 }
 
-// TestSummaryNeverCallsAnAbsenceAPass: a declared per-case absence stays a
-// port's completion tracker (not red), but the cell's denominator is every
-// row sent and the footer names what was not answered instead of the success
-// line. Before: "pass 1/1 +1a" and "every registered surface passes".
+// TestSummaryNeverCallsAnAbsenceAPass: a declared per-case absence is red,
+// the cell's denominator is every row sent, and the footer names what was not
+// answered instead of the success line. Before: "pass 1/1 +1a" and "every registered surface passes".
 func TestSummaryNeverCallsAnAbsenceAPass(t *testing.T) {
 	out, ok, err := runFake(t, "beta-absent", "")
-	if err != nil || !ok {
-		t.Fatalf("a declared per-case absence turned the run red: %v\n%s", err, out)
+	if err != nil || ok {
+		t.Fatalf("a declared per-case absence left the run green (err %v):\n%s", err, out)
 	}
 	mustSay(t, out,
-		[]string{"pass 1/2 +1a", notAllAnswered + " — absent is not a pass:", "go / wire: 1 of 2 row(s) ABSENT"},
+		[]string{"pass 1/2 +1a", "NOT CONFORMING", notAllAnswered + " — absent is not a pass:", "go / wire: 1 of 2 row(s) ABSENT"},
 		[]string{footer, "pass 1/1 +1a"})
 }

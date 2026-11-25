@@ -41,7 +41,6 @@ package rusttable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +50,6 @@ import (
 )
 
 func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 	oldFile := filepath.Join(corpus, "old_union_append.bin")

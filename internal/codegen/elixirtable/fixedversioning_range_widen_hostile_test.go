@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -16,7 +15,6 @@ import (
 // pins that verdict for every vector.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "elixir (it runs the generated NEW reader over the forged file)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	for _, vec := range fixedvector.WriterRange {

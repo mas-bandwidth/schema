@@ -23,8 +23,8 @@ func ledgerCases() []Case {
 	return []Case{{Name: "a", Carrier: "text"}, {Name: "b", Carrier: "text"}, {Name: "c", Carrier: "wire"}}
 }
 
-// TestLedgerCheck is the Go runners' assertion: every registered case ran once
-// or is skipped by name, and the control is the whole run.
+// TestLedgerCheck is the Go runners' assertion: every registered case ran
+// once, and the control is the whole run.
 func TestLedgerCheck(t *testing.T) {
 	whole := NewLedger(ledgerCases())
 	for _, n := range []string{"a", "b", "c"} {
@@ -33,7 +33,7 @@ func TestLedgerCheck(t *testing.T) {
 	if err := whole.Check(); err != nil {
 		t.Fatalf("CONTROL FAILED: a whole run is red: %v", err)
 	}
-	if got := whole.Summary(); got != "ran 3 of 3 registered, 0 held by name (text 2/2, wire 1/1)" {
+	if got := whole.Summary(); got != "ran 3 of 3 registered (text 2/2, wire 1/1)" {
 		t.Errorf("summary: %q", got)
 	}
 
@@ -45,9 +45,7 @@ func TestLedgerCheck(t *testing.T) {
 		{"one case short", func(l *Ledger) { l.Ran("a"); l.Ran("c") }, "b (text) is registered and was not run"},
 		{"a carrier never run", func(l *Ledger) { l.Ran("a"); l.Ran("b") }, "c (wire) is registered and was not run"},
 		{"nothing run", func(l *Ledger) {}, "no case ran"},
-		{"every case skipped", func(l *Ledger) { l.Skipped("a", "w"); l.Skipped("b", "w"); l.Skipped("c", "w") }, "no case ran"},
 		{"a case twice", func(l *Ledger) { l.Ran("a"); l.Ran("a"); l.Ran("b"); l.Ran("c") }, "a (text) ran 2 times"},
-		{"ran and skipped", func(l *Ledger) { l.Ran("a"); l.Skipped("a", "w"); l.Ran("b"); l.Ran("c") }, "a (text) ran and is also skipped"},
 		{"a case the corpus has not", func(l *Ledger) { l.Ran("a"); l.Ran("b"); l.Ran("c"); l.Ran("z") }, "z was run and the corpus does not register it"},
 	} {
 		l := NewLedger(ledgerCases())
@@ -57,16 +55,6 @@ func TestLedgerCheck(t *testing.T) {
 		}
 	}
 
-	held := NewLedger(ledgerCases())
-	held.Ran("a")
-	held.Ran("c")
-	held.Skipped("b", "why")
-	if err := held.Check(); err != nil {
-		t.Errorf("a case skipped by name is red: %v", err)
-	}
-	if got := held.Summary(); got != "ran 2 of 3 registered, 1 held by name (text 1/2, wire 1/1)" {
-		t.Errorf("summary: %q", got)
-	}
 	if err := NewLedger(nil).Check(); err == nil {
 		t.Errorf("a ledger over no case is green")
 	}
@@ -84,18 +72,15 @@ func TestRanEveryReadsTheFolder(t *testing.T) {
 	for _, c := range cases {
 		names = append(names, c.Name)
 	}
-	if _, err := RanEvery("corpus", names, nil); err != nil {
+	if _, err := RanEvery("corpus", names); err != nil {
 		t.Fatalf("CONTROL FAILED: every registered case, run once, is red: %v", err)
 	}
 	last := cases[len(cases)-1]
-	if _, err := RanEvery("corpus", names[:len(names)-1], nil); err == nil || !strings.Contains(err.Error(), last.Name+" ("+last.Carrier+") is registered and was not run") {
+	if _, err := RanEvery("corpus", names[:len(names)-1]); err == nil || !strings.Contains(err.Error(), last.Name+" ("+last.Carrier+") is registered and was not run") {
 		t.Errorf("a run one case short is not red by name: %v", err)
 	}
-	if _, err := RanEvery("corpus", nil, nil); err == nil || !strings.Contains(err.Error(), "no case ran") {
+	if _, err := RanEvery("corpus", nil); err == nil || !strings.Contains(err.Error(), "no case ran") {
 		t.Errorf("a run of nothing is not red: %v", err)
-	}
-	if summary, err := RanEvery("corpus", names[:len(names)-1], Held{last.Name: "why"}); err != nil || !strings.Contains(summary, "1 held by name") {
-		t.Errorf("a case held by name is not counted: %q, %v", summary, err)
 	}
 }
 
@@ -123,16 +108,16 @@ func TestARowIdIsNeverACaseName(t *testing.T) {
 	cases := []Case{{Name: "audit-ring", Carrier: "packet"}, {Name: "audit-ring@runtime-development", Carrier: "wire"}}
 	// the wire case was never dispatched: only the packet rows ran
 	packetOnly := "hostile-ledger ran audit-ring@runtime-development\nhostile-ledger ran audit-ring@flat-development\nhostile-ledger end\n"
-	if _, err := CheckLog(cases, packetOnly, 1, Held{}, Held{}, rows); err == nil || !strings.Contains(err.Error(), "audit-ring@runtime-development") {
+	if _, err := CheckLog(cases, packetOnly, 1, rows); err == nil || !strings.Contains(err.Error(), "audit-ring@runtime-development") {
 		t.Errorf("two cases owing the row id audit-ring@runtime-development, one never run, passed: %v", err)
 	}
 	// CONTROL: the same rows under distinct names pass, and lose the wire case by name
 	distinct := []Case{{Name: "audit-ring", Carrier: "packet"}, {Name: "audit-wire", Carrier: "wire"}}
-	if _, err := CheckLog(distinct, packetOnly, 1, Held{}, Held{}, rows); err == nil || !strings.Contains(err.Error(), "audit-wire") {
+	if _, err := CheckLog(distinct, packetOnly, 1, rows); err == nil || !strings.Contains(err.Error(), "audit-wire") {
 		t.Errorf("CONTROL FAILED: the wire case missing under its own name: %v", err)
 	}
 	whole := "hostile-ledger ran audit-ring@runtime-development\nhostile-ledger ran audit-ring@flat-development\nhostile-ledger ran audit-wire\nhostile-ledger end\n"
-	if _, err := CheckLog(distinct, whole, 1, Held{}, Held{}, rows); err != nil {
+	if _, err := CheckLog(distinct, whole, 1, rows); err != nil {
 		t.Errorf("CONTROL FAILED: every row ran under distinct names: %v", err)
 	}
 }

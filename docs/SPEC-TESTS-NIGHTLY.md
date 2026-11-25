@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 0. Language-free tests: 61.
+Nightly tests every language answers: 0. Language-free tests: 71.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -36,11 +36,31 @@ a negative control: a named test run against a deliberately broken build must co
 
 the compiler or IR itself (parse, check, plan), with no generated language involved.
 
-#### `compiler` family `compiler`, 1 test
+#### `compiler` family `compiler`, 2 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.compiler.compiler.issue710-packet-string-bounds` | `gotest` | Go test TestIssue710PacketStringBounds in ./compiler | `package: ./compiler`<br>`test: TestIssue710PacketStringBounds` | the Go test passes | `compiler/issue710_test.go:259` |
+| `none.nightly.compiler.compiler.issue710-packet-string-bounds` | `gotest` | Go test TestIssue710PacketStringBounds in ./compiler | `package: ./compiler`<br>`test: TestIssue710PacketStringBounds` | the Go test passes | `compiler/issue710_test.go:256` |
+| `none.nightly.compiler.compiler.issue746-base64-writer-int32-max-ub-san` | `gotest` | Go test TestIssue746Base64WriterInt32MaxUBSan in ./compiler | `package: ./compiler`<br>`test: TestIssue746Base64WriterInt32MaxUBSan` | the Go test passes | `compiler/issue746_test.go:68` |
+
+#### `compiler` family `fuzz`, 7 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.compiler.fuzz.prop-refusal-never-silent` | `gotest` | Go test TestPropRefusalNeverSilent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRefusalNeverSilent` | the Go test passes | `internal/fuzz/rapidprops_test.go:210` |
+| `none.nightly.compiler.fuzz.prop-round-trip-every-form` | `gotest` | Go test TestPropRoundTripEveryForm in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropRoundTripEveryForm` | the Go test passes | `internal/fuzz/rapidprops_test.go:195` |
+| `none.nightly.compiler.fuzz.prop-strict-reads-agree` | `gotest` | Go test TestPropStrictReadsAgree in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestPropStrictReadsAgree` | the Go test passes | `internal/fuzz/rapidprops_test.go:226` |
+| `none.nightly.compiler.fuzz.random-table-differential` | `gotest` | Go test TestRandomTableDifferential in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferential` | the Go test passes | `internal/fuzz/tablediff_test.go:765` |
+| `none.nightly.compiler.fuzz.random-table-differential-negative-control` | `gotest` | Go test TestRandomTableDifferentialNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableDifferentialNegativeControl` | the Go test passes | `internal/fuzz/tablediff_test.go:790` |
+| `none.nightly.compiler.fuzz.random-table-integrity-units` | `gotest` | Go test TestRandomTableIntegrityUnits in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableIntegrityUnits` | the Go test passes | `internal/fuzz/tablediff_test.go:819` |
+| `none.nightly.compiler.fuzz.rapid-props-negative-control` | `gotest` | Go test TestRapidPropsNegativeControl in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRapidPropsNegativeControl` | the Go test passes | `internal/fuzz/rapidprops_test.go:335` |
+
+#### `compiler` family `publicapi`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.compiler.publicapi.external-generator-registers` | `gotest` | Go test TestExternalGeneratorRegisters in ./internal/publicapi | `package: ./internal/publicapi`<br>`test: TestExternalGeneratorRegisters` | the Go test passes | `internal/publicapi/publicapi_test.go:287` |
+| `none.nightly.compiler.publicapi.external-module-builds-the-cli` | `gotest` | Go test TestExternalModuleBuildsTheCLI in ./internal/publicapi | `package: ./internal/publicapi`<br>`test: TestExternalModuleBuildsTheCLI` | the Go test passes | `internal/publicapi/publicapi_test.go:122` |
 
 ### Type `model`
 

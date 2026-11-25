@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -125,7 +124,6 @@ func skipDepthInputs(t *testing.T, u *ir.Unit) map[string][]byte {
 // tables/messages User root: an unknown kind-13 entry may nest 128 levels and
 // reads, while 129 and 20,000 levels refuse without raising.
 func TestMooMessageSkipWalkDepthBound(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "messagedemo")
@@ -156,7 +154,6 @@ func TestMooMessageSkipWalkDepthBound(t *testing.T) {
 // an emitted copy of table_message.moo and requires the 129-level row to stop
 // refusing.
 func TestMooMessageSkipWalkDepthBoundNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "messagedemo")

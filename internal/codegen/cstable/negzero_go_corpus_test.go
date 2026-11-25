@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // EVERY C# (modern) WRITER STORES +0 FOR A COMPRESSED FLOAT'S -0
@@ -30,7 +28,6 @@ import (
 // (a plain float's -0 rides), so a writer that normalized every float fails.
 func TestCSharpCompressedNegZeroGoCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it compiles and runs every generated C# writer over the -0 corpus)")
 	schema, rows := csNegZeroGoCorpus(t)
 	out, err := csNegZeroWriteRun(t, schema, csNegZeroGoMain(rows))
 	if err != nil {

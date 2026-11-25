@@ -97,7 +97,6 @@ func runFixLoadProbe(t *testing.T, reader string, older []string, testSource str
 // plan and for a compiled lineage plan alike.
 func TestFixedLoadAllocatesNothingPerCall(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	reader := `package probe
 fixed table Root {
     a int32

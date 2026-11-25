@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -25,7 +24,6 @@ import (
 // first, then the decoded text is held to the base64 grammar (§16.2).
 func TestJavaJsonBase64Canonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 
 	repo := filepath.Join("..", "..", "..")
 	vectors := filepath.Join(repo, "testdata", "wire", "json-base64-canonical")

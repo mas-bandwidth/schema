@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE MESSAGE FORM'S ACROSS-LEGS RULES (review-owed/cross-leg/message-form;
@@ -31,7 +30,6 @@ import (
 // compared by its verdict alone (docs/rulings.json refusal-verdict-only).
 func TestLobsterMessageFormAcrossLegRules(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g, err := generateLoadUnit(t, []string{writeSchema(t, "Probe", messageRulesSchema)})
 	if err != nil {
 		t.Fatal(err)

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -136,11 +134,9 @@ end
 
 // elixirToolchain locates the leg's own Elixir and elixirc: $ELIXIR when it
 // names one, the pinned dist/ tree, and the tools on PATH. A bench with
-// neither fails by name under SCHEMA_REQUIRE_CORPUS and skips by name
-// otherwise.
+// neither fails the test by name.
 func elixirToolchain(t *testing.T) (elixirBin, elixircBin string) {
 	t.Helper()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	if env := os.Getenv("ELIXIR"); env != "" {
 		if _, err := os.Stat(env); err == nil {
@@ -163,10 +159,7 @@ func elixirToolchain(t *testing.T) (elixirBin, elixircBin string) {
 		}
 	}
 	if elixirBin == "" {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Elixir is on this bench: not in dist/ and not on PATH")
-		}
-		t.Skip("no Elixir: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+		t.Fatalf("no Elixir is on this bench: not in dist/ and not on PATH")
 	}
 
 	sibling := filepath.Join(filepath.Dir(elixirBin), "elixirc")
@@ -176,10 +169,7 @@ func elixirToolchain(t *testing.T) (elixirBin, elixircBin string) {
 		elixircBin = bin
 	}
 	if elixircBin == "" {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no elixirc is on this bench: not beside %s and not on PATH", elixirBin)
-		}
-		t.Skip("no elixirc: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+		t.Fatalf("no elixirc is on this bench: not beside %s and not on PATH", elixirBin)
 	}
 	return elixirBin, elixircBin
 }

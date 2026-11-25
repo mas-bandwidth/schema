@@ -31,7 +31,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -488,10 +487,9 @@ func stringIdentityFailures(t *testing.T, mutate func(*testing.T, map[string][]b
 // TestPythonVtBlobs is the blob row and the string-identity row: every manifest
 // blob instance and the equal-value cases, under both pinned interpreters.
 //
-// Functional (python pins): run with SCHEMA_SLOW=1.
+// Functional (python pins).
 func TestPythonVtBlobs(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	fails, held := blobManifestFailures(t, nil)
 	for _, f := range fails {
 		t.Error(f)
@@ -522,7 +520,6 @@ func TestPythonVtBlobs(t *testing.T) {
 //     from two slots, so blob_shared and shared_string no longer refuse.
 func TestPythonVtBlobsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			src, ok := files[file]

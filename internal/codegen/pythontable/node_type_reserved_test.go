@@ -9,18 +9,15 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPythonReservedNodeType(t *testing.T) {
-	slowtest.Gate(t, "pinned Python node record type IDs and Go wire oracle")
 	checkReservedNodeType(t, false)
 }
 
 func TestPythonReservedNodeTypeNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "pinned Python node record type fault control")
 	checkReservedNodeType(t, true)
 }
 

@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +24,6 @@ import (
 // Named *_arm_row_test.go, not *_arm_test.go: Go reads a trailing _arm before
 // _test.go as a GOARCH build constraint and silently skips the file.
 func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()

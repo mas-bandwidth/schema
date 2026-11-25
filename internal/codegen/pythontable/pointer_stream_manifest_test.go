@@ -7,12 +7,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonPointerStreamManifest(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the stream corpus")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

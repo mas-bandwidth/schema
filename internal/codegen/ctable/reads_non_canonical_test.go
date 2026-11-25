@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -119,7 +118,6 @@ func cCanonicalCName(name string) string {
 // with arm reference 0 stays refused (§3.3 (c)).
 func TestCReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 
 	repo := filepath.Join("..", "..", "..")
 	vector := filepath.Join(repo, "testdata", "wire", "non-canonical")

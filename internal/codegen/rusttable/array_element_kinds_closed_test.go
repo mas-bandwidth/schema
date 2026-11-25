@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestRustArrayElementKindsClosed holds the Rust leg to the closed element
@@ -21,12 +19,8 @@ import (
 // (docs/rulings.json refusal-verdict-only).
 func TestRustArrayElementKindsClosed(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

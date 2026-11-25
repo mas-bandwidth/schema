@@ -38,7 +38,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -179,12 +178,11 @@ public final class Driver {
 // TestKeyedArrayIndexingJava holds §2.4's accessor at both ends, in the
 // release shape (-da) and the checked one (-ea).
 func TestKeyedArrayIndexingJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	var javac, javaBin string
 	t.Run("jdk", func(t *testing.T) {
-		// javaTools skips this subtest when it finds no JDK; when it returns,
+		// javaTools fails this subtest when it finds no JDK; when it returns,
 		// it must have named both tools
 		jc, j := javaTools(t)
 		if jc == "" || j == "" {
@@ -193,10 +191,7 @@ func TestKeyedArrayIndexingJava(t *testing.T) {
 		javac, javaBin = jc, j
 	})
 	if javac == "" {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatal("SCHEMA_REQUIRE_CORPUS is set and TestKeyedArrayIndexingJava found no JDK: set JAVAC and JAVA (make tables-java-keyed passes them)")
-		}
-		t.Skip("TestKeyedArrayIndexingJava: no JDK (set JAVAC/JAVA)")
+		t.Fatal("TestKeyedArrayIndexingJava found no JDK: set JAVAC and JAVA (make tables-java-keyed passes them)")
 	}
 	files, err := Generate(unitFrom(t, keyedProbeSchema))
 	if err != nil {
@@ -689,7 +684,6 @@ public final class KeyedWireDriver {
 // keyedFormJava compiles one form's generated Java beside the driver and
 // answers its class directory.
 func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string][]byte) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	packet, err := javacodegen.Generate(u)
@@ -730,7 +724,6 @@ func keyedFormJava(t *testing.T, javac, dir string, u *ir.Unit, files map[string
 
 // keyedRun runs the driver and answers its lines keyed by "KIND root i".
 func keyedRun(t *testing.T, javaBin, classes, pkg string, args ...string) (map[string]string, string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	cmd := testproc.Command(t, javaBin, append([]string{"-ea", "-cp", classes, pkg + ".KeyedWireDriver"}, args...)...)

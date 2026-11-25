@@ -250,11 +250,13 @@ red. A leg whose generated tree is baked in has nothing for a control to aim at.
 
 ## A filter that selects nothing is red
 
-`run` takes filters: `--only <lang>`, `--skip <langs>` and `--surfaces <list>`.
+`run` takes filters: `--only <lang>` and `--surfaces <list>`. There is no
+skip list: which legs and surfaces run is chosen at the root, and nothing below
+it leaves a selected row unrun.
 A filter that leaves nothing to compare must never print a green matrix, so the
 harness exits non-zero, naming the filters, when:
 
-- no leg ran (`--only` names no registered driver, or `--skip` removed every leg);
+- no leg ran (`--only` names no registered driver);
 - the surfaces selected hold zero rows (`--surfaces` names surfaces with no
   expectation in the corpus): `conformance selected ZERO rows`;
 - every selected cell was absent, so no leg answered one case (`--only <lang>`
@@ -332,8 +334,8 @@ One process per surface, so a runtime starts once rather than once per case.
 - **A port declares its gated keys by its answers.** A port outside the
   repository has no entry in `compiler/carries.go`; a case whose unit uses a
   key the port does not carry is answered ABSENT (`<case>.absent`, or the
-  surface exits 2), which `make conformance-port` counts as work not done
-  (`--complete`, docs/SPEC-CONFORMANCE.md §5) and never as a pass.
+  surface exits 2), which fails the run, as every absence does
+  (docs/SPEC-CONFORMANCE.md §5): it is work not done, never a pass.
 
 **The four table-form `write-refusal` surfaces hold the write contract**
 (docs/SPEC.md §5.1): each row loads one wire, sets ONE field to a value its
@@ -669,7 +671,7 @@ success line:
 |---|---|
 | `list` exits 0 and names no surface | refuses the leg: `named no surface` (exit 1) |
 | `list` names a surface the harness does not have | refuses the leg, naming it (exit 1) |
-| `list` names a RETIRED surface (`cook-reason`, `block-reason`, `strict-reason`) | prints `conformance IGNORES <name> listed by the <lang> leg` on every run; not run, not scored |
+| `list` names a RETIRED surface (`cook-reason`, `block-reason`, `strict-reason`) | refuses the leg, naming it: a retired surface is not run, so a driver does not list it (exit 1) |
 | leaves a row of a surface unanswered (no file, no `.absent`) | `FAIL`, `<lang> / <surface>: <row>: the driver wrote nothing` |
 | writes a file no row of the surface owns | `FAIL`, `<file>: the driver answered a row the corpus did not send` |
 | writes an answer that is not the row's | `FAIL`, the row and the first difference |
@@ -685,15 +687,13 @@ rows save, so it answers them all and the harness scores the ones with a golden 
 and anything else in an output directory is a stray answer. The cards runner
 holds its output directories to the same rule over its own manifest.
 
-**A declared absence is still not a pass.** A port's `list` omission, exit 2 or
-`<case>.absent` stays the completion tracker and does not turn the run red (the
-reference leg's does, above), but the cell's denominator is every row SENT
-(`pass 16/20 +4a`, never `pass 16/16 +4a`), and a run with any absence or any
-`--skip`ped leg prints `tables conformance: no failures, and NOT every row was
-answered — absent is not a pass:` followed by each leg and surface, instead of
-`tables conformance: every registered surface passes`. That line now means
-exactly what it says: every surface run, every row answered and passed, no leg
-skipped.
+**A declared absence is a failure.** A leg's `list` omission, exit 2 or
+`<case>.absent` is a row that did not run, and the run is red on it, for a port
+as for the reference leg. The matrix still shows it (`pass 16/20 +4a`, the
+denominator every row SENT), the run prints `tables conformance: no failures,
+and NOT every row was answered — absent is not a pass:` followed by each leg and
+surface, and then `tables conformance: NOT CONFORMING`. Which rows a leg is
+asked is chosen at the root, never by the leg answering absent.
 
 The fast-tier tests in `harness/footgun_test.go` plant each row of the table
 with the test binary itself as the driver (no shell, no toolchain) and are red

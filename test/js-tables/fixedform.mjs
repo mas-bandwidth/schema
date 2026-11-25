@@ -60,9 +60,10 @@ const LAYOUT_AT = 20;
 //
 // Run from the repository root, which is where the Makefile runs it.
 
-// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This suite is a driver
-// with no skip verb, so the skip is A PRINTED LINE AT THE CALL SITE naming the
-// function, §5.6 and where the coverage is owed, plus a count at the end — and
+// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. A case not run is
+// never a pass, and a case is left out only at the root, so a retired case is A
+// FAILURE AT THE CALL SITE naming the function, §5.6 and where the coverage is
+// owed, plus a count at the end — and
 // the function STAYS IN THE TREE and stays compiling (§5.9 #23). A deleted test
 // is a coverage claim nobody can audit.
 //
@@ -76,9 +77,9 @@ const LAYOUT_AT = 20;
 // entry is handed to the reader as its lock — and §1.1's seven rules are owed as
 // the LOCK's validation of what it records.
 //
-// THREE OF THESE FUNCTIONS WERE MIXED and the skip over-reached: bytesArrayConvention,
+// THREE OF THESE FUNCTIONS WERE MIXED and the retirement over-reached: bytesArrayConvention,
 // holePrefill and referenceOracle each assert an IDENTITY half that §5 does not
-// touch beside a COMPILED half that it retires, and a skip over the whole
+// touch beside a COMPILED half that it retires, and a retirement of the whole
 // function took the identity half down with it — including the two assertions
 // NOTHING ELSE ON THIS LEG MAKES: the reference's own fx1.bin read back byte for
 // byte, and §3.4's "the slack is zero" over CONSTRUCTED storage. THE THREE ARE
@@ -88,9 +89,9 @@ const LAYOUT_AT = 20;
 // beside the rest. The compiled halves were not un-retired to do it: §5 retires
 // exactly the walk of a stranger's layout and nothing less.
 let retiredCount = 0;
-function retired(name, why) {
-  console.log("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): " + name + " — " + why);
+function retired(check, name, why) {
   retiredCount++;
+  check(false, "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6), not run: " + name + " — " + why);
 }
 
 export async function checkFixedForm(check, generated, corpusDir, optionalDir, oracleDir) {
@@ -118,19 +119,19 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   guardComparedAtArgW(check, fx1home);
   planPartition(check, ut1, ut1home, fx1, fx1home);
   ordinalWidth8ReadWhole(check, fx1home);
-  retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
+  retired(check, "versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
   bytesArrayConventionIdentity(check, fx1, fx1home);
-  retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
+  retired(check, "bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
   liveCountSlack(check, fx1, fx1home);
   hostileByteSweep(check, fx1, fx1home);
   holePrefillIdentity(check, fx1, fx1home);
-  retired("holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
-  retired("negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
-  retired("layoutValidation", "§1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records");
-  retired("unionArmText", "the guard and flavour lanes across two generations with no lineage; HELD on the lineage harness, TestJSFixedVersioningUnionArmText");
+  retired(check, "holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
+  retired(check, "negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
+  retired(check, "layoutValidation", "§1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records");
+  retired(check, "unionArmText", "the guard and flavour lanes across two generations with no lineage; HELD on the lineage harness, TestJSFixedVersioningUnionArmText");
   if (oracleDir) {
     referenceOracleIdentity(check, fx1, fx1home, oracleDir);
-    retired("referenceOracleCompiled", "it reads the reference's FX2 file with no lineage entry; owed on the lineage harness");
+    retired(check, "referenceOracleCompiled", "it reads the reference's FX2 file with no lineage entry; owed on the lineage harness");
   }
 
   if (optionalDir) {
@@ -142,8 +143,8 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
     };
     optionalBytes(check, o, optionalDir);
     rangedScalarClamp(check, o);
-    retired("optionalVersioning", "P1/P3 read each other with no lineage; owed on the lineage harness");
-    retired("optionalControls", "every control is a COMPILED read of a stranger's layout; owed on the lineage harness");
+    retired(check, "optionalVersioning", "P1/P3 read each other with no lineage; owed on the lineage harness");
+    retired(check, "optionalControls", "every control is a COMPILED read of a stranger's layout; owed on the lineage harness");
   }
 }
 

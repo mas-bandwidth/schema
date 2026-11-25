@@ -26,8 +26,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -63,12 +61,7 @@ func Mypy(t testing.TB) string {
 
 func pin(t testing.TB, env, dist, exe string) string {
 	t.Helper()
-	// A test that runs a pin shells out to a toolchain, so it is behind the
-	// slow gate like every other leg's (internal/slowtest); make test-python
-	// sets SCHEMA_SLOW=1, and there a missing pin refuses by name below.
-	if !slowtest.Enabled() {
-		t.Skipf("SCHEMA_SLOW: this test shells out to the pinned %s; set SCHEMA_SLOW=1 to run it (make test-python does)", env)
-	}
+	// A pin that does not resolve fails the test by name below; nothing skips.
 	if p := os.Getenv(env); p != "" {
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("%s=%s does not resolve (%v): run make dist-python (docs/PORT-PYTHON.md, THE PIN)", env, p, err)
@@ -133,7 +126,6 @@ func run(t testing.TB, python, dir, main string, inputs map[string][]byte) []byt
 // requires it to go red, so the failure is handed back with both streams.
 func Try(t testing.TB, python, dir, main string, inputs map[string][]byte) (stdout, stderr string, err error) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Python interpreter")
 	for name, data := range inputs {
 		if werr := os.WriteFile(filepath.Join(dir, name), data, 0o644); werr != nil {
 			t.Fatal(werr)
@@ -153,7 +145,6 @@ func Try(t testing.TB, python, dir, main string, inputs map[string][]byte) (stdo
 // It returns the combined output and the error.
 func Analyze(t testing.TB, dir string, paths ...string) (string, error) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned mypy")
 	args := append([]string{"--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(dir, ".mypy_cache")}, paths...)
 	cmd := testproc.Command(t, Mypy(t), args...)
 	cmd.Dir = dir
@@ -180,7 +171,6 @@ func HexLines(t testing.TB, stdout []byte) [][]byte {
 // standard input: a line driver (test/packet-text) reads its cases there.
 func TryStdin(t testing.TB, python, dir, main string, args []string, stdin string) (stdout, stderr string, err error) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Python interpreter")
 	cmd := testproc.Command(t, python, append([]string{"-W", "error", "-I", "-B", main}, args...)...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdin)

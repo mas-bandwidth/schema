@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -61,7 +60,6 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 	}
 	t.Run("dart-roundtrip", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "dart")
 		dir := t.TempDir()
 		for name, data := range files {
 			if strings.Contains(name, "/") {

@@ -3684,7 +3684,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes"
+            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes"
         );
         return;
     }

@@ -49,6 +49,11 @@ func extractCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	if *asJSON {
+		if ledger, err := extract.LoadLedger(filepath.Join(*root, extract.LedgerPath)); err == nil {
+			extract.ApplyTiers(res, ledger)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 		var b bytes.Buffer
 		enc := json.NewEncoder(&b)
 		enc.SetEscapeHTML(false)
@@ -70,6 +75,8 @@ func extractCmd(args []string, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// a moved test's row carries the tier its tier line gives it
+		extract.ApplyTiers(res, ledger)
 		n, err := moveLayer(*root, *path, *move, res, reg, ledger)
 		if err != nil {
 			return err
@@ -86,7 +93,26 @@ func extractCmd(args []string, stdout io.Writer) error {
 		if len(res.Unparsed) > 0 {
 			return fmt.Errorf("--write-ledger: %d files the extract could not read, first %s: %s; a ledger written now would miscount", len(res.Unparsed), res.Unparsed[0].File, res.Unparsed[0].Reason)
 		}
+		// the unmoved lines are counted again; the tier lines are facts
+		// about tests, not counts, so they carry over as they are, but for
+		// a test a row now runs: its row carries its tier
 		lines := extract.Ledger(res, reg, plan(*root, reg))
+		if old, err := extract.LoadLedger(ledgerPath); err == nil {
+			rowed := map[string]bool{}
+			runs := extract.Runs(reg)
+			for _, it := range res.Items {
+				if _, ok := runs[it.ID()]; ok && it.Kind == extract.KindGoTest {
+					rowed[extract.TierPlace(it.Dir, it.Name)] = true
+				}
+			}
+			for _, l := range extract.TierLines(old) {
+				if !rowed[l.Dir] {
+					lines = append(lines, l)
+				}
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 		var b bytes.Buffer
 		if err := extract.WriteLedger(&b, ledgerHeader, lines); err != nil {
 			return err
@@ -145,7 +171,13 @@ func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger
 		}
 	}
 	waiting := map[string]int{}
+	tiers := map[string]int{}
 	for _, l := range ledger {
+		if l.Kind == extract.KindTier {
+			tier, _, _ := strings.Cut(l.Reason, ":")
+			tiers[tier]++
+			continue
+		}
 		waiting[l.Kind] += l.Count
 	}
 	var b strings.Builder
@@ -163,7 +195,7 @@ func printCounts(w io.Writer, res *extract.Result, reg *testreg.Registry, ledger
 	for _, k := range keys {
 		fmt.Fprintf(&b, "    %-30s %6d\n", k, gated[k])
 	}
-
+	fmt.Fprintf(&b, "  tier lines (unmoved tests that are not unit): %d functional, %d nightly\n", tiers["functional"], tiers["nightly"])
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -174,6 +206,10 @@ const ledgerHeader = `# The unmoved ledger: the tests the repository holds that 
 # gets a registry row, never a ledger line. Each line names the layer that
 # moves its tests in (docs/TEST-REGISTRY.md, "Every test is in the registry").
 # Regenerate with: go run ./tools/schema-test extract --write-ledger
+# A tier line is one Go test ("<package dir>:<TestName>", count 1) that has
+# no row yet and is not unit: its reason starts "functional: " or "nightly: "
+# and says what it needs. It is where a removed skip's condition went: the
+# test is chosen at the root by its tier. --write-ledger carries them over.
 # kind	place	count	layer	reason
 `
 

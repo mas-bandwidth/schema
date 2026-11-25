@@ -10,7 +10,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -172,7 +171,6 @@ end
 
 // TestMooJsonTextLists: every case answers as the engine does.
 func TestMooJsonTextLists(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	for _, b := range textListRun(t, nil) {
 		t.Error(b)
@@ -183,7 +181,6 @@ func TestMooJsonTextLists(t *testing.T) {
 // a time, in the runtime the emitter embeds, and requires the gate red on the
 // cases that rule decides and green on the rest.
 func TestMooJsonTextListsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged text form)")
 	t.Parallel()
 	controls := []struct {
 		name, file, site, broken string

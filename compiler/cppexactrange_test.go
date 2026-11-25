@@ -32,8 +32,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -151,10 +149,9 @@ int main( void )
 	if err := os.WriteFile(filepath.Join(dir, "probe.cpp"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated JSON path is C++: no c++ on PATH")
+		t.Fatal("the generated JSON path is C++: no c++ on PATH")
 	}
 	args := []string{"-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-ffp-contract=off", "-I", dir, filepath.Join(dir, "probe.cpp")}
 	names, err := os.ReadDir(dir)

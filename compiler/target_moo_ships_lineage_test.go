@@ -31,7 +31,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -68,8 +67,8 @@ func TestMooShipsTheLockLineage(t *testing.T) {
 	}
 }
 
-// mooLineageCorpus is the C++ reference's byte oracle, skipped when it is not
-// built unless SCHEMA_REQUIRE_CORPUS asks for it.
+// mooLineageCorpus is the C++ reference's byte oracle; the test fails naming it when it
+// is not built.
 func mooLineageCorpus(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.Abs(filepath.Join("..", "build", "fixedform-corpus"))
@@ -79,10 +78,7 @@ func mooLineageCorpus(t *testing.T) string {
 		}
 	}
 	why := fmt.Sprintf("the C++ reference's byte oracle is not built: make tables-fixedform-corpus (%v)", err)
-	if slowtest.CorpusRequired() {
-		t.Fatal(why)
-	}
-	t.Skip(why)
+	t.Fatal(why)
 	return ""
 }
 
@@ -150,7 +146,6 @@ print(#(v :: any), r.X, r.Y, r.Z, r.W)
 }
 
 func TestMooReadsTheLockedOlderLayout(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := mooLineageCorpus(t)
 	data, err := os.ReadFile(filepath.Join(corpus, "old_field_append.bin"))

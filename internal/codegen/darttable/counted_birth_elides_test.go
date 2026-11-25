@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -139,7 +138,6 @@ func countedBirthWant(t *testing.T) map[string]string {
 // counted array at its birth value and with one live element (F-115).
 func TestDartCountedBirthElides(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	want := countedBirthWant(t)
 	u := unitFrom(t, countedBirthSchema)
 	files, err := dart.Generate(u)

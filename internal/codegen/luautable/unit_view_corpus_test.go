@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -123,7 +122,6 @@ func luauListView(t *testing.T, files map[string][]byte) string {
 // field, variant, bit, arm and constant with its file, id, text key, type
 // spelling, doc and tags, and a type no table reaches with no wire identity.
 func TestLuauUnitViewCorpus(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the unit view's listing)")
 	t.Parallel()
 	units := luauViewUnits(t)
 	if len(units) == 0 {
@@ -152,7 +150,6 @@ func TestLuauUnitViewCorpus(t *testing.T) {
 //   - doc: one field's doc emptied, where the pin has the text;
 //   - id: one field of a type no table reaches given a table-wire id.
 func TestLuauUnitViewNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the unit view's listing)")
 	t.Parallel()
 	load := func(t *testing.T, dir string) (*ir.Unit, map[string][]byte) {
 		paths, err := compiler.GatherPaths([]string{filepath.Join(root, dir)})

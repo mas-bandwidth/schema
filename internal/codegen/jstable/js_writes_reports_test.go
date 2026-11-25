@@ -10,14 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // runJsVariableProbe writes the variable module for src and runs body against it.
 func runJsVariableProbe(t *testing.T, src, body string) {
 	t.Helper()
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 	u := unitFrom(t, src)
 	files, err := generateVariableFiles(u, nil)
@@ -65,7 +63,6 @@ table Root
 // TestJsFixedWriterRefusesBareIntOffWidth: a bare intN/uintN past its width is
 // refused (SPEC.md §5.1 row 11), not written as its low N bits.
 func TestJsFixedWriterRefusesBareIntOffWidth(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	node := jsNode(t)
 	u := unitFrom(t, `package probe
@@ -218,7 +215,6 @@ for (const [label, text] of [
 // TestJsAnnounceReadOverCapacityTouchesNoEntry: a vocabulary past the entry
 // capacity refuses before one slot of the caller's storage is written.
 func TestJsAnnounceReadOverCapacityTouchesNoEntry(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	node := jsNode(t)
 	u := loadUnit(t, "../../../tables/backend/Backend.schema")

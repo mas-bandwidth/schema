@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -111,7 +110,7 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 		cc = "cc"
 	}
 	if _, err := exec.LookPath(cc); err != nil {
-		t.Skipf("cc: %v", err)
+		t.Fatalf("cc: %v", err)
 	}
 	u := cUnitOf(t, cReadSchema(t, "VNEW_hostile_bool"))
 	files, err := cgen.Generate(u)
@@ -176,7 +175,6 @@ func cNormDamageRun(t *testing.T, sabotage [2]string) ([]byte, error) {
 }
 
 func TestCFixedNormalizationIsDamage(t *testing.T) {
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs a compiled C fixed-form probe")
 	t.Parallel()
 	out, err := cNormDamageRun(t, [2]string{})
 	if err != nil {
@@ -203,7 +201,6 @@ func TestCFixedNormalizationIsDamage(t *testing.T) {
 }
 
 func TestCFixedNormalizationIsDamageNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "functional negative control: invokes the C compiler (cc) on a mutated C fixed-form artifact")
 	t.Parallel()
 	// Plant the pre-fix answer in the real generated header: bool/present
 	// damage refused as out_of_range instead of wire_damaged by the load's

@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -192,10 +191,9 @@ func wideRowFailures(t *testing.T, rows []wideRowInstance, units map[string][]st
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtWideRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	repo := filepath.Join("..", "..", "..")
 	units, rows := wideRowManifest(t, repo)
 	if len(rows) == 0 {
@@ -238,10 +236,9 @@ func TestPythonVtWideRows(t *testing.T) {
 // bits, so the planted 8-byte read gives the same value and the row stays
 // green. Each control requires every row it names red.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtWideRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, ctl := range []struct {
 		name   string
 		mutate func(*testing.T, map[string][]byte)

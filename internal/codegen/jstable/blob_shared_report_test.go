@@ -8,13 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaScriptBlobSharedReportCensus(t *testing.T) {
-	slowtest.Gate(t, "native JavaScript blob sharing report")
 	dir := "../../../testdata/conformance/feature-witnesses/blob-shared-report"
 	source, err := os.ReadFile(filepath.Join(dir, "Probe.schema"))
 	if err != nil {

@@ -62,7 +62,7 @@ fi
 # (unknown, kind_mismatch, widened, clamped, duplicate, malformed, verdict),
 # which must be equal in every field but the sixth. Either way the leg's sixth
 # field is false.
-line=$(grep '^harness: FAILED after [0-9]* mutants: ' "$out/log" || true)
+line=$(grep '^harness: FAILED after [0-9]* mutants: ' "$out/log") || [ $? -eq 1 ]
 case "$line" in
 *"read acceptance differs: the leg says true, the oracle says false"*) ok=yes ;;
 *) ok=no ;;

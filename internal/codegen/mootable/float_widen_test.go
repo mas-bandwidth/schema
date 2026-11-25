@@ -8,8 +8,6 @@ import (
 	"math/rand/v2"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A FLOAT CROSSES TWO WIDTHS BY BIT SURGERY (docs/PORTING.md M21;
@@ -79,7 +77,6 @@ func widenMisses(t *testing.T, g *generatedUnit, patterns []uint32) []string {
 }
 
 func TestMooFloat32WidensBitForBit(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_values.moo)")
 	t.Parallel()
 	patterns := widenPatterns()
 	miss := widenMisses(t, keyedUnit(t), patterns)
@@ -98,7 +95,6 @@ func TestMooFloat32WidensBitForBit(t *testing.T) {
 // the fraction's low three bits dropped, and a subnormal normalized one
 // exponent off.
 func TestMooFloat32WidenNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_values.moo)")
 	t.Parallel()
 	g := keyedUnit(t)
 	patterns := widenPatterns()

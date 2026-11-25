@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -25,7 +24,6 @@ import (
 
 func TestWireFeedCountPastBodyRefusedDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Dart SDK (it runs the generated Dart)")
 
 	u := loadUnit(t, filepath.Join("..", "..", "..", "tables", "stream", "Stream.schema"))
 	root := u.Tables["Feed"]
@@ -81,8 +79,7 @@ func (r dartReport) String() string {
 
 // feedReportProbe generates the Dart reader, loads the bytes through it with a
 // report, saves what it loaded, and answers the six counters and the saved
-// bytes. A bare `go test` skips by name when the SDK is missing, through
-// dartBinary.
+// bytes. A missing SDK fails the test by name, through dartBinary.
 func feedReportProbe(t *testing.T, wire []byte, data []byte) (dartReport, []byte) {
 	t.Helper()
 	dart := dartBinary(t)

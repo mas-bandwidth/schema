@@ -19,7 +19,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -190,7 +189,6 @@ end
 }
 
 func TestLuauJsonPresenceSlotsAreBooleans(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "Presence.schema")
 	if err := os.WriteFile(path, []byte(luauJsonPresenceSchema), 0o644); err != nil {

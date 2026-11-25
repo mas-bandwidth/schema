@@ -16,9 +16,7 @@ package jstable
 //	    retained wire.
 //
 // This is a functional test. It generates the modules and runs them under
-// node, so slowtest.Gate skips it unless SCHEMA_SLOW=1 or SCHEMA_REQUIRE_CORPUS
-// is set. A missing node fails by name under SCHEMA_REQUIRE_CORPUS; it does
-// not skip. The probe takes no real time of its own, opens no socket, and
+// node; a missing node fails by name, it does not skip. The probe takes no real time of its own, opens no socket, and
 // makes no network call.
 
 import (
@@ -31,13 +29,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJsRetainAndWideningStrict(t *testing.T) {
-	slowtest.Gate(t, "node")
 	repo := jsStrictRepo(t)
 	for _, w := range jsStrictCells(t, repo, nil) {
 		t.Error(w)
@@ -45,7 +40,6 @@ func TestJsRetainAndWideningStrict(t *testing.T) {
 }
 
 func TestJsRetainAndWideningStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "node")
 	repo := jsStrictRepo(t)
 
 	t.Run("widening_no_file_form", func(t *testing.T) {

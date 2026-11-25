@@ -106,7 +106,6 @@ func csCardsStrictCheck(sources map[string]string) []string {
 }
 
 func TestCSharpCardsStrictReport(t *testing.T) {
-	slowtest.Gate(t, "dotnet (builds and runs the C# cards facade tests and conformance driver)")
 	root := csCardsRepoRoot(t)
 	sources := csCardsReadSources(t, root)
 	if bad := csCardsStrictCheck(sources); len(bad) != 0 {

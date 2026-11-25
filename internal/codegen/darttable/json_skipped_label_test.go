@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -47,7 +46,6 @@ var dartSkippedLabelRows = [][3]string{
 }
 
 func TestDartJsonSkippedLabelRules(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	t.Parallel()
 
 	u := buildUnit(t, dartSkippedLabelSchema)

@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestGooseJsonWriterRefusesZeroByte holds the Goose JSON writer to row 8
@@ -20,7 +19,6 @@ import (
 // still writes; each off-contract value refuses without appending a prefix.
 func TestGooseJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the JSON writer)")
 
 	src := t.TempDir()
 	schema := filepath.Join(src, "Zero.schema")

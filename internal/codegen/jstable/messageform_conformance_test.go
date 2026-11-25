@@ -11,14 +11,13 @@ package jstable
 // tree and requires one file per row — the bytes when the leg's tree carries
 // the form-2 verbs, `<case>.absent` when a row's unit or root the form refuses
 // is not reachable — and at least one answer, so a built tree that answers
-// nothing fails rather than skipping. It skips BY NAME when node is absent.
+// nothing fails rather than skipping. It fails BY NAME when node is absent.
 // The third holds the SHIPPED CONFORMANCE TARGET to the units the driver
 // reads: `CONFORMANCE_LEGS` names only build/tables-generated-js/.stamp, so a
 // row whose unit the stamp recipe does not generate can only ever answer
 // `<case>.absent` in `make conformance`, however well the driver is wired.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -282,7 +281,6 @@ func driverSource(t *testing.T) string {
 // built tree that answers nothing FAILS rather than skipping. It SKIPS BY NAME
 // when node is absent.
 func assertDriverAnswersMessages(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	node := jsNode(t)
@@ -405,7 +403,6 @@ func driverMessageTablePaths(t *testing.T) map[string]string {
 // shipped leg. A unit the target refuses now FAILS the command and this test —
 // the backend gap this card exists to close — and is never skipped in silence.
 func writeConformanceTree(t *testing.T, root string, units [][2]string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))

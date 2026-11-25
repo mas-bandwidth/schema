@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -22,7 +21,6 @@ import (
 // debug-only write assert.
 func TestCSharpFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET toolchain")
 
 	root, err := filepath.Abs("../../..")
 	if err != nil {

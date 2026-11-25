@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestFixedDeadBytesAreZero holds the Elixir leg to the dead-byte rule
@@ -17,7 +16,6 @@ import (
 // each changed file is refused, each control reads and saves back its own bytes.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "elixir (it runs the generated reader over the dead-byte corpus)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	for _, vec := range fixedvector.DeadBytes {

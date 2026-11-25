@@ -1,7 +1,6 @@
 package elixirtable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +14,6 @@ import (
 // strict warning gate so an impossible fallback result cannot recur unnoticed.
 func TestRetainScalarFallbackCompilesWithoutWarningsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir strict retained payload compilation")
 	elixir := elixirBinary(t)
 	compiler := filepath.Join(filepath.Dir(elixir), "elixirc")
 	if _, err := os.Stat(compiler); err != nil {

@@ -10,13 +10,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestPythonFixedFormPacketKeyed(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins and the live C++ oracle")
 	tc := fixedproof.RowCase{ID: "python-fixed-packet-keyed", Schema: `package probe
 enum Slot { Alpha, Beta }
 type Board { values [Slot]int32 | min = 0, max = 100 }

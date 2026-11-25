@@ -13,8 +13,7 @@ package ci
 // the port. Files are read; nothing here uses a socket, a clock or a service.
 //
 // When the corpus is not on this base the runner names the dependency and
-// fails under SCHEMA_REQUIRE_CORPUS (which the make target sets), rather than
-// passing over an absent corpus. The route note on this card says the corpus
+// fails, rather than passing over an absent corpus. The route note on this card says the corpus
 // arrives through lua-base-forward-merge-schema-go-r.
 
 import (
@@ -34,7 +33,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const (
@@ -546,7 +544,6 @@ func TestSchemaLuaHostileScorerOutcomes(t *testing.T) {
 // carried finding whose fix card and actual verdict are pinned here.
 func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
@@ -564,7 +561,7 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Lua
 	// reader answered against the cases the folder registers, per carrier.
-	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)), nil)
+	summary, err := hostilecorpus.RanEvery(corpusDir, slices.Collect(maps.Keys(answers)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -578,7 +575,6 @@ func TestSchemaLuaRunsHostileCorpus(t *testing.T) {
 // it out. The red line is kept in the failure message.
 func TestSchemaLuaHostileCorpusPlantedReader(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	root := repoRoot(t)
 	corpusDir := luaHostileCorpusDir(t, root)
 	cases := luaHostileCorpusCases(t, corpusDir)
@@ -609,7 +605,6 @@ func TestSchemaLuaHostileCorpusLane(t *testing.T) {
 		"sh test/slowgate/proof schema-lua-runs-hostile-corpus-planted",
 		"TestSchemaLuaRunsHostileCorpus",
 		"TestSchemaLuaHostileCorpusPlantedReader",
-		"SCHEMA_REQUIRE_CORPUS=1",
 	} {
 		if !strings.Contains(mk, want) {
 			t.Errorf("make/schema-lua-runs-hostile-corpus.mk does not carry %q", want)

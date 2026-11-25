@@ -15,7 +15,7 @@ if grep -Eo '"(feature_[a-z_]+|text[-_]total[-_a-z]*)(\.json|-be)?": "absent"' "
 fi
 for surface in wire report; do
 	if ! grep -E "^ *$surface +pass ([0-9]+)/\\1 *\$" "$dir/log"; then
-		grep -E "^ *$surface " "$dir/log" || true
+		grep -E "^ *$surface " "$dir/log" || echo "feature witnesses: $dir/log has no $surface line"
 		echo "feature witnesses: $surface is not pass N/N with no case absent"
 		exit 1
 	fi

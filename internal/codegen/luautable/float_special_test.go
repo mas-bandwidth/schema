@@ -16,7 +16,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -154,7 +153,6 @@ func patchPattern(t *testing.T, wire, old, new []byte) []byte {
 
 func TestLuauPlainFloatSpecialValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := generateFiles(t, map[string]string{"Var.schema": floatSpecialSchema})
 
 	// the same source through schema-go's engine: the unit, its instance model

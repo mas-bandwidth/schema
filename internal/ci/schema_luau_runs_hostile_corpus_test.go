@@ -32,7 +32,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -601,7 +600,7 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Luau
 	// probe printed a verdict for against the cases the folder registers.
-	summary, err := hostilecorpus.RanEvery(corpusDir, ran, nil)
+	summary, err := hostilecorpus.RanEvery(corpusDir, ran)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +696,6 @@ func luauHostileCarriedFinding(rest string) bool {
 // carried finding.
 func TestLuauRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (the pinned release)")
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -739,7 +737,6 @@ func TestLuauRunsHostileCorpus(t *testing.T) {
 // already a refusal (a refusal conforms on its verdict alone), and no other.
 func TestLuauRunsHostileCorpusPlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (the pinned release)")
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
@@ -816,7 +813,6 @@ func hostileAnnouncement(n int) []byte {
 // read a zero bound as no bound and accepted 4097.
 func TestLuauVocabularyDefaultEntryBound(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (the pinned release)")
 	want := map[string]string{}
 	inputs := map[string][]byte{}
 	for _, n := range []int{ir.TableVocabularyMaxEntries, ir.TableVocabularyMaxEntries + 1} {

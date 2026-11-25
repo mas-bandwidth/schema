@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -23,7 +21,6 @@ import (
 //     plain write elides a default slot;
 //   - a retained record that failed on the id list counted its loss twice.
 func TestRetainSaveJava(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	plants := []struct {
 		name, file, old, new string

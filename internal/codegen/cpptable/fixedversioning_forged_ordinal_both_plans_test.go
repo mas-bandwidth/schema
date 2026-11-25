@@ -16,13 +16,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := cppFixedCorpus(t)
 	file := filepath.Join(corpus, "old_enum_append.bin")

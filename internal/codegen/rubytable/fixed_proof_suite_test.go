@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -343,7 +342,6 @@ File.binwrite("saved", %s.fixed_save(rows))
 
 func TestRubyFixedProofSuite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Ruby pins and the C++ fixed-form corpus")
 	fixedproof.RunEvolutionRows(t, filepath.Join("..", "..", ".."), rubyFixedProofRunner{},
 		"fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection",
 		"compiled-plans", "definition-hash", "fixed-closure", "live-extents", "writing")
@@ -351,7 +349,6 @@ func TestRubyFixedProofSuite(t *testing.T) {
 
 func TestRubyFixedShapeCompare(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and C++ oracle")
 	tc := fixedproof.RowCase{ID: "ruby-fixed-compare", Schema: "package probe\nfixed table T { x int32 = 1\n y int32 = 2 }\n", Root: "T", Body: 8, Count: 1}
 	u := fixedproof.ParseCheckUnit(t, tc.Schema)
 	wire, _ := fixedproof.CppOracle(t, tc, u)

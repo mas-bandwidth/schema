@@ -49,7 +49,6 @@ func generateCAll(t *testing.T, src string) map[string][]byte {
 
 func TestCTableEmitsOnlyItsDeclaredForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	defaultSchema := `package probe
 table Pong { x int32 }
 fixed table Fox { x int32 }

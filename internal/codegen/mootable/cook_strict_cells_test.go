@@ -28,7 +28,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -185,7 +184,6 @@ func cookStrictCellsFails(t *testing.T, mutate func(*testing.T, *generatedUnit))
 }
 
 func TestMooCookStrictCells(t *testing.T) {
-	slowtest.Gate(t, "moo and go build (it runs the emitted cook and block reads and writes)")
 	t.Parallel()
 	for _, f := range cookStrictCellsFails(t, nil) {
 		t.Error(f)
@@ -198,7 +196,6 @@ func TestMooCookStrictCells(t *testing.T) {
 // byte-order check lets a cook forgery open, and the removed pitch
 // check lets block_pitch open.
 func TestMooCookStrictCellsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo and go build (it runs the emitted cook and block reads and writes)")
 	t.Parallel()
 	fails := cookStrictCellsFails(t, plantStrictCookDefects)
 	for _, cell := range []string{"cook-write", "cook-open", "block-read"} {

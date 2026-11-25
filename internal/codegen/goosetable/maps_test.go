@@ -29,7 +29,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -231,7 +230,6 @@ func mapsRows(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseMapsAreSortedEntryArrays(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it runs the maps probe)")
 	t.Parallel()
 	for _, b := range mapsRows(t, nil) {
 		t.Error(b)
@@ -252,7 +250,6 @@ func TestGooseMapsAreSortedEntryArrays(t *testing.T) {
 //   - key-kind: a key of another kind empties the map without the one
 //     kind_mismatch it owes, so the strict read keeps a value.
 func TestGooseMapsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it runs the maps probe)")
 	t.Parallel()
 	for _, ctl := range []struct {
 		name, file, from, to string

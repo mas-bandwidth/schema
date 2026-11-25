@@ -12,8 +12,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const t14Old = `package cfold
@@ -50,7 +48,6 @@ func TestFixedRoadmapGoT14CompressedFloats(t *testing.T) {
 	t.Parallel()
 	t.Run("go/R30", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 		t14CiteCoarser(t)
 		src := tableFile(generate(t, t14Old))
 		write := funcSource(src, "func ReadingFixedWriteBody(")

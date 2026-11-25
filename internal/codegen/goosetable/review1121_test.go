@@ -37,7 +37,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -197,7 +196,6 @@ fixed table Msg
 // announced kind because the reader is wider, never wrapped at 64 or 128
 // bits. The lawful top of each range lands whole.
 func TestGooseMessageRangedHeldToAnnouncedKind(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated message read)")
 	t.Parallel()
 	reader := reviewUnit(t, reviewMsgReader)
 	writer := reviewUnit(t, reviewMsgWriter)
@@ -248,7 +246,6 @@ func TestGooseMessageRangedHeldToAnnouncedKind(t *testing.T) {
 // are the Go reference's own encoding under a writer with a plain float32
 // and a [0..4] array.
 func TestGooseMessageFloat32RangeAndCountMin(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated message read)")
 	t.Parallel()
 	reader := reviewUnit(t, `package probe
 
@@ -319,7 +316,6 @@ fixed table F
 // Min is refused count_over_bound; the save refuses a count below Min. The
 // lawful file the probe patches loads.
 func TestGooseFixedReadRefusesNonFinite(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated fixed read)")
 	t.Parallel()
 	u := reviewUnit(t, reviewFixedSchema)
 	ns := goose.Namespace(u)
@@ -409,7 +405,6 @@ table Root
 // nothing is written; each lawful twin at the edge saves; a compressed
 // float's -0 is stored as +0.
 func TestGooseVariableSaveHoldsTheDeclaration(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated variable save)")
 	t.Parallel()
 	u := reviewUnit(t, reviewVarSchema)
 	m := tabletext.NewModel(u)
@@ -498,7 +493,6 @@ fn main() {
 // a writer's count below the reader's Min refuses — each the Go reference's
 // own verdict over the same wire.
 func TestGooseVariableReadFloat32RangeAndCountMin(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated variable read)")
 	t.Parallel()
 	reader := reviewUnit(t, `package probe
 
@@ -575,7 +569,6 @@ table Root
 // reference writes. The typed and flat reads take float32(0.1) and refuse a
 // counted array below its Min.
 func TestGooseJsonWritersHoldTheRange(t *testing.T) {
-	slowtest.Gate(t, "goose (it runs the generated JSON writers)")
 	t.Parallel()
 	src := `package probe
 

@@ -22,7 +22,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -66,7 +65,6 @@ func jsonFlagsNameOnceRows(t *testing.T) []jsonFlagsNameOnceRow {
 
 func TestGooseJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "goose")
 
 	rows := jsonFlagsNameOnceRows(t)
 	unit, root := rows[0].unit, rows[0].root

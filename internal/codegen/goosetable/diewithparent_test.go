@@ -1,3 +1,5 @@
+//go:build linux
+
 package goosetable_test
 
 // A GOOSE DRIVER DIES WITH ITS PARENT (internal/codegen/goose/gooserun).
@@ -8,21 +10,20 @@ package goosetable_test
 // test starts a long sleep through gooserun.Command, writes the sleep's pid
 // down, and waits. The test then kills the helper without warning and requires
 // the sleep to go with it. A helper run on its own (the done-when pattern also
-// matches its name) skips.
+// matches its name) never sees it: TestMain dispatches the helper
+// before any test runs.
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const (
@@ -31,20 +32,12 @@ const (
 )
 
 func TestGooseDieWithParent(t *testing.T) {
-	slowtest.Gate(t, "the test binary re-executed as a subprocess")
-	if runtime.GOOS != "linux" {
-		t.Skip("gooserun.Command sets a parent-death signal on Linux only")
-	}
-	if os.Getenv(dieWithParentHelperEnv) != "" {
-		t.Skip("the helper mode is driven by TestGooseDieWithParent")
-	}
-
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatalf("resolve the test binary: %v", err)
 	}
 	pidFile := filepath.Join(t.TempDir(), "driver.pid")
-	cmd := exec.Command(self, "-test.run=^TestGooseDieWithParentHelper$")
+	cmd := exec.Command(self, "-test.run=^$")
 	cmd.Env = append(os.Environ(),
 		dieWithParentHelperEnv+"=1",
 		dieWithParentPIDEnv+"="+pidFile,
@@ -99,31 +92,50 @@ func TestGooseDieWithParent(t *testing.T) {
 	}
 }
 
-// TestGooseDieWithParentHelper is the parent process of
-// TestGooseDieWithParent. Run without its environment it is a no-op.
-func TestGooseDieWithParentHelper(t *testing.T) {
-	if os.Getenv(dieWithParentHelperEnv) != "1" {
-		t.Skip("helper for TestGooseDieWithParent")
+// TestMain runs the helper body when TestGooseDieWithParent started this binary
+// as its parent process, and the tests otherwise.
+func TestMain(m *testing.M) {
+	if os.Getenv(dieWithParentHelperEnv) == "1" {
+		os.Exit(dieWithParentHelper())
 	}
+	os.Exit(m.Run())
+}
+
+// helperTB is the testing.TB gooserun.Command needs in the helper process,
+// which runs before any test: it uses only Helper and Cleanup.
+type helperTB struct{ testing.TB }
+
+func (helperTB) Helper()        {}
+func (helperTB) Cleanup(func()) {}
+
+// dieWithParentHelper is the parent process of TestGooseDieWithParent: it
+// starts the driver, writes its pid down and waits to be killed. Any return
+// is a failure, named on stderr.
+func dieWithParentHelper() int {
 	pidFile := os.Getenv(dieWithParentPIDEnv)
 	if pidFile == "" {
-		t.Fatal("the helper has no pid file")
+		fmt.Fprintln(os.Stderr, "the helper has no pid file")
+		return 1
 	}
-	cmd := gooserun.Command(t, "sleep", "300")
+	cmd := gooserun.Command(helperTB{}, "sleep", "300")
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start the driver: %v", err)
+		fmt.Fprintf(os.Stderr, "start the driver: %v\n", err)
+		return 1
 	}
 	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
-		t.Fatalf("write the driver pid: %v", err)
+		fmt.Fprintf(os.Stderr, "write the driver pid: %v\n", err)
+		return 1
 	}
 	// Stay alive until the parent test kills this helper. Waiting on the
 	// driver (instead of blocking forever) means a driver that dies on
 	// its own ends the helper at once with the reason in its output,
 	// rather than leaving a parent whose driver is already gone.
 	if err := cmd.Wait(); err != nil {
-		t.Fatalf("the driver exited before its parent was killed: %v", err)
+		fmt.Fprintf(os.Stderr, "the driver exited before its parent was killed: %v\n", err)
+		return 1
 	}
-	t.Fatal("the driver exited before its parent was killed")
+	fmt.Fprintln(os.Stderr, "the driver exited before its parent was killed")
+	return 1
 }
 
 func readDieWithParentPID(path string) int {

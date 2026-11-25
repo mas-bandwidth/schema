@@ -29,7 +29,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -518,7 +517,6 @@ func TestSquirrelVtPointerCells(t *testing.T) {
 	if f := vtPointerFindings(loadSrc, saveSrc, refusalSrc); len(f) > 0 {
 		t.Fatalf("source gate failed: %v", f)
 	}
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	res := runVtPointerCellsSuite(t, nil)
 	for _, cell := range vtPointerCellTable {
 		t.Run(cell.name, func(t *testing.T) {
@@ -559,8 +557,6 @@ func TestSquirrelVtPointerCellsNegativeControl(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: planting %s left source gate green", pl.name)
 		}
 	}
-
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 
 	t.Run("sabotage-load", func(t *testing.T) {
 		const loadAnchor = "    table.append(id);\n"

@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -276,7 +275,6 @@ function checkCase(name, wire, expectOK) {
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	out, err := runJSDepthBoundaryProbe(t, u, ann, cases, nil)
 	if err != nil {

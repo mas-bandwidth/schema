@@ -7,13 +7,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Functional: the deadline bounds a deliberately nonterminating planted fault.
 func TestPythonPointerGraphContainerEqualityFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	u := loadNamedUnit(t, "PtrArr.schema", pointerArraysSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -75,7 +73,6 @@ print('container-equality')
 // Both scalar and array float fields retain bit equality inside graph walks.
 func TestPythonPointerGraphFloatEquality(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package grapheq
 fixed table Leaf {
  f float32
@@ -114,7 +111,6 @@ print("graph-floats")
 // formerly quadratic graph walk on both interpreters.
 func TestPythonPointerGraphWideEquality(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	var schema strings.Builder
 	schema.WriteString("package widegraph\ntable Root {\n")
 	for i := range 128 {

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -20,7 +19,6 @@ import (
 // `:second_announcement` and a batch is `:no_vocabulary`.
 func TestElixirMessageStrictMode(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	if out, err := elixirMessageStrictMode(t, nil); err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
@@ -30,7 +28,6 @@ func TestElixirMessageStrictMode(t *testing.T) {
 // strict clause) in TableMessage.ex and requires the probe to go red.
 func TestElixirMessageStrictModeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	const anchor = "when vocab.strict and build_version != @build_version ->"
 	out, err := elixirMessageStrictMode(t, func(src string) string {
 		if strings.Count(src, anchor) != 1 {

@@ -53,21 +53,21 @@ func TestMissingSiblingStopsMakeWithOneLine(t *testing.T) {
 	}
 }
 
-// TestSiblingGateSkippedLegNeedsNoSibling holds the other half: a leg named
-// in SCHEMA_SKIP_LEGS is not run by `conformance`, so it does not need its
-// sibling (here the C leg, with the C++ oracle present).
-func TestSiblingGateSkippedLegNeedsNoSibling(t *testing.T) {
+// TestSiblingGateUnselectedLegNeedsNoSibling holds the other half: a leg the
+// root does not select (CONFORMANCE_ONLY names another) is not run by
+// `conformance`, so it does not need its sibling (here the C leg).
+func TestSiblingGateUnselectedLegNeedsNoSibling(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	absent := filepath.Join(t.TempDir(), "absent")
 	oracle := filepath.Join(t.TempDir(), "serialize")
 	testinputs.Make(t)
 	cmd := exec.Command("make", "-n", "conformance", "SERIALIZE="+oracle,
-		"SERIALIZE_C="+absent, "SCHEMA_SKIP_LEGS=c,cs,unity,go,rust,js")
+		"SERIALIZE_C="+absent, "CONFORMANCE_ONLY=cpp")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	// the C++ oracle is still absent here, so the gate must name it and not
-	// the skipped legs
+	// the unselected legs
 	if err == nil {
 		t.Fatalf("make conformance with the C++ oracle absent succeeded:\n%s", out)
 	}

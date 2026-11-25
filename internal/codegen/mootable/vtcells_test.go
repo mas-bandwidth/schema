@@ -27,8 +27,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // vtCell is one roadmap row and the corpus that proves it on this leg.
@@ -189,7 +187,6 @@ func vtCellFailures(t *testing.T, c vtCell, mutate func(*testing.T, map[string][
 }
 
 func TestMooVariableTableCells(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, c := range vtCells {
 		t.Run(c.row, func(t *testing.T) {
@@ -215,7 +212,6 @@ func TestMooVariableTableCells(t *testing.T) {
 // meets the id table), and every plant must turn some row red: no row's gate
 // is green by holding nothing.
 func TestMooVariableTableCellsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {

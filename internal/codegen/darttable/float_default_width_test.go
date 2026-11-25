@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -20,7 +19,6 @@ import (
 // Elision compares the stored width, even though authored Dart values are
 // doubles. Text and wire reads and both save paths must agree with the oracle.
 func TestFloatDefaultWidthDart(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package floatdefault
 enum Slot { A, B }
 fixed table Child { value float32 = 0.2 }

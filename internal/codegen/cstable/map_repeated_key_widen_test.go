@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -17,7 +16,6 @@ import (
 // inside a map entry body is wire damage and refuses the whole load across all
 // read modes.
 func TestMapRepeatedKeyLastKindWinsCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	const schema = "package probe\ntable Root { entries map[uint32]int32 }\n"
 	m := tabletext.NewModel(unitFrom(t, schema))
 	var cases strings.Builder

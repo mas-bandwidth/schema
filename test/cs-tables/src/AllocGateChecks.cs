@@ -30,13 +30,11 @@ static partial class Program
     // whatever dotnet a PATH lookup found says nothing about the runtime the
     // claim is for. Returns true when the runtime is the pin (the gate may
     // certify). On any other runtime it REFUSES (refused = true, measures
-    // nothing) unless SCHEMA_CS_ALLOC_ANY_RUNTIME=1, which measures and reports
-    // NOT CERTIFIED and returns false.
+    // nothing): there is no observe-only mode.
     static bool AllocRuntimeGate(out bool refused)
     {
         refused = false;
         string pin = (Environment.GetEnvironmentVariable("SCHEMA_CS_ALLOC_PIN") ?? "").Trim();
-        string anyRuntime = Environment.GetEnvironmentVariable("SCHEMA_CS_ALLOC_ANY_RUNTIME");
         int major = Environment.Version.Major;
         string running = RuntimeInformation.FrameworkDescription + " (major " + major + ")";
         int dot = pin.IndexOf('.');
@@ -47,12 +45,7 @@ static partial class Program
             return true;
         }
         string have = pinned ? "pin " + pin : "usable pin (SCHEMA_CS_ALLOC_PIN='" + pin + "')";
-        if (anyRuntime == "1")
-        {
-            Console.WriteLine("cs alloc gate NOT CERTIFIED: runtime " + running + " is not the " + have + "; SCHEMA_CS_ALLOC_ANY_RUNTIME=1 measures anyway and certifies nothing");
-            return false;
-        }
-        Console.WriteLine("cs alloc gate: REFUSED to measure: runtime " + running + " is not the " + have + "; the floor is certified on the pinned runtime only (SCHEMA_CS_ALLOC_ANY_RUNTIME=1 observes without certifying)");
+        Console.WriteLine("cs alloc gate: REFUSED to measure: runtime " + running + " is not the " + have + "; the floor is certified on the pinned runtime only");
         refused = true;
         failed = true;
         return false;

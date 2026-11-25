@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -16,7 +15,6 @@ import (
 
 func TestInertArrayHeadersElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header refuse in both read modes")
 	u := unitFrom(t, `package inertarray
  enum Key { A, B }
  table Inner { value int32 }
@@ -80,7 +78,6 @@ end
 
 func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an inert later array header preserves the previous body and its retained records")
 	u := unitFrom(t, `package inertretain
  table Inner { value int32 }
  table Root { items []Inner }`)
@@ -128,7 +125,6 @@ end
 
 func TestPinnedInertByteArrayHeaderElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir stream bytes header replays the permanent enumerated report divergence")
 	u := loadUnit(t, "../../../tables/stream/Stream.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin")

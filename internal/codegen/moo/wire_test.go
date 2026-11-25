@@ -16,7 +16,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -124,7 +123,6 @@ func expandMacros(t testing.TB, src string) string {
 // golden call, writes it in moo, and byte-compares against
 // testdata/wire/<name>.bin: the C++ reference's bytes are the judge.
 func TestMooTypeWireWritesTheGoldens(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, _ := generateInto(t, unitFromDir(t, repo("examples")))
 	writeFile(t, dir, "main.moo", expandMacros(t, wireProbe))
@@ -147,7 +145,6 @@ func TestMooTypeWireWritesTheGoldens(t *testing.T) {
 // matched exactly once) so one bool rides twice, and requires the byte
 // comparison to go red: the golden gate can see a one-bit drift.
 func TestMooTypeWireWriteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated modules under the pinned interpreter)")
 	t.Parallel()
 	dir, files := generateInto(t, unitFromDir(t, repo("examples")))
 	types := string(files["Types.moo"])

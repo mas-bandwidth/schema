@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -30,7 +28,6 @@ import (
 // reads.
 func TestDartGraphCheckedOverEveryPointer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	refused := []string{
 		"graph_unknown_type_self",
 		"graph_unknown_type_pair",

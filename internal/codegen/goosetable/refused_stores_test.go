@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const refusedStoresSchema = `package probe
@@ -82,7 +81,6 @@ func refusedStoresWire(keys []byte) []byte {
 }
 
 func TestGooseRefusedStoresAndDuplicateSave(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it runs the refused-stores probe)")
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Probe.schema")

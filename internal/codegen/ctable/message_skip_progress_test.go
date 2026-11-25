@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -267,7 +266,6 @@ int main(void)
 
 func TestCMessageSkipElementConsumesBits(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (it compiles and runs the generated message skip probe)")
 	u, ann, refBits := skipProgressFixtures(t)
 	cases := skipProgressCases(t, refBits)
 	out, err := runCSkipProgressProbe(t, u, ann, cases)

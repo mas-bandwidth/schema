@@ -1,9 +1,7 @@
 package gotable
 
 import (
-	"fmt"
 	"os"
-	"runtime"
 	"testing"
 )
 
@@ -13,14 +11,8 @@ func TestAllocatorOwnershipAndStandaloneWriters(t *testing.T) {
 	toolchain := os.Getenv("SCHEMA_GO_ALLOC_TOOLCHAIN")
 	if toolchain == "" {
 		toolchain = "go1.26.0"
-		if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO") == "1" {
-			toolchain = runtime.Version()
-		}
 	}
 	t.Setenv("GOTOOLCHAIN", toolchain)
-	if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO") == "1" {
-		fmt.Fprintf(os.Stderr, "Go allocation observations on %s; NOT CERTIFIED\n", toolchain)
-	}
 
 	runGenerated(t, `package probe
  fixed table Child { n int32 }
@@ -48,8 +40,7 @@ func TestPairLifetime(t *testing.T){
  for _,kind:=range []string{"short","unaligned"}{var returned []byte;released:=false;a:=TableAllocator{Alloc:func(n int64)[]byte{if kind=="short"{returned=make([]byte,n-1)}else{raw:=alignedAllocation(n+1);returned=raw[1:]};return returned},Free:func(b []byte){released=len(b)==len(returned)&&&b[0]==&returned[0]}};if malformed.Init(a)||!released{t.Fatalf("%s allocation not released",kind)}}
 }
 func TestStandalonePair(t *testing.T){
- if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO")!="1"&&runtime.Version()!="go1.26.0"{t.Fatalf("allocation certification requires go1.26.0, running %s",runtime.Version())}
- if os.Getenv("SCHEMA_GO_ALLOC_ANY_GO")=="1" {t.Logf("allocation observations on %s; NOT CERTIFIED",runtime.Version())}
+ if runtime.Version()!="go1.26.0"{t.Fatalf("allocation certification requires go1.26.0, running %s",runtime.Version())}
  var b RootBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown();var report TableReport
  if !RootFromJSON(&b,[]byte("{\"head\":{\"&node\":1,\"n\":7},\"alias\":{\"&node\":1},\"data\":[2,3],\"entries\":{\"9\":{\"n\":4},\"-2\":{\"n\":5}},\"blob\":\"YWJj\"}"),&report)||!b.Lock(){t.Fatal("source")};root:=b.AsConst()
  wire:=make([]byte,RootMeasure(root));RootSave(root,wire);text:=make([]byte,RootToJSONMeasure(root));RootToJSON(root,text);cook:=make([]byte,RootCookMeasure(root));RootCookFrom(root,cook,TableByteOrderLittle)

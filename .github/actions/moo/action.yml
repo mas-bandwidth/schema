@@ -37,7 +37,7 @@ runs:
       run: |
         set -euo pipefail
         want='${{ steps.pin.outputs.pin }}'
-        got=$(cat dist/moo/PIN 2>/dev/null || true)
+        got=""; if [ -f dist/moo/PIN ]; then got=$(cat dist/moo/PIN); fi
         if [ "$got" != "$want" ]; then
           echo "::error::dist/moo is moo ${got:-<none>}, not the pin $want; refusing to use it"; exit 1
         fi
@@ -61,7 +61,7 @@ runs:
       run: |
         set -euo pipefail
         want='${{ steps.pin.outputs.pin }}'
-        got=$(cat dist/moo-checked/PIN 2>/dev/null || true)
+        got=""; if [ -f dist/moo-checked/PIN ]; then got=$(cat dist/moo-checked/PIN); fi
         if [ "$got" != "$want" ]; then
           echo "::error::dist/moo-checked is moo ${got:-<none>}, not the pin $want; refusing to use it"; exit 1
         fi

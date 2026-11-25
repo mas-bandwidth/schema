@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -21,7 +20,6 @@ table Root { values [Slot]Caps }
 `
 
 func TestPythonKeyedFlags(t *testing.T) {
-	slowtest.Gate(t, "Go and C++ keyed flags and both Python pins")
 	old := loadUnit(t, `package keyedflags
 enum Slot { A, B }
 table Root { values [Slot]uint8 }
@@ -86,7 +84,6 @@ print("ok")
 // A bool is a Python int subclass: bypassing the integer type refusal must
 // make the strict keyed-flags writer accept it and this probe go red.
 func TestPythonKeyedFlagsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, keyedFlagsSchema))
 	if err != nil {
 		t.Fatal(err)

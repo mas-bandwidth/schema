@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE TEXT FORM'S LIMITS AND ITS GAP RULE (docs/SPEC-TABLES.md §16.9.1,
@@ -31,7 +30,6 @@ func nested(lists int) string {
 
 func TestLobsterTextFormLimitsAndGaps(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain")
 	path := filepath.Join(t.TempDir(), "Node.schema")
 	if err := os.WriteFile(path, []byte(textLimitsSchema), 0644); err != nil {
 		t.Fatal(err)

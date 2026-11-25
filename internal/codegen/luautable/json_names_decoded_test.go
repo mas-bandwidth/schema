@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -180,7 +179,6 @@ end
 // schema-go's reader and its value, and so do the plain controls.
 func TestLuauJsonNamesCompareDecoded(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
 	u := jsonNamesUnit(t)
 	g := requiredFiles(t, u)
 	want := jsonNamesGoOracle(t, u, jsonNameRows)

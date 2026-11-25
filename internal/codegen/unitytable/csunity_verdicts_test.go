@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -80,7 +79,6 @@ func uvWire(body []byte, ids ...uint64) []byte {
 
 func TestUnityVerdicts(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect verdicts")
 
 	vdt := fixedproof.ParseCheckUnit(t, unityVerdictsVdt)
 	m := tabletext.NewModel(vdt)

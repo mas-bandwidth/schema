@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -72,7 +71,6 @@ func TestUnionThenFixedByteArrayWire(t *testing.T) {
 	}
 
 	t.Run("wire", func(t *testing.T) {
-		slowtest.Gate(t, "node and the serialize.js runtime (it runs the generated module)")
 		node := jsFlatNode(t)
 		index := serializeJSIndex(t)
 		dir := t.TempDir()

@@ -9,7 +9,7 @@
 # usage: cook-write-check <log>
 set -eu
 log=$1
-cell=$(grep -E '^cook-write +' "$log" | head -n 1 || true)
+cell=$(grep -E '^cook-write +' "$log" | head -n 1)
 if [ -z "$cell" ]; then
 	echo "SQUIRREL COOK-WRITE FAILED: $log has no cook-write cell" >&2
 	exit 1

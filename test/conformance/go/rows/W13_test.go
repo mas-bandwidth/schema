@@ -117,7 +117,6 @@ func w13RefFixed(t *testing.T, header []byte, table string) (hash uint64, layout
 }
 
 func TestRowW13(t *testing.T) {
-	f8Gate(t)
 	root := w13RepoRoot(t)
 
 	// The C++ reference backend, generated fresh from the same schema the

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -17,7 +16,6 @@ import (
 // body ends there, the enclosing body steps over it by its L and reads on, and
 // the later non-finite float it reaches refuses the read as non_finite_float.
 func TestRustDamagedChildReadsOnToLaterFloat(t *testing.T) {
-	slowtest.Gate(t, "rustc (damaged nested-body diagnostic ordering)")
 	keyedRequireRustc(t)
 	u := unitFrom(t, `package damaged
 table Leaf { x float32 }
@@ -103,7 +101,6 @@ table Root {
 // A duplicate child field refuses wire_damaged. Its separately pinned twin
 // has a valid earlier element and a NaN child, which refuses non_finite_float.
 func TestRustDamagedListFuzzRegression(t *testing.T) {
-	slowtest.Gate(t, "rustc (damaged and non-finite list child controls)")
 	keyedRequireRustc(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

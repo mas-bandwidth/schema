@@ -26,7 +26,9 @@ import (
 func moveLayer(root, regPath, layer string, res *extract.Result, reg *testreg.Registry, ledger []extract.LedgerLine) (int, error) {
 	places := map[string]bool{}
 	for _, l := range ledger {
-		if l.Layer != layer {
+		if l.Layer != layer || l.Kind == extract.KindTier {
+			// a tier line is a fact about a test a count line counts: the
+			// test moves with its count line, and its row takes the tier
 			continue
 		}
 		if l.Kind != extract.KindGoTest {

@@ -13,16 +13,14 @@
 // (docs/rulings.json refusal-verdict-only). A disagreement is a finding, not a reason to edit the
 // corpus (docs/HOSTILE-CORPUS.md).
 //
-// THE SLOW GATE. The two tests that run the pinned interpreter
-// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) sit
-// behind internal/slowtest.Gate, as the port's other interpreter-driven tests
-// in this package do: a plain `go test ./internal/ci/` on a machine without
-// dist/squirrel-3.2/bin/sq skips them by name. `make
+// THE INTERPRETER. The two tests that run the pinned interpreter
+// (TestSquirrelRunsHostileCorpus and TestSquirrelRunsHostileCorpusPlant) are
+// functional: on a machine without dist/squirrel-3.2/bin/sq they FAIL naming
+// it (sqrun.Interpreter), never skip and never pass vacuously. `make
 // schema-squirrel-runs-hostile-corpus` builds dist-squirrel first and runs them
-// through test/slowgate/proof, which sets SCHEMA_SLOW=1, refuses a gate skip
-// and requires each test's own --- PASS line; with the gate on, an interpreter
-// that does not resolve is red (sqrun.Interpreter), never a vacuous pass. The
-// pure-Go tests here (the mismatch list, the workflow guard) run everywhere.
+// through test/slowgate/proof, which refuses any skip and requires each test's
+// own --- PASS line. The pure-Go tests here (the mismatch list, the workflow
+// guard) run everywhere.
 package ci
 
 import (
@@ -42,7 +40,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -289,7 +286,6 @@ func TestSquirrelHostileScorerOutcomes(t *testing.T) {
 // Squirrel reader.
 func TestSquirrelRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	n, mismatchNames, findingLines := squirrelRunHostileCorpus(t, nil)
 	// Keep the exact expected defects visible in the verbose unit target, but
 	// only a changed set is red: a fixed expected row or a new mismatch must
@@ -459,18 +455,10 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 		}
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Squirrel
-	// reader printed a verdict for against the cases the folder registers. A
-	// case of a schema the generator refuses is held only by its row in the
-	// expected-mismatch list, which names its fix card.
-	held := hostilecorpus.Held{}
-	for _, c := range cases {
-		if _, no := unsupported[c.schema]; no {
-			if m, known := squirrelExpectedHostileMismatchFor(c.name); known {
-				held[c.name] = m.fixCard
-			}
-		}
-	}
-	summary, err := hostilecorpus.RanEvery(squirrelHostileCorpusDir(t), slices.Collect(maps.Keys(got)), held)
+	// reader printed a verdict for against the cases the folder registers. No
+	// case is held back (docs/rulings.json no-skips, 2026-11-25: "NO SKIPS"): a case of a schema the
+	// generator refuses did not run, and the ledger is red on it by name.
+	summary, err := hostilecorpus.RanEvery(squirrelHostileCorpusDir(t), slices.Collect(maps.Keys(got)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +484,6 @@ const (
 // catches a reader that returns one different decoded byte.
 func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	planted := 0
 	_, mismatchNames, findingLines := squirrelRunHostileCorpus(t, func(files map[string][]byte) {
 		for name, src := range files {

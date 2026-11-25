@@ -29,8 +29,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -189,10 +187,9 @@ func cppMapJsonNullRun(t *testing.T, cxx string, revert bool) (string, error) {
 // reset, and shows it RED with that arm reverted.
 func TestCPPOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
-		t.Skip("the generated C++ is compiled and run: no c++ on PATH")
+		t.Fatal("the generated C++ is compiled and run: no c++ on PATH")
 	}
 	if out, err := cppMapJsonNullRun(t, cxx, false); err != nil {
 		t.Fatalf("the null reset probe failed: %v\n%s", err, out)

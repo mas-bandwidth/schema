@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -59,7 +58,6 @@ func TestFixedRoadmapCSharpT14CompressedFloats(t *testing.T) {
 	t.Parallel()
 	t.Run("cs/R30", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the C# toolchain (it compiles and runs the generated unit)")
 		t14CSCite(t)
 		files, err := Generate(unitFrom(t, t14CSOld))
 		if err != nil {

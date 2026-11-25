@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -141,7 +140,6 @@ func parseProbe(out string) map[string]string {
 // file-form wire; and the file-form wire, read strictly, saves as the pinned
 // message — the two encodings of one value, both ways.
 func TestMooMessageFormMatchesTheManifest(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	rows := messageRows(t)
@@ -219,7 +217,6 @@ func TestMooMessageFormMatchesTheManifest(t *testing.T) {
 // the batch count rides one less than it is, and requires the re-save
 // comparison to go red on the first manifest row.
 func TestMooMessageFormNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	row := messageRows(t)[0]
@@ -299,7 +296,6 @@ var messageFixedCases = []constructCase{
 // and the compiler's fixed-class refusal (§2.2, §11) is the one reason a
 // construct is not compared; every other construct is.
 func TestMooMessageFormMatchesTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	cases := append(append([]constructCase(nil), constructCases...), messageFixedCases...)
 	compared, variable := 0, 0
@@ -389,7 +385,6 @@ func messageDiffers(t *testing.T, c constructCase, patch func(files map[string][
 // counted list's last element dropped, and a keyed array's present count one
 // short.
 func TestMooMessageFormFixedCasesNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	plants := map[string][2]string{
 		"optional_fixed":      {"\t\tif not v[fd.present] then\n\t\t\treturn true\n", "\t\tif v[fd.present] then\n\t\t\treturn true\n"},
@@ -432,7 +427,6 @@ const quantSchema = "package probe\nfixed table Q\n{\n    a float32 | min = 0, m
 // (tablewire.EncodeMessages) for each value; and holds the finite rule: a NaN
 // and both infinities are REFUSED on write as non_finite_float, never clamped.
 func TestMooMessageQuantizerIsTheGoEngines(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	u := unitFromSource(t, quantSchema)
 	files, err := generate(u)
@@ -502,7 +496,6 @@ end
 // TestMooMessageQuantizerNegativeControl patches the quantizer's rounding
 // half out (floor instead of round) and requires the comparison to go red.
 func TestMooMessageQuantizerNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	u := unitFromSource(t, quantSchema)
 	files, err := generate(u)
@@ -624,7 +617,6 @@ func evolveInputs(t *testing.T, c evolveCase) (ub *ir.Unit, ann, msg []byte, wan
 // per-language diagnostics and are not compared (docs/rulings.json
 // refusal-verdict-only). The Go engine's verdict is itself held to the case's.
 func TestMooMessageFormEvolvesAsTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	for _, c := range evolveCases {
 		t.Run(c.name, func(t *testing.T) {
@@ -672,7 +664,6 @@ print("accept " .. table.concat(p))
 // skip the mismatched field, clamp the value, keep the over-long payload or
 // count) and requires the case it guards to stop refusing.
 func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	byName := map[string]evolveCase{}
 	for _, c := range evolveCases {

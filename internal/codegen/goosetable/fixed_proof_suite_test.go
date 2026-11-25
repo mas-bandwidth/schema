@@ -20,7 +20,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1366,7 +1365,6 @@ func withGooseCrossCheck(mainBody, root string, count int) string {
 //     that C++ FixedLoad loads gooseBytes cleanly and re-saves to cppBytes.
 func TestGooseFixedProofSuiteValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "goose")
 
 	allFixedProofValueCases := fixedProofValueCases()
 	if len(allFixedProofValueCases) == 0 {
@@ -1478,7 +1476,6 @@ func TestGooseFixedProofSuiteValues(t *testing.T) {
 // images across all 33 value rows.
 func TestGooseFixedProofSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "goose")
 
 	allFixedProofValueCases := fixedProofValueCases()
 	if len(allFixedProofValueCases) == 0 {

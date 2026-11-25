@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -52,7 +51,6 @@ var rustTableTypeDecl = regexp.MustCompile(`(?m)^pub (?:struct|enum) ([A-Za-z_][
 // missing from crate::tables, does not compile.
 func TestRustEverySchemaNameIsReachable(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Rust toolchain (it builds each generated crate and a test naming its schema names)")
 	repo, err := filepath.Abs("..")
 	if err != nil {
 		t.Fatal(err)

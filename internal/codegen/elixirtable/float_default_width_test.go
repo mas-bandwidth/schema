@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -18,7 +17,6 @@ import (
 // signed zero remains a distinct stored value in every scalar container.
 func TestFloatDefaultWidthElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package floatdefault
 enum Slot { A, B }
 fixed table Child {

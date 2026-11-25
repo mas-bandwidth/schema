@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +61,6 @@ table Rec
 // and unaligned_base, checked last) are judged by the cook-reason and
 // block-reason conformance surfaces against the manifest's refusal rows.
 func TestWideningReasonsJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaTools(t)

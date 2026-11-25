@@ -25,9 +25,8 @@ import (
 // under `was`. Every comparison is against the COMMITTED Go oracle: its wire
 // bytes and the text form its engine wrote.
 //
-// It runs the leg's own toolchain, so it is a FUNCTIONAL test and
-// SCHEMA_REQUIRE_CORPUS=1 turns a missing toolchain or corpus into a failure,
-// never a skip.
+// It runs the leg's own toolchain, so it is a FUNCTIONAL test: a
+// missing toolchain or corpus is a failure, never a skip.
 func TestDefaultsAndTableRenameElixir(t *testing.T) {
 	t.Parallel()
 	elixirBin := elixirtable.ElixirBinaryForTest(t)

@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -139,7 +137,6 @@ if Process.get(:failed), do: System.halt(1), else: IO.puts("ok")
 // a FUNCTIONAL test.
 func TestCookWriteMapsAndListsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirtable.ElixirBinaryForTest(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
@@ -225,7 +222,6 @@ end
 // a FUNCTIONAL test.
 func TestCookMapWriterHoldsTheSortElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirtable.ElixirBinaryForTest(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

@@ -33,29 +33,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-// lineageGate holds the unlawful-lineage rows to what was promised them. The
-// slow half asked for (SCHEMA_SLOW=1) runs them, and from there on a missing
-// toolchain or corpus FAILS by name. SCHEMA_REQUIRE_CORPUS (or CI running the
-// slow half) without SCHEMA_SLOW=1 is a promise the run cannot keep, and fails
-// too. Only a run that promised nothing skips, by the gate's own reason.
-func lineageGate(t *testing.T, what string) {
-	t.Helper()
-	if slowtest.CorpusRequired() && !slowtest.Enabled() {
-		t.Fatalf("SCHEMA_REQUIRE_CORPUS (or CI) promised the slow rows, but SCHEMA_SLOW is not 1: %s cannot run", what)
-	}
-	slowtest.Gate(t, what)
-}
-
-// lineageElixir is the leg's Elixir for the unlawful-lineage rows. Unpromised,
-// the row skips by its gate's name; promised, a missing Elixir is a failure
-// naming where it looked.
+// lineageElixir is the leg's Elixir for the unlawful-lineage rows. A missing
+// Elixir is a failure naming where it looked: the rows never skip (Glenn,
+// 2026-11-25: "NO SKIPS"), and their tier is functional.
 func lineageElixir(t *testing.T) string {
 	t.Helper()
-	lineageGate(t, "the Elixir toolchain (the unlawful-lineage rows compile and run the generated reader)")
 	if env := os.Getenv("ELIXIR"); env != "" {
 		if _, err := os.Stat(env); err == nil {
 			return env
@@ -84,7 +68,6 @@ func lineageElixir(t *testing.T) string {
 // corpus file is a failure naming the file and the target that builds it.
 func lineageCorpus(t *testing.T, name string) string {
 	t.Helper()
-	lineageGate(t, "the reference's byte oracle and the Elixir toolchain")
 	dir, err := filepath.Abs("../../../build/fixedform-corpus")
 	if err != nil {
 		t.Fatal(err)

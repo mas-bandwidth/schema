@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -91,7 +90,6 @@ var deprecatedWriteLabels = []string{
 // the unit with the driver and answers each check's verdict ("" for a pass).
 func runDeprecatedWriteProbe(t *testing.T, suffix string, edits [][2]string) map[string]string {
 	t.Helper()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, java := javaTools(t)
 	u := unitFromDir(t, "../../../tables/examples")
 	files, err := Generate(u)

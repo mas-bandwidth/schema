@@ -43,7 +43,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -270,10 +269,9 @@ func vtWidenFailures(t *testing.T, mutate func(*testing.T, map[string][]byte)) (
 	return fails, held
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtWidening(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 
 	// THE COMPLETENESS CHECK. Every manifest report row the engine widens on
 	// the variable form must be named in this cell. A corpus addition that
@@ -325,10 +323,9 @@ func TestPythonVtWidening(t *testing.T) {
 // refuses), then the field, the arm and the map widened counters stop
 // counting. Each must turn its own rows red by name.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtWideningNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const ladder = `def _widens(wire: int, declared: int) -> bool:`
 	for _, ctl := range []struct {
 		name    string

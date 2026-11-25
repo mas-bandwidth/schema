@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -134,7 +133,7 @@ func compileCTableMarkWalkProbe(t *testing.T, u *ir.Unit, source string) string 
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("generated C execution requires cc")
+		t.Fatal("generated C execution requires cc")
 	}
 	files, err := generateCUnqualified(u)
 	if err != nil {
@@ -177,7 +176,6 @@ func runCTableMarkWalkProbe(t *testing.T, binary, name string) {
 
 func TestFunctionalCTableReachWalkBoundedByBody(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFromSource(t, markWalkSchema)
 
 	rootBody := markWalkRootBody()

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -145,7 +144,6 @@ func mooLayoutDisagreements(lu mooLayoutUnit, lines []string) (bad []string, rec
 }
 
 func TestMooLayoutAgreesWithTheCompiler(t *testing.T) {
-	slowtest.Gate(t, "moo (it loads the emitted cook layouts)")
 	t.Parallel()
 	total := 0
 	for _, lu := range mooLayoutUnits(t) {
@@ -167,7 +165,6 @@ func TestMooLayoutAgreesWithTheCompiler(t *testing.T) {
 var treeNodeRecord = regexp.MustCompile(`(\.record\("TreeNode", \{[^{]*fields = \{ \{ p = \{[^}]*\}[^}]*\}, \{ p = \{ )(\d+)`)
 
 func TestMooLayoutAgreementNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it loads the emitted cook layouts)")
 	t.Parallel()
 	allMooLayoutUnits := mooLayoutUnits(t)
 	if len(allMooLayoutUnits) == 0 {

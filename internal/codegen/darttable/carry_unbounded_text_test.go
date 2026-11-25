@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -31,7 +30,6 @@ table Root {
 `
 
 func TestDartUnboundedTextNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, dartUnboundedTextSchema)
 	m := tabletext.NewModel(u)
 	files, err := Generate(u)
@@ -170,7 +168,6 @@ for(final bad in ['x\u0000y',String.fromCharCode(0xd800)]){
 }
 
 func TestDartUnboundedTextAcrossFiles(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	dir := t.TempDir()
 	paths := []string{filepath.Join(dir, "A.schema"), filepath.Join(dir, "Z.schema")}
 	for i, src := range []string{`package probe

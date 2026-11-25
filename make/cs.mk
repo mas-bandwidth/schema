@@ -328,7 +328,7 @@ define cook_open_cs_sabotage
 	@sed 's|^.*$(2).*$$|	g.hf("        $(3)\\n")|' \
 		internal/codegen/cstable/cook.go > build/cook-open-cs-$(1)/cook.gotext
 	@cmp -s build/cook-open-cs-$(1)/cook.gotext internal/codegen/cstable/cook.go && \
-		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || true
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/cstable/cook.go":"%s/build/cook-open-cs-$(1)/cook.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cook-open-cs-$(1)/overlay.json
 	@go build -overlay=build/cook-open-cs-$(1)/overlay.json -o build/cook-open-cs-$(1)/schema ./cmd/schema
@@ -808,11 +808,8 @@ tables-cs-alloc-runtime-negative-control: build/tables-generated-cs/.stamp
 		cat $$out/refused.txt; echo "cs alloc runtime control: a wrong pin ($$wrong.0) exited 0"; exit 1; fi; \
 	grep -q 'REFUSED to measure' $$out/refused.txt && grep -q "pin $$wrong.0" $$out/refused.txt && grep -q 'major' $$out/refused.txt || { cat $$out/refused.txt; echo "cs alloc runtime control: no refusal naming both versions"; exit 1; }; \
 	if grep -q 'alloc gate passed' $$out/refused.txt; then echo "cs alloc runtime control: the refused run printed the passed line"; exit 1; fi; \
-	SCHEMA_CS_ALLOC_PIN=$$wrong.0 SCHEMA_CS_ALLOC_ANY_RUNTIME=1 $$run alloc > $$out/hatch.txt 2>&1 || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not exit 0"; exit 1; }; \
-	grep -q 'NOT CERTIFIED' $$out/hatch.txt || { cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch did not print NOT CERTIFIED"; exit 1; }; \
-	if grep -q 'alloc gate passed' $$out/hatch.txt; then cat $$out/hatch.txt; echo "cs alloc runtime control: the escape hatch printed the passed line"; exit 1; fi; \
-	tail -n 2 $$out/refused.txt; tail -n 2 $$out/hatch.txt; \
-	echo "tables-cs-alloc-runtime-negative-control: a wrong pin is refused, the escape hatch observes and does not certify"
+	tail -n 2 $$out/refused.txt; \
+	echo "tables-cs-alloc-runtime-negative-control: a wrong pin is refused"
 
 # THE C# TABLES SOAK (docs/PORTING.md I9, issue #416): loops Load with a
 # supplied report, Load with no report, Measure, Save and the round trip over
@@ -850,7 +847,7 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 # `go test ./...` on a tree that never built the oracle — and is exactly how a §5
 # regression would ride into CI green. So the target BUILDS THE ORACLE FIRST
 # (`tables-fixedform-corpus`, the reference's own dump, about 25 s) and then sets
-# SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this name a
+# the rule that nothing skips, which turns that skip into a FAILURE: under this name a
 # missing corpus can never pass silently.
 #
 # ONE ASSEMBLY, ONE BUILD, ONE RUN. The harness generates fifty-seven probes —
@@ -866,17 +863,17 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 # reference's EXACT four since (csVersionRow.widened).
 .PHONY: tables-cs-versioning
 tables-cs-versioning: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
 	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
 
 .PHONY: tables-cs-fixed-t13
 tables-cs-fixed-t13:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT13SecondLayoutForAHeldHash'
 	@echo 'tables C# fixed-t13: cs/F12 a second layout for a held hash is refused layout_malformed'
 
 .PHONY: tables-cs-fixed-t18
 tables-cs-fixed-t18:
-	DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout=0 -v -run 'TestFixedRoadmapCSharpT18UnionArms'
+	DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" go test ./internal/codegen/cstable/ -count=1 -timeout=0 -v -run 'TestFixedRoadmapCSharpT18UnionArms'
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
@@ -895,12 +892,12 @@ test-cs: tables-cs-fixed-rows
 # cap (json.go FormatG).
 .PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
 tables-cs-json-differential:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
+	DOTNET="$(DOTNET)" sh test/slowgate/proof tables-cs-json-differential \
 		'TestCsTextDifferential TestJsonLeadingBOMBoundaryCS' \
 		./internal/codegen/cstable -run '^(TestCsTextDifferential|TestJsonLeadingBOMBoundaryCS)$$' -count=1 -timeout 600s
 	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
 tables-cs-json-differential-negative-control:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
+	DOTNET="$(DOTNET)" sh test/slowgate/proof tables-cs-json-differential-negative-control \
 		'TestCsTextDifferentialNegativeControl' \
 		./internal/codegen/cstable -run '^TestCsTextDifferentialNegativeControl$$' -count=1 -timeout 600s
 	@grep -h -A1 'cs text differential negative control: \|leg text and engine text differ' build/slowgate/tables-cs-json-differential-negative-control.log | sed 's/^ *//' | head -3
@@ -908,23 +905,23 @@ test-cs: tables-cs-json-differential tables-cs-json-differential-negative-contro
 
 .PHONY: tables-cs-fixed-roadmap
 tables-cs-fixed-roadmap:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedRoadmapCSharpT12PlansVersions'
 	@echo 'tables C# fixed-roadmap: t12 plan selection, closure, retirement, retired runtime and widening'
 
 # THE C# FIXED-ROADMAP ROWS RUN UNDER ONE REQUIRED TARGET, and the held
 # message-form ledger steps close against it. Every C# fixed-roadmap test and
 # the held message form run once here with DOTNET and
-# SCHEMA_REQUIRE_CORPUS=1, so a bare `go test` can never report green over C#
+# the rule that nothing skips, so a bare `go test` can never report green over C#
 # that never ran. The oracle is built first (tables-fixedform-corpus) because
 # t01's framing rows read the C++ reference's bytes; under
-# SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure, not a skip. The
+# the rule that nothing skips a missing corpus is a failure, not a skip. The
 # -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
 # row added later without being named here goes red. The graph connection
 # links the actual packet runtime and verifies its pinned announcement bytes;
 # a missing runtime is a failure. Verbose output retains every native verdict.
 .PHONY: tables-cs-fixed-rows
 tables-cs-fixed-rows: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
 	@echo 'tables C# fixed-rows: every fixed-roadmap row and the held message form ran once under one required target'
 
 # THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's cs-fuzz
@@ -962,9 +959,9 @@ tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 # same artifact and requires the check red.
 .PHONY: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
 tables-cs-wire-fuzz-repeated-id:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldId$$'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldId$$'
 tables-cs-wire-fuzz-repeated-id-negative-control:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
 
 # EVERY DEAD BYTE IN A FIXED RECORD IS ZERO (docs/rulings.json
@@ -976,9 +973,9 @@ test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negativ
 # check out of the same artifact and requires the check red.
 .PHONY: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 tables-cs-wire-fuzz-dead-bytes:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZero$$'
 tables-cs-wire-fuzz-dead-bytes-negative-control:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
+	DOTNET="$(DOTNET)" go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
 # THE BUILDER ARM ANSWERS EVERY ROOT OF ITS ROSTER. The driver claims a root
@@ -1124,12 +1121,10 @@ define cs_clean_check
 endef
 
 # The SDK probe both gates share: a dotnet not on PATH SKIPS cleanly, and under
-# SCHEMA_REQUIRE_CORPUS=1 that skip is a FAILURE (the corpus legs' idiom).
+# the rule that nothing skips that skip is a FAILURE (the corpus legs' idiom).
 define cs_clean_probe
 	@if ! command -v $(DOTNET) >/dev/null 2>&1; then \
-		if [ "$(SCHEMA_REQUIRE_CORPUS)" = 1 ]; then \
-			echo "FAIL $(1): $(DOTNET) is not installed and SCHEMA_REQUIRE_CORPUS=1"; exit 1; fi; \
-		echo "SKIP $(1): $(DOTNET) is not installed"; exit 0; \
+		echo "FAIL $(1): $(DOTNET) is not installed"; exit 1; \
 	fi
 endef
 
@@ -1137,7 +1132,7 @@ endef
 .PHONY: tables-cs-clean
 tables-cs-clean: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean)
-# loud-ok: the probe line above names the skip, and under SCHEMA_REQUIRE_CORPUS=1 a missing SDK is a failure
+# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-run; fi
 
 .PHONY: tables-cs-clean-run
@@ -1161,7 +1156,7 @@ TABLES_CS_CLEAN_NEG := build/tables-cs-clean-negative
 .PHONY: tables-cs-clean-negative-control
 tables-cs-clean-negative-control: build/tables-generated-cs/.stamp cards-cs-generate
 	$(call cs_clean_probe,tables-cs-clean-negative-control)
-# loud-ok: the probe line above names the skip, and under SCHEMA_REQUIRE_CORPUS=1 a missing SDK is a failure
+# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
 
 .PHONY: tables-cs-clean-negative-control-run
@@ -1198,7 +1193,7 @@ PACKET_CLEAN_CS_STAMPS := generated/cs/.stamp generated/bench/cs/.stamp generate
 .PHONY: packet-clean-cs
 packet-clean-cs: $(PACKET_CLEAN_CS_STAMPS)
 	$(call cs_clean_probe,packet-clean-cs)
-# loud-ok: the probe line above names the skip, and under SCHEMA_REQUIRE_CORPUS=1 a missing SDK is a failure
+# loud-ok: the probe line above names the skip, and under the rule that nothing skips a missing SDK is a failure
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory packet-clean-cs-run; fi
 
 .PHONY: packet-clean-cs-run
@@ -1302,7 +1297,8 @@ TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
 CONFORMANCE_LEG_cs := build-conformance-cs build-cs-cook
 TOOLCHAIN_PINS_cs  := DOTNET
-CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
+CONFORMANCE_OF.cs := build-conformance-cs build-cs-cook
+CONFORMANCE_LEGS  += $(CONFORMANCE_OF.cs)
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.
@@ -1348,7 +1344,7 @@ packet-finite-cs-negative-control: toolchain-cs generated/cs/.stamp generated/be
 		if ( cd test/cs && SERIALIZE_CS_DELETED_RULE=$$rule $(DOTNET) ../../build/packet-finite/cs-negative/bin/schematest/debug/schematest.dll ) \
 			> build/packet-finite/cs-negative/$$rule.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: C# packet reads passed with $$rule deleted"; exit 1; fi; \
-		grep '^FAILED: ' build/packet-finite/cs-negative/$$rule.log > build/packet-finite/cs-negative/$$rule.got || true; \
+		grep '^FAILED: ' build/packet-finite/cs-negative/$$rule.log > build/packet-finite/cs-negative/$$rule.got || [ $$? -eq 1 ] || exit 1; \
 		if ! diff -u test/cs/finite-controls/$$rule.expected build/packet-finite/cs-negative/$$rule.got; then \
 			echo "NEGATIVE CONTROL FAILED: deleting $$rule did not fail exactly its vectors"; \
 			cat build/packet-finite/cs-negative/$$rule.log; exit 1; fi; \

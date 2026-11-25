@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
@@ -202,7 +201,6 @@ func TestCoverageReportKeepsReadableRowsAfterDamagedInput(t *testing.T) {
 }
 
 func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
-	slowtest.Gate(t, "bash (the coverage workflow shell)")
 	needShell(t)
 	raw, err := os.ReadFile("../../../.github/workflows/nightly-conformance.yml")
 	if err != nil {

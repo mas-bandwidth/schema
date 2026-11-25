@@ -56,8 +56,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // differentialWorkEnv names the harness output tree the corpus test reads.
@@ -549,7 +547,6 @@ func TestSquirrelAllPortDifferentialRequiresComparisons(t *testing.T) {
 // reads its output tree.
 func TestSchemaSquirrelAllPortDifferential(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the generated conformance corpus and every port's conformance driver")
 
 	root := repoRoot(t)
 	work := os.Getenv(differentialWorkEnv)
@@ -559,15 +556,9 @@ func TestSchemaSquirrelAllPortDifferential(t *testing.T) {
 		work = filepath.Join(root, work)
 	}
 	if _, err := os.Stat(filepath.Join(work, "out")); errors.Is(err, fs.ErrNotExist) {
-		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS, the rule
-		// the fixed-form byte-oracle suites keep: a bare `go test ./...` that
-		// never ran the harness has nothing to compare and says so, while
-		// make schema-squirrel-all-port-differential sets SCHEMA_REQUIRE_CORPUS
-		// and a missing tree there is red.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the differential has no harness output under %s", work)
-		}
-		t.Skip("the harness output is not built: make schema-squirrel-all-port-differential")
+		// a missing tree is red, never a pass and never a skip: a bare
+		// `go test` that never ran the harness has nothing to compare
+		t.Fatalf("the differential has no harness output under %s: run make schema-squirrel-all-port-differential", work)
 	}
 	owed, err := loadRetainRefusalOwed(filepath.Join(root, "testdata", "conformance", "tables", "retain-refusal-owed.txt"))
 	if err != nil {

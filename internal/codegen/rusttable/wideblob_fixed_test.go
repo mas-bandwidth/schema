@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -178,12 +176,8 @@ func wideBlobLines(out string) (ok map[string]bool, bad map[string]bool) {
 
 func runWideBlobFixedProbe(t *testing.T, edit func(map[string][]byte)) (string, error) {
 	t.Helper()
-	slowtest.Gate(t, "rustc (it builds and runs the generated WideBlob fixed loader)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 	files, err := Generate(unitFrom(t, wideBlobFixedSchema))
 	if err != nil {

@@ -237,7 +237,7 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, discardProbeSchema)
@@ -316,7 +316,6 @@ func discardProbeRun(t *testing.T, sabotage *discardSabotage) ([]string, string)
 }
 
 func TestDamageDiscardsTheWholeLoadC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	if fails, out := discardProbeRun(t, nil); len(fails) != 0 {
 		t.Fatalf("a C read handed back a value after damage:\n%s", out)
@@ -324,7 +323,6 @@ func TestDamageDiscardsTheWholeLoadC(t *testing.T) {
 }
 
 func TestDamageDiscardsTheWholeLoadCNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	for i := range discardSabotages {
 		c := &discardSabotages[i]
@@ -365,7 +363,7 @@ func cHeldRun(t *testing.T, u *ir.Unit, body string) (string, error) {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	files, err := cgen.Generate(u)
@@ -431,7 +429,6 @@ int main( void )
 // at node 2 itself. Red if the region load, the retaining load or the builder
 // load hands back the cyclic graph.
 func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, discardProbeSchema)
 	m := tabletext.NewModel(u)
@@ -632,7 +629,6 @@ func cycleProbe(wire []byte, load bool, onFail string) string {
 // a cycle through a map[int32]*Node map slot each refuse; the acyclic twin of
 // each loads.
 func TestCyclicWireIsRefusedC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cycleUnit)
 	m := tabletext.NewModel(u)
@@ -722,7 +718,6 @@ func TestCyclicWireIsRefusedC(t *testing.T) {
 // check that re-enters a shared node, or walks paths rather than nodes, cannot
 // finish it or refuses it.
 func TestDiamondChainLoadsLinearC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cycleUnit)
 	m := tabletext.NewModel(u)
@@ -747,14 +742,13 @@ func TestDiamondChainLoadsLinearC(t *testing.T) {
 // (0x4000) fail-closed before mutating any directory entry (including earlier
 // valid entries).
 func TestCycleOrdinalBoundaryC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	cc := os.Getenv("CC")
 	if cc == "" {
 		var err error
 		cc, err = exec.LookPath("cc")
 		if err != nil {
-			t.Skip("generated C execution requires cc")
+			t.Fatal("generated C execution requires cc")
 		}
 	}
 	u := unitFrom(t, discardProbeSchema)

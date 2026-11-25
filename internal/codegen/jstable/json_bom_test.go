@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -19,7 +18,6 @@ import (
 // A BOM is allowed exactly once at the start of a text, not by the ordinary
 // whitespace scanner. Preserve U+FEFF when it is actual field string content.
 func TestJavaScriptTextBOMMatchesGo(t *testing.T) {
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 	u := unitFrom(t, `package probe
 table Root {

@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -20,7 +19,6 @@ import (
 // writer stored, not the declared default, and saves back byte for byte.
 func TestFixedDeprecatedFieldIsCarried(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain and the C++ fixed-form corpus")
 	corpus := fixedCorpusDir(t)
 	for _, vec := range fixedvector.DeprecatedField {
 		t.Run(vec.Name, func(t *testing.T) {

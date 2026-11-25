@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -20,7 +18,6 @@ import (
 // only).
 func TestGoMessageFormFixedOnly(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	schema := `package probe
 
 table Loose { n int32 }

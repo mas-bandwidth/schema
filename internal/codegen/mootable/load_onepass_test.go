@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -258,7 +257,6 @@ func outOfRangeLastRecord(t *testing.T, wire []byte, listNodeID, valueID uint64,
 }
 
 func TestMooLoadIsOneDecodeFunctional(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	const records = 20000
 	const limit = 60 * time.Second

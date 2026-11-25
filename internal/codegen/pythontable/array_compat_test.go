@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -15,7 +14,6 @@ import (
 // declarations: their present-empty field remains legal to a plain reader.
 func TestPythonForm1ArrayPriorWriters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	reader := loadUnit(t, `package compat
 table Root { items []int32 }`)
 	oldRequired := loadUnit(t, `package compat

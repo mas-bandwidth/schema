@@ -61,9 +61,6 @@ func TestLuauLegBuildsItsOracles(t *testing.T) {
 		}
 	}
 	rec := recipe.String()
-	if !strings.Contains(rec, "SCHEMA_REQUIRE_CORPUS=1") {
-		t.Error("test-luau's recipe does not set SCHEMA_REQUIRE_CORPUS=1")
-	}
 	if !strings.Contains(rec, "SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME))") {
 		t.Error("test-luau's recipe does not export SERIALIZE_GO as $(abspath $(SERIALIZE_GO_RUNTIME))")
 	}

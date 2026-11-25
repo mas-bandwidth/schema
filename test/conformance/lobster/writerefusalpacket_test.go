@@ -67,7 +67,6 @@ func TestWriteRefusalPacketLobsterSurface(t *testing.T) {
 
 func runWriteRefusalPacket(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Lobster toolchain (it runs the generated packet writer)")
 	if _, why := lobsterrun.Interpreter(); why != "" {
 		t.Fatalf("the Lobster toolchain does not resolve: %s", why)
 	}

@@ -23,10 +23,9 @@ func TestCIFastPolicyJobCoverage(t *testing.T) {
 		t.Fatal(strings.Join(errors, "\n"))
 	}
 	for _, needle := range []string{
-		"        run: make slow-gate-scan",
 		"        run: bash -n bench/run.sh",
 		"        run: make python-tooling-tests",
-		"          go run ./tools/schema-test run --group pr --shard \"$SHARD\"\n",
+		"          go run ./tools/schema-test run --group pr --lang none --shard \"$SHARD\"\n",
 		"  ci-policy:\n",
 		"    needs: [ci-policy, schema-test, schema-test-pr]\n",
 		"always() && !cancelled() && ",
@@ -67,10 +66,10 @@ func fastPolicyErrors(wf string) []string {
 	if !strings.Contains(lint, "    needs: [ci-policy, schema-test, schema-test-pr]\n") || strings.Count(lint, gate) != 1 {
 		errs = append(errs, "lint-fast must depend on and enforce the policy and registry results")
 	}
-	if strings.Count(shards, `go run ./tools/schema-test run --group pr --shard "$SHARD"`) != 1 {
-		errs = append(errs, "schema-test-pr must run the registry's pr group by shard")
+	if strings.Count(shards, `go run ./tools/schema-test run --group pr --lang none --shard "$SHARD"`) != 1 {
+		errs = append(errs, "schema-test-pr must run the registry's pr group's language-free part by shard")
 	}
-	for _, command := range []string{"run: make slow-gate-scan", "run: bash -n bench/run.sh", "run: make python-tooling-tests"} {
+	for _, command := range []string{"run: bash -n bench/run.sh", "run: make python-tooling-tests"} {
 		if strings.Count(policy, command) != 1 || strings.Contains(lint, command) {
 			errs = append(errs, "policy command must occur once in its own job: "+command)
 		}

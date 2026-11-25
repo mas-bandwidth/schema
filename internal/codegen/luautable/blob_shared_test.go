@@ -192,7 +192,6 @@ print("clampedstrict|" .. tostring(strict3.reason) .. "|" .. tostring(strict3.fi
 // expected wire, count and field is computed here from internal/tabletext and
 // internal/tablewire, never typed.
 func TestLuauBlobNamedTwice(t *testing.T) {
-	t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Blob.schema": blobSharedSchema})
 	src := filepath.Join(t.TempDir(), "Blob.schema")

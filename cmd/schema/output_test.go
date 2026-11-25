@@ -28,7 +28,7 @@ func TestGeneratedOutputIsConfined(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(dir, "link")); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
+		t.Fatalf("symlinks unavailable: %v", err)
 	}
 	if err := writeGenerated(dir, map[string][]byte{"link": []byte("new")}, "go", false, "", nil, false); err == nil {
 		t.Fatal("followed escaping link")

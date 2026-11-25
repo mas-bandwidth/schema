@@ -8,7 +8,7 @@ package mootable
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // compared on the verdict alone with the Go engine's (internal/tabletext), and
 // the engine is first held to the verdict the vectors state. Running the
-// generated moo makes this a functional test, gated by slowtest.
+// generated moo makes this a functional test.
 
 import (
 	"bufio"
@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -57,7 +56,6 @@ func mooJsonFlagsNameOnceRows(t *testing.T) []mooJsonFlagsNameOnceRow {
 }
 
 func TestMooJsonFlagsNameOnce(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 
 	rows := mooJsonFlagsNameOnceRows(t)

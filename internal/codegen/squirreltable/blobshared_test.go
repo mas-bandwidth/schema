@@ -25,7 +25,6 @@ import (
 )
 
 func TestSquirrelBlobSharedMutantMatchesGo(t *testing.T) {
-	t.Skip("layer 4 (squirrel): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo, err := sqrun.RepoRoot()
 	if err != nil {
@@ -218,7 +217,6 @@ func buildHostileAmplificationWire(t *testing.T, u *ir.Unit, data []byte) []byte
 // holds every refusal name, count and saved byte to the Go oracle
 // (docs/SPEC-TABLES.md §2.5, §16.7).
 func TestSquirrelBlobNamedTwice(t *testing.T) {
-	t.Skip("layer 4 (squirrel): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	dir := t.TempDir()
 	u24, mod24 := writeGeneratedUnit(t, dir, "seed24", blobNamedTwiceSeed24Unit)

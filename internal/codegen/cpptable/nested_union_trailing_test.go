@@ -18,7 +18,7 @@ package cpptable
 //
 //   - always, on the emitted C++: the generated strict walk carries the
 //     arm rule.
-//   - behind slowtest.Gate, because it compiles and runs the generated unit:
+//   - functional, because it compiles and runs the generated unit:
 //     a saved table loads clean with its union and value intact (the control),
 //     and the same table with one extra byte inserted after the inner union's
 //     payload, and the outer arm's `L` raised to cover it, is refused whole.
@@ -32,7 +32,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -78,7 +77,7 @@ table Root
 `
 
 // TestNestedUnionArmTrailingBytesRefused is table-free and opens with
-// t.Parallel(); the toolchain half skips by name on a default `go test`.
+// t.Parallel(); the toolchain half fails by name without a compiler.
 func TestNestedUnionArmTrailingBytesRefused(t *testing.T) {
 	t.Parallel()
 
@@ -113,8 +112,6 @@ func TestNestedUnionArmTrailingBytesRefused(t *testing.T) {
 	if !strings.Contains(text, rule) {
 		t.Fatalf("the generated strict walk does not carry the arm rule the Go oracle holds:\n    %s", rule)
 	}
-
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 
 	out, err := runNestedTrailProbe(t, files, "NestTrailTable.h")
 	if err != nil {

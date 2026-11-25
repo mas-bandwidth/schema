@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -182,7 +181,6 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 // capacities: the same verdict, store bytes used, evolution diagnostics and
 // saved bytes.
 func TestMooRetainAnswersTheManifest(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	rows := retainRows(t)
@@ -283,7 +281,6 @@ func variableUnit(t *testing.T, units map[string][]string, key string) *generate
 // what that used, and with the caller's id list one short of what the full
 // save interned. TestMooRetainDifferentialNegativeControl is its control.
 func TestMooRetainMatchesTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	compared, retaining, bad := evolvedRetainDifferential(t, nil, false)
 	for _, b := range bad {
@@ -378,7 +375,6 @@ func plantRetainKeepsDamage(t *testing.T, g *generatedUnit) {
 // discards and phase one planted out, a damaged occurrence wire answers a
 // value where the Go engine refuses the whole load.
 func TestMooRetainDifferentialNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	t.Run("save-tail/manifest", func(t *testing.T) {
 		t.Parallel()
@@ -434,7 +430,6 @@ func TestMooRetainDifferentialNegativeControl(t *testing.T) {
 // NaN refuses the read as non_finite_float, named <Table>.0x<id>, as the Go
 // engine refuses it; the control, a finite float, is retained.
 func TestMooRetainRefusesANonFiniteRetainedFloat(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Old.schema": "package probe\ntable T\n{\n    a uint8\n}\n"})
 	// T{ a = 1, x float32 = bits } where x is unknown to this build
@@ -477,7 +472,6 @@ func schemaUnit(t *testing.T, rel string) *generatedUnit {
 // record (one anchor in the emitted table_retain.moo) and requires the
 // manifest's round-trip row to go red against its pinned save.
 func TestMooRetainNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	var row retainRow
 	for _, r := range retainRows(t) {
@@ -551,7 +545,6 @@ func retainRoundTripRow(t *testing.T) (*generatedUnit, retainRow, []byte) {
 // IDEMPOTENT — a file loaded with retention and saved again is the first save,
 // byte for byte, with nothing lost the second time.
 func TestMooRetainMeasureAndIdempotence(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	g, row, wire := retainRoundTripRow(t)
 	main := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal R = require(\"./table_retain\")\n" + g.requireAll() + mooHex +
@@ -612,7 +605,6 @@ end
 // record was dropped. Each refusal has its negative control: with the check
 // planted out the same call succeeds.
 func TestMooRetainRefusesWhatThePageRefuses(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	fixed := schemaUnit(t, "test/tables/V2.schema")
 	g, row, wire := retainRoundTripRow(t)

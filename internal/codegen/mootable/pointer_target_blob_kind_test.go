@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -27,7 +26,6 @@ import (
 // record reads and counts the field and its record unknown. The leg's own save
 // is held in the same test to never emitting a blob record no pointer reaches.
 func TestMooPointerTargetBlobKindRefused(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted readers and writers)")
 	t.Parallel()
 	dir := filepath.Join(root, "testdata", "wire", "pointer-target-type", "blobkind")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luauJsonIntegersSchema is the unit testdata/wire/json-integers/ reads.
@@ -147,7 +145,6 @@ end
 // token only, never passing through a double.
 func TestLuauJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	dir := filepath.Join(root, "testdata", "wire", "json-integers")
 	rows := luauIntegerVectors(t, dir, "MANIFEST.tsv")
 	ordinaryRows := len(rows)

@@ -9,12 +9,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonCookForeignAndForgerySurfaces(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters and conformance driver")
 	u := loadUnit(t, cookSchema)
 	files, err := Generate(u)
 	if err != nil {

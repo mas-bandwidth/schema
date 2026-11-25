@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -157,7 +156,6 @@ func loadFixRootConfigEngine(m *tabletext.Model, def *ir.Struct, data []byte) (l
 // are the bytes both writers owe.
 func TestLuaLoadRootConfigResaveAgreesWithTheEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)

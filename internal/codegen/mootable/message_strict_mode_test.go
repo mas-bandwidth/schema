@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -23,7 +22,6 @@ import (
 // report.own), never damage, and terminal: the next announcement is
 // `second_announcement` and a batch is `no_vocabulary`.
 func TestMooMessageStrictMode(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g, inputs, want := mooStrictModeSetup(t)
 	if got := g.run(t, mooStrictModeProbe(g), inputs); got != want {
@@ -34,7 +32,6 @@ func TestMooMessageStrictMode(t *testing.T) {
 // TestMooMessageStrictModeNegativeControl plants the old reader back (no
 // strict check) in table_message.moo and requires the probe to go red.
 func TestMooMessageStrictModeNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g, inputs, want := mooStrictModeSetup(t)
 	const anchor = "\tif v.strict and version ~= homeBuild then\n"

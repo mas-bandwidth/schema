@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -38,7 +37,6 @@ void main(){
 `
 
 func TestDartArrayRootSharedClosure(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "array-root/closure")
 	var cases []struct {
 		Root, Text, Reason string
@@ -92,7 +90,6 @@ check(w.%sToJson(v)==%q,'independent closure JSON %d');}
 }
 
 func TestDartRequiredNestedGuardsSharedClosure(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "required/nested-guards")
 	var cases []struct {
 		Root, Input, Missing string
@@ -151,7 +148,6 @@ check(!wr.refused&&hex(w.%sWireSave(back))==%q,'nested guard wire read %d');}
 }
 
 func TestDartJSONListWrongShapeKeepsPosition(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Item { n int32 = 7 }
 table Root { rows [..2]Item
@@ -177,7 +173,6 @@ check(refused,'wrong-shape refused');
 }
 
 func TestDartPopulatedFeatureWitnesses(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	fixture := "../../../testdata/conformance/feature-witnesses/full"
 	u := loadUnit(t, filepath.Join(fixture, "Features.schema"))
 	m := tabletext.NewModel(u)

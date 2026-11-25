@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -70,11 +69,9 @@ func TestGuardCondsComposeTheBranchTreeRust(t *testing.T) {
 // false-guard case's text goes red on a `resting` key the oracle never writes;
 // guard_true_both_edges, whose guard holds, stays green.
 //
-// A FUNCTIONAL test: it compiles Rust, skips by name without rustc, and fails
-// by name when SCHEMA_REQUIRE_CORPUS is set.
+// A FUNCTIONAL test: it compiles Rust, fails by name without rustc.
 func TestGuardAndOptionalEdgesRust(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the generated G1 probe)")
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
@@ -109,10 +106,7 @@ func TestGuardAndOptionalEdgesRust(t *testing.T) {
 	}
 
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the G1 probe cannot be built: %v", err)
-		}
-		t.Skipf("rustc is not on PATH and SCHEMA_REQUIRE_CORPUS is unset: this is a functional test that compiles and runs Rust: %v", err)
+		t.Fatalf("rustc is not on PATH, so the G1 probe cannot be built: %v", err)
 	}
 	modules, err := Generate(u)
 	if err != nil {

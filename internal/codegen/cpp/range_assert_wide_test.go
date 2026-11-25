@@ -12,8 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -87,16 +85,12 @@ int main( int argc, char ** argv )
 // debug assert to fire for each out-of-range 64-bit value, and an in-range
 // write to go through.
 func TestCppRangeAssertWideStorage(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated range-assert unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	files, err := Generate(unitFromSources(t, map[string]string{"WideUnit.schema": rangeAssertWideSchema}))
 	if err != nil {

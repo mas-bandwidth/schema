@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -49,7 +48,6 @@ func ensurePythonConformanceUnits(t *testing.T, repo string) string {
 // fixed-write recipe must answer, including each lawful boundary witness.
 func TestPythonFixedFormWriteRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and generated conformance units")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +103,6 @@ raise SystemExit(module.main(['driver',%q,'write-refusal-fixed',%q]))
 // the same manifest assertion to turn red under both pinned interpreters.
 func TestPythonFixedFormWriteRefusalNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned interpreters and generated conformance units")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

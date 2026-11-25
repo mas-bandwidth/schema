@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -19,7 +18,6 @@ fixed table ProfileConfig
 `
 
 func TestCPPJsonNumberAnyLength(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	u := loadUnitFromSource(t, cppJsonNumberAnyLengthSchema)
 	model := tabletext.NewModel(u)

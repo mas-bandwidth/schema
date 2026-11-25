@@ -100,11 +100,11 @@ func TestExtractFindsEveryKind(t *testing.T) {
 	want := []string{
 		"go-test pkg BenchmarkRead [unit] ",
 		"go-test pkg FuzzBytes [unit] ",
-		"go-test pkg TestEnv [functional] slow",
+		"go-test pkg TestEnv [unit] ",
 		"go-test pkg TestLinux [unit] build: linux",
 		"go-test pkg TestPlain [unit] ",
 		`go-test pkg TestSkips [unit] skip: pkg/a_test.go:18 if os.Getenv("NO") != ""`,
-		"go-test pkg TestSlow [functional] slow",
+		"go-test pkg TestSlow [unit] ",
 		"make-target Makefile lib-check [functional] ",
 		"make-target Makefile prep [functional] ",
 		"make-target Makefile test-all [functional] ",
@@ -237,36 +237,6 @@ func TestAModelCheckRowCoversItsConfig(t *testing.T) {
 	}
 }
 
-// TestASlowGatedRowIsNotUnit: a test a registry row runs that opens the slow
-// gate while its row is tier unit is named; the same test with no gate, a
-// build constraint, a skip (the driver fails it at run time) or tier
-// functional passes. The unit case is the bug planted back into an otherwise
-// exact account.
-func TestASlowGatedRowIsNotUnit(t *testing.T) {
-	t.Parallel()
-	row := gotestRow("tooling.a.row", "./a", "TestRow")
-	row.Tier = "unit"
-	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{row}}
-	account := func(gates ...string) []string {
-		res := &Result{Items: []Item{{Kind: KindGoTest, Dir: "a", Name: "TestRow", Source: "a/x_test.go:1", Gates: gates}}}
-		return Check(res, reg, nil)
-	}
-	for _, gates := range [][]string{nil, {"build: linux"}, {"skip: a/x_test.go:9 if no cc"}, {"short"}} {
-		if p := account(gates...); len(p) != 0 {
-			t.Fatalf("a registered test with gates %v: %v", gates, p)
-		}
-	}
-	const says = "registry row tooling.a.row runs TestRow, which opens the slow gate (it needs a toolchain), and is tier unit"
-	if p := account("slow"); !strings.Contains(strings.Join(p, "\n"), says) {
-		t.Errorf("want %q in %v", says, p)
-	}
-	row.Tier = "functional"
-	reg = &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{row}}
-	if p := account("slow"); len(p) != 0 {
-		t.Fatalf("a slow-gated test of tier functional: %v", p)
-	}
-}
-
 // TestTheLedgerOnlyShrinks: against main's ledger, a lower count and a
 // removed line pass; a higher count and a new place fail by name.
 func TestTheLedgerOnlyShrinks(t *testing.T) {
@@ -278,6 +248,61 @@ func TestTheLedgerOnlyShrinks(t *testing.T) {
 	p := Shrinks(main, []LedgerLine{{Kind: KindGoTest, Dir: "a", Count: 4}, {Kind: KindGoTest, Dir: "c", Count: 1}})
 	if len(p) != 2 || !strings.Contains(p[0], "grew from 3 to 4") || !strings.Contains(p[1], "go-test c is a new ledger line") {
 		t.Fatalf("a growing ledger: %v", p)
+	}
+}
+
+// tierResult is a repository with one Go test that skips, one that does not,
+// and one a registry row runs.
+func tierResult() *Result {
+	return &Result{Items: []Item{
+		{Kind: KindGoTest, Dir: "a", Name: "TestNeeds", Source: "a/x_test.go:1"},
+		{Kind: KindGoTest, Dir: "a", Name: "TestRow", Source: "a/x_test.go:10"},
+		{Kind: KindGoTest, Dir: "a", Name: "TestClean", Source: "a/x_test.go:20"},
+	}}
+}
+
+// TestTierLinesAreHeldToTheirTests: a tier line names a Go test that exists
+// and has no row, and sets its tier; one naming no test, or a test a row
+// runs, is named, and a tier line is never an unmoved count.
+func TestTierLinesAreHeldToTheirTests(t *testing.T) {
+	t.Parallel()
+	res := tierResult()
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{gotestRow("tooling.a.row", "./a", "TestRow")}}
+	unmoved := LedgerLine{Kind: KindGoTest, Dir: "a", Count: 2}
+	tier := func(place string) LedgerLine {
+		return LedgerLine{Kind: KindTier, Dir: place, Count: 1, Layer: "L5", Reason: "functional: needs cc", Line: 9}
+	}
+	if p := Check(res, reg, []LedgerLine{unmoved, tier("a:TestNeeds")}); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	ApplyTiers(res, []LedgerLine{tier("a:TestNeeds"), {Kind: KindTier, Dir: "a:TestClean", Count: 1, Reason: "nightly: a long run"}})
+	if res.Items[0].Tier != "functional" || res.Items[1].Tier != "" || res.Items[2].Tier != "nightly" {
+		t.Fatalf("ApplyTiers: %+v", res.Items)
+	}
+	for name, c := range map[string]struct {
+		line LedgerLine
+		says string
+	}{
+		"no such test":   {tier("a:TestGone"), "tier a:TestGone names a Go test the repository does not hold"},
+		"a test the row": {tier("a:TestRow"), "tier a:TestRow names a test registry row tooling.a.row runs: the row carries its tier, so delete the line"},
+	} {
+		p := Check(tierResult(), reg, []LedgerLine{unmoved, c.line})
+		if len(p) != 1 || !strings.Contains(p[0], c.says) {
+			t.Errorf("%s: want exactly %q, have:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
+// TestATestThatSkipsIsRefused: Check names every Skip a Go test reaches,
+// whatever the ledger says; there is no line that permits one.
+func TestATestThatSkipsIsRefused(t *testing.T) {
+	t.Parallel()
+	res := tierResult()
+	res.Items[2].Gates = []string{"skip: a/x_test.go:22 if os.Getenv(\"X\") == \"\""}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{gotestRow("tooling.a.row", "./a", "TestRow")}}
+	p := Check(res, reg, []LedgerLine{{Kind: KindGoTest, Dir: "a", Count: 2}})
+	if len(p) != 1 || !strings.Contains(p[0], `a TestClean reaches a skip at a/x_test.go:22 if os.Getenv("X") == "": no test skips`) {
+		t.Fatalf("want exactly TestClean's skip named: %v", p)
 	}
 }
 
@@ -317,8 +342,8 @@ func TestReadLedgerRefusesABadLine(t *testing.T) {
 			t.Errorf("%q: err %v, want %q", c.text, err, c.says)
 		}
 	}
-	got, err := ReadLedger(strings.NewReader("# header\ngo-test\ta\t2\tL3\twhy\nmake-target\tm.mk\t1\tL6\twhy\n"), "u.tsv")
-	if err != nil || len(got) != 2 || got[0].Count != 2 || got[0].Line != 2 || got[1].Kind != KindMakeTarget || got[1].Dir != "m.mk" {
+	got, err := ReadLedger(strings.NewReader("# header\ngo-test\ta\t2\tL3\twhy\ntier\ta:TestX\t1\tL5\tnightly: long\n"), "u.tsv")
+	if err != nil || len(got) != 2 || got[0].Count != 2 || got[0].Line != 2 || got[1].Kind != KindTier || got[1].Dir != "a:TestX" {
 		t.Fatalf("a good ledger: %+v %v", got, err)
 	}
 }
@@ -341,7 +366,9 @@ func TestLedgerCountsWhatIsUnmoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := Check(res, reg, back); len(p) != 0 {
+	// the one disagreement left is the fixture's skip, which no ledger line
+	// can permit
+	if p := Check(res, reg, back); len(p) != 1 || !strings.Contains(p[0], "pkg TestSkips reaches a skip") {
 		t.Fatalf("the written ledger disagrees: %v", p)
 	}
 	if back[0].Kind != KindGoTest || back[0].Dir != "pkg" || back[0].Count != 6 {

@@ -4,9 +4,9 @@
 // the Go engine's committed verdict as the oracle. The corpus is read as files:
 // no network, no clock beyond the per-case budget, no outside service. The
 // runner prints one PASS line per case it agrees with, one FIX-CARD line per
-// carried disagreement, one SKIP line per carrier the port has no API for, and
-// fails on a disagreement no FIX-CARD names (or a FIX-CARD whose case has gone
-// green).
+// carried disagreement, and fails on a carrier the port has no API for (a
+// runner error, never a pass) and on a disagreement no FIX-CARD names (or a
+// FIX-CARD whose case has gone green).
 //
 // usage: rust-hostile <corpus-dir> <known-findings.tsv> <profile>
 //        rust-hostile --case <carrier> <schema> <table> <input-file>
@@ -402,8 +402,8 @@ mod dispatch {
     include!(concat!(env!("OUT_DIR"), "/dispatch.rs"));
 }
 
-// One case, in this process: the verdict text, or a SKIP line's reason
-// prefixed with "SKIP ".
+// One case, in this process: the verdict text, or a runner error naming
+// what the port cannot answer.
 fn run_case(carrier: &str, schema: &str, table: &str, input: &[u8]) -> String {
     match carrier {
         "wire" | "wire_retain" | "text" | "message" | "message_novocab" => {
@@ -411,7 +411,7 @@ fn run_case(carrier: &str, schema: &str, table: &str, input: &[u8]) -> String {
                 return format!("runner error: no Rust table binding for {schema} {table}");
             };
             // a carrier whose reader the port does not emit for this table
-            // fails by name, never as a SKIP: the row is owed an answer
+            // fails by name: the row is owed an answer
             let no_variable = || format!("runner error: {table} in {schema} has no variable codec in the Rust port (its closure is outside the Rust variable class)");
             match carrier {
                 "wire" | "wire_retain" if input.first() == Some(&3) && ops.fixed.is_some() => (ops.fixed.expect("fixed"))(input),
@@ -422,7 +422,7 @@ fn run_case(carrier: &str, schema: &str, table: &str, input: &[u8]) -> String {
                 },
                 _ => match ops.message {
                     Some(m) => m(input, carrier == "message"),
-                    None => format!("SKIP {table} in {schema} has no message form in the Rust port"),
+                    None => format!("runner error: {table} in {schema} has no message form in the Rust port"),
                 },
             }
         }
@@ -434,7 +434,7 @@ fn run_case(carrier: &str, schema: &str, table: &str, input: &[u8]) -> String {
             Some(ops) => (ops.run)(input),
             None => format!("runner error: no Rust packet binding for {schema} {table}"),
         },
-        _ => format!("SKIP carrier {carrier} has no Rust API"),
+        _ => format!("runner error: carrier {carrier} has no Rust API"),
     }
 }
 
@@ -652,26 +652,21 @@ fn main() {
     }
     let results = results.lock().expect("results");
 
-    let (mut passed, mut carried, mut skipped) = (0, 0, 0);
+    let (mut passed, mut carried) = (0, 0);
     let mut bad = Vec::new();
     let mut stale = Vec::new();
     // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
-    // name, which tools/hostileledger holds to the corpus folder. A SKIP and
-    // a case no worker reached are cases not run.
+    // name, which tools/hostileledger holds to the corpus folder. A case no
+    // worker reached is a case not run.
     let mut ran: Vec<String> = Vec::new();
     for (f, got) in manifest.iter().zip(results.iter()) {
-        if got.as_ref().is_some_and(|g| !g.starts_with("SKIP ")) {
+        if got.is_some() {
             ran.push(f[0].clone());
         }
         let got = got.clone().unwrap_or_else(|| "runner error: no result".to_string());
         let (name, carrier) = (&f[0], &f[1]);
         let expected = expected(&f[6], carrier, &f[7], &f[8]);
         let finding = findings.get(name);
-        if let Some(why) = got.strip_prefix("SKIP ") {
-            println!("SKIP {name} carrier={carrier}: {why}");
-            skipped += 1;
-            continue;
-        }
         if agrees(&got, &expected) {
             if let Some(fc) = finding {
                 println!("STALE {name}: FIX-CARD {} no longer reproduces ({profile})", fc[1]);
@@ -702,7 +697,7 @@ fn main() {
         stale.push(name.clone());
     }
     println!(
-        "rust ({profile}): {} cases: {passed} pass, {carried} carried as FIX-CARD, {} unexplained, {} stale, {skipped} skipped",
+        "rust ({profile}): {} cases: {passed} pass, {carried} carried as FIX-CARD, {} unexplained, {} stale",
         manifest.len(),
         bad.len(),
         stale.len()
@@ -712,9 +707,8 @@ fn main() {
     }
     println!("hostile-ledger end");
     // The count line build/mustrun reads: a case is RUN when the port answered
-    // it (a pass, a carried FIX-CARD or an unexplained verdict). A SKIP is not
-    // run, so a case that starts skipping moves the count off the one the
-    // recipe registers, and an empty manifest runs nothing and is red.
+    // it (a pass, a carried FIX-CARD or an unexplained verdict), and an empty
+    // manifest runs nothing and is red.
     let ran = passed + carried + bad.len();
     println!("rust-hostile ({profile}): ran {ran}, failed {}", bad.len() + stale.len());
     if !bad.is_empty() || !stale.is_empty() || ran == 0 {

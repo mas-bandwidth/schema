@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +18,6 @@ import (
 // refused) the forged 7 refuses the whole load and writes nothing; a reader
 // that bounds by its own 8 reads it, and that is the fault this row catches.
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()

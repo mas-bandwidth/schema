@@ -20,11 +20,9 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedDeadBytesAreZero(t *testing.T) {
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime over the reference corpus)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	corpus := luaFixedCorpus(t, repo)

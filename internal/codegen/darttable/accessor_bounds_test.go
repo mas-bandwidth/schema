@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -46,7 +45,6 @@ func TestDartBlockAndCookAccessorsRefuseOutOfRange(t *testing.T) {
 	}
 	t.Run("dart-refusals", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "dart")
 		dir := t.TempDir()
 		for name, data := range files {
 			if !strings.Contains(name, "/") {

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -21,7 +20,6 @@ import (
 // it unknown. The control, an unnamed string, reads, so the probe can tell a
 // read from a refusal.
 func TestDartHeldKind31RefusesTheLoad(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, dartHeldEscapeSchema)
 	files, err := Generate(u)
 	if err != nil {

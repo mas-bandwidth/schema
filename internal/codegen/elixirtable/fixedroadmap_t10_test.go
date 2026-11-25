@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -48,7 +47,6 @@ func t10Root(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 // (§5.9 #18). body asserts the values the leg wrote and read back; a FAIL line
 // or a non-zero exit fails the test.
 func t10Probe(t *testing.T, src, root, body string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	bin := elixirBinary(t)

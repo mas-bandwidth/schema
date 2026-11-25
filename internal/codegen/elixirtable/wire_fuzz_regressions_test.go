@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -32,7 +31,6 @@ import (
 //     testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin).
 func TestWireFuzzRegressionsElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir wire-fuzz construct regressions")
 
 	rootDir, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -290,10 +289,7 @@ func cppSkippedValueRun(t *testing.T, fixtures string) ([]byte, error) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 	u := loadUnit(t, filepath.Join("..", "..", "..", "test", "skipped-value", "reader", "Reader.schema"))
 	files, err := cpp.Generate(u)
@@ -346,7 +342,6 @@ func cppSkippedValueRun(t *testing.T, fixtures string) ([]byte, error) {
 }
 
 func TestCppSkippedValueIsValidated(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated skipped-value probe)")
 	t.Parallel()
 
 	const manifestPath = "../../../testdata/wire/skipped-value/MANIFEST.tsv"

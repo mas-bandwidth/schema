@@ -35,7 +35,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -178,7 +177,6 @@ func codecVerdictsDeep(levels int) string {
 
 func TestRustCodecVerdicts(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the Rust codec verdicts)")
 	keyedRequireRustc(t)
 	u := unitFrom(t, codecVerdictsSchema)
 	o := codecVerdictsWires(t, u)

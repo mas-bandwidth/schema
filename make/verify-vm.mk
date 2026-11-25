@@ -216,7 +216,7 @@ verify-deep-luau: verify-toolchain-luau bin/schema build/vmverify
 	LUAU="$(LUAU)" LUAU_ANALYZE="$(LUAU_ANALYZE)" ./build/vmverify --lang luau --schema ./bin/schema --work build/verify/vmverify-luau
 
 verify-cards-luau: verify-toolchain-luau build/conformance-harness-vm cards-luau-generate build/cards-driver-luau
-	LUAU="$(LUAU)" SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
+	LUAU="$(LUAU)" SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
 		./build/conformance-harness-vm cards --work build/verify/cards-luau \
 		--corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(VERIFY_CARDS_SURFACES)
 
@@ -231,7 +231,7 @@ verify-deep-moo: verify-toolchain-moo build/schema-moo build/vmverify
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/vmverify --lang moo --schema ./build/schema-moo --work build/verify/vmverify-moo
 
 verify-cards-moo: verify-toolchain-moo build/conformance-harness-vm cards-moo-generate build/cards-driver-moo
-	MOO="$(MOO)" SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
+	MOO="$(MOO)" SCHEMA_CARDS_SURFACES=$(VERIFY_CARDS_SURFACES) \
 		./build/conformance-harness-vm cards --work build/verify/cards-moo \
 		--corpus tables/cards/conformance --driver tables/cards/moo/driver --require $(VERIFY_CARDS_SURFACES)
 

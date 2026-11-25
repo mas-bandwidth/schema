@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPythonFixedArrayGrowth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed array growth")
 	for _, tc := range []struct{ name, old, new, text string }{
 		{"scalar", "table Root { values [1]int16 }", "table Root { values [2]int16 }", `{"values":[17]}`},
 		{"tables", "table Child { n int32 = 9 }\ntable Root { values [1]Child }", "table Child { n int32 = 9 }\ntable Root { values [3]Child }", `{"values":[{"n":7}]}`},
@@ -69,7 +67,6 @@ print(value.save().hex())
 
 func TestPythonFixedArrayGrowthRejectsLarger(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed array growth bound")
 	writer := loadUnit(t, "package growarray\ntable Root { values [2]int16 }\n")
 	reader := loadUnit(t, "package growarray\ntable Root { values [1]int16 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"values":[17,18]}`)
@@ -103,7 +100,6 @@ else:
 
 func TestPythonFixedArrayGrowthNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "fixed array growth negative control")
 	writer := loadUnit(t, "package growarray\ntable Root { values [1]int16 }\n")
 	reader := loadUnit(t, "package growarray\ntable Root { values [2]int16 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"values":[17]}`)

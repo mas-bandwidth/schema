@@ -182,24 +182,21 @@ compiles each, and compares the emitted wire against pinned goldens. That
 cross-language bit-identity check is the property this project exists to
 provide, so a change that breaks it is wrong until proven otherwise.
 
-**`make test` refuses a missing pinned toolchain by name, and runs without a
-leg only when you name the skip on purpose.** A pin the Makefile names
-(`NODE`, `DART`, `JAVA`/`JAVAC`, `ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`) that does
-not resolve stops the run before it starts. Every registered leg is probed, so
-one run names every leg it would have skipped and the path each pin looked in
-rather than sending you back for the next name; to run the chain without those
-legs, name them in `SCHEMA_SKIP_LEGS`, which prints every skip by name and
-which the refusal spells out ready to paste:
-
-```bash
-make test SCHEMA_SKIP_LEGS=dart,java
-```
+**`make test` refuses a missing pinned toolchain by name, and never runs
+without a leg.** A pin the Makefile names (`NODE`, `DART`, `JAVA`/`JAVAC`,
+`ELIXIR`/`MIX`/`ELIXIRC`, `DOTNET`) that does not resolve stops the run before
+it starts. Every registered leg is probed, so one run names every leg whose
+toolchain is missing and the path each pin looked in, rather than sending you
+back for the next name. There is no way to leave a leg out below the root
+(docs/rulings.json `no-skips`): a run that wants fewer legs names the targets
+it runs (`test-<leg>`, `toolchain-<leg>`, `make conformance
+CONFORMANCE_ONLY=<leg>`) and nothing else.
 
 A gate that passes while its toolchain is missing is a gate with no blade, and
 that is not a hypothetical here: a merge once deleted a clone's `dist` link,
 `make test` passed over four legs in silence, and a red inside one of them rode
-the green run (issue #599). Nothing under `.github` sets `SCHEMA_SKIP_LEGS`:
-certification installs every toolchain and overrides the pins, which resolve
+the green run (issue #599). Certification installs every toolchain and
+overrides the pins, which resolve
 and pass the gate. `make toolchain` runs the gate alone, and
 `make toolchain-negative-control` proves it still has its blade, on every pin
 of every leg. That control runs inside `make test` and on every pull request,
@@ -225,7 +222,7 @@ Makefile:7219: *** the cs leg needs the sibling checkout ../serialize.cs (src/Se
 
 `conformance-harness run` refuses the same way for every leg it is about to
 run. Nothing else is needed after `make deps`: it is the whole setup for the
-sibling runtimes. A leg named in `SCHEMA_SKIP_LEGS` does not need its sibling.
+sibling runtimes.
 
 ## How to run the tests, and the rule that sets their shape
 
@@ -249,41 +246,36 @@ compiler, every run. Two packages were carrying almost all of it:
 | `go test ./internal/codegen/...` (19 packages) | 164 s | **22 s** (slowest: `ctable`, 17 s) |
 | `make tables-cs-leg` | 74 s | unchanged — now also `-debug` / `-release`, ~37 s each |
 
-Nothing was dropped. `internal/slowtest` gates the toolchain half:
+Nothing was dropped, and nothing below the root decides whether a test runs
+(docs/rulings.json `no-skips`; docs/FORMAT.md, "No skipping, ever"). There is
+no `t.Skip`, no environment gate, no early return on a missing tool, no
+`|| true`, and no list that holds a case back. What a skip used to wait for is
+the test's **tier**, a fact in the registry: a row in
+`test/registry/registry.jsonl`, or a `tier` line in `test/registry/unmoved.tsv`
+for a test that has no row yet.
 
-- **the default, for the loop** — `go test ./compiler/`,
-  `go test ./internal/codegen/<leg>table/`, `go test ./...`: every pure-Go
-  test, the IR, the emitters' text, the goldens, the refusals. Each package
-  answers in seconds.
-- **the full set, for the check** — `SCHEMA_SLOW=1 go test ./compiler/
-  ./internal/codegen/...`: the same plus every toolchain test. Minutes. Run it
-  once before you open a pull request, not between edits.
-- **the leg gates** are unchanged, because each already exports
-  `SCHEMA_REQUIRE_CORPUS=1` and `slowtest.Enabled` counts that as the slow half
-  being on. `make tables-<leg>-fixedform`, `make tables-<leg>-versioning` and
-  `make tables-cs-leg` prove exactly what they proved before.
-- **`ci-full.yml`** sets `SCHEMA_SLOW=1` on both of its `go test` steps, so the
-  merge and nightly lanes run the whole of both halves. **`ci-fast.yml`** does
-  not, deliberately: its per-leg rows drive the make gates, which turn the slow
-  half on for the leg the diff touched — which is the two-minute lane's whole
-  idea.
+- **unit** — pure Go: the IR, the emitters' text, the goldens, the refusals.
+  `go test ./compiler/`, `go test ./internal/codegen/<leg>table/`: each
+  package answers in seconds.
+- **functional** — the test needs a toolchain or a built corpus. It runs it,
+  and a missing tool or corpus FAILS, naming what is missing and the make
+  target that provides it (`slowtest.Tool`, `slowtest.Program`,
+  `slowtest.Missing`). Run these through the leg's make gates, which build
+  what they need first.
+- **nightly** — a long campaign. The nightly lane (`ci-full.yml`, and the
+  campaign workflows) selects it; the per-change rows leave it out.
 
-A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
-therefore never reads whether a toolchain is present; absence still fails
-wherever `SCHEMA_REQUIRE_CORPUS` says it must.
+The only place a test is left out is the root, by name: `tools/gotestselect`
+expands a `-run`/`-not` pair over a package to the exact test names `go test`
+will run, less the nightly tier unless `-tier all`, and fails when it names
+none. Every CI row and make recipe computes it into a variable first and
+stops when it fails (`sel=$(go run ./tools/gotestselect ...) || exit 1`), so a
+selection that breaks never turns into a run of everything.
 
-A skip names a reason, and CI counts skips. Every reason a test may skip for
-is a line of [`.github/skip-ledger.txt`](../.github/skip-ledger.txt), with the
-class of lane that is meant to satisfy it. `go test ./internal/ci` reads every
-`t.Skip` in the tree against that file: a skip with no reason, or a reason no
-line names, fails at the pull request that writes it. The same test refuses a
-`TestMain` that leaves before `m.Run`, and a `_test.go` file whose build
-constraint no lane compiles under. In `ci-fast.yml`, the
-`go-test-touched` and `verify-leg` jobs record their `go test -json` events
-and end with `tools/gotestreport -skips`, which lists the job's skips by
-reason and fails on a skip the job provides for: a missing toolchain in the
-lane that installs it, a `SCHEMA_SLOW` skip under a make target that sets
-`SCHEMA_SLOW=1`.
+`go test ./internal/testreg` holds this: `TestNoSkipMechanismAnywhere` refuses
+every skip mechanism in the tree, Go or script, recipe, workflow or driver,
+naming the file and line, and `TestNoSkipMechanismIsPlanted` plants one of each
+kind and requires each named.
 
 Nothing fails silently, in the tests or in the tools that run them:
 
@@ -330,7 +322,7 @@ loop, one combined name for CI.
 
 `go test -run Typo ./pkg` matches no test, prints `ok ... [no tests to run]` and
 exits 0: a mistyped pattern (`-run Idcap` for `TestIDCap`) looks exactly like a
-pass. So does a run in which every test skipped itself (`SCHEMA_SLOW` unset).
+pass. So does a selection that leaves every test out.
 Run a selection through the wrapper, which refuses both:
 
 ```
@@ -645,8 +637,7 @@ A port with a pinned toolchain registers it in the same file and the same way:
 `TOOLCHAIN_LEGS += <lang>`, `TOOLCHAIN_PINS_<lang> :=` every pin the leg
 probes, and a `toolchain-<lang>` target carrying one
 `$(call toolchain_probe,...)` per pin. That is what makes `make test` refuse
-the leg by name instead of skipping it, and what makes
-`SCHEMA_SKIP_LEGS=<lang>` a skip anyone can read in the log. The negative
+the leg by name instead of skipping it. The negative
 control points each pin on that list at a path that does not exist IN TURN,
 with the leg's other pins pointed at one that resolves, and requires the
 refusal to name that pin. A pin the target probes but the list leaves out is

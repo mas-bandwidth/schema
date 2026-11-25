@@ -20,7 +20,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const unsignedTopBitSchema = `package topbit
@@ -35,7 +34,6 @@ table Masks
 
 func TestGooseWireLoadZeroExtendsUnsignedTopBit(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (a wire load and save round trip)")
 	src := t.TempDir()
 	schema := filepath.Join(src, "TopBit.schema")
 	if err := os.WriteFile(schema, []byte(unsignedTopBitSchema), 0o644); err != nil {

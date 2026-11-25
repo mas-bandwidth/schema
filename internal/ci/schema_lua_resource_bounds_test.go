@@ -27,7 +27,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luaAllocationFactorF is the proportional budget the resource
@@ -198,7 +197,6 @@ func runLuaResourceBounds(t *testing.T, dir string) map[string]luaResourceBounds
 // not count, the budget assertions below would measure nothing.
 func TestLuaAllocationCounterCounts(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	dir := t.TempDir()
 	probe := `local kb0 = collectgarbage("count")
 local t = {}
@@ -225,7 +223,6 @@ print(string.format("%.1f %.1f", kb0, kb1))
 // at most a linear number of VM step ticks.
 func TestLuaResourceBoundsHostileShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	dir := luaResourceBoundsUnit(t, "", "")
 	got := runLuaResourceBounds(t, dir)
 	want := luaResourceBoundsWant()
@@ -259,7 +256,6 @@ func TestLuaResourceBoundsHostileShapes(t *testing.T) {
 // does. The test is red when the harness cannot see the guard.
 func TestLuaResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	guarded := runLuaResourceBounds(t, luaResourceBoundsUnit(t, "", ""))["deep-nesting"]
 	if guarded.verdict != "REFUSED" || guarded.reason != "text_limit" {
 		t.Fatalf("with the depth guard in place the deep-nesting shape must refuse text_limit, got %s %s", guarded.verdict, guarded.reason)

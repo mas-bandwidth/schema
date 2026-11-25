@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -16,7 +15,6 @@ import (
 // build. Red when the refusal is removed.
 func TestRubyAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	for _, row := range []struct {
 		entries int
 		refused bool

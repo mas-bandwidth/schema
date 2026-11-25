@@ -9,7 +9,6 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -340,7 +339,6 @@ func i13Run(t *testing.T, runtime map[string][]byte) (writeBad, readBad []string
 // TestMooJsonTextDifferential is I13's moo cell: moo's text of every draw is
 // the engine's, and moo reads the engine's text back to the draw, silent.
 func TestMooJsonTextDifferential(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	writeBad, readBad, total := i13Run(t, nil)
 	for i, b := range writeBad {
@@ -364,7 +362,6 @@ func TestMooJsonTextDifferential(t *testing.T) {
 // writer's digit rounding, and requires the differential to go red on the
 // write side.
 func TestMooJsonTextDifferentialNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	const tie = "if nextDigit > 5 or (nextDigit == 5 and (rest or lastOdd)) then"

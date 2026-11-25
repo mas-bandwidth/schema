@@ -2,7 +2,6 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -279,7 +278,6 @@ func sortedKeys(m map[string]string) []string {
 // type_name in TabledemoTables.lua and requires the viewLines comparison red.
 func TestLuaViewDescriptorsNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	var paths []string

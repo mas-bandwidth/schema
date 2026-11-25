@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -105,7 +104,6 @@ read("go")
 // own bytes read to that same value.
 func TestLuauLoadKeyedByteArray(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Bag.schema")
 	if err := os.WriteFile(schemaPath, []byte(keyedByteArraySchema), 0o644); err != nil {

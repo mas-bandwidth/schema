@@ -21,7 +21,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -679,7 +678,6 @@ func (fx *finiteFixture) red(got map[string]string) []string {
 
 func TestLuauTablesAreFiniteOnly(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	fx := newFiniteFixture(t)
 	got := fx.run(t, nil)
 	if len(got) != len(fx.want)+1 {
@@ -697,7 +695,6 @@ func TestLuauTablesAreFiniteOnly(t *testing.T) {
 
 func TestLuauFiniteFloatNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	fx := newFiniteFixture(t)
 	covered := map[string]bool{}
 	for _, c := range finiteControls {

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -20,16 +19,12 @@ import (
 // warning inventory. Exercise actual emission and the production scanner so
 // an omitted file or unrecorded inherited warning cannot look like a pass.
 func TestCppWidelistWarningInventory(t *testing.T) {
-	slowtest.Gate(t, "clang++ (wide-list generated warning inventory)")
 	clang := os.Getenv("CLANGXX")
 	if clang == "" {
 		clang = "clang++"
 	}
 	if _, err := exec.LookPath(clang); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and clang++ (%s) is absent: %v", clang, err)
-		}
-		t.Skip("clang++ is not installed")
+		t.Fatalf("clang++ (%s) is absent: %v", clang, err)
 	}
 	serialize := os.Getenv("SERIALIZE")
 	if serialize == "" {
@@ -40,10 +35,7 @@ func TestCppWidelistWarningInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(serialize, "serialize.h")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and serialize.h is absent at %s: %v", serialize, err)
-		}
-		t.Skip("serialize.h is not installed")
+		t.Fatalf("serialize.h is absent at %s: %v", serialize, err)
 	}
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

@@ -13,19 +13,16 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestLobsterFixedProofSuiteValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain and the live C++ oracle")
 	fixedproof.RunValueSuite(t, lobsterFixedProofRunner{})
 }
 
 func TestLobsterFixedProofSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain and the live C++ oracle")
 	fixedproof.RunNegativeControlSuite(t, lobsterFixedProofRunner{})
 }
 

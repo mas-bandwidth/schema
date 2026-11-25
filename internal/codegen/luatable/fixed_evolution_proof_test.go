@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -183,7 +182,6 @@ func luaEvoClone(b []byte) []byte { return append([]byte(nil), b...) }
 // controls drop the widened count and zero-extend the int16.
 func TestLuaFixedEvolutionNumericWidening(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	older := luaEvoSource(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int16 = 0\n    f float32 = 0.0\n    trail uint32 = 2\n}\n")
 	newer := luaEvoSource(t, "package probe\nfixed table N\n{\n    lead uint32 = 1\n    v int32 = 0\n    f float64 = 0.0\n    trail uint32 = 2\n    added int32 = 77\n}\n")
 	eo := luaEvoEntry(t, older, "N")
@@ -223,7 +221,6 @@ func TestLuaFixedEvolutionNumericWidening(t *testing.T) {
 // §5.9 #30). The negative control drops the refusal.
 func TestLuaFixedEvolutionReports(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	g := luaEvoGen(t, luaEvoSource(t, "package probe\nfixed table R\n{\n    a int8 = 0 | min = -128, max = 127\n    b uint8\n}\n"), nil)
 	if src := string(g.files["fixed.lua"]); luaFixedCountsRepeatedKey(src) {
 		t.Errorf("E9: the fixed runtime counts a repeated key")
@@ -273,7 +270,6 @@ end
 // negative control bounds the count by the reader's 8.
 func TestLuaFixedEvolutionArrayBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	repo := filepath.Join("..", "..", "..")
 	older := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VOLD_array_bounded_grow.schema"))
 	newer := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", "VNEW_array_bounded_grow.schema"))
@@ -317,7 +313,6 @@ func TestLuaFixedEvolutionArrayBounds(t *testing.T) {
 // zero. The negative control drops the UTF-8 check.
 func TestLuaFixedEvolutionText(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	g := luaEvoGen(t, luaEvoSource(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n"), nil)
 	clean := g.save(t, "T", "local v = T.NewT(); v.s = \"ab\"; values[1] = v")
 	body := len(clean) - 8
@@ -356,7 +351,6 @@ func TestLuaFixedEvolutionText(t *testing.T) {
 // drops the signed integer bound.
 func TestLuaFixedEvolutionScalarBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	u := luaEvoSource(t, "package probe\nfixed table T\n{\n    x int32 = 0 | min = -5, max = 5\n    s int128 = 0 | min = -500, max = 500\n    u uint16 = 10 | min = 10, max = 1000\n}\n")
 	e := luaEvoEntry(t, u, "T")
 	body := func(x int32, s int64, v uint16) []byte {
@@ -441,7 +435,6 @@ const luaOrdinalOld = "package probe\nenum Tier { Bronze, Silver }\nunion Pick\n
 // each plan and the identity enum check.
 func TestLuaFixedEvolutionOrdinals(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	uOld := luaEvoSource(t, luaOrdinalOld)
 	uNew := luaEvoSource(t, strings.Replace(strings.Replace(luaOrdinalOld, "Silver }", "Silver, Gold }", 1), "    b int32\n", "    b int32\n    c int32\n", 1))
 	eo := luaEvoEntry(t, uOld, "Lineage")
@@ -485,7 +478,6 @@ func TestLuaFixedEvolutionOrdinals(t *testing.T) {
 // drops the byte check.
 func TestLuaFixedEvolutionNormalization(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	g := luaEvoGen(t, luaEvoSource(t, "package probe\nfixed table T\n{\n    flag bool\n    opt ?int32\n}\n"), nil)
 	file := g.save(t, "T", "local v = T.NewT(); v.opt = 99; v.opt_present = true; values[1] = v")
 	body := len(file) - 6
@@ -568,7 +560,6 @@ print(bad, cases)
 // sweep to find out-of-bound values.
 func TestLuaFixedEvolutionHostileInput(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	u := luaEvoSource(t, luaHostSchema)
 	record := luaEvoEntry(t, u, "Host").Record
 	g := luaEvoGen(t, u, nil)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -37,7 +36,6 @@ table Root
 
 func TestLuaCookWriteAbsentOptionalIsZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	u, files := declaredFormsUnit(t, absentOptionalSchema)
 
 	fresh := tabletext.NewModel(u).New(u.Tables["Inner"])

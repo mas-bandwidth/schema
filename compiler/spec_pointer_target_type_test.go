@@ -21,8 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -122,7 +120,6 @@ func TestSpecPointerTargetTypeChecked(t *testing.T) {
 
 	t.Run("the generator reproduces each vector", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the Go toolchain (it builds and runs the vector generator)")
 		dir := filepath.Join("..", "testdata", "wire", "pointer-target-type")
 		root, err := filepath.Abs("..")
 		if err != nil {
@@ -296,7 +293,6 @@ func TestSpecBlobTargetOutsideClosureRefused(t *testing.T) {
 
 	t.Run("the generator reproduces each vector", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the Go toolchain (it builds and runs the blob-kind vector generator)")
 		root, err := filepath.Abs("..")
 		if err != nil {
 			t.Fatal(err)

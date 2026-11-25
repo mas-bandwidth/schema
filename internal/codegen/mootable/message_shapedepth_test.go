@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -79,7 +78,6 @@ func shapeDepthAnnouncement(t *testing.T, g *generatedUnit, levels int) []byte {
 // vocabulary entry whose array shape nests 2 or 128 levels is announced, and
 // one nesting 129 or 21,000 is refused without raising.
 func TestMooAnnounceShapeNestingBound(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "messagedemo")
@@ -106,7 +104,6 @@ func TestMooAnnounceShapeNestingBound(t *testing.T) {
 // an emitted copy of table_message.moo and requires the 129-level row to be
 // announced, so the bound's test goes red when the bound is gone.
 func TestMooAnnounceShapeNestingBoundNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "messagedemo")

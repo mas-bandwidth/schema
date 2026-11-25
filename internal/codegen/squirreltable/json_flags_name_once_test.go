@@ -8,7 +8,7 @@ package squirreltable_test
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // compared on the verdict alone with the Go engine's (internal/tabletext), and
 // the engine is first held to the verdict the vectors state. Running the
-// generated Squirrel makes this a functional test, gated by slowtest.
+// generated Squirrel makes this a functional test.
 
 import (
 	"bufio"

@@ -6,12 +6,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonBlobRefWire(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package blobrefwire
  union Link { data *bytes }
  table Child {

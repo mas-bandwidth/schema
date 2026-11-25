@@ -3,8 +3,6 @@ package gotable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0 BY EVERY GENERATED GO WRITER
@@ -230,6 +228,5 @@ func TestGoCompressedFloatStoresAreGuarded(t *testing.T) {
 
 func TestGoCompressedNegZeroWriters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	runGenerated(t, negZeroWritersSchema, strings.TrimSpace(negZeroWritersProbe)+"\n")
 }

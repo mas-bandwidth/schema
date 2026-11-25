@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
@@ -34,7 +33,6 @@ table Root { xs []int32
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
-	slowtest.Gate(t, "dart")
 	dir := t.TempDir()
 	for name, data := range files {
 		if !strings.Contains(name, "/") {
@@ -131,7 +129,6 @@ table Root { ys []Inner
 		t.Fatal(err)
 	}
 	maps.Copy(files, tables)
-	slowtest.Gate(t, "dart")
 	dir := t.TempDir()
 	for name, data := range files {
 		if !strings.Contains(name, "/") {

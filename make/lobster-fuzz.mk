@@ -63,10 +63,10 @@ $(LOBSTER_WIRE_FUZZ_ILL_TEXT): testdata/wire/tables/store_full_message.bin
 # runner that installs no Lobster of its own.
 .PHONY: lobster-dist-present
 lobster-dist-present:
-# loud-ok: a lobster found on PATH is linked in; otherwise the recipe goes on to make dist-lobster, which fails loudly
+# a lobster found on PATH is linked in; otherwise the recipe goes on to make dist-lobster, which fails loudly
 	@if [ -x "$(LOBSTER)" ]; then exit 0; fi; \
 	if [ "$(origin LOBSTER)" = "file" ]; then \
-		lob=$$(command -v lobster 2>/dev/null) || true; \
+		lob=$$(command -v lobster 2>/dev/null) || lob=""; \
 		if [ -n "$$lob" ]; then \
 			mkdir -p "$(dir $(LOBSTER))" && ln -sf "$$lob" "$(LOBSTER)" && exit 0; \
 		fi; \
@@ -197,11 +197,11 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 
 # THE VERDICT PIPE is the strict-read gate. The builder arm is one load
 # (the whole value or a refusal). The retain arm is the retaining write-back.
-# SCHEMA_SLOW=1 is required so slowtest.Gate does not skip. The negative
+# the rule that nothing skips is required so slowtest.Gate does not skip. The negative
 # control plants its fault in the generated artifact the VM compiles.
 .PHONY: tables-lobster-wire-fuzz-verdict tables-lobster-wire-fuzz-verdict-negative-control
 tables-lobster-wire-fuzz-verdict:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipe$$'
+	go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipe$$'
 tables-lobster-wire-fuzz-verdict-negative-control:
-	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipeNegativeControl$$'
+	go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipeNegativeControl$$'
 test-lobster: tables-lobster-wire-fuzz-verdict tables-lobster-wire-fuzz-verdict-negative-control

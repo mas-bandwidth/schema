@@ -15,8 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonWidePrelude is the moo every probe starts with: the inputs and hexs(s),
@@ -200,7 +198,6 @@ func luaQuote(s string) string {
 // field refuses a fraction, an
 // exponent, -0 and a value one past its range at 2^53 and above.
 func TestMooJsonWideIntegersAreStrings(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	answers, canonical := jsonWideVectorsRun(t)
 	want := string(canonical)

@@ -45,10 +45,12 @@
 //                names (unit.goose, which the shell driver copies from
 //                units/<unit>.goose, or the empty unit.goose beside this file),
 //                and through the flat value table for every other root
-// The cook's and the block form's surfaces are accel.goose's: the shell
-// driver runs that program for them.
+// The cook's and the block form's surfaces are accel_lib.goose's: this
+// program answers them in a `batch` (run_accel), and accel.goose answers them
+// one at a time and runs the block lead gate and the forgery fuzzer.
 import os;
 import .conformance_unit;
+import .accel_lib;
 import .unit;
 import .wire_load;
 import .wire_save;
@@ -1303,6 +1305,34 @@ fn surface_json_write_into(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
+// run_surface answers one surface for one unit; false for a surface this
+// leg does not answer.
+fn run_surface(surface: const u8[:], lines: const u8[:][:], unit: const u8[:]) -> bool {
+    if surface == "report" { surface_report(lines, unit); return true; }
+    if surface == "framing" { surface_framing(lines, unit); return true; }
+    if surface == "wire" { surface_wire(lines, unit); return true; }
+    if surface == "message" { surface_message(lines, unit); return true; }
+    if surface == "message-prior" { surface_message_prior(lines, unit); return true; }
+    if surface == "retain" { surface_retain(lines, unit, false); return true; }
+    if surface == "retain-save" { surface_retain(lines, unit, true); return true; }
+    if surface == "retain-refusal" { surface_retain_refusal(lines, unit); return true; }
+    if surface == "json-read" { surface_json(lines, unit, false); return true; }
+    if surface == "json-write" {
+        surface_json(lines, unit, true);
+        surface_write_refusal(lines, unit);
+        return true;
+    }
+    if surface == "json-hostile" { surface_json_hostile(lines, unit); return true; }
+    if surface == "announce" { surface_announce(lines, unit); return true; }
+    if surface == "read-into" { surface_read_into(lines, unit); return true; }
+    if surface == "json-write-into" { surface_json_write_into(lines, unit); return true; }
+    if surface == "write-refusal" || surface == "write-refusal-fixed" || surface == "write-refusal-message" || surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" || surface == "write-refusal-shape" {
+        surface_wref_all(lines, unit, surface);
+        return true;
+    }
+    return false;
+}
+
 fn main() {
     let argv = args();
     if argv.len < 3 {
@@ -1313,6 +1343,28 @@ fn main() {
         write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
         return;
     }
+    // THE BATCH (test/conformance/goose/driver, "THE BATCH"): one compile of
+    // the unit answers every surface named, each between a "#surface <s>"
+    // line and a "#done <s>" line. Neither is a protocol line (they start
+    // with "#"), and a surface the run died in has no "#done" line, so the
+    // driver answers it by its own single run.
+    if argv[1] == "batch" {
+        if argv.len < 5 {
+            write_stderr("usage: main.goose batch <manifest> <unit> <surface>...\n");
+            exit(1);
+        }
+        var btext: u8[>..] = [];
+        load_file(argv[2], btext);
+        let blines = split(btext, '\n');
+        var k: i64 = 4;
+        while k < argv.len {
+            write_stdout(str("#surface ", argv[k], "\n"));
+            if !run_surface(argv[k], blines, argv[3]) && !run_accel(argv[k], blines, argv[3]) { exit(2); }
+            write_stdout(str("#done ", argv[k], "\n"));
+            k += 1;
+        }
+        return;
+    }
     if argv.len != 4 {
         write_stderr("usage: main.goose <surface> <manifest> <unit>\n");
         exit(1);
@@ -1321,28 +1373,7 @@ fn main() {
     load_file(argv[2], text);
     let lines = split(text, '\n');
     let unit = argv[3];
-    if argv[1] == "report" { surface_report(lines, unit); return; }
-    if argv[1] == "framing" { surface_framing(lines, unit); return; }
-    if argv[1] == "wire" { surface_wire(lines, unit); return; }
-    if argv[1] == "message" { surface_message(lines, unit); return; }
-    if argv[1] == "message-prior" { surface_message_prior(lines, unit); return; }
-    if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
-    if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
-    if argv[1] == "retain-refusal" { surface_retain_refusal(lines, unit); return; }
-    if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
-    if argv[1] == "json-write" {
-        surface_json(lines, unit, true);
-        surface_write_refusal(lines, unit);
-        return;
-    }
-    if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
-    if argv[1] == "announce" { surface_announce(lines, unit); return; }
-    if argv[1] == "read-into" { surface_read_into(lines, unit); return; }
-    if argv[1] == "json-write-into" { surface_json_write_into(lines, unit); return; }
-    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" || argv[1] == "write-refusal-cook" || argv[1] == "write-refusal-block" || argv[1] == "write-refusal-shape" {
-        surface_wref_all(lines, unit, argv[1]);
-        return;
-    }
+    if run_surface(argv[1], lines, unit) { return; }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);
 }

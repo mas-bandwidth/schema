@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -91,7 +90,6 @@ func announcedCases() []announcedCase {
 }
 
 func TestMooMessageRangedHeldToTheAnnouncedKind(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Ints.schema": announcedKindSchema})
 	got := announcedKindRun(t, g)
@@ -160,7 +158,6 @@ print("accept " .. tostring(values[1].W))
 // the announced kind, named and skipped, must then land, so the hold is what
 // refuses them.
 func TestMooMessageRangedHeldToTheAnnouncedKindNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a patched table_message.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Ints.schema": announcedKindSchema})
 	src := string(g.files["table_message.moo"])

@@ -34,7 +34,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -242,7 +241,6 @@ func luauVectorVerdict(t *testing.T, u *ir.Unit, c luauVectorFaultCase, wire []b
 // variable root and holds the reply to the engine, the measured region included.
 func TestLuauWireFuzzVectorsReachTheirFault(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luauFuzzCost+" over the pinned vectors at variable roots")
 	for _, c := range luauVectorFaultCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -274,7 +272,6 @@ func TestLuauWireFuzzVectorsReachTheirFault(t *testing.T) {
 // vector's measure, and the two refusals' strict read.
 func TestLuauWireFuzzVectorsReachTheirFaultNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luauFuzzCost+" over the pinned vectors' negative control")
 	for _, c := range luauVectorFaultCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

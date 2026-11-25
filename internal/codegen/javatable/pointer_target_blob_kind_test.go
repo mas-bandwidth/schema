@@ -212,7 +212,6 @@ func javaBlobKindSaveSource(roots map[string]string) string {
 // beside them, compiles the program and runs it in that directory.
 func runJavaBlobKind(t *testing.T, unitDir string, u *ir.Unit, cases []javaBlobKindCase, source string, plant func(map[string][]byte)) (dir, output string, err error) {
 	t.Helper()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	javac, javaBin := javaTools(t)
 	files := generateJavaUnitFiles(t, unitDir)
 	if plant != nil {
@@ -349,7 +348,6 @@ func javaBlobKindPlantRootClosure(t *testing.T) func(map[string][]byte) {
 
 func TestJavaPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	repo := filepath.Join("..", "..", "..")
 	vectors := filepath.Join(repo, "testdata", "wire", "pointer-target-type", "blobkind")
 	manifest, err := os.ReadFile(filepath.Join(vectors, "MANIFEST.tsv"))

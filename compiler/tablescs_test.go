@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -515,10 +513,9 @@ table Subject {
 	}
 
 	// 5. If dotnet is available, compile and run end-to-end wire equivalence verification.
-	slowtest.Gate(t, "dotnet")
 	dotnet := findDotnet()
 	if dotnet == "" {
-		t.Skip("dotnet not found on PATH; skipping C# runtime equivalence execution")
+		t.Fatal("no dotnet on PATH: the C# runtime equivalence run needs it")
 	}
 
 	runtime, err := filepath.Abs("../../serialize.cs")
@@ -526,7 +523,7 @@ table Subject {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(runtime, "src", "Serialize.cs")); err != nil {
-		t.Skip("serialize.cs unavailable")
+		t.Fatal("no serialize.cs sibling checkout at ../../serialize.cs")
 	}
 
 	dir := t.TempDir()
@@ -688,10 +685,9 @@ fixed table Subject {
 		}
 	}
 
-	slowtest.Gate(t, "dotnet")
 	dotnet := findDotnet()
 	if dotnet == "" {
-		t.Skip("dotnet not found on PATH; skipping C# runtime execution")
+		t.Fatal("no dotnet on PATH: the C# runtime run needs it")
 	}
 
 	runtime, err := filepath.Abs("../../serialize.cs")
@@ -699,7 +695,7 @@ fixed table Subject {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(runtime, "src", "Serialize.cs")); err != nil {
-		t.Skip("serialize.cs unavailable")
+		t.Fatal("no serialize.cs sibling checkout at ../../serialize.cs")
 	}
 
 	dir := t.TempDir()

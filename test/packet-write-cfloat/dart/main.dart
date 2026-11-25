@@ -74,9 +74,11 @@ void main(List<String> args) {
     }
 
     if (refused) {
-      if (assertsEnabled) {
-        check(fired, 'packet-write-cfloat $name: off-range value was written');
-      }
+      check(
+        assertsEnabled,
+        'packet-write-cfloat $name: asserts are off in this build: this row needs the assert build',
+      );
+      check(fired, 'packet-write-cfloat $name: off-range value was written');
       continue;
     }
 

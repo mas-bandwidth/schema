@@ -29,7 +29,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -642,7 +641,6 @@ func luauGroupDUnit(t *testing.T, c luauGroupDCase) (*ir.Unit, *luauGroupDGenera
 // reference's file; and the reference loads Luau's file clean and re-saves it
 // to its own bytes.
 func TestLuauFixedProofGroupD(t *testing.T) {
-	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	allLuauGroupDCases := luauGroupDCases()
 	if len(allLuauGroupDCases) == 0 {
@@ -689,7 +687,6 @@ func TestLuauFixedProofGroupD(t *testing.T) {
 // want lines and re-save byte gate reject. The WRITER flips the last byte of
 // each record body, which the reference equality check must detect.
 func TestLuauFixedProofGroupDNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	const anchor = "\t\twriteStruct(d, root, v, rec)\n"
 	const planted = anchor + "\t\tbuffer.writeu8(rec, fixed.recordBytes - 1, bit32.bxor(buffer.readu8(rec, fixed.recordBytes - 1), 1))\n"

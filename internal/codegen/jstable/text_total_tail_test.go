@@ -16,7 +16,6 @@ import (
 )
 
 func TestJavaScriptTextTotalTailConstruct(t *testing.T) {
-	slowtest.Gate(t, "native Go and Node (discarded total tails)")
 	u := unitFrom(t, `package probe
  table Wide { a [..4]string(16)
  b [..4]?string(16)

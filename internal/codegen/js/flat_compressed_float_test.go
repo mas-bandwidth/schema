@@ -45,7 +45,6 @@ func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 	}
 
 	t.Run("wire", func(t *testing.T) {
-		slowtest.Gate(t, "node (it compiles and runs the generated flat codec)")
 		node := jsFlatNode(t)
 		for _, tc := range cases {
 			for _, production := range []bool{false, true} {
@@ -116,7 +115,7 @@ func jsFlatNode(t *testing.T) string {
 	if n, err := exec.LookPath("node"); err == nil {
 		return n
 	}
-	slowtest.Require(t, "SCHEMA_REQUIRE_NODE", "no node toolchain: see make/js.mk's NODE")
+	slowtest.Missing(t, "no node toolchain: set NODE, see make/js.mk")
 	return ""
 }
 

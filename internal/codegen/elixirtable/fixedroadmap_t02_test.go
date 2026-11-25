@@ -7,7 +7,7 @@ package elixirtable
 // EVERY ASSERTION HERE READS THE ELIXIR THIS LEG EMITS, so the harness is
 // reachable on a tree that never built the C++ reference corpus: the
 // compile-and-run half of this leg's fixed form is fixedversioning_test.go and
-// fixedroadmap_t01_test.go, which skip exactly there. A clause that needs the
+// fixedroadmap_t01_test.go, which fail exactly there. A clause that needs the
 // emitted code to RUN is named by the existing test that runs it.
 //
 // elixir/R1 [weak]: COMPILE lays the lineage down as static data at build time,

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -105,7 +104,6 @@ func javaKindMovedRun(t *testing.T, sabotage func(string) string) string {
 }
 
 func TestJavaLineageKindMovedRefuses(t *testing.T) {
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	t.Parallel()
 	const want = "refused=true damaged=false reason=layoutMalformed"
 	t.Run("refuses", func(t *testing.T) {

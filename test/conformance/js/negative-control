@@ -60,7 +60,7 @@ rm -rf "$out"
 mkdir -p "$out"
 cp -R "$src" "$out/generated"
 
-n=$(grep -cxF -e "$anchor" "$src/$file" || true)
+n=$(grep -cxF -e "$anchor" "$src/$file") || [ $? -eq 1 ]
 if [ "$n" != "$want" ]; then
     echo "negative control anchor matched $n times in $src/$file, want exactly $want" >&2
     exit 1

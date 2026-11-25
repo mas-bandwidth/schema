@@ -17,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unity"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -159,10 +158,7 @@ func ensureUnityToolchain(t *testing.T) unityToolchainState {
 		unityTC, unityTCErr = initUnityToolchain(t)
 	})
 	if unityTCErr != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and Unity toolchain unavailable: %v", unityTCErr)
-		}
-		t.Skipf("Unity toolchain unavailable: %v", unityTCErr)
+		t.Fatalf("Unity toolchain unavailable: %v", unityTCErr)
 	}
 	return unityTC
 }
@@ -528,7 +524,6 @@ func runUnityProbe(t *testing.T, files map[string][]byte, probeCS string, inputs
 // in both Debug and Release configurations.
 func TestUnityFixedDialectMSBuild(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet MSBuild and UnityDialect.props")
 	tc := ensureUnityToolchain(t)
 	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

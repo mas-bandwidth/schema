@@ -36,7 +36,6 @@ env:
   PGROUP_GO_TEST_TIMEOUT: '0'
   GOFLAGS: -mod=readonly
   NOVA_TEST_NO_HOST: '1'
-  SCHEMA_SLOW: '1'
 
 jobs:
   drift:

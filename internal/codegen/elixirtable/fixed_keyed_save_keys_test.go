@@ -3,13 +3,10 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestElixirFixedKeyedSaveKeyForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated Elixir fixed keyed writer")
 	u := unitFrom(t, `package fixedkeyforms
 
 enum Slot { HTTPReady, Fallback }

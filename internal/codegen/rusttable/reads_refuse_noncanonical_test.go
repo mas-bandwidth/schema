@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -34,12 +33,8 @@ type rustNonCanonicalRow struct {
 
 func rustNonCanonicalToolchain(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
-		}
-		t.Skipf("rustc is not on PATH: %v", err)
+		t.Fatalf("rustc is not on PATH: %v", err)
 	}
 }
 

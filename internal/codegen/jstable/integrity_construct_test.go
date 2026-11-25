@@ -8,13 +8,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaScriptIntegrityConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes CRC-32C on file, fixed, and message forms)")
 	u := unitFrom(t, `package probe
  fixed table Reading | integrity="crc32c" {
  x int32

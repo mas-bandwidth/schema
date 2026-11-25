@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"testing"
 )
 
@@ -29,7 +28,6 @@ func TestPythonOptionalMapThroughDriver(t *testing.T) {
 
 func TestPythonOptionalMapDriverFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := unitFromSource(t, `package optmap
       table Leaf { value int32 }
       table Root {

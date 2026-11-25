@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -34,7 +33,6 @@ import (
 // the absent case must then go red.
 func TestOptionalVariableClosureElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 
 	u := unitFrom(t, optionalVariableProbeSrc)
@@ -137,7 +135,6 @@ var optionalVariableProbeCases = []struct{ name, text, build string }{
 // must go red.
 func TestScalarListUnderATableHeaderElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 
 	u := unitFrom(t, scalarListProbeSrc)
@@ -210,7 +207,6 @@ table Holder
 // probe must go red (the leg then lands the bound's elements).
 func TestCountPastTheBoundRefusesElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 
 	u := unitFrom(t, boundedListProbeSrc)
@@ -290,7 +286,6 @@ table Holder
 // go red. Functional: it runs the generated Elixir.
 func TestNestedBodyEndingEarlyIsDamageElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
@@ -348,7 +343,6 @@ IO.puts("ok")
 // must go red. Functional: it runs the generated Elixir.
 func TestReservedNodeIdInANestedBodyIsDamageElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

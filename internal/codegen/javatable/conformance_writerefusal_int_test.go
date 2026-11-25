@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestJavaDriverChecksEveryIntegerAssignment holds the Java conformance
@@ -26,7 +24,6 @@ import (
 // declaration does not (256 in a uint8, which Java stores in an int) reaches
 // the writer, and the writer refuses it.
 func TestJavaDriverChecksEveryIntegerAssignment(t *testing.T) {
-	slowtest.Gate(t, "the JDK and the conformance corpus")
 	root := javaConformanceRoot(t)
 	corpus := filepath.Join(root, "testdata", "conformance", "write-refusal-int")
 	manifest, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))

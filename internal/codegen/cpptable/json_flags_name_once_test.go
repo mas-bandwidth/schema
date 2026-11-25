@@ -8,7 +8,7 @@ package cpptable
 // The rows are the vectors under testdata/wire/json-flags-name-once; each is
 // compared on the verdict alone with the Go engine's (internal/tabletext), and
 // the engine is first held to the verdict the vectors state. Building the
-// generated C++ with c++ makes this a functional test, gated by slowtest.
+// generated C++ with c++ makes this a functional test.
 
 import (
 	"bufio"
@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -87,7 +86,6 @@ func cppJsonFlagsNameOnceUnitFile(t *testing.T, unit, root string) string {
 
 func TestCPPJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (c++)")
 
 	rows := cppJsonFlagsNameOnceRows(t)
 	unit, root := rows[0].unit, rows[0].root

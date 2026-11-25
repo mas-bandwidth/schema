@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const cCountedBirthSchema = `package probe
@@ -127,10 +126,9 @@ int main( int argc, char ** argv )
 
 func TestCCountedArrayBirthValue(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("no C compiler on PATH")
+		t.Fatal("no C compiler on PATH")
 	}
 	u := unitFrom(t, cCountedBirthSchema)
 	files, err := cgen.Generate(u)

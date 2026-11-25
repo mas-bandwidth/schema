@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -17,7 +16,6 @@ import (
 // empty value both ride and round-trip unchanged; the default itself is
 // still elided, so its bytes never reach the wire.
 func TestMessageStringDefaultElidedOnlyWhenEqual(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table P\n{\n    s string(8) = \"abc\"\n    b bytes(4) = \"ab\"\n}\n")
 	files, err := generate(u)

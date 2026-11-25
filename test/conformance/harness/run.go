@@ -792,26 +792,8 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 	return out, nil
 }
 
-// skipSet reads --skip: the legs this run does not exercise, comma separated,
-// which the Makefile fills from SCHEMA_SKIP_LEGS (issue #599). A skipped leg is
-// PRINTED and left out, never passed over in silence, and the reference leg
-// cannot be one: the corpus would lose its own expectation while every other
-// leg kept comparing against nothing.
-func skipSet(list string) (map[string]bool, error) {
-	out := map[string]bool{}
-	for s := range strings.SplitSeq(list, ",") {
-		if s = strings.TrimSpace(s); s != "" {
-			out[s] = true
-		}
-	}
-	if out[referenceLang] {
-		return nil, fmt.Errorf("--skip names the reference leg %s, which every other leg compares against", referenceLang)
-	}
-	return out, nil
-}
-
-func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string) (bool, error) {
-	return runWith(w, m, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip, runOptions{})
+func run(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string) (bool, error) {
+	return runWith(w, m, manifestPath, jsonDir, reportsPath, driversPath, work, only, runOptions{})
 }
 
 // runOptions is what the NIGHTLY and the proof add to a run
@@ -842,10 +824,6 @@ type runOptions struct {
 	// failure. The real gate (main.go) sets it; the fake-corpus tests that
 	// carry rows for three surfaces and list thirteen leave it off.
 	strictRows bool
-	// complete is a PORT's conformance run (make conformance-port): an
-	// absence of any grain fails it, and the success footer never prints
-	// beside one (docs/SPEC-CONFORMANCE.md §2: an absence is never a pass).
-	complete bool
 	// capture, when set, is handed every leg's surface results and leg
 	// failures once the run is scored: the corpus adapter (adapter.go) reads
 	// each case's verdict from it.
@@ -888,12 +866,12 @@ func shardSurfaces(shard, shards int) (map[string]bool, error) {
 	return set, nil
 }
 
-// emptySelection refuses a run whose filters (--only, --skip, --surfaces)
+// emptySelection refuses a run whose filters (--only, --surfaces)
 // left no row to compare (every selected surface holds zero expectations) or
 // no leg that ran any selected surface (every selected cell was absent). Both
 // read as a pass in the matrix and are not one (test/conformance/README.md,
 // "A filter that selects nothing is red").
-func emptySelection(results map[string]map[string]*result, only, skip string, surfaceSet map[string]bool) error {
+func emptySelection(results map[string]map[string]*result, only string, surfaceSet map[string]bool) error {
 	rows, ran := 0, 0
 	for _, bySurface := range results {
 		for _, r := range bySurface {
@@ -916,17 +894,13 @@ func emptySelection(results map[string]map[string]*result, only, skip string, su
 		which = strings.Join(names, ",")
 	}
 	if rows == 0 {
-		return fmt.Errorf("conformance selected ZERO rows: --only %q --skip %q --surfaces %s hold no case to compare, so a green matrix would prove nothing", only, skip, which)
+		return fmt.Errorf("conformance selected ZERO rows: --only %q --surfaces %s hold no case to compare, so a green matrix would prove nothing", only, which)
 	}
-	return fmt.Errorf("conformance ran ZERO legs on any selected surface: --only %q --skip %q --surfaces %s are all absent (none answered a case), so a green matrix would prove nothing", only, skip, which)
+	return fmt.Errorf("conformance ran ZERO legs on any selected surface: --only %q --surfaces %s are all absent (none answered a case), so a green matrix would prove nothing", only, which)
 }
 
-func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only, skip string, opts runOptions) (bool, error) {
+func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, driversPath, work, only string, opts runOptions) (bool, error) {
 	drivers, discovered, err := loadDrivers(driversPath)
-	if err != nil {
-		return false, err
-	}
-	skipped, err := skipSet(skip)
 	if err != nil {
 		return false, err
 	}
@@ -934,7 +908,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	// belongs to the discovered registry the Makefile runs
 	var running []string
 	for _, d := range drivers {
-		if discovered && (only == "" || d.lang == only) && !skipped[d.lang] {
+		if discovered && (only == "" || d.lang == only) {
 			running = append(running, d.lang)
 		}
 	}
@@ -990,7 +964,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	// legFailures are what a whole LEG came to rather than one surface: a leg
 	// that answered no row at all.
 	legFailures := map[string][]string{}
-	var langs, skippedLangs []string
+	var langs []string
 	for i, d := range drivers {
 		// THE REFERENCE LEG MAY NOT ANSWER ABSENT, AT EITHER GRAIN. It is the
 		// first driver in the COMMITTED registry — the discovered one, where
@@ -1006,22 +980,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if only != "" && d.lang != only {
 			continue
 		}
-		if skipped[d.lang] {
-			// on the same rule as the matrix below: a stdout that cannot be
-			// written to is not a verdict this gate can improve on
-			_, _ = io.WriteString(w, "conformance SKIPS the "+d.lang+" leg: --skip names it (SCHEMA_SKIP_LEGS)\n")
-			skippedLangs = append(skippedLangs, d.lang)
-			continue
-		}
 		langs = append(langs, d.lang)
 		results[d.lang] = map[string]*result{}
 
-		listed, retired, err := listSurfaces(d, derived)
+		listed, err := listSurfaces(d, derived)
 		if err != nil {
 			return false, fmt.Errorf("%s: %w", d.lang, err)
-		}
-		if len(retired) > 0 {
-			_, _ = io.WriteString(w, "conformance IGNORES "+strings.Join(retired, ", ")+" listed by the "+d.lang+" leg: retired surface(s), not run and not scored\n")
 		}
 		// rows on an opt-in unit the leg does not name are not asked (optin.go)
 		legDerived, notAsked, notOptedIn, err := legManifest(m, derived, d.lang, listed)
@@ -1064,10 +1028,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			active = append(active, sr)
 		}
 		// Run independent surfaces in parallel across up to 4 cores so co-tenant
-		// fleet runners saturate without thrashing; luau and lobster stage files
-		// into a shared driver directory and stay serial.
+		// fleet runners saturate without thrashing; luau stages files into a
+		// shared driver directory and stays serial. The lobster driver stages
+		// each unit's files by rename, only where their bytes change, so its
+		// surfaces run in parallel too (2026-11-25).
 		workers := min(runtime.GOMAXPROCS(0), 4)
-		if d.lang == "luau" || d.lang == "lobster" || workers < 1 {
+		if d.lang == "luau" || workers < 1 {
 			workers = 1
 		}
 		failFast := os.Getenv("CONFORMANCE_FAIL_FAST") == "1"
@@ -1276,16 +1242,16 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	}
 
 	// A run that compared no leg proved nothing: --only naming no registered
-	// driver (a typo, or a leg whose driver file is gone), an empty registry, or
-	// every leg skipped. It must not print "every registered surface passes".
+	// driver (a typo, or a leg whose driver file is gone), an empty registry,.
+	// It must not print "every registered surface passes".
 	if len(langs) == 0 {
-		return false, fmt.Errorf("conformance ran no leg: the registry, --only %q and --skip left nothing to compare", only)
+		return false, fmt.Errorf("conformance ran no leg: the registry and --only %q left nothing to compare", only)
 	}
 
 	// A run that selected no row, or ran no leg on any surface, proved nothing
 	// either: --surfaces naming surfaces that hold no expectation, or --only
 	// naming a leg that answers none of them. It must not print a green matrix.
-	if err := emptySelection(results, only, skip, opts.only); err != nil {
+	if err := emptySelection(results, only, opts.only); err != nil {
 		return false, err
 	}
 	proveRan(langs, results)
@@ -1301,12 +1267,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if opts.capture != nil {
 		opts.capture(results, legFailures)
 	}
-	var ok bool
-	if opts.complete {
-		ok = reportComplete(w, langs, results, legFailures, skippedLangs)
-	} else {
-		ok = reportRun(w, langs, results, legFailures, skippedLangs)
-	}
+	// AN ABSENCE FAILS THE RUN. A row a leg answered absent is a row that did
+	// not run, and a row that did not run is never a pass: which rows run is
+	// chosen at the root (--only, --surfaces), never by a leg answering absent
+	// below it (docs/SPEC-CONFORMANCE.md §2).
+	ok := reportComplete(w, langs, results, legFailures)
 	if opts.summary != "" {
 		if err := appendSummary(opts.summary, langs, results); err != nil {
 			return false, err
@@ -1369,9 +1334,9 @@ func scorePrior(answer string, e expectation, r *result) {
 // and then every absence counted as work not done. A run with any absence
 // fails and never prints the success footer (the Zig spec port's gap 3,
 // 2026-11-22: a stub driver that answered nothing printed the footer).
-func reportComplete(w io.Writer, langs []string, results map[string]map[string]*result, legFailures map[string][]string, skipped []string) bool {
+func reportComplete(w io.Writer, langs []string, results map[string]map[string]*result, legFailures map[string][]string) bool {
 	var b strings.Builder
-	ok := reportRun(&b, langs, results, legFailures, skipped)
+	ok := reportRun(&b, langs, results, legFailures)
 	absent := 0
 	for _, l := range langs {
 		for _, s := range surfaces {
@@ -1910,22 +1875,23 @@ func checkRunStdout(stdout string) error {
 	return nil
 }
 
-func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) {
+func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	argv := append(append([]string{}, d.argv...), manifest, "list")
 	cmd := exec.Command(argv[0], argv[1:]...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, nil, fmt.Errorf("`%s` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
+		return nil, fmt.Errorf("`%s` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
 	}
 	// `list` IS AN ANSWER AND IS HELD TO ONE. Every non-blank line must match
 	// the surface-name grammar (parseSurfaceList refuses diagnostics on stdout).
-	// An empty list is a driver that answers nothing; a name that is neither a
-	// surface nor retired is refused so a typo never goes silently absent.
+	// An empty list is a driver that answers nothing; a name that is not a
+	// surface, a RETIRED one included, is refused, so nothing a driver names
+	// goes unrun.
 	parsed, err := parseSurfaceList(stdout.String())
 	if err != nil {
-		return nil, nil, fmt.Errorf("`%s list`: %w", strings.Join(argv, " "), err)
+		return nil, fmt.Errorf("`%s list`: %w", strings.Join(argv, " "), err)
 	}
 	out := map[string]bool{}
 	var unknown, retired []string
@@ -1948,15 +1914,21 @@ func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) 
 	}
 	sort.Strings(unknown)
 	sort.Strings(retired)
+	if len(retired) > 0 {
+		// a retired surface is not run, so a driver that lists one claims a
+		// surface nothing runs: refused, never ignored
+		return nil, fmt.Errorf("`%s` names %d retired surface(s) the harness no longer runs: %s; a driver lists only surfaces that run",
+			strings.Join(argv, " "), len(retired), strings.Join(retired, ", "))
+	}
 	if len(unknown) > 0 {
-		return nil, nil, fmt.Errorf("`%s` names %d surface(s) the harness does not have: %s (the surfaces are %s)",
+		return nil, fmt.Errorf("`%s` names %d surface(s) the harness does not have: %s (the surfaces are %s)",
 			strings.Join(argv, " "), len(unknown), strings.Join(unknown, ", "), strings.Join(surfaces, ","))
 	}
 	if surfaceCount == 0 {
-		return nil, nil, fmt.Errorf("`%s` exited 0 and named no surface: a driver that answers nothing is not a pass",
+		return nil, fmt.Errorf("`%s` exited 0 and named no surface: a driver that answers nothing is not a pass",
 			strings.Join(argv, " "))
 	}
-	return out, retired, nil
+	return out, nil
 }
 
 func runDriver(d driver, manifest, surface, out string) (int, string, error) {
@@ -2009,7 +1981,7 @@ func describeDiff(name string, want, got []byte) string {
 // ABSENT one — cannot lose a failure recorded against it and the success footer
 // cannot print beside one.
 func report(w io.Writer, langs []string, results map[string]map[string]*result) bool {
-	return reportRun(w, langs, results, nil, nil)
+	return reportRun(w, langs, results, nil)
 }
 
 // The two footers a run that failed nothing can print.
@@ -2019,8 +1991,8 @@ const (
 )
 
 // reportRun is report with what only a whole run knows: the failures that
-// belong to a leg rather than a surface, and the legs --skip left out.
-func reportRun(w io.Writer, langs []string, results map[string]map[string]*result, legFailures map[string][]string, skipped []string) bool {
+// belong to a leg rather than a surface.
+func reportRun(w io.Writer, langs []string, results map[string]map[string]*result, legFailures map[string][]string) bool {
 	var b strings.Builder
 	// wide enough for "pass 111/111 +4a", the widest cell the matrix can print
 	width := 18
@@ -2111,10 +2083,9 @@ func reportRun(w io.Writer, langs []string, results map[string]map[string]*resul
 	sort.Strings(lines)
 
 	// THE FOOTER SAYS WHAT RAN. "every registered surface passes" is printed
-	// only when every row of every surface run was answered and passed, and no
-	// leg was skipped. Absence is not failure (README.md), and it is not a pass
-	// either: a run with absences or skipped legs says so, by leg and surface,
-	// in place of the success line.
+	// only when every row of every surface run was answered and passed. An
+	// absence is never a pass: the run names each by leg and surface in place
+	// of the success line, and reportComplete fails the run on it.
 	var notAnswered []string
 	for _, l := range langs {
 		for _, s := range surfaces {
@@ -2131,9 +2102,6 @@ func reportRun(w io.Writer, langs []string, results map[string]map[string]*resul
 				notAnswered = append(notAnswered, fmt.Sprintf("  %s / %s: %d of %d row(s) ABSENT", l, s, r.missing, r.total))
 			}
 		}
-	}
-	for _, l := range skipped {
-		notAnswered = append(notAnswered, fmt.Sprintf("  %s: SKIPPED, no surface run (--skip)", l))
 	}
 	switch {
 	case len(lines) > 0:

@@ -139,7 +139,8 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 
 The loader's refusals have one test each (`TestLoadRefuses*`). `TestTheDriverHasNoSkips`
 refuses any `Skip`, `SkipNow`, `Skipf` or `testing.Short()` in the driver's own
-packages, and finds a planted one; the repo-wide form comes with the migration.
+packages, and finds a planted one. Its repo-wide form is `TestNoSkipMechanismAnywhere`
+(see "No skips" below).
 `TestEveryDriverTestIsRegistered` holds every Go test in the driver's packages
 to a registry row, and every such row to a test that exists.
 
@@ -152,8 +153,31 @@ to a registry row, and every such row to a test that exists.
   toolchain there is a failure, never a skip.
 - **nightly**: heavy or long: long fuzz, full matrices, soak, timing.
 
-Where a test today skips because it needs a toolchain or a long run, that
-condition becomes its tier. Choosing what runs is the query, stated up front.
+Where a test skipped because it needed a toolchain or a long run, that
+condition is now its tier. Choosing what runs is the query, stated up front.
+
+## No skips
+
+Glenn, 2026-11-25: "NO SKIPS", and "if you don't want to run a test, don't run
+it (i mean at the root)". The only place a test is left out is the root: the
+driver's query, expanded to names before the run. Below it nothing decides: no
+test, helper, adapter, driver, script, Makefile recipe or workflow step checks a
+condition and does not run, or turns a failure into a pass. A missing toolchain,
+runtime or built artifact fails the test naming what is missing
+(`slowtest.Tool`, `slowtest.Program`, `slowtest.Missing`); `slowtest.Gate`,
+`SCHEMA_SLOW`, the `SCHEMA_REQUIRE_*` lane promises, the skip ledger and the
+harness's `--skip` are gone.
+
+`TestNoSkipMechanismAnywhere` (unit, every pull request) scans the repository
+and names, by file, line and rule, every skip mechanism: in Go, a `Skip` call
+on a testing value or a test double, `testing.Short()`, a skip or lane
+variable, an early return on an environment, tool, file or platform check, and
+a build tag that leaves a test out; in scripts, recipes and workflows, `|| true`,
+`continue-on-error`, `if: false`, a branch-name condition, `go test -skip` or
+`-short`, a skip variable and a skip announcement; in a driver of any language,
+a skip verdict; and any skip ledger file. `TestNoSkipMechanismIsPlanted` plants
+one of each and requires each named. The files it does not read are listed with
+their reasons in `internal/testreg/noskip_test.go`.
 
 ## Adapters
 
@@ -270,15 +294,10 @@ nothing. These are the kinds it finds, each exactly:
 | `driver` | a directory under `test/` holding code that is not Go: a language's harness |
 | `model` | a TLC configuration under `tla/` |
 
-For each Go test it also records the facts that decide its tier, each through
-the package's own helpers:
-- its build constraint;
-- whether it opens `slowtest.Gate` or reads `SCHEMA_SLOW`, which makes it
-  functional;
-- every `Skip` it can reach, with the condition around it.
-
-The driver has no skip verdict. So when a test moves in, each of these facts
-becomes either its tier or a tool its runner must carry.
+For each Go test it also records its build constraint and every `Skip` it can
+reach through its package's own helpers, with the condition around it. Check
+refuses every such skip: the driver has no skip verdict, and nothing below the
+root decides whether a test runs.
 
 Every test the extract finds is either a registry row or counted in the unmoved
 ledger, [`test/registry/unmoved.tsv`](../test/registry/unmoved.tsv). The extract
@@ -300,13 +319,22 @@ Two checks hold this:
   also extracts main's tree (`--since`), so a new test without a row is red
   by its own name, not only by its place's count.
 
-The ledger counts tests and nothing else: no line accounts for a skip. A test
-that still skips is a registry row like any other, and under the driver its
-skip is a fail, so it runs red by name until the skip goes.
+A Go test that has no row yet and is not unit has a tier line in the ledger:
+`tier <package dir>:<TestName> 1 <layer> functional: <what it needs>` (or
+`nightly: ...`). It is where a removed skip's condition went: a test that
+needed a toolchain, a sibling runtime or a built corpus is functional, and one
+that needed a long run is nightly, so the root selects it by tier and nothing
+inside it decides. Check holds every tier line to a Go test that exists and has
+no row (a renamed test takes its line along; a test that gets its row drops it,
+since the row carries the tier). A tier line is a fact, not a count, so it may
+be added or removed against main's ledger. There is no line that permits a
+skip: the `skip-red` kind is gone, and every test it held now runs and is red
+until it is fixed.
 
 `schema-test extract --json` prints every test, one JSON line each.
-`--write-ledger` rewrites the ledger to what is unmoved now. It refuses to
-write while any file does not parse.
+`--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
+tier line whose test has no row yet (a moved test's row carries its tier).
+It refuses to write while any file does not parse.
 Use it only when tests move in or go away.
 `--move L` gives every test on layer L's ledger lines that the driver can
 run its registry row (a language-free Go test becomes a `gotest` row, tier
@@ -471,9 +499,9 @@ ledger and into rows:
   - Go tests behind a leg's build tag (L5).
   - Go tests built only for another platform (L6).
 
-  There is no exemption list. A test red once its slow gate opens, or one
-  that still skips, is an ordinary row in its tier, and it runs red until it
-  is fixed. A test heavier
+  There is no exemption list. A test that is red in its tier (it needs a
+  toolchain or a built corpus its runner does not have yet) is an ordinary
+  row, and it runs red until it is fixed. A test heavier
   than a shard is split into rows that fit. `TestNameBuildability` stays on
   the ledger's `tools/namebuild` line until L4 splits it into one test per
   target and gives each its row.

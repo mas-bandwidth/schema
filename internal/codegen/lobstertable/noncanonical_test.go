@@ -21,7 +21,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -190,7 +189,6 @@ func nonCanonicalManifest(t *testing.T, path string) []nonCanonicalVectorRow {
 
 func TestLobsterReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain (it runs the generated non-canonical reader)")
 
 	vectorDir := filepath.Join(root, "testdata", "wire", "non-canonical")
 	messageOneDir := filepath.Join(root, "testdata", "wire", "message-one-encoding")

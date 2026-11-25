@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -265,7 +264,6 @@ func vtShapeWant(t *testing.T) string {
 // refuse as wire_damaged, as internal/tablewire's wirecheck requires.
 func TestLuauVtShapeCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	got := vtShapeSuite(t, "", "")
 	if want := vtShapeWant(t); got != want {
 		t.Fatalf("the strict read's verdicts:\n%s\nwant\n%s", got, want)
@@ -278,7 +276,6 @@ func TestLuauVtShapeCells(t *testing.T) {
 // which must refuse as wire_damaged, to start reading.
 func TestLuauVtShapeCellsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	const from = "if seenKeys[key] then return true end"
 	const to = "if false then return true end"
 	got := vtShapeSuite(t, from, to)

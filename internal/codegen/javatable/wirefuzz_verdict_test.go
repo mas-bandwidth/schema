@@ -122,7 +122,6 @@ func runJavaWireFuzzVerdictPipe(t *testing.T, root, driver string, retain bool) 
 // in the plain and the retention arms, with zero divergences
 // (docs/SPEC-TABLES.md §4.2, §6.6).
 func TestJavaWireFuzzVerdictPipe(t *testing.T) {
-	slowtest.Gate(t, "the JDK and the conformance corpus (it compiles and runs the generated Java)")
 	root := javaConformanceRoot(t)
 	javaConformanceBuild(t, root)
 
@@ -154,7 +153,6 @@ func TestJavaWireFuzzVerdictPipe(t *testing.T) {
 // source, recompiles it against the same generated units, and requires the
 // verdict pipe to go red on the fixed root's truncation.
 func TestJavaWireFuzzVerdictPipeNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the JDK and the conformance corpus (it compiles and runs the generated Java)")
 	root := javaConformanceRoot(t)
 	javaConformanceBuild(t, root)
 

@@ -3,8 +3,6 @@ package mootable_test
 import (
 	"fmt"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COUNTED ARRAY [Min..Max]T IS ELIDED AT ITS BIRTH VALUE (docs/SPEC-TABLES.md
@@ -28,7 +26,6 @@ var countedBirthCases = []constructCase{
 }
 
 func TestMooCountedArrayBornAtItsMinimum(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, c := range countedBirthCases {
 		t.Run(c.name+"/variable", func(t *testing.T) {

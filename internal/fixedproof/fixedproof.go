@@ -32,7 +32,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1352,7 +1351,6 @@ func CppOracle(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []b
 // succeeds load; only a failing load proves the reference reader refused it.
 func CppOracleWithLoadVerdict(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error, func(candidate []byte) error) {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler")
 	files, err := cpp.Generate(u)
 	if err != nil {
 		t.Fatalf("%s: cpp.Generate: %v", tc.ID, err)
@@ -1697,10 +1695,7 @@ func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {
 	mPath := filepath.Join(corpus, "manifest.txt")
 	data, err := os.ReadFile(mPath)
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is absent: %v", mPath, err)
-		}
-		t.Skipf("fixedform-corpus not built (%v)", err)
+		t.Fatalf("the fixed-form corpus is not built (make tables-fixedform-corpus): %s: %v", mPath, err)
 	}
 	records := map[string]int{}
 	for line := range strings.SplitSeq(string(data), "\n") {

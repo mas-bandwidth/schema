@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type pointerTargetCase struct {
@@ -80,7 +79,6 @@ type pointerTargetAnswer struct {
 
 func TestLuauPointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted readers)")
 
 	rows := pointerTargetCases(t)
 	byUnit := map[string][]pointerTargetCase{}

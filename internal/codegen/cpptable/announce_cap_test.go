@@ -3,7 +3,6 @@ package cpptable
 import (
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -14,7 +13,6 @@ import (
 // removed.
 func TestCppAnnouncementRefusesMoreThan4096Entries(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	for _, row := range []struct {
 		entries int
 		refused string

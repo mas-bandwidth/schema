@@ -6,7 +6,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,7 +21,6 @@ import (
 // range was the u64's own) every refusal here read.
 func TestRubyFlagsPastWidthRefuse(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	wire := func(src, text string) []byte {
 		t.Helper()
 		m := tabletext.NewModel(fixedproof.ParseCheckUnit(t, src))

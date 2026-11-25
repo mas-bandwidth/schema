@@ -2,8 +2,6 @@ package cstable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const csUnsortedMapSaveProbe = `
@@ -53,6 +51,5 @@ const csUnsortedMapSaveProbe = `
 `
 
 func TestCSharpUnsortedMapEntriesSortCanonicallyAndRefuseDuplicates(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t15RunCS(t, unboundedTextSchema, csUnsortedMapSaveProbe)
 }

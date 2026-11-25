@@ -4,8 +4,6 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE FLAT NODE TABLE AND ITS IDENTITY MAP (docs/PORTING.md M6;
@@ -53,7 +51,6 @@ func flatCycleRows(t *testing.T, g *generatedUnit) map[string]string {
 // TestMooTableSaveRefusesACycle: a chain saves; a node naming itself and two
 // nodes naming each other are refused by name, `cycle`, never written.
 func TestMooTableSaveRefusesACycle(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	rows := flatCycleRows(t, generateFiles(t, map[string]string{"Flat.schema": flatSource}))
 	if !strings.HasPrefix(rows["chain"], "saved ") {
@@ -72,7 +69,6 @@ func TestMooTableSaveRefusesACycle(t *testing.T) {
 // instance of the manifest away from its wire, and the open-descent check
 // removed must let a cycle save.
 func TestMooTableSaveFlatTableNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	plant := func(t *testing.T, g *generatedUnit, from, to string) *generatedUnit {
 		t.Helper()

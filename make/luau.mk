@@ -47,7 +47,7 @@ toolchain-luau:
 # interpreter. The luautable tests read the fixed-form corpus, the conformance
 # driver's generated modules and the Go runtime, so the leg BUILDS them first
 # (docs/PORT-LUAU.md, THE HARNESS): CI and a clean checkout do not stage them.
-# SCHEMA_REQUIRE_CORPUS=1 turns a missing oracle into a failure, and the runtime
+# the rule that nothing skips turns a missing oracle into a failure, and the runtime
 # reaches the probes as an absolute path whichever checkout the Makefile
 # resolved.
 .PHONY: test-luau update-goldens-luau
@@ -56,7 +56,7 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 	$(LUAU_CONFORMANCE_DRIVER)/inputs.luau \
 	$(LUAU_CONFORMANCE_DRIVER)/units.luau \
 	$(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
+	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
 		go test -count=1 -timeout 600s ./internal/codegen/luau/... ./internal/codegen/luautable/...
 update-goldens-luau: ;
 
@@ -136,17 +136,17 @@ test-luau: tables-luau-json-walk tables-luau-json-walk-negative-control \
 #
 # `go test ./...` ASSERTS NOTHING HERE: the harness skips without the corpus,
 # which is right for a bare run and is how a §5 regression would ride into a
-# green. So each target builds the oracle first and sets SCHEMA_REQUIRE_CORPUS=1,
+# green. So each target builds the oracle first and sets the rule that nothing skips,
 # under which the skip is a FAILURE.
 
 .PHONY: tables-luau-fixed-form tables-luau-versioning
 tables-luau-fixed-form: toolchain-luau tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
-	SCHEMA_REQUIRE_CORPUS=1 SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
+	SERIALIZE_GO=$(abspath $(SERIALIZE_GO_RUNTIME)) \
 	go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedFormAgreesWithTheByteOracle|TestLuauFixedFormVersioning|TestLuauFixedFormRefusals|TestLuauFixedFormNegativeControl|TestLuauFixedFormRaggedTail|TestLuauFixedFormIntegrity|TestLuauFixedLayoutBounds|TestLuauFixedLoadNamesEveryRefusal|TestLuauFixedPlainReadIsStrict|TestLuauFixedByteArrays|TestLuauFixedByteArraysNegativeControl|TestLuauFixedStrictBounds|TestLuauFixedStrictBoundsNegativeControl|TestLuauFixedEvolution.*)$$'
 	@echo 'tables Luau fixed form: every corpus root on the C++ reference bytes, every refusal by name'
 
 tables-luau-versioning: toolchain-luau tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedVersioning.*|TestLuauFixedCompiledPlanTagPastArmSet)$$'
+	go test ./internal/codegen/luautable/ -count=1 -run '^(TestLuauFixedVersioning.*|TestLuauFixedCompiledPlanTagPastArmSet)$$'
 	@echo 'tables Luau versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # THE TWO GATES' NEGATIVE CONTROLS (§5.9 #11: a gate nobody has watched fail may
@@ -169,7 +169,7 @@ tables-luau-fixed-form-negative-control: toolchain-luau tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-fixed-nc/schema_fixed.luau"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-fixed-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 go test -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
+	@if go test -overlay build/luau-fixed-nc/overlay.json ./internal/codegen/luautable/ \
 			-count=1 -run '^TestLuauFixedFormAgreesWithTheByteOracle$$' > build/luau-fixed-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a text length one off left the fixed form green"; \
 		cat build/luau-fixed-nc/log; exit 1; \
@@ -188,7 +188,7 @@ tables-luau-versioning-negative-control: toolchain-luau tables-fixedform-corpus
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the runtime moved"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/luautable/runtime/schema_fixed.luau":"%s/build/luau-versioning-nc/schema_fixed.luau"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/luau-versioning-nc/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 go test -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
+	@if go test -overlay build/luau-versioning-nc/overlay.json ./internal/codegen/luautable/ \
 			-count=1 -run '^TestLuauFixedVersioningOldRefusesNew$$' > build/luau-versioning-nc/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
 		cat build/luau-versioning-nc/log; exit 1; \
@@ -317,7 +317,8 @@ TEST_LEGS         += test-luau
 TOOLCHAIN_LEGS    += luau
 CONFORMANCE_LEG_luau := build/conformance-luau
 TOOLCHAIN_PINS_luau := LUAU
-CONFORMANCE_LEGS  += $(call unless_skipped,luau,build/conformance-luau)
+CONFORMANCE_OF.luau := build/conformance-luau
+CONFORMANCE_LEGS  += $(CONFORMANCE_OF.luau)
 BENCH_TABLES_LEGS += generated/bench/tables/luau/.stamp
 GOLDENS_LEGS      += update-goldens-luau
 
@@ -347,7 +348,7 @@ cards-luau-test: toolchain-luau cards-luau-generate build/cards-driver-luau card
 	$(MUSTRUN) -name cards-luau-test -count 11 -- cat build/cards-luau-unit/unit.txt
 
 cards-luau-conformance: toolchain-luau cards-luau-generate build/cards-driver-luau build/conformance-harness cards-corpus-check
-	SCHEMA_REQUIRE_CARDS_CORPUS=1 SCHEMA_CARDS_SURFACES=$(CARDS_LUAU_REQUIRE) ./build/conformance-harness cards --work build/cards-luau-conformance --corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(CARDS_LUAU_REQUIRE)
+	SCHEMA_CARDS_SURFACES=$(CARDS_LUAU_REQUIRE) ./build/conformance-harness cards --work build/cards-luau-conformance --corpus tables/cards/conformance --driver tables/cards/luau/driver --require $(CARDS_LUAU_REQUIRE)
 
 cards-luau-conformance-negative-control: cards-luau-test cards-luau-conformance
 	sh tables/cards/luau/negative-control.sh render

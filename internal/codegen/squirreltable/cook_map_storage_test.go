@@ -8,14 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestSquirrelCookAuthoredOptionalMap(t *testing.T) {
-	slowtest.Gate(t, "native authored optional-map storage")
 	dir := filepath.Join("..", "..", "..", "testdata", "conformance", "cook-authored-optional-map")
 	source, err := os.ReadFile(filepath.Join(dir, "Probe.schema"))
 	if err != nil {
@@ -99,7 +97,6 @@ print("authored ok\n");
 }
 
 func TestSquirrelCookSignedMapOrderAndReplacement(t *testing.T) {
-	slowtest.Gate(t, "native signed cooked map order")
 	for _, width := range []int{8, 16, 32, 64} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			u, m, _ := nfLoadNamed(t, fmt.Sprintf("package probe\ntable Root {\n active bool\n if active {\n bias int32 = 7\n }\n entries map[int%d]int32\n}\n", width))

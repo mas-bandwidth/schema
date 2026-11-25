@@ -2,8 +2,6 @@ package gotable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestGoUnboundedContainersRoundTrip keeps the §8.1 containers' round trip in
@@ -17,7 +15,6 @@ import (
 // a few seconds.
 func TestGoUnboundedContainersRoundTrip(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	runGenerated(t, unboundedDescriptorSchema, unboundedDescriptorRoundTripProbe)
 }
 

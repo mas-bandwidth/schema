@@ -16,13 +16,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestLuaBlockLayoutIsBuiltOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)

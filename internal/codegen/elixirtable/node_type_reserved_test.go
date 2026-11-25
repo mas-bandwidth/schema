@@ -4,8 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirNodeTypeReservedIdRefused holds a node record whose TYPE reference
@@ -15,7 +13,6 @@ import (
 // the control, a lawful node table the same root reads.
 func TestElixirNodeTypeReservedIdRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

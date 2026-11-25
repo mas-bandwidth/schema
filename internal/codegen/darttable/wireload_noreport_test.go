@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -38,7 +37,6 @@ func TestWireLoadWithNoReportThrowsOnRefusal(t *testing.T) {
 	if !strings.Contains(string(src), "if (report == null && read.reason != \x27ok\x27) throw FormatException(read.reason);") {
 		t.Fatalf("sceneWireLoad does not throw on a refusal when no report is passed")
 	}
-	slowtest.Gate(t, "the Dart SDK (it runs the generated Dart)")
 	dart := dartBinary(t)
 	dir := t.TempDir()
 	for name, data := range files {

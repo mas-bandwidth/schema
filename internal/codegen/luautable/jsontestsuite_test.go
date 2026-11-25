@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/jsontestsuite"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE OUTSIDE ORACLE (docs/SPEC-TABLES.md §16.12): the emitted Luau walk's
@@ -127,7 +126,6 @@ end
 // TestLuauJSONTestSuite is the gate.
 func TestLuauJSONTestSuite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	s, err := jsontestsuite.Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +147,6 @@ func TestLuauJSONTestSuite(t *testing.T) {
 // that file.
 func TestLuauJSONTestSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	s, err := jsontestsuite.Load(root)
 	if err != nil {
 		t.Fatal(err)

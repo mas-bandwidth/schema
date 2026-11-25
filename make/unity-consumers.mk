@@ -111,7 +111,7 @@ conformance-negative-control-unity: toolchain-unity build/conformance-harness bu
 	@cp build/conformance-unity/_gen/tabledemo/*.cs build/conformance-unity-nc/_gen_tabledemo/
 	@sed -i.orig 's/f.SetRaw(owner, index, 1); return true;/f.SetRaw(owner, index, 0); return true;/' build/conformance-unity-nc/_gen_tabledemo/Tables.Runtime.cs
 	@cmp -s build/conformance-unity/_gen/tabledemo/Tables.Runtime.cs build/conformance-unity-nc/_gen_tabledemo/Tables.Runtime.cs && \
-		{ echo 'NEGATIVE CONTROL FAILED: Tables.Runtime.cs JSON bool anchor matched nothing'; exit 1; } || true
+		{ echo 'NEGATIVE CONTROL FAILED: Tables.Runtime.cs JSON bool anchor matched nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@rm -f build/conformance-unity-nc/_gen_tabledemo/*.orig
 	@$(DOTNET) build test/conformance/unity/unit/schemaunit.csproj -c Debug \
 		-p:UnityUnitDir="$(CURDIR)/build/conformance-unity-nc/_gen_tabledemo" \
@@ -144,7 +144,7 @@ tables-unity-wire-fuzz-negative-control: toolchain-unity build/conformance-harne
 	@cp build/conformance-unity/_gen/mapdemo/*.cs build/conformance-unity-wf-nc/_gen_mapdemo/
 	@sed -i.orig 's/if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged, retain); }/if (count > 1) { Damage(report); return Finish(report, Verdict.Damaged, retain); }/' build/conformance-unity-wf-nc/_gen_mapdemo/Tables.Runtime.cs
 	@cmp -s build/conformance-unity/_gen/mapdemo/Tables.Runtime.cs build/conformance-unity-wf-nc/_gen_mapdemo/Tables.Runtime.cs && \
-		{ echo 'NEGATIVE CONTROL FAILED: Tables.Runtime.cs 4096 ID cap anchor matched nothing'; exit 1; } || true
+		{ echo 'NEGATIVE CONTROL FAILED: Tables.Runtime.cs 4096 ID cap anchor matched nothing'; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@rm -f build/conformance-unity-wf-nc/_gen_mapdemo/*.orig
 	@$(DOTNET) build test/conformance/unity/unit/schemaunit.csproj -c Debug \
 		-p:UnityUnitDir="$(CURDIR)/build/conformance-unity-wf-nc/_gen_mapdemo" \

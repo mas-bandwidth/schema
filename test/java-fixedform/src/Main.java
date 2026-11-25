@@ -28,15 +28,16 @@ public final class Main {
 
     private static int retirements = 0;
 
-    // A RETIRED CASE IS SKIPPED BY NAME AND NEVER DELETED (docs/FIXED-FORM-ALGORITHM.md
-    // §5.6, §5.7 step 5, and §5.9 #23 for a suite that is a main with no skip
-    // verb): the line below names the function, the section that retired it and
+    // A RETIRED CASE FAILS BY NAME AND IS NEVER DELETED (docs/FIXED-FORM-ALGORITHM.md
+    // §5.6, §5.7 step 5, and §5.9 #23): a case not run is never a pass, and a
+    // case is left out only at the root. The FAILED line below names the function, the section that retired it and
     // WHERE THE COVERAGE IS OWED, the count is printed at the end, and the
     // function stays in the tree and stays compiling. A deleted test is a
     // coverage claim nobody can audit.
     static void retired(String fn, String owed) {
-        System.out.println("RETIRED by §5.6: " + fn + " — " + owed);
+        System.out.println("FAILED: RETIRED by §5.6, not run: " + fn + " — " + owed);
         retirements++;
+        failures++;
     }
 
     static void check(boolean ok, String what) {

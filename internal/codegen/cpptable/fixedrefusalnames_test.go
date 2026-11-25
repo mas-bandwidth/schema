@@ -33,13 +33,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestCPPFixedLoadNamesEveryRefusal(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 
@@ -48,7 +46,7 @@ func TestCPPFixedLoadNamesEveryRefusal(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		t.Skip("the generated fixed reader is C++: no c++ on PATH")
+		t.Fatal("the generated fixed reader is C++: no c++ on PATH")
 	}
 
 	dir := t.TempDir()

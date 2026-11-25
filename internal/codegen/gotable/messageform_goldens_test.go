@@ -32,7 +32,6 @@ import (
 //   - "SaveMessages of them gives the batch bytes back exactly." (§3.3)
 func TestGoMessageFormGoldens(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated goldens)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -52,7 +51,6 @@ func TestJavaPlatformNamesSurviveSameNamedSchemaTypes(t *testing.T) {
 				t.Errorf("Probe.java imports a platform class; it names each from the package root")
 			}
 			t.Run("javac", func(t *testing.T) {
-				slowtest.Gate(t, "javac (it compiles the generated file)")
 				javac, _ := compressedFloatJavaTools(t)
 				dir := t.TempDir()
 				pkg := filepath.Join(dir, "src", "jdkshadow")

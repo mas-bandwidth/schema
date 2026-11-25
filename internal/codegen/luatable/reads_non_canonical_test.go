@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -113,7 +112,6 @@ end
 // same bytes.
 func TestLuaReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned lua")
 
 	repo := filepath.Join("..", "..", "..")
 	vector := filepath.Join(repo, "testdata", "wire", "non-canonical")

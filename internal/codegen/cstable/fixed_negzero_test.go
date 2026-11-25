@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -27,7 +26,6 @@ import (
 // float's -0 is carried bit-exact and is not this row's.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it runs the generated C# reader over the compressed-float -0 vectors)")
 	corpus := csFixedCorpus(t)
 	u := csUnitOf(t, csReadSchema(t, "FNZ"))
 	for _, vec := range fixedvector.NegativeZero {

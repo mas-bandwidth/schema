@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -25,7 +24,6 @@ table Root {
 `
 
 func TestDartTextListsNative(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, dartTextListSchema)
 	m := tabletext.NewModel(u)
 	files, err := Generate(u)

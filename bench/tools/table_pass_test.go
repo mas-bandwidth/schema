@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,7 +42,6 @@ func tablePassFixture(t *testing.T, fail string) (string, []string) {
 }
 
 func TestTablePassInterleavesAfterEveryBuild(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "")
 	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
@@ -63,7 +61,6 @@ func TestTablePassInterleavesAfterEveryBuild(t *testing.T) {
 }
 
 func TestTablePassRefusesFailedProducerWithoutPublishingRows(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "cpp")
 	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
@@ -80,7 +77,6 @@ func TestTablePassRefusesFailedProducerWithoutPublishingRows(t *testing.T) {
 }
 
 func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "")
 	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
@@ -96,7 +92,6 @@ func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
 }
 
 func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "")
 	leg := filepath.Join(root, "bench", "tables", "lua", "leg")

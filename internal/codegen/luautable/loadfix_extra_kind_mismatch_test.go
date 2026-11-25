@@ -24,7 +24,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -318,7 +317,6 @@ func loadFixICheck(t *testing.T, c loadFixIKindMismatchCase) {
 // cause I and requires the Luau tolerant load and the engine to agree on the
 // six counters, the verdict and the re-saved bytes.
 func TestLuauLoadKindMismatchAgreesWithTheEngine(t *testing.T) {
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	for _, c := range loadFixIKindMismatchCases {
 		t.Run(c.what, func(t *testing.T) {

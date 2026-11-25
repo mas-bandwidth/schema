@@ -15,8 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -109,7 +107,6 @@ public final class Untouched {
 
 func TestFixedRefusalLeavesDestination(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	javac, javaBin := javaToolsRequired(t)
 
 	u := unitFrom(t, refusalUntouchedSchema)

@@ -3,7 +3,6 @@ package luatable
 import (
 	"bytes"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -29,7 +28,6 @@ import (
 // the 64-bit halves on the read (§3.3, kinds 18/19 and 24/29).
 func TestLuaWideKindsFixedAndMessageForms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	schema := `package wideforms
 

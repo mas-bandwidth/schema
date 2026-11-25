@@ -8,8 +8,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -20,7 +18,6 @@ var rustMakeMu sync.Mutex
 
 func TestRustFixedRootTextAndCook(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Rust conformance driver")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

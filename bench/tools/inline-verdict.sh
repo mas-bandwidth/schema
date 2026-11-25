@@ -635,8 +635,8 @@ c|cpp)
     # -fopt-info-inline, the GCC spelling Apple clang rejects). A shadow
     # compile with the recorded codegen flags plus the remark switches; its
     # binary is discarded — the verdict came from $BIN.
-    # sed, never grep: a bare CSV has no flags line, which is an answer (the
-    # shadow compile is skipped and noted below), not a pipeline failure
+    # sed, never grep: a bare CSV has no flags line, which the check below
+    # refuses by name (the shadow compile needs the recorded flags)
     FLAGS_LINE="$(sed -n "s/^# $LANG_ARG flags: //p" "$CSV" | sed -n 1p | sed "s/ (serialize\.c compiled in, no LTO)//")"
     REMARKS="$VD/remarks.txt"
     : > "$REMARKS"
@@ -644,13 +644,16 @@ c|cpp)
         if [ "$LANG_ARG" = c ]; then
             ${CC:-cc} $FLAGS_LINE -Rpass=inline -Rpass-missed=inline -g \
                 bench/c/bench_main.c "$SERIALIZE_C/serialize.c" \
-                -o "$VD/shadow" -lm 2> "$REMARKS" || true  # loud-ok: advisory remarks for the ledger; the verdict is the disassembly read above, and a failed shadow compile leaves its error text in the remarks file
+                -o "$VD/shadow" -lm 2> "$REMARKS" \
+                || { echo "FAIL: the c remark shadow compile failed — see $REMARKS" >&2; exit 1; }
         else
             ${CXX:-c++} $FLAGS_LINE -Rpass=inline -Rpass-missed=inline -g \
-                bench/cpp/bench_main.cpp -o "$VD/shadow" 2> "$REMARKS" || true  # loud-ok: advisory remarks for the ledger; the verdict is the disassembly read above, and a failed shadow compile leaves its error text in the remarks file
+                bench/cpp/bench_main.cpp -o "$VD/shadow" 2> "$REMARKS" \
+                || { echo "FAIL: the cpp remark shadow compile failed — see $REMARKS" >&2; exit 1; }
         fi
     else
-        echo "note: $CSV carries no '# $LANG_ARG flags:' line (bare file?) — remark shadow compile skipped" >> "$VD/remarks.note"
+        echo "FAIL: $CSV carries no '# $LANG_ARG flags:' line (bare file?) — the remark shadow compile needs the recorded flags" >&2
+        exit 1
     fi
 
     section "$LANG_ARG" "(otool -tv of $BIN; clang -Rpass=inline shadow compile; cold = split .cold/.cold.N symbols)"
@@ -721,8 +724,8 @@ go)
     selftest_join "$VD/calls.txt" "$VD/counts.txt" "$GO_HELPER" || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
-    # loud-ok: advisory -m=2 remarks for the ledger; the verdict is the disassembly read above, and a failed build leaves its error text in the remarks file
-    ( cd bench/go && go build $GO_MODFILE_ARG -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
+    ( cd bench/go && go build $GO_MODFILE_ARG -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) \
+        || { echo "FAIL: the go -m=2 remarks build failed — see $VD/remarks.txt" >&2; exit 1; }
     awk '/serialize\.go\// && /: can inline|: cannot inline/' "$VD/remarks.txt" \
         | sed -E 's/^.*serialize\.go\///' | sed -E 's/ as:.*$//' | sort -u > "$VD/serialize-remarks.txt"
 
@@ -811,10 +814,10 @@ rust)
     # forces it); runs AFTER the measured binary was disassembled above.
     RUSTUP_BIN="/opt/homebrew/opt/rustup/bin"
     CARGO="cargo"; command -v cargo >/dev/null 2>&1 || CARGO="$RUSTUP_BIN/cargo"
-    # loud-ok: advisory inline remarks for the ledger; the verdict is the disassembly read above, and a failed rebuild leaves its error text in the remarks file
     ( cd bench/rust && \
       RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" CARGO_INCREMENTAL=0 \
-      PATH="$RUSTUP_BIN:$PATH" "$CARGO" build --release --quiet $RS_CARGO_ARGS 2> "$OLDPWD/$VD/remarks.txt" ) || true
+      PATH="$RUSTUP_BIN:$PATH" "$CARGO" build --release --quiet $RS_CARGO_ARGS 2> "$OLDPWD/$VD/remarks.txt" ) \
+        || { echo "FAIL: the rust inline-remarks rebuild failed — see $VD/remarks.txt" >&2; exit 1; }
     awk '/inline \(missed\)/ && /serialize/' "$VD/remarks.txt" \
         | sed -E 's/^[^:]*:[0-9]+:[0-9]+: *//; s/note: //' \
         | sort | uniq -c | sort -rn | sed -n 1,40p > "$VD/serialize-remarks.txt"

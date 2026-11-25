@@ -18,6 +18,31 @@ import (
 // LedgerPath is the unmoved ledger, from the repository root.
 const LedgerPath = "test/registry/unmoved.tsv"
 
+// KindTier is a ledger line that is not a kind of test: the tier of one Go
+// test that has no registry row yet. Its place is "<package dir>:<TestName>",
+// its count is 1, and its reason starts with the tier ("functional: " or
+// "nightly: ") and says what the test needs (a toolchain, a built corpus, a
+// long run). It is where a removed skip's condition went: nothing inside a
+// test decides whether it runs (Glenn, 2026-11-25: "if you don't want to run
+// a test, don't run it (i mean at the root)"), so a test that needs a
+// toolchain is selected at the root by its tier. The line leaves when the
+// test gets its row, which carries the tier from then on. A Go test with no
+// tier line and no row is unit.
+const KindTier = "tier"
+
+// TierPlace is the place a tier line names for a Go test.
+func TierPlace(dir, test string) string { return dir + ":" + test }
+
+// tierOf is a tier line's tier, from the start of its reason.
+func tierOf(l LedgerLine) (string, bool) {
+	for _, t := range []string{"functional", "nightly"} {
+		if strings.HasPrefix(l.Reason, t+": ") {
+			return t, true
+		}
+	}
+	return "", false
+}
+
 // LedgerLine counts the tests of one kind in one place that are not yet
 // registry rows, the layer that moves them in, and why they wait.
 type LedgerLine struct {
@@ -52,8 +77,19 @@ func ReadLedger(r io.Reader, name string) ([]LedgerLine, error) {
 		if err != nil || c < 1 {
 			return nil, fmt.Errorf("%s:%d: count %q is not a positive number", name, n, f[2])
 		}
-		if _, ok := kindOrder[f[0]]; !ok {
+		if _, ok := kindOrder[f[0]]; !ok && f[0] != KindTier {
 			return nil, fmt.Errorf("%s:%d: unknown kind %q", name, n, f[0])
+		}
+		if f[0] == KindTier {
+			if c != 1 {
+				return nil, fmt.Errorf("%s:%d: a tier line names one test, so its count is 1, not %d", name, n, c)
+			}
+			if _, ok := tierOf(LedgerLine{Reason: f[4]}); !ok {
+				return nil, fmt.Errorf("%s:%d: a tier line's reason starts with its tier, \"functional: \" or \"nightly: \": %q", name, n, f[4])
+			}
+			if !strings.Contains(f[1], ":") {
+				return nil, fmt.Errorf("%s:%d: a tier line's place is <package dir>:<TestName>, not %q", name, n, f[1])
+			}
 		}
 		if strings.TrimSpace(f[3]) == "" || strings.TrimSpace(f[4]) == "" {
 			return nil, fmt.Errorf("%s:%d: a ledger line names the layer that moves it and why it waits", name, n)
@@ -200,9 +236,8 @@ func Runs(reg *testreg.Registry) map[string]string {
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
-// nothing is unparsed. A test that opens the slow gate (it needs a toolchain)
-// is not a row of tier unit (a skip is the driver's to fail, at run time).
-// It returns each disagreement, named.
+// every tier line names a Go test that exists and has no row; no Go test
+// reaches a Skip; nothing is unparsed. It returns each disagreement, named.
 func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	var problems []string
 	for _, u := range res.Unparsed {
@@ -210,18 +245,19 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	covered, p := Covered(reg)
 	problems = append(problems, p...)
-	tierOf := map[string]string{}
-	for _, t := range reg.Tests {
-		tierOf[t.Key] = t.Tier
-	}
 	runs := Runs(reg)
 	exists := map[string]bool{}
+	goTests := map[string]Item{}
 	uncovered := map[string][]Item{}
 	for _, it := range res.Items {
 		exists[it.ID()] = true
-		if key, ok := covered[it.ID()]; ok {
-			problems = append(problems, rowGates(it, key, tierOf[key])...)
-			continue
+		if it.Kind == KindGoTest {
+			goTests[TierPlace(it.Dir, it.Name)] = it
+			for _, g := range it.Gates {
+				if site, ok := strings.CutPrefix(g, "skip: "); ok {
+					problems = append(problems, fmt.Sprintf("%s %s reaches a skip at %s: no test skips (Glenn, 2026-11-25: \"NO SKIPS\"); what the skip waited for is the test's tier, chosen at the root", it.Dir, it.Name, site))
+				}
+			}
 		}
 		if _, ok := runs[it.ID()]; ok {
 			continue
@@ -239,6 +275,16 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	problems = append(problems, gone...)
 	counted := map[string]LedgerLine{}
 	for _, l := range ledger {
+		if l.Kind == KindTier {
+			it, ok := goTests[l.Dir]
+			switch {
+			case !ok:
+				problems = append(problems, fmt.Sprintf("%s:%d: %s %s names a Go test the repository does not hold: if the test was renamed or moved, set the place to its new name; if it was deleted, delete the line", LedgerPath, l.Line, l.Kind, l.Dir))
+			case covered[it.ID()] != "":
+				problems = append(problems, fmt.Sprintf("%s:%d: %s %s names a test registry row %s runs: the row carries its tier, so delete the line", LedgerPath, l.Line, l.Kind, l.Dir, covered[it.ID()]))
+			}
+			continue
+		}
 		counted[l.key()] = l
 		have := len(uncovered[l.key()])
 		switch {
@@ -286,18 +332,33 @@ func NewWithoutRows(before, res *Result, reg *testreg.Registry) []string {
 	return problems
 }
 
-// rowGates is what a registered test's gates break: a test that needs a
-// toolchain is not unit. A skip is not refused here: the driver fails every
-// skip when it runs (the gotest adapter has no skipped verdict), and the
-// repository-wide no-skip policy test owns the static refusal.
-func rowGates(it Item, key, tier string) []string {
-	var out []string
-	for _, g := range it.Gates {
-		if g == "slow" && tier == "unit" {
-			out = append(out, fmt.Sprintf("registry row %s runs %s, which opens the slow gate (it needs a toolchain), and is tier unit: make it functional", key, it.Name))
+// TierLines is the tier lines of a ledger, in order.
+func TierLines(ledger []LedgerLine) []LedgerLine {
+	var out []LedgerLine
+	for _, l := range ledger {
+		if l.Kind == KindTier {
+			out = append(out, l)
 		}
 	}
 	return out
+}
+
+// ApplyTiers sets each Go test's tier from its tier line.
+func ApplyTiers(res *Result, ledger []LedgerLine) {
+	tiers := map[string]string{}
+	for _, l := range TierLines(ledger) {
+		if t, ok := tierOf(l); ok {
+			tiers[l.Dir] = t
+		}
+	}
+	for i, it := range res.Items {
+		if it.Kind != KindGoTest {
+			continue
+		}
+		if t, ok := tiers[TierPlace(it.Dir, it.Name)]; ok {
+			res.Items[i].Tier = t
+		}
+	}
 }
 
 func names(its []Item, n int) string {
@@ -314,7 +375,8 @@ func names(its []Item, n int) string {
 
 // Shrinks holds a ledger to the one it replaces (main's): no line may count
 // more than it did, and no place may be added. A new test gets a registry
-// row, never a ledger line.
+// row, never a ledger line. A tier line is not a count: it may be added or
+// removed, and Check holds it to a test that exists and has no row.
 func Shrinks(old, now []LedgerLine) []string {
 	before := map[string]LedgerLine{}
 	for _, l := range old {
@@ -322,6 +384,9 @@ func Shrinks(old, now []LedgerLine) []string {
 	}
 	var problems []string
 	for _, l := range now {
+		if l.Kind == KindTier {
+			continue
+		}
 		b, ok := before[l.key()]
 		switch {
 		case !ok:

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -28,7 +27,6 @@ print('nested-zero-map')
 `
 
 func TestPythonRetainMapNestedZeroHash(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters and Go retaining oracle")
 	u := loadUnitPaths(t, "../../../tables/maps")
 	files, err := Generate(u)
 	if err != nil {
@@ -71,7 +69,6 @@ func TestPythonRetainMapNestedZeroHash(t *testing.T) {
 }
 
 func TestPythonRetainMapNestedZeroHashNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnitPaths(t, "../../../tables/maps")
 	files, err := Generate(u)
 	if err != nil {

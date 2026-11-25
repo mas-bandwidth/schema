@@ -8,12 +8,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonFixedLoadCapacityWitness(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	root := filepath.Join("..", "..", "..")
 	read := func(relative string) []byte {
 		t.Helper()

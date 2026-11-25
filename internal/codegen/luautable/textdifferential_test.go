@@ -18,8 +18,7 @@ package luautable_test
 // here, in the Go cell's order, and handed to the probe as one buffer of float
 // bit patterns; the probe places them with the generated constructors and
 // writes with the emitted runtime, so everything under test is Luau. Running
-// the interpreter makes this a functional test: it sits behind slowtest.Gate
-// and is reached from make tables-luau-text-differential.
+// the interpreter makes this a functional test, reached from make tables-luau-text-differential.
 
 import (
 	"bytes"
@@ -34,7 +33,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
@@ -302,7 +300,6 @@ func luauTextWindow(a, b []byte) (int, string) {
 // root spelling.
 func TestLuauTextDifferentialAgainstTheGoEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	for _, sp := range luauTextDifferentialSpellings {
 		for _, seed := range luauTextDifferentialSeeds {
 			t.Run(fmt.Sprintf("%s/seed=%d", sp.name, seed), func(t *testing.T) {
@@ -325,7 +322,6 @@ const luauTextDifferentialAnchor = "local text = format_g(v, digits)"
 // sees it. The row must go red on the text comparison, not on a probe failure.
 func TestLuauTextDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	out, err := runLuauTextDifferential(t, luauTextDifferentialSchema, luauTextDifferentialSeed, luauTextDifferentialN, func(s string) string {
 		if strings.Count(s, luauTextDifferentialAnchor) != 1 {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the anchor %q is not in the runtime exactly once", luauTextDifferentialAnchor)

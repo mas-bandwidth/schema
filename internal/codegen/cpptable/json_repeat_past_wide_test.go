@@ -50,16 +50,12 @@ var cppRepeatCases = []cppRepeatCase{
 
 func TestCppJsonRepeatRefusedPastWideTable(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is not found: %v", cxx, err)
-		}
-		t.Skipf("%s: %v", cxx, err)
+		t.Fatalf("%s is not found: %v", cxx, err)
 	}
 
 	schema := cppWideRepeatSchema()

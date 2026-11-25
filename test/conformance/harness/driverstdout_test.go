@@ -232,7 +232,7 @@ func TestHarnessFailsADriverThatPrintsADiagnosticOnStdout(t *testing.T) {
 
 	// on stdout it is printed for `list` as well, so the harness refuses it
 	// before it reads the list as one
-	out, ok, err := c.runHarnessSkipping(t, legs(""), "")
+	out, ok, err := c.runHarnessErr(t, legs(""))
 	if err == nil {
 		t.Fatalf("a warning on a driver's stdout was not refused (run green: %v):\n%s", ok, out)
 	}

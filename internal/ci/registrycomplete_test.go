@@ -1,7 +1,6 @@
 package ci
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -56,12 +55,11 @@ func TestRegistryCompleteNegativeControls(t *testing.T) {
 func registryComplete(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads the make registry: %v", err)
+		t.Fatalf("this gate reads the make registry: %v", err)
 	}
 	testinputs.Make(t)
 	cmd := exec.Command("make", append([]string{"--no-print-directory", "-s", "registry-complete"}, args...)...)
 	cmd.Dir = repoRootDir(t)
-	cmd.Env = append(os.Environ(), "SCHEMA_SKIP_LEGS=")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -71,12 +69,11 @@ func registryComplete(t *testing.T, args ...string) (string, error) {
 func registryNA(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("make"); err != nil {
-		t.Skipf("this gate reads the make registry: %v", err)
+		t.Fatalf("this gate reads the make registry: %v", err)
 	}
 	testinputs.Make(t)
 	cmd := exec.Command("make", "--no-print-directory", "-s", "registry-na")
 	cmd.Dir = repoRootDir(t)
-	cmd.Env = append(os.Environ(), "SCHEMA_SKIP_LEGS=")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("make registry-na: %v", err)

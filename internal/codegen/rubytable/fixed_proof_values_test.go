@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -68,19 +67,16 @@ File.binwrite("saved", Probe::T.fixed_save(loaded))
 
 func TestRubyFixedProofValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Ruby and the C++ fixed oracle")
 	fixedproof.RunValueRows(t, rubyScalarValueRunner{}, rubyFixedValueRows...)
 }
 
 func TestRubyFixedProofValuesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Ruby and the C++ fixed oracle")
 	fixedproof.RunNegativeControlRows(t, rubyFixedProofRunner{}, rubyFixedValueRows...)
 }
 
 func TestRubyFixedProofValuesTypes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned RuboCop and Steep")
 	allCases := fixedproof.Cases()
 	if len(allCases) == 0 {
 		t.Fatal("fixedproof.Cases() is empty: the loop below would check nothing")
@@ -104,7 +100,6 @@ func TestRubyFixedProofValuesTypes(t *testing.T) {
 
 func TestRubyFixedProofValuesReadRules(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Ruby and the C++ fixed oracle")
 	cases := []struct {
 		name, schema string
 		body         int64
@@ -210,7 +205,6 @@ end
 
 func TestRubyFixedProofValuesFloatBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Ruby and the C++ fixed oracle")
 	const src = `package probe
 fixed table T {
     f32 float32

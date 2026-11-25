@@ -21,8 +21,7 @@ for d in "$units"/*/; do
     ln -s "$PWD/$units/$name" "$dir/units/$name"
 done
 cp -R "$units/_gen/$unit" "$dir/gen"
-files=$(grep -rlE "$witness" "$dir/gen" || true)
-[ -n "$files" ] || { echo "NEGATIVE CONTROL: the sabotage matches no generated line in $unit"; exit 1; }
+files=$(grep -rlE "$witness" "$dir/gen") || { echo "NEGATIVE CONTROL: the sabotage matches no generated line in $unit (grep exit $?)"; exit 1; }
 # shellcheck disable=SC2086
 perl -pi -e "$sabotage" $files
 grep -rqF 'SABOTAGED' "$dir/gen" || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }

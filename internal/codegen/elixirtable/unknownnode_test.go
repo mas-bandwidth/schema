@@ -10,7 +10,7 @@ package elixirtable
 // The wires are the Go oracle's (internal/tablewire): every row's verdict is
 // taken from tablewire.Decode on the same bytes before the generated Elixir is
 // asked. It compiles and runs the generated unit with the real Elixir
-// toolchain, so it is a functional test gated by slowtest.
+// toolchain, so it is a functional test.
 
 import (
 	"encoding/hex"
@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -120,7 +119,6 @@ func unnamedNodeWire(t *testing.T, src, text string) []byte {
 
 func TestElixirPointerToUnnamedNodeTypeReadsNull(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	reader := unitFrom(t, unnamedNodeReaderSchema)
 	rows := []unnamedNodeRow{

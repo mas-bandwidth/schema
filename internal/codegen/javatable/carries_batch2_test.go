@@ -2,13 +2,10 @@ package javatable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func runJavaCarryProbe(t *testing.T, schema, _ string, driver string) string {
 	t.Helper()
-	slowtest.Gate(t, "javac")
 	_, out := compileAndRunJavaProbe(t, schema, "probe", driver)
 	return out
 }

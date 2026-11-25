@@ -16,6 +16,6 @@
 .PHONY: conformance-luau-compressed-negzero
 conformance-luau-compressed-negzero:
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
-	LUAU="$(abspath $(LUAU))" SCHEMA_SLOW=1 $(GO) test -timeout=0 -count=1 ./internal/codegen/luautable -run '^TestLuauCompressedNegZeroCorpus$$'
+	LUAU="$(abspath $(LUAU))" $(GO) test -timeout=0 -count=1 ./internal/codegen/luautable -run '^TestLuauCompressedNegZeroCorpus$$'
 
 test-luau: conformance-luau-compressed-negzero

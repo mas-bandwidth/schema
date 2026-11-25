@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -28,7 +27,6 @@ import (
 // old rule (a mask was range-free) every refusal here read.
 func TestLobsterFlagsPastWidthRefuse(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	wire := func(src, text string) []byte {
 		t.Helper()
 		m := tabletext.NewModel(flagsPastUnit(t, src))

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and a file refused
@@ -71,7 +70,6 @@ func TestPythonRetainResetsBeforeOpen(t *testing.T) {
 // MANIFEST.txt, test/conformance/python/surfaces/retain-refusal.py).
 func TestPythonRetainRefusalEmptiesTheStore(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const crcSchema = "package probe\ntable Root | integrity = \"crc32c\" { n int32 }\n"
 	crc, err := Generate(loadUnit(t, crcSchema))
 	if err != nil {

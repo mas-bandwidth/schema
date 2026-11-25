@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -45,7 +44,6 @@ var elixirSkippedLabelRows = [][3]string{
 
 func TestElixirJsonSkippedLabelRules(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	u := unitFrom(t, elixirSkippedLabelSchema)
 	model := tabletext.NewModel(u)

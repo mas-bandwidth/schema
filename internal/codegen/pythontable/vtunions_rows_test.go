@@ -33,7 +33,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -303,10 +302,9 @@ func tabletextWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	return wire
 }
 
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtUnionsRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters (it runs the emitted table runtime)")
 	for _, r := range vtUnionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -430,10 +428,9 @@ func TestPythonVtUnionsRowsControlsCoverEveryCase(t *testing.T) {
 // COPY of the emitted runtime and requires every case it names to go red,
 // with every row's cases covered by some control.
 //
-// Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
+// Functional (both pinned interpreters).
 func TestPythonVtUnionsRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters (it runs the emitted table runtime)")
 	for _, ctl := range vtUnionControls {
 		for _, r := range vtUnionRows {
 			named := ctl.red[r.row]

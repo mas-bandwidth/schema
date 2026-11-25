@@ -26,7 +26,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func gooseWireFuzzVerdictMakefileCheck(mk string) error {
@@ -136,7 +135,6 @@ func TestGooseWireFuzzVerdictPipe(t *testing.T) {
 	if err := gooseWireFuzzVerdictMakefileCheck(string(mkBytes)); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the wire-fuzz verdict pipe)")
 	harness := gooseWireFuzzHarness(t)
 	c := readWireCorpus(t)
 	units := []string{
@@ -189,7 +187,6 @@ func TestGooseWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		t.Fatal("NEGATIVE CONTROL FAILED: dropping tables-goose-wire-fuzz-verdict left the makefile check green")
 	}
 
-	slowtest.Gate(t, "the Goose toolchain (it builds and runs the wire-fuzz verdict pipe negative controls)")
 	harness := gooseWireFuzzHarness(t)
 	c := readWireCorpus(t)
 

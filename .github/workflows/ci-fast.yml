@@ -718,15 +718,15 @@ jobs:
             # (which the schema-test-pr shards always run) whose fast unit tests assert
             # invariants on .github/workflows/*.yml, .github/actions/*, or
             # test/conformance/nightly-readiness: pythontable and rubytable
-            # readiness checks, negativecontrols matrix checks, and
-            # slowgatescan shard coverage (~8 s total in one go-test-touched row).
+            # readiness checks and negativecontrols matrix checks (seconds, in
+            # one go-test-touched row).
             if grep -qE '^(\.github/(workflows|actions)/|test/conformance/nightly-readiness$)' <<<"$files"; then
-              for p in ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan ./tools/wiredtargets; do
+              for p in ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/wiredtargets; do
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             fi
-            packages=$(echo "$packages" | xargs || true)
-            src_packages=$(echo "$src_packages" | xargs || true)
+            packages=$(echo "$packages" | xargs)
+            src_packages=$(echo "$src_packages" | xargs)
           }
 
           # THE LINT ROWS. golangci-lint-fast lints the packages above in rows
@@ -992,7 +992,7 @@ jobs:
           # lays down a package that imports the compiler's own packages, the
           # ones its templates in compiler/newleg.go name. Its fixture test,
           # cmd/schema TestNewLegZigWritesSkeletonAndFixturePasses, drives the
-          # built CLI and so runs only behind SCHEMA_SLOW, which no other row
+          # built CLI and so runs only behind the rule that nothing skips, which no other row
           # here sets: #4428 changed what the scaffold imports, and the red
           # waited for ci-full. The job runs when the diff touches
           # compiler/newleg.go, that test's file, or a non-test .go file of a
@@ -1001,7 +1001,7 @@ jobs:
           # runs this block over internal/ci/testdata/newleg-plan.json.
           newleg=no
           # a template with no main-module import leaves the closure empty
-          scaffold_imports=$({ grep -oE '"github\.com/mas-bandwidth/schema/v2/[a-z0-9_/]+"' compiler/newleg.go || true; } | tr -d '"' | sort -u | xargs)
+          scaffold_imports=$({ grep -oE '"github\.com/mas-bandwidth/schema/v2/[a-z0-9_/]+"' compiler/newleg.go || [ $? -eq 1 ]; } | tr -d '"' | sort -u | xargs)
           scaffold_dirs=""
           if [ -n "$scaffold_imports" ]; then
             # shellcheck disable=SC2086
@@ -1045,7 +1045,7 @@ jobs:
       # go-test-touched matrix rows that each fit the fleet's two-minute
       # per-commit cap. Light packages are packed together by their measured
       # seconds (.github/go-test-rows.txt); a package the table splits gets a
-      # row per named test pattern plus the complement row that skips them all,
+      # row per named test pattern plus the complement row that lists every other test by name,
       # so every selected test runs in exactly one row and a new test lands in
       # a row with no edit. gotable adds the two make rows below.
       - name: the go test rows
@@ -1057,8 +1057,8 @@ jobs:
           VERIFY_LEGS: ${{ steps.pick.outputs.verify_legs }}
         run: |
           set -euo pipefail
+          # no -short: nothing reads testing.Short, so the plain weights are the run's
           flags=""
-          [ "$BROAD" = yes ] && flags="-short"
           case " $PACKAGES " in
             *" ./internal/codegen/gotable "*|*" ./... "*) flags="$flags -gotable-extras" ;;
           esac
@@ -1296,13 +1296,6 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-      # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
-      # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
-      # test exits 0 — so a make target running a bare `go test` on such a
-      # package goes GREEN HAVING RUN NOTHING. This scan fails any such recipe
-      # line BY NAME and costs milliseconds.
-      - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
-        run: make slow-gate-scan
       - name: bench scripts parse
         run: bash -n bench/run.sh
       # THE PYTHON TOOLING TESTS (nightly_readiness_test.py, wire_fuzz_complete_test.py):
@@ -1500,7 +1493,7 @@ jobs:
                 cf="$RUNNER_TEMP/clang-format/bin/clang-format"
               fi
               "$cf" --version
-              make -j"$(nproc)" tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              make -j"$(nproc)" tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes CLANG_FORMAT="$cf"
               ;;
             js)
               if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -x "v9.39.5" >/dev/null; then
@@ -1531,10 +1524,10 @@ jobs:
                 cf="$RUNNER_TEMP/clang-format/bin/clang-format"
               fi
               "$cf" --version
-              make -j"$(nproc)" tables-cpp-format SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
+              make -j"$(nproc)" tables-cpp-format CLANG_FORMAT="$cf"
               ;;
             cpp-warnings)
-              make -j"$(nproc)" tables-cpp-warnings SCHEMA_REQUIRE_CLANGXX=1
+              make -j"$(nproc)" tables-cpp-warnings
               ;;
             elixir-offsets|elixir-agreement-[0-9]*)
               case "$LANG_ROW" in
@@ -1902,25 +1895,11 @@ jobs:
       # refuses without it), so a test that skips because that toolchain is
       # missing is red here: "no Elixir" in the Elixir row. A row whose
       # target runs no go test has no record and says so.
-      - name: the skip ledger — every skip this row's go test recorded, by reason
+      - name: the test record — this row's go test, where any skip is red
         if: always()
-        env:
-          LEG: ${{ matrix.leg }}
         run: |
           set -euo pipefail
-          provides="platform tool:make tool:git tool:sh"
-          case "$LEG" in
-            cpp)      provides="$provides tool:c++" ;;
-            c)        provides="$provides tool:cc" ;;
-            cs|unity) provides="$provides tool:dotnet" ;;
-            rust)     provides="$provides tool:rust" ;;
-            js)       provides="$provides tool:node" ;;
-            java)     provides="$provides tool:java" ;;
-            dart)     provides="$provides tool:dart" ;;
-            elixir)   provides="$provides tool:elixir" ;;
-          esac
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "$provides" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # THE GOOSE FUZZ GATE, PER COMMIT IN TWO PARTS (2026-11-24). The one
   # verify-leg (goose, fuzz) row built every wire-fuzz unit at -O2 and ran
@@ -1970,11 +1949,10 @@ jobs:
             . /opt/nova/sdk/env.sh
           fi
           make "verify-goose-fuzz-part-${{ matrix.half }}"
-      - name: the skip ledger — every skip this row's go test recorded, by reason
+      - name: the test record — this row's go test, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # THE CONFORMANCE ROWS: every row file of every selected leg's rows
   # directory (make/conformance-rows.mk, tools/conformancerows), held to the
@@ -2155,11 +2133,10 @@ jobs:
           fi
           : "${ELIXIR_AGREEMENT_ARTIFACTS:?missing agreement artifact directory}"
           make verify-elixir-conformance BEAM_PATH="$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")"
-      - name: the skip ledger — every skip this row's go test recorded, by reason
+      - name: the test record — this row's go test, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh tool:elixir" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # The producer builds the Dart driver and runs the selected packet checks.
   # The consumer runs the full claims, with input accounting when selected.
@@ -2211,11 +2188,10 @@ jobs:
           compression-level: 0
           retention-days: 1
           overwrite: true
-      - name: the skip ledger
+      - name: the test record, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   input-family-dart-conformance:
     needs: [plan, verify-dart-conformance]
@@ -2271,11 +2247,10 @@ jobs:
           vars=(DART=dart "VERIFY_JFLAG=-j4 -o build/conformance-dart")
           "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg dart -check-extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg dart -canary wrong "${vars[@]}"
-      - name: the skip ledger
+      - name: the test record, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # Build the native executables separately from the I/O-accounted runs.
   # The C++ build used to spend ~36 s of this job's two-minute budget building
@@ -2322,11 +2297,10 @@ jobs:
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
           make "verify-cpp-conformance-${{ matrix.part }}"
-      - name: the skip ledger
+      - name: the test record, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh tool:c++" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # THE DART FUZZ GATE ON THE SAME-RUN DART BUILD (2026-11-24). As the
   # verify-leg row (dart, fuzz) it ran 83-120 s: run 45428504681 spent 31 s
@@ -2379,11 +2353,10 @@ jobs:
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
           python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
           make -j"$(nproc)" -o build/conformance-dart _verify-dart-fuzz DART=dart
-      - name: the skip ledger
+      - name: the test record, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   build-cpp-conformance-account:
     needs: [plan, block-gate]
@@ -2643,25 +2616,11 @@ jobs:
       # refuses without it), so a test that skips because that toolchain is
       # missing is red here: "no Elixir" in the Elixir row. A row whose
       # target runs no go test has no record and says so.
-      - name: the skip ledger — every skip this row's go test recorded, by reason
+      - name: the test record — this row's go test, where any skip is red
         if: always()
-        env:
-          LEG: ${{ matrix.leg }}
         run: |
           set -euo pipefail
-          provides="platform tool:make tool:git tool:sh"
-          case "$LEG" in
-            cpp)      provides="$provides tool:c++" ;;
-            c)        provides="$provides tool:cc" ;;
-            cs|unity) provides="$provides tool:dotnet" ;;
-            rust)     provides="$provides tool:rust" ;;
-            js)       provides="$provides tool:node" ;;
-            java)     provides="$provides tool:java" ;;
-            dart)     provides="$provides tool:dart" ;;
-            elixir)   provides="$provides tool:elixir" ;;
-          esac
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "$provides" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # THE SHARDED CORPUS, HELD WHOLE (2026-11-24). A leg whose corpus account
   # passes the two-minute cap in one row (Squirrel: 104-121 s, cut at the cap
@@ -2767,11 +2726,10 @@ jobs:
           vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")" VERIFY_JOBS=4)
           "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg elixir -check-extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg elixir -canary wrong "${vars[@]}"
-      - name: the skip ledger — every skip this row's go test recorded, by reason
+      - name: the test record — this row's go test, where any skip is red
         if: always()
         run: |
-          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
-            -provides "platform tool:make tool:git tool:sh tool:elixir" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 "$PGROUP_GO_TEST_JSON"
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
   # step in ci-full.yml). The committed tables goldens must equal a fresh
@@ -2824,7 +2782,7 @@ jobs:
           retention-days: 1
           overwrite: true
 
-  # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one SCHEMA_SLOW test this lane
+  # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one formerly slow-gated test this lane
   # runs, for a diff plan's newleg rule selects (THE NEW-LEG SCAFFOLD in
   # `pick`): `schema new-leg zig` into a scratch tree, then the scaffold's own
   # fixture test as a module at the scaffold's import path. It builds the CLI
@@ -2857,13 +2815,10 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/go-test-json"
           echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
-      - name: the new-leg scaffold's fixture passes (SCHEMA_SLOW)
-        env:
-          SCHEMA_SLOW: '1'
+      - name: the new-leg scaffold's fixture passes
         run: go test -count=1 ./cmd/schema -run '^TestNewLegZigWritesSkeletonAndFixturePasses$'
-      # the job sets SCHEMA_SLOW and has go, so a skip for either is red: the
-      # one test it runs must have run
-      - name: the skip ledger — every skip this job's go test recorded, by reason
+      # a skip is red: the one test it runs must have run
+      - name: the test record — this job's go test, where any skip is red
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
@@ -2871,15 +2826,14 @@ jobs:
           set -euo pipefail
           require=""
           if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
-          go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
-            -provides "slow tool:go" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 $require "$PGROUP_GO_TEST_JSON"
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
   # median and lives in ci-full.yml; this job runs the packages `plan` picked,
-  # which for a single-leg diff is one or two of them. The corpus-reading
-  # suites behave exactly as they do today: without build/fixedform-corpus and
-  # without SCHEMA_REQUIRE_CORPUS=1 they skip themselves, and the leg gates
-  # below are where they are made to run.
+  # which for a single-leg diff is one or two of them. Nothing skips: a
+  # corpus-reading suite without build/fixedform-corpus fails by name, and a
+  # nightly-tier test is left out at the root (tools/gotestselect), never by
+  # the test itself.
   #
   # TestFixedForm* IS DIFFERENT (schema#1376). Those tests shell out through
   # runGenerated and skip without SCHEMA_SLOW; the go leg-gate that runs
@@ -3092,22 +3046,14 @@ jobs:
         env:
           PACKAGES: ${{ matrix.packages }}
           RUN: ${{ matrix.run }}
-          SKIP: ${{ matrix.skip }}
           BROAD: ${{ needs.plan.outputs.broad }}
         run: |
           set -euo pipefail
-          echo "packages: $PACKAGES${RUN:+ -run $RUN}${SKIP:+ -skip $SKIP}"
-          short=""
-          if [ "$BROAD" = yes ]; then
-            # a broad diff's own gate is the full suite in ci-full.yml; here it
-            # is bounded so the lane keeps its budget, and the short run still
-            # catches the ordinary mistake in minutes rather than at merge
-            echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
-            short=-short
-          fi
-          # an empty -run selects every test and an empty -skip skips none
+          echo "packages: $PACKAGES${RUN:+ -run $RUN}"
+          # no -short: nothing reads testing.Short, so it would select nothing;
+          # which tests run is chosen at the root. An empty -run selects every test
           # shellcheck disable=SC2086
-          go test $short -timeout 25m $PACKAGES -run "$RUN" -skip "$SKIP"
+          go test -timeout 25m $PACKAGES -run "$RUN"
           case " $PACKAGES " in
             *" ./test/conformance/goose/wirefuzzdispatch "*)
               go test -race -count=1 ./test/conformance/goose/wirefuzzdispatch
@@ -3148,35 +3094,27 @@ jobs:
           esac
 
       # A SKIP NAMES A REASON, AND THIS ROW COUNTS ITS SKIPS. A package row
-      # runs without SCHEMA_SLOW, so the slow gate's skips are what it expects
+      # runs without the rule that nothing skips, so the slow gate's skips are what it expects
       # and the ledger lists them by count; what it does not accept is a skip
       # with no reason, a reason the ledger does not name, and a skip for
       # something this row has: make, git, sh, a Linux host, and (off a broad
       # diff) a run without -short. A make row runs its tests through
-      # test/slowgate/proof with SCHEMA_SLOW=1 and the sibling runtimes
+      # test/slowgate/proof with the rule that nothing skips and the sibling runtimes
       # cloned above, so a slow-gate skip or a missing sibling is red there;
       # tables-go-fixedform also stages the fixed corpus, so a corpus skip is.
-      - name: the skip ledger — every skip this row's go test recorded, by reason
+      - name: the test record — this row's go test, where any skip is red
         if: always()
         env:
           JOB_STATUS: ${{ job.status }}
           PACKAGES: ${{ matrix.packages }}
-          TARGET: ${{ matrix.make }}
-          BROAD: ${{ needs.plan.outputs.broad }}
         run: |
           set -euo pipefail
-          provides="platform tool:make tool:git tool:sh"
           require=""
           if [ -n "$PACKAGES" ]; then
-            if [ "$BROAD" != yes ]; then provides="$provides short"; fi
             # a package row always runs go test: no record is a recorder that did not record
             if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
-          else
-            provides="$provides short slow sibling"
-            if [ "$TARGET" = tables-go-fixedform ]; then provides="$provides corpus"; fi
           fi
-          go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
-            -provides "$provides" "$PGROUP_GO_TEST_JSON"
+          go run ./tools/gotestreport -slowest 0 $require "$PGROUP_GO_TEST_JSON"
 
   # THE PINS GATE (the `pins` job of ci-full.yml, on the pull request). Every
   # committed pin is REWRITTEN from its generator and `testdata/` is diffed
@@ -3415,7 +3353,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ["1/64", "2/64", "3/64", "4/64", "5/64", "6/64", "7/64", "8/64", "9/64", "10/64", "11/64", "12/64", "13/64", "14/64", "15/64", "16/64", "17/64", "18/64", "19/64", "20/64", "21/64", "22/64", "23/64", "24/64", "25/64", "26/64", "27/64", "28/64", "29/64", "30/64", "31/64", "32/64", "33/64", "34/64", "35/64", "36/64", "37/64", "38/64", "39/64", "40/64", "41/64", "42/64", "43/64", "44/64", "45/64", "46/64", "47/64", "48/64", "49/64", "50/64", "51/64", "52/64", "53/64", "54/64", "55/64", "56/64", "57/64", "58/64", "59/64", "60/64", "61/64", "62/64", "63/64", "64/64"]
+        shard: ["1/59", "2/59", "3/59", "4/59", "5/59", "6/59", "7/59", "8/59", "9/59", "10/59", "11/59", "12/59", "13/59", "14/59", "15/59", "16/59", "17/59", "18/59", "19/59", "20/59", "21/59", "22/59", "23/59", "24/59", "25/59", "26/59", "27/59", "28/59", "29/59", "30/59", "31/59", "32/59", "33/59", "34/59", "35/59", "36/59", "37/59", "38/59", "39/59", "40/59", "41/59", "42/59", "43/59", "44/59", "45/59", "46/59", "47/59", "48/59", "49/59", "50/59", "51/59", "52/59", "53/59", "54/59", "55/59", "56/59", "57/59", "58/59", "59/59"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main

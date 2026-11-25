@@ -523,7 +523,6 @@ func TestHashCheckedLast(t *testing.T) {
 // entry handed to the reader as its lock, and §1.1's seven rules moved to the
 // LOCK's validation of what it records.
 func TestFixedFormPlanPath(t *testing.T) {
-	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
 
 	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
 	if err != nil {
@@ -726,7 +725,6 @@ func TestPlanPath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "plan_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = testDir
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -1273,7 +1271,6 @@ func TestHostileByteSweep(t *testing.T) {
 // is both the guard's arm ordinal and the text flavour, the compiled read
 // drops the string silently.
 func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
-	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
 	dir := t.TempDir()
 	runtime := slowtest.SerializeGo(t, "../../../")
 	writer := `package tblw
@@ -1360,7 +1357,6 @@ func TestArgLane(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(testDir, "arg_lane_test.go"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = testDir
 	out, err := cmd.CombinedOutput()

@@ -10,8 +10,8 @@ CPP_TOOL_MESSAGE_NEGATIVE := build/conformance-cpp-tool-message-negative
 .PHONY: conformance-cpp-tool-message
 conformance-cpp-tool-message: build/conformance-harness build/conformance-cpp build/schema_test_cook
 	@rm -rf $(CPP_TOOL_MESSAGE) && mkdir -p $(CPP_TOOL_MESSAGE)
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
-	./build/conformance-harness run --only cpp --work $(CPP_TOOL_MESSAGE)/work > $(CPP_TOOL_MESSAGE)/log 2>&1 || true
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+	./build/conformance-harness run --only cpp --work $(CPP_TOOL_MESSAGE)/work > $(CPP_TOOL_MESSAGE)/log 2>&1; echo "exited $$? (the verdict is read from $(CPP_TOOL_MESSAGE)/log below)"
 	@for surface in wire json-write; do \
 		grep -Eq "^$$surface +pass ([0-9]+)/\1 *$$" $(CPP_TOOL_MESSAGE)/log || \
 			{ echo "FAILED: conformance-cpp-tool-message: the C++ $$surface surface does not read every case"; \
@@ -50,9 +50,9 @@ conformance-cpp-tool-message-negative-control: build/conformance-harness build/c
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CPP_TOOL_MESSAGE_NEGATIVE)" > $(CPP_TOOL_MESSAGE_NEGATIVE)/driver
 	@chmod +x $(CPP_TOOL_MESSAGE_NEGATIVE)/driver
 	@printf 'cpp %s/driver\n' "$(CPP_TOOL_MESSAGE_NEGATIVE)" > $(CPP_TOOL_MESSAGE_NEGATIVE)/drivers.txt
-# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
+# the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --only cpp --drivers $(CPP_TOOL_MESSAGE_NEGATIVE)/drivers.txt \
-		--work $(CPP_TOOL_MESSAGE_NEGATIVE)/work > $(CPP_TOOL_MESSAGE_NEGATIVE)/log 2>&1 || true
+		--work $(CPP_TOOL_MESSAGE_NEGATIVE)/work > $(CPP_TOOL_MESSAGE_NEGATIVE)/log 2>&1; echo "exited $$? (the verdict is read from $(CPP_TOOL_MESSAGE_NEGATIVE)/log below)"
 	@if grep -Eq '^wire +pass ([0-9]+)/\1 *$$' $(CPP_TOOL_MESSAGE_NEGATIVE)/log; then \
 		echo "NEGATIVE CONTROL FAILED: the planted nested-union fault left the C++ wire surface green"; \
 		cat $(CPP_TOOL_MESSAGE_NEGATIVE)/log; exit 1; \

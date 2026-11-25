@@ -87,7 +87,7 @@ func TestGoldenRewriteGateOverAFixtureTree(t *testing.T) {
 		"a/a_test.go":          "package a\nfunc f() bool { return os.Getenv(\"SCHEMA_UPDATE_X_GOLDEN\") == \"1\" }\n",
 		"a/b_test.go":          "package a\nfunc g() { _, _ = os.LookupEnv(\"FRAMING_WRITE\") }\n",
 		"a/c_test.go":          "package a\nfunc h(t T) bool { return slowtest.Rewriting(t, \"FRAMING_WRITE\") }\n",
-		"a/d_test.go":          "package a\nfunc k() string { return os.Getenv(\"SCHEMA_SLOW\") }\n",
+		"a/d_test.go":          "package a\nfunc k() string { return os.Getenv(\"SCHEMA_SEED\") }\n",
 		"a/testdata/e_test.go": "package e\nvar _ = os.Getenv(\"SCHEMA_UPDATE_Y\")\n",
 		"m/go.mod":             "module m\n",
 		"m/m_test.go":          "package m\nvar _ = os.Getenv(\"CARDS_UPDATE_FIXTURE\")\n",

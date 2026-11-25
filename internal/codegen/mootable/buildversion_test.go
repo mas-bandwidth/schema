@@ -34,7 +34,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -183,7 +182,6 @@ func buildVersionGate(t *testing.T, mutate func(t *testing.T, files map[string][
 }
 
 func TestMooBuildVersion(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted block and cook runtimes)")
 	t.Parallel()
 	allBuildVersionGate := buildVersionGate(t, nil)
 	for clause, whys := range allBuildVersionGate {
@@ -202,7 +200,6 @@ func TestMooBuildVersion(t *testing.T) {
 //   - cook-write: the writer stamps the version's halves swapped;
 //   - cook-check: the cook open skips the version word.
 func TestMooBuildVersionNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted block and cook runtimes)")
 	t.Parallel()
 	plant := func(file, from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {

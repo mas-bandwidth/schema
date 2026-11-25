@@ -44,7 +44,7 @@ build/verify-reuse/corpus/.stamp: build/verify-reuse-bin bin/schema
 	@mkdir -p build/verify-reuse
 	@lockdir="build/verify-reuse/.corpus.lock"; \
 	while ! mkdir "$$lockdir" 2>/dev/null; do sleep 1; done; \
-	trap 'rmdir "$$lockdir" 2>/dev/null || true' EXIT INT TERM HUP; \
+	trap '[ ! -d "$$lockdir" ] || rmdir "$$lockdir"' EXIT INT TERM HUP; \
 	status=0; current=1; \
 	for p in $^; do test "$@" -nt "$$p" || current=0; done; \
 	if test "$$current" -eq 0; then \
@@ -55,7 +55,7 @@ build/verify-reuse/corpus/.stamp: build/verify-reuse-bin bin/schema
 			--work build/verify-reuse/corpus-gen \
 			--corpus build/verify-reuse/corpus; then touch "$@"; else status=$$?; fi; \
 	fi; \
-	rmdir "$$lockdir" 2>/dev/null || true; \
+	[ ! -d "$$lockdir" ] || rmdir "$$lockdir"; \
 	trap - EXIT INT TERM HUP; \
 	exit $$status
 

@@ -17,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -324,7 +323,6 @@ func (r luauEvoRunner) HasFixedRoot(t *testing.T, u *ir.Unit, root string) bool 
 
 func TestLuauFixedProofGroupE(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	fixedproof.RunEvolutionRows(t, "../../..", luauEvoRunner{}, "retirement", "retired-runtime", "optional-values", "field-evolution", "live-extents", "writing", "union-guards", "plan-execution", "interoperability")
 }
 
@@ -411,7 +409,6 @@ func luauEvoFileBodyControl(t *testing.T, row string, good, bad []byte, proof fu
 // proof that stopped exercising it would let these controls fail.
 func TestLuauFixedProofGroupENegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	const repo = "../../.."
 	r := luauEvoRunner{}
 

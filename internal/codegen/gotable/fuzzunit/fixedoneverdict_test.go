@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -20,7 +19,6 @@ import (
 func TestGeneratedFixedOneVerdictEveryByte(t *testing.T) {
 	// every value of every byte of every fixed root: 126 s alone on a loaded
 	// bench, past what a two-minute fast-lane job can hold, so it runs nightly
-	slowtest.Gate(t, "every byte value of every fixed root")
 	t.Parallel()
 	c := compiler.New()
 	paths, err := compiler.GatherPaths([]string{"../../../../tables/examples"})

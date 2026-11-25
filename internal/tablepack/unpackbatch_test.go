@@ -145,7 +145,7 @@ func TestUnpackBatchRefusesOverlappingDestinations(t *testing.T) {
 		{"a symlinked spelling of the directory", func(t *testing.T, work string) (string, string) {
 			put(t, filepath.Join(work, "out", "keep.txt"), "keep")
 			if err := os.Symlink("out", filepath.Join(work, "alias")); err != nil {
-				t.Skipf("symlinks unavailable: %v", err)
+				t.Fatalf("symlinks unavailable: %v", err)
 			}
 			return filepath.Join(work, "out"), filepath.Join(work, "alias")
 		}},
@@ -209,7 +209,7 @@ func TestUnpackBatchRefusesOverlappingDestinations(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := os.Lstat(y); err == nil {
-			t.Skip("this volume takes Out and out for one directory, so they are one destination here: the control runs on Linux")
+			t.Fatal("this volume takes Out and out for one directory, so the control has no two destinations here")
 		}
 		if err := os.Remove(x); err != nil {
 			t.Fatal(err)

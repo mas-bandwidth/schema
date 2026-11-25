@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // fixedByteArraysSchema carries a uint8 array of each shape the fixed form
@@ -116,7 +114,6 @@ func fixedByteArraysRun(t *testing.T, from, to string) string {
 // §7.6's cook reads through this read: port/luau/vt/cook-write).
 func TestLuauFixedByteArrays(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	if out := fixedByteArraysRun(t, "", ""); out != "ok" {
 		t.Fatalf("fixed byte arrays:\n%s", out)
 	}
@@ -126,7 +123,6 @@ func TestLuauFixedByteArrays(t *testing.T) {
 // again, the shape the read had before, and requires the row red.
 func TestLuauFixedByteArraysNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	if out := fixedByteArraysRun(t, `	if typeof(def) == "buffer" then`, `	if false then`); out == "ok" {
 		t.Fatal("the planted defect left the row green")
 	}

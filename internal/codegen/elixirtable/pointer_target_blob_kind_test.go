@@ -20,7 +20,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -188,7 +187,6 @@ func plantRootClosureNaming(t *testing.T, files map[string][]byte) map[string][]
 
 func TestElixirPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir blob-kind pointer targets outside the root's closure, read and written")
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -300,7 +298,6 @@ IO.puts("SAVE|%d|" <> Base.encode16(wire, case: :lower) <> "|" <> show.(T.load(%
 
 func TestElixirPointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir pointer target types the reader declares outside the root's closure")
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)

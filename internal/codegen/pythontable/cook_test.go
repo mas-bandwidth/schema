@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -102,7 +101,6 @@ table Root
 // tables and *T pointers, so the forged frames below exercise those shapes.
 func TestPythonCook(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict analyzer")
 	t.Run("write", testPythonCookWrite)
 	t.Run("open", testPythonCookOpen)
 	t.Run("negative-controls", testPythonCookNegativeControls)

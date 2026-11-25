@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestRead(t *testing.T) {
@@ -172,7 +170,6 @@ var deprecatedStored = map[string]struct {
 // exactly as the writer stored them (`expect=` is `values=`).
 func TestDeprecatedFieldVectors(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ reference's corpus (make tables-fixedform-corpus)")
 	corpus := builtCorpus(t)
 	lines := manifestLines(t, corpus)
 	for _, vec := range DeprecatedField {
@@ -222,8 +219,7 @@ func TestDeprecatedFieldVectors(t *testing.T) {
 }
 
 // builtCorpus is the C++ reference's corpus, built by make
-// tables-fixedform-corpus. Missing, it fails by name when SCHEMA_REQUIRE_CORPUS
-// is set, so no gate goes green by skipping.
+// tables-fixedform-corpus. Missing, it fails by name.
 func builtCorpus(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.Abs(filepath.Join("..", "..", "build", "fixedform-corpus"))
@@ -231,10 +227,7 @@ func builtCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's corpus is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's corpus is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's corpus is not built in %s (make tables-fixedform-corpus): %v", dir, err)
 	}
 	return dir
 }
@@ -271,7 +264,6 @@ func field(line, key string) string {
 }
 func TestDeadBytesVectors(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the fixed-form corpus")
 	corpus := fixedCorpus(t)
 	files := map[string]bool{}
 	names := map[string]bool{}
@@ -303,10 +295,7 @@ func fixedCorpus(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join("..", "..", "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the fixed-form corpus is not built in %s: %v", dir, err)
-		}
-		t.Skip("the fixed-form corpus is not built: make tables-fixedform-corpus")
+		t.Fatalf("the fixed-form corpus is not built in %s (make tables-fixedform-corpus): %v", dir, err)
 	}
 	return dir
 }

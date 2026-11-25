@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -159,7 +158,6 @@ func cppMessageStrictRun(t *testing.T, undermine func(map[string][]byte)) ([]byt
 }
 
 func TestCppMessageFormStrict(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	out, err := cppMessageStrictRun(t, nil)
 	if err != nil {
@@ -173,7 +171,6 @@ func TestCppMessageFormStrict(t *testing.T) {
 // same probe to go red. The probe's out_of_range row is exactly the read that
 // a tolerant body accepts.
 func TestCppMessageFormStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	const guard = "if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)"
 	undermine := func(files map[string][]byte) {

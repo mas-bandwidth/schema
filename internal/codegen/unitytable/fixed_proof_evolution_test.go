@@ -10,13 +10,11 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestUnityFixedProofEvolution(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet and the C++ fixed-form corpus")
 	repo := filepath.Join("..", "..", "..")
 	fixedproof.RunEvolutionRows(t, repo, unityFixedProofRunner{},
 		"fixed-file-roundtrip", "file-envelope", "batch-capacity", "plan-selection",

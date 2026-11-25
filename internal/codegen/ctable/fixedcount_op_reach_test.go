@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -41,7 +40,6 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 
 func TestFixedCountOpReachCoversItsHeaderASan(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the c compiler (the leg's own toolchain)")
 
 	reader := unitFrom(t, "package probe\n\nfixed table Root\n{\n    arr [..1]uint8\n}\n")
 	endpoint := unitFrom(t, "package probe\n\nfixed table Root\n{\n    arr [1]uint8\n}\n")

@@ -62,13 +62,6 @@ var shortStreamCases = []shortStreamCase{
 	},
 }
 
-// openGate is a testing.TB whose Skipf does not skip: this functional test
-// runs the value's real size against a short stream in the default pass too,
-// so the compiler's slow-half gate does not turn it into a pass without a run.
-type openGate struct{ testing.TB }
-
-func (*openGate) Skipf(string, ...any) {}
-
 // shortStreamProgram is the Goose probe for one case: it writes the value into
 // a roomy stream for the reference bytes, into a stream of exactly the encoded
 // byte size, and into a stream one byte short of it, then prints what each
@@ -186,7 +179,7 @@ func runShortStreamProgram(t *testing.T, files map[string][]byte, program string
 		args = append(args, "--debug")
 	}
 	args = append(args, "main.goose")
-	cmd := gooserun.Command(&openGate{TB: t}, goose, args...)
+	cmd := gooserun.Command(t, goose, args...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -313,7 +306,7 @@ func TestGooseWriteIntoShortStreamRefuses(t *testing.T) {
 		}
 		outDir := t.TempDir()
 		writeAll(t, outDir, wideFiles)
-		cmd := gooserun.Command(&openGate{TB: t}, goose, "check", "Wide.goose")
+		cmd := gooserun.Command(t, goose, "check", "Wide.goose")
 		cmd.Dir = outDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("goose check Wide.goose failed: %v\n%s", err, out)

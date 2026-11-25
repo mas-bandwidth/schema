@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -144,7 +143,6 @@ func cppCountedMinRun(t *testing.T, undermine func(map[string][]byte)) map[strin
 }
 
 func TestCppCountedMinElementsElideAtBornState(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	want := cppCountedMinEngine(t)
 	got := cppCountedMinRun(t, nil)
@@ -156,7 +154,6 @@ func TestCppCountedMinElementsElideAtBornState(t *testing.T) {
 }
 
 func TestCppCountedMinElementsElideNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	want := cppCountedMinEngine(t)
 	// THE WRITER'S judgement (countedBirthRides), which the save and the

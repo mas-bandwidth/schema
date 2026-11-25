@@ -10,7 +10,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -124,7 +123,6 @@ func javaVariableUnitFixtures(t *testing.T, schemaPath string, fixtures []javaVa
 }
 
 func runJavaVariableFixturesForUnit(t *testing.T, u *ir.Unit, fixtures []javaVariableFixture) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := Generate(u)
@@ -307,7 +305,6 @@ fixed table BenchFixed
 }
 
 func testFixedClassDefaultsAndElision(t *testing.T, repo string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
@@ -440,7 +437,6 @@ public final class DefaultDriver {
 }
 
 func testFixedClassCrossGenerationReports(t *testing.T, repo string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

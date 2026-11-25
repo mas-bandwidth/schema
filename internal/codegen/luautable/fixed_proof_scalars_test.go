@@ -23,7 +23,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -370,7 +369,6 @@ func luauFixedCase(t *testing.T, id string) fixedproof.RowCase {
 // reference's bytes, and the reference loads the leg's file back to its own.
 func TestLuauFixedProofGroupA(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	runner := &luauFixedRunner{}
 	for _, id := range luauFixedGroupARows {
 		t.Run(id, func(t *testing.T) {
@@ -411,7 +409,6 @@ func TestLuauFixedProofGroupA(t *testing.T) {
 // last body byte.
 func TestLuauFixedProofGroupANegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	runner := &luauFixedRunner{}
 	for _, id := range luauFixedGroupARows {
 		t.Run(id, func(t *testing.T) {

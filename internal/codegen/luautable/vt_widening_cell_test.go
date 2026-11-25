@@ -19,7 +19,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -127,7 +126,6 @@ func refuseListScalarWiden(t *testing.T, u *ir.Unit) {
 
 func TestLuauVtWideningCell(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (it runs the emitted table runtime)")
 
 	dir, u := genListdemoUnit(t)
 	refuseListScalarWiden(t, u)
@@ -151,7 +149,6 @@ func TestLuauVtWideningCell(t *testing.T) {
 
 func TestLuauVtWideningCellNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (it runs the emitted table runtime)")
 
 	dir, _ := genListdemoUnit(t)
 	src := readEmittedRuntime(t, dir)

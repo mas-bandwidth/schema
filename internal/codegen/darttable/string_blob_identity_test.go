@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -15,7 +14,6 @@ import (
 )
 
 func TestDartDecodedStringBlobIdentity(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Child { caption *string }
 table Leaf { caption *string }
@@ -152,7 +150,6 @@ table Root { a *string
 }
 
 func TestDartAuthoredStringBlobOwnership(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Root { a *string
  b *string }

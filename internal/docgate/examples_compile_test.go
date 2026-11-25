@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // exampleTool is how the slow gate holds one target's compile examples.
@@ -118,7 +117,6 @@ func (g *exampleGenerated) dir(t *testing.T, root, base, unit, lang string) (str
 // SCHEMA_DOCGATE_PAGES, a comma-separated list of repository-relative pages,
 // narrows a run to those pages while a page is being worked on.
 func TestExamplesCompile(t *testing.T) {
-	slowtest.Gate(t, "the target compilers (it compiles the pages' code examples)")
 	root, err := FindRoot(".")
 	if err != nil {
 		t.Fatal(err)

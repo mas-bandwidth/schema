@@ -4,13 +4,10 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestJavaJsonWideNumberPositions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK")
 	const schema = `package probe
  enum Key { A, B }
  union Choice { arm int64 }

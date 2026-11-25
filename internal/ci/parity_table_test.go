@@ -18,7 +18,7 @@ import (
 func TestTheParityTableIsCovered(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	testinputs.Files(t, "test/testguard/parity.sh", "make/wire-fuzz-release.mk", "test/conformance/wire-fuzz-owed.txt")
+	testinputs.Files(t, "test/testguard/parity.sh", "make/wire-fuzz-release.mk")
 	list := func(what string) []string {
 		// the script lists internal/codegen/*table and test/conformance/<leg>
 		// as directories; the files it reads are registered above

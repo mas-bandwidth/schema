@@ -14,7 +14,7 @@ import (
 // exactly 4096, which the read accepts. The unit is tablewire.IdCapSchema:
 // 4095, 4096 and 4097 ids.
 //
-// A FUNCTIONAL TEST: it runs elixir, behind slowtest.Gate.
+// A FUNCTIONAL TEST: it runs elixir.
 const idCapElixirProbe = `
 defmodule IdCapProbe do
   alias Idcap.Table, as: V

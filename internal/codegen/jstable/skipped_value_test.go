@@ -14,8 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type skippedValueRow struct {
@@ -77,7 +75,6 @@ func skippedValueVectors(t *testing.T, form string) map[string][]byte {
 
 func TestJsSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated modules)")
 
 	reader := loadUnitPaths(t, []string{repoPath("test/skipped-value/reader")})
 

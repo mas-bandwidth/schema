@@ -23,7 +23,6 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -180,7 +179,6 @@ func dartJsonFlagsNameOnceOracle(t *testing.T, rows []dartJsonFlagsNameOnceRow) 
 
 func TestDartJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 
 	rows := dartJsonFlagsNameOnceRows(t)
 	want := dartJsonFlagsNameOnceOracle(t, rows)
@@ -194,7 +192,6 @@ func TestDartJsonFlagsNameOnce(t *testing.T) {
 
 func TestDartJsonFlagsNameOnceNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 
 	rows := dartJsonFlagsNameOnceRows(t)
 	files, wire := dartJsonFlagsNameOnceWire(t, rows[0].unit, rows[0].root)

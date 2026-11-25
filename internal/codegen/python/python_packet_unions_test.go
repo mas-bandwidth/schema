@@ -269,7 +269,6 @@ var unionOracle struct {
 // and long reads added (their verdicts read by Go as well).
 func goUnionOracle(t *testing.T) string {
 	t.Helper()
-	slowtest.Gate(t, "the go toolchain over the generated Go reference")
 	root := repoRoot(t)
 	runtime := slowtest.SerializeGo(t, root)
 	unionOracle.once.Do(func() {

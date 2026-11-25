@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -131,10 +130,9 @@ func TestCMessageCeilingWriteAssert(t *testing.T) {
 // masking the value onto the wire.
 func TestCMessageCeilingWriteAssertCompiled(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("no C compiler on PATH")
+		t.Fatal("no C compiler on PATH")
 	}
 	u := unitFrom(t, cMessageCeilingSchema)
 	files, err := cgen.Generate(u)

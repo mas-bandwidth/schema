@@ -1,7 +1,6 @@
 package cstable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"testing"
 )
 
@@ -13,7 +12,6 @@ import (
 // row handed in, poisoned first, is back at its declared defaults
 // (SPEC-TABLES §6.5) on both of two loads.
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 	corpus := csFixedCorpusFile(t, "many_unknown_census.bin")
 	csRunOneVersionProbe(t, corpus, csVersionProbe{
 		name:   "unknown_census_many/new_reads_old",

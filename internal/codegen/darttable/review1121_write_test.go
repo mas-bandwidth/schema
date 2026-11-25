@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -143,7 +142,6 @@ func runDartWriteContract(t *testing.T, asserts bool) map[string]string {
 
 func TestDartWriteContractDebug(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart (it runs the generated variable save with and without asserts)")
 	debug := runDartWriteContract(t, true)
 	release := runDartWriteContract(t, false)
 	// Debug: the assert. A required field is an assert leg like any other.

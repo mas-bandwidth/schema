@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -965,8 +964,7 @@ fixed table CheckedHost | integrity = "crc32c" {
 
 // lobsterFixedCorpus is the C++ reference's byte oracle under the same
 // contract as fixedform_test.go's fixedCorpusDir (and ci-fast.yml's go-test-touched job): a tree
-// that never built it skips by name, SCHEMA_REQUIRE_CORPUS (set by `make
-// test-lobster` after it builds the corpus) makes its absence a failure, and
+// that never built it fails by name, and
 // a corpus that is present but lacks the evolution files is always a failure
 // (a stale oracle, never a quiet skip).
 func lobsterFixedCorpus(t *testing.T) string {
@@ -976,10 +974,7 @@ func lobsterFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if slowtest.CorpusRequired() {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
-		}
-		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
+		t.Fatalf("the reference's byte oracle is not in %s: %v", dir, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
 		t.Fatalf("the reference's byte oracle in %s has no evolution files: rebuild it with make tables-fixedform-corpus (%v)", dir, err)

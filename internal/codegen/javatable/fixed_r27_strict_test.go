@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -28,7 +26,6 @@ import (
 
 func checkJavaFixedR27HostileCorpus(t *testing.T, skipWriterBound bool, mutate func(pkg, name, src string) string) error {
 	t.Helper()
-	slowtest.Gate(t, "the JDK (javac and java)")
 	t18RequireJava(t)
 	corpus := corpusDir(t)
 	byFile := map[string]t18Row{}

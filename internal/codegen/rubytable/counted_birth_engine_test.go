@@ -16,7 +16,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rubytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -58,7 +57,6 @@ func countedBirthCases() []countedBirthCase {
 }
 
 func TestRubyCountedArrayBornAtItsMinimumFloat(t *testing.T) {
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	t.Parallel()
 	unit := fixedproof.ParseCheckUnit(t, countedBirthSchema)
 	model := tabletext.NewModel(unit)
