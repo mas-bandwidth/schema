@@ -284,8 +284,11 @@ func TestEveryMakeInTheCheckoutHoldsIt(t *testing.T) {
 	if err := b.run(context.Background(), []string{"true"}); err != nil {
 		t.Fatal(err)
 	}
-	// the harness speaks no protocol here; its hold is what is counted
-	_, _ = runHarness(context.Background(), []string{"true"}, nil, io.Discard)
+	// a harness asked for nothing that reports nothing; its hold is what is
+	// counted
+	if _, err := runHarness(context.Background(), []string{"true"}, nil, io.Discard); err != nil {
+		t.Fatal(err)
+	}
 	if got := checkoutHolds.Load() - before; got != 3 {
 		t.Fatalf("%d holds of the checkout, want one for the make row, one for the build step and one for the harness", got)
 	}

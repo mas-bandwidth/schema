@@ -1,10 +1,10 @@
 package extract
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"maps"
 	"slices"
 	"sort"
 	"strings"
