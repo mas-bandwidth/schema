@@ -195,10 +195,10 @@ func noSkips(root string) ([]string, error) {
 var (
 	// a condition that keeps a job off fork pull requests: the head
 	// repository is this one, or the head is not a fork.
-	forkOff = regexp.MustCompile(`head\.repo\.full_name\s*==\s*github\.repository\b|\bgithub\.repository\s*==\s*github\.event\.pull_request\.head\.repo\.full_name\b|!\s*github\.event\.pull_request\.head\.repo\.fork\b|head\.repo\.fork\s*(==\s*false|!=\s*true)\b|\b(false\s*==|true\s*!=)\s*github\.event\.pull_request\.head\.repo\.fork\b`)
+	forkOff = regexp.MustCompile(`head\.repo\.full_name\s*==\s*github\.repository\b|\bgithub\.repository\s*==\s*github\.event\.pull_request\.head\.repo\.full_name\b|head\.repo\.owner\.login\s*==\s*github\.repository_owner\b|\bgithub\.repository_owner\s*==\s*github\.event\.pull_request\.head\.repo\.owner\.login\b|head\.repo\.id\s*==\s*github\.event\.pull_request\.base\.repo\.id\b|base\.repo\.id\s*==\s*github\.event\.pull_request\.head\.repo\.id\b|!\s*github\.event\.pull_request\.head\.repo\.fork\b|head\.repo\.fork\s*(==\s*false|!=\s*true)\b|\b(false\s*==|true\s*!=)\s*github\.event\.pull_request\.head\.repo\.fork\b`)
 	// the fork lane's condition: the head repository is another one, or
 	// the head is a fork.
-	forkOn = regexp.MustCompile(`head\.repo\.full_name\s*!=\s*github\.repository\b|\bgithub\.repository\s*!=\s*github\.event\.pull_request\.head\.repo\.full_name\b|head\.repo\.fork\s*(==\s*true|!=\s*false)\b|\b(true\s*==|false\s*!=)\s*github\.event\.pull_request\.head\.repo\.fork\b`)
+	forkOn = regexp.MustCompile(`head\.repo\.full_name\s*!=\s*github\.repository\b|\bgithub\.repository\s*!=\s*github\.event\.pull_request\.head\.repo\.full_name\b|head\.repo\.owner\.login\s*!=\s*github\.repository_owner\b|\bgithub\.repository_owner\s*!=\s*github\.event\.pull_request\.head\.repo\.owner\.login\b|head\.repo\.id\s*!=\s*github\.event\.pull_request\.base\.repo\.id\b|base\.repo\.id\s*!=\s*github\.event\.pull_request\.head\.repo\.id\b|head\.repo\.fork\s*(==\s*true|!=\s*false)\b|\b(true\s*==|false\s*!=)\s*github\.event\.pull_request\.head\.repo\.fork\b`)
 	// the fork flag read on its own, true on a fork.
 	forkFlag = regexp.MustCompile(`github\.event\.pull_request\.head\.repo\.fork\b`)
 	// a workflow key that holds a condition, at a job or a step.
@@ -318,9 +318,15 @@ func onPullRequest(lines []string) bool {
 func forkKind(cond string) (off, on bool) {
 	off, on = forkOff.MatchString(cond), forkOn.MatchString(cond)
 	for _, ix := range forkFlag.FindAllStringIndex(cond, -1) {
-		before := strings.TrimRight(cond[:ix[0]], " ")
-		after := strings.TrimLeft(cond[ix[1]:], " ")
-		if !strings.HasSuffix(before, "!") && !strings.HasSuffix(before, "=") && !strings.HasPrefix(after, "=") && !strings.HasPrefix(after, "!=") {
+		// the flag compared (== false) is read by the patterns; on its own
+		// it is the lane, and negated (!flag, !(flag)) it keeps a job off
+		before := strings.TrimRight(cond[:ix[0]], " (")
+		after := strings.TrimLeft(cond[ix[1]:], " )")
+		switch {
+		case strings.HasSuffix(before, "=") || strings.HasPrefix(after, "=") || strings.HasPrefix(after, "!="):
+		case strings.HasSuffix(before, "!"):
+			off = true
+		default:
 			on = true
 		}
 	}
@@ -645,13 +651,11 @@ func noSkipsFile(path, rel string, probes *probeIndex) ([]string, error) {
 		}
 	}
 	if kind == "workflow" {
-		// a condition over more lines than one (a block scalar, a plain
-		// value run on): read whole, named at its if: when no one line of
-		// it was named for that rule
+		// a condition read whole, over however many lines it runs (a block
+		// scalar, a plain value run on) and with its trailing comment
+		// dropped: named at its if: when no one line of it was named for
+		// that rule
 		for _, c := range workflowConds(lines) {
-			if c.last == c.line {
-				continue
-			}
 			for _, r := range []struct {
 				rule string
 				re   *regexp.Regexp
@@ -1029,7 +1033,25 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 			streams = map[string]string{}
 		}
 		if fd, ok := decl.(*ast.FuncDecl); ok && fd.Body != nil {
-			noteNotices(namedValues(fd.Body), notices, streams)
+			// a name the function declares (a parameter, a local) is its own,
+			// and shadows the package's name
+			local := namedValues(fd.Body)
+			for _, fl := range []*ast.FieldList{fd.Recv, fd.Type.Params, fd.Type.Results} {
+				if fl == nil {
+					continue
+				}
+				for _, field := range fl.List {
+					for _, n := range field.Names {
+						delete(notices, n.Name)
+						delete(streams, n.Name)
+					}
+				}
+			}
+			for _, nv := range local {
+				delete(notices, nv.name)
+				delete(streams, nv.name)
+			}
+			noteNotices(local, notices, streams)
 		}
 		var stack []ast.Node
 		ast.Inspect(decl, func(n ast.Node) bool {
@@ -1936,6 +1958,15 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	{"d/c/w20_test.go", "package c\n\nimport (\n\t\"testing\"\n\n\t\"dup\"\n)\n\nfunc TestW20(t *testing.T) {\n\tif !dup.Have(\"cc\") {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
 	// a repository condition over three lines
 	{".github/workflows/cq.yml", "on: push\njobs:\n  a:\n    if: >-\n      github.repository\n      ==\n      'someone/else'\n    steps:\n      - run: make check\n", "repo-gate"},
+	// a notice name handed through a Sprint call
+	{"p/w21_test.go", "package p\n\nimport (\n\t\"fmt\"\n\t\"testing\"\n)\n\nfunc TestW21(t *testing.T) {\n\tt.Log(fmt.Sprint(whyW16))\n}\n", "go-skip-print"},
+	// a failure word that names no failure of this run, and a skip for a
+	// missing tool given as a count
+	{"tools/run10/main.go", "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"skipping the tests that fail on windows\")\n}\n", "go-skip-print"},
+	{"tools/run11/main.go", "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"lua not installed, skipped: 3 tests\")\n}\n", "go-skip-print"},
+	{"tools/run12/main.go", "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"2 tests skipped: no interpreter\")\n}\n", "go-skip-print"},
+	// a one-line condition with a trailing comment
+	{".github/workflows/cr.yml", "on: push\njobs:\n  a:\n    if: false # off for now\n    steps:\n      - run: make check\n", "if-false"},
 }
 
 // TestNoSkipMechanismIsPlanted plants one skip of each kind in a scratch tree
@@ -1991,6 +2022,10 @@ func TestNoSkipMechanismIsPlanted(t *testing.T) {
 		"d/c/go.mod": "module consumer\n\nrequire dup v0.0.0\n\nreplace dup => ../b // the local copy\n",
 		// counts, a refusal, and paths outside test code are no notice
 		"tools/ok/main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tfmt.Println(\"tests: 3 skipped\")\n\tfmt.Println(\"skipped: 3 tests\")\n\tfmt.Fprintln(os.Stderr, \"skipping the lua tests is refused: no interpreter fails the run\")\n\tfmt.Println(\"wrote test/skipped-value/gen: no tests\")\n}\n",
+		// a package constant holds a notice; a test's own name of the same
+		// spelling, and a parameter, hold none
+		"q/shadow.go":      "package q\n\nconst msg = \"skipped: no cc\"\n",
+		"q/shadow_test.go": "package q\n\nimport \"testing\"\n\nfunc say(t *testing.T, msg string) { t.Log(msg) }\n\nfunc TestShadow(t *testing.T) {\n\tmsg := \"ran fine\"\n\tt.Log(msg)\n\tsay(t, \"ran\")\n}\n",
 		// a nested module and its probe
 		"n/go.mod":     "module example.com/nested // the nested module\n",
 		"n/lib/lib.go": "package lib\n\nimport \"os/exec\"\n\nfunc Have(tool string) bool {\n\t_, err := exec.LookPath(tool)\n\treturn err == nil\n}\n",
@@ -2109,6 +2144,9 @@ func TestNoSkipNamesAMissingForkLane(t *testing.T) {
 		{name: "kept off by the fork flag", a: job("pull_request", "${{ !github.event.pull_request.head.repo.fork }}"), want: red},
 		{name: "kept off by the fork flag false", a: job("pull_request", "github.event.pull_request.head.repo.fork == false"), want: red},
 		{name: "kept off over lines", a: job("pull_request", ">-\n      github.event.pull_request.head.repo.full_name ==\n      github.repository"), want: red},
+		{name: "kept off by the fork flag in parentheses", a: job("pull_request", "${{ !(github.event.pull_request.head.repo.fork) }}"), want: red},
+		{name: "kept off by the owner", a: job("pull_request", "github.event.pull_request.head.repo.owner.login == github.repository_owner"), want: red},
+		{name: "lane by the owner", b: job("pull_request", "github.event.pull_request.head.repo.owner.login != github.repository_owner")},
 		{name: "lane", b: lane},
 		{name: "lane by the fork flag", b: job("pull_request", "${{ github.event.pull_request.head.repo.fork }}")},
 		{name: "lane over lines", b: job("[push, pull_request]", ">-\n      github.event.pull_request.head.repo.full_name\n      !=\n      github.repository")},
@@ -2286,10 +2324,11 @@ var (
 	skipsATest = regexp.MustCompile(`(?i)\b(tests?|cases?|checks?|suites?|gates?)\b.{0,40}\bskipp(ed|ing)\b|\bskipp(ed|ing)\b.{0,40}\b(tests?|cases?|checks?|suites?|gates?)\b`)
 	// a skip because a tool, an interpreter or a setting is not there.
 	skipsForMissing = regexp.MustCompile(`(?i)\bskipp(ed|ing)\b.{0,40}\b(no|not (found|installed|available|built|set|on path)|missing|unavailable|absent|without)\b|\b(no|not (found|installed|available|built|set|on path)|missing|unavailable|absent|without)\b.{0,40}\bskipp(ed|ing)\b`)
-	// a message that names the skip a failure is a refusal; "known to
-	// fail", "may fail" name no failure of this run.
-	skipRefused = regexp.MustCompile(`(?i)\b(fail(s|ed|ing|ure)?|refus(e|es|ed|ing|al))\b|\bnot red\b`)
-	notThisRun  = regexp.MustCompile(`(?i)\b(to|may|might|would|could|will|can)\s+$`)
+	// a message that names the skip a failure of this run is a refusal: it
+	// opens with FAIL, refuses, or says the skip (or the run) is a failure,
+	// fails or is red; "the tests that fail on windows", "known to fail"
+	// name no failure of this run.
+	skipRefused = regexp.MustCompile(`(?i)^\W*(fail|error)\b|\brefus(e|es|ed|ing|al)\b|\bnot red\b|\bis (a failure|red)\b|\bfails (the|this|by name|naming|red)\b|\b(turns?|goes|is) red\b`)
 	// a count of skips is a report: %d skipped, 3 tests skipped, skipped:
 	// 3 (a version, lua 5.4, is no count, and "skipping 2 tests" is a
 	// notice).
@@ -2298,20 +2337,15 @@ var (
 
 // refusesSkip is a text that names the skip a failure of this run.
 func refusesSkip(text string) bool {
-	for _, ix := range skipRefused.FindAllStringIndex(text, -1) {
-		if !notThisRun.MatchString(text[:ix[0]]) {
-			return true
-		}
-	}
-	return false
+	return skipRefused.MatchString(text)
 }
 
 // outsideNotice is a notice outside test code that says a test was skipped,
-// or something skipped for a tool or a setting that is not there, and goes
-// on: not a refusal and not a count.
+// and is not a count of them, or something skipped for a tool or a setting
+// that is not there (counted or not), and goes on: not a refusal.
 func outsideNotice(text string) bool {
 	text = pathless(text)
-	return (skipsATest.MatchString(text) || skipsForMissing.MatchString(text)) && !refusesSkip(text) && !skipCount.MatchString(text)
+	return (skipsForMissing.MatchString(text) || skipsATest.MatchString(text) && !skipCount.MatchString(text)) && !refusesSkip(text)
 }
 
 // toStdStream is a writer that is os.Stdout or os.Stderr, a stream named
@@ -2344,7 +2378,7 @@ func announcesSkip(call *ast.CallExpr, notices map[string]string) bool {
 }
 
 // holdsNotice is an argument that is a name holding a notice, or a "+"
-// with one.
+// or a Sprint call with one.
 func holdsNotice(e ast.Expr, notices map[string]string) bool {
 	switch v := e.(type) {
 	case *ast.Ident:
@@ -2353,6 +2387,15 @@ func holdsNotice(e ast.Expr, notices map[string]string) bool {
 		return v.Op == token.ADD && (holdsNotice(v.X, notices) || holdsNotice(v.Y, notices))
 	case *ast.ParenExpr:
 		return holdsNotice(v.X, notices)
+	case *ast.CallExpr:
+		if !strings.HasPrefix(callName(v), "Sprint") {
+			return false
+		}
+		for _, a := range v.Args {
+			if goSkipNotice.MatchString(pathless(literalText(a))) || holdsNotice(a, notices) {
+				return true
+			}
+		}
 	}
 	return false
 }
