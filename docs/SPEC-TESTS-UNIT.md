@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2881.
+Unit tests every language answers: 2. Language-free tests: 2884.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2939,10 +2939,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 86 tests
+#### `tooling` family `schema-test`, 87 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.schema-test.a-build-step-already-run-never-waits-for-the-checkout` | `gotest` | Go test TestABuildStepAlreadyRunNeverWaitsForTheCheckout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildStepAlreadyRunNeverWaitsForTheCheckout` | the Go test passes | `tools/schema-test/make_test.go:551` |
 | `none.unit.tooling.schema-test.a-build-step-runs-in-prepare` | `gotest` | Go test TestABuildStepRunsInPrepare in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestABuildStepRunsInPrepare` | the Go test passes | `tools/schema-test/make_test.go:550` |
 | `none.unit.tooling.schema-test.a-copy-a-killed-run-left-is-swept` | `gotest` | Go test TestACopyAKilledRunLeftIsSwept in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestACopyAKilledRunLeftIsSwept` | the Go test passes | `tools/schema-test/plant_test.go:342` |
 | `none.unit.tooling.schema-test.a-database-read-in-part-fails-the-row` | `gotest` | Go test TestADatabaseReadInPartFailsTheRow in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestADatabaseReadInPartFailsTheRow` | the Go test passes | `tools/schema-test/make_test.go:489` |
@@ -3110,7 +3111,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testproc.child-leads-its-own-group` | `gotest` | Go test TestChildLeadsItsOwnGroup in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestChildLeadsItsOwnGroup` | the Go test passes | `internal/testproc/group_unix_test.go:17` |
 | `none.unit.tooling.testproc.grandchild-is-killed-when-the-child-exits-normally` | `gotest` | Go test TestGrandchildIsKilledWhenTheChildExitsNormally in ./internal/testproc | `package: ./internal/testproc`<br>`test: TestGrandchildIsKilledWhenTheChildExitsNormally` | the Go test passes | `internal/testproc/testproc_test.go:154` |
 
-#### `tooling` family `testreg`, 63 tests
+#### `tooling` family `testreg`, 65 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3123,11 +3124,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.a-language-with-no-adapter-fails` | `gotest` | Go test TestALanguageWithNoAdapterFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestALanguageWithNoAdapterFails` | the Go test passes | `internal/testreg/run_test.go:139` |
 | `none.unit.tooling.testreg.a-malformed-result-line-fails` | `gotest` | Go test TestAMalformedResultLineFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAMalformedResultLineFails` | the Go test passes | `internal/testreg/run_test.go:274` |
 | `none.unit.tooling.testreg.a-missing-or-leftover-addendum-is-red` | `gotest` | plant: a deleted addendum page, and a page the registry no longer generates, each make the drift check fail by name | `package: ./internal/testreg`<br>`test: TestAMissingOrLeftoverAddendumIsRed` | the Go test passes | `internal/testreg/addenda_test.go:108` |
+| `none.unit.tooling.testreg.a-prepare-that-outlasts-its-deadline-fails-by-name` | `gotest` | Go test TestAPrepareThatOutlastsItsDeadlineFailsByName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAPrepareThatOutlastsItsDeadlineFailsByName` | the Go test passes | `internal/testreg/run_test.go:616` |
 | `none.unit.tooling.testreg.a-query-that-matches-nothing-fails` | `gotest` | Go test TestAQueryThatMatchesNothingFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAQueryThatMatchesNothingFails` | the Go test passes | `internal/testreg/run_test.go:102` |
 | `none.unit.tooling.testreg.a-result-nobody-asked-for-fails` | `gotest` | Go test TestAResultNobodyAskedForFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAResultNobodyAskedForFails` | the Go test passes | `internal/testreg/run_test.go:198` |
 | `none.unit.tooling.testreg.a-result-reported-twice-fails` | `gotest` | Go test TestAResultReportedTwiceFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAResultReportedTwiceFails` | the Go test passes | `internal/testreg/run_test.go:208` |
 | `none.unit.tooling.testreg.a-row-added-without-regenerating-is-red` | `gotest` | plant: a registry row added without regenerating makes the drift check fail, naming its tier's page | `package: ./internal/testreg`<br>`test: TestARowAddedWithoutRegeneratingIsRed` | the Go test passes | `internal/testreg/addenda_test.go:98` |
 | `none.unit.tooling.testreg.a-rows-seconds-are-its-calls-share-and-its-prepares` | `gotest` | Go test TestARowsSecondsAreItsCallsShareAndItsPrepares in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestARowsSecondsAreItsCallsShareAndItsPrepares` | the Go test passes | `internal/testreg/run_test.go:664` |
+| `none.unit.tooling.testreg.a-rows-share-is-what-the-call-took-beyond-the-timed-rows` | `gotest` | Go test TestARowsShareIsWhatTheCallTookBeyondTheTimedRows in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestARowsShareIsWhatTheCallTookBeyondTheTimedRows` | the Go test passes | `internal/testreg/run_test.go:775` |
 | `none.unit.tooling.testreg.all-pass-is-green` | `gotest` | Go test TestAllPassIsGreen in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAllPassIsGreen` | the Go test passes | `internal/testreg/run_test.go:69` |
 | `none.unit.tooling.testreg.an-adapter-crash-fails` | `gotest` | Go test TestAnAdapterCrashFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterCrashFails` | the Go test passes | `internal/testreg/run_test.go:218` |
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:146` |

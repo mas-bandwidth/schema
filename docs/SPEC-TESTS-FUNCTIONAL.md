@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2256. Language-free tests: 2202.
+Functional tests every language answers: 2256. Language-free tests: 2203.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4834,10 +4834,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-skips-unavailable-scaffold-only-during-discovery` | `gotest` | Go test TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery` | the Go test passes | `bench/tools/table_pass_test.go:94` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 62 tests
+#### `tooling` family `ci`, 63 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.functional.tooling.ci.a-produced-tree-unpacks-only-for-its-own-source` | `gotest` | Go test TestAProducedTreeUnpacksOnlyForItsOwnSource in ./internal/ci | `package: ./internal/ci`<br>`test: TestAProducedTreeUnpacksOnlyForItsOwnSource` | the Go test passes | `internal/ci/produce_linux_test.go:23` |
 | `none.functional.tooling.ci.certify-parallel-shards-cover-full-make-test` | `gotest` | Go test TestCertifyParallelShardsCoverFullMakeTest in ./internal/ci | `package: ./internal/ci`<br>`test: TestCertifyParallelShardsCoverFullMakeTest` | the Go test passes | `internal/ci/certify_parallel_test.go:318` |
 | `none.functional.tooling.ci.conformance-legs-rebuild-from-their-inputs` | `gotest` | Go test TestConformanceLegsRebuildFromTheirInputs in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceLegsRebuildFromTheirInputs` | the Go test passes | `internal/ci/conformancelegs_test.go:28` |
 | `none.functional.tooling.ci.conformance-legs-rebuild-negative-control` | `gotest` | Go test TestConformanceLegsRebuildNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestConformanceLegsRebuildNegativeControl` | the Go test passes | `internal/ci/conformancelegs_test.go:40` |
