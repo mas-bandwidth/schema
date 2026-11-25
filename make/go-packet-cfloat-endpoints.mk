@@ -8,6 +8,6 @@ packet-cfloat-endpoints-go: bin/schema tables-go-sibling-runtime
 	@printf 'module cfloat\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s"\n' "$(abspath $(SERIALIZE_GO))" > $(PACKET_CFLOAT_ENDPOINT_DIR)/go.mod
 	cp $(PACKET_CFLOAT_FIXTURE)/go/ratio_test.gotext $(PACKET_CFLOAT_ENDPOINT_DIR)/ratio_test.go
 	cp $(PACKET_CFLOAT_FIXTURE)/ratio-endpoints.txt $(PACKET_CFLOAT_ENDPOINT_DIR)/ratio-endpoints.txt
-	cd $(PACKET_CFLOAT_ENDPOINT_DIR) && go test -count=1 -v .
+	cd $(PACKET_CFLOAT_ENDPOINT_DIR) && $(GO_TEST) -count=1 -v .
 
 test-go: packet-cfloat-endpoints-go

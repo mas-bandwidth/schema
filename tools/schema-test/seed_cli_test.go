@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -31,14 +32,14 @@ func (seedFake) Run(ctx context.Context, _ string, insts []testreg.Instance) ([]
 // wait until it is done.
 func TestTheRunsSeedIsPrintedAndHandedToEveryAdapter(t *testing.T) {
 	code, out := cli(t, seedFake{}, "run", "go.functional.roundtrip.fam.one", "--seed", "7")
-	if code != 0 || !strings.Contains(out, "schema-test run: seed 7 (") || !strings.Contains(out, "PASS go.functional.roundtrip.fam.one: seed 7\n") {
+	if code != 0 || !strings.Contains(out, "schema-test run: seed 7 (") || !regexp.MustCompile(`PASS go\.functional\.roundtrip\.fam\.one \([0-9.]+s\): seed 7\n`).MatchString(out) {
 		t.Errorf("--seed 7: exit %d:\n%s", code, out)
 	}
 	was := now
 	now = func() time.Time { return time.Date(2026, 3, 4, 23, 0, 0, 0, time.FixedZone("west", -5*3600)) }
 	defer func() { now = was }()
 	code, out = cli(t, seedFake{}, "run", "go.functional.roundtrip.fam.one")
-	if code != 0 || !strings.Contains(out, "PASS go.functional.roundtrip.fam.one: seed 20260305\n") {
+	if code != 0 || !regexp.MustCompile(`PASS go\.functional\.roundtrip\.fam\.one \([0-9.]+s\): seed 20260305\n`).MatchString(out) {
 		t.Errorf("the date's seed (the 5th in UTC): exit %d:\n%s", code, out)
 	}
 	// `schema-test seconds` still reads a pass whose line carries a reason

@@ -41,7 +41,7 @@ func (a *goTestAdapter) runUnion(ctx context.Context, lang string, instances []t
 	for _, inst := range instances {
 		tests, ok, err := testreg.GoTestsOf(inst.Test)
 		if !ok || err != nil {
-			return out, fmt.Errorf("%s: not a union row: %v", inst.Full, err)
+			return out, fmt.Errorf("%s: not a union row: %w", inst.Full, err)
 		}
 		g, has := tests[lang]
 		if !has {

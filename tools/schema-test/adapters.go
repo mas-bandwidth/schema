@@ -46,9 +46,10 @@ const conformanceFamilyPrefix = "conformance-"
 
 // conformance is the tables conformance harness's adapter mode
 // (test/conformance/harness/adapter.go): it builds the one leg's driver
-// (make conformance-leg-<lang>), runs the leg over every surface as
-// `harness run --only <lang> --claims` scores it, and answers each requested
-// case from that run.
+// (make conformance-leg-<lang>), runs the leg over the requested cases and
+// the cases their verdicts depend on (test/conformance/harness/scope.go) as
+// `harness run --only <lang> --claims` scores them, and answers each
+// requested case from that run.
 var conformance = harness{
 	Name: "conformance",
 	Build: func(lang string) [][]string {
@@ -122,11 +123,12 @@ func harnessFor(t testreg.Test) (harness, bool) {
 // ready, and every one of its instances is MISSING until it does.
 //
 // The language-free kinds have one adapter each: gotest runs a Go test by
-// name, plant runs a negative control (a named test against a broken build,
-// which must come out red), model-check runs a TLC configuration held to its
-// recorded run. docs/TEST-REGISTRY.md lists the kinds still to come
-// (goldens, lint gates, trace checks, benches) and the contract each will
-// have.
+// name, make runs a make gate by target, golden checks a pinned output
+// against its writer, plant runs a negative control (a named test against a
+// broken build, which must come out red), model-check runs a TLC
+// configuration held to its recorded run. docs/TEST-REGISTRY.md lists the
+// kinds still to come (lint gates, trace checks, benches) and the contract
+// each will have.
 func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
@@ -135,18 +137,25 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
 		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
+		"make":        newMakeAdapter(),
+		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
+	}
+}
+
+// withRunner adds the plant adapter, which runs its targets through rn, and
+// hands the golden adapter the registry rn loaded.
+func withRunner(ads map[string]testreg.Adapter, rn *testreg.Runner) {
+	ads["plant"] = newPlantAdapter(rn)
+	if g, ok := ads["golden"].(goldenAdapter); ok {
+		g.reg = rn.Reg
+		ads["golden"] = g
 	}
 }
 
 // goTestJobs is how many Go packages the gotest adapter runs at once: half
 // the machine, since each package's own tests run in parallel too.
 func goTestJobs() int { return min(8, max(1, runtime.NumCPU()/2)) }
-
-// withPlant adds the plant adapter, which runs its targets through rn.
-func withPlant(ads map[string]testreg.Adapter, rn *testreg.Runner) {
-	ads["plant"] = plantAdapter{rn: rn}
-}
 
 // builder runs each build step once per process, however many languages ask.
 type builder struct {
@@ -158,16 +167,23 @@ type builder struct {
 func (b *builder) run(ctx context.Context, argv []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// a step already run answers at once: it touches nothing, so it never
+	// waits for the checkout another make holds
 	key := strings.Join(argv, "\x00")
 	if err, ok := b.done[key]; ok {
 		return err
 	}
+	release, err := holdCheckout(ctx)
+	if err != nil {
+		return fmt.Errorf("build step %q: %w", strings.Join(argv, " "), err)
+	}
+	defer release()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	bound(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		err = fmt.Errorf("build step %q: %w\n%s", strings.Join(argv, " "), err, tail(out.String(), 40))
 	}
@@ -184,9 +200,34 @@ type harnessAdapter struct {
 	log   io.Writer
 }
 
+// Serial: the harness takes the checkout for its whole run (runHarness), so
+// it runs between the other checkout-taking groups, never waiting for one
+// inside its own deadline (testreg.Serial).
+func (a *harnessAdapter) Serial() bool { return true }
+
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
 	_, ok := harnessFor(t)
 	return ok && t.PerLang()
+}
+
+// Prepare runs each harness's build steps for the language once, before any
+// call's deadline starts (testreg.Preparer): a leg built cold is the run's
+// cost, and Run's own build steps then find it built.
+func (a *harnessAdapter) Prepare(ctx context.Context, lang string, instances []testreg.Instance) error {
+	seen := map[string]bool{}
+	for _, inst := range instances {
+		h, ok := harnessFor(inst.Test)
+		if !ok || seen[h.Name] {
+			continue // Run fails a family with no harness, naming it
+		}
+		seen[h.Name] = true
+		for _, step := range h.Build(lang) {
+			if err := a.build.run(ctx, step); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testreg.Instance) ([]testreg.Result, error) {
@@ -246,6 +287,13 @@ func (a *harnessAdapter) Run(ctx context.Context, lang string, instances []testr
 // Its own log lines go to log; a non-zero exit is an error after whatever
 // results it did write.
 func runHarness(ctx context.Context, argv []string, instances []testreg.Instance, log io.Writer) ([]testreg.Result, error) {
+	// the harness runs bin/schema and what the build steps made: no make
+	// in the checkout relinks them under it
+	release, err := holdCheckout(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%q: %w", strings.Join(argv, " "), err)
+	}
+	defer release()
 	var in bytes.Buffer
 	if err := testreg.EncodeRequests(&in, instances); err != nil {
 		return nil, err
