@@ -56,8 +56,8 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
 		if r.n != 1 {
 			t.Errorf("union_unselected_arm, %s: n=%d, want 1", col.name, r.n)
 		}
-		if r.refused || r.damaged {
-			t.Errorf("union_unselected_arm, %s: a clean read refused: refused=%v reason=%s malformed=%v", col.name, r.refused, r.reason, r.damaged)
+		if r.refused {
+			t.Errorf("union_unselected_arm, %s: a clean read refused: refused=%v reason=%s", col.name, r.refused, r.reason)
 		}
 		if got := r.value["pick.type"]; got != "1" {
 			t.Errorf("union_unselected_arm, %s: pick.type=%s, want the writer's alpha arm (1)", col.name, got)

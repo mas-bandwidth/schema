@@ -95,7 +95,7 @@ public final class COOKCLASS {
         PKG.TableFixed.Report report = new PKG.TableFixed.Report();
         int read = PKG.ROOTFixed.load(values, 1, wire, PKG.TableFixed.plan(1 << 14), new short[1 << 14],
                 PKG.ROOTFixed.image(), report);
-        if (read != 1 || report.refused || report.damaged) throw new AssertionError("fixed read: " + report.reason);
+        if (read != 1 || report.refused) throw new AssertionError("fixed read: " + report.reason);
         PKG.ROOTVariable.Value value = new PKG.ROOTVariable.Value();
         FixedCarry.carry(values[0], value);
         long n = PKG.ROOTCook.cookMeasure(value);

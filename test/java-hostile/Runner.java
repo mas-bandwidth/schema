@@ -401,7 +401,10 @@ public final class Runner {
             if (reportType.getField("refused").getBoolean(report)) {
                 return refusal(snake(String.valueOf(reportType.getField("reason").get(report))));
             }
-            if (reportType.getField("damaged").getBoolean(report) || n != 1) {
+            // The fixed form's report has no malformed flag
+            // (docs/FIXED-FORM-ALGORITHM.md §5.3): every failure refused by
+            // name above, so only a read of no record is left to answer here.
+            if (n != 1) {
                 return refuse("damaged");
             }
             Object record = java.lang.reflect.Array.get(values, 0);

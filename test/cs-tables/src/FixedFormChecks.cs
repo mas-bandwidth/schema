@@ -34,7 +34,7 @@ static partial class Program
         // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, §5.9 #23). Both cases are ENTIRELY
         // a forward/compiled read across two generations with no lineage between
         // them — V2 reading a V1 file, P3 reading a P1 file — which §5 retires: the
-        // answer is layout_newer, by name, before a plan exists. THE COVERAGE MOVES
+        // answer is layout_unknown, by name, before a plan exists. THE COVERAGE MOVES
         // TO THE LINEAGE HARNESS: every row they assert (a variant inserted mid-list,
         // an arm inserted mid-list, a renamed field, a keyed slot that slid, an
         // optional added) is a row of §5.7 with its own two columns, read against
@@ -171,7 +171,7 @@ static partial class Program
         // RETIRED BY NAME, NOT DELETED, AND A FAILURE (§5.6, §5.9 #23). The rest of this case is
         // the PLAN PATH ACROSS TWO GENERATIONS — FX2 reading an FX1 file and FX1
         // reading an FX2 one — which §5 retires: with no lineage between the two
-        // builds each file is layout_newer, correctly, and the compiled read those
+        // builds each file is layout_unknown, correctly, and the compiled read those
         // rows assert cannot be reached from a bare pair of generated units at all.
         // THE COVERAGE MOVES TO THE LINEAGE HARNESS, where the newer unit is handed
         // the older unit's locked entry and the row owes both of §5.7's columns.
@@ -378,7 +378,7 @@ static partial class Program
         // verb is a printed line). Every row of TestFixedNegativeControlForwardRead
         // asks FX1 to read an FX2 FILE — a FORWARD read, which is the whole of what
         // §5 retires: FX2's hash is in no lineage entry of this build, so the answer
-        // is layout_newer BEFORE a plan exists and the conditions those rows assert
+        // is layout_unknown BEFORE a plan exists and the conditions those rows assert
         // can no longer be reached from here. THE COVERAGE IS OWED BY THE LINEAGE
         // HARNESS, where the reader is handed FX1's lineage and each of these is a
         // row with its own two columns. The function stays in the tree and stays
@@ -448,16 +448,16 @@ static partial class Program
 
         FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
 
-        // CASE empty-file: ZERO BYTES. There is no first byte, so no name can be
-        // earned; the residue is malformed and nothing else claims success.
+        // CASE empty-file: ZERO BYTES. There is no first byte, and §5.3's refusal
+        // table names it truncated; this form's report has no malformed flag.
         {
             FX1.FxRoot v = Poison();
             string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, ReadOnlySpan<byte>.Empty, plan, r);
-            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+            Check(n == -1 && !r.Damaged && r.Refused && r.Reason == "truncated" &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
-                  "empty-file: zero bytes is malformed and claims no success" + Clean(r));
+                  "empty-file: zero bytes refuses truncated by name (§5.3)" + Clean(r));
             Check(Fp(v) == before, "empty-file: the row is at its declared defaults");
         }
 
@@ -515,9 +515,9 @@ static partial class Program
             string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, reserved, plan, r);
-            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+            Check(n == -1 && !r.Damaged && r.Refused && r.Reason == "reserved_not_zero" &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
-                  "reserved-byte3: a nonzero reserved byte is malformed and claims no success" + Clean(r));
+                  "reserved-byte3: a nonzero reserved byte refuses reserved_not_zero by name (§5.3)" + Clean(r));
             Check(Fp(v) == before, "reserved-byte3: the row is at its declared defaults");
         }
     }
