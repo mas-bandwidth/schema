@@ -25,7 +25,7 @@ Lines may come in any order.
 | `type` | `name`, `what`, `contract` | one kind of check (roundtrip, load-refusal, golden, lint, model, plant, ...); `contract` is what an adapter does to answer a test of the type, which the spec addenda write out |
 | `test` | `key`, `type`, `family`, `case`, `tier`, `checks`, `inputs`, `expect`, `source`, and for a language-free test `scope: "none"` and `adapter` | one test |
 | `unrepresentable` | `test`, `lang`, `reason` | a language cannot express a test |
-| `owed` | `test`, `lang`, `reason` | a language does not answer a test yet: the instance exists and is MISSING |
+
 | `group` | `name`, `what`, `query` | a stored query a workflow runs by name |
 
 A test's key is `type.family.case`. `inputs` is the data its adapter is handed;
@@ -40,9 +40,9 @@ row, or a row with no generator, is red.
 record kind or field, a duplicate language, tier, type, test key or group, a test
 whose type or tier is not declared, a key that is not `type.family.case`, an
 unrepresentable declaration for a test or language that does not exist (or with
-no reason), an owed line for a test or language that does not exist, for a
-language-free test, for a pair declared unrepresentable, twice or with no
-reason, and a group whose query is unknown or matches nothing.
+no reason), any `owed` line (the record is retired under the no-skips ruling,
+docs/rulings.json: an instance runs and its failure is red), and a group whose
+query is unknown or matches nothing.
 
 ## Names
 
@@ -55,11 +55,9 @@ language-free test.
 - A language-free instance is `none.<tier>.<type>.<family>.<case>`, for example
   `none.unit.tooling.testreg.shards-cover-every-name-exactly-once`. `none` is a
   scope, not a language: it is never counted with the languages.
-- An owed pair is an instance, and it is MISSING. The `owed` lines are the
-  work list as data: a run that names the instance fails it MISSING ("go owes
-  roundtrip.conformance-wire.x: ..."), the nightly is red on it, `coverage`
-  shows it `MISS`, and `--ready` (which the `pr` group runs) leaves it out.
-  Answering the test is deleting its line. There is no other owed list.
+- Every instance of a ready language runs, in `--ready` and the nightly
+  alike; one the language does not answer yet is red. No list holds an
+  instance back by name (the `owed` record is retired).
 - A declared-unrepresentable pair has no instance. It is data, shown in the
   coverage matrix and counted, never a name in a run and never a pass. Running it
   by name fails ("declares it unrepresentable, so it has no such instance").
@@ -113,7 +111,7 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | a language with no adapter: every instance MISSING | `TestALanguageWithNoAdapterFails` |
 | a language naming an adapter schema-test does not have | `TestAnAdapterSchemaTestDoesNotHaveFails` |
 | a test with no instance for a language and no unrepresentable declaration | `TestAnInstanceWithNoAnswerAndNoDeclarationFails` |
-| a test a language owes (an `owed` line): MISSING, never in `--ready` | `TestAnOwedInstanceIsMissing` |
+| an `owed` line, which is retired: Load refuses it | `TestLoadRefusesTheRetiredOwedRecord` |
 | an unknown language in a query, or one a group does not name | `TestTheCommandExitsNonZeroOnEveryFailRule` |
 | expected != ran | `TestExpectedNotRanFails` |
 | an adapter reports an instance it was not asked for | `TestAResultNobodyAskedForFails` |
@@ -231,11 +229,10 @@ files and the drivers as the registry's, not the ledger's.
 - `harness registry-rows` prints the rows, and
   `TestTheRegistryHoldsEveryConformanceCase` holds the registry to them field
   for field: a corpus case with no row, or a row with no case, is red.
-- A case a language does not answer today is an `owed` line, so it is MISSING
-  (red in the nightly) and out of the `pr` group. The corpus's owed lines are
-  generated from the harness's one list, testdata/conformance/tables/
-  retain-refusal-owed.txt (`registry-rows` prints them after the rows), and
-  the same test holds the registry to it.
+- A case a language does not answer today runs and is red where it fails;
+  nothing holds it back by name. The harness's retain-refusal ledger is
+  retired, and the harness refuses to run while
+  testdata/conformance/tables/retain-refusal-owed.txt exists.
 - Plants: `plant.corpus-plants.go-wrong-byte-root-full` flips one byte of the
   go leg's wire answer for root_full, and `plant.corpus-plants.go-absent-root-full`
   drops that case from its answers (test/conformance/go/main.go, `plantEnv`);
@@ -367,9 +364,9 @@ Add one `lang` line with `"adapter": ""`. From then on every per-language test
 has an instance in it, each MISSING: `coverage` shows the column red and the
 nightly run fails on every one. That red count is the language's remaining work.
 When its adapter lands, set `adapter` (`corpus` routes every family a harness
-exists for), and add an `owed` line for each test it does not answer yet: the
-`pr` group (`--ready`) then runs the rest on every pull request, in a CI row of
-its own, and the owed lines stay MISSING in the nightly until each is answered.
+exists for): the `pr` group (`--ready`) then runs every instance on every pull
+request, in a CI row of its own, and each one the language does not answer yet
+is red until it is answered.
 
 ## CI
 

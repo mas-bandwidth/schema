@@ -43,10 +43,9 @@ func Cover(reg *Registry, adapters map[string]Adapter) *Coverage {
 		row := make([]string, len(reg.Langs))
 		for j, l := range reg.Langs {
 			row[j] = CellMissing
-			_, owed := reg.OwedBy(t.Key, l.Name)
 			if _, ok := reg.Unrepresentable(t.Key, l.Name); ok {
 				row[j] = CellUnrep
-			} else if a, ok := adapters[l.Adapter]; ok && l.Ready() && !owed && a.Answers(t) {
+			} else if a, ok := adapters[l.Adapter]; ok && l.Ready() && a.Answers(t) {
 				row[j] = CellAnswered
 			}
 		}

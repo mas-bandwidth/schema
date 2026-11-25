@@ -257,8 +257,7 @@ where the README says so.
   It holds two ports equal wherever the harness credits both against the one
   golden: a `retain-refusal` `save-refused` (python, ruby) equals `saved`; a
   `read-into` `unrepresentable` (a fixed load that always takes a capacity)
-  and a `retain-refusal` answer its leg owes in `retain-refusal-owed.txt`
-  are not compared at all
+  is not compared at all, and every `retain-refusal` answer is
   (`TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut`).
 - **Writes are judged by bytes, exactly.** A case that requires a write
   passes only when the bytes the port produces equal the committed golden,

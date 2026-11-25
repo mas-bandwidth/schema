@@ -20,13 +20,9 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 
-	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -227,90 +223,24 @@ func scoreRetainRefusal(lang, answer string, e expectation, r *result) {
 	r.mark(e.name, outcomePass)
 }
 
-// RetainRefusalOwed is the exact-set ledger of the retain-refusal rows a leg
-// does not answer yet, beside the manifest. One line per leg and case:
-//
-//	<leg> <case> owed: <cause>
-//
-// A ledgered case is scored as usual and then held to its line: an answer
-// that fails is owed (uncredited, named in the run's output, never red), and
-// an answer that PASSES is red until its line is removed. A case with no line
-// is scored as every other row: a wrong or missing answer is red.
-const RetainRefusalOwed = "retain-refusal-owed.txt"
+// RetiredRetainRefusalLedger names the per-leg list that once scored a
+// failing retain-refusal answer as owed instead of red. It is retired under
+// the no-skips ruling (docs/rulings.json): every case runs and is scored as
+// every other row, and a wrong answer is red. The harness refuses to run
+// while a file by this name sits beside the manifest, so the list cannot come
+// back without someone deleting this check first.
+const RetiredRetainRefusalLedger = "retain-refusal-owed.txt"
 
-// retainRefusalLedger maps "<leg> <case>" to the cause the ledger names.
-type retainRefusalLedger map[string]string
-
-// loadRetainRefusalLedger reads the ledger beside manifestPath. A manifest
-// with no ledger beside it owes nothing, so every row is held to its answer.
-// A line that is not `<leg> <case> owed: <cause>`, names a leg not in the
-// roster (inputfamilies.Legs), names a case the manifest has no
-// retain-refusal row for, or repeats a leg and case is an error.
-func loadRetainRefusalLedger(manifestPath string, m *Manifest) (retainRefusalLedger, error) {
-	path := filepath.Join(filepath.Dir(manifestPath), RetainRefusalOwed)
-	text, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return retainRefusalLedger{}, nil
+// refuseRetiredRetainRefusalLedger fails when the retired ledger is present
+// beside manifestPath.
+func refuseRetiredRetainRefusalLedger(manifestPath string) error {
+	path := filepath.Join(filepath.Dir(manifestPath), RetiredRetainRefusalLedger)
+	_, err := os.Stat(path)
+	if err == nil {
+		return fmt.Errorf("%s is present: the retain-refusal ledger is retired (docs/rulings.json, no-skips); every case runs and a wrong answer is red, so delete the file", path)
 	}
-	if err != nil {
-		return nil, err
+	if !os.IsNotExist(err) {
+		return err
 	}
-	rows := map[string]bool{}
-	for _, rr := range m.RetainRefusals {
-		rows[rr.Name] = true
-	}
-	ledger := retainRefusalLedger{}
-	for i, line := range strings.Split(string(text), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		where := fmt.Sprintf("%s:%d", path, i+1)
-		f := strings.Fields(line)
-		if len(f) < 4 || f[2] != "owed:" {
-			return nil, fmt.Errorf("%s: want `<leg> <case> owed: <cause>`, got %q", where, line)
-		}
-		if !slices.Contains(inputfamilies.Legs, f[0]) {
-			return nil, fmt.Errorf("%s: %s names no leg (the roster is %s)", where, f[0], strings.Join(inputfamilies.Legs, " "))
-		}
-		if !rows[f[1]] {
-			return nil, fmt.Errorf("%s: %s names no retain-refusal row in %s", where, f[1], manifestPath)
-		}
-		key := f[0] + " " + f[1]
-		if _, dup := ledger[key]; dup {
-			return nil, fmt.Errorf("%s: %s is ledgered twice", where, key)
-		}
-		ledger[key] = strings.Join(f[3:], " ")
-	}
-	return ledger, nil
-}
-
-// owes says whether lang's answer to the case is ledgered, and why.
-func (l retainRefusalLedger) owes(lang, surface, name string) (string, bool) {
-	if surface != "retain-refusal" {
-		return "", false
-	}
-	why, ok := l[lang+" "+name]
-	return why, ok
-}
-
-// scoreOwedRetainRefusal scores a ledgered case: a failing answer is owed and
-// said, a passing one is red until its ledger line goes.
-func scoreOwedRetainRefusal(w io.Writer, lang string, answer string, e expectation, why string, r *result) {
-	held := &result{}
-	scoreRetainRefusal(lang, answer, e, held)
-	if held.pass > 0 {
-		r.failures = append(r.failures, fmt.Sprintf(
-			"%s: ledgered `%s %s owed: %s` in %s, and the leg answers it correctly: remove the line",
-			e.name, lang, e.name, why, RetainRefusalOwed))
-		r.mark(e.name, outcomeFail)
-		return
-	}
-	r.missing++
-	r.mark(e.name, outcomeOwed)
-	got := "absent"
-	if len(held.failures) > 0 {
-		got = held.failures[0]
-	}
-	_, _ = fmt.Fprintf(w, "conformance OWED %s / retain-refusal: %s owed: %s (it answered: %s)\n", lang, e.name, why, got)
+	return nil
 }

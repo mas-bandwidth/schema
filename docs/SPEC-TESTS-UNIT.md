@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 150.
+Unit tests every language answers: 0. Language-free tests: 143.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -69,7 +69,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.conformancerows.parse-shard` | `gotest` | Go test TestParseShard in ./tools/conformancerows | `package: ./tools/conformancerows`<br>`test: TestParseShard` | the Go test passes | `tools/conformancerows/ledger_test.go:67` |
 | `none.unit.tooling.conformancerows.shards-cover-every-row-once` | `gotest` | Go test TestShardsCoverEveryRowOnce in ./tools/conformancerows | `package: ./tools/conformancerows`<br>`test: TestShardsCoverEveryRowOnce` | the Go test passes | `tools/conformancerows/ledger_test.go:22` |
 
-#### `tooling` family `corpus-adapter`, 8 tests
+#### `tooling` family `corpus-adapter`, 7 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -78,7 +78,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.corpus-adapter.the-corpus-adapter-answers-every-request-once` | `gotest` | Go test TestTheCorpusAdapterAnswersEveryRequestOnce in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterAnswersEveryRequestOnce` | the Go test passes | `test/conformance/harness/adapter_test.go:91` |
 | `none.unit.tooling.corpus-adapter.the-corpus-adapter-gives-each-case-its-verdict` | `gotest` | Go test TestTheCorpusAdapterGivesEachCaseItsVerdict in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterGivesEachCaseItsVerdict` | the Go test passes | `test/conformance/harness/adapter_test.go:24` |
 | `none.unit.tooling.corpus-adapter.the-corpus-adapter-refuses-a-request-it-cannot-read` | `gotest` | Go test TestTheCorpusAdapterRefusesARequestItCannotRead in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusAdapterRefusesARequestItCannotRead` | the Go test passes | `test/conformance/harness/adapter_test.go:75` |
-| `none.unit.tooling.corpus-adapter.the-corpus-owes-exactly-the-harness-ledger` | `gotest` | Go test TestTheCorpusOwesExactlyTheHarnessLedger in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheCorpusOwesExactlyTheHarnessLedger` | the Go test passes | `test/conformance/harness/adapter_test.go:254` |
 | `none.unit.tooling.corpus-adapter.the-registry-check-goes-red-on-each-drift` | `gotest` | Go test TestTheRegistryCheckGoesRedOnEachDrift in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRegistryCheckGoesRedOnEachDrift` | the Go test passes | `test/conformance/harness/adapter_test.go:225` |
 | `none.unit.tooling.corpus-adapter.the-registry-holds-every-conformance-case` | `gotest` | Go test TestTheRegistryHoldsEveryConformanceCase in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestTheRegistryHoldsEveryConformanceCase` | the Go test passes | `test/conformance/harness/adapter_test.go:144` |
 
@@ -168,7 +167,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.write-ledger-keeps-the-tier-lines` | `gotest` | Go test TestWriteLedgerKeepsTheTierLines in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerKeepsTheTierLines` | the Go test passes | `tools/schema-test/extract_test.go:44` |
 | `none.unit.tooling.schema-test.write-ledger-refuses-an-unreadable-tree` | `gotest` | Go test TestWriteLedgerRefusesAnUnreadableTree in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestWriteLedgerRefusesAnUnreadableTree` | the Go test passes | `tools/schema-test/extract_test.go:149` |
 
-#### `tooling` family `testreg`, 50 tests
+#### `tooling` family `testreg`, 44 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -187,7 +186,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.an-adapter-schema-test-does-not-have-fails` | `gotest` | Go test TestAnAdapterSchemaTestDoesNotHaveFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterSchemaTestDoesNotHaveFails` | the Go test passes | `internal/testreg/run_test.go:144` |
 | `none.unit.tooling.testreg.an-adapter-timeout-fails` | `gotest` | Go test TestAnAdapterTimeoutFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnAdapterTimeoutFails` | the Go test passes | `internal/testreg/run_test.go:231` |
 | `none.unit.tooling.testreg.an-instance-with-no-answer-and-no-declaration-fails` | `gotest` | Go test TestAnInstanceWithNoAnswerAndNoDeclarationFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnInstanceWithNoAnswerAndNoDeclarationFails` | the Go test passes | `internal/testreg/run_test.go:153` |
-| `none.unit.tooling.testreg.an-owed-instance-is-missing` | `gotest` | Go test TestAnOwedInstanceIsMissing in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestAnOwedInstanceIsMissing` | the Go test passes | `internal/testreg/owed_test.go:14` |
 | `none.unit.tooling.testreg.coverage-shows-every-cell` | `gotest` | Go test TestCoverageShowsEveryCell in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestCoverageShowsEveryCell` | the Go test passes | `internal/testreg/run_test.go:353` |
 | `none.unit.tooling.testreg.every-driver-test-is-registered` | `gotest` | Go test TestEveryDriverTestIsRegistered in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestEveryDriverTestIsRegistered` | the Go test passes | `internal/testreg/policy_test.go:81` |
 | `none.unit.tooling.testreg.expected-not-ran-fails` | `gotest` | Go test TestExpectedNotRanFails in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestExpectedNotRanFails` | the Go test passes | `internal/testreg/run_test.go:186` |
@@ -198,12 +196,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.load-refuses-a-key-that-is-not-type-family-case` | `gotest` | Go test TestLoadRefusesAKeyThatIsNotTypeFamilyCase in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAKeyThatIsNotTypeFamilyCase` | the Go test passes | `internal/testreg/registry_test.go:103` |
 | `none.unit.tooling.testreg.load-refuses-an-unknown-tier` | `gotest` | Go test TestLoadRefusesAnUnknownTier in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnknownTier` | the Go test passes | `internal/testreg/registry_test.go:79` |
 | `none.unit.tooling.testreg.load-refuses-an-unknown-type` | `gotest` | Go test TestLoadRefusesAnUnknownType in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesAnUnknownType` | the Go test passes | `internal/testreg/registry_test.go:73` |
-| `none.unit.tooling.testreg.load-refuses-owed-for-a-language-free-test` | `gotest` | Go test TestLoadRefusesOwedForALanguageFreeTest in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForALanguageFreeTest` | the Go test passes | `internal/testreg/owed_test.go:77` |
-| `none.unit.tooling.testreg.load-refuses-owed-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesOwedForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/owed_test.go:54` |
-| `none.unit.tooling.testreg.load-refuses-owed-for-a-test-that-does-not-exist` | `gotest` | Go test TestLoadRefusesOwedForATestThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForATestThatDoesNotExist` | the Go test passes | `internal/testreg/owed_test.go:48` |
-| `none.unit.tooling.testreg.load-refuses-owed-for-an-unrepresentable-pair` | `gotest` | Go test TestLoadRefusesOwedForAnUnrepresentablePair in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedForAnUnrepresentablePair` | the Go test passes | `internal/testreg/owed_test.go:71` |
-| `none.unit.tooling.testreg.load-refuses-owed-twice` | `gotest` | Go test TestLoadRefusesOwedTwice in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedTwice` | the Go test passes | `internal/testreg/owed_test.go:66` |
-| `none.unit.tooling.testreg.load-refuses-owed-with-no-reason` | `gotest` | Go test TestLoadRefusesOwedWithNoReason in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesOwedWithNoReason` | the Go test passes | `internal/testreg/owed_test.go:60` |
+| `none.unit.tooling.testreg.load-refuses-the-retired-owed-record` | `gotest` | Go test TestLoadRefusesTheRetiredOwedRecord in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesTheRetiredOwedRecord` | the Go test passes | `internal/testreg/owed_test.go:9` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-language-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForALanguageThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:91` |
 | `none.unit.tooling.testreg.load-refuses-unrepresentable-for-a-test-that-does-not-exist` | `gotest` | Go test TestLoadRefusesUnrepresentableForATestThatDoesNotExist in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestLoadRefusesUnrepresentableForATestThatDoesNotExist` | the Go test passes | `internal/testreg/registry_test.go:85` |
 | `none.unit.tooling.testreg.no-skip-exemptions-are-current` | `gotest` | every file the skip scan does not read exists and has a reason (Go test TestNoSkipExemptionsAreCurrent in ./internal/testreg) | `package: ./internal/testreg`<br>`test: TestNoSkipExemptionsAreCurrent` | the Go test passes | `internal/testreg/noskip_test.go:592` |
