@@ -538,6 +538,7 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/jsonkeys test/tables/JsonKeys.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/shapes test/tables/shapes
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/moodmap test/tables/moodmap/MoodMap.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/prior test/tables/prior/PriorNarrow.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/surfaces test/tables/surfaces
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/ann/announce4096 test/tables/announce4096

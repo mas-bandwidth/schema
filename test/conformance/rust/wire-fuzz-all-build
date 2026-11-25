@@ -78,7 +78,7 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	done
 done
 cp test/conformance/rust/src/wire_fuzz_all.rs "$dir/src/main.rs"
-# opt-level 0: the 34-unit driver is one crate, built cold on every CI runner;
+# opt-level 0: the 37-unit driver is one crate, built cold on every CI runner;
 # at opt-level 1 it took 53 s alone (70 s beside the conformance driver build),
 # at 0 it takes 30 s, and its 5000-mutant arms run in seconds either way. The
 # dev-style overflow checks and debug assertions are on at both levels.
