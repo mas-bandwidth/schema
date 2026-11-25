@@ -89,12 +89,17 @@ fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
 		t.Fatal(err)
 	}
 	probe := fmt.Sprintf(`#include "ProbeTable.h"
+#include <cstddef>
 #include <cstdio>
 using namespace probe;
 #define REQUIRE(x) do { if (!(x)) { fprintf(stderr,"announcement failed at line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
 int main()
 {
-    static_assert( sizeof( TableMessageEntry ) == 96, "the resolved entry is pinned at 96 bytes" );
+    // the resolved decode facts stay pinned at 96 bytes; the repeat check's
+    // state (seen_first, seen_at, seen_below, §3.3) follows them, as the C
+    // entry's own_slot does (tablescmessage_test.go)
+    static_assert( offsetof( TableMessageEntry, seen_first ) == 96, "the resolved decode facts are pinned at 96 bytes" );
+    static_assert( sizeof( TableMessageEntry ) == 96 + 8 + 8 + sizeof( uint64_t ) * kTableMessageSeenWords, "the repeat check adds only its own storage" );
     // the compiler's own announcement, read back through its own AnnounceRead
     uint8_t own[ kTableAnnounceBytes ];
     REQUIRE( Announce( own, (int64_t) sizeof( own ) ) == (int64_t) sizeof( own ) );

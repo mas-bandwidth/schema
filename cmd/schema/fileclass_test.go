@@ -24,12 +24,22 @@ import (
 )
 
 // the first line `check` prints about one saved file.
+// checkLine runs `schema check` on one file and returns the line it prints
+// for it. A REFUSED byte is a failing check (cmd/schema/main.go): the exit is
+// 1 exactly when the line says REFUSED, and 0 otherwise.
 func checkLine(t *testing.T, bin, path string) string {
 	t.Helper()
-	out := run(t, bin, "check", path)
+	code, out := runExit(t, bin, "check", path)
 	first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
 	if !strings.HasPrefix(first, path+": ") {
 		t.Errorf("the line must name the file it is about: %q", first)
+	}
+	want := 0
+	if strings.HasPrefix(strings.TrimPrefix(first, path+": "), "REFUSED") {
+		want = 1
+	}
+	if code != want {
+		t.Errorf("schema check %s: exit %d, want %d for %q", path, code, want, first)
 	}
 	return first
 }
@@ -358,7 +368,10 @@ func TestCheckRefusesUnknownLeadingBytesAndListsTheKnown(t *testing.T) {
 		if err := os.WriteFile(p, row.bytes, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		line := run(t, bin, "check", p)
+		line := checkLine(t, bin, p)
+		if !strings.Contains(line, ": REFUSED") {
+			t.Errorf("%s: %q is not a refusal", row.name, line)
+		}
 		for _, w := range []string{row.want, "recognised leading bytes", "form byte 1 (the variable form)", "form byte 2 (the message form)",
 			"form byte 3 (the fixed form)", "SCHMCOOK or KOOCMHCS (the cook)", "SCHMABLK or KLBAMHCS (the block form)"} {
 			if !strings.Contains(line, w) {

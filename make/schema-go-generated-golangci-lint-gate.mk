@@ -85,6 +85,7 @@ schema-go-generated-golangci-lint-gate-probe:
 # is "findings exist" and is expected under a ratchet; any other status (tool,
 # config or load failure) is a hard error, never folded into a count.
 define golangci_gate_count
+	$(call golangci_gate_nonempty,$(1))
 	@cd $(1) && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --allow-parallel-runners --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 		--output.text.colors=false --output.text.print-issued-lines=false ./... \
 		> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/$(2).lint.log" 2>&1; \
@@ -99,11 +100,23 @@ define golangci_gate_count
 		"$(CURDIR)/$(GOLANGCI_GATE_DIR)/$(2).lint.log" >> "$(CURDIR)/$(GOLANGCI_GATE_ACTUAL)"
 endef
 
-# vet and the race build/test: a module with no tests still gets its generated
-# package built under the race detector.
+# golangci_gate_nonempty DIR: the module holds at least one Go package, or the
+# gate fails, naming it. golangci-lint, go vet and go build over ./... with no
+# package report nothing and exit 0, which would read as a clean lint of
+# nothing.
+define golangci_gate_nonempty
+	@cd $(1) && n=$$(go list ./... | grep -c .) && [ "$$n" -gt 0 ] || { \
+		echo "golangci-lint gate: $(1) holds no Go package, so the gate would lint nothing"; exit 1; }
+endef
+
+# vet and the race BUILD: the generated packages carry no tests (schema
+# generate --lang go emits none), so this is a build under the race detector,
+# never a test run. A go test over them ran no test, which gotestrun rightly
+# refuses as no pass; lint is not a test run and asks for no test.
 define golangci_gate_module_tests
+	$(call golangci_gate_nonempty,$(1))
 	@cd $(1) && go vet ./...
-	@cd $(1) && $(GO_TEST) -race -count=1 -timeout 600s ./...
+	@cd $(1) && go build -race ./...
 endef
 
 # golangci_gate_ratchet: compare the measured TSV (second file) with the pins
@@ -235,13 +248,15 @@ schema-go-generated-golangci-lint-gate-nightly-measure: schema-go-generated-gola
 			"$$m" "$(CURDIR)" "$(GOLANGCI_GATE_RUNTIME)" > "$$d/go.mod"; \
 	done
 	@: > $(GOLANGCI_GATE_DIR)/tables.lint.log
-	@for d in build/tables-generated-go/*/; do \
+	@linted=0; for d in build/tables-generated-go/*/; do \
 		[ -f "$$d/go.mod" ] || continue; \
+		linted=$$((linted + 1)); \
 		( cd "$$d" && GOLANGCI_LINT_CACHE="$(GOLANGCI_GATE_CACHE)" $(GOLANGCI_LINT) run --allow-parallel-runners --config "$(CURDIR)/$(GOLANGCI_GATE_CONFIG)" \
 			--output.text.colors=false --output.text.print-issued-lines=false ./... ) \
 			>> "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log" 2>&1; \
 		rc=$$?; if [ $$rc -gt 1 ]; then cat "$(CURDIR)/$(GOLANGCI_GATE_DIR)/tables.lint.log"; exit $$rc; fi; \
-	done
+	done; \
+	[ "$$linted" -gt 0 ] || { echo "golangci-lint gate (nightly): build/tables-generated-go holds no module, so the gate would lint nothing"; exit 1; }
 	@awk -v corpus="tables" '\
 		/\([a-z]+\)$$/ { \
 			n=$$0; sub(/.*\(/,"",n); sub(/\)$$/,"",n); \

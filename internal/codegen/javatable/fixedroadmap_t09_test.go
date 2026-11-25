@@ -125,7 +125,6 @@ public final class %[1]s {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
            .append(" widened=").append(report.widened)
            .append('\n');
@@ -211,8 +210,8 @@ func t09Run(t *testing.T, classes, class string) string {
 // records with every counter at zero.
 func t09RequireClean(t *testing.T, what string, r probeRun, want int) {
 	t.Helper()
-	if r.n != want || r.refused || r.damaged {
-		t.Fatalf("%s: n=%d refused=%v reason=%s malformed=%v, want %d clean records", what, r.n, r.refused, r.reason, r.damaged, want)
+	if r.n != want || r.refused {
+		t.Fatalf("%s: n=%d refused=%v reason=%s, want %d clean records", what, r.n, r.refused, r.reason, want)
 	}
 	if r.unknown != 0 || r.widened != 0 {
 		t.Errorf("%s: a clean round trip moved a counter: %+v", what, r)

@@ -811,3 +811,39 @@ func TestAMakeRowCoversTheGoTestsItNames(t *testing.T) {
 		t.Errorf("a test two rows cover is not named:\n%s", p)
 	}
 }
+
+// TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed: a per-language row
+// whose make target, {lang} expanded, no make file writes runs nothing in
+// that language, so the extract names it (once per target) rather than
+// leaving every instance red for a reason no case shows. A target a pattern
+// rule matches is defined; a language that declares the row unrepresentable
+// has no instance to run it.
+func TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed(t *testing.T) {
+	t.Parallel()
+	res := &Result{Rules: map[string]bool{
+		RuleID("Makefile", "runs-aa-corpus"):    true,
+		RuleID("make/x.mk", "runs-%-text"):      true,
+		RuleID("make/x.mk", "runs-cc-corpus"):   true,
+		RuleID("make/x.mk", "unrelated-target"): true,
+	}}
+	row := func(key, family, target string) testreg.Test {
+		return testreg.Test{Key: key, Family: family, Inputs: []byte(`{"target":"` + target + `","case":"x"}`)}
+	}
+	reg := &testreg.Registry{
+		Path:  "r.jsonl",
+		Langs: []testreg.Lang{{Name: "aa"}, {Name: "bb"}, {Name: "cc"}},
+		Tests: []testreg.Test{
+			row("decode.corpus.one", "corpus", "runs-{lang}-corpus"),
+			row("decode.corpus.two", "corpus", "runs-{lang}-corpus"),
+			row("decode.text.one", "text", "runs-{lang}-text"),
+		},
+	}
+	_, p := CoveredIn(res, reg)
+	if len(p) != 1 || !strings.Contains(p[0], "decode.corpus.one (and every row of family corpus) runs make runs-bb-corpus for bb, which no make file defines") {
+		t.Fatalf("want one problem naming runs-bb-corpus, got %d:\n%s", len(p), strings.Join(p, "\n"))
+	}
+	// the pattern rules empty stem is no match: runs--text is not runs-%-texts
+	if makeDefines(map[string]bool{}, []string{"runs-%-text"}, "runs--text") {
+		t.Errorf("an empty stem matched a pattern rule")
+	}
+}

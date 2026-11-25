@@ -175,7 +175,7 @@ func TestFixedBoolBytesStrict(t *testing.T) {
 
 	// Bytes 0 and 1 both read. The first copy carries the writer's 1s; the
 	// second zeroes every bool, the present byte and the payload behind it.
-	if got := load(t, raw); got.n != 2 || got.refused || got.damaged {
+	if got := load(t, raw); got.n != 2 || got.refused {
 		t.Fatalf("the lawful file must read both records: %+v", got)
 	}
 	zero := append([]byte(nil), raw...)
@@ -188,7 +188,7 @@ func TestFixedBoolBytesStrict(t *testing.T) {
 	for i := range payloadBytes {
 		zero[body0+presentOff+1+i] = 0
 	}
-	if got := load(t, zero); got.n != 2 || got.refused || got.damaged {
+	if got := load(t, zero); got.n != 2 || got.refused {
 		t.Fatalf("0 bools and a 0 present byte must read: %+v", got)
 	}
 

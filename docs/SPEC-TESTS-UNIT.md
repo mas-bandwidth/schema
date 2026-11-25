@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 686. Language-free tests: 2903.
+Unit tests every language answers: 686. Language-free tests: 2909.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -3046,6 +3046,16 @@ memory, allocation and depth limits are held.
 
 Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
+### Type `codegen`
+
+generated source compiles and is clean.
+
+#### `codegen` family `javatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.codegen.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:125` |
+
 ### Type `fuzz`
 
 seeded mutations.
@@ -3064,6 +3074,16 @@ seeded mutations.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.fuzz.tabletext.fuzz-read-text` | `gotest` | Go test FuzzReadText in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: FuzzReadText` | the Go test passes | `internal/tabletext/text_test.go:397` |
+
+### Type `plant`
+
+a negative control: a named test run against a deliberately broken build must come out red.
+
+#### `plant` family `javatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.plant.javatable.java-fixed-no-malformed-flag-plants` | `gotest` | Go test TestJavaFixedNoMalformedFlagPlants in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlagPlants` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:131` |
 
 ### Type `compiler`
 
@@ -4324,7 +4344,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tabletext.write-read-write-is-stable` | `gotest` | Go test TestWriteReadWriteIsStable in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestWriteReadWriteIsStable` | the Go test passes | `internal/tabletext/text_test.go:362` |
 | `none.unit.compiler.tabletext.wrong-type-refuses` | `gotest` | Go test TestWrongTypeRefuses in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestWrongTypeRefuses` | the Go test passes | `internal/tabletext/text_test.go:104` |
 
-#### `compiler` family `tablewire`, 227 tests
+#### `compiler` family `tablewire`, 228 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4363,6 +4383,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tablewire.diamond-chain-loads-linear` | `gotest` | Go test TestDiamondChainLoadsLinear in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestDiamondChainLoadsLinear` | the Go test passes | `internal/tablewire/cycle_test.go:238` |
 | `none.unit.compiler.tablewire.encode-decode-round-trip` | `gotest` | Go test TestEncodeDecodeRoundTrip in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEncodeDecodeRoundTrip` | the Go test passes | `internal/tablewire/wire_test.go:143` |
 | `none.unit.compiler.tablewire.encode-refuses-more-than4096-ids` | `gotest` | Go test TestEncodeRefusesMoreThan4096Ids in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEncodeRefusesMoreThan4096Ids` | the Go test passes | `internal/tablewire/idcap_test.go:15` |
+| `none.unit.compiler.tablewire.engine-bench-fixture-reads` | `gotest` | Go test TestEngineBenchFixtureReads in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEngineBenchFixtureReads` | the Go test passes | `internal/tablewire/engine_bench_test.go:42` |
 | `none.unit.compiler.tablewire.engine-has-no-tolerant-paths` | `gotest` | Go test TestEngineHasNoTolerantPaths in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEngineHasNoTolerantPaths` | the Go test passes | `internal/tablewire/strictonly_test.go:17` |
 | `none.unit.compiler.tablewire.engine-pointer-target-blob-kind` | `gotest` | Go test TestEnginePointerTargetBlobKind in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEnginePointerTargetBlobKind` | the Go test passes | `internal/tablewire/pointer_target_type_test.go:43` |
 | `none.unit.compiler.tablewire.engine-pointer-target-type-checked` | `gotest` | Go test TestEnginePointerTargetTypeChecked in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEnginePointerTargetTypeChecked` | the Go test passes | `internal/tablewire/pointer_target_type_test.go:35` |
@@ -4701,7 +4722,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 275 tests
+#### `tooling` family `ci`, 276 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4757,6 +4778,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.every-go-test-can-fail` | `gotest` | Go test TestEveryGoTestCanFail in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryGoTestCanFail` | the Go test passes | `internal/ci/vacuoustests_gate_test.go:25` |
 | `none.unit.tooling.ci.every-interpreter-child-registers-its-inputs` | `gotest` | Go test TestEveryInterpreterChildRegistersItsInputs in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryInterpreterChildRegistersItsInputs` | the Go test passes | `internal/ci/interpreter_children_register_inputs_test.go:24` |
 | `none.unit.tooling.ci.every-job-has-its-tier-in-ci-tiers` | `gotest` | Go test TestEveryJobHasItsTierInCITiers in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryJobHasItsTierInCITiers` | the Go test passes | `internal/ci/tier_groups_test.go:403` |
+| `none.unit.tooling.ci.every-lint-gate-reads-a-produced-tree` | `gotest` | Go test TestEveryLintGateReadsAProducedTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryLintGateReadsAProducedTree` | the Go test passes | `internal/ci/lint_producers_test.go:226` |
 | `none.unit.tooling.ci.every-named-table-leg-runs-on-its-pull-requests` | `gotest` | Go test TestEveryNamedTableLegRunsOnItsPullRequests in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryNamedTableLegRunsOnItsPullRequests` | the Go test passes | `internal/ci/tableslegs_test.go:100` |
 | `none.unit.tooling.ci.every-nightly-only-gate-has-apr-tier-form` | `gotest` | Go test TestEveryNightlyOnlyGateHasAPRTierForm in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryNightlyOnlyGateHasAPRTierForm` | the Go test passes | `internal/ci/nightly_tiers_test.go:66` |
 | `none.unit.tooling.ci.every-package-the-build-runs-is-committed` | `gotest` | Go test TestEveryPackageTheBuildRunsIsCommitted in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPackageTheBuildRunsIsCommitted` | the Go test passes | `internal/ci/ci_test.go:292` |
@@ -4981,7 +5003,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.workflow-and-job-env-name-only-allowed-contexts` | `gotest` | Go test TestWorkflowAndJobEnvNameOnlyAllowedContexts in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowAndJobEnvNameOnlyAllowedContexts` | the Go test passes | `internal/ci/env_contexts_test.go:82` |
 | `none.unit.tooling.ci.workflow-names-parse-as-scalars` | `gotest` | Go test TestWorkflowNamesParseAsScalars in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowNamesParseAsScalars` | the Go test passes | `internal/ci/workflow_name_scalar_test.go:48` |
 
-#### `tooling` family `ci-hostilecorpus`, 12 tests
+#### `tooling` family `ci-hostilecorpus`, 13 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4991,6 +5013,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci-hostilecorpus.ledger-check` | `gotest` | Go test TestLedgerCheck in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestLedgerCheck` | the Go test passes | `internal/ci/hostilecorpus/ledger_test.go:28` |
 | `none.unit.tooling.ci-hostilecorpus.manifest-input-stays-inside-corpus` | `gotest` | Go test TestManifestInputStaysInsideCorpus in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestManifestInputStaysInsideCorpus` | the Go test passes | `internal/ci/hostilecorpus/inputpath_test.go:56` |
 | `none.unit.tooling.ci-hostilecorpus.manifest-input-stays-inside-corpus-negative-control` | `gotest` | Go test TestManifestInputStaysInsideCorpusNegativeControl in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestManifestInputStaysInsideCorpusNegativeControl` | the Go test passes | `internal/ci/hostilecorpus/inputpath_test.go:119` |
+| `none.unit.tooling.ci-hostilecorpus.name-unanswered-names-every-case-a-run-left-out` | `gotest` | Go test TestNameUnansweredNamesEveryCaseARunLeftOut in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestNameUnansweredNamesEveryCaseARunLeftOut` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:94` |
 | `none.unit.tooling.ci-hostilecorpus.packet-rows-and-empty-guard` | `gotest` | Go test TestPacketRowsAndEmptyGuard in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestPacketRowsAndEmptyGuard` | the Go test passes | `internal/ci/hostilecorpus/packet_rows_test.go:16` |
 | `none.unit.tooling.ci-hostilecorpus.ran-every-reads-the-folder` | `gotest` | Go test TestRanEveryReadsTheFolder in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestRanEveryReadsTheFolder` | the Go test passes | `internal/ci/hostilecorpus/ledger_test.go:66` |
 | `none.unit.tooling.ci-hostilecorpus.read-verdicts-counts-only-the-blocks` | `gotest` | Go test TestReadVerdictsCountsOnlyTheBlocks in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestReadVerdictsCountsOnlyTheBlocks` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:44` |
@@ -6159,7 +6182,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 26 tests
+#### `tooling` family `testreg-extract`, 27 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -6175,6 +6198,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-its-test-for-every-language` | `gotest` | Go test TestAPerLanguageRowCoversItsTestForEveryLanguage in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversItsTestForEveryLanguage` | the Go test passes | `internal/testreg/extract/langtest_test.go:15` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-no-test-of-a-language-it-dropped` | `gotest` | Go test TestAPerLanguageRowCoversNoTestOfALanguageItDropped in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversNoTestOfALanguageItDropped` | the Go test passes | `internal/testreg/extract/langtest_test.go:91` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-runs-each-languages-target` | `gotest` | Go test TestAPerLanguageRowRunsEachLanguagesTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowRunsEachLanguagesTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:496` |
+| `none.unit.tooling.testreg-extract.a-per-language-rows-target-no-make-file-defines-is-named` | `gotest` | Go test TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:779` |
 | `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:411` |
 | `none.unit.tooling.testreg-extract.a-test-that-skips-is-refused` | `gotest` | Go test TestATestThatSkipsIsRefused in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestATestThatSkipsIsRefused` | the Go test passes | `internal/testreg/extract/extract_test.go:298` |
 | `none.unit.tooling.testreg-extract.a-union-row-covers-each-languages-go-test` | `gotest` | Go test TestAUnionRowCoversEachLanguagesGoTest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAUnionRowCoversEachLanguagesGoTest` | the Go test passes | `internal/testreg/extract/langtest_test.go:54` |

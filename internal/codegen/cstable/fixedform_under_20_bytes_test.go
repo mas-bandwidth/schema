@@ -12,14 +12,14 @@ import (
 
 // §5.3 `fixed_form_under_20_bytes`, schema#876 item F7 — a GAP on all nine legs,
 // one of the six joint-worst rows in that issue. Five legs have already landed
-// it (go, c, dart, js, cpp); cs is one of the four that remain. The two answers
-// the fixed reader owes are `refused` plus a `reason` on one hand and `malformed`
-// on the other, and they are NEVER both set. A short file is the RESIDUE, not a
-// refusal by name, so `Reason` stays untouched and asserting `layout_malformed`
-// here would be wrong — that name belongs to a layout that lies about a known
-// version, not to a buffer that ends before the header does. This leg also
-// answers a field the other eight do not: `report.Verdict` is set to
-// `TableWire.Verdict.Damaged` alongside `Malformed`. k == 0 is guarded by its own
+// it (go, c, dart, js, cpp); cs is one of the four that remain. A short file
+// REFUSES `truncated` by name: docs/FIXED-FORM-ALGORITHM.md §5.3's refusal
+// table ("shorter than 20 bytes, the form byte having already answered" and "no
+// bytes at all" are both `truncated`) and "There is no `malformed` flag on this
+// form's report". `layout_malformed` would be wrong here — that name belongs to
+// a layout that lies about a known version, not to a buffer that ends before
+// the header does. The report answers Refused, Reason "truncated" and
+// Verdict.Refused, and Damaged is never set. k == 0 is guarded by its own
 // earlier clause (`data.Length < 1`) rather than the twenty-byte clause, so I
 // measure both and require the same answer. The destination is poisoned to a
 // recognisable sentinel before each short read and every row handed in must hold its declared default afterwards (R4). The
@@ -75,32 +75,28 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
                 long n = Schema.@TABLE@FixedLoad(back, data.AsSpan(0, k), plan, r);
                 if (n != -1)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a file shorter than the header must be malformed and return -1: k=" + k + " n=" + n + " malformed=" + r.Damaged + " refused=" + r.Refused);
+                    bad += ProbeLog.Fail(@NAME@, "a file shorter than the header must refuse and return -1: k=" + k + " n=" + n + " refused=" + r.Refused + " reason=" + r.Reason);
                     continue;
                 }
-                if (!r.Damaged)
+                if (!r.Refused || r.Reason != "truncated")
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a short file is malformed, never clean: k=" + k + " malformed=" + r.Damaged);
+                    bad += ProbeLog.Fail(@NAME@, "a short file refuses truncated by name (§5.3 refusal table): k=" + k + " refused=" + r.Refused + " reason=" + r.Reason);
                 }
-                if (r.Refused)
+                if (r.Damaged)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "a short file is the residue, not a refusal by name: k=" + k + " refused=" + r.Refused + " reason=" + r.Reason);
+                    bad += ProbeLog.Fail(@NAME@, "there is no malformed flag on this form's report (§5.3): k=" + k + " malformed=" + r.Damaged);
                 }
-                if (r.Reason != null)
+                if (r.Verdict != Schema.TableWire.Verdict.Refused)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "reason stays untouched on a malformed read: k=" + k + " reason=" + r.Reason);
-                }
-                if (r.Verdict != Schema.TableWire.Verdict.Damaged)
-                {
-                    bad += ProbeLog.Fail(@NAME@, "this leg answers Verdict.Damaged alongside Malformed: k=" + k + " verdict=" + r.Verdict);
+                    bad += ProbeLog.Fail(@NAME@, "a short file's verdict is Refused: k=" + k + " verdict=" + r.Verdict);
                 }
                 if (r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a malformed read: k=" + k + " unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
+                    bad += ProbeLog.Fail(@NAME@, "every counter is zero on a refusal: k=" + k + " unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
                 }
                 if (r.LayoutHash != 0)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "malformed publishes no hash: k=" + k + " hash=0x" + r.LayoutHash.ToString("x16"));
+                    bad += ProbeLog.Fail(@NAME@, "truncated publishes no hash: k=" + k + " hash=0x" + r.LayoutHash.ToString("x16"));
                 }
                 for (int row = 0; row < back.Length; ++row)
                 {

@@ -67,6 +67,8 @@ func TestIntegrityCSharp(t *testing.T) {
  byte[] base64Roundtrip=Convert.FromBase64String(Convert.ToBase64String(saved));
  if(!Probe.Schema.RootLoad(new Probe.Root(),base64Roundtrip,new Probe.TableReport()))throw new Exception("base64 lost CRC trailer");
  void Damage(Probe.TableReport r) { if (!r.Damaged || r.Refused || r.Reason!="integrity_mismatch" || r.Verdict!=Probe.Schema.TableWire.Verdict.Damaged || r.Unknown!=0 || r.Widened!=0) throw new Exception("integrity report "+r.Reason); }
+ // THE FIXED FORM REFUSES A TRAILER THAT DOES NOT HOLD BY NAME: no malformed flag on its report (docs/FIXED-FORM-ALGORITHM.md §5.3; SPEC-TABLES §2.14).
+ void FixedRefused(Probe.TableReport r) { if (r.Damaged || !r.Refused || r.Reason!="integrity_mismatch" || r.Verdict!=Probe.Schema.TableWire.Verdict.Refused || r.Unknown!=0 || r.Widened!=0) throw new Exception("fixed integrity report damaged="+r.Damaged+" refused="+r.Refused+" reason="+r.Reason+" verdict="+r.Verdict); }
  void CheckBad(byte[] bytes) {
   var value=new Probe.Root{Value=123};var report=new Probe.TableReport();
   if(Probe.Schema.RootLoad(value,bytes,report)||value.Value!=0) throw new Exception("damaged managed file decoded");
@@ -125,10 +127,10 @@ func TestIntegrityCSharp(t *testing.T) {
  for(int at=1;at<fixedBytes.Length;at++)for(int bit=0;bit<8;bit++){
   byte[] corrupt=(byte[])fixedBytes.Clone();corrupt[at]^=(byte)(1<<bit);
   fixedBack[0].Value=77;fixedBack[1].Value=88;var r=new Probe.TableReport();
-  if(Probe.Schema.FixedRowFixedLoad(fixedBack,corrupt,new Probe.TableFixedEntry[8],r)!=-1||fixedBack[0].Value!=new Probe.FixedRow().Value||fixedBack[1].Value!=new Probe.FixedRow().Value)throw new Exception("damaged fixed file left a handed row off its declared defaults (SPEC-TABLES §6.5, R4)");Damage(r);
+  if(Probe.Schema.FixedRowFixedLoad(fixedBack,corrupt,new Probe.TableFixedEntry[8],r)!=-1||fixedBack[0].Value!=new Probe.FixedRow().Value||fixedBack[1].Value!=new Probe.FixedRow().Value)throw new Exception("damaged fixed file left a handed row off its declared defaults (SPEC-TABLES §6.5, R4)");FixedRefused(r);
  }
  for(int n=1;n<5;n++){var r=new Probe.TableReport();byte[] shortFixed=new byte[n];shortFixed[0]=3;
-  if(Probe.Schema.FixedRowFixedLoad(fixedBack,shortFixed,new Probe.TableFixedEntry[8],r)!=-1)throw new Exception("short fixed accepted");Damage(r);}
+  if(Probe.Schema.FixedRowFixedLoad(fixedBack,shortFixed,new Probe.TableFixedEntry[8],r)!=-1)throw new Exception("short fixed accepted");FixedRefused(r);}
  var fixedWrong=(byte[])fixedBytes.Clone();fixedWrong[0]=1;var fixedFormReport=new Probe.TableReport();
  if(Probe.Schema.FixedRowFixedLoad(fixedBack,fixedWrong,new Probe.TableFixedEntry[8],fixedFormReport)!=-1||!fixedFormReport.Refused||fixedFormReport.Damaged||fixedFormReport.Reason!="previous_form")throw new Exception("fixed form precedence");
  byte[] message=new byte[Probe.Schema.FixedRowMeasureMessages(fixedValues)];

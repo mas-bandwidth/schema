@@ -21,6 +21,7 @@ package cstable
 // directly.
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -44,7 +45,9 @@ var csStrictFramingReasons = []string{
 	"message_form_as_file",
 	"newer_form",
 	"layout_malformed",
-	"layout_newer",
+	"layout_unknown",
+	"truncated",
+	"reserved_not_zero",
 	"layout_unsupported",
 	"no_layout",
 	"batch_too_large",
@@ -180,43 +183,80 @@ func csCheckReasons(body string, reasons []string) []string {
 	return bad
 }
 
-// csCheckLayoutNewerHash: a hash the lineage does not hold is layout_newer,
-// and it reports THE FILE'S HASH and nothing else (§5.3).
-func csCheckLayoutNewerHash(body string) []string {
+// csCheckLayoutUnknownHash: a hash the lineage does not hold is
+// layout_unknown, in every leg, and it reports THE FILE'S HASH and nothing
+// else; layout_newer is retired and no read answers it
+// (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3).
+func csCheckLayoutUnknownHash(body string) []string {
 	var bad []string
-	if !strings.Contains(body, `"layout_newer"`) {
-		bad = append(bad, "no layout_newer refusal by name")
+	if !strings.Contains(body, `report.Reason = "layout_unknown"; report.LayoutHash = hash;`) {
+		bad = append(bad, "no layout_unknown refusal by name reporting the file's hash")
 	}
-	if !strings.Contains(body, "report.LayoutHash = hash") {
-		bad = append(bad, "layout_newer does not report the file's hash")
+	if strings.Contains(body, `"layout_newer"`) {
+		bad = append(bad, "the read still answers the retired layout_newer")
 	}
 	return bad
 }
 
-// csCheckUnder20: a file below the fixed form's header length is damage, not a
-// refusal, so the read refuses the whole load and writes nothing.
+// csCheckNoMalformedFlag: "There is no `malformed` flag on this form's report"
+// (docs/FIXED-FORM-ALGORITHM.md §5.3): the fixed load never sets Damaged and
+// never answers Verdict.Damaged; framing damage refuses by name.
+func csCheckNoMalformedFlag(body string) []string {
+	var bad []string
+	if strings.Contains(body, "report.Damaged") {
+		bad = append(bad, "the fixed load sets the malformed flag (report.Damaged)")
+	}
+	if strings.Contains(body, "Verdict.Damaged") {
+		bad = append(bad, "the fixed load answers Verdict.Damaged")
+	}
+	if strings.Contains(body, "IntegrityDamage(") {
+		bad = append(bad, "the fixed load answers an integrity mismatch through IntegrityDamage, which sets Damaged")
+	}
+	return bad
+}
+
+// csCheckIntegrity: an integrity trailer that does not hold refuses
+// integrity_mismatch by name (docs/SPEC-TABLES.md §2.14), with no malformed
+// flag (docs/FIXED-FORM-ALGORITHM.md §5.3).
+func csCheckIntegrity(body string) []string {
+	var bad []string
+	if !strings.Contains(body, `if (!TableWire.IntegrityRead(ref data)) { if (report != null) { report.Refused = true; report.Reason = "integrity_mismatch"; report.Verdict = TableWire.Verdict.Refused; } return -1; }`) {
+		bad = append(bad, "an integrity mismatch does not refuse integrity_mismatch by name")
+	}
+	return append(bad, csCheckNoMalformedFlag(body)...)
+}
+
+// csUnder20Refusal and csRaggedRefusal are the two framing guards of the
+// generated walk and the answer each owes, whatever the emitted indentation.
+// Group 1 is the guard, so a plant can keep it and swap only the answer.
+var (
+	csUnder20Refusal = regexp.MustCompile(`(if \(data\.Length < TableFixedWire\.HeaderBytes \+ 4\)\s*\{\s*if \(report != null\) \{ )report\.Refused = true; report\.Reason = "truncated"; report\.Verdict = TableWire\.Verdict\.Refused;`)
+	csRaggedRefusal  = regexp.MustCompile(`(rest % record_bytes != 0\)\s*\{\s*if \(report != null\) \{ )report\.Refused = true; report\.Reason = "truncated"; report\.Verdict = TableWire\.Verdict\.Refused;`)
+)
+
+// csPlantMalformed puts the retired malformed answer back behind one guard.
+func csPlantMalformed(text string, guard *regexp.Regexp) string {
+	return guard.ReplaceAllString(text, "${1}report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged;")
+}
+
+// csCheckUnder20: a file below the fixed form's header length refuses
+// `truncated` by name (§5.3's refusal table), with no malformed flag.
 func csCheckUnder20(body string) []string {
 	var bad []string
-	if !strings.Contains(body, "data.Length < TableFixedWire.HeaderBytes + 4") {
-		bad = append(bad, "no below-header-length damage check")
+	if !csUnder20Refusal.MatchString(body) {
+		bad = append(bad, "a file below the header length does not refuse truncated by name")
 	}
-	if !strings.Contains(body, "report.Damaged = true") {
-		bad = append(bad, "damage is not reported")
-	}
-	return bad
+	return append(bad, csCheckNoMalformedFlag(body)...)
 }
 
-// csCheckRaggedTail: a ragged tail (rest not a whole number of records) is
-// damage, and the whole load is discarded.
+// csCheckRaggedTail: a ragged tail (rest not a whole number of records)
+// refuses `truncated` by name (§5.3's refusal table), with no malformed flag.
 func csCheckRaggedTail(body string) []string {
 	var bad []string
-	if !strings.Contains(body, "rest % record_bytes != 0") {
-		bad = append(bad, "no ragged-tail damage check")
+	if !csRaggedRefusal.MatchString(body) {
+		bad = append(bad, "a ragged tail does not refuse truncated by name")
 	}
-	if !strings.Contains(body, "report.Damaged = true") {
-		bad = append(bad, "damage is not reported")
-	}
-	return bad
+	return append(bad, csCheckNoMalformedFlag(body)...)
 }
 
 // csCheckStrictContract: the one read returns long, -1 on every refusal, lands
@@ -309,6 +349,11 @@ fixed table Lineage
     z int32 = 0
     w int32 = 77
 }`,
+		"sealed": `package demo
+fixed table Sealed | integrity = "crc32c"
+{
+    x int32 = 0
+}`,
 		"array_elem_widen":   csReadSchema(t, "VNEW_array_elem_widen"),
 		"cfloat_range_widen": csReadSchema(t, "VNEW_cfloat_range_widen"),
 	}
@@ -335,10 +380,12 @@ func TestCSharpFixedProbesStrict(t *testing.T) {
 	check("cs/F9 batch too large", csCheckReasons(framingBody, []string{"batch_too_large"}))
 	check("cs/R9 known-hash malformed", csCheckReasons(framingBody, []string{"layout_malformed"}))
 	check("cs/R13 refuse is total", csCheckReasons(framingBody, csStrictFramingReasons))
+	check("cs/R13 no malformed flag", csCheckNoMalformedFlag(framingBody))
+	check("cs/integrity mismatch refuses by name", csCheckIntegrity(csStrictFixedLoadBody(csStrictText(csStrictGen(t, schemas["sealed"])), "Sealed")))
 	check("cs/F7 under 20 bytes", csCheckUnder20(framingBody))
 	check("cs/F8 ragged tail", csCheckRaggedTail(framingBody))
 	check("cs/F10 refuse writes nothing", csCheckStrictContract(framingBody))
-	check("cs/R8 hash unknown", csCheckLayoutNewerHash(framingBody))
+	check("cs/R8 hash unknown", csCheckLayoutUnknownHash(framingBody))
 	check("cs/R16 exact counters", csCheckExactCounters(csStrictText(csStrictGen(t, schemas["framing"]))))
 	check("cs/R30 compressed floats", csCheckNonFiniteFloat(cfloatText))
 	check("cs/E3/fixed-array-element", csCheckWidenedPerElement(arrayText))
@@ -380,10 +427,10 @@ func TestCSharpFixedProbesStrictNegativeControl(t *testing.T) {
 			},
 		},
 		{
-			name: "layout-newer-forgets-the-hash",
+			name: "layout-unknown-forgets-the-hash",
 			text: csMutateFixedLoadBody(framingText, "Lineage",
 				"report.LayoutHash = hash", ""),
-			probe: func(text string) []string { return csCheckLayoutNewerHash(csStrictFixedLoadBody(text, "Lineage")) },
+			probe: func(text string) []string { return csCheckLayoutUnknownHash(csStrictFixedLoadBody(text, "Lineage")) },
 		},
 		{
 			name: "refusal-returns-a-count",
@@ -397,6 +444,40 @@ func TestCSharpFixedProbesStrictNegativeControl(t *testing.T) {
 				"rest % record_bytes != 0", "rest % record_bytes != 400"),
 			probe: func(text string) []string { return csCheckRaggedTail(csStrictFixedLoadBody(text, "Lineage")) },
 		},
+		// THE PLANTS OF THIS CARD (docs/FIXED-FORM-ALGORITHM.md §5.3): each
+		// puts one retired answer back into the real generated load.
+		{
+			name:  "ragged-tail-sets-malformed",
+			text:  csPlantMalformed(framingText, csRaggedRefusal),
+			probe: func(text string) []string { return csCheckRaggedTail(csStrictFixedLoadBody(text, "Lineage")) },
+		},
+		{
+			name:  "under-20-sets-malformed",
+			text:  csPlantMalformed(framingText, csUnder20Refusal),
+			probe: func(text string) []string { return csCheckUnder20(csStrictFixedLoadBody(text, "Lineage")) },
+		},
+		{
+			name: "reserved-byte-sets-malformed",
+			text: csMutateFixedLoadBody(framingText, "Lineage",
+				"report.Refused = true; report.Reason = \"reserved_not_zero\"; report.Verdict = TableWire.Verdict.Refused;",
+				"report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged;"),
+			probe: func(text string) []string {
+				body := csStrictFixedLoadBody(text, "Lineage")
+				return append(csCheckReasons(body, []string{"reserved_not_zero"}), csCheckNoMalformedFlag(body)...)
+			},
+		},
+		{
+			name: "layout-newer-is-back",
+			text: csMutateFixedLoadBody(framingText, "Lineage",
+				`report.Reason = "layout_unknown";`, `report.Reason = "layout_newer";`),
+			probe: func(text string) []string { return csCheckLayoutUnknownHash(csStrictFixedLoadBody(text, "Lineage")) },
+		},
+	}
+	// Every plant must actually change the artifact, or its red proves nothing.
+	for _, sc := range sabotages {
+		if sc.text == framingText {
+			t.Fatalf("plant %s did not change the generated artifact: its needle is stale", sc.name)
+		}
 	}
 
 	for _, sc := range sabotages {
@@ -406,4 +487,22 @@ func TestCSharpFixedProbesStrictNegativeControl(t *testing.T) {
 			}
 		})
 	}
+
+	// THE INTEGRITY PLANT runs over a sealed table: the retired answer, the
+	// shared IntegrityDamage helper that sets Damaged, put back in its place.
+	t.Run("integrity-sets-malformed", func(t *testing.T) {
+		sealedText := csStrictText(csStrictGen(t, schemas["sealed"]))
+		if p := csCheckIntegrity(csStrictFixedLoadBody(sealedText, "Sealed")); len(p) != 0 {
+			t.Fatalf("the pristine sealed artifact already fails:\n%s", strings.Join(p, "\n"))
+		}
+		planted := csMutateFixedLoadBody(sealedText, "Sealed",
+			`{ if (report != null) { report.Refused = true; report.Reason = "integrity_mismatch"; report.Verdict = TableWire.Verdict.Refused; } return -1; }`,
+			`{ if (report != null) { TableWire.IntegrityDamage(report); } return -1; }`)
+		if planted == sealedText {
+			t.Fatal("plant integrity-sets-malformed did not change the generated artifact: its needle is stale")
+		}
+		if p := csCheckIntegrity(csStrictFixedLoadBody(planted, "Sealed")); len(p) == 0 {
+			t.Fatal("NEGATIVE CONTROL FAILED (integrity-sets-malformed): the sabotaged artifact stayed green")
+		}
+	})
 }

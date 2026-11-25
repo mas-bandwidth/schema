@@ -96,7 +96,7 @@ public final class TEXTCLASS {
         PKG.TableFixed.Report report = new PKG.TableFixed.Report();
         int read = PKG.ROOTFixed.load(values, 1, wire, PKG.TableFixed.plan(1 << 14), new short[1 << 14],
                 PKG.ROOTFixed.image(), report);
-        if (read != 1 || report.refused || report.damaged) {
+        if (read != 1 || report.refused) {
             throw new AssertionError("fixed read: " + report.reason);
         }
         PKG.ROOTVariable.Value value = PKG.ROOTVariable.fromFixed(values[0]);

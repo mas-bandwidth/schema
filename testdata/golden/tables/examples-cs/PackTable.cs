@@ -1491,7 +1491,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash in no lineage entry (§5.3 step 5).
         public const int GunnerSettingsFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -1574,7 +1574,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -1591,14 +1591,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Refused = true; report.Reason = "reserved_not_zero"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
             }
@@ -1613,7 +1613,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(GunnerSettingsFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < GunnerSettingsFixedFloor)
@@ -1663,7 +1663,7 @@ namespace Tabledemo
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -2172,7 +2172,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash in no lineage entry (§5.3 step 5).
         public const int ShipEntryFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -2255,7 +2255,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -2272,14 +2272,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Refused = true; report.Reason = "reserved_not_zero"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
             }
@@ -2294,7 +2294,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(ShipEntryFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < ShipEntryFixedFloor)
@@ -2344,7 +2344,7 @@ namespace Tabledemo
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -2819,7 +2819,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash in no lineage entry (§5.3 step 5).
         public const int GlobalSettingsFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -2923,7 +2923,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -2940,14 +2940,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Refused = true; report.Reason = "reserved_not_zero"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
             }
@@ -2962,7 +2962,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(GlobalSettingsFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < GlobalSettingsFixedFloor)
@@ -3018,7 +3018,7 @@ namespace Tabledemo
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             long n = rest / record_bytes;
@@ -3937,7 +3937,7 @@ namespace Tabledemo
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
-        // layout_newer, which is ship the reader (§5.2).
+        // layout_unknown, a hash in no lineage entry (§5.3 step 5).
         public const int PackConfigFixedFloor = 0;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
@@ -4020,7 +4020,7 @@ namespace Tabledemo
         {
             if (data.Length < 1)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (data[0] != TableFixedWire.Form)
@@ -4037,14 +4037,14 @@ namespace Tabledemo
             }
             if (data.Length < TableFixedWire.HeaderBytes + 4)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)
             {
                 if (data[reserved] != 0)
                 {
-                    if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                    if (report != null) { report.Refused = true; report.Reason = "reserved_not_zero"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
             }
@@ -4059,7 +4059,7 @@ namespace Tabledemo
             int pick = TableFixedWire.Select(PackConfigFixedKnown, hash);
             if (pick < 0)
             {
-                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                if (report != null) { report.Refused = true; report.Reason = "layout_unknown"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             if (pick < PackConfigFixedFloor)
@@ -4109,7 +4109,7 @@ namespace Tabledemo
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
             {
-                if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
+                if (report != null) { report.Refused = true; report.Reason = "truncated"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
             long n = rest / record_bytes;

@@ -52,8 +52,8 @@ func Registered(dir string) ([]Case, error) {
 		cited[strings.TrimPrefix(c.Input, "inputs/")] = true
 	}
 	// A folder may carry a second manifest in the same format beside the one
-	// the runners read (corpus/number-token.tsv, which the ports move to one
-	// leg at a time): its rows name inputs too, and are not cases of this one.
+	// the runners read: its rows name inputs too, and are not cases of this
+	// one.
 	others, err := filepath.Glob(filepath.Join(dir, "*.tsv"))
 	if err != nil {
 		return nil, err
