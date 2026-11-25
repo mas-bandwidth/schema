@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2915.
+Unit tests every language answers: 2. Language-free tests: 2917.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -2055,7 +2055,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.workflow-and-job-env-name-only-allowed-contexts` | `gotest` | Go test TestWorkflowAndJobEnvNameOnlyAllowedContexts in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowAndJobEnvNameOnlyAllowedContexts` | the Go test passes | `internal/ci/env_contexts_test.go:82` |
 | `none.unit.tooling.ci.workflow-names-parse-as-scalars` | `gotest` | Go test TestWorkflowNamesParseAsScalars in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowNamesParseAsScalars` | the Go test passes | `internal/ci/workflow_name_scalar_test.go:48` |
 
-#### `tooling` family `ci-hostilecorpus`, 12 tests
+#### `tooling` family `ci-hostilecorpus`, 13 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2065,6 +2065,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci-hostilecorpus.ledger-check` | `gotest` | Go test TestLedgerCheck in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestLedgerCheck` | the Go test passes | `internal/ci/hostilecorpus/ledger_test.go:28` |
 | `none.unit.tooling.ci-hostilecorpus.manifest-input-stays-inside-corpus` | `gotest` | Go test TestManifestInputStaysInsideCorpus in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestManifestInputStaysInsideCorpus` | the Go test passes | `internal/ci/hostilecorpus/inputpath_test.go:56` |
 | `none.unit.tooling.ci-hostilecorpus.manifest-input-stays-inside-corpus-negative-control` | `gotest` | Go test TestManifestInputStaysInsideCorpusNegativeControl in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestManifestInputStaysInsideCorpusNegativeControl` | the Go test passes | `internal/ci/hostilecorpus/inputpath_test.go:119` |
+| `none.unit.tooling.ci-hostilecorpus.name-unanswered-names-every-case-a-run-left-out` | `gotest` | Go test TestNameUnansweredNamesEveryCaseARunLeftOut in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestNameUnansweredNamesEveryCaseARunLeftOut` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:94` |
 | `none.unit.tooling.ci-hostilecorpus.packet-rows-and-empty-guard` | `gotest` | Go test TestPacketRowsAndEmptyGuard in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestPacketRowsAndEmptyGuard` | the Go test passes | `internal/ci/hostilecorpus/packet_rows_test.go:16` |
 | `none.unit.tooling.ci-hostilecorpus.ran-every-reads-the-folder` | `gotest` | Go test TestRanEveryReadsTheFolder in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestRanEveryReadsTheFolder` | the Go test passes | `internal/ci/hostilecorpus/ledger_test.go:66` |
 | `none.unit.tooling.ci-hostilecorpus.read-verdicts-counts-only-the-blocks` | `gotest` | Go test TestReadVerdictsCountsOnlyTheBlocks in ./internal/ci/hostilecorpus | `package: ./internal/ci/hostilecorpus`<br>`test: TestReadVerdictsCountsOnlyTheBlocks` | the Go test passes | `internal/ci/hostilecorpus/verdicts_test.go:44` |
@@ -3211,7 +3212,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 25 tests
+#### `tooling` family `testreg-extract`, 26 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3226,6 +3227,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-its-test-for-every-language` | `gotest` | Go test TestAPerLanguageRowCoversItsTestForEveryLanguage in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversItsTestForEveryLanguage` | the Go test passes | `internal/testreg/extract/langtest_test.go:15` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-covers-no-test-of-a-language-it-dropped` | `gotest` | Go test TestAPerLanguageRowCoversNoTestOfALanguageItDropped in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversNoTestOfALanguageItDropped` | the Go test passes | `internal/testreg/extract/langtest_test.go:91` |
 | `none.unit.tooling.testreg-extract.a-per-language-row-runs-each-languages-target` | `gotest` | Go test TestAPerLanguageRowRunsEachLanguagesTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowRunsEachLanguagesTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:496` |
+| `none.unit.tooling.testreg-extract.a-per-language-rows-target-no-make-file-defines-is-named` | `gotest` | Go test TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowsTargetNoMakeFileDefinesIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:779` |
 | `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:411` |
 | `none.unit.tooling.testreg-extract.a-test-that-skips-is-refused` | `gotest` | Go test TestATestThatSkipsIsRefused in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestATestThatSkipsIsRefused` | the Go test passes | `internal/testreg/extract/extract_test.go:298` |
 | `none.unit.tooling.testreg-extract.a-union-row-covers-each-languages-go-test` | `gotest` | Go test TestAUnionRowCoversEachLanguagesGoTest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAUnionRowCoversEachLanguagesGoTest` | the Go test passes | `internal/testreg/extract/langtest_test.go:54` |

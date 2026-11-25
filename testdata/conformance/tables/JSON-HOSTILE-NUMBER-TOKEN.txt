@@ -18,8 +18,9 @@
 # moved to it one leg at a time, as testdata/wire/json-integers/NUMBER-TOKEN.tsv
 # was: a leg reads these rows once its own reader refuses a bare number token
 # in a wide field. The trees live in json-hostile-number-token/, beside
-# json-hostile/, and the shared hostile corpus carries its copies in
-# internal/ci/hostilecorpus/corpus/number-token.tsv.
+# json-hostile/, and the shared hostile corpus carries its copies as cases of
+# internal/ci/hostilecorpus/corpus/manifest.tsv, which every port's corpus run
+# answers.
 
 unit tabledemo tables/examples
 unit scalars     tables/scalars
