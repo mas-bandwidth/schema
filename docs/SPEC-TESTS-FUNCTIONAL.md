@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2560. Language-free tests: 2302.
+Functional tests every language answers: 2560. Language-free tests: 2303.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4965,6 +4965,12 @@ a negative control: a named test run against a deliberately broken build must co
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.lua-format.tables-lua-format-negative-control` | `plant` | negative control tables-lua-format-negative-control (group lua-format of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/schema-lua-generated-luacheck-gate.mk`<br>`group: lua-format`<br>`make: tables-lua-format-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:236` |
+
+#### `plant` family `make-cs-block-compile`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.plant.make-cs-block-compile.tables-cs-block-compile-negative-control` | `plant` | negative control tables-cs-block-compile-negative-control (excluded from the groups of make/negative-controls.json, its reason there): the cook row naming a table-only tag enum and a Begin overload naming a table storage class, planted in the C# emitter, each fail the C# block-pair build by name | `file: make/cs-block-compile.mk`<br>`group: (excluded)`<br>`make: tables-cs-block-compile-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:3653` |
 
 #### `plant` family `moo`, 1 test
 
