@@ -301,6 +301,44 @@ func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
 	}
 }
 
+// TestTheShardRowsOfAGateShareItsTarget: the rows of a sharded make gate,
+// each setting one *_SHARD var to K/N, together cover its target once; a
+// shard run twice, a shard of another N, a shard row gone, a whole row
+// beside the shards, two shard vars on one row, and a value that is not K/N
+// are each named.
+func TestTheShardRowsOfAGateShareItsTarget(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{{Kind: KindMakeTarget, Dir: "make/x.mk", Name: "lint", Source: "make/x.mk:1"}}}
+	shard := func(key, vars string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Inputs: []byte(`{"file":"make/x.mk","target":"lint","vars":{` + vars + `}}`)}
+	}
+	good := []testreg.Test{
+		shard("lint.x.lint-shard-1-of-3", `"X_SHARD":"1/3","OTHER":"y"`),
+		shard("lint.x.lint-shard-2-of-3", `"X_SHARD":"2/3","OTHER":"y"`),
+		shard("lint.x.lint-shard-3-of-3", `"X_SHARD":"3/3","OTHER":"y"`),
+	}
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: good}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		tests []testreg.Test
+		says  string
+	}{
+		"a shard run twice":          {append(slices.Clone(good), shard("lint.x.again", `"X_SHARD":"2/3"`)), "lint.x.again runs shard 2/3 of make lint, which lint.x.lint-shard-2-of-3 already runs"},
+		"a shard of another N":       {append(slices.Clone(good), shard("lint.x.four", `"X_SHARD":"1/4"`)), "lint.x.four shards make lint as X_SHARD=1/4, but lint.x.lint-shard-1-of-3 shards it as X_SHARD of 3"},
+		"a shard row gone":           {[]testreg.Test{good[0], good[2]}, "no row runs shard 2/3 of make lint (X_SHARD)"},
+		"a whole row after":          {append(slices.Clone(good), shard("lint.x.whole", `"OTHER":"y"`)), "lint.x.whole runs make lint, which lint.x.lint-shard-1-of-3 already runs"},
+		"a whole row before":         {append([]testreg.Test{shard("lint.x.whole", `"OTHER":"y"`)}, good...), "lint.x.lint-shard-1-of-3 runs shard 1/3 of make lint, which lint.x.whole already runs whole"},
+		"two shard vars":             {append(slices.Clone(good), shard("lint.x.two", `"X_SHARD":"1/3","Y_SHARD":"1/2"`)), "lint.x.two: sets two shard vars, X_SHARD and Y_SHARD"},
+		"a shard that is not K of N": {append(slices.Clone(good), shard("lint.x.zero", `"X_SHARD":"0/3"`)), `lint.x.zero: X_SHARD="0/3" is not a shard K/N`},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: c.tests}, nil)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
 func modelRow(key, inputs string) testreg.Test {
 	return testreg.Test{Key: key, Adapter: "model-check", Inputs: []byte(inputs)}
 }
