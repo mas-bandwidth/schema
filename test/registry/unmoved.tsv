@@ -13,13 +13,13 @@ go-test	bench/paired	83	L3	language-free Go tests: the gotest adapter runs them 
 go-test	bench/tables/moo	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
 go-test	bench/tools	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	bench/tools/realpacket-gen	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	cmd/schema	101	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	cmd/schema	100	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	compiler	615	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/baseline	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/check	123	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	330	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/ci	329	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/ci/hostilecorpus	10	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/ccommon	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -110,7 +110,7 @@ go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs t
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	369	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/conformance/harness	333	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
@@ -152,547 +152,21 @@ go-test	tools/testguard	45	L3	language-free Go tests: the gotest adapter runs th
 go-test	tools/tlcrun	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/treelock	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/wirefuzzrelease	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-make-target	Makefile	41	L6	make gates: the make adapter runs them
-make-target	make/bench-check.mk	1	L6	make gates: the make adapter runs them
-make-target	make/c-fixed-default-copy.mk	1	L6	make gates: the make adapter runs them
-make-target	make/c.mk	10	L6	make gates: the make adapter runs them
-make-target	make/checks/packet-arm-defaults.mk	6	L6	make gates: the make adapter runs them
-make-target	make/checks/packet-defaults.mk	1	L6	make gates: the make adapter runs them
-make-target	make/checks/packet-void.mk	2	L6	make gates: the make adapter runs them
-make-target	make/checks/schema-shared-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/conformance-continues.mk	3	L6	make gates: the make adapter runs them
-make-target	make/cpp-cook-write.mk	2	L6	make gates: the make adapter runs them
-make-target	make/cpp-packet-write-refusal.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cpp-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cpp-positive-features.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cpp-tool-message.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cpp.mk	4	L6	make gates: the make adapter runs them
-make-target	make/cs-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cs-packet-write-refusal.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cs-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/cs.mk	6	L6	make gates: the make adapter runs them
-make-target	make/dart-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/dart-hostile-text-throw.mk	1	L6	make gates: the make adapter runs them
-make-target	make/dart-id-first-use.mk	1	L6	make gates: the make adapter runs them
-make-target	make/dart-packet-write-bareint.mk	1	L6	make gates: the make adapter runs them
-make-target	make/dart.mk	7	L6	make gates: the make adapter runs them
-make-target	make/elixir-compressed-negzero.mk	1	L6	make gates: the make adapter runs them
-make-target	make/elixir-cook-write.mk	2	L6	make gates: the make adapter runs them
-make-target	make/elixir-packet-write-bareint.mk	1	L6	make gates: the make adapter runs them
-make-target	make/elixir-packet-write-cfloat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/elixir-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/elixir-pointer-node-defaults.mk	1	L6	make gates: the make adapter runs them
-make-target	make/elixir.mk	8	L6	make gates: the make adapter runs them
-make-target	make/go-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/go.mk	13	L6	make gates: the make adapter runs them
-make-target	make/goose-blockcook.mk	1	L6	make gates: the make adapter runs them
-make-target	make/goose-message.mk	1	L6	make gates: the make adapter runs them
-make-target	make/goose-tagged.mk	1	L6	make gates: the make adapter runs them
-make-target	make/goose-versioning.mk	1	L6	make gates: the make adapter runs them
-make-target	make/goose-wirefuzz-fixed.mk	1	L6	make gates: the make adapter runs them
-make-target	make/goose.mk	2	L6	make gates: the make adapter runs them
-make-target	make/java-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/java-packet-write-cfloat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/java-packet-write-refusal.mk	1	L6	make gates: the make adapter runs them
-make-target	make/java-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/java-text-fixed-roots.mk	1	L6	make gates: the make adapter runs them
-make-target	make/java.mk	4	L6	make gates: the make adapter runs them
-make-target	make/js-cook-absent-optional.mk	1	L6	make gates: the make adapter runs them
-make-target	make/js-json-base64.mk	1	L6	make gates: the make adapter runs them
-make-target	make/js-packet-write-bareint.mk	1	L6	make gates: the make adapter runs them
-make-target	make/js-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/js-text-list-strict.mk	1	L6	make gates: the make adapter runs them
-make-target	make/js.mk	7	L6	make gates: the make adapter runs them
-make-target	make/json-fuzz.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lobster-bench.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lobster-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lobster-packet-end.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lobster-packet-write-bareint.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lobster-packet-write-cfloat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lobster.mk	4	L6	make gates: the make adapter runs them
-make-target	make/lua-compressed-negzero.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lua-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/lua.mk	3	L6	make gates: the make adapter runs them
-make-target	make/luau-bench.mk	1	L6	make gates: the make adapter runs them
-make-target	make/luau-compressed-negzero.mk	1	L6	make gates: the make adapter runs them
-make-target	make/luau-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/luau-packet-write-cfloat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/luau-write-bareint.mk	1	L6	make gates: the make adapter runs them
-make-target	make/luau-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/luau.mk	4	L6	make gates: the make adapter runs them
-make-target	make/moo-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/moo-packet-write-bareint.mk	1	L6	make gates: the make adapter runs them
-make-target	make/moo-tables.mk	1	L6	make gates: the make adapter runs them
-make-target	make/moo-tagged.mk	1	L6	make gates: the make adapter runs them
-make-target	make/moo.mk	1	L6	make gates: the make adapter runs them
-make-target	make/name-buildability.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-array-growth.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-array-root.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-blob-wire-driver.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-block.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-cards.mk	5	L6	make gates: the make adapter runs them
-make-target	make/python-ci-release.mk	3	L6	make gates: the make adapter runs them
-make-target	make/python-cook.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-counted-pointer-birth.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-docs.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-fixed-crc.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-fixed-form.mk	7	L6	make gates: the make adapter runs them
-make-target	make/python-fixed-proof-evolution.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-fixed-proof-shapes.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-fixed-proof-unions-optionals.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-fixed-proof-values.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-form1-array-compat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-form1-required.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-forms-metadata.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-framing-driver.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-handtext.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-hosted-float.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-hosted-keyed.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-hostile.mk	4	L6	make gates: the make adapter runs them
-make-target	make/python-json.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-keyed-flags.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-message-applicability.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-message.mk	9	L6	make gates: the make adapter runs them
-make-target	make/python-one-sided.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-optional-array-min.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-optional-map.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-package-collision.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-packet-arrays.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-packet-int128.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-packet-layout.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-packet-ranged-bits.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-packet-text.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-packet-unions.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-reflection.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-retain.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-serialize.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-table-packet-types.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-toolchain.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-variable-crc.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-blobs.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-evolution-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-evolution.mk	5	L6	make gates: the make adapter runs them
-make-target	make/python-vt-fixed-class-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-fixed-class.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-idtable-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-idtable.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-keyed-enum.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-keyed-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-keyed.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-maps-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-optional-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-optional.mk	2	L6	make gates: the make adapter runs them
-make-target	make/python-vt-pointer-arrays-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-pointer-arrays.mk	15	L6	make gates: the make adapter runs them
-make-target	make/python-vt-timestamp.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-unbounded-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-unbounded.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-unions-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-unions.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-wide-rows.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-vt-wide.mk	1	L6	make gates: the make adapter runs them
-make-target	make/python-wirefuzz.mk	6	L6	make gates: the make adapter runs them
-make-target	make/python.mk	3	L6	make gates: the make adapter runs them
-make-target	make/ruby-cards.mk	6	L6	make gates: the make adapter runs them
-make-target	make/ruby-ci-release.mk	3	L6	make gates: the make adapter runs them
-make-target	make/ruby-docs.mk	1	L6	make gates: the make adapter runs them
-make-target	make/ruby-fixed-form.mk	9	L6	make gates: the make adapter runs them
-make-target	make/ruby-packet.mk	1	L6	make gates: the make adapter runs them
-make-target	make/ruby-serialize.mk	1	L6	make gates: the make adapter runs them
-make-target	make/ruby-toolchain.mk	2	L6	make gates: the make adapter runs them
-make-target	make/ruby-wirefuzz.mk	4	L6	make gates: the make adapter runs them
-make-target	make/ruby.mk	1	L6	make gates: the make adapter runs them
-make-target	make/rust-feature-witnesses.mk	1	L6	make gates: the make adapter runs them
-make-target	make/rust-fixed-roots.mk	1	L6	make gates: the make adapter runs them
-make-target	make/rust-packet-write-cfloat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/rust.mk	5	L6	make gates: the make adapter runs them
-make-target	make/schema-c-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-cpp-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-cs-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-dart-generated-strict-analyze-gate.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-dart-nightly-fuzz.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-dart-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-elixir-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-go-generated-golangci-lint-gate.mk	3	L6	make gates: the make adapter runs them
-make-target	make/schema-java-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-js-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-lobster-generated-strict-gate.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-lua-generated-luacheck-gate.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-lua-nightly-fuzz.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-lua-resource-bounds.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-lua-runs-hostile-corpus.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-lua-version-differential.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-luau-generated-analyze-strict-gate.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-luau-nightly-fuzz.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-luau-resource-bounds.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-luau-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-moo-generated-analyze-strict-gate.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-moo-nightly-fuzz.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-moo-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-ruby-generated-strict-gate.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-ruby-runs-hostile-corpus.mk	4	L6	make gates: the make adapter runs them
-make-target	make/schema-rust-runs-hostile-corpus.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-squirrel-all-port-differential.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-squirrel-generated-lint-gate.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-squirrel-nightly-fuzz.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-squirrel-resource-bounds.mk	2	L6	make gates: the make adapter runs them
-make-target	make/schema-squirrel-runs-hostile-corpus.mk	1	L6	make gates: the make adapter runs them
-make-target	make/schema-unity-runs-hostile-corpus.mk	3	L6	make gates: the make adapter runs them
-make-target	make/squirrel-cards.mk	2	L6	make gates: the make adapter runs them
-make-target	make/squirrel-conformance.mk	1	L6	make gates: the make adapter runs them
-make-target	make/squirrel-cook-write.mk	1	L6	make gates: the make adapter runs them
-make-target	make/squirrel-packet-write-cfloat.mk	1	L6	make gates: the make adapter runs them
-make-target	make/squirrel-packet-write-text.mk	1	L6	make gates: the make adapter runs them
-make-target	make/squirrel.mk	1	L6	make gates: the make adapter runs them
-make-target	make/unity-consumers.mk	7	L6	make gates: the make adapter runs them
-make-target	make/unity.mk	4	L6	make gates: the make adapter runs them
-make-target	make/verify-reuse.mk	1	L6	make gates: the make adapter runs them
-make-target	make/verify-vm.mk	43	L6	make gates: the make adapter runs them
-make-target	make/verify-widen-18.mk	8	L6	make gates: the make adapter runs them
-negative-control	(excluded)	27	L6	negative controls: the plant adapter runs them
-negative-control	base-1	10	L6	negative controls: the plant adapter runs them
-negative-control	base-2-1	3	L6	negative controls: the plant adapter runs them
-negative-control	base-2-2	3	L6	negative controls: the plant adapter runs them
-negative-control	base-2-3	6	L6	negative controls: the plant adapter runs them
-negative-control	base-2-4	1	L6	negative controls: the plant adapter runs them
-negative-control	base-3-1	6	L6	negative controls: the plant adapter runs them
-negative-control	base-3-2	6	L6	negative controls: the plant adapter runs them
-negative-control	base-3-3	7	L6	negative controls: the plant adapter runs them
-negative-control	base-3-4	8	L6	negative controls: the plant adapter runs them
-negative-control	base-arms-1	2	L6	negative controls: the plant adapter runs them
-negative-control	base-arms-2	3	L6	negative controls: the plant adapter runs them
-negative-control	base-arms-3	2	L6	negative controls: the plant adapter runs them
-negative-control	base-arms-all	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-absent	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-conformance	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-conformance-message	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-conformance-retain	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-discard	3	L6	negative controls: the plant adapter runs them
-negative-control	base-c-finite	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-foreign	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-format	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-framing	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-hostile-corpus	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-le-trailer	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-probes	2	L6	negative controls: the plant adapter runs them
-negative-control	base-c-proof	3	L6	negative controls: the plant adapter runs them
-negative-control	base-c-skip-timestamp	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-strict-load	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-wire	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-wire-widelist	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-write-refusal-a	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-write-refusal-b	1	L6	negative controls: the plant adapter runs them
-negative-control	base-c-write-refusal-c	1	L6	negative controls: the plant adapter runs them
-negative-control	base-cards	7	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-1	1	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-2-1	3	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-2-2	6	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-2-3	2	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-absence	1	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-cpp	1	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-go-rows	1	L6	negative controls: the plant adapter runs them
-negative-control	base-conformance-reference	2	L6	negative controls: the plant adapter runs them
-negative-control	base-cook-1-a	1	L6	negative controls: the plant adapter runs them
-negative-control	base-cook-1-b	2	L6	negative controls: the plant adapter runs them
-negative-control	base-cook-1-c	4	L6	negative controls: the plant adapter runs them
-negative-control	base-cook-2	4	L6	negative controls: the plant adapter runs them
-negative-control	base-cook-3	3	L6	negative controls: the plant adapter runs them
-negative-control	base-cpp-clean	1	L6	negative controls: the plant adapter runs them
-negative-control	base-cpp-discard	3	L6	negative controls: the plant adapter runs them
-negative-control	base-cpp-hostile-corpus	1	L6	negative controls: the plant adapter runs them
-negative-control	base-cpp-soak	1	L6	negative controls: the plant adapter runs them
-negative-control	base-cpp-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	base-flat-wire	1	L6	negative controls: the plant adapter runs them
-negative-control	base-hostile	1	L6	negative controls: the plant adapter runs them
-negative-control	base-keyed	2	L6	negative controls: the plant adapter runs them
-negative-control	base-keyed-iteration	1	L6	negative controls: the plant adapter runs them
-negative-control	base-keyed-shift	1	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-a	1	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-all	1	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-b	1	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-c	4	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-d	2	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-e	2	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-f	2	L6	negative controls: the plant adapter runs them
-negative-control	base-lists-g	2	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-a	1	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-b	1	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-c	1	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-d	3	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-depth	4	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-keys	4	L6	negative controls: the plant adapter runs them
-negative-control	base-maps-order	5	L6	negative controls: the plant adapter runs them
-negative-control	base-pack	2	L6	negative controls: the plant adapter runs them
-negative-control	base-packet-1	3	L6	negative controls: the plant adapter runs them
-negative-control	base-packet-2	5	L6	negative controls: the plant adapter runs them
-negative-control	base-packet-3	9	L6	negative controls: the plant adapter runs them
-negative-control	base-reference-review	6	L6	negative controls: the plant adapter runs them
-negative-control	base-shared-node-1	2	L6	negative controls: the plant adapter runs them
-negative-control	base-shared-node-2	1	L6	negative controls: the plant adapter runs them
-negative-control	base-tool-cook-differential-a	1	L6	negative controls: the plant adapter runs them
-negative-control	base-tool-cook-differential-b	1	L6	negative controls: the plant adapter runs them
-negative-control	block-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	block-fuzz-maximum	1	L6	negative controls: the plant adapter runs them
-negative-control	c-message-flags-domain	1	L6	negative controls: the plant adapter runs them
-negative-control	cpp-message-flags-domain	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-absent	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-accessor	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-alloc-runtime	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-block-home	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-block-inline	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-block-layout	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-block-padding	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-block-pitch	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-cards-conformance	3	L6	negative controls: the plant adapter runs them
-negative-control	cs-cards-retain	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-cook-lengths	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-cook-order	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-cook-root	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-cook-walk	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-finite-float	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-framing	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-hostile-corpus	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-allocator	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-blob-span	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-builder-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-cycle	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-identity	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-keyed	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-label	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-map-order	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-region-blob-shared	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-region-cycle	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-leg-region-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-nightly	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-arm-defaults	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-clean	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-defaults	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-end	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-finite	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-textwide	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-packet-write-cfloat	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-slot	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-soak	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-tables-1	2	L6	negative controls: the plant adapter runs them
-negative-control	cs-tables-byte-order	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-tables-clean	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-tables-json	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-tables-retain	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-usage	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-wire-fuzz-repeated-id	1	L6	negative controls: the plant adapter runs them
-negative-control	cs-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	dart-a	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-b	2	L6	negative controls: the plant adapter runs them
-negative-control	dart-c	4	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-2-a	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-2-b	2	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-2-c	2	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-2-d	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-a	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-b	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-c	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-d	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-conformance-e	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-d	7	L6	negative controls: the plant adapter runs them
-negative-control	dart-nightly	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-strict	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-tables-1	12	L6	negative controls: the plant adapter runs them
-negative-control	dart-tables-2-a	1	L6	negative controls: the plant adapter runs them
-negative-control	dart-tables-2-b	3	L6	negative controls: the plant adapter runs them
-negative-control	dart-tables-2-c	7	L6	negative controls: the plant adapter runs them
-negative-control	dart-tables-2-d	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-cards	3	L6	negative controls: the plant adapter runs them
-negative-control	elixir-cook-map	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-finite-float	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-fixed-form	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-json-differential	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-keyed	2	L6	negative controls: the plant adapter runs them
-negative-control	elixir-nightly-accessors	8	L6	negative controls: the plant adapter runs them
-negative-control	elixir-nightly-conformance	11	L6	negative controls: the plant adapter runs them
-negative-control	elixir-nightly-emitter	8	L6	negative controls: the plant adapter runs them
-negative-control	elixir-packets	4	L6	negative controls: the plant adapter runs them
-negative-control	elixir-pins	4	L6	negative controls: the plant adapter runs them
-negative-control	elixir-versioning	1	L6	negative controls: the plant adapter runs them
-negative-control	elixir-wire-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	go-containers-1-a	1	L6	negative controls: the plant adapter runs them
-negative-control	go-containers-1-b	1	L6	negative controls: the plant adapter runs them
-negative-control	go-containers-2	3	L6	negative controls: the plant adapter runs them
-negative-control	go-containers-3	8	L6	negative controls: the plant adapter runs them
-negative-control	go-containers-measure	1	L6	negative controls: the plant adapter runs them
-negative-control	go-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	go-hostile	1	L6	negative controls: the plant adapter runs them
-negative-control	go-message	2	L6	negative controls: the plant adapter runs them
-negative-control	go-proof-1	3	L6	negative controls: the plant adapter runs them
-negative-control	go-proof-2	1	L6	negative controls: the plant adapter runs them
-negative-control	go-proof-3	2	L6	negative controls: the plant adapter runs them
-negative-control	go-proof-4	1	L6	negative controls: the plant adapter runs them
-negative-control	go-proof-5	1	L6	negative controls: the plant adapter runs them
-negative-control	go-view	1	L6	negative controls: the plant adapter runs them
-negative-control	goose	10	L6	negative controls: the plant adapter runs them
-negative-control	goose-blockcook	2	L6	negative controls: the plant adapter runs them
-negative-control	goose-cards	3	L6	negative controls: the plant adapter runs them
-negative-control	goose-conformance	3	L6	negative controls: the plant adapter runs them
-negative-control	goose-fuzz-accessor	2	L6	negative controls: the plant adapter runs them
-negative-control	goose-gates	3	L6	negative controls: the plant adapter runs them
-negative-control	goose-hostile	2	L6	negative controls: the plant adapter runs them
-negative-control	goose-integrity	1	L6	negative controls: the plant adapter runs them
-negative-control	goose-json-conformance-a	2	L6	negative controls: the plant adapter runs them
-negative-control	goose-json-conformance-b	3	L6	negative controls: the plant adapter runs them
-negative-control	goose-packet	6	L6	negative controls: the plant adapter runs them
-negative-control	goose-retain	1	L6	negative controls: the plant adapter runs them
-negative-control	goose-strict	2	L6	negative controls: the plant adapter runs them
-negative-control	goose-text	2	L6	negative controls: the plant adapter runs them
-negative-control	goose-wire	3	L6	negative controls: the plant adapter runs them
-negative-control	goose-wire-verdict	1	L6	negative controls: the plant adapter runs them
-negative-control	java-cards	5	L6	negative controls: the plant adapter runs them
-negative-control	java-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	java-finite	1	L6	negative controls: the plant adapter runs them
-negative-control	java-packet-a	4	L6	negative controls: the plant adapter runs them
-negative-control	java-packet-b	1	L6	negative controls: the plant adapter runs them
-negative-control	java-proof	4	L6	negative controls: the plant adapter runs them
-negative-control	java-proof-2	4	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-a	3	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-b	3	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-c	3	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-more-a	1	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-more-b	1	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-more-c	2	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-more-d	2	L6	negative controls: the plant adapter runs them
-negative-control	java-tables-more-e	1	L6	negative controls: the plant adapter runs them
-negative-control	java-versioning	1	L6	negative controls: the plant adapter runs them
-negative-control	java-wire-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	java-wire-fuzz-2	3	L6	negative controls: the plant adapter runs them
-negative-control	java-wire-fuzz-map-count	1	L6	negative controls: the plant adapter runs them
-negative-control	java-wire-fuzz-retain	1	L6	negative controls: the plant adapter runs them
-negative-control	java-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	js	11	L6	negative controls: the plant adapter runs them
-negative-control	js-discard	5	L6	negative controls: the plant adapter runs them
-negative-control	js-framing	1	L6	negative controls: the plant adapter runs them
-negative-control	js-hostile	1	L6	negative controls: the plant adapter runs them
-negative-control	js-proof	8	L6	negative controls: the plant adapter runs them
-negative-control	js-proof-2	9	L6	negative controls: the plant adapter runs them
-negative-control	js-tables-1	10	L6	negative controls: the plant adapter runs them
-negative-control	js-tables-2	9	L6	negative controls: the plant adapter runs them
-negative-control	js-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	lobster	2	L6	negative controls: the plant adapter runs them
-negative-control	lobster-cards	3	L6	negative controls: the plant adapter runs them
-negative-control	lobster-conformance	3	L6	negative controls: the plant adapter runs them
-negative-control	lobster-conformance-2	2	L6	negative controls: the plant adapter runs them
-negative-control	lobster-forgery	1	L6	negative controls: the plant adapter runs them
-negative-control	lobster-fuzz	2	L6	negative controls: the plant adapter runs them
-negative-control	lobster-gates	5	L6	negative controls: the plant adapter runs them
-negative-control	lobster-gates-text	4	L6	negative controls: the plant adapter runs them
-negative-control	lobster-wire-verdict	1	L6	negative controls: the plant adapter runs them
-negative-control	lobster-write-refusal	2	L6	negative controls: the plant adapter runs them
-negative-control	lua-a	4	L6	negative controls: the plant adapter runs them
-negative-control	lua-b	2	L6	negative controls: the plant adapter runs them
-negative-control	lua-cards-docs	3	L6	negative controls: the plant adapter runs them
-negative-control	lua-conformance	6	L6	negative controls: the plant adapter runs them
-negative-control	lua-docs-bench	2	L6	negative controls: the plant adapter runs them
-negative-control	lua-format	1	L6	negative controls: the plant adapter runs them
-negative-control	lua-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	lua-open-gates	4	L6	negative controls: the plant adapter runs them
-negative-control	lua-open-gates-compiler	2	L6	negative controls: the plant adapter runs them
-negative-control	lua-open-gates-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	lua-packet	6	L6	negative controls: the plant adapter runs them
-negative-control	luau-cards	3	L6	negative controls: the plant adapter runs them
-negative-control	luau-conformance	6	L6	negative controls: the plant adapter runs them
-negative-control	luau-forgery	1	L6	negative controls: the plant adapter runs them
-negative-control	luau-fuzz-a	1	L6	negative controls: the plant adapter runs them
-negative-control	luau-fuzz-b	4	L6	negative controls: the plant adapter runs them
-negative-control	luau-gates	9	L6	negative controls: the plant adapter runs them
-negative-control	luau-packet	4	L6	negative controls: the plant adapter runs them
-negative-control	luau-text-a	1	L6	negative controls: the plant adapter runs them
-negative-control	luau-text-b	6	L6	negative controls: the plant adapter runs them
-negative-control	luau-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	message-form-count	1	L6	negative controls: the plant adapter runs them
-negative-control	message-form-emitter	1	L6	negative controls: the plant adapter runs them
-negative-control	message-form-text	1	L6	negative controls: the plant adapter runs them
-negative-control	moo	6	L6	negative controls: the plant adapter runs them
-negative-control	moo-block-forgery	1	L6	negative controls: the plant adapter runs them
-negative-control	moo-cards	3	L6	negative controls: the plant adapter runs them
-negative-control	moo-conformance	3	L6	negative controls: the plant adapter runs them
-negative-control	moo-open-gates	3	L6	negative controls: the plant adapter runs them
-negative-control	moo-tables	4	L6	negative controls: the plant adapter runs them
-negative-control	moo-view	1	L6	negative controls: the plant adapter runs them
-negative-control	moo-wire-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	nightly	4	L6	negative controls: the plant adapter runs them
-negative-control	python-packet-close	5	L6	negative controls: the plant adapter runs them
-negative-control	python-packet-core	1	L6	negative controls: the plant adapter runs them
-negative-control	python-packet-floats	1	L6	negative controls: the plant adapter runs them
-negative-control	python-serialize	1	L6	negative controls: the plant adapter runs them
-negative-control	python-table-core	1	L6	negative controls: the plant adapter runs them
-negative-control	python-table-maps	1	L6	negative controls: the plant adapter runs them
-negative-control	python-toolchain	1	L6	negative controls: the plant adapter runs them
-negative-control	python-vt-widening	1	L6	negative controls: the plant adapter runs them
-negative-control	python-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	release-differential	1	L6	negative controls: the plant adapter runs them
-negative-control	release-form-gate	2	L6	negative controls: the plant adapter runs them
-negative-control	release-refuses-on-differential	1	L6	negative controls: the plant adapter runs them
-negative-control	ruby-packet	7	L6	negative controls: the plant adapter runs them
-negative-control	ruby-serialize	1	L6	negative controls: the plant adapter runs them
-negative-control	ruby-skeleton	1	L6	negative controls: the plant adapter runs them
-negative-control	ruby-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	rust-cards-packet	8	L6	negative controls: the plant adapter runs them
-negative-control	rust-clippy-alloc	3	L6	negative controls: the plant adapter runs them
-negative-control	rust-conformance-absent	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-conformance-framing	4	L6	negative controls: the plant adapter runs them
-negative-control	rust-conformance-framing-control	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-conformance-walk	3	L6	negative controls: the plant adapter runs them
-negative-control	rust-cook-map	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-message-storage-assert	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-nested-union	2	L6	negative controls: the plant adapter runs them
-negative-control	rust-release-usage	2	L6	negative controls: the plant adapter runs them
-negative-control	rust-retain-soak	2	L6	negative controls: the plant adapter runs them
-negative-control	rust-strict	2	L6	negative controls: the plant adapter runs them
-negative-control	rust-tables-1	5	L6	negative controls: the plant adapter runs them
-negative-control	rust-tables-2	6	L6	negative controls: the plant adapter runs them
-negative-control	rust-unused-ids	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-wire-fuzz	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-write-refusal	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-write-refusal-fixed	1	L6	negative controls: the plant adapter runs them
-negative-control	rust-write-refusal-message	1	L6	negative controls: the plant adapter runs them
-negative-control	schema-dart-strict-analyze	2	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-cards	2	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-cards-hash	1	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-conformance	4	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-conformance-2	3	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-packet	5	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-tables	7	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-tables-2	7	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-tables-3	6	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-tools-2	5	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-tools-a	1	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-tools-b	4	L6	negative controls: the plant adapter runs them
-negative-control	squirrel-write-refusal	3	L6	negative controls: the plant adapter runs them
-negative-control	table-distinctness	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-arm-terminator	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-arm-width	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-cpp-cycle	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-cpp-cycle-linear	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-cpp-fixed-refusal	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-cpp-refusal	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-discard	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-engine-cycle	2	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-index	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-length	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-message-oracle	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-message-text	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-nested-arm-trailing	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-oracle	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-release	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-retain-class	1	L6	negative controls: the plant adapter runs them
-negative-control	wire-fuzz-retain-oracle	1	L6	negative controls: the plant adapter runs them
-negative-control	write-check-storage-debug-c	1	L6	negative controls: the plant adapter runs them
-negative-control	write-check-storage-debug-cpp	1	L6	negative controls: the plant adapter runs them
-negative-control	write-refusal-storage-debug-cs	1	L6	negative controls: the plant adapter runs them
-negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the plant adapter runs them
-negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
+make-target	Makefile	7	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/c.mk	3	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/go.mk	4	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/js.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/rust.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/schema-dart-generated-strict-analyze-gate.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/schema-go-generated-golangci-lint-gate.mk	1	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+make-target	make/schema-lua-generated-luacheck-gate.mk	2	L3, L5, L6b, L7	make gates a per-PR job of another layer runs today (ci-policy: L3; go-test-touched and go-fixed-corpus: L5; lang-clean, lang-lint and generated-current: L6b), and the release workflow's publishing steps, which check nothing and never run under the driver (L7): each moves with its job
+negative-control	(excluded)	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
+negative-control	go-proof-4	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
+negative-control	lua-format	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
+negative-control	schema-dart-strict-analyze	1	L5, L6b	negative controls a per-PR job of another layer runs today (lang-lint: L6b; go-test-touched: L5): each moves in with its job
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	31	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	30	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry
@@ -840,7 +314,7 @@ data-case	internal/ci/hostilecorpus/testdata/carry/findings	5	L4	corpus data and
 data-case	internal/ci/hostilecorpus/testdata/carry/findings-lobster	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/hostilecorpus/testdata/carry/text-corpus	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/hostilecorpus/testdata/carry/text-corpus/inputs	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	internal/ci/testdata	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	internal/ci/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/c-no-core-children	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/f171	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	internal/ci/testdata/f180-lanes	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1257,21 +731,14 @@ data-case	testdata/conformance/r19/new	2	L4	corpus data and harnesses: each lang
 data-case	testdata/conformance/r19/old	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/table-write-bounds	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/table-write-bounds/expected	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/announce	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/block	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/bom-entry	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/bom-entry/cut-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/bom-entry/double-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/bom-entry/leading-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/bom-entry/save-wire	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/bom-entry/space-bom	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/cook	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/cook-input	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/cook-write	166	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/framing	28	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/json	162	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/json-hostile	125	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/fixed-at-bound	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/fixed-integral-token	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile-number-token/fixed-nested-type	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1601,85 +1068,18 @@ data-case	testdata/conformance/tables/json-hostile/union-unknown-arm	1	L4	corpus
 data-case	testdata/conformance/tables/json-hostile/unknown-key	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile/vd-fixed-omitted	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/json-hostile/vd-var-omitted	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/message-batch	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/message-batch	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/read-into	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/report-values	34	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/retain-refusal	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/retain-values	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/rewrite	81	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/save-wire	201	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/read-into	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/rewrite	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/save-wire	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/shapes-loose	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/wire	156	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/wire	155	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/text	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/write-refusal-int	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/packet	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/golangci-lint-classes/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/build-version	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/c	20	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/cpp	18	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/cs	9	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/dart	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/elixir	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/go	9	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/goose	21	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/java	9	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/js	16	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/lobster	24	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/lua	20	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/luau	21	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/c	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/cpp	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/cs	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/dart	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/elixir	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/go	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/goose	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/java	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/js	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/lobster	16	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/lua	12	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/luau	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/moo	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/python/ludicrous	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/python/ludicrous/_schema	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/python/ludicrous/_schema/serialize	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/ruby	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/ruby/ludicrous	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/ruby/ludicrous/serialize	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/rust	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/squirrel	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ludicrous/unity	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/moo	14	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/python/example	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/python/example/_schema	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/python/example/_schema/serialize	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ruby	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ruby/example	11	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/ruby/example/serialize	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/rust	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/squirrel	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/arms	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/blobs	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/block	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/block-c	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/block-cs	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/blockhome	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/blockhome-cs	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/examples	7	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/examples-c	8	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/examples-cs	8	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/lists	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/maps	13	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/messages	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/pointers	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/pointers-c	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/scalars	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/tables/stream	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/golden/unity	9	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/jsontestsuite	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/jsontestsuite/test_parsing	310	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/lua-nightly-fuzz	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -2152,7 +1552,6 @@ data-case	testdata/name-buildability/u_beacon_BeaconType	2	L4	corpus data and ha
 data-case	testdata/name-buildability/u_pick	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability/v_None_	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/ruby-gems-lock-controls	4	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire	24	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/fixed-empty-batch	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/json-base64-canonical	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/json-comment-text-rules	17	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -2162,16 +1561,15 @@ data-case	testdata/wire/json-read-closed	21	L4	corpus data and harnesses: each l
 data-case	testdata/wire/message-one-encoding	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/non-canonical	12	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/non-canonical/canonical	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/packet-defaults	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/packet-end	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/pointer-target-type	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/pointer-target-type/blobkind	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/skipped-value	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/tables	294	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/wire/tables	78	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/framing	179	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/fuzz-vectors	129	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/nightly-fuzz-regressions	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/wire/tables/prior	70	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/wire/tables/prior	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/shapes	20	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/storage-cap	5	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/wire/tables/storage-cap/wide	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

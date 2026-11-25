@@ -119,8 +119,7 @@ by cell by column name, three-way, and leaves any hunk it cannot merge exactly
 for a person. Pull requests into `main`,
 `dev`, or `fixed-table-form` automatically run `ci-fast.yml` (planning by diff
 against the target branch so only touched packages and legs are selected) and
-the `generated` and `cs-tables` gates in `ci-full.yml`, plus `pins` when the
-pull request is from this repository. The rest of `ci-full.yml` runs on a push
+the `generated` and `cs-tables` gates in `ci-full.yml`. The rest of `ci-full.yml` runs on a push
 to those three branches, nightly, on `workflow_dispatch`, and on a pull
 request into those branches that carries the `full-ci` label. A self-hosted
 fleet job on a pull request also requires
@@ -345,7 +344,7 @@ The same split is in [SECURITY.md](SECURITY.md).
 - [`.github/workflows/ci-fast.yml`](../.github/workflows/ci-fast.yml) runs on a
   pull request into `main`, `dev`, or `fixed-table-form`, and on `workflow_dispatch`.
   It is a path-selected Linux lane. It is not the full `make test` chain, and
-  it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `block-gate`
+  it does not run on macOS. Its merge gate (`plan`, `lint-fast`, `schema-test`
   and `go-test-touched`) runs on GitHub's hosted `ubuntu-latest`, so a merge
   never waits on the fleet; the per-leg `leg-gate` matrix runs on the fleet.
 - Every self-hosted job runs its steps through
@@ -366,8 +365,7 @@ The same split is in [SECURITY.md](SECURITY.md).
   branches. Most of its jobs run on a pull request only when that pull request
   carries the `full-ci` label. Fleet jobs on a pull request also require the
   head repository to be this one. `generated` and `cs-tables` run on a pull
-  request without that label. `pins` runs on a same-repository pull request
-  without that label. Its runners are Linux and
+  request without that label. Its runners are Linux and
   Windows. It does not include `macos-latest`.
 - macOS certification of the full chain is
   [`.github/workflows/certify.yml`](../.github/workflows/certify.yml), nightly
@@ -576,12 +574,14 @@ whether it is a breaking change for anyone who has already shipped data.
 **A golden is written by its generator and never by hand.** Every pin under
 `testdata/` that a generator owns (the `.bin` and `.bits` wire pins, the
 packet-defaults pins, the table and source goldens, the framing vectors, the
-cook dumps) is rewritten from that generator on every pull request that touches
-`testdata/` or a writer, and the tree is diffed against your commit: a file that
-is not exactly what its generator writes goes red (the `pins` job of
-`ci-fast.yml`; the wire-packet row empties its family first, so a stray
-hand-written file shows as a deletion). To re-pin, run `make update-goldens` and
-commit what changes. It is all or nothing: the writers run inside a snapshot of
+cook dumps) is rewritten from that generator on every pull request, in a copy of the
+tree, and compared byte for byte with your commit: a file that is not exactly
+what its generator writes goes red by its registry name, and a file its writer
+writes that no golden row names fails every row of that writer (the `golden`
+adapter of `tools/schema-test`, one registry row per pinned file; a deleted
+pin is MISSING, never regenerated). To re-pin one, run `go run
+./tools/schema-test run --update NAME` and read the diff; to re-pin
+everything, run `make update-goldens` and commit what changes. It is all or nothing: the writers run inside a snapshot of
 `testdata/` (`test/goldens/transact`) and a failing step, an interrupt or a kill
 puts the snapshot back, so a failure never leaves half the families re-pinned.
 A new `FRAMING_WRITE` test must be named so `PINS_FRAMING_RUN` (Makefile)

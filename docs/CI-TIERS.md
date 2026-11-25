@@ -73,7 +73,8 @@ next table. Every job of every other workflow is a row here.
 | `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
 | `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr` |
+| `schema-test-plan` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix, `schema-test extract`, and the `pr` group's shards by measured seconds (`schema-test shards --group pr --budget 90`, the adapter call limit) |
+| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: `schema-test run --group pr --shard i/n`, one job per shard; the pr group holds the goldens (once the `pins` job), the block zero-cost gate (once `block-gate`) and the new-leg fixture (once `newleg-scaffold`) |
 | `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
 | `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
 | `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
@@ -88,11 +89,9 @@ next table. Every job of every other workflow is a row here.
 | `build-cpp-conformance-account` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
 | `input-family-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
 | `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
-| `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
-| `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
+| `stage-compiler` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account; builds bin/schema once for build-cpp-conformance-account and checks nothing |
 | `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
-| `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
 | `leg-gate` | `ci-fast.yml` | dispatch | the legs' fixed form and versioning (whole, in ci-full.yml nightly) |
 | `leg-gate-lobster` | `ci-fast.yml` | dispatch | as leg-gate |
@@ -156,7 +155,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-ruby-resource-bounds.yml` | fast | `bounds-ruby` | 19 s (run 44981451380) |
 | `schema-squirrel-resource-bounds.yml` | fast | `bounds-squirrel` | fast half 9 s; whole campaign 14 s nightly (run 44988950875) |
 | `ruby-leg.yml` | fast | `strict-ruby`, `strict-ruby-2`, `strict-ruby-3`, `strict-ruby-4`, `strict-ruby-5`, `strict-ruby-6` (the six shards of the strict gate), `hostile-ruby`, `bounds-ruby` | the strict gate's fast form, below; `verify-leg` (ruby) runs the leg's conformance, bench and fuzz rows. test-ruby itself now runs nightly without the silent fallback |
-| `certify.yml` | covered | `go-test-touched`, `verify-leg`, `lang-lint`, `lang-clean`, `block-gate`, `generated-current`, `nightly-fast` | the release certificate: the whole suite at one SHA, Linux and macOS. Only the night sees macOS and the full matrix at once |
+| `certify.yml` | covered | `go-test-touched`, `verify-leg`, `lang-lint`, `lang-clean`, `schema-test`, `generated-current`, `nightly-fast` | the release certificate: the whole suite at one SHA, Linux and macOS. Only the night sees macOS and the full matrix at once |
 | `schema-dart-generated-strict-analyze-gate.yml` | fast | `strict-dart-all` | `lang-lint` (dart) runs the packet trees (11 s); the whole-corpus `-all` half is 69 s (run 44998125720) |
 | `schema-go-generated-golangci-lint-gate.yml` | covered | `lang-lint` | the packet-corpus ratchet runs per Go diff; the table-corpus `-nightly` half (95 s job, run 44980872816) is too close to the cap and stays nightly |
 | `schema-lua-generated-luacheck-gate.yml` | covered | `lang-lint` | lang-lint (lua) runs the same four targets |
@@ -178,7 +177,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-test-nightly.yml` | covered | `schema-test` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list |
 | `tla-nightly.yml` | covered | `ci-policy` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
-| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
+| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `schema-test`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
 | `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |

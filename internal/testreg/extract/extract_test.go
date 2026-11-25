@@ -49,9 +49,10 @@ func TestMain(m *testing.M) {}
 `,
 	"pkg/b_test.go":                 "//go:build linux\n\npackage pkg_test\n\nimport \"testing\"\n\nfunc TestLinux(t *testing.T) {}\n",
 	"pkg/testdata/fixture_test.go":  "package fixture\n\nimport \"testing\"\n\nfunc TestNotATest(t *testing.T) {}\n",
-	"Makefile":                      "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nnc-one:\n\ttrue\n\nlib-check: ; true\n",
+	"Makefile":                      "test-all: build\n\tgo test ./...\n\nbuild:\n\tgo build\n\nprep:\n\ttrue\n\nquoted:\n\ttrue\n\nnc-one:\n\ttrue\n\nrow-only:\n\ttrue\n\nlib-check: ; true\n",
+	"test/registry/registry.jsonl":  `{"rec":"test","key":"harness-run.makefile.row-only","adapter":"make","inputs":{"file":"Makefile","target":"row-only"}}` + "\n",
 	"make/negative-controls.json":   `{"groups": [{"name": "g1", "when": "pull-request", "targets": ["nc-one"]}], "excluded": [{"target": "nc-two", "reason": "slow"}]}`,
-	".github/workflows/ci.yml":      "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n  # a comment\n  build:\n    runs-on: x\n",
+	".github/workflows/ci.yml":      "on: [pull_request]\njobs:\n  lint:\n    runs-on: x\n    steps:\n      - run: make prep && make -j 4 test-all X=1\n      - run: make -j\"$(nproc)\" quoted\n  # a comment\n  build:\n    runs-on: x\n",
 	"testdata/corpus/cases.jsonl":   "{\"name\": \"one\"}\n\n{\"id\": \"two\"}\n{\"v\": 3}\n",
 	"testdata/corpus/x.in":          "in",
 	"testdata/corpus/x.out":         "out",
@@ -79,7 +80,8 @@ func writeFixture(t *testing.T, files map[string]string) string {
 
 // TestExtractFindsEveryKind: the fixture's tests, each of its kind, with
 // the gates that decide its tier; fixtures under testdata, scratch under
-// working/, TestMain and a lower-case Testhelper are not tests.
+// working/, TestMain and a lower-case Testhelper are not tests. A rule only
+// a registry make row runs (row-only) is run by name all the same.
 func TestExtractFindsEveryKind(t *testing.T) {
 	t.Parallel()
 	res, err := Extract(writeFixture(t, fixture))
@@ -103,6 +105,8 @@ func TestExtractFindsEveryKind(t *testing.T) {
 		"go-test pkg TestSlow [functional] slow",
 		"make-target Makefile lib-check [functional] ",
 		"make-target Makefile prep [functional] ",
+		"make-target Makefile quoted [functional] ",
+		"make-target Makefile row-only [functional] ",
 		"make-target Makefile test-all [functional] ",
 		"negative-control (excluded) nc-two [nightly] ",
 		"negative-control g1 nc-one [functional] ",
@@ -189,6 +193,46 @@ func TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly(t *testing.T) {
 			exact, "tooling.a.bad is a gotest row without a package and a test"},
 	} {
 		p := Check(res, c.reg, c.ledger)
+		if !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+}
+
+// TestMakePlantAndGoldenRowsCoverTheirTests: a make row covers its make
+// target, a plant row its negative control, a golden row the data case its
+// files are; each row naming a test the repository does not hold is named.
+func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
+	t.Parallel()
+	res := &Result{Items: []Item{
+		{Kind: KindMakeTarget, Dir: "Makefile", Name: "prep", Source: "Makefile:1"},
+		{Kind: KindNegativeControl, Dir: "g1", Name: "nc-one", Source: "make/negative-controls.json:1"},
+		{Kind: KindDataCase, Dir: "testdata/corpus", Name: "x", Source: "testdata/corpus/x.in:1"},
+	}}
+	row := func(key, adapter, inputs string) testreg.Test {
+		return testreg.Test{Key: key, Adapter: adapter, Inputs: []byte(inputs)}
+	}
+	good := []testreg.Test{
+		row("harness-run.makefile.prep", "make", `{"file":"Makefile","target":"prep"}`),
+		row("plant.g1.nc-one", "plant", `{"make":"nc-one","file":"Makefile","group":"g1"}`),
+		row("golden.x.x", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.in","testdata/corpus/x.out","bench/x.bin"]}`),
+		row("plant.f.env", "plant", `{"target":"go.functional.roundtrip.f.c","env":{"B":"1"}}`),
+	}
+	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: good}, nil); len(p) != 0 {
+		t.Fatalf("the exact account: %v", p)
+	}
+	for name, c := range map[string]struct {
+		extra testreg.Test
+		says  string
+	}{
+		"a renamed make target":   {row("harness-run.makefile.gone", "make", `{"file":"Makefile","target":"gone"}`), "registry row harness-run.makefile.gone runs make-target Makefile gone, which the repository does not hold"},
+		"a control in no group":   {row("plant.g1.x", "plant", `{"make":"nc-two","file":"Makefile"}`), "names no group"},
+		"a control twice":         {row("plant.g1.again", "plant", `{"make":"nc-one","file":"Makefile","group":"g1"}`), "plant.g1.again runs negative control nc-one, which plant.g1.nc-one already runs"},
+		"a deleted golden":        {row("golden.x.gone", "golden", `{"writer":"pins-x","files":["testdata/corpus/gone.bin"]}`), "registry row golden.x.gone runs data-case testdata/corpus gone, which the repository does not hold"},
+		"a golden with no files":  {row("golden.x.none", "golden", `{"writer":"pins-x"}`), "golden.x.none is a golden row without files"},
+		"a make row with no file": {row("harness-run.makefile.nofile", "make", `{"target":"prep"}`), "is a make row without a file and a target"},
+	} {
+		p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: append(slices.Clone(good), c.extra)}, nil)
 		if !strings.Contains(strings.Join(p, "\n"), c.says) {
 			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
 		}

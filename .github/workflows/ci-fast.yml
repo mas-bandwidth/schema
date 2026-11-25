@@ -65,7 +65,7 @@ name: CI fast
 #
 # THE MERGE GATE RUNS ON THE FLEET, like every Linux job in .github/workflows:
 # we run our own GitHub runners on the fleet. `plan`, `lint-fast`, `ci-policy`,
-# `block-gate` and `go-test-touched` are the checks a pull request must pass,
+# `schema-test` and `go-test-touched` are the checks a pull request must pass,
 # and each is `runs-on: [self-hosted, Linux, X64, fleet, schema]` behind the
 # fork guard below. The hosted queue was the failure mode that moved them: jobs
 # waiting on `ubuntu-latest` while fleet runners sat idle stalled every
@@ -136,9 +136,9 @@ name: CI fast
 # read the diff pushes its head to a branch here and opens the pull request
 # from that branch, where this lane runs.
 #
-# THE GATE JOBS RUN ON EVERY PULL REQUEST, whatever its base: block-gate is
-# the reason they never skip: it is what caught the C goldens on #1126 and
-# #1127, and a branch with no protection and no merge queue is exactly where
+# THE GATE JOBS RUN ON EVERY PULL REQUEST, whatever its base: the block
+# zero-cost gate (now a schema-test row) is the reason they never skip: it is
+# what caught the C goldens on #1126 and #1127, and a branch with no protection and no merge queue is exactly where
 # that gate must not go quiet. The leg gates run on dispatch only (above).
 #
 # A LANE PULL REQUEST IS CHECKED AGAINST CURRENT MAIN (2026-11-22). A pull
@@ -231,11 +231,9 @@ jobs:
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
-      pins: ${{ steps.pick.outputs.pins }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
       nightly_rows: ${{ steps.pick.outputs.nightly_rows }}
-      newleg: ${{ steps.pick.outputs.newleg }}
       input_rows: ${{ steps.pick.outputs.input_rows }}
       dart_corpus_account: ${{ steps.pick.outputs.dart_corpus_account }}
       cpp_corpus_account: ${{ steps.pick.outputs.cpp_corpus_account }}
@@ -650,15 +648,6 @@ jobs:
             codegen_touched=yes
           fi
 
-          # THE PINS GATE (pins, below). Runs when the diff touches a committed
-          # pin, a writer of one, or anything the broad rule names: a pin is
-          # rewritten from its generator and diffed, so a hand-written golden
-          # and a stale one both go red on the push that adds them.
-          pins=no
-          if [ "$broad" = yes ] || grep -qE '^(testdata/|bench/corpus/variants/|internal/goldens/|test/tables/|test/conformance/|test/packet-defaults/|test/goldens/|make/checks/packet-defaults\.mk$)' <<<"$files"; then
-            pins=yes
-          fi
-
           # THE TOUCHED-LANGUAGE EMITTED-CODE CLEAN GATES (lang-clean):
           #   c      — tables-c-zero-cost + tables-c-clean
           #   elixir — tables-elixir-offsets (row elixir-offsets) and the agreement gate
@@ -700,7 +689,6 @@ jobs:
           echo "verify_legs=$verify_legs_json" >> "$GITHUB_OUTPUT"
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
-          echo "pins=$pins"                 >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
 
           # THE INPUT FAMILIES (tools/inputfamilies, 2026-11-22). A change to a
@@ -757,34 +745,6 @@ jobs:
           nightly_rows=$(go run ./tools/nightlyrows -files "$RUNNER_TEMP/diff-files.txt" -legs "$touched_legs" -broad "$broad")
           echo "nightly_rows=$nightly_rows" >> "$GITHUB_OUTPUT"
 
-          # THE NEW-LEG SCAFFOLD (newleg-scaffold, #4541). `schema new-leg`
-          # lays down a package that imports the compiler's own packages, the
-          # ones its templates in compiler/newleg.go name. Its fixture test,
-          # cmd/schema TestNewLegZigWritesSkeletonAndFixturePasses, drives the
-          # built CLI and so runs only behind SCHEMA_SLOW, which no other row
-          # here sets: #4428 changed what the scaffold imports, and the red
-          # waited for ci-full. The job runs when the diff touches
-          # compiler/newleg.go, that test's file, or a non-test .go file of a
-          # main-module package in the import closure (go list -deps) of the
-          # packages the templates import. TestFastPlanSelectsNewLegScaffold
-          # runs this block over internal/ci/testdata/newleg-plan.json.
-          newleg=no
-          # a template with no main-module import leaves the closure empty
-          scaffold_imports=$({ grep -oE '"github\.com/mas-bandwidth/schema/v2/[a-z0-9_/]+"' compiler/newleg.go || true; } | tr -d '"' | sort -u | xargs)
-          scaffold_dirs=""
-          if [ -n "$scaffold_imports" ]; then
-            # shellcheck disable=SC2086
-            scaffold_dirs=$(go list -deps $scaffold_imports | sed -n 's#^github\.com/mas-bandwidth/schema/v2/##p' | xargs)
-          fi
-          while read -r f; do
-            case "$f" in
-              compiler/newleg.go|cmd/schema/newleg_test.go) newleg=yes ;;
-              *_test.go) ;;
-              */*.go) case " $scaffold_dirs " in *" ${f%/*} "*) newleg=yes ;; esac ;;
-            esac
-          done <<<"$files"
-          # END OF THE NEW-LEG SCAFFOLD.
-          echo "newleg=$newleg"             >> "$GITHUB_OUTPUT"
           {
             echo "### what this push runs on the fast lane"
             echo
@@ -797,7 +757,6 @@ jobs:
             echo "* codegen-touched: **$codegen_touched**"
             echo "* language lints: \`$lints_json\`"
             echo "* nightly gates' fast forms: \`$nightly_rows\`"
-            echo "* new-leg scaffold: **$newleg**"
             echo "* input-family rows: \`$input_rows\`"
             echo "* every leg (push to main): **$all**"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -1796,8 +1755,8 @@ jobs:
 
   # Build the native executables separately from the I/O-accounted runs.
   # The C++ build used to spend ~36 s of this job's two-minute budget building
-  # bin/schema before generation could begin (#4843). block-gate already builds
-  # that exact compiler in every run; restore its tree-bound artifact here so
+  # bin/schema before generation could begin (#4843). stage-compiler builds
+  # that exact compiler once; restore its tree-bound artifact here so
   # this job's budget covers the C++ producer rather than duplicate Go work.
   # THE C++ CONFORMANCE GATE, IN TWO PARTS (2026-11-24). As the verify-leg row
   # (cpp, conformance) it ran 108-131 s, build-bound (make/verify-compiled.mk
@@ -1903,7 +1862,7 @@ jobs:
             -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
 
   build-cpp-conformance-account:
-    needs: [plan, block-gate]
+    needs: [plan, stage-compiler]
     if: (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -2156,19 +2115,15 @@ jobs:
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "$provides" "$PGROUP_GO_TEST_JSON"
 
-  # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third
-  # step in ci-full.yml). The committed tables goldens must equal a fresh
-  # generation byte for byte, which is the one gate that can redden from a
-  # one-character change to any emitter — so it rides every push. It takes
-  # bin/schema and nothing else: no toolchain, no sibling checkout.
-  #
-  # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
-  # "the build did no work" must not be an available explanation for a green.
-  block-gate:
+  # THE SAME-RUN COMPILER for the C++ accounting build (#4843): bin/schema,
+  # bound to this exact source tree, built once and handed on. It checks
+  # nothing; the block zero-cost gate it once rode with is the registry row
+  # none.functional.harness-run.makefile.tables-block-zero-cost, which the
+  # schema-test shards run on every pull request.
+  stage-compiler:
     needs: plan
-    if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
     defaults:
       run:
@@ -2176,29 +2131,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
-      # hosted, as above
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
-      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make -j"$(nproc)" tables-block-zero-cost
-      - name: Stage the compiler for the C++ accounting build
-        if: needs.plan.outputs.cpp_corpus_account == 'true'
+      - name: Build and stage the compiler for the C++ accounting build
         run: |
           set -euo pipefail
+          make -j"$(nproc)" bin/schema
           artifact="$RUNNER_TEMP/schema-compiler"
           rm -rf "$artifact"
           mkdir -p "$artifact/bin"
           cp bin/schema "$artifact/bin/schema"
           git rev-parse HEAD^{tree} > "$artifact/source-tree"
           (cd "$artifact" && sha256sum bin/schema > SHA256SUMS)
-      # The three languages write separate trees, so they run side by side:
-      # one after another they were the sum of three rows, past the
-      # per-commit limit on a busy runner.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.plan.outputs.cpp_corpus_account == 'true'
         with:
           name: schema-compiler-${{ github.run_id }}
           path: ${{ runner.temp }}/schema-compiler
@@ -2206,56 +2154,6 @@ jobs:
           compression-level: 0
           retention-days: 1
           overwrite: true
-
-  # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one SCHEMA_SLOW test this lane
-  # runs, for a diff plan's newleg rule selects (THE NEW-LEG SCAFFOLD in
-  # `pick`): `schema new-leg zig` into a scratch tree, then the scaffold's own
-  # fixture test as a module at the scaffold's import path. It builds the CLI
-  # once: on bench space, four cores, 22 s with an empty build cache and 1.3 s
-  # warm, plus about 8 s of checkout (2026-11-21).
-  newleg-scaffold:
-    needs: plan
-    # plan writes newleg as yes or no; the job runs unless plan said no, the
-    # form of the other plan-gated rows here (clean_legs != '[]')
-    if: (needs.plan.outputs.newleg != 'no' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # the fleet's per-commit cap is two minutes; this bound only frees a hung
-    # runner sooner on a host that does not enforce it
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      # the runner's own pinned go already satisfies go.mod; hosted fallback only
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt), as in ci-policy:
-      # tools/pgroup records this job's `go test -json` events
-      - name: where this job records its go test events
-        run: |
-          rm -rf "$RUNNER_TEMP/go-test-json"
-          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
-      - name: the new-leg scaffold's fixture passes (SCHEMA_SLOW)
-        env:
-          SCHEMA_SLOW: '1'
-        run: go test -count=1 ./cmd/schema -run '^TestNewLegZigWritesSkeletonAndFixturePasses$'
-      # the job sets SCHEMA_SLOW and has go, so a skip for either is red: the
-      # one test it runs must have run
-      - name: the skip ledger — every skip this job's go test recorded, by reason
-        if: always()
-        env:
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          set -euo pipefail
-          require=""
-          if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
-          go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
-            -provides "slow tool:go" "$PGROUP_GO_TEST_JSON"
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
   # median and lives in ci-full.yml; this job runs the packages `plan` picked,
@@ -3029,100 +2927,6 @@ jobs:
             *) echo "::error::leg-gate-cpp has no part '$PART'"; exit 1 ;;
           esac
 
-  # THE PINS GATE (the `pins` job of ci-full.yml, on the pull request). Every
-  # committed pin is REWRITTEN from its generator and `testdata/` is diffed
-  # against HEAD, so a hand-written golden (a .bits or .bin typed or edited by
-  # a person or a child) fails on the push that adds it instead of at the
-  # nightly. Each row runs under the two-minute cap:
-  #   source              C++/C/C# table copies and the framing byte proofs
-  #   source-goldens      the Go golden tests, in their own checkout because
-  #                       they also rewrite table pins
-  #   wire-packet         testdata/wire/*.bin, *.bits, packet-defaults/,
-  #                       bench_*.bin: EMPTIED FIRST (pins-fresh-wire-packet), so
-  #                       a file no generator writes shows as a deletion
-  #   wire-tables         testdata/wire/tables/ from test/tables/main.cpp
-  #   wire-tables-forms   block/maps/lists/arms/retain wire pins and the
-  #                       harness `generate` half of testdata/conformance/tables
-  #   conformance         the cook node dumps and the block forgeries
-  # THE GENERATED TREE (generated/) is generated-current above; a wire or cook
-  # pin the rewrite does not own is a conformance matrix input, named in
-  # test/conformance/README.md. Selected by `pins` in the plan.
-  pins:
-    needs: plan
-    if: (needs.plan.outputs.pins == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: pins (${{ matrix.row }})
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - row: source
-            target: pins-source-cpp pins-source-c pins-source-cs pins-framing
-          - row: source-goldens
-            target: pins-source-goldens
-          - row: wire-packet
-            target: pins-fresh-wire-packet
-          - row: wire-tables
-            target: pins-wire-tables
-          - row: wire-tables-forms
-            target: pins-wire-tables-forms
-          - row: conformance
-            target: pins-conformance
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-
-      - name: Check out the C++ serialize runtime (pinned release)
-        if: ${{ matrix.row != 'source' && matrix.row != 'source-goldens' }}
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-
-      # the runner's own pinned go already satisfies go.mod; hosted fallback only
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-
-      - name: rewrite pin family (${{ matrix.row }}) from its generator
-        env:
-          TARGETS: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          # Keep the source row's writers serial, as in the Makefile aggregate.
-          for t in $TARGETS; do make -j"$(nproc)" "$t"; done
-
-      - name: the pins are current
-        run: |
-          git diff --exit-code -- testdata/ bench/corpus/variants/ || {
-            echo "::error::a pin under testdata/ is not what its generator writes (row ${{ matrix.row }}): it is stale, or it was written by hand. Run 'make update-goldens' and commit what changes; never edit a golden."
-            exit 1
-          }
-          untracked=$(git status --porcelain testdata/ bench/corpus/variants/)
-          if [ -n "$untracked" ]; then
-            echo "$untracked"
-            echo "::error::the rewrite wrote files that are not committed under testdata/. Add them."
-            exit 1
-          fi
-
-  # THE VERDICT: ONE CHECK THAT IS RED WHEN ANY GATE OF THIS RUN DID NOT PASS.
-  # main requires no status check (no branch protection; the only ruleset
-  # carrying one, `block-gate`, is disabled and targets fixed-table-form), so a
-  # job here that is red, cancelled at its two-minute cap or skipped reads
-  # nowhere but its own row. This job needs EVERY other job of the file
-  # (internal/ci TestCIFastVerdictNeedsEveryJob reads the list from this file,
-  # never from a hand list) and fails on any result but success, except a job
-  # the plan selected nothing for: a skip is green only where this script names
-  # the plan output that made it, and the gates that always run (plan,
-  # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
-  # check to require on main.
   # THE ONE TEST DRIVER (docs/TEST-REGISTRY.md): the registry's stored query
   # `pr` (test/registry/registry.jsonl, rec group) runs every unit and
   # functional test of every language whose adapter has landed, and every
@@ -3131,13 +2935,25 @@ jobs:
   # matrix prints first, every time, so a language with no adapter stays in
   # sight; its MISSING instances are red in schema-test-nightly.yml. The old
   # harness jobs above keep running until the registry covers what they run.
-  schema-test:
+  #
+  # SHARDED BY MEASURED SECONDS. schema-test-plan holds the extract and asks
+  # `schema-test shards` for the fewest shards whose every part fits 90
+  # measured seconds (the registry's ms fields; whole families, so a golden
+  # writer or a harness build runs once): 90 s is the adapter call limit, so
+  # no planned part can be cut by it, and a two-minute job keeps the rest for
+  # its checkout, the sibling clones and the driver build. A family past the
+  # budget fails the plan by name: it is cut smaller or tiered nightly, and
+  # the budget is never raised to fit. Every shard runs every name its part
+  # holds; nothing here selects by path.
+  schema-test-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    outputs:
+      shards: ${{ steps.shards.outputs.shards }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -3146,10 +2962,6 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-      - name: the pinned Go runtime the go adapter builds against
-        run: |
-          set -euo pipefail
-          (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
       # EVERY TEST IS A REGISTRY ROW OR IN THE UNMOVED LEDGER, AND THE LEDGER
@@ -3175,16 +2987,70 @@ jobs:
             echo "::notice::main has no test/registry/unmoved.tsv: this change creates it, so there is nothing to shrink from"
             go run ./tools/schema-test extract --since "$RUNNER_TEMP/main-tree"
           fi
-      - name: schema-test run --group pr
+      - id: shards
+        name: the pr group's shards, by measured seconds
+        run: |
+          set -euo pipefail
+          go run ./tools/schema-test shards --group pr --budget 90 > "$RUNNER_TEMP/shards.txt"
+          cat "$RUNNER_TEMP/shards.txt"
+          echo "shards=$(head -n 1 "$RUNNER_TEMP/shards.txt")" >> "$GITHUB_OUTPUT"
+
+  schema-test:
+    needs: schema-test-plan
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    name: schema-test (${{ matrix.shard }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.schema-test-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      # Every sibling in every shard: which shard a family lands in is the
+      # cut's, so no shard may lack a runtime a row reaches for (the go
+      # adapter builds against serialize.go; the golden writers against the
+      # C++ serialize).
+      - name: the pinned serialize runtimes
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+      - name: schema-test run --group pr --shard ${{ matrix.shard }}
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
             . /opt/nova/sdk/env.sh
           fi
-          go run ./tools/schema-test run --group pr
+          go build -o "$RUNNER_TEMP/schema-test" ./tools/schema-test
+          "$RUNNER_TEMP/schema-test" run --group pr --shard "$SHARD"
 
+  # THE VERDICT: ONE CHECK THAT IS RED WHEN ANY GATE OF THIS RUN DID NOT PASS.
+  # main requires no status check (no branch protection; the only ruleset
+  # carrying one, `block-gate`, is disabled and targets fixed-table-form), so a
+  # job here that is red, cancelled at its two-minute cap or skipped reads
+  # nowhere but its own row. This job needs EVERY other job of the file
+  # (internal/ci TestCIFastVerdictNeedsEveryJob reads the list from this file,
+  # never from a hand list) and fails on any result but success, except a job
+  # the plan selected nothing for: a skip is green only where this script names
+  # the plan output that made it, and the gates that always run (plan,
+  # ci-policy, lint-fast, vet, schema-test-plan) may never skip. `verdict` is the
+  # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test-plan, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, stage-compiler, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, nightly-fast]
     if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -3217,12 +3083,10 @@ jobs:
               verify-cpp-conformance) ! grep -qF '"cpp"' <<<"$(out verify_legs)" ;;
               verify-dart-fuzz) ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
-              build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
+              build-cpp-conformance-account|input-family-cpp-conformance|stage-compiler) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
-              newleg-scaffold) [ "$(out newleg)" = no ] ;;
-              pins) [ "$(out pins)" != yes ] ;;
               leg-gate) [ "$EVENT" != workflow_dispatch ] || [ "$(out legs)" = '[]' ] ;;
               leg-gate-lobster|leg-gate-rust|leg-gate-squirrel|leg-gate-cpp)
                 [ "$EVENT" != workflow_dispatch ] || ! grep -qF "\"${1#leg-gate-}\"" <<<"$(out legs)" ;;

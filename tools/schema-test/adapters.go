@@ -44,22 +44,29 @@ var harnesses = map[string]harness{
 // ready, and every one of its instances is MISSING until it does.
 //
 // The language-free kinds have one adapter each: gotest runs a Go test by
-// name, plant runs a negative control (a named test against a broken build,
-// which must come out red). docs/TEST-REGISTRY.md lists the kinds still to
-// come (goldens, lint gates, TLC runs and trace checks, benches) and the
-// contract each will have.
+// name, make runs a make gate by target, plant runs a negative control (a
+// named test against a broken build, which must come out red).
+// docs/TEST-REGISTRY.md lists the kinds still to come (lint gates, TLC runs
+// and trace checks, benches) and the contract each will have.
 func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
 		"go":     &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
 		"lua":    &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
 		"gotest": goTestAdapter{log: log},
+		"make":   newMakeAdapter(),
+		"golden": newGoldenAdapter(),
 	}
 }
 
-// withPlant adds the plant adapter, which runs its targets through rn.
-func withPlant(ads map[string]testreg.Adapter, rn *testreg.Runner) {
-	ads["plant"] = plantAdapter{rn: rn}
+// withRunner adds the plant adapter, which runs its targets through rn, and
+// hands the golden adapter the registry rn loaded.
+func withRunner(ads map[string]testreg.Adapter, rn *testreg.Runner) {
+	ads["plant"] = newPlantAdapter(rn)
+	if g, ok := ads["golden"].(goldenAdapter); ok {
+		g.reg = rn.Reg
+		ads["golden"] = g
+	}
 }
 
 // builder runs each build step once per process, however many languages ask.

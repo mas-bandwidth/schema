@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -28,8 +29,15 @@ func (goTestAdapter) Answers(t testreg.Test) bool { return t.Scope == testreg.La
 
 var goTestName = regexp.MustCompile(`^(Test|Example|Fuzz)[A-Za-z0-9_]*$`)
 
+// slowEnv opens internal/slowtest's gate for a functional or nightly row: the
+// row's tier is the decision that it runs with its toolchain, made in the
+// registry before the run, so the test never decides at run time to skip. A
+// unit row runs with the gate shut, and a unit row that reaches the gate
+// skips, which is a fail: it is tiered wrong.
+func slowEnv(tier string) bool { return tier != "unit" }
+
 func (a goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	byPkg := map[string]map[string]string{} // package -> Go test -> instance
+	byPkg := map[string]map[string]string{} // package (and gate) -> Go test -> instance
 	var pkgs []string
 	for _, inst := range instances {
 		var in goTestInputs
@@ -41,21 +49,29 @@ func (a goTestAdapter) Run(ctx context.Context, _ string, instances []testreg.In
 		if !strings.HasPrefix(in.Package, "./") || !goTestName.MatchString(in.Test) {
 			return nil, fmt.Errorf("%s: inputs want a ./package and a Go test name, got %q %q", inst.Full, in.Package, in.Test)
 		}
-		if byPkg[in.Package] == nil {
-			byPkg[in.Package] = map[string]string{}
-			pkgs = append(pkgs, in.Package)
+		key := in.Package
+		if slowEnv(inst.Test.Tier) {
+			key += " slow"
 		}
-		byPkg[in.Package][in.Test] = inst.Full
+		if byPkg[key] == nil {
+			byPkg[key] = map[string]string{}
+			pkgs = append(pkgs, key)
+		}
+		byPkg[key][in.Test] = inst.Full
 	}
 	var out []testreg.Result
-	for _, pkg := range pkgs {
-		tests := byPkg[pkg]
+	for _, key := range pkgs {
+		tests := byPkg[key]
+		pkg, slow := strings.CutSuffix(key, " slow")
 		names := make([]string, 0, len(tests))
 		for n := range tests {
 			names = append(names, n)
 		}
 		cmd := exec.CommandContext(ctx, "go", "test", "-count=1", "-json", "-run", "^("+strings.Join(names, "|")+")$", pkg)
 		bound(cmd)
+		if slow {
+			cmd.Env = append(os.Environ(), "SCHEMA_SLOW=1")
+		}
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
@@ -106,55 +122,6 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 		case "skip":
 			out = append(out, testreg.Result{Instance: inst, Verdict: testreg.Fail, Reason: "the Go test skipped, and nothing is ever skipped: " + tail(strings.Join(output[ev.Test], "\n"), 5)})
 		}
-	}
-	return out, nil
-}
-
-// plantAdapter runs negative controls: a plant's inputs are {"target":
-// <full name>, "env": {...}}, and the plant passes only when its target,
-// run with that environment (which breaks the build the target checks), runs
-// and its adapter reports it failed. A target that passes, is MISSING, or
-// whose adapter crashes or times out fails the plant.
-type plantAdapter struct{ rn *testreg.Runner }
-
-type plantInputs struct {
-	Target string            `json:"target"`
-	Env    map[string]string `json:"env"`
-}
-
-func (plantAdapter) Answers(t testreg.Test) bool {
-	return t.Scope == testreg.LangFree && t.Type == "plant"
-}
-
-func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Instance) ([]testreg.Result, error) {
-	var out []testreg.Result
-	for _, inst := range instances {
-		var in plantInputs
-		d := json.NewDecoder(bytes.NewReader(inst.Test.Inputs))
-		d.DisallowUnknownFields()
-		if err := d.Decode(&in); err != nil {
-			return out, fmt.Errorf("%s: inputs: %w", inst.Full, err)
-		}
-		target, err := a.rn.Reg.Resolve(in.Target)
-		if err != nil {
-			return out, fmt.Errorf("%s: %w", inst.Full, err)
-		}
-		if target.Test.Type == "plant" || len(in.Env) == 0 {
-			return out, fmt.Errorf("%s: a plant's target is a test that is not a plant, and its env breaks something", inst.Full)
-		}
-		rep := a.rn.Run(testreg.WithEnv(ctx, in.Env), []testreg.Instance{target})
-		var o testreg.Outcome
-		for _, x := range rep.Outcomes {
-			if x.Full == target.Full {
-				o = x
-			}
-		}
-		if o.Status == testreg.StatusFail && rep.Ran == 1 && len(rep.Problems) == 0 {
-			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
-			continue
-		}
-		out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
-			Reason: fmt.Sprintf("planted %v, %s was %s (ran %d), not red: %s", in.Env, target.Full, o.Status, rep.Ran, o.Reason)})
 	}
 	return out, nil
 }

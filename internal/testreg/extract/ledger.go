@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -89,27 +90,75 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 	return ReadLedger(bytes.NewReader(data), path)
 }
 
-// Covered reports, for each item a registry row runs, the row's key. A Go
-// test is covered by a gotest row whose inputs name its package and test.
+// Covered reports, for each item a registry row runs, the row's key:
+//   - a Go test, by a gotest row whose inputs name its package and test;
+//   - a make target, by a make row whose inputs name its file and target;
+//   - a negative control, by a plant row whose inputs name its make target
+//     and its group in make/negative-controls.json;
+//   - a data case that is a pinned output, by a golden row whose inputs name
+//     its files (every file of the case: its directory and stem).
+//
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	out := map[string]string{}
 	var problems []string
-	for _, t := range reg.Tests {
-		if t.Adapter != "gotest" {
-			continue
-		}
-		var in struct{ Package, Test string }
-		if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
-			problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
-			continue
-		}
-		id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}.ID()
+	claim := func(t testreg.Test, it Item, what string) {
+		id := it.ID()
 		if prev, dup := out[id]; dup {
-			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s, which %s already runs", reg.Path, t.Line, t.Key, in.Package, in.Test, prev))
-			continue
+			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s, which %s already runs", reg.Path, t.Line, t.Key, what, prev))
+			return
 		}
 		out[id] = t.Key
+	}
+	for _, t := range reg.Tests {
+		switch t.Adapter {
+		case "gotest":
+			var in struct{ Package, Test string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+		case "make":
+			var in struct{ File, Target string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make row without a file and a target in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
+		case "plant":
+			var in struct{ Make, Group string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s: plant inputs: %v", reg.Path, t.Line, t.Key, err))
+				continue
+			}
+			if in.Make == "" {
+				continue // a plant of its own (env or edits), not a make control
+			}
+			if in.Group == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs make control %s and names no group of %s", reg.Path, t.Line, t.Key, in.Make, NegativeControlsFile))
+				continue
+			}
+			claim(t, Item{Kind: KindNegativeControl, Dir: in.Group, Name: in.Make}, "negative control "+in.Make)
+		case "golden":
+			var in struct{ Files []string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || len(in.Files) == 0 {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a golden row without files in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			items := map[string]bool{}
+			for _, f := range in.Files {
+				if !isDataPath(f) {
+					continue // a pin outside the data paths is no data case: the row checks it all the same
+				}
+				dir, name := path.Split(f)
+				it := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}
+				if !items[it.ID()] {
+					items[it.ID()] = true
+					claim(t, it, "pin "+f)
+				}
+			}
+		}
 	}
 	return out, problems
 }

@@ -78,7 +78,13 @@ type Test struct {
 	// none.<tier>.<key>), which names the Adapter that runs it.
 	Scope   string `json:"scope,omitempty"`
 	Adapter string `json:"adapter,omitempty"`
-	Line    int    `json:"-"`
+	// Ms is what the test costs its batch (Instance.Batch), in milliseconds
+	// measured on a cold runner: its own run, or, when its batch shares one
+	// step (a golden family's writer, a harness's build), its share of that
+	// step, rounded up. The shards are cut by it. Unmeasured is 0, and
+	// counts as one second.
+	Ms   int `json:"ms,omitempty"`
+	Line int `json:"-"`
 }
 
 // LangFree is the scope, and the language part of the full name, of a test
@@ -378,6 +384,8 @@ func checkTest(t Test, tiers, types map[string]int) string {
 		return "is language-free and names no adapter"
 	case t.Scope == "" && t.Adapter != "":
 		return "names an adapter, but a per-language test runs through each language's adapter"
+	case t.Ms < 0:
+		return "measured a negative number of milliseconds"
 	}
 	return ""
 }

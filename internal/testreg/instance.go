@@ -3,6 +3,8 @@ package testreg
 import (
 	"fmt"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -248,16 +250,96 @@ func (r *Registry) Select(q Query) (Selection, error) {
 	return sel, nil
 }
 
-// Shard is the i-th of n parts (1-based) of a name list: name k goes to
-// part k mod n + 1, so the parts cover every name exactly once. An empty
-// part is an error: a shard that would run nothing fails.
+// Batch is the unit an adapter runs together and a shard never splits: one
+// language's (or one language-free adapter's) instances of one family. A
+// harness builds once per family, and a writer (a golden family's) runs once,
+// so a family cut across two shards would pay its build in both. An
+// instance with no family is a batch of its own, and so is a make or plant
+// row: each runs its own target, and its family is only where it is written.
+func (inst Instance) Batch() string {
+	if inst.Test.Family == "" || inst.Test.Adapter == "make" || inst.Test.Adapter == "plant" {
+		return "\x00" + inst.Full
+	}
+	return inst.Lang + "\x00" + inst.Test.Adapter + "\x00" + inst.Test.Family
+}
+
+// Cost is the instance's measured milliseconds, an unmeasured one counting
+// one second.
+func (inst Instance) Cost() int {
+	if inst.Test.Ms > 0 {
+		return inst.Test.Ms
+	}
+	return 1000
+}
+
+type batch struct {
+	key       string
+	cost      int
+	instances []Instance
+}
+
+// batches cuts the list into its batches and orders them for the cut: the
+// costliest first, ties by key, so the cut is the same every time.
+func batches(instances []Instance) []*batch {
+	idx := map[string]*batch{}
+	var out []*batch
+	for _, inst := range instances {
+		b := idx[inst.Batch()]
+		if b == nil {
+			b = &batch{key: inst.Batch()}
+			idx[b.key] = b
+			out = append(out, b)
+		}
+		b.cost += inst.Cost()
+		b.instances = append(b.instances, inst)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].cost != out[j].cost {
+			return out[i].cost > out[j].cost
+		}
+		return out[i].key < out[j].key
+	})
+	return out
+}
+
+// cut deals the batches into n parts, each batch to the part with the
+// least cost so far (the lowest on a tie): longest first, so the parts come
+// out near even. It returns each part's batches and cost.
+func cut(bs []*batch, n int) ([][]*batch, []int) {
+	parts := make([][]*batch, n)
+	load := make([]int, n)
+	for _, b := range bs {
+		k := 0
+		for j := 1; j < n; j++ {
+			if load[j] < load[k] {
+				k = j
+			}
+		}
+		parts[k] = append(parts[k], b)
+		load[k] += b.cost
+	}
+	return parts, load
+}
+
+// Shard is the i-th of n parts (1-based) of a name list, cut by measured
+// milliseconds: whole batches, each to the least-loaded part, costliest first.
+// The parts cover every name exactly once, in the list's order within a
+// part, and the cut depends only on the list. An empty part is an error: a
+// shard that would run nothing fails.
 func Shard(instances []Instance, i, n int) ([]Instance, error) {
 	if n < 1 || i < 1 || i > n {
 		return nil, fmt.Errorf("shard %d/%d: want 1 <= i <= n", i, n)
 	}
+	parts, _ := cut(batches(instances), n)
+	in := map[string]bool{}
+	for _, b := range parts[i-1] {
+		for _, inst := range b.instances {
+			in[inst.Full] = true
+		}
+	}
 	var out []Instance
-	for k, inst := range instances {
-		if k%n == i-1 {
+	for _, inst := range instances {
+		if in[inst.Full] {
 			out = append(out, inst)
 		}
 	}
@@ -265,4 +347,31 @@ func Shard(instances []Instance, i, n int) ([]Instance, error) {
 		return nil, fmt.Errorf("shard %d/%d of %d names matches 0 tests", i, n, len(instances))
 	}
 	return out, nil
+}
+
+// Shards is the fewest parts whose every part costs at most budget seconds,
+// and each part's cost in milliseconds. A batch that alone costs more than
+// the budget is an error naming it: no number of shards fits it, so it is
+// cut smaller or it is nightly. The budget is never raised to fit.
+func Shards(instances []Instance, budget int) (int, []int, error) {
+	if budget < 1 {
+		return 0, nil, fmt.Errorf("a shard budget of %d seconds holds nothing", budget)
+	}
+	limit := budget * 1000
+	if len(instances) == 0 {
+		return 0, nil, fmt.Errorf("no names to shard")
+	}
+	bs := batches(instances)
+	if bs[0].cost > limit {
+		return 0, nil, fmt.Errorf("batch %s costs %.1f s on its own, past the %d s shard budget: cut it smaller or tier it nightly", strings.ReplaceAll(strings.TrimPrefix(bs[0].key, "\x00"), "\x00", " "), float64(bs[0].cost)/1000, budget)
+	}
+	for n := 1; ; n++ {
+		if n > len(bs) {
+			return 0, nil, fmt.Errorf("no cut of %d batches fits %d s", len(bs), budget)
+		}
+		_, load := cut(bs, n)
+		if slices.Max(load) <= limit {
+			return n, load, nil
+		}
+	}
 }
