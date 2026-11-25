@@ -841,9 +841,9 @@ local function pipe(host: any)
 		-- vocabulary (answerMessage). A RETAIN entry is the retention arm, driven through
 		-- schema_retain.luau's LoadRetain and SaveRetain.
 		-- Every entry answered 0 is NOTED by name (__luaufuzz.note, the file
-		-- LUAUFUZZ_NOTE names): make/luau-fuzz.mk holds the list to
-		-- test/conformance/luau/wire-fuzz-absent.txt, so a root that drops out
-		-- is a reviewed change and never a quieter run.
+		-- LUAUFUZZ_NOTE names): make/luau-fuzz.mk fails the run on any noted
+		-- entry, naming it, so a root that drops out is red and never a
+		-- quieter run.
 		local why = ""
 		if form == 2 then
 			local mu = messageUnit(key)

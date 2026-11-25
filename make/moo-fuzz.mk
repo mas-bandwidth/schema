@@ -37,11 +37,10 @@ moo-wire-fuzz: toolchain-moo
 # MOO_PIN, the same checkout dist-moo builds), its VM and compiler linked as
 # the CLI links them, and nothing but the pipe added.
 #
-# THE ROOTS THE LEG ANSWERS 0 FOR are held to a pinned list BY NAME, as the
-# Luau leg holds its own (make/luau-fuzz.mk): the driver notes each one into
-# the file MOOFUZZ_NOTE names (made empty before the run), and the recipe fails on any difference from
-# test/conformance/moo/wire-fuzz-absent.txt and on any count other than
-# MOO_WIRE_FUZZ_ABSENT_COUNT, naming each root that moved.
+# A ROOT THE LEG ANSWERS 0 FOR is red, as in the Luau leg (make/luau-fuzz.mk):
+# the driver notes each one into the file MOOFUZZ_NOTE names (made empty
+# before the run), and the recipe fails on any entry there, naming each root;
+# no list holds one back (the no-skips ruling, docs/rulings.json).
 #
 # THE PINNED MUTANTS (test/conformance/moo/wire-fuzz-pinned.txt) are the
 # divergences this leg's runs found, each replayed alone through the same pipe
@@ -54,10 +53,6 @@ MOOFUZZHOST_CMAKE   := build/moofuzzhost/cmake
 MOO_WIRE_FUZZ_SEED  ?= 1
 MOO_WIRE_FUZZ_N     ?= 2000
 MOO_WIRE_FUZZ_ARGS  ?=
-MOO_WIRE_FUZZ_ABSENT_COUNT := 0
-MOO_WIRE_FUZZ_ABSENT_PIN   := test/conformance/moo/wire-fuzz-absent.txt
-MOO_WIRE_FUZZ_RETAIN_ABSENT_COUNT := 0
-MOO_WIRE_FUZZ_RETAIN_ABSENT_PIN   := test/conformance/moo/wire-fuzz-absent-retain.txt
 MOO_WIRE_FUZZ_PINNED       := test/conformance/moo/wire-fuzz-pinned.txt
 MOO_WIRE_FUZZ_PINNED_DIR   := test/conformance/moo/wire-fuzz-pinned
 MOO_WIRE_FUZZ_LOG          := build/wire-fuzz/moo.log
@@ -78,7 +73,7 @@ $(MOOFUZZHOST): tools/moofuzzhost/main.cpp make/moo.mk
 	@echo "moofuzzhost: built against moo $(MOO_PIN)"
 
 # one run of the pipe: $(1) the extra harness flags, $(2) the log, $(3) the absent
-# list the driver notes, $(4) the pinned list, $(5) its count
+# list the driver notes
 define moo-wire-fuzz-run
 	@mkdir -p build/wire-fuzz
 	@rm -f $(3) && touch $(3)
@@ -87,15 +82,12 @@ define moo-wire-fuzz-run
 		--seed $(MOO_WIRE_FUZZ_SEED) --n $(MOO_WIRE_FUZZ_N) $(1) --failed build/wire-fuzz/failed-moo.bin \
 		> $(2) 2>&1; \
 		status=$$?; cat $(2); \
-		sort -u $(3) > $(3).sorted; \
-		grep -v '^#' $(4) | sort > $(3).pinned; \
-		n=$$(wc -l < $(3).sorted | tr -d ' '); \
-		if ! cmp -s $(3).sorted $(3).pinned || [ "$$n" -ne $(5) ]; then \
-			echo "tables-moo-wire-fuzz: $$n roots absent, $(5) pinned ($(4))"; \
-			comm -23 $(3).sorted $(3).pinned | sed 's/^/  the leg cannot open: /'; \
-			comm -13 $(3).sorted $(3).pinned | sed 's/^/  pinned absent but open now (unpin it): /'; \
+		n=$$(sort -u $(3) | wc -l | tr -d ' '); \
+		if [ "$$n" -ne 0 ]; then \
+			echo "tables-moo-wire-fuzz: the leg answers 0 for $$n roots of the roster:"; \
+			sort -u $(3) | sed 's/^/  the leg cannot open: /'; \
 			exit 1; fi; \
-		echo "tables-moo-wire-fuzz: $$n roots absent, as pinned"; \
+		echo "tables-moo-wire-fuzz: the leg opens every root of the roster"; \
 		if [ $$status -ne 0 ]; then exit $$status; fi
 	@grep -qE '(^|[^0-9])0 divergences' $(2)
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' $(2)
@@ -106,13 +98,13 @@ endef
 tables-moo-wire-fuzz: tables-moo-wire-fuzz-plain tables-moo-wire-fuzz-retain tables-moo-wire-fuzz-pinned
 
 tables-moo-wire-fuzz-plain: toolchain-moo build/conformance-harness build/conformance-moo $(MOOFUZZHOST)
-	$(call moo-wire-fuzz-run,$(MOO_WIRE_FUZZ_ARGS),$(MOO_WIRE_FUZZ_LOG),$(MOO_WIRE_FUZZ_ABSENT),$(MOO_WIRE_FUZZ_ABSENT_PIN),$(MOO_WIRE_FUZZ_ABSENT_COUNT))
+	$(call moo-wire-fuzz-run,$(MOO_WIRE_FUZZ_ARGS),$(MOO_WIRE_FUZZ_LOG),$(MOO_WIRE_FUZZ_ABSENT))
 
 # THE RETENTION ARM (--retain, docs/SPEC-TABLES.md §6.6): the same mutants
 # through LoadRetain and SaveRetain. Its roster is the variable-class file
-# roots alone, so its absent list is its own.
+# roots alone, so its absent list is its own, and red on any entry.
 tables-moo-wire-fuzz-retain: toolchain-moo build/conformance-harness build/conformance-moo $(MOOFUZZHOST)
-	$(call moo-wire-fuzz-run,--retain $(MOO_WIRE_FUZZ_ARGS),build/wire-fuzz/moo-retain.log,build/wire-fuzz/moo-retain.absent,$(MOO_WIRE_FUZZ_RETAIN_ABSENT_PIN),$(MOO_WIRE_FUZZ_RETAIN_ABSENT_COUNT))
+	$(call moo-wire-fuzz-run,--retain $(MOO_WIRE_FUZZ_ARGS),build/wire-fuzz/moo-retain.log,build/wire-fuzz/moo-retain.absent)
 
 # each pinned mutant replayed alone: <file> <unit> <root> [message|retain]
 tables-moo-wire-fuzz-pinned: tables-moo-wire-fuzz-pinned-list-controls toolchain-moo build/conformance-harness build/conformance-moo $(MOOFUZZHOST)

@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 199. Language-free tests: 71.
+Nightly tests every language answers: 200. Language-free tests: 71.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -221,6 +221,16 @@ generated source compiles and is clean.
 | `L.nightly.codegen.name-buildability.tb-max-items` | name-buildability tb\_max\_items: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: tb_max_items`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/tb\_max\_items passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:318` |
 | `L.nightly.codegen.name-buildability.u-pick` | name-buildability u\_pick: the checker accepts its names, and the language generates it and builds and loads the output with its own toolchain (SPEC §4.6) | `package: ./tools/namebuild`<br>`subtest: u_pick`<br>`test: TestNameBuildability_{lang}` | the Go test TestNameBuildability\_&lt;lang&gt;/u\_pick passes: generate, build and load all succeed | `testdata/name-buildability/cases.tsv:316` |
 
+### Type `lint`
+
+generated or runtime code is clean under the language's strict analyser.
+
+#### `lint` family `luau-strict-analyze`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.lint.luau-strict-analyze.at-id-cap` | the generated Luau modules of a unit announcing exactly 4096 vocabulary entries (the most a reader takes) pass luau-analyze --mode=strict; the 4097-entry unit is refused at run time and not analysed | `tests: {"luau":{"package":"./internal/codegen/luautable","test":"TestLuauStrictAnalyzeAtIdCap"}}` | the luau Go test for the case (inputs.tests) passes | `internal/codegen/luautable/announce_cap_test.go:35` |
+
 ## Language-free tests
 
 Each runs once, as `none.nightly.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
@@ -386,3 +396,11 @@ a TLA+ model checks under TLC, or a code trace is a behaviour of the spec.
 ## Declared unrepresentable
 
 None: every language answers every test of tier `nightly`.
+
+## Intrinsic to one language
+
+Each test's subject exists in one language only (that language's own generated source or runtime): it has that language's instance, and every other language is declared unrepresentable with the reason. A new language implements none of these.
+
+| test | language | reason |
+|---|---|---|
+| `lint.luau-strict-analyze.at-id-cap` | `luau` | luau-analyze strict type checking of a generated 4096-entry Luau module; only Luau has this analyser |

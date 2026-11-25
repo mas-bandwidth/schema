@@ -38,6 +38,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -80,6 +81,7 @@ var surfaceTypes = map[string]string{
 	"announce":              "encode",
 	"read-into":             "decode",
 	"json-write-into":       "encode",
+	"rewrite":               "roundtrip",
 }
 
 // surfaceChecks says in one line what a row of each surface proves; the
@@ -114,6 +116,7 @@ var surfaceChecks = map[string]string{
 	"announce":              "the announcement is written as pinned",
 	"read-into":             "a read into an existing value leaves the oracle's value",
 	"json-write-into":       "a text write into an existing buffer gives the canonical text",
+	"rewrite":               "the input read and written back gives the oracle's canonical bytes (SPEC-TABLES §22)",
 }
 
 // corpusInputs is a conformance row's inputs: the surface, the case as the
@@ -158,6 +161,25 @@ func caseSlug(name string) string {
 // corpusRows is every case of every surface the harness scores, as registry
 // rows, sorted by key.
 func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpusRow, error) {
+	return corpusRowsAs(m, reports, jsonDir, "", defaultManifest)
+}
+
+// THE BOM ENTRY GATE (testdata/conformance/tables/bom-entry/MANIFEST.txt,
+// docs/SPEC-TABLES.md §16.3) is a manifest of its own, four json-hostile rows
+// on the whole-text entry, run by test/conformance/bom-entry. Its rows are one
+// family, bom-entry, so they never share a key with the corpus's own
+// json-hostile rows; their inputs are the same {surface, case}, which the
+// harness's adapter mode answers from a run over that manifest.
+const (
+	bomFamily   = "bom-entry"
+	bomManifest = "testdata/conformance/tables/bom-entry/MANIFEST.txt"
+	bomJSONDir  = "testdata/conformance/tables/bom-entry/json"
+)
+
+// corpusRowsAs is corpusRows for any manifest: family, when set, is every
+// row's family (and so its key's middle), and source is the manifest the rows
+// come from.
+func corpusRowsAs(m *Manifest, reports map[string]string, jsonDir, family, source string) ([]corpusRow, error) {
 	files, err := caseFiles(m)
 	if err != nil {
 		return nil, err
@@ -198,18 +220,21 @@ func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpu
 				return nil, fmt.Errorf("surface %s: cases %q and %q are both the registry case %q", s, prev, name, slug)
 			}
 			seen[slug] = name
-			family := corpusFamilyPrefix + s
+			rowFamily := corpusFamilyPrefix + s
+			if family != "" {
+				rowFamily = family
+			}
 			out = append(out, corpusRow{
 				Rec:    "test",
-				Key:    typ + "." + family + "." + slug,
+				Key:    typ + "." + rowFamily + "." + slug,
 				Type:   typ,
-				Family: family,
+				Family: rowFamily,
 				Case:   slug,
 				Tier:   "functional",
 				Checks: "conformance " + s + " " + name + ": " + checks,
-				Inputs: corpusInputs{Surface: s, Case: name, Files: filesOf(files, name), Driver: corpusDriver},
+				Inputs: corpusInputs{Surface: s, Case: name, Files: rowFiles(filesOf(files, name), source, s), Driver: corpusDriver},
 				Expect: "the leg's answer equals the corpus's expectation (test/conformance/README.md)",
-				Source: defaultManifest,
+				Source: source,
 			})
 		}
 	}
@@ -220,13 +245,21 @@ func corpusRows(m *Manifest, reports map[string]string, jsonDir string) ([]corpu
 // caseFiles is, for each name the manifest gives a case, the committed files
 // the manifest names for it: every field of the case's line that is a path
 // in the working tree (a directory stands for every file under it), the
-// schema files of the unit it names, and the files of the line its Base
+// schema files of the unit it names, the wire and schema files of a
+// connection it names, and the files of the line its Base
 // names (a forgery's fixture). A line's name is its Name, Case or Instance
 // field. Paths under build/ are what the run materialises, not the corpus.
 func caseFiles(m *Manifest) (map[string][]string, error) {
 	units := map[string][]string{}
 	for _, u := range m.Units {
 		units[u.Key] = u.Paths
+	}
+	// a connection key in a case's line (a message row's unit column, a
+	// drift's peer) stands for the connection's announcement wire and its
+	// unit's schema files
+	conns := map[string][]string{}
+	for _, c := range m.Connections {
+		conns[c.Key] = append([]string{c.Wire}, units[c.Unit]...)
 	}
 	out := map[string]map[string]bool{}
 	bases := map[string][]string{}
@@ -274,6 +307,16 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 			if name == "" {
 				continue
 			}
+			// the files a case owes that live by its name rather than in a
+			// field: an announce or read-into golden, a retain-refusal's two
+			// saves, a message batch's wire (caseGoldens)
+			for _, method := range caseGoldens {
+				if fn := e.MethodByName(method); fn.IsValid() {
+					if err := add(name, fn.Call(nil)[0].String()); err != nil {
+						return nil, err
+					}
+				}
+			}
 			for k := 0; k < e.NumField(); k++ {
 				v := e.Field(k)
 				switch field := e.Type().Field(k).Name; {
@@ -285,6 +328,14 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 				}
 				switch v.Kind() {
 				case reflect.String:
+					if paths, ok := conns[v.String()]; ok {
+						for _, p := range paths {
+							if err := add(name, p); err != nil {
+								return nil, err
+							}
+						}
+						continue
+					}
 					if e.Type().Field(k).Name == "Unit" {
 						for _, p := range units[v.String()] {
 							if err := add(name, p); err != nil {
@@ -330,9 +381,26 @@ func caseFiles(m *Manifest) (map[string][]string, error) {
 	return files, nil
 }
 
+// caseGoldens are the methods a manifest line's type has that name a file the
+// case owes by its name: AnnounceCase.Golden and ReadInto.Golden, and
+// RetainRefusal.Before and After, and MessageBatch.Wire.
+var caseGoldens = []string{"Golden", "Before", "After", "Wire"}
+
 // filesOf is the files of the line a case answers: json-write's case is the
 // instance's name with ".json", and cook-write's big-endian case is the
 // instance's with "-be".
+// rowFiles is what a row reads beyond its case's own files: the manifest
+// that names it, every row; and the pinned read reports (reports.txt) for a
+// report row, whose verdict lives there. Sorted, as caseFiles's are.
+func rowFiles(own []string, source, surface string) []string {
+	out := append([]string{source}, own...)
+	if surface == "report" {
+		out = append(out, defaultReports)
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
+}
+
 func filesOf(files map[string][]string, name string) []string {
 	for _, n := range []string{name, strings.TrimSuffix(name, ".json"), strings.TrimSuffix(name, "-be")} {
 		if f, ok := files[n]; ok {
@@ -510,4 +578,14 @@ func formatResults(results []testreg.Result) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// rowsFamilyNamed refuses registry rows for a manifest other than the corpus's
+// with no --family: they would take the corpus's families and keys, and two
+// manifests' rows would collide.
+func rowsFamilyNamed(manifest, family string) error {
+	if family == "" && manifest != defaultManifest {
+		return fmt.Errorf("registry-rows: --manifest %s is not the corpus's, so --family names its rows' family", manifest)
+	}
+	return nil
 }

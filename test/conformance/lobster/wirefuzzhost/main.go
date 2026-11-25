@@ -254,32 +254,6 @@ func (l *unitLeg) close() (leaked bool, err error) {
 	return false, fmt.Errorf("unit %s printed:\n%s", l.unit, out)
 }
 
-// readKnownLeaks reads the KNOWN FINDINGS: one `<unit> <arm>` per line, `#`
-// comments. A unit that leaks and is not listed fails, and a listed unit
-// that no longer leaks fails too, so the list cannot rot into silence.
-func readKnownLeaks(path, arm string) (map[string]bool, error) {
-	known := map[string]bool{}
-	if path == "" {
-		return known, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	for line := range strings.SplitSeq(string(data), "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
-			continue
-		}
-		if len(f) < 2 {
-			return nil, fmt.Errorf("%s: %q is not `<unit> <arm> ...`", path, line)
-		}
-		if f[1] == arm {
-			known[f[0]] = true
-		}
-	}
-	return known, nil
-}
 
 type entry struct {
 	unit, root   string
@@ -305,15 +279,10 @@ func readString(r io.Reader) (string, error) {
 func main() {
 	builder := flag.Bool("builder", false, "answer the --builder arm (variable-class file roots)")
 	unitsDir := flag.String("units", "build/conformance-lobster", "the generated units, one directory each")
-	knownPath := flag.String("known-leaks", "", "the units whose loaded cyclic graphs the VM reports leaked at exit, one `<unit> <arm>` a line")
 	flag.Parse()
 	arm := "file"
 	if *builder {
 		arm = "builder"
-	}
-	knownLeaks, err := readKnownLeaks(*knownPath, arm)
-	if err != nil {
-		fatalf("%v", err)
 	}
 
 	in := bufio.NewReaderSize(os.Stdin, 1<<20)
@@ -460,13 +429,10 @@ func main() {
 		if err != nil {
 			fatalf("%v", err)
 		}
-		switch {
-		case leaked && knownLeaks[unit]:
-			fmt.Fprintf(os.Stderr, "wirefuzzhost: KNOWN FINDING %s (%s arm): the VM reports leaked records at exit (a loaded cyclic graph)\n", unit, arm)
-		case leaked:
-			failures = append(failures, fmt.Sprintf("unit %s leaked records at exit and no known finding names it", unit))
-		case knownLeaks[unit]:
-			failures = append(failures, fmt.Sprintf("unit %s is a known leak finding for the %s arm but leaked nothing: delete its line", unit, arm))
+		// a leak is red: no list holds a unit back (the no-skips ruling,
+		// docs/rulings.json)
+		if leaked {
+			failures = append(failures, fmt.Sprintf("unit %s (%s arm) leaked records at exit", unit, arm))
 		}
 	}
 	if len(failures) > 0 {

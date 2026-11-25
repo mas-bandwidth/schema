@@ -335,6 +335,22 @@ func tierPage(reg *Registry, tier Tier) []byte {
 			fmt.Fprintf(&b, "| %s | %s | %s |\n", code(u.Test), code(u.Lang), cell(u.Reason))
 		}
 	}
+	b.WriteString("\n## Intrinsic to one language\n\n")
+	var intrinsic []Test
+	for _, t := range perLang {
+		if t.Intrinsic != nil {
+			intrinsic = append(intrinsic, t)
+		}
+	}
+	if len(intrinsic) == 0 {
+		fmt.Fprintf(&b, "None of tier `%s`.\n", tier.Name)
+	} else {
+		b.WriteString("Each test's subject exists in one language only (that language's own generated source or runtime): it has that language's instance, and every other language is declared unrepresentable with the reason. A new language implements none of these.\n\n")
+		b.WriteString("| test | language | reason |\n|---|---|---|\n")
+		for _, t := range intrinsic {
+			fmt.Fprintf(&b, "| %s | %s | %s |\n", code(t.Key), code(t.Intrinsic.Lang), cell(t.Intrinsic.Reason))
+		}
+	}
 	return []byte(b.String())
 }
 

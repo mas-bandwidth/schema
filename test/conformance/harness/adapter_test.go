@@ -147,10 +147,7 @@ func TestCaseSlugsAreRegistryCases(t *testing.T) {
 // TestTheRegistryHoldsEveryConformanceCase: test/registry/registry.jsonl
 // holds exactly the corpus's rows, field for field (adapter.go). A case added
 // to the corpus with no row, a row whose case is gone, and a row that names
-// other files, another type or another surface are each red, by key. Its owed
-// lines for the corpus are exactly the harness's retain-refusal ledger: a
-// ledger line with no owed line, or an owed line the ledger does not hold,
-// is red by language and case.
+// other files, another type or another surface are each red, by key.
 func TestTheRegistryHoldsEveryConformanceCase(t *testing.T) {
 	chdirRepoRoot(t)
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
@@ -271,5 +268,57 @@ func TestEachCaseCarriesItsShareOfItsSurfaceTime(t *testing.T) {
 		if res.Seconds != want[res.Instance] {
 			t.Errorf("%s: %v seconds, want %v", res.Instance, res.Seconds, want[res.Instance])
 		}
+	}
+}
+
+// THE BOM ENTRY GATE IS IN THE REGISTRY, ROW FOR ROW (adapter.go, bomFamily):
+// every case of testdata/conformance/tables/bom-entry/MANIFEST.txt is one
+// bom-entry row, field for field, and the registry holds no bom-entry row the
+// manifest does not.
+func TestTheRegistryHoldsEveryBOMEntryCase(t *testing.T) {
+	chdirRepoRoot(t)
+	m, err := ReadManifest(bomManifest, bomJSONDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reports, err := readReports(defaultReports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := corpusRowsAs(m, reports, bomJSONDir, bomFamily, bomManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 4 {
+		t.Fatalf("the BOM entry gate has %d rows, want its four cases", len(rows))
+	}
+	want := map[string]string{}
+	for _, r := range rows {
+		if r.Family != bomFamily || r.Source != bomManifest || r.Inputs.Surface != "json-hostile" {
+			t.Errorf("%s: family %q, source %q, surface %q: want %s, %s, json-hostile", r.Key, r.Family, r.Source, r.Inputs.Surface, bomFamily, bomManifest)
+		}
+		b, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[r.Key] = string(b)
+	}
+	data, err := os.ReadFile(filepath.FromSlash(testreg.DefaultPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		var head struct {
+			Rec    string `json:"rec"`
+			Key    string `json:"key"`
+			Family string `json:"family"`
+		}
+		if json.Unmarshal([]byte(line), &head) == nil && head.Rec == "test" && head.Family == bomFamily {
+			got[head.Key] = line
+		}
+	}
+	for _, problem := range compareCorpusRows(want, got) {
+		t.Error(problem)
 	}
 }

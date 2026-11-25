@@ -1914,8 +1914,7 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
     return null;
   }
   // NO FIXED READ CLAMPS (docs/SPEC-TABLES.md §3.4, §4): a value past its
-  // declared range refuses the load out_of_range, where the variable form's
-  // tolerant walk lands it at the end and counts it
+  // declared range refuses the load out_of_range, and the value is never altered
   local oor = report.oor;
   x = rangeScalar(e, fk, x, report);
   if (report.oor != oor) return "out_of_range";
@@ -2003,7 +2002,7 @@ local loadFixed = function(T, c, bytes, report, trailerChecked) {
   return v;
 };
 
-// THE TOLERANT LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id
+// THE LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id
 // table, the node table's records first, then every record's body, then the
 // root body, then the one numbering's resolution. It keeps the recovered value
 // and its counters; the plain name is the strict read (§6.5).

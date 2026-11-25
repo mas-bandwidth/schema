@@ -21,6 +21,7 @@ retain-refusal/<case>.before.bin  the save of the first read, retained records a
 retain-refusal/<case>.after.bin   the save after the refused read: the first value alone (generated)
 rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
+json/<authored-text>.json a hand-authored text a authored-text row names (authored)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
 cook/<case>.dump      the canonical node dump of every cook    (pinned)
@@ -41,7 +42,7 @@ the end of the line.
 
 ```
 unit         <key> <schema path>...
-instance     <name> <unit> <root> <wire file> [no-text] [wire-refused]
+instance     <name> <unit> <root> <wire file> [no-text] [wire-refused] [written-by=<unit dir>]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 message-drift <name> <unit> <peer connection> <root> <file-form wire> <peer message wire> <resaved message wire or ->
@@ -51,6 +52,7 @@ retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 retain-refusal <case> <unit> <root> <first wire> <refused wire>
 report       <case> <unit> <root> <wire file>
 rewrite      <case> <unit> <root> <wire file>
+authored-text    <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -74,6 +76,9 @@ json-write-into <case> <instance>
   it does not name a reason. Legacy `go-refusal=<reason>` and
   `refused-by=<ports>` markers remain parser compatibility metadata, with no
   per-language or diagnostic comparison.
+  `written-by=<unit dir>` names the unit whose writer made the wire when
+  no unit the corpus reads can (an image a declared bound refuses to write);
+  it never reaches a driver, and the case's registry rows name its files.
 
   **`no-text` says the corpus carries this one on the WIRE alone**, by the text
   form's own rules: a pointer chain nests in the text as deep as it is long
@@ -413,6 +418,17 @@ a wire golden carries exactly the wire.
 Generated with `make conformance-generate`, and each text is proved COMPLETE
 before it lands: it is packed back to wire bytes and must equal the golden it
 came from, byte for byte. A text that lost a field cannot pass that.
+
+**A `authored-text` row's text sits here too, and it is AUTHORED, not generated**
+(docs/SPEC-TABLES.md §22.7): a text whose map keys arrive OUT of canonical
+order, so a leg whose builder writes insertion order lands the wrong bytes.
+Every leg reads it on the `json-read` surface, where it is scored under its own
+name against the row's wire; the harness hands it to the leg's json-read alone,
+as an instance line appended to that surface's manifest, and no other surface
+sees it. `make conformance-generate` keeps it and checks it: the oracle's strict
+read takes it, the value writes the row's wire byte for byte, and the text is
+not already the value's canonical text (one that is tests nothing an instance
+does not). A authored-text name is never also an instance's.
 
 ## json-hostile/&lt;case&gt;/&lt;root&gt;.json
 
