@@ -26,7 +26,6 @@ case ${FILE_SECONDS-} in
 esac
 CLANG_FORMAT=${CLANG_FORMAT:-clang-format}
 OUT=${OUT:-build/cpp-clean}
-# loud-ok: a worker count, not a verdict: nproc honours CPU affinity (a nova-reserve slot), sysctl on macOS, 4 where neither answers
 JOBS=${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 here=$(cd "$(dirname "$0")" && pwd)
 style="file:$(pwd)/.clang-format"

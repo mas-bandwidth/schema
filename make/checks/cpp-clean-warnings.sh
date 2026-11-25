@@ -30,7 +30,6 @@ mode=$2
 shift 2
 CLANGXX=${CLANGXX:-clang++}
 OUT=${OUT:-build/cpp-clean}
-# loud-ok: a worker count, not a verdict: nproc honours CPU affinity (a nova-reserve slot), sysctl on macOS, 4 where neither answers
 JOBS=${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
 : "${SERIALIZE_DIR:?SERIALIZE_DIR names the serialize checkout}"
 
