@@ -938,14 +938,6 @@ var noSkipsExempt = map[string]string{
 	// push of a commit not authored by the agent, and by design does nothing
 	// in a clone that is not an agent's (maintainers, outside contributors)
 	".githooks/pre-push": "a push guard scoped to agent clones, not a test",
-	// the nightly-readiness checker's own unit test: its skip lines, skip
-	// actions and skip variables are the plants it requires the checker to
-	// refuse or strip
-	"test/conformance/nightly_readiness_test.py": "plants for a checker that refuses skips",
-	// the checker itself: it reads `go test -json` actions, and a "skip"
-	// action is an error it reports; it strips SCHEMA_SKIP_LEGS from the
-	// environment it runs make under
-	"test/conformance/nightly-readiness": "a checker that refuses skips, naming the action it refuses",
 	// tools/gotestreport's record corpus: the real `go test -json` run of a
 	// test that skips once is what gotestreport must refuse (F-175)
 	"tools/gotestreport/testdata/recordgen/ledgertest/ledger_test.go": "a planted skip record gotestreport refuses",
