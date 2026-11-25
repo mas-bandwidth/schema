@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2246.
+Functional tests every language answers: 2468. Language-free tests: 2247.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2761,6 +2761,16 @@ two implementations or two versions give the same answer.
 ## Language-free tests
 
 Each runs once, as `none.functional.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
+
+### Type `roundtrip`
+
+read bytes, write them back, same bytes.
+
+#### `roundtrip` family `goosetable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.roundtrip.goosetable.goose-required-fields-never-elide` | `gotest` | Go test TestGooseRequiredFieldsNeverElide in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseRequiredFieldsNeverElide` | the Go test passes | `internal/codegen/goosetable/required_writes_test.go:97` |
 
 ### Type `write-refusal`
 
