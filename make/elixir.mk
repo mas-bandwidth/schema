@@ -908,7 +908,28 @@ tables-elixir-alloc-runtime-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the audit measured before it refused"; cat build/elixir-alloc-runtime/log; exit 1; fi
 	@echo 'elixir alloc runtime negative control: the audit on a pin nothing is running refuses, names 0.0.0 and measures nothing'
 
-test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control
+
+# THE AUDIT'S REFUSAL CONTROL: a wire-refused instance is held to its refusal
+# (test/elixir-alloc/main.exs), named and not measured; one the codec carries
+# is FAILED, never measured as if refused nor passed over. The control marks a
+# case the codec carries (sp_enum_moods) wire-refused in a copy of the
+# manifest, and the audit must refuse, naming that case and why.
+CONFORMANCE_ELIXIR_ALLOC_REFUSAL := build/elixir-alloc-refusal
+.PHONY: tables-elixir-alloc-refusal-negative-control
+tables-elixir-alloc-refusal-negative-control: build/conformance-elixir-manifest/manifest.txt build/elixir-tables-ebin/.stamp
+	@mkdir -p $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)
+	@sed -e 's|^\(instance sp_enum_moods .*\.bin\)$$|\1 wire-refused|' build/conformance-elixir-manifest/manifest.txt > $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/manifest.txt
+	@grep -q '^instance sp_enum_moods .* wire-refused$$' $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/manifest.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the plant matched no sp_enum_moods instance in the manifest"; exit 1; }
+	@if ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin $(ELIXIR) test/elixir-alloc/main.exs \
+			$(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
+			> $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with a carried case marked wire-refused"; \
+		cat $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log; exit 1; fi
+	@grep -Eq '^FAILED: sp_enum_moods +not measured: the corpus marks it wire-refused' $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the audit failed, but not by naming sp_enum_moods as carried though marked wire-refused"; cat $(CONFORMANCE_ELIXIR_ALLOC_REFUSAL)/log; exit 1; }
+	@echo 'elixir alloc refusal negative control: a carried case marked wire-refused is named and fails the audit'
+test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tables-elixir-alloc-runtime-negative-control tables-elixir-alloc-refusal-negative-control
 
 # THE ELIXIR TABLES SOAK (docs/PORTING.md I9), test/elixir-soak/main.exs over
 # the derived manifest and the generated ebin: one PASS is one iteration of

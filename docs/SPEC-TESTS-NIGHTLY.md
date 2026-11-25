@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 1084. Language-free tests: 1437.
+Nightly tests every language answers: 1084. Language-free tests: 1438.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -1196,7 +1196,7 @@ one schema version reads or writes another's data.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.evolution.make-elixir.tables-elixir-versioning` | `make` | make tables-elixir-versioning (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-versioning` | the target exits 0 with no skip in its log | `make/elixir.mk:1576` |
+| `none.nightly.evolution.make-elixir.tables-elixir-versioning` | `make` | make tables-elixir-versioning (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-versioning` | the target exits 0 with no skip in its log | `make/elixir.mk:1597` |
 
 #### `evolution` family `make-go`, 1 test
 
@@ -2397,6 +2397,12 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.nightly.plant.dart-tables-2-d.tables-dart-discard-negative-control` | `plant` | negative control tables-dart-discard-negative-control (group dart-tables-2-d of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/dart.mk`<br>`group: dart-tables-2-d`<br>`make: tables-dart-discard-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2072` |
 
+#### `plant` family `elixir-alloc-refusal`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.plant.elixir-alloc-refusal.tables-elixir-alloc-refusal-negative-control` | `plant` | negative control tables-elixir-alloc-refusal-negative-control (group elixir-alloc-refusal of make/negative-controls.json): its sabotage turns the gate it controls red | `file: make/elixir.mk`<br>`group: elixir-alloc-refusal`<br>`make: tables-elixir-alloc-refusal-negative-control` | the control exits 0: the gate it controls went red on its planted sabotage | `make/negative-controls.json:2415` |
+
 #### `plant` family `elixir-cards`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -3369,7 +3375,7 @@ a negative control: a named test run against a deliberately broken build must co
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.plant.make-elixir.tables-elixir-warning-control` | `make` | make tables-elixir-warning-control (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-warning-control` | the target exits 0 with no skip in its log | `make/elixir.mk:2157` |
+| `none.nightly.plant.make-elixir.tables-elixir-warning-control` | `make` | make tables-elixir-warning-control (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-warning-control` | the target exits 0 with no skip in its log | `make/elixir.mk:2178` |
 
 #### `plant` family `make-elixir-cook-write`, 2 tests
 
@@ -5069,7 +5075,7 @@ performance or timing.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.bench.make-elixir.tables-elixir-bench-gate` | `make` | make tables-elixir-bench-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-bench-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1495` |
+| `none.nightly.bench.make-elixir.tables-elixir-bench-gate` | `make` | make tables-elixir-bench-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-bench-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1516` |
 
 #### `bench` family `make-go`, 1 test
 
@@ -5427,11 +5433,11 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2067` |
-| `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1422` |
-| `none.nightly.harness-run.make-elixir.tables-elixir-paired-gate` | `make` | make tables-elixir-paired-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-paired-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1508` |
-| `none.nightly.harness-run.make-elixir.test-elixir-packet` | `make` | make test-elixir-packet (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-packet` | the target exits 0 with no skip in its log | `make/elixir.mk:1130` |
-| `none.nightly.harness-run.make-elixir.test-elixir-recipe` | `make` | make test-elixir-recipe (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-recipe` | the target exits 0 with no skip in its log | `make/elixir.mk:1121` |
+| `none.nightly.harness-run.make-elixir.cards-elixir-test` | `make` | make cards-elixir-test (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: cards-elixir-test` | the target exits 0 with no skip in its log | `make/elixir.mk:2088` |
+| `none.nightly.harness-run.make-elixir.tables-elixir-fixed-form` | `make` | make tables-elixir-fixed-form (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-fixed-form` | the target exits 0 with no skip in its log | `make/elixir.mk:1443` |
+| `none.nightly.harness-run.make-elixir.tables-elixir-paired-gate` | `make` | make tables-elixir-paired-gate (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: tables-elixir-paired-gate` | the target exits 0 with no skip in its log | `make/elixir.mk:1529` |
+| `none.nightly.harness-run.make-elixir.test-elixir-packet` | `make` | make test-elixir-packet (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-packet` | the target exits 0 with no skip in its log | `make/elixir.mk:1151` |
+| `none.nightly.harness-run.make-elixir.test-elixir-recipe` | `make` | make test-elixir-recipe (make/elixir.mk) exits 0 | `file: make/elixir.mk`<br>`target: test-elixir-recipe` | the target exits 0 with no skip in its log | `make/elixir.mk:1142` |
 
 #### `harness-run` family `make-elixir-compressed-negzero`, 1 test
 

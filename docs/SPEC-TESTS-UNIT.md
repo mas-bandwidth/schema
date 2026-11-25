@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3165.
+Unit tests every language answers: 2. Language-free tests: 3167.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1943,7 +1943,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 265 tests
+#### `tooling` family `ci`, 267 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -2026,7 +2026,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.go-release-soak-fits-its-budget` | `gotest` | Go test TestGoReleaseSoakFitsItsBudget in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoReleaseSoakFitsItsBudget` | the Go test passes | `internal/ci/gosoak_test.go:75` |
 | `none.unit.tooling.ci.golangci-lint-cache-isolated-per-workspace` | `gotest` | Go test TestGolangciLintCacheIsolatedPerWorkspace in ./internal/ci | `package: ./internal/ci`<br>`test: TestGolangciLintCacheIsolatedPerWorkspace` | the Go test passes | `internal/ci/setup_rust_hosted_only_test.go:329` |
 | `none.unit.tooling.ci.golden-rewrites-go-through-rewriting` | `gotest` | Go test TestGoldenRewritesGoThroughRewriting in ./internal/ci | `package: ./internal/ci`<br>`test: TestGoldenRewritesGoThroughRewriting` | the Go test passes | `internal/ci/golden_rewrites_test.go:70` |
-| `none.unit.tooling.ci.goose-driver-warms-only-the-units-it-answers` | `gotest` | Go test TestGooseDriverWarmsOnlyTheUnitsItAnswers in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseDriverWarmsOnlyTheUnitsItAnswers` | the Go test passes | `internal/ci/goose_batch_warm_test.go:32` |
+| `none.unit.tooling.ci.goose-driver-warms-only-the-units-it-answers` | `gotest` | Go test TestGooseDriverWarmsOnlyTheUnitsItAnswers in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseDriverWarmsOnlyTheUnitsItAnswers` | the Go test passes | `internal/ci/goose_batch_warm_test.go:31` |
 | `none.unit.tooling.ci.goose-fuzz-parts-are-the-whole-gate` | `gotest` | Go test TestGooseFuzzPartsAreTheWholeGate in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseFuzzPartsAreTheWholeGate` | the Go test passes | `internal/ci/fuzz_halves_test.go:153` |
 | `none.unit.tooling.ci.goose-wire-fuzz-arms-come-from-the-corpus` | `gotest` | Go test TestGooseWireFuzzArmsComeFromTheCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestGooseWireFuzzArmsComeFromTheCorpus` | the Go test passes | `internal/ci/goose_wirefuzz_arms_test.go:23` |
 | `none.unit.tooling.ci.harness-lane-is-the-make-it-runs` | `gotest` | Go test TestHarnessLaneIsTheMakeItRuns in ./internal/ci | `package: ./internal/ci`<br>`test: TestHarnessLaneIsTheMakeItRuns` | the Go test passes | `internal/ci/silent_skips_test.go:376` |
@@ -2209,6 +2209,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.the-parity-table-is-covered` | `gotest` | Go test TestTheParityTableIsCovered in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheParityTableIsCovered` | the Go test passes | `internal/ci/parity_table_test.go:18` |
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
 | `none.unit.tooling.ci.tla-runs-hash-every-model-and-config` | `gotest` | Go test TestTLARunsHashEveryModelAndConfig in ./internal/ci | `package: ./internal/ci`<br>`test: TestTLARunsHashEveryModelAndConfig` | the Go test passes | `internal/ci/strictonly_tla_test.go:107` |
+| `none.unit.tooling.ci.unit-rest-complement-judge-catches-the-plant` | `gotest` | Go test TestUnitRestComplementJudgeCatchesThePlant in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnitRestComplementJudgeCatchesThePlant` | the Go test passes | `internal/ci/unit_rest_complement_test.go:46` |
+| `none.unit.tooling.ci.unit-rest-complement-runs-no-nightly-test` | `gotest` | Go test TestUnitRestComplementRunsNoNightlyTest in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnitRestComplementRunsNoNightlyTest` | the Go test passes | `internal/ci/unit_rest_complement_test.go:25` |
 | `none.unit.tooling.ci.unrun-python-test-witness` | `gotest` | Go test TestUnrunPythonTestWitness in ./internal/ci | `package: ./internal/ci`<br>`test: TestUnrunPythonTestWitness` | the Go test passes | `internal/ci/python_tests_run_test.go:181` |
 | `none.unit.tooling.ci.workflow-and-job-env-name-only-allowed-contexts` | `gotest` | Go test TestWorkflowAndJobEnvNameOnlyAllowedContexts in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowAndJobEnvNameOnlyAllowedContexts` | the Go test passes | `internal/ci/env_contexts_test.go:82` |
 | `none.unit.tooling.ci.workflow-names-parse-as-scalars` | `gotest` | Go test TestWorkflowNamesParseAsScalars in ./internal/ci | `package: ./internal/ci`<br>`test: TestWorkflowNamesParseAsScalars` | the Go test passes | `internal/ci/workflow_name_scalar_test.go:48` |

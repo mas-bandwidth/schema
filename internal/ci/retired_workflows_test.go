@@ -234,9 +234,10 @@ func TestRetiredWorkflowProblemsAreSeen(t *testing.T) {
 		"tier moved": {`"key":"lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck","type":"lint","family":"make-schema-lua-generated-luacheck-gate","case":"tables-lua-luacheck","tier":"functional"`,
 			`"key":"lint.make-schema-lua-generated-luacheck-gate.tables-lua-luacheck","type":"lint","family":"make-schema-lua-generated-luacheck-gate","case":"tables-lua-luacheck","tier":"nightly"`,
 			"tables-lua-luacheck is tier nightly, want functional"},
-		"variable dropped": {`"LUA_FUZZ_SECONDS":"600"`, `"LUA_FUZZ_SECONDS":"60"`, `sets LUA_FUZZ_SECONDS="60"`},
-		"seed dropped":     {`"seed":"LUAU_FUZZ_SEED"`, `"seed":""`, `takes seed "", want "LUAU_FUZZ_SEED"`},
-		"target swapped":   {`"target":"schema-lua-resource-bounds"`, `"target":"schema-lua-resource-bounds-negative-control"`, `runs make "schema-lua-resource-bounds-negative-control", want "schema-lua-resource-bounds"`},
+		"variable dropped":           {`"LUA_FUZZ_SECONDS":"600"`, `"LUA_FUZZ_SECONDS":"60"`, `sets LUA_FUZZ_SECONDS="60"`},
+		"seed dropped":               {`"seed":"LUAU_FUZZ_SEED"`, `"seed":""`, `takes seed "", want "LUAU_FUZZ_SEED"`},
+		"target swapped":             {`"target":"schema-lua-resource-bounds"`, `"target":"schema-lua-resource-bounds-negative-control"`, `runs make "schema-lua-resource-bounds-negative-control", want "schema-lua-resource-bounds"`},
+		"make-gotest target swapped": {`"target":"schema-python-resource-bounds"`, `"target":"schema-python-resource-bounds-planted-away"`, `runs make "schema-python-resource-bounds-planted-away", want "schema-python-resource-bounds" as its job did`},
 	} {
 		if strings.Count(string(data), c.old) != 1 {
 			t.Errorf("%s: the plant's anchor %q is not in the registry exactly once", name, c.old)

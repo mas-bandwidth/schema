@@ -2408,6 +2408,16 @@
       "elixir": "1.20.4"
     },
     {
+      "name": "elixir-alloc-refusal",
+      "when": "nightly",
+      "why": "NIGHTLY TIER (certify.yml negative-controls-nightly): the Elixir allocation audit's refusal control: a case the codec carries (sp_enum_moods), marked wire-refused in a copy of the manifest, must fail the audit by name rather than be passed over as refused. It runs the audit over the generated corpus build, which it shares with tables-elixir-alloc-audit; on a cold tree that build alone measured 3 min 30 s on amd-3 (2026-11-25), past the per-commit control budget.",
+      "targets": [
+        "tables-elixir-alloc-refusal-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
       "name": "elixir-wire-fuzz",
       "when": "nightly",
       "why": "NIGHTLY TIER (certify.yml negative-controls-nightly; the step took 176 s on 2026-11-14): the Elixir wire fuzzer's control (docs/PORTING.md I15): the rule that bytes left inside an array's L are damage is removed from a copy of one unit's generated reader (featurewitnesses), compiled over a copy of the corpus ebin, and tables-elixir-wire-fuzz-all at N=200 must go red with the leg accepting a mutant the oracle refuses. One file recompiled and one short harness run, so it is a group of its own.",

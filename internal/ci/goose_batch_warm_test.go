@@ -7,10 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
