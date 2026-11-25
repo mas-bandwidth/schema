@@ -30,9 +30,15 @@ type harness struct {
 
 // alignArrays is test/verify-bitphase --adapter: the align-arrays family's
 // driver for every leg, reading its rows from the requests (alignarrays.go).
+// Its build is the leg's own: make verify-align-arrays-deps-<lang>
+// (make/verify-widen-18.mk) builds the driver, bin/schema and what
+// VERIFY_WIDEN_DEPS_<lang> names, build/schema-moo for moo among them, so
+// every path Cmd names exists before it runs.
 var alignArrays = harness{
-	Name:  "align-arrays",
-	Build: func(string) [][]string { return [][]string{{"make", "bin/schema", "build/verify-bitphase-bin"}} },
+	Name: "align-arrays",
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "verify-align-arrays-deps-" + lang}}
+	},
 	Cmd: func(lang, work string) []string {
 		return []string{"./build/verify-bitphase-bin", "--adapter", "--lang", lang,
 			"--schema", "./bin/schema", "--schema-moo", "./build/schema-moo",

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -251,6 +252,30 @@ func TestEveryCorpusFamilyHasItsHarness(t *testing.T) {
 	}
 	if got := conformance.Build("lua"); len(got) != 1 || strings.Join(got[0], " ") != "make conformance-leg-lua" {
 		t.Errorf("conformance build for lua: %q", got)
+	}
+	// align-arrays builds the leg's own deps: moo's driver generates with
+	// build/schema-moo, which `make bin/schema build/verify-bitphase-bin`
+	// never built (registry/moo/002: every moo align-arrays instance crashed
+	// on fork/exec build/schema-moo)
+	if got := alignArrays.Build("moo"); len(got) != 1 || strings.Join(got[0], " ") != "make verify-align-arrays-deps-moo" {
+		t.Errorf("align-arrays build for moo: %q", got)
+	}
+	mk, err := os.ReadFile("../../make/verify-widen-18.mk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"verify-align-arrays-deps-$(1): bin/schema build/verify-bitphase-bin $$(VERIFY_WIDEN_DEPS_$(1))",
+		"VERIFY_WIDEN_DEPS_moo      := verify-toolchain-moo build/schema-moo",
+	} {
+		if !strings.Contains(string(mk), want) {
+			t.Errorf("make/verify-widen-18.mk does not carry %q", want)
+		}
+	}
+	for _, arg := range alignArrays.Cmd("moo", "w") {
+		if p := strings.TrimPrefix(arg, "./"); p != arg && p != "build/verify-bitphase-bin" && p != "bin/schema" && p != "build/schema-moo" {
+			t.Errorf("align-arrays runs %s, which its build does not make", arg)
+		}
 	}
 	// an instance routed here with no harness is an error naming it, before
 	// anything builds or runs
