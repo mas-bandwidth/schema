@@ -645,19 +645,17 @@ namespace Blockdemo
     }
 
     // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
-    // LOCK'S bytes. Unknown and KindChanged are the COMPILE CENSUS: a writer field
-    // no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4),
-    // and LOAD carries them onto the report after the record loop, on a read that
-    // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
-    // could not be compiled — a bug in the lock, which at BUILD time fails the
-    // build and at run time owes a name rather than a crash (§5.9 #8).
+    // LOCK'S bytes. There is no compile census: an entry naming a writer field
+    // this reader does not, or a kind moved off every ladder, is UNLAWFUL and lays
+    // no plan (§5.4, §5.9 #30). Why is the name a load refuses by when the entry
+    // itself could not be compiled — an unlawful entry, or a bug in the lock,
+    // which at BUILD time fails the build and at run time owes a name rather than
+    // a crash (§5.9 #8).
     public sealed class TableFixedLineagePlan
     {
         public TableFixedEntry[] Entries = Array.Empty<TableFixedEntry>();
         public int Count;
         public int Split; // THE SPLIT (§5.9 #42): the number of UNGUARDED entries, the index the guarded half starts at
-        public int Unknown;
-        public int KindChanged;
         public string Why;
     }
 
@@ -1491,7 +1489,9 @@ namespace Blockdemo
                 if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
                 if (f.Arms != null)
                 {
-                    // a union is an object with ONE key, the arm's name; None is {}
+                    // a union is an object with ONE key, the arm's name; None is {}, and
+                    // either is a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     object union = f.GetChild(owner, index);
                     ulong tag = f.Arms.GetTag(union);
                     if (tag == 0)
@@ -1545,6 +1545,9 @@ namespace Blockdemo
                 }
                 if (IsFlags(f))
                 {
+                    // a flags value is an array of names, a container the read counts,
+                    // an empty [] included (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     ulong bits = f.GetRaw(owner, index);
                     if (bits == 0)
                     {
@@ -1633,7 +1636,9 @@ namespace Blockdemo
                     // one entry per SLOT, keyed by the variant that owns it, so
                     // inserting a variant next season moves nothing in the text either.
                     // Slot i holds the key i + 1: nothing is stored for None, so
-                    // nothing is written for it.
+                    // nothing is written for it. The object, an empty {} included, is
+                    // a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2).
+                    if (depth > MaxDepth) { return false; }
                     o.Put((byte)'{');
                     bool first = true;
                     for (int slot = 0; slot < f.ArrayBound; slot++)
@@ -1656,6 +1661,9 @@ namespace Blockdemo
                 }
                 if (f.IsArray)
                 {
+                    // an array or a text list, an empty [] included, is a container
+                    // the depth cap counts, as the read counts it (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     int count = Count(value, f);
                     if (count == 0)
                     {
@@ -1894,6 +1902,9 @@ namespace Blockdemo
 
             static bool WriteMap(ref Out o, object owner, TableFieldInfo f, int depth)
             {
+                // a map's object, an empty {} included, is a container the depth cap
+                // counts (docs/SPEC-TABLES.md 16.14 W2)
+                if (depth > MaxDepth) { return false; }
                 int count = f.GetCount(owner);
                 if (count == 0) { o.Text("{}"); return true; }
                 if (!TableWire.MapOrdered(owner, f)) { return false; }
@@ -5556,6 +5567,10 @@ namespace Blockdemo
                     // a cooked float is finite (docs/SPEC-TABLES.md §3.3): a debug
                     // assert, as every write check on this leg is (docs/SPEC.md §5.1)
                     System.Diagnostics.Debug.Assert(!((f.Kind == 10 || f.Kind == 11) && i < live && NonFiniteBits(f.Kind, f.GetRaw(value, i))));
+                    // an enum slot holds None or a live variant (docs/SPEC.md §5.1 row 5;
+                    // SPEC-TABLES §2.15, §7.6): an ordinal past the set or a deprecated variant
+                    // fires in NativePlace's probe pass, before the header or the clear
+                    System.Diagnostics.Debug.Assert(!(f.Kind == 30 && i < live && (f.GetRaw(value, i) > (ulong)f.EnumMax || f.GetRaw(value, i) != 0 && f.EnumDeprecated != null && f.EnumDeprecated(f.GetRaw(value, i)))));
                     long element = at + (long)i * f.NativeElementSize, before = extent;
                     if (!NativeElement(ref w, element, value, f, i, extentAt, ref extent)) { return false; }
                     if (!f.Dynamic && f.Counted && i >= live && extent != before) { return false; }
@@ -7236,6 +7251,14 @@ namespace Blockdemo
                 public bool WantGuarded; // THE WALK RUNS TWICE, unguarded first (§5.9 #42)
                 public bool TooLarge; // ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan WHOLE (§5.2)
                 public uint Record;  // the WRITER's declared root size, the bound every entry's source extent is held to
+                // UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4,
+                // §5.9 #30): a writer field this reader names nowhere, or a pair whose
+                // kind moved off every ladder. The entry is not a lawful widening of
+                // this reader, so no plan is laid and a file under its hash refuses
+                // layout_malformed. It is never counted and read past. 1 is
+                // layout_malformed; 3 is kind_mismatch, the writer's ?T into this
+                // reader's bare T (ruling R2, 2026-11-22).
+                public byte Unlawful;
                 // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST
                 // (docs/FIXED-FORM-ALGORITHM.md §4.1): one link per enclosing union,
                 // pushed on the way into an arm and popped on the way out. A chain
@@ -7336,21 +7359,52 @@ namespace Blockdemo
                 }
             }
 
-            // 'census' is whether THIS entry is the FIRST time the writer's field is
-            // seen. An array compiles its element ONCE PER SLOT, and the unknown count
-            // is ONCE PER FIELD PER ENDPOINT (ALG §5.4), so only element 0 censuses.
-            // Without it a writer's field dropped from a [4]Item is counted FOUR times and
-            // the report says 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md
-            // §5.8 row 11). rust #1162 and cpp #1163 carry the same flag for the same
-            // reason; this leg had no row 11 at all, so nothing here ever said so.
+            // A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1
+            // refuses a removal; a field is deprecated in place). A writer field no
+            // child of mine names makes the lineage entry UNLAWFUL before any entry is
+            // laid: there is no compile census to count (§5.2 MATCH, §5.4, §5.9 #30;
+            // §5.8 row 11 is that census, retired). The rule holds in every slot —
+            // root, nested table, every element of an array of tables — because every
+            // table is matched here.
+            // EVERY CHILD OF THE WRITER'S ENTRY ti IS NAMED BY A CHILD OF MY ENTRY mi
+            // (§5.1, §5.2 MATCH): a table's fields, a union's arms, an enum's
+            // variants, a keyed array's keys. A lawful older writer names only what
+            // this reader retains; deprecation keeps the slot and its name, so one
+            // the reader names nowhere was REMOVED and the entry is UNLAWFUL.
+            private static bool ChildrenNamed(TableFixedLayoutView theirs, int ti, TableFixedLayoutView mine, int mi)
+            {
+                TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                TableFixedLayoutEntry me = EntryAt(mine, mi);
+                int tc_at = ti + 1;
+                for (uint j = 0; j < te.Children; ++j)
+                {
+                    ulong id = EntryAt(theirs, tc_at).Id;
+                    bool named = false;
+                    int mc_at = mi + 1;
+                    for (uint k = 0; k < me.Children; ++k)
+                    {
+                        if (EntryAt(mine, mc_at).Id == id) { named = true; break; }
+                        mc_at += Subtree(mine, mc_at);
+                    }
+                    if (!named) { return false; }
+                    tc_at += Subtree(theirs, tc_at);
+                }
+                return true;
+            }
+
             private static void MatchChildren(
                 ref Compiler c,
                 TableFixedLayoutView theirs, int ti, uint their_at,
                 TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-                uint guard, ulong arg, bool census)
+                uint guard, ulong arg)
             {
                 TableFixedLayoutEntry te = EntryAt(theirs, ti);
                 TableFixedLayoutEntry me = EntryAt(mine, mi);
+                if (!ChildrenNamed(theirs, ti, mine, mi))
+                {
+                    c.Unlawful = 1;
+                    return;
+                }
                 int my_child = mi + 1;
                 for (uint k = 0; k < me.Children; ++k)
                 {
@@ -7362,7 +7416,7 @@ namespace Blockdemo
                         TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
                         if (tc.Id == mc.Id)
                         {
-                            CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census);
+                            CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg);
                             break;
                         }
                         their_off += tc.Size;
@@ -7370,27 +7424,13 @@ namespace Blockdemo
                     }
                     my_child += Subtree(mine, my_child);
                 }
-                int tc_at = ti + 1;
-                for (uint j = 0; j < te.Children; ++j)
-                {
-                    TableFixedLayoutEntry tc = EntryAt(theirs, tc_at);
-                    bool named = false;
-                    int mc_at = mi + 1;
-                    for (uint k = 0; k < me.Children; ++k)
-                    {
-                        if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
-                        mc_at += Subtree(mine, mc_at);
-                    }
-                    if (!named && census && c.Report != null) { c.Report.Unknown++; }
-                    tc_at += Subtree(theirs, tc_at);
-                }
             }
 
             private static void CompileEntry(
                 ref Compiler c,
                 TableFixedLayoutView theirs, int ti, uint their_at,
                 TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
-                uint guard, ulong arg, bool census)
+                uint guard, ulong arg)
             {
                 TableFixedLayoutEntry te = EntryAt(theirs, ti);
                 TableFixedLayoutEntry me = EntryAt(mine, mi);
@@ -7408,7 +7448,10 @@ namespace Blockdemo
                         c.Push(e);
                         return;
                     }
-                    if (c.Report != null) { c.Report.KindChanged++; }
+                    // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, never
+                    // reinterpreted and never counted and read past (§5.2 EMIT, §5.4):
+                    // no plan is laid. The writer's ?T into my bare T is kind_mismatch (R2).
+                    c.Unlawful = te.Kind == 35 ? (byte)3 : (byte)1;
                     return;
                 }
                 // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
@@ -7421,7 +7464,7 @@ namespace Blockdemo
                 if (me.Kind == 35 && te.Kind != 35)
                 {
                     c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
-                    CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census);
+                    CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg);
                     return;
                 }
                 switch (me.Kind)
@@ -7430,18 +7473,22 @@ namespace Blockdemo
                         {
                             TableFixedEntry e = new TableFixedEntry(their_at, aux_at, 1, 0, guard, Copy, arg, 0);
                             c.Push(e);
-                            CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census);
+                            CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg);
                             break;
                         }
                     case 13: // Nested table
                         {
-                            MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census);
+                            MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg);
                             break;
                         }
                     case 14: // Array
                         {
                             if (d.Arg == TextBytes)
                             {
+                                // NARROWED BYTES ARE AN UNLAWFUL ENTRY (§5.1, §5.4): a
+                                // writer's bytes(N) past my own is refused whole, never
+                                // clipped to the length that happens to fit.
+                                if (te.Size > me.Size) { c.Unlawful = 1; break; }
                                 uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                                 TableFixedEntry e = new TableFixedEntry(
                                     their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
@@ -7453,6 +7500,11 @@ namespace Blockdemo
                             uint head = d.Counted != 0 ? 4u : 0u;
                             uint their_n = tel.Size != 0 ? (te.Size - head) / tel.Size : 0u;
                             uint my_n = mel.Size != 0 ? (me.Size - head) / mel.Size : 0u;
+                            // A SHRUNK ARRAY IS AN UNLAWFUL ENTRY (§5.1, §5.4), fixed
+                            // [N] and counted [..N] alike: a writer bound past mine is
+                            // refused whole, never clipped to my_n and never admitted
+                            // because this file's live count happens to fit.
+                            if (their_n > my_n) { c.Unlawful = 1; break; }
                             uint their_base = their_at + head;
                             if (d.Counted != 0)
                             {
@@ -7488,24 +7540,31 @@ namespace Blockdemo
                                                                arg, (byte)mel.Size, sign, (byte)tel.Size));
                                     break;
                                 }
-                                // A KIND THAT MOVED IS REPORTED, NEVER REINTERPRETED (§5.2).
-                                if (c.Report != null) { c.Report.KindChanged++; }
+                                // A KIND THAT MOVED IS AN UNLAWFUL ENTRY, NEVER
+                                // REINTERPRETED AND NEVER COUNTED (§5.2 EMIT, §5.4).
+                                c.Unlawful = 1;
                                 break;
                             }
                             for (uint i = 0; i < n; ++i)
                             {
                                 CompileEntry(ref c, theirs, ti + 1, their_base + i * tel.Size,
-                                             mine, mi + 1, dst, at + i * d.Stride, guard, arg, census && i == 0);
+                                             mine, mi + 1, dst, at + i * d.Stride, guard, arg);
                             }
                             break;
                         }
                     case 16: // Enum-keyed array
                         {
+                            // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1, §5.4): every
+                            // writer key must be one this reader names, and the
+                            // writer's slot count may not pass mine.
+                            if (!ChildrenNamed(theirs, ti + 1, mine, mi + 1)) { c.Unlawful = 1; break; }
                             TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
                             TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
                             int tel = ti + 1 + Subtree(theirs, ti + 1);
                             int mel = mi + 1 + Subtree(mine, mi + 1);
                             TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                            TableFixedLayoutEntry mee = EntryAt(mine, mel);
+                            if (tee.Size != 0 && mee.Size != 0 && te.Size / tee.Size > me.Size / mee.Size) { c.Unlawful = 1; break; }
                             for (uint k = 0; k < mkey.Children; ++k)
                             {
                                 ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
@@ -7513,7 +7572,7 @@ namespace Blockdemo
                                 {
                                     if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
                                     CompileEntry(ref c, theirs, tel, their_at + j * tee.Size,
-                                                 mine, mel, dst, at + k * d.Stride, guard, arg, census && k == 0);
+                                                 mine, mel, dst, at + k * d.Stride, guard, arg);
                                     break;
                                 }
                             }
@@ -7521,6 +7580,10 @@ namespace Blockdemo
                         }
                     case 15: // Union
                         {
+                            // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1, §5.4): every
+                            // writer arm must be one this reader names, or a file that
+                            // takes it would land None over a value the writer sent.
+                            if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; break; }
                             uint their_tag = TagBytes(theirs, ti);
                             uint my_tag = TagBytes(mine, mi);
                             byte saved_argw = c.ArgW;
@@ -7567,7 +7630,7 @@ namespace Blockdemo
                                             their_at, aux_at, my_tag, k + 1, their_at, Const, (ulong)(j + 1), 0);
                                         c.Push(tag);
                                         CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
-                                                     mine, my_arm, dst, at, their_at, (ulong)(j + 1), census);
+                                                     mine, my_arm, dst, at, their_at, (ulong)(j + 1));
                                         c.ChainLen--;
                                         c.ChainAt = savedAt;
                                         c.ChainLaid = savedLaid;
@@ -7589,6 +7652,11 @@ namespace Blockdemo
                             // table is laid in the pool BEFORE the Push that would
                             // reject the other half, so the enum tests its half here and
                             // the discarded pass never calls LayTable.
+                            // A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1, §5.4), on
+                            // the grown-width widen path and the same-width remap path
+                            // alike: never remapped to None. It is decided before the
+                            // half test, so neither pass lays a plan past it.
+                            if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; break; }
                             if ((guard != NoGuard) != c.WantGuarded) { break; }
                             // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
                             // widened (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH
@@ -7624,6 +7692,10 @@ namespace Blockdemo
                         }
                     case 12:
                         {
+                            // NARROWED TEXT IS AN UNLAWFUL ENTRY (§5.1, §5.4): a
+                            // writer's string(N) past my own is refused whole, never
+                            // clipped to the length that happens to fit.
+                            if (te.Size > me.Size) { c.Unlawful = 1; break; }
                             uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                             TableFixedEntry e = new TableFixedEntry(
                                 their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
@@ -7642,9 +7714,10 @@ namespace Blockdemo
                                 TableFixedEntry e = new TableFixedEntry(their_at, at, te.Size, 0, guard, Widen, arg, (byte)me.Size);
                                 c.Push(e);
                             }
-                            else if (c.Report != null)
+                            else
                             {
-                                c.Report.KindChanged++;
+                                // A NARROWED SPAN IS AN UNLAWFUL ENTRY (§5.1, §5.4).
+                                c.Unlawful = 1;
                             }
                             break;
                         }
@@ -7687,17 +7760,21 @@ namespace Blockdemo
                     // compiled against.
                     Record = EntryAt(theirs, 0).Size
                 };
-                // PASS 1: UNGUARDED entries only, counting the census. PASS 2:
-                // guarded entries only, COUNTING NOTHING (§5.9 #42) — the unknown
-                // census is the first pass's, and counting it twice would lie.
-                MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+                // PASS 1: UNGUARDED entries only. PASS 2: guarded entries only
+                // (§5.9 #42). Neither counts anything: there is no compile census.
+                MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
                 int plain = c.Count;
                 c.WantGuarded = true;
                 c.Report = null;
-                MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0, true);
+                MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
                 // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its
                 // own name: -3 is layout_record_too_large, -1 the plan storage.
                 if (c.TooLarge) { return -3; }
+                // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -4 is layout_malformed, -5
+                // the writer's ?T into a bare T, kind_mismatch (R2). Decided before
+                // overflow, so a capacity retry never turns an unlawful entry into
+                // plan_too_large.
+                if (c.Unlawful != 0) { return c.Unlawful == 3 ? -5 : -4; }
                 if (c.Overflow) { return -1; }
                 // COALESCE inside each half, never across the split (§5.9 #42). The
                 // destination is a slot index, so a merge demands the SAME slot and
@@ -7803,8 +7880,7 @@ namespace Blockdemo
                     for (int room = 256; ; room *= 4)
                     {
                         TableFixedEntry[] buffer = new TableFixedEntry[room];
-                        TableReport census = new TableReport();
-                        int made = Compile(parsed, my_layout, dst, buffer, census, out int split);
+                        int made = Compile(parsed, my_layout, dst, buffer, null, out int split);
                         if (made == -3)
                         {
                             // AN ENTRY PAST THE WRITER'S DECLARED RECORD is a bug in
@@ -7813,28 +7889,32 @@ namespace Blockdemo
                             lane.Why = "layout_record_too_large";
                             break;
                         }
+                        // AN UNLAWFUL LINEAGE ENTRY (§5.1, §5.2 MATCH and EMIT, §5.4,
+                        // §5.9 #30): a writer field this reader names nowhere, or a
+                        // kind that moved off every ladder. The build lays no plan for
+                        // it, and a file under its hash refuses layout_malformed — the
+                        // writer's ?T into a bare T refuses kind_mismatch (R2). It is
+                        // NOT counted and read past: a half-plan would land this
+                        // reader's default for a value the writer did send, and one
+                        // read is the whole value or a refusal, never a partial record.
+                        if (made == -4)
+                        {
+                            lane.Why = "layout_malformed";
+                            break;
+                        }
+                        if (made == -5)
+                        {
+                            lane.Why = "kind_mismatch";
+                            break;
+                        }
                         if (made < 0)
                         {
                             if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
                             continue;
                         }
-                        // A WRITER FIELD WHOSE KIND MOVED OFF EVERY LADDER IS AN
-                        // UNLAWFUL LINEAGE ENTRY (§5.1, §5.4, §5.9 #30): the build
-                        // lays no plan for it, and a file under its hash refuses
-                        // layout_malformed. It is NOT counted and read past — a
-                        // half-plan would land this reader's default for a value the
-                        // writer did send, and one read is the whole value or a
-                        // refusal, never a partial record.
-                        if (census.KindChanged != 0)
-                        {
-                            lane.Why = "layout_malformed";
-                            break;
-                        }
                         lane.Entries = buffer;
                         lane.Count = made;
                         lane.Split = split;
-                        lane.Unknown = census.Unknown;
-                        lane.KindChanged = census.KindChanged;
                         break;
                     }
                 }

@@ -244,7 +244,7 @@ int main(void)
 		if !strings.Contains(tableFixedRuntime, "(*widened)++") {
 			t.Fatal("§5.4: a widen must count one widened per entry")
 		}
-		// widened, and the compile census, on a real compiled plan: the NEW
+		// widened on a real compiled plan, and the unlawful entry that lays none: the NEW
 		// reader reads the OLD writer's file, the old file built in Go from the
 		// same IR the emitter lays down.
 		newer := cReadSchema(t, "VNEW_int_widen")
@@ -263,8 +263,11 @@ int main(void)
 		if err != nil {
 			t.Fatalf("c/R16 int_widen: %v\n%s", err, out)
 		}
-		// the compile census: Item.drop is ONE field of ONE endpoint, so the NEW
-		// reader counts it ONCE however many elements carry it
+		// THERE IS NO COMPILE CENSUS: Item.drop is a writer field the NEW reader
+		// names nowhere, so the handed-in entry is UNLAWFUL, lays no plan, and
+		// the load refuses layout_malformed with unknown at 0 and every row at
+		// its declared defaults, twice (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH,
+		// §5.4, §5.9 #30; SPEC-TABLES §6.5)
 		cnew := cReadSchema(t, "VNEW_unknown_census")
 		cold := cReadSchema(t, "VOLD_unknown_census")
 		cvals := make([]byte, 40)
@@ -275,14 +278,11 @@ int main(void)
 		}
 		binary.LittleEndian.PutUint32(cvals[36:], 2) // trail
 		cfile := cT05OldFile(t, cold, cvals)
-		cout, err := cRunVersionProbe(t, cnew, []string{cold}, 0, cfile, `
-    if ( n != 1 || r.refused || r.refused ) { printf( "unknown_census: n=%lld refused=%d malformed=%d\n", (long long) n, r.refused, r.refused ); return 1; }
-    if ( back[0].items[0].a != 10 || back[0].items[3].a != 13 ) { printf( "unknown_census: an a value did not land\n" ); return 1; }
-    if ( r.unknown != 1 ) { printf( "unknown_census: unknown == %d, not exactly 1\n", r.unknown ); return 1; }
-    if ( r.widened != 0 ) { printf( "unknown_census: a counter moved\n" ); return 1; }
-`, "")
+		cout, err := cRunVersionProbe(t, cnew, []string{cold}, 0, cfile,
+			cUnlawfulBody("c/R16 unknown_census", "census_fixed_load", cCensusPoison, cCensusCheck),
+			cUnlawfulPoison(cCensusPoison))
 		if err != nil {
-			t.Fatalf("c/R16 unknown_census: %v\n%s", cout, err)
+			t.Fatalf("c/R16 unknown_census: %v\n%s", err, cout)
 		}
 	})
 

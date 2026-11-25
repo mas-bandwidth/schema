@@ -17,8 +17,11 @@ func checkFixedRefuseIsTotal(loadBody, decodeBody string) (loopFault, decodeFaul
 		strings.Contains(loopBody, "FixedDecode(values[k], imageView, 0, report)") ||
 		!strings.Contains(tailBody, "report.oor +=") ||
 		!strings.Contains(tailBody, "report.widened +=") ||
-		!strings.Contains(tailBody, "report.unknown += censusUnknown;") {
-		loopFault = "record loop writes clamped/widened directly to caller's report instead of committing after the loop beside censusUnknown"
+		strings.Contains(loadBody, "censusUnknown") {
+		// THERE IS NO COMPILE CENSUS (§5.4, §5.9 #30): an unlawful lineage
+		// entry refuses by name and lays no plan, so nothing rides from the
+		// lane onto the report beside the loop's committed counters.
+		loopFault = "record loop writes clamped/widened directly to caller's report instead of committing after the loop, or carries a compile census"
 	}
 
 	textIdx := strings.Index(decodeBody, "TableFixedTextOk(")

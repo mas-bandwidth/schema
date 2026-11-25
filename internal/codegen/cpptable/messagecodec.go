@@ -547,11 +547,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 			if lo > 64 {
 				lo, hi = 64, width-64
 			}
-			g.pf("%s{ serialize::uint128_t raw_v%s = serialize::uint128_t( %s ) - %s; w.put( uint64_t( raw_v%s ), %d );", ind, sfx, expr, base, sfx, lo)
+			g.pf("%[1]s{\n%[1]s    serialize::uint128_t raw_v%[2]s = serialize::uint128_t( %[3]s ) - %[4]s;\n%[1]s    w.put( uint64_t( raw_v%[2]s ), %[5]d );\n", ind, sfx, expr, base, lo)
 			if hi > 0 {
-				g.pf(" w.put( uint64_t( raw_v%s >> 64 ), %d );", sfx, hi)
+				g.pf("%s    w.put( uint64_t( raw_v%s >> 64 ), %d );\n", ind, sfx, hi)
 			}
-			g.pf(" }\n")
+			g.pf("%s}\n", ind)
 			return
 		}
 		if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
@@ -747,11 +747,11 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 		g.pf("%sconst bool rides_%s = true; // position is identity in a fixed array of tables\n", ind, f.Name)
 	case tableScalarKind(f) == tkUnion:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( value.%s[i].type != %sType::None ) { rides_%s = true; break; } }\n",
-			ind, f.ArrayBound, f.Name, f.Type.Name, f.Name)
+		g.pf("%[1]sfor ( int32_t i = 0; i < %[2]d; i++ )\n%[1]s{\n%[1]s    if ( value.%[3]s[i].type != %[4]sType::None )\n%[1]s    {\n%[1]s        rides_%[3]s = true;\n%[1]s        break;\n%[1]s    }\n%[1]s}\n",
+			ind, f.ArrayBound, f.Name, f.Type.Name)
 	default:
 		g.pf("%sbool rides_%s = false;\n", ind, f.Name)
-		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { rides_%s = true; break; } }\n",
+		g.pf("%[1]sfor ( int32_t i = 0; i < %[2]d; i++ )\n%[1]s{\n%[1]s    if ( %[3]s )\n%[1]s    {\n%[1]s        rides_%[4]s = true;\n%[1]s        break;\n%[1]s    }\n%[1]s}\n",
 			ind, f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 	}
 }

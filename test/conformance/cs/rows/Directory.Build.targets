@@ -1,0 +1,10 @@
+<Project>
+  <!-- Every C# row compiles beside its generated units the serialize.cs
+       runtime they are written against, as every other C# build of generated
+       tables does (make/cs.mk SERIALIZE_CS). tools/conformancerows passes
+       SerializeCsSrc, the sibling checkout's src directory. -->
+  <ItemGroup Condition="'$(SerializeCsSrc)' != ''">
+    <Compile Include="$(SerializeCsSrc)/Serialize.cs" />
+    <Compile Include="$(SerializeCsSrc)/Int128Pair.cs" />
+  </ItemGroup>
+</Project>

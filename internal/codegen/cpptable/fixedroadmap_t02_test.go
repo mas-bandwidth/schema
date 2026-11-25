@@ -142,9 +142,12 @@ func t02CppHas(t *testing.T, got, want, what string) {
 }
 
 // t02CppLayoutBytes parses the emitted `constexpr uint8_t TFixedLayout[] = { … }`.
+// The brace closes on the last byte's own line (`0x00 };`, the spelling the
+// house clang-format keeps), and no byte carries a brace, so the first `};`
+// after the opening is the close.
 func t02CppLayoutBytes(t *testing.T, src string) []byte {
 	t.Helper()
-	block := t02CppBlock(t, src, "constexpr uint8_t TFixedLayout[] = {", "\n};")
+	block := t02CppBlock(t, src, "constexpr uint8_t TFixedLayout[] = {", "};")
 	var out []byte
 	for tok := range strings.SplitSeq(block, ",") {
 		tok = strings.TrimSpace(tok)
@@ -316,7 +319,7 @@ func t02CppR25(t *testing.T) {
 	t02CppHas(t, src, "int32_t dest_capacity = plan_capacity;",
 		"R25 the caller's capacity is the bound")
 	t02CppHas(t, src, "dest, dest_capacity,", "R25 the compile is handed the caller's capacity")
-	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large",
+	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large",
 		"R25 the refusal is by name")
 }
 
@@ -333,7 +336,7 @@ func t02CppR26(t *testing.T) {
 	t02CppHas(t, src,
 		"if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }",
 		"R26 an unparseable lineage entry carries TableMessageReason::layout_malformed on its own lane")
-	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1;",
+	t02CppHas(t, src, "( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large; return -1;",
 		"R26 an entry whose plan outgrows the cap refuses TableMessageReason::plan_too_large and returns")
 	load := t02CppBlock(t, src, "inline int64_t TFixedLoadWalk(", "static_assert( __is_standard_layout")
 	if strings.Contains(load, "throw") {

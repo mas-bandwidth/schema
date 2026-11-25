@@ -6,8 +6,10 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | --- | --- | --- | --- |
 | `agentsmap/` | AGENTS.md generator and drift guard | `go test ./tools/agentsmap` | `make map` |
 | `cellmerge/` | three-way PORTING.md row merge for diff3 hunks | `go test ./tools/cellmerge` | `go run ./tools/cellmerge docs/PORTING.md` |
+| `conformancerows/` | runs every conformance row file of a leg; any failing row is red | `go test ./tools/conformancerows` | `make conformance-rows-LEG` |
 | `errdiscard/` | refuses an error dropped in cmd/ or tools/ with no reason | `go test ./internal/errdiscard` | `make errdiscard` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
+| `gatecontrol/` | one shared gate on one leg with its oracle planted wrong | `go test ./tools/gatecontrol` | `go run ./tools/gatecontrol -leg LEG -plant PLANT -target TARGET -want RE` |
 | `gotestreport/` | go test -json row report and skip ledger | `go test ./tools/gotestreport` | `go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json` |
 | `gotestrows/` | ci-fast go-test matrix rows | `go test ./tools/gotestrows` | `go run ./tools/gotestrows ./...` |
 | `gotestrun/` | go test wrapper: refuses a run in which no test ran or passed | `go test ./tools/gotestrun` | `make test-run PKG=./pkg RUN='^TestX$'` |
@@ -29,6 +31,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
 | `releasetargets/` | certify release-gates planner from make's database | `go test ./tools/releasetargets` | `go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066` |
+| `retiredskips/` | fails a fixed-form gate on any skip line it prints | `go test ./tools/retiredskips` | `build/retiredskips -leg LEG -- cmd` |
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
 | `sabotage/` | negative-control sabotages | `go test ./tools/negativecontrols` | `go run ./tools/sabotage` |
 | `schema-test/` | the one test driver: run, list, coverage, extract | `go run ./tools/schema-test run --group pr` | `go run ./tools/schema-test run --group nightly` |
@@ -38,4 +41,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `treelock/` | generated-tree lock | `go test ./tools/treelock` | `go test ./tools/treelock` |
 | `vacuoustests/` | vacuous-test analyzer command | `go test ./internal/vacuous` | `go run ./tools/vacuoustests -all` |
 | `vuln/` | govulncheck wrapper | `make vuln-selftest` | `make vuln-selftest` |
+| `wiredtargets/` | refuses a test-like make target no CI workflow reaches | `go test ./tools/wiredtargets` | `go run ./tools/wiredtargets` |
 | `wirefuzzrelease/` | release-tier wire-fuzz gate scorer | `go test ./tools/wirefuzzrelease` | `go run ./tools/wirefuzzrelease` |

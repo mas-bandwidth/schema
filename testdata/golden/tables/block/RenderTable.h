@@ -940,26 +940,36 @@ struct TableReader
             case 2:
             case 6:
             case 20:
-            case 25: if ( r.has( 1 ) ) { r.offset += 1; } return false;
+            case 25:
+                if ( r.has( 1 ) ) { r.offset += 1; }
+                return false;
             case 3:
             case 7:
             case 21:
-            case 26: if ( r.has( 2 ) ) { r.offset += 2; } return false;
+            case 26:
+                if ( r.has( 2 ) ) { r.offset += 2; }
+                return false;
             case 4:
             case 8:
             case 10:
             case 22:
-            case 27: if ( r.has( 4 ) ) { r.offset += 4; } return false;
+            case 27:
+                if ( r.has( 4 ) ) { r.offset += 4; }
+                return false;
             case 5:
             case 9:
             case 11:
             case 23:
             case 28:
-            case 36: if ( r.has( 8 ) ) { r.offset += 8; } return false;
+            case 36:
+                if ( r.has( 8 ) ) { r.offset += 8; }
+                return false;
             case 18:
             case 19:
             case 24:
-            case 29: if ( r.has( 16 ) ) { r.offset += 16; } return false;
+            case 29:
+                if ( r.has( 16 ) ) { r.offset += 16; }
+                return false;
             case 17:
             case 30:
             {
@@ -1516,11 +1526,30 @@ inline int32_t TableStrictWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8;
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -1544,7 +1573,11 @@ inline bool TableStrictScalar( TableStrict & s, const uint8_t * b, uint8_t kind 
     // visible in the raw little-endian wire bytes, including skipped fields.
     const bool non_finite32 = kind == 10 && ( b[3] & 0x7f ) == 0x7f && ( b[2] & 0x80 ) != 0;
     const bool non_finite64 = kind == 11 && ( b[7] & 0x7f ) == 0x7f && ( b[6] & 0xf0 ) == 0xf0;
-    if ( non_finite32 || non_finite64 ) { s.refusal = non_finite_float; return false; }
+    if ( non_finite32 || non_finite64 )
+    {
+        s.refusal = non_finite_float;
+        return false;
+    }
     return true;
 }
 
@@ -1557,7 +1590,11 @@ inline bool TableStrictFailed( const TableStrict & s, TableReport * report )
         report->reason = count_over_extent_cap;
         report->refuse_reason = count_over_extent_cap;
     }
-    else { report->damaged = true; report->refuse_reason = wire_damaged; }
+    else
+    {
+        report->damaged = true;
+        report->refuse_reason = wire_damaged;
+    }
     return false;
 }
 
@@ -1648,7 +1685,9 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
             if ( depth >= kTableStrictMaxDepth ) { return false; }
             return TableStrictKeyed( s, b, n, depth + 1 );
         }
-        case 15: case 17: case 30:
+        case 15:
+        case 17:
+        case 30:
         {
             TableReport ignored;
             TableReader r( b, n, &ignored, s.ids );
@@ -1694,7 +1733,11 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 32: case 13: case 14: case 16:
+        case 12:
+        case 32:
+        case 13:
+        case 14:
+        case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -1743,7 +1786,11 @@ inline bool TableStrictArray( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
+    if ( count > 0x7FFFFFFFull )
+    {
+        s.refusal = count_over_extent_cap;
+        return false;
+    }
     for ( uint64_t i = 0; i < count; i++ )
     {
         if ( !TableStrictPayload( s, r, elem, depth ) ) { return false; }
@@ -1761,7 +1808,11 @@ inline bool TableStrictKeyed( TableStrict & s, const uint8_t * b, int64_t n, int
     uint64_t count = 0;
     if ( !r.getleb( count ) ) { return false; }
     // the cap applies even when this keyed array belongs to an unknown field
-    if ( count > 0x7FFFFFFFull ) { s.refusal = count_over_extent_cap; return false; }
+    if ( count > 0x7FFFFFFFull )
+    {
+        s.refusal = count_over_extent_cap;
+        return false;
+    }
     uint64_t seen[kTableStrictSeenWords];
     for ( int32_t w = 0; w < kTableStrictSeenWords; w++ ) { seen[w] = 0; }
     for ( uint64_t i = 0; i < count; i++ )
@@ -3876,7 +3927,10 @@ inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t re
         {
             const int32_t mid = ( kept + high ) / 2;
             if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
-            else { high = mid; }
+            else
+            {
+                high = mid;
+            }
         }
         if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
         TableMessageSeenKeepBelow( *entry, kept );
@@ -4235,12 +4289,12 @@ struct TableKeyed
     T & operator[]( E key )
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[(int32_t) key - 1];
     }
     const T & operator[]( E key ) const
     {
         RefuseKey( key );
-        return slots[ (int32_t) key - 1 ];
+        return slots[(int32_t) key - 1];
     }
 
     // THE REFUSAL, and it stands in EVERY BUILD, AT BOTH ENDS. The storage
@@ -4281,15 +4335,27 @@ struct TableKeyed
     // generated corpus had: 536 headers and 986 KB, in a header whose whole
     // remaining set is 123. begin(), end() and size() need none of it.
 
-    struct Entry { E key; T & element; };
-    struct ConstEntry { E key; const T & element; };
+    struct Entry
+    {
+        E key;
+        T & element;
+    };
+    struct ConstEntry
+    {
+        E key;
+        const T & element;
+    };
 
     struct Iterator
     {
         T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         Entry operator*() const { return Entry{ (E) ( index + 1 ), slots[index] }; }
-        Iterator & operator++() { index++; return *this; }
+        Iterator & operator++()
+        {
+            index++;
+            return *this;
+        }
         bool operator==( const Iterator & other ) const { return index == other.index; }
         bool operator!=( const Iterator & other ) const { return index != other.index; }
     };
@@ -4299,7 +4365,11 @@ struct TableKeyed
         const T * slots;
         int32_t index; // the STORAGE index; the key it holds is index + 1
         ConstEntry operator*() const { return ConstEntry{ (E) ( index + 1 ), slots[index] }; }
-        ConstIterator & operator++() { index++; return *this; }
+        ConstIterator & operator++()
+        {
+            index++;
+            return *this;
+        }
         bool operator==( const ConstIterator & other ) const { return index == other.index; }
         bool operator!=( const ConstIterator & other ) const { return index != other.index; }
     };
@@ -4343,8 +4413,16 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 // float, the +0 bits for its -0 and the bits as held for any other value. A
 // plain float never comes here: its -0 is a value and rides bit-exact. The Go
 // oracle is internal/tabletext's StoredFloat.
-inline uint32_t TableStoredFloatBits( float f ) { const uint32_t b = table_float_to_bits( f ); return b == 0x80000000u ? 0u : b; }
-inline uint64_t TableStoredFloatBits( double d ) { const uint64_t b = table_double_to_bits( d ); return b == 0x8000000000000000ull ? 0u : b; }
+inline uint32_t TableStoredFloatBits( float f )
+{
+    const uint32_t b = table_float_to_bits( f );
+    return b == 0x80000000u ? 0u : b;
+}
+inline uint64_t TableStoredFloatBits( double d )
+{
+    const uint64_t b = table_double_to_bits( d );
+    return b == 0x8000000000000000ull ? 0u : b;
+}
 
 // THE FIXED FORM'S THREE REASON NAMES THE COOKED FORM ALSO SPELLS
 // (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4, §11): every
@@ -4795,10 +4873,32 @@ inline uint64_t TableFixedLoadNative( const uint8_t * src, uint32_t size )
     }
     switch ( size )
     {
-        case 1: { uint8_t t = 0; memcpy( &t, src, 1 ); v = t; break; }
-        case 2: { uint16_t t = 0; memcpy( &t, src, 2 ); v = t; break; }
-        case 4: { uint32_t t = 0; memcpy( &t, src, 4 ); v = t; break; }
-        case 8: { memcpy( &v, src, 8 ); break; }
+        case 1:
+        {
+            uint8_t t = 0;
+            memcpy( &t, src, 1 );
+            v = t;
+            break;
+        }
+        case 2:
+        {
+            uint16_t t = 0;
+            memcpy( &t, src, 2 );
+            v = t;
+            break;
+        }
+        case 4:
+        {
+            uint32_t t = 0;
+            memcpy( &t, src, 4 );
+            v = t;
+            break;
+        }
+        case 8:
+        {
+            memcpy( &v, src, 8 );
+            break;
+        }
         default: break;
     }
     return v;
@@ -5118,12 +5218,24 @@ inline bool TableFixedEntryTagArg( const TableFixedEntry & e, uint32_t tag,
         for ( int32_t j = 0; j < (int32_t) e.guard_count; ++j )
         {
             const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-            if ( l.guard == tag ) { arg = (int64_t) l.arg; return true; }
+            if ( l.guard == tag )
+            {
+                arg = (int64_t) l.arg;
+                return true;
+            }
         }
         return false;
     }
-    if ( e.guard == tag ) { arg = (int64_t) e.arg; return true; }
-    if ( e.guard2 == tag ) { arg = (int64_t) e.arg2; return true; }
+    if ( e.guard == tag )
+    {
+        arg = (int64_t) e.arg;
+        return true;
+    }
+    if ( e.guard2 == tag )
+    {
+        arg = (int64_t) e.arg2;
+        return true;
+    }
     return false;
 }
 
@@ -5158,14 +5270,14 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
     {
         const TableFixedEntry & e = plan[i];
         if ( e.op == kTableFixedConst && e.src == tag_at && e.aux == 0 &&
-             TableFixedGuardHolds( e, src, guard_pool ) )
+            TableFixedGuardHolds( e, src, guard_pool ) )
         {
             lineage_union = true;
             if ( e.dstsize != 0 ) { arm_count = e.dstsize; }
         }
         else if ( e.op == kTableFixedCopy && e.aux != 0 &&
-                  e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
-                  TableFixedGuardHolds( e, src, guard_pool ) )
+            e.src <= tag_at && (int64_t) e.src + (int64_t) e.size == arm &&
+            TableFixedGuardHolds( e, src, guard_pool ) )
         {
             arm_count = e.aux;
         }
@@ -5178,12 +5290,16 @@ inline bool TableFixedDeadSpan( const TableFixedEntry * plan, int32_t count, con
             {
                 const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + e.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
                 if ( l.guard == tag_at ) { break; }
-                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { outer_ok = false; break; }
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg )
+                {
+                    outer_ok = false;
+                    break;
+                }
             }
             if ( !outer_ok ) { continue; }
         }
         else if ( e.guard == tag_at && e.guard2 != kTableFixedNoGuard &&
-                  TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
+            TableFixedTagAt( src, e.guard2, e.argw2 ) != e.arg2 )
         {
             continue;
         }
@@ -5295,17 +5411,17 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         {
             // guard2 is the OUTER tag of a two-lane entry, guard the inner one.
             const bool outer_holds = e.guard2 == kTableFixedNoGuard ||
-                                     TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
+                TableFixedTagAt( src, e.guard2, e.argw2 ) == e.arg2;
             if ( outer_holds && e.guard != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
-                 !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
+                !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard ) &&
+                !TableFixedDeadSpan( plan, count, src, e.guard, e.argw, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
             }
             if ( e.guard2 != kTableFixedNoGuard && !TableFixedTagSeen( plan, i, e.guard2, guard_pool ) &&
-                 !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
-                 !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
+                !TableFixedInAbsentPayload( plan, count, src, (int64_t) e.guard2 ) &&
+                !TableFixedDeadSpan( plan, count, src, e.guard2, e.argw2, guard_pool ) )
             {
                 why = wire_damaged;
                 return true;
@@ -5917,6 +6033,13 @@ struct TableFixedCompiler
     bool overflow = false;
     bool hostile = false;
     uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
+    // UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+    // a writer field this reader does not name, or a pair whose kind moved off
+    // every ladder. The entry is not a lawful widening of this reader, so no
+    // plan is laid and a file under its hash refuses layout_malformed. It is
+    // never counted and read past. 1 is layout_malformed; 3 is kind_mismatch,
+    // the writer's ?T into this reader's bare T (ruling R2, 2026-11-22).
+    uint8_t unlawful = 0;
     TableReport * report = NULL;
 };
 
@@ -6015,42 +6138,22 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census );
+    uint32_t guard, uint64_t arg );
 
-// TableFixedMatchChildren walks a TABLE's children on both sides.
+// TableFixedChildrenNamed is true when every child of THEIR entry ti — a
+// table's fields, a union's arms, an enum's variants, a keyed array's keys — is
+// named by a child of MY entry mi.
 //
-// The census flag is whether THIS entry is the FIRST time the writer's field is
-// seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-// writer's field dropped from a [4]Item is counted four times and the report says 4
-// where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
-inline void TableFixedMatchChildren( TableFixedCompiler & c,
-    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
-    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+// A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS AND VARIANTS THIS READER
+// RETAINS (§5.1 refuses a removal; deprecation keeps the slot and its name). A
+// writer child no child of mine names makes the lineage entry UNLAWFUL before
+// any entry is laid: there is no compile census to count and no arm or variant
+// to drop (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4, §5.9 #30).
+inline bool TableFixedChildrenNamed( const TableFixedLayoutView & theirs, int32_t ti,
+    const TableFixedLayoutView & mine, int32_t mi )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
-    int32_t my_child = mi + 1;
-    for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
-    {
-        const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
-        int32_t their_child = ti + 1;
-        uint32_t their_off = their_at;
-        for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
-        {
-            const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
-            if ( tc.id == mc.id )
-            {
-                TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
-                break;
-            }
-            their_off += tc.size;
-            their_child += TableFixedSubtree( theirs, their_child );
-        }
-        my_child += TableFixedSubtree( mine, my_child );
-    }
-    // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
     int32_t tc_at = ti + 1;
     for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
@@ -6066,15 +6169,52 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
             }
             mc_at += TableFixedSubtree( mine, mc_at );
         }
-        if ( !named && census && c.report != NULL ) { c.report->unknown++; }
+        if ( !named ) { return false; }
         tc_at += TableFixedSubtree( theirs, tc_at );
+    }
+    return true;
+}
+
+// TableFixedMatchChildren walks a TABLE's children on both sides. A writer
+// field this reader does not name makes the entry unlawful (§5.8 row 11's
+// compile census is retired: nothing is counted and read past).
+inline void TableFixedMatchChildren( TableFixedCompiler & c,
+    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg )
+{
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
+    if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )
+    {
+        c.unlawful = 1;
+        return;
+    }
+    int32_t my_child = mi + 1;
+    for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
+    {
+        const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
+        int32_t their_child = ti + 1;
+        uint32_t their_off = their_at;
+        for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
+        {
+            const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
+            if ( tc.id == mc.id )
+            {
+                TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                break;
+            }
+            their_off += tc.size;
+            their_child += TableFixedSubtree( theirs, their_child );
+        }
+        my_child += TableFixedSubtree( mine, my_child );
     }
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -6108,7 +6248,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         e.arg = arg;
         e.op = kTableFixedPresent;
         TableFixedPush( c, e );
-        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
         return;
     }
     if ( te.kind != me.kind )
@@ -6127,12 +6267,10 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             TableFixedPush( c, e );
             return;
         }
-        // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL )
-        {
-            c.report->refused = true;
-            c.report->refuse_reason = kind_mismatch;
-        }
+        // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
+        // REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4):
+        // no plan is laid. The writer's ?T into my bare T is kind_mismatch (R2).
+        c.unlawful = ( te.kind == 35 ) ? 3u : 1u;
         return;
     }
     switch ( me.kind )
@@ -6146,7 +6284,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // to the present companion, which the reader's layout puts after it.
             const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
             const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
@@ -6166,10 +6304,10 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 13: // a nested table: match its fields
         {
-            TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
+            TableFixedMatchChildren( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
             break;
         }
-        case 14: // an array: the count, then min( their bound, my bound ) elements
+        case 14: // an array: the count, then their bound's elements
         {
             // A COUNTED LOCAL against an ENDPOINT whose array is too small to hold the
             // four-byte count is a mismatch the head subtraction below would
@@ -6186,7 +6324,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
             const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
             const uint32_t their_base = their_at + head;
-            const uint32_t n = their_n < my_n ? their_n : my_n;
+            // A BOUND THAT NARROWED IS AN UNLAWFUL ENTRY (§5.1 "bound
+            // narrowed"), a fixed [N], a counted [..N] and a bytes(N) alike:
+            // never min( their_n, my_n ) with the rest dropped, and never
+            // admitted because the live count happens to fit (§5.4, §5.9 #30).
+            if ( their_n > my_n )
+            {
+                c.unlawful = 1;
+                break;
+            }
+            // their_n <= my_n past the refusal above, so n IS the writer's count.
+            const uint32_t n = their_n;
             if ( d.counted )
             {
                 TableFixedEntry e;
@@ -6202,17 +6350,31 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
-                    mine, mi + 1, dst, at + i * d.stride, guard, arg, census && i == 0 );
+                    mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
         {
+            // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1: the keyed array follows
+            // its enum, and a removed variant is refused), and so is a writer
+            // with more slots than this reader holds.
             const TableFixedLayoutEntry tkey = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mkey = TableFixedEntryAt( mine, mi + 1 );
             const int32_t tel = ti + 1 + TableFixedSubtree( theirs, ti + 1 );
             const int32_t mel = mi + 1 + TableFixedSubtree( mine, mi + 1 );
             const TableFixedLayoutEntry tee = TableFixedEntryAt( theirs, tel );
+            const TableFixedLayoutEntry mee = TableFixedEntryAt( mine, mel );
+            if ( !TableFixedChildrenNamed( theirs, ti + 1, mine, mi + 1 ) )
+            {
+                c.unlawful = 1;
+                break;
+            }
+            if ( tee.size != 0u && mee.size != 0u && te.size / tee.size > me.size / mee.size )
+            {
+                c.unlawful = 1;
+                break;
+            }
             for ( uint32_t k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine.count; ++k )
             {
                 const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + (int32_t) k ).id;
@@ -6220,7 +6382,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 {
                     if ( TableFixedEntryAt( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                     TableFixedCompileEntry( c, theirs, tel, their_at + j * tee.size,
-                        mine, mel, dst, at + k * d.stride, guard, arg, census && k == 0 );
+                        mine, mel, dst, at + k * d.stride, guard, arg );
                     break;
                 }
             }
@@ -6228,6 +6390,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 15: // a union: the tag, remapped, then each arm matched by id
         {
+            // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1 "arm removed"): never
+            // dropped by id and the record read on.
+            if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )
+            {
+                c.unlawful = 1;
+                break;
+            }
             const uint32_t their_tag = TableFixedTagBytes( theirs, ti );
             const uint32_t my_tag = TableFixedTagBytes( mine, mi );
             const uint8_t saved_argw = c.argw;
@@ -6284,7 +6453,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                         tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                            mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                            mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
@@ -6319,6 +6488,15 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
+            // A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1 "variant removed"),
+            // on the grown-width widen path and the same-width remap path
+            // alike: never landed as None by the remap. Decided before the
+            // pass gate so either pass sees it.
+            if ( !TableFixedChildrenNamed( theirs, ti, mine, mi ) )
+            {
+                c.unlawful = 1;
+                break;
+            }
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
             // A GROWN ORDINAL WIDTH IS A WIDEN (bill §12.7, algorithm §5.2):
             // append-only means the writer's ordinal IS the reader's, and the
@@ -6372,6 +6550,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 12: // text
         {
+            // A CAPACITY THAT NARROWED IS AN UNLAWFUL ENTRY (§5.1 "capacity
+            // narrowed"), whatever the live length of any one record.
+            if ( te.size > me.size )
+            {
+                c.unlawful = 1;
+                break;
+            }
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at;
@@ -6406,10 +6591,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
             }
-            else if ( c.report != NULL )
+            else
             {
-                c.report->refused = true;
-                c.report->refuse_reason = kind_mismatch;
+                // A SCALAR THAT NARROWED (or grew past eight bytes) is no
+                // widening: an unlawful entry, no plan laid (§5.4).
+                c.unlawful = 1;
             }
             break;
         }
@@ -6437,11 +6623,17 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     c.report = report;
     c.record = TableFixedEntryAt( theirs, 0 ).size;
     c.want_guarded = false;
-    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0, 1 );
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
     const int32_t plain = c.count;
     c.want_guarded = true;
-    c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
-    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0, 1 );
+    c.report = NULL;
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
+    // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is layout_malformed, -4 the
+    // writer's ?T into a bare T, kind_mismatch (R2). Decided before overflow,
+    // so a capacity retry never turns an unlawful entry into plan_too_large.
+    // The return code IS the name: the load names -3 and -4 on its report, as
+    // the C twin's lineage build does, so the compile does not write it twice.
+    if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }
@@ -7946,7 +8138,10 @@ inline int64_t RenderCameraMeasureBody( TableIds & ids, const RenderCamera & val
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -7954,7 +8149,10 @@ inline int64_t RenderCameraMeasureBody( TableIds & ids, const RenderCamera & val
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( value.camera_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x9f61700f084ab92eull ) ) + 1 + 4; } // camera_id
     if ( value.camera_type != 0 ) { bytes += TableLebBytes( ids.ref_at( 15, 0x336d3dc7fffd0c9bull ) ) + 1 + 4; } // camera_type
@@ -7985,7 +8183,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, TableIds & id
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -7998,7 +8199,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, TableIds & id
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( value.camera_id != 0 )
     {
@@ -8950,7 +9154,11 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -9064,7 +9272,10 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -9072,7 +9283,10 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     schema_assert( ( uint64_t( value.flags ) >> 4 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
@@ -9125,7 +9339,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -9138,7 +9355,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( value.flags != 0 )
     {
@@ -9173,7 +9393,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
         const uint64_t ref_ship_type = ids.ref_at( 11, 0x1f7d2e86a2e77268ull );
         uint64_t variant_ship_type = 0;
         if ( !TableEnumRef( ids, value.ship_type, variant_ship_type ) ) { return false; }
-        w.header( ref_ship_type, 30 ); w.putleb( variant_ship_type ); // ship_type
+        w.header( ref_ship_type, 30 );
+        w.putleb( variant_ship_type ); // ship_type
     }
     if ( value.team != Team::None )
     {
@@ -9181,7 +9402,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     if ( value.has_target_lock != false )
     {
@@ -9513,11 +9735,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.ship_type = ShipType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.ship_type ) )
                 {
                     value.ship_type = ShipType::None;
@@ -9541,11 +9769,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -9573,10 +9807,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_target_lock = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_target_lock = bool_byte != 0;
                 }
                 break;
             }
@@ -9600,10 +9837,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipLoadBody( TableReader & r, RenderShip & va
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.predicted_explode = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.predicted_explode = bool_byte != 0;
                 }
                 break;
             }
@@ -10524,11 +10764,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
-                    report->damaged = true;
-                    return false;
-                    } value.has_target_lock = raw != 0;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.has_target_lock = raw != 0;
                 }
                 break;
             }
@@ -10555,16 +10798,23 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
-                    report->damaged = true;
-                    return false;
-                    } value.predicted_explode = raw != 0;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.predicted_explode = raw != 0;
                 }
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -10680,7 +10930,10 @@ inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & val
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
     if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
@@ -10723,7 +10976,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, TableIds & id
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( value.flags != 0 )
     {
@@ -10761,7 +11017,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, TableIds & id
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     if ( value.has_target_lock != false )
     {
@@ -11091,11 +11348,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -11123,10 +11386,13 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretLoadBody( TableReader & r, RenderTurret 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
                 {
-                    r.report->damaged = true;
-                    } value.has_target_lock = bool_byte != 0;
+                    const uint8_t bool_byte = r.get8();
+                    if ( bool_byte > 1 )
+                    {
+                        r.report->damaged = true;
+                    }
+                    value.has_target_lock = bool_byte != 0;
                 }
                 break;
             }
@@ -12011,16 +12277,23 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
                 {
-                    report->damaged = true;
-                    return false;
-                    } value.has_target_lock = raw != 0;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 1 ) || ( same_shape && raw == 0 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.has_target_lock = raw != 0;
                 }
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -12136,7 +12409,10 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -12144,7 +12420,10 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
     if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
@@ -12191,7 +12470,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -12204,7 +12486,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( value.flags != 0 )
     {
@@ -12227,7 +12512,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
         const uint64_t ref_missile_type = ids.ref_at( 6, 0x151b2a0e2c07b4bcull );
         uint64_t variant_missile_type = 0;
         if ( !TableEnumRef( ids, value.missile_type, variant_missile_type ) ) { return false; }
-        w.header( ref_missile_type, 30 ); w.putleb( variant_missile_type ); // missile_type
+        w.header( ref_missile_type, 30 );
+        w.putleb( variant_missile_type ); // missile_type
     }
     if ( value.team != Team::None )
     {
@@ -12235,7 +12521,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -12476,11 +12763,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.missile_type = MissileType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.missile_type ) )
                 {
                     value.missile_type = MissileType::None;
@@ -12504,11 +12797,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileLoadBody( TableReader & r, RenderMissil
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -13203,7 +13502,11 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -13319,7 +13622,10 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -13327,7 +13633,10 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
     if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
@@ -13374,7 +13683,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -13387,7 +13699,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( value.flags != 0 )
     {
@@ -13410,7 +13725,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
-        w.header( ref_prop_type, 30 ); w.putleb( variant_prop_type ); // prop_type
+        w.header( ref_prop_type, 30 );
+        w.putleb( variant_prop_type ); // prop_type
     }
     if ( value.team != Team::None )
     {
@@ -13418,7 +13734,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -13659,11 +13976,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -13687,11 +14010,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropLoadBody( TableReader & r, RenderDy
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -14386,7 +14715,11 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -14502,7 +14835,10 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -14510,7 +14846,10 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( !TableFloatFinite( value.scale ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_double_to_bits( value.scale ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; } // scale
@@ -14558,7 +14897,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -14571,7 +14913,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( table_double_to_bits( value.scale ) != table_double_to_bits( 0.0 ) )
     {
@@ -14595,7 +14940,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
-        w.header( ref_prop_type, 30 ); w.putleb( variant_prop_type ); // prop_type
+        w.header( ref_prop_type, 30 );
+        w.putleb( variant_prop_type ); // prop_type
     }
     if ( value.team != Team::None )
     {
@@ -14603,7 +14949,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -14742,7 +15089,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.scale = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.scale = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -14766,7 +15116,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.scale = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.scale = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -14864,11 +15217,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -14892,11 +15251,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -15324,11 +15689,25 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.scale = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.scale = decoded_d;
                 }
                 break;
             }
@@ -15605,7 +15984,11 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -15721,7 +16104,10 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -15729,7 +16115,10 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( !TableFloatFinite( value.scale ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_double_to_bits( value.scale ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; } // scale
@@ -15778,7 +16167,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -15791,7 +16183,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( table_double_to_bits( value.scale ) != table_double_to_bits( 0.0 ) )
     {
@@ -15820,7 +16215,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
         uint64_t variant_prop_type = 0;
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
-        w.header( ref_prop_type, 30 ); w.putleb( variant_prop_type ); // prop_type
+        w.header( ref_prop_type, 30 );
+        w.putleb( variant_prop_type ); // prop_type
     }
     if ( value.team != Team::None )
     {
@@ -15828,7 +16224,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -15967,7 +16364,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.scale = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.scale = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -15991,7 +16391,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.scale = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.scale = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -16113,11 +16516,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.prop_type = PropType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.prop_type ) )
                 {
                     value.prop_type = PropType::None;
@@ -16141,11 +16550,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -16583,11 +16998,25 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.scale = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.scale = decoded_d;
                 }
                 break;
             }
@@ -16920,7 +17349,11 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -17036,7 +17469,10 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
         const int64_t body_start = RenderVector3MeasureBody( ids, value.start );
         if ( body_start < 0 ) { return -1; }
         if ( body_start > 1 ) { bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); } // start
-        else { ids.truncate( mark_start ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_start );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_finish = ids.count;
@@ -17044,7 +17480,10 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
         const int64_t body_finish = RenderVector3MeasureBody( ids, value.finish );
         if ( body_finish < 0 ) { return -1; }
         if ( body_finish > 1 ) { bytes += TableLebBytes( ref_finish ) + 1 + TableLebBytes( (uint64_t) ( body_finish ) ) + ( body_finish ); } // finish
-        else { ids.truncate( mark_finish ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_finish );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( !TableFloatFinite( value.t ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_double_to_bits( value.t ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 50, 0xaf63e94c860202a3ull ) ) + 1 + 8; } // t
@@ -17091,7 +17530,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_start ); // start
             if ( !RenderVector3SaveBody( w, ids, value.start ) ) return false;
         }
-        else { ids.truncate( mark_start ); }
+        else
+        {
+            ids.truncate( mark_start );
+        }
     }
     {
         const int32_t mark_finish = ids.count;
@@ -17104,7 +17546,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
             w.putleb( (uint64_t) body_finish ); // finish
             if ( !RenderVector3SaveBody( w, ids, value.finish ) ) return false;
         }
-        else { ids.truncate( mark_finish ); }
+        else
+        {
+            ids.truncate( mark_finish );
+        }
     }
     if ( table_double_to_bits( value.t ) != table_double_to_bits( 0.0 ) )
     {
@@ -17123,7 +17568,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
         const uint64_t ref_laser_type = ids.ref_at( 43, 0x96b593c242133841ull );
         uint64_t variant_laser_type = 0;
         if ( !TableEnumRef( ids, value.laser_type, variant_laser_type ) ) { return false; }
-        w.header( ref_laser_type, 30 ); w.putleb( variant_laser_type ); // laser_type
+        w.header( ref_laser_type, 30 );
+        w.putleb( variant_laser_type ); // laser_type
     }
     if ( value.team != Team::None )
     {
@@ -17131,7 +17577,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -17270,7 +17717,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.t = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.t = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -17294,7 +17744,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.t = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.t = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -17353,11 +17806,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.laser_type = LaserType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.laser_type ) )
                 {
                     value.laser_type = LaserType::None;
@@ -17381,11 +17840,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -17803,11 +18268,25 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.t = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.t = decoded_d;
                 }
                 break;
             }
@@ -18010,7 +18489,11 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -18126,7 +18609,10 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
         if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_position );
+        } // an all-default nested table elides, and costs no entry
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -18134,7 +18620,10 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
         if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        else
+        {
+            ids.truncate( mark_rotation );
+        } // an all-default nested table elides, and costs no entry
     }
     if ( !TableFloatFinite( value.t ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_double_to_bits( value.t ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 50, 0xaf63e94c860202a3ull ) ) + 1 + 8; } // t
@@ -18182,7 +18671,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
             w.putleb( (uint64_t) body_position ); // position
             if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
         }
-        else { ids.truncate( mark_position ); }
+        else
+        {
+            ids.truncate( mark_position );
+        }
     }
     {
         const int32_t mark_rotation = ids.count;
@@ -18195,7 +18687,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
             w.putleb( (uint64_t) body_rotation ); // rotation
             if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
         }
-        else { ids.truncate( mark_rotation ); }
+        else
+        {
+            ids.truncate( mark_rotation );
+        }
     }
     if ( table_double_to_bits( value.t ) != table_double_to_bits( 0.0 ) )
     {
@@ -18219,7 +18714,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
         const uint64_t ref_explosion_type = ids.ref_at( 75, 0xdc89eb9cd3393be5ull );
         uint64_t variant_explosion_type = 0;
         if ( !TableEnumRef( ids, value.explosion_type, variant_explosion_type ) ) { return false; }
-        w.header( ref_explosion_type, 30 ); w.putleb( variant_explosion_type ); // explosion_type
+        w.header( ref_explosion_type, 30 );
+        w.putleb( variant_explosion_type ); // explosion_type
     }
     if ( value.team != Team::None )
     {
@@ -18227,7 +18723,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
         uint64_t variant_team = 0;
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
-        w.header( ref_team, 30 ); w.putleb( variant_team ); // team
+        w.header( ref_team, 30 );
+        w.putleb( variant_team ); // team
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -18366,7 +18863,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.t = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.t = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -18390,7 +18890,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.t = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.t = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -18488,11 +18991,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.explosion_type = ExplosionType::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.explosion_type ) )
                 {
                     value.explosion_type = ExplosionType::None;
@@ -18516,11 +19025,17 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->damaged = true;
-                    return false; }
+                if ( !r.getleb( variant_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 if ( variant_ref == 0 ) { value.team = Team::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->damaged = true;
-                    return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.team ) )
                 {
                     value.team = Team::None;
@@ -18948,11 +19463,25 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.t = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.t = decoded_d;
                 }
                 break;
             }
@@ -19241,7 +19770,11 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -21225,7 +21758,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21244,7 +21781,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 1;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21287,7 +21827,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21306,7 +21850,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 4096;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21349,7 +21896,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21368,7 +21919,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 1024;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21411,7 +21965,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21430,7 +21988,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 4096;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21473,7 +22034,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21492,7 +22057,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 4096;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21535,7 +22103,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21554,7 +22126,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 20000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21597,7 +22172,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21616,7 +22195,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 8192;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21659,7 +22241,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21678,7 +22264,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 32000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21721,7 +22310,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( count_bits > 0 )
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( raw, count_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         n = raw + (uint64_t) entry.min;
                     }
                     if ( same_shape && n == 0 )
@@ -21740,7 +22333,10 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         kept = 32000;
                         report->refused = true;
                         report->refuse_reason = out_of_range;
-                        } else { kept = (int32_t) n;
+                    }
+                    else
+                    {
+                        kept = (int32_t) n;
                     }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
@@ -21755,7 +22351,11 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -21973,7 +22573,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.x = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.x = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -21997,7 +22600,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.x = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.x = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22017,7 +22623,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.y = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.y = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22041,7 +22650,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.y = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.y = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22061,7 +22673,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.z = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.z = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22085,7 +22700,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.z = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.z = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22373,11 +22991,25 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.x = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.x = decoded_d;
                 }
                 break;
             }
@@ -22441,11 +23073,25 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.y = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.y = decoded_d;
                 }
                 break;
             }
@@ -22509,16 +23155,34 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.z = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.z = decoded_d;
                 }
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -22742,7 +23406,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.x = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.x = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22766,7 +23433,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.x = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.x = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22786,7 +23456,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.y = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.y = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22810,7 +23483,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.y = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.y = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22830,7 +23506,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.z = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.z = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22854,7 +23533,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.z = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.z = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -22874,7 +23556,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
-                            else { value.w = (double) table_bits_to_float( widened_bits ); }
+                            else
+                            {
+                                value.w = (double) table_bits_to_float( widened_bits );
+                            }
                         }
                         r.report->widened++;
                         break;
@@ -22898,7 +23583,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                 {
                     const uint64_t decoded_bits = r.get64();
                     if ( !TableBitsFinite64( decoded_bits ) ) { TableNonFiniteFloat( r.report ); }
-                    else { value.w = table_bits_to_double( decoded_bits ); }
+                    else
+                    {
+                        value.w = table_bits_to_double( decoded_bits );
+                    }
                 }
                 break;
             }
@@ -23198,11 +23886,25 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.x = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.x = decoded_d;
                 }
                 break;
             }
@@ -23266,11 +23968,25 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.y = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.y = decoded_d;
                 }
                 break;
             }
@@ -23334,11 +24050,25 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) ) { report->damaged = true; return false; } value.z = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 0.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.z = decoded_d;
                 }
                 break;
             }
@@ -23402,16 +24132,34 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
                 {
-                    TableNonFiniteFloat( report );
-                    return false;
-                    } const double decoded_d = table_bits_to_double( raw ); if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 1.0 ) ) ) { report->damaged = true; return false; } value.w = decoded_d;
+                    uint64_t raw = 0;
+                    if ( !r.get( raw, 64 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    if ( !TableBitsFinite64( raw ) )
+                    {
+                        TableNonFiniteFloat( report );
+                        return false;
+                    }
+                    const double decoded_d = table_bits_to_double( raw );
+                    if ( same_shape && ( table_double_to_bits( decoded_d ) == table_double_to_bits( 1.0 ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    value.w = decoded_d;
                 }
                 break;
             }
             default:
-                if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
+                if ( vocabulary.build_version == BuildVersion )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 report->unknown++;
                 if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
@@ -23811,9 +24559,21 @@ inline void RenderShipFixedClampBody( RenderShip & value, int32_t & TABLE_CLAMP_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( ( (uint64_t) value.flags >> 4 ) != 0 ) { value.flags &= 0xfull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
-    if ( (uint64_t) value.ship_type > 3u ) { value.ship_type = ShipType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( ( (uint64_t) value.flags >> 4 ) != 0 )
+    {
+        value.flags &= 0xfull;
+        oor_count++;
+    } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+    if ( (uint64_t) value.ship_type > 3u )
+    {
+        value.ship_type = ShipType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderTurret's read-side bounds, CHECKED: true when every clamp below would
@@ -23842,7 +24602,11 @@ inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & TABLE_CL
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderMissile's read-side bounds, CHECKED: true when every clamp below would
@@ -23873,8 +24637,16 @@ inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & TABLE_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.missile_type > 2u ) { value.missile_type = MissileType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.missile_type > 2u )
+    {
+        value.missile_type = MissileType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderDynamicProp's read-side bounds, CHECKED: true when every clamp below would
@@ -23905,8 +24677,16 @@ inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t 
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.prop_type > 3u )
+    {
+        value.prop_type = PropType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderStaticProp's read-side bounds, CHECKED: true when every clamp below would
@@ -23937,8 +24717,16 @@ inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & 
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.prop_type > 3u )
+    {
+        value.prop_type = PropType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderCosmeticProp's read-side bounds, CHECKED: true when every clamp below would
@@ -23969,8 +24757,16 @@ inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.prop_type > 3u )
+    {
+        value.prop_type = PropType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderLaser's read-side bounds, CHECKED: true when every clamp below would
@@ -24001,8 +24797,16 @@ inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & TABLE_CLAM
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.laser_type > 2u ) { value.laser_type = LaserType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.laser_type > 2u )
+    {
+        value.laser_type = LaserType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderExplosion's read-side bounds, CHECKED: true when every clamp below would
@@ -24033,8 +24837,16 @@ inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & TA
     (void) value;
     (void) oor_count;
     (void) damaged;
-    if ( (uint64_t) value.explosion_type > 2u ) { value.explosion_type = ExplosionType::None; oor_count++; }
-    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+    if ( (uint64_t) value.explosion_type > 2u )
+    {
+        value.explosion_type = ExplosionType::None;
+        oor_count++;
+    }
+    if ( (uint64_t) value.team > 4u )
+    {
+        value.team = Team::None;
+        oor_count++;
+    }
 }
 
 // RenderFrame's read-side bounds, CHECKED: true when every clamp below would
@@ -24293,56 +25105,27 @@ constexpr uint8_t RenderCameraFixedLayout[] = {
     0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00,
-};
+    0x00, 0x00 };
 constexpr int64_t RenderCameraFixedLayoutBytes = (int64_t) sizeof( RenderCameraFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderCameraFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderCamera
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // camera_id
-    {
-        60, 0, 0, 0, 0
-    }, // camera_type
-    {
-        64, 0, 0, 0, 0
-    }, // target_object_id
-    {
-        68, 0, 0, 0, 0
-    }, // fov
+    { 0, 0, 0, 0, 0 }, // RenderCamera
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // camera_id
+    { 60, 0, 0, 0, 0 }, // camera_type
+    { 64, 0, 0, 0, 0 }, // target_object_id
+    { 68, 0, 0, 0, 0 }, // fov
 };
 
 // THE IDENTITY PLAN, coalesced out of 11 leaves by the schema compiler —
@@ -24418,8 +25201,7 @@ constexpr uint8_t RenderCameraFixedKnown0Layout[] = {
     0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00,
-};
+    0x00, 0x00 };
 constexpr uint8_t RenderCameraFixedKnown1Layout[] = {
     0x0e, 0x00, 0x00, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x0d, 0x48, 0x00, 0x00,
     0x00, 0x06, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -24436,8 +25218,7 @@ constexpr uint8_t RenderCameraFixedKnown1Layout[] = {
     0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00,
-};
+    0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderCameraFixedKnown[] = {
     { 0x74ade5c3866f68d1ull, RenderCameraFixedKnown0Layout, 242, 80 }, // lock
     { 0xb491cd9363b09ffaull, RenderCameraFixedKnown1Layout, 242, 80 }, // identity
@@ -24467,7 +25248,10 @@ inline int64_t RenderCameraFixedSave( const RenderCamera * values, int64_t count
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCameraFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderCameraFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderCameraFixedLayout, (size_t) RenderCameraFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderCameraFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderCameraFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderCameraFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -24487,16 +25271,19 @@ inline int64_t RenderCameraFixedSave( const RenderCamera * values, int64_t count
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderCameraFixedLoadWalk( RenderCamera * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderCameraFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderCameraReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderCameraReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -24505,7 +25292,7 @@ inline int64_t RenderCameraFixedLoadWalk( RenderCamera * values, int64_t capacit
 // RenderCameraFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -24522,8 +25309,8 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -24537,7 +25324,12 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -24553,7 +25345,11 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderCameraFixedLineageCount; ++i )
     {
-        if ( RenderCameraFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderCameraFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -24576,7 +25372,9 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
     const TableFixedKnownLayout & known = RenderCameraFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderCameraFixedPlan;
     int32_t entry_count = RenderCameraFixedPlanCount;
@@ -24631,12 +25429,12 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderCameraFixedLayout, (int32_t) RenderCameraFixedLayoutBytes, RenderCameraFixedDst,
-                                                   RenderCameraFixedCover, RenderCameraFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderCameraFixedCover, RenderCameraFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -24717,7 +25515,9 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderCameraReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -24769,7 +25569,7 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
             return -1;
         }
         TableFixedClampKnownRanges( RenderCameraFixedKnownRanges[lineage_at], RenderCameraFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;
@@ -24782,7 +25582,7 @@ inline int64_t RenderCameraFixedLoadWalkBody( RenderCamera * values, int64_t cap
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -24790,7 +25590,10 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
     const int64_t n = RenderCameraFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderCameraReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderCameraReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -24863,92 +25666,39 @@ constexpr uint8_t RenderShipFixedLayout[] = {
     0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
     0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1,
     0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
-    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderShipFixedLayoutBytes = (int64_t) sizeof( RenderShipFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderShipFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderShip
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // flags
-    {
-        64, 0, 0, 0, 0
-    }, // object_id
-    {
-        68, 0, 0, 0, 0
-    }, // target_object_id
-    {
-        72, 0, 0, 0, 0
-    }, // thrust
-    {
-        76, 0, 0, 0, 0
-    }, // object_sequence
-    {
-        77, 0, 0, 0, 0
-    }, // ship_type
-    {
-        0, 0, 0, 0, 0
-    }, // Fighter
-    {
-        0, 0, 0, 0, 0
-    }, // Bomber
-    {
-        0, 0, 0, 0, 0
-    }, // Freighter
-    {
-        78, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
-    {
-        79, 0, 0, 0, 0
-    }, // has_target_lock
-    {
-        80, 0, 0, 0, 0
-    }, // predicted_explode
+    { 0, 0, 0, 0, 0 }, // RenderShip
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // flags
+    { 64, 0, 0, 0, 0 }, // object_id
+    { 68, 0, 0, 0, 0 }, // target_object_id
+    { 72, 0, 0, 0, 0 }, // thrust
+    { 76, 0, 0, 0, 0 }, // object_sequence
+    { 77, 0, 0, 0, 0 }, // ship_type
+    { 0, 0, 0, 0, 0 }, // Fighter
+    { 0, 0, 0, 0, 0 }, // Bomber
+    { 0, 0, 0, 0, 0 }, // Freighter
+    { 78, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
+    { 79, 0, 0, 0, 0 }, // has_target_lock
+    { 80, 0, 0, 0, 0 }, // predicted_explode
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -25040,8 +25790,7 @@ constexpr uint8_t RenderShipFixedKnown0Layout[] = {
     0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
     0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1,
     0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
-    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderShipFixedKnown1Layout[] = {
     0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
     0x00, 0x0b, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -25070,8 +25819,7 @@ constexpr uint8_t RenderShipFixedKnown1Layout[] = {
     0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
     0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1,
     0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
-    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderShipFixedKnown[] = {
     { 0x863125cfa2630ceeull, RenderShipFixedKnown0Layout, 446, 89 }, // lock
     { 0x66c2646b21ac5b5full, RenderShipFixedKnown1Layout, 446, 89 }, // identity
@@ -25105,7 +25853,10 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
     TableFixedPut64( buffer + kTableFixedHashAt, RenderShipFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderShipFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderShipFixedLayout, (size_t) RenderShipFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderShipFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderShipFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderShipFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -25125,16 +25876,19 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderShipFixedLoadWalk( RenderShip * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderShipFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderShipReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderShipReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -25143,7 +25897,7 @@ inline int64_t RenderShipFixedLoadWalk( RenderShip * values, int64_t capacity, c
 // RenderShipFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -25160,8 +25914,8 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -25175,7 +25929,12 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -25191,7 +25950,11 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderShipFixedLineageCount; ++i )
     {
-        if ( RenderShipFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderShipFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -25214,7 +25977,9 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
     const TableFixedKnownLayout & known = RenderShipFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderShipFixedPlan;
     int32_t entry_count = RenderShipFixedPlanCount;
@@ -25269,12 +26034,12 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderShipFixedLayout, (int32_t) RenderShipFixedLayoutBytes, RenderShipFixedDst,
-                                                   RenderShipFixedCover, RenderShipFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderShipFixedCover, RenderShipFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -25355,7 +26120,9 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderShipReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -25410,7 +26177,7 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
             return -1;
         }
         TableFixedClampKnownRanges( RenderShipFixedKnownRanges[lineage_at], RenderShipFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderShipFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderShipReset( values[j] ); }
@@ -25429,7 +26196,7 @@ inline int64_t RenderShipFixedLoadWalkBody( RenderShip * values, int64_t capacit
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -25437,7 +26204,10 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
     const int64_t n = RenderShipFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderShipReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderShipReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -25502,68 +26272,31 @@ constexpr uint8_t RenderTurretFixedLayout[] = {
     0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderTurretFixedLayoutBytes = (int64_t) sizeof( RenderTurretFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderTurretFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderTurret
-    {
-        0, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        32, 0, 0, 0, 0
-    }, // flags
-    {
-        40, 0, 0, 0, 0
-    }, // object_id
-    {
-        44, 0, 0, 0, 0
-    }, // parent_object_id
-    {
-        48, 0, 0, 0, 0
-    }, // turret_index
-    {
-        52, 0, 0, 0, 0
-    }, // target_object_id
-    {
-        56, 0, 0, 0, 0
-    }, // object_sequence
-    {
-        57, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
-    {
-        58, 0, 0, 0, 0
-    }, // has_target_lock
+    { 0, 0, 0, 0, 0 }, // RenderTurret
+    { 0, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 32, 0, 0, 0, 0 }, // flags
+    { 40, 0, 0, 0, 0 }, // object_id
+    { 44, 0, 0, 0, 0 }, // parent_object_id
+    { 48, 0, 0, 0, 0 }, // turret_index
+    { 52, 0, 0, 0, 0 }, // target_object_id
+    { 56, 0, 0, 0, 0 }, // object_sequence
+    { 57, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
+    { 58, 0, 0, 0, 0 }, // has_target_lock
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -25644,8 +26377,7 @@ constexpr uint8_t RenderTurretFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderTurretFixedKnown1Layout[] = {
     0x12, 0x00, 0x00, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x0d, 0x3b, 0x00, 0x00,
     0x00, 0x09, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x20, 0x00,
@@ -25666,8 +26398,7 @@ constexpr uint8_t RenderTurretFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderTurretFixedKnown[] = {
     { 0x9e443be2f7294b72ull, RenderTurretFixedKnown0Layout, 310, 67 }, // lock
     { 0xe04b36c5f1842bedull, RenderTurretFixedKnown1Layout, 310, 67 }, // identity
@@ -25701,7 +26432,10 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
     TableFixedPut64( buffer + kTableFixedHashAt, RenderTurretFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderTurretFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderTurretFixedLayout, (size_t) RenderTurretFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderTurretFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderTurretFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderTurretFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -25721,16 +26455,19 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderTurretFixedLoadWalk( RenderTurret * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderTurretFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderTurretReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderTurretReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -25739,7 +26476,7 @@ inline int64_t RenderTurretFixedLoadWalk( RenderTurret * values, int64_t capacit
 // RenderTurretFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -25756,8 +26493,8 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -25771,7 +26508,12 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -25787,7 +26529,11 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderTurretFixedLineageCount; ++i )
     {
-        if ( RenderTurretFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderTurretFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -25810,7 +26556,9 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
     const TableFixedKnownLayout & known = RenderTurretFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderTurretFixedPlan;
     int32_t entry_count = RenderTurretFixedPlanCount;
@@ -25865,12 +26613,12 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderTurretFixedLayout, (int32_t) RenderTurretFixedLayoutBytes, RenderTurretFixedDst,
-                                                   RenderTurretFixedCover, RenderTurretFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderTurretFixedCover, RenderTurretFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -25951,7 +26699,9 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderTurretReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -26006,7 +26756,7 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
             return -1;
         }
         TableFixedClampKnownRanges( RenderTurretFixedKnownRanges[lineage_at], RenderTurretFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderTurretFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderTurretReset( values[j] ); }
@@ -26025,7 +26775,7 @@ inline int64_t RenderTurretFixedLoadWalkBody( RenderTurret * values, int64_t cap
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -26033,7 +26783,10 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
     const int64_t n = RenderTurretFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderTurretReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderTurretReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -26101,77 +26854,34 @@ constexpr uint8_t RenderMissileFixedLayout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderMissileFixedLayoutBytes = (int64_t) sizeof( RenderMissileFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderMissileFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderMissile
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // flags
-    {
-        64, 0, 0, 0, 0
-    }, // object_id
-    {
-        68, 0, 0, 0, 0
-    }, // object_sequence
-    {
-        69, 0, 0, 0, 0
-    }, // missile_type
-    {
-        0, 0, 0, 0, 0
-    }, // Seeker
-    {
-        0, 0, 0, 0, 0
-    }, // Dumb
-    {
-        70, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
+    { 0, 0, 0, 0, 0 }, // RenderMissile
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // flags
+    { 64, 0, 0, 0, 0 }, // object_id
+    { 68, 0, 0, 0, 0 }, // object_sequence
+    { 69, 0, 0, 0, 0 }, // missile_type
+    { 0, 0, 0, 0, 0 }, // Seeker
+    { 0, 0, 0, 0, 0 }, // Dumb
+    { 70, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -26255,8 +26965,7 @@ constexpr uint8_t RenderMissileFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderMissileFixedKnown1Layout[] = {
     0x15, 0x00, 0x00, 0x00, 0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x0d, 0x47, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -26280,8 +26989,7 @@ constexpr uint8_t RenderMissileFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderMissileFixedKnown[] = {
     { 0xf7ec4593b531c59aull, RenderMissileFixedKnown0Layout, 361, 79 }, // lock
     { 0x24d3188fbb5f76d5ull, RenderMissileFixedKnown1Layout, 361, 79 }, // identity
@@ -26315,7 +27023,10 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
     TableFixedPut64( buffer + kTableFixedHashAt, RenderMissileFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderMissileFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderMissileFixedLayout, (size_t) RenderMissileFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderMissileFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderMissileFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderMissileFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -26335,16 +27046,19 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderMissileFixedLoadWalk( RenderMissile * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderMissileFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderMissileReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderMissileReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -26353,7 +27067,7 @@ inline int64_t RenderMissileFixedLoadWalk( RenderMissile * values, int64_t capac
 // RenderMissileFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -26370,8 +27084,8 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -26385,7 +27099,12 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -26401,7 +27120,11 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderMissileFixedLineageCount; ++i )
     {
-        if ( RenderMissileFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderMissileFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -26424,7 +27147,9 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
     const TableFixedKnownLayout & known = RenderMissileFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderMissileFixedPlan;
     int32_t entry_count = RenderMissileFixedPlanCount;
@@ -26479,12 +27204,12 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderMissileFixedLayout, (int32_t) RenderMissileFixedLayoutBytes, RenderMissileFixedDst,
-                                                   RenderMissileFixedCover, RenderMissileFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderMissileFixedCover, RenderMissileFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -26565,7 +27290,9 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderMissileReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -26620,7 +27347,7 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
             return -1;
         }
         TableFixedClampKnownRanges( RenderMissileFixedKnownRanges[lineage_at], RenderMissileFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderMissileFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderMissileReset( values[j] ); }
@@ -26639,7 +27366,7 @@ inline int64_t RenderMissileFixedLoadWalkBody( RenderMissile * values, int64_t c
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -26647,7 +27374,10 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
     const int64_t n = RenderMissileFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderMissileReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderMissileReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -26716,80 +27446,35 @@ constexpr uint8_t RenderDynamicPropFixedLayout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
-    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderDynamicPropFixedLayoutBytes = (int64_t) sizeof( RenderDynamicPropFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderDynamicProp
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // flags
-    {
-        64, 0, 0, 0, 0
-    }, // object_id
-    {
-        68, 0, 0, 0, 0
-    }, // object_sequence
-    {
-        69, 0, 0, 0, 0
-    }, // prop_type
-    {
-        0, 0, 0, 0, 0
-    }, // Rock
-    {
-        0, 0, 0, 0, 0
-    }, // Station
-    {
-        0, 0, 0, 0, 0
-    }, // Beacon
-    {
-        70, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
+    { 0, 0, 0, 0, 0 }, // RenderDynamicProp
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // flags
+    { 64, 0, 0, 0, 0 }, // object_id
+    { 68, 0, 0, 0, 0 }, // object_sequence
+    { 69, 0, 0, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0 }, // Rock
+    { 0, 0, 0, 0, 0 }, // Station
+    { 0, 0, 0, 0, 0 }, // Beacon
+    { 70, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -26874,8 +27559,7 @@ constexpr uint8_t RenderDynamicPropFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
-    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderDynamicPropFixedKnown1Layout[] = {
     0x16, 0x00, 0x00, 0x00, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x0d, 0x47, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -26900,8 +27584,7 @@ constexpr uint8_t RenderDynamicPropFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
-    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderDynamicPropFixedKnown[] = {
     { 0x79301f61e3f56e22ull, RenderDynamicPropFixedKnown0Layout, 378, 79 }, // lock
     { 0x5fdcef41a5116bddull, RenderDynamicPropFixedKnown1Layout, 378, 79 }, // identity
@@ -26935,7 +27618,10 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
     TableFixedPut64( buffer + kTableFixedHashAt, RenderDynamicPropFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderDynamicPropFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderDynamicPropFixedLayout, (size_t) RenderDynamicPropFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderDynamicPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderDynamicPropFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderDynamicPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -26955,16 +27641,19 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderDynamicPropFixedLoadWalk( RenderDynamicProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderDynamicPropFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderDynamicPropReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderDynamicPropReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -26973,7 +27662,7 @@ inline int64_t RenderDynamicPropFixedLoadWalk( RenderDynamicProp * values, int64
 // RenderDynamicPropFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -26990,8 +27679,8 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -27005,7 +27694,12 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -27021,7 +27715,11 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderDynamicPropFixedLineageCount; ++i )
     {
-        if ( RenderDynamicPropFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderDynamicPropFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -27044,7 +27742,9 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
     const TableFixedKnownLayout & known = RenderDynamicPropFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderDynamicPropFixedPlan;
     int32_t entry_count = RenderDynamicPropFixedPlanCount;
@@ -27099,12 +27799,12 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderDynamicPropFixedLayout, (int32_t) RenderDynamicPropFixedLayoutBytes, RenderDynamicPropFixedDst,
-                                                   RenderDynamicPropFixedCover, RenderDynamicPropFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderDynamicPropFixedCover, RenderDynamicPropFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -27185,7 +27885,9 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderDynamicPropReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -27240,7 +27942,7 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
             return -1;
         }
         TableFixedClampKnownRanges( RenderDynamicPropFixedKnownRanges[lineage_at], RenderDynamicPropFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderDynamicPropFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderDynamicPropReset( values[j] ); }
@@ -27259,7 +27961,7 @@ inline int64_t RenderDynamicPropFixedLoadWalkBody( RenderDynamicProp * values, i
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -27267,7 +27969,10 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
     const int64_t n = RenderDynamicPropFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderDynamicPropReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderDynamicPropReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -27336,80 +28041,35 @@ constexpr uint8_t RenderStaticPropFixedLayout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
-    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderStaticPropFixedLayoutBytes = (int64_t) sizeof( RenderStaticPropFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderStaticPropFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderStaticProp
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // scale
-    {
-        64, 0, 0, 0, 0
-    }, // flags
-    {
-        72, 0, 0, 0, 0
-    }, // static_prop_id
-    {
-        76, 0, 0, 0, 0
-    }, // prop_type
-    {
-        0, 0, 0, 0, 0
-    }, // Rock
-    {
-        0, 0, 0, 0, 0
-    }, // Station
-    {
-        0, 0, 0, 0, 0
-    }, // Beacon
-    {
-        77, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
+    { 0, 0, 0, 0, 0 }, // RenderStaticProp
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // scale
+    { 64, 0, 0, 0, 0 }, // flags
+    { 72, 0, 0, 0, 0 }, // static_prop_id
+    { 76, 0, 0, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0 }, // Rock
+    { 0, 0, 0, 0, 0 }, // Station
+    { 0, 0, 0, 0, 0 }, // Beacon
+    { 77, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -27494,8 +28154,7 @@ constexpr uint8_t RenderStaticPropFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
-    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderStaticPropFixedKnown1Layout[] = {
     0x16, 0x00, 0x00, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1, 0x0d, 0x4e, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -27520,8 +28179,7 @@ constexpr uint8_t RenderStaticPropFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
-    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderStaticPropFixedKnown[] = {
     { 0xa63b40147f0f5066ull, RenderStaticPropFixedKnown0Layout, 378, 86 }, // lock
     { 0x708877297c4bf111ull, RenderStaticPropFixedKnown1Layout, 378, 86 }, // identity
@@ -27555,7 +28213,10 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
     TableFixedPut64( buffer + kTableFixedHashAt, RenderStaticPropFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderStaticPropFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderStaticPropFixedLayout, (size_t) RenderStaticPropFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderStaticPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderStaticPropFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderStaticPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -27575,16 +28236,19 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderStaticPropFixedLoadWalk( RenderStaticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderStaticPropFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderStaticPropReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderStaticPropReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -27593,7 +28257,7 @@ inline int64_t RenderStaticPropFixedLoadWalk( RenderStaticProp * values, int64_t
 // RenderStaticPropFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -27610,8 +28274,8 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -27625,7 +28289,12 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -27641,7 +28310,11 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderStaticPropFixedLineageCount; ++i )
     {
-        if ( RenderStaticPropFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderStaticPropFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -27664,7 +28337,9 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
     const TableFixedKnownLayout & known = RenderStaticPropFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderStaticPropFixedPlan;
     int32_t entry_count = RenderStaticPropFixedPlanCount;
@@ -27719,12 +28394,12 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderStaticPropFixedLayout, (int32_t) RenderStaticPropFixedLayoutBytes, RenderStaticPropFixedDst,
-                                                   RenderStaticPropFixedCover, RenderStaticPropFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderStaticPropFixedCover, RenderStaticPropFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -27805,7 +28480,9 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderStaticPropReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -27860,7 +28537,7 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
             return -1;
         }
         TableFixedClampKnownRanges( RenderStaticPropFixedKnownRanges[lineage_at], RenderStaticPropFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderStaticPropFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderStaticPropReset( values[j] ); }
@@ -27879,7 +28556,7 @@ inline int64_t RenderStaticPropFixedLoadWalkBody( RenderStaticProp * values, int
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -27887,7 +28564,10 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
     const int64_t n = RenderStaticPropFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderStaticPropReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderStaticPropReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -27957,83 +28637,36 @@ constexpr uint8_t RenderCosmeticPropFixedLayout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
     0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
-    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderCosmeticPropFixedLayoutBytes = (int64_t) sizeof( RenderCosmeticPropFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderCosmeticProp
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // scale
-    {
-        64, 0, 0, 0, 0
-    }, // flags
-    {
-        72, 0, 0, 0, 0
-    }, // cosmetic_prop_id
-    {
-        76, 0, 0, 0, 0
-    }, // prop_sequence
-    {
-        77, 0, 0, 0, 0
-    }, // prop_type
-    {
-        0, 0, 0, 0, 0
-    }, // Rock
-    {
-        0, 0, 0, 0, 0
-    }, // Station
-    {
-        0, 0, 0, 0, 0
-    }, // Beacon
-    {
-        78, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
+    { 0, 0, 0, 0, 0 }, // RenderCosmeticProp
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // scale
+    { 64, 0, 0, 0, 0 }, // flags
+    { 72, 0, 0, 0, 0 }, // cosmetic_prop_id
+    { 76, 0, 0, 0, 0 }, // prop_sequence
+    { 77, 0, 0, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0 }, // Rock
+    { 0, 0, 0, 0, 0 }, // Station
+    { 0, 0, 0, 0, 0 }, // Beacon
+    { 78, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 13 leaves by the schema compiler —
@@ -28120,8 +28753,7 @@ constexpr uint8_t RenderCosmeticPropFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
     0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
-    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderCosmeticPropFixedKnown1Layout[] = {
     0x17, 0x00, 0x00, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x0d, 0x4f, 0x00, 0x00,
     0x00, 0x08, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -28147,8 +28779,7 @@ constexpr uint8_t RenderCosmeticPropFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
     0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
-    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderCosmeticPropFixedKnown[] = {
     { 0x72a2fa1985def98eull, RenderCosmeticPropFixedKnown0Layout, 395, 87 }, // lock
     { 0x47440473d29f9c79ull, RenderCosmeticPropFixedKnown1Layout, 395, 87 }, // identity
@@ -28182,7 +28813,10 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCosmeticPropFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderCosmeticPropFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderCosmeticPropFixedLayout, (size_t) RenderCosmeticPropFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderCosmeticPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderCosmeticPropFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderCosmeticPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -28202,16 +28836,19 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderCosmeticPropFixedLoadWalk( RenderCosmeticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderCosmeticPropFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderCosmeticPropReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderCosmeticPropReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -28220,7 +28857,7 @@ inline int64_t RenderCosmeticPropFixedLoadWalk( RenderCosmeticProp * values, int
 // RenderCosmeticPropFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -28237,8 +28874,8 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -28252,7 +28889,12 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -28268,7 +28910,11 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderCosmeticPropFixedLineageCount; ++i )
     {
-        if ( RenderCosmeticPropFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderCosmeticPropFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -28291,7 +28937,9 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
     const TableFixedKnownLayout & known = RenderCosmeticPropFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderCosmeticPropFixedPlan;
     int32_t entry_count = RenderCosmeticPropFixedPlanCount;
@@ -28346,12 +28994,12 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderCosmeticPropFixedLayout, (int32_t) RenderCosmeticPropFixedLayoutBytes, RenderCosmeticPropFixedDst,
-                                                   RenderCosmeticPropFixedCover, RenderCosmeticPropFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderCosmeticPropFixedCover, RenderCosmeticPropFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -28432,7 +29080,9 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderCosmeticPropReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -28487,7 +29137,7 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
             return -1;
         }
         TableFixedClampKnownRanges( RenderCosmeticPropFixedKnownRanges[lineage_at], RenderCosmeticPropFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderCosmeticPropFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderCosmeticPropReset( values[j] ); }
@@ -28506,7 +29156,7 @@ inline int64_t RenderCosmeticPropFixedLoadWalkBody( RenderCosmeticProp * values,
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -28514,7 +29164,10 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
     const int64_t n = RenderCosmeticPropFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderCosmeticPropReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderCosmeticPropReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -28580,71 +29233,32 @@ constexpr uint8_t RenderLaserFixedLayout[] = {
     0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderLaserFixedLayoutBytes = (int64_t) sizeof( RenderLaserFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderLaserFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderLaser
-    {
-        0, 0, 0, 0, 0
-    }, // start
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // finish
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        48, 0, 0, 0, 0
-    }, // t
-    {
-        56, 0, 0, 0, 0
-    }, // laser_id
-    {
-        60, 0, 0, 0, 0
-    }, // laser_type
-    {
-        0, 0, 0, 0, 0
-    }, // Pulse
-    {
-        0, 0, 0, 0, 0
-    }, // Beam
-    {
-        61, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
+    { 0, 0, 0, 0, 0 }, // RenderLaser
+    { 0, 0, 0, 0, 0 }, // start
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // finish
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 48, 0, 0, 0, 0 }, // t
+    { 56, 0, 0, 0, 0 }, // laser_id
+    { 60, 0, 0, 0, 0 }, // laser_type
+    { 0, 0, 0, 0, 0 }, // Pulse
+    { 0, 0, 0, 0, 0 }, // Beam
+    { 61, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 10 leaves by the schema compiler —
@@ -28724,8 +29338,7 @@ constexpr uint8_t RenderLaserFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderLaserFixedKnown1Layout[] = {
     0x13, 0x00, 0x00, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x0d, 0x3e, 0x00, 0x00,
     0x00, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0x18, 0x00,
@@ -28747,8 +29360,7 @@ constexpr uint8_t RenderLaserFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderLaserFixedKnown[] = {
     { 0x99df0a3db4b1eebdull, RenderLaserFixedKnown0Layout, 327, 70 }, // lock
     { 0xbd47f27872c00ba6ull, RenderLaserFixedKnown1Layout, 327, 70 }, // identity
@@ -28782,7 +29394,10 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
     TableFixedPut64( buffer + kTableFixedHashAt, RenderLaserFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderLaserFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderLaserFixedLayout, (size_t) RenderLaserFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderLaserFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderLaserFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderLaserFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -28802,16 +29417,19 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderLaserFixedLoadWalk( RenderLaser * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderLaserFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderLaserReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderLaserReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -28820,7 +29438,7 @@ inline int64_t RenderLaserFixedLoadWalk( RenderLaser * values, int64_t capacity,
 // RenderLaserFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -28837,8 +29455,8 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -28852,7 +29470,12 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -28868,7 +29491,11 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderLaserFixedLineageCount; ++i )
     {
-        if ( RenderLaserFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderLaserFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -28891,7 +29518,9 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
     const TableFixedKnownLayout & known = RenderLaserFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderLaserFixedPlan;
     int32_t entry_count = RenderLaserFixedPlanCount;
@@ -28946,12 +29575,12 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderLaserFixedLayout, (int32_t) RenderLaserFixedLayoutBytes, RenderLaserFixedDst,
-                                                   RenderLaserFixedCover, RenderLaserFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderLaserFixedCover, RenderLaserFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -29032,7 +29661,9 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderLaserReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -29087,7 +29718,7 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
             return -1;
         }
         TableFixedClampKnownRanges( RenderLaserFixedKnownRanges[lineage_at], RenderLaserFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderLaserFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderLaserReset( values[j] ); }
@@ -29106,7 +29737,7 @@ inline int64_t RenderLaserFixedLoadWalkBody( RenderLaser * values, int64_t capac
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -29114,7 +29745,10 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
     const int64_t n = RenderLaserFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderLaserReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderLaserReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -29182,77 +29816,34 @@ constexpr uint8_t RenderExplosionFixedLayout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t RenderExplosionFixedLayoutBytes = (int64_t) sizeof( RenderExplosionFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderExplosionFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // RenderExplosion
-    {
-        0, 0, 0, 0, 0
-    }, // position
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // rotation
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // z
-    {
-        24, 0, 0, 0, 0
-    }, // w
-    {
-        56, 0, 0, 0, 0
-    }, // t
-    {
-        64, 0, 0, 0, 0
-    }, // explosion_id
-    {
-        68, 0, 0, 0, 0
-    }, // parent_object_id
-    {
-        72, 0, 0, 0, 0
-    }, // explosion_type
-    {
-        0, 0, 0, 0, 0
-    }, // Small
-    {
-        0, 0, 0, 0, 0
-    }, // Large
-    {
-        73, 0, 0, 0, 0
-    }, // team
-    {
-        0, 0, 0, 0, 0
-    }, // Red
-    {
-        0, 0, 0, 0, 0
-    }, // Blue
-    {
-        0, 0, 0, 0, 0
-    }, // Green
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
+    { 0, 0, 0, 0, 0 }, // RenderExplosion
+    { 0, 0, 0, 0, 0 }, // position
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // rotation
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // z
+    { 24, 0, 0, 0, 0 }, // w
+    { 56, 0, 0, 0, 0 }, // t
+    { 64, 0, 0, 0, 0 }, // explosion_id
+    { 68, 0, 0, 0, 0 }, // parent_object_id
+    { 72, 0, 0, 0, 0 }, // explosion_type
+    { 0, 0, 0, 0, 0 }, // Small
+    { 0, 0, 0, 0, 0 }, // Large
+    { 73, 0, 0, 0, 0 }, // team
+    { 0, 0, 0, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -29336,8 +29927,7 @@ constexpr uint8_t RenderExplosionFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t RenderExplosionFixedKnown1Layout[] = {
     0x15, 0x00, 0x00, 0x00, 0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x0d, 0x4a, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
@@ -29361,8 +29951,7 @@ constexpr uint8_t RenderExplosionFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout RenderExplosionFixedKnown[] = {
     { 0xf71917b507eff722ull, RenderExplosionFixedKnown0Layout, 361, 82 }, // lock
     { 0xf1aaafacd510bcddull, RenderExplosionFixedKnown1Layout, 361, 82 }, // identity
@@ -29396,7 +29985,10 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
     TableFixedPut64( buffer + kTableFixedHashAt, RenderExplosionFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderExplosionFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderExplosionFixedLayout, (size_t) RenderExplosionFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderExplosionFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k )
+    {
+        if ( !RenderExplosionFixedFiniteBody( values[k] ) ) { return -1; }
+    } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderExplosionFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -29416,16 +30008,19 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
 // holds the same rule as FixedLoad. The body below is the walk itself.
 inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t RenderExplosionFixedLoadWalk( RenderExplosion * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     const int64_t n = RenderExplosionFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
     if ( n < 0 || report->damaged || report->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderExplosionReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderExplosionReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -29434,7 +30029,7 @@ inline int64_t RenderExplosionFixedLoadWalk( RenderExplosion * values, int64_t c
 // RenderExplosionFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
 // every recovered record, with the counters counted onto the report passed.
 inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -29451,8 +30046,8 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
     {
         report->refused = true;
         report->reason = data[0] == kTableWireForm ? TableMessageReason::previous_form
-                       : data[0] == kTableWireMessageForm ? TableMessageReason::message_form_as_file
-                       : TableMessageReason::newer_form;
+            : data[0] == kTableWireMessageForm     ? TableMessageReason::message_form_as_file
+                                                   : TableMessageReason::newer_form;
         return -1;
     }
     if ( bytes < kTableFixedHeaderBytes + 4 )
@@ -29466,7 +30061,12 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
     // spendable later.
     for ( int32_t i = 1; i < kTableFixedHashAt; ++i )
     {
-        if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
+        if ( data[i] != 0 )
+        {
+            report->damaged = true;
+            report->reason = TableFixedReason::reserved_not_zero;
+            return -1;
+        }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
@@ -29482,7 +30082,11 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
     int32_t lineage_at = -1;
     for ( int32_t i = 0; i < RenderExplosionFixedLineageCount; ++i )
     {
-        if ( RenderExplosionFixedLineage[i] == hash ) { lineage_at = i; break; }
+        if ( RenderExplosionFixedLineage[i] == hash )
+        {
+            lineage_at = i;
+            break;
+        }
     }
     if ( lineage_at < 0 )
     {
@@ -29505,7 +30109,9 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
     const TableFixedKnownLayout & known = RenderExplosionFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
     }
     const TableFixedEntry * entries = RenderExplosionFixedPlan;
     int32_t entry_count = RenderExplosionFixedPlanCount;
@@ -29560,12 +30166,12 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
             int32_t compiled_guarded = 0;
             uint32_t fill_at = 0;
             const int32_t made = TableFixedCompile( parsed, RenderExplosionFixedLayout, (int32_t) RenderExplosionFixedLayoutBytes, RenderExplosionFixedDst,
-                                                   RenderExplosionFixedCover, RenderExplosionFixedCoverCount,
-                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+                RenderExplosionFixedCover, RenderExplosionFixedCoverCount,
+                dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 )
             {
                 report->refused = true;
-                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : ( made == -3 ) ? TableMessageReason::layout_malformed : ( made == -4 ) ? TableMessageReason::kind_mismatch : TableMessageReason::plan_too_large;
                 return -1;
             }
             record_bytes = known.record_bytes;
@@ -29646,7 +30252,9 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
         {
             for ( int64_t j = 0; j < k; ++j ) { RenderExplosionReset( values[j] ); }
             report->widened = batch_widened;
-            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+            report->refused = true;
+            report->reason = TableMessageReason::no_layout;
+            return -1;
         }
         for ( int32_t i = 0; i < entry_count; ++i )
         {
@@ -29701,7 +30309,7 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
             return -1;
         }
         TableFixedClampKnownRanges( RenderExplosionFixedKnownRanges[lineage_at], RenderExplosionFixedKnownRangeCounts[lineage_at],
-                                    (uint8_t *) &values[k], report );
+            (uint8_t *) &values[k], report );
         if ( !RenderExplosionFixedClamp( values[k], report ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { RenderExplosionReset( values[j] ); }
@@ -29720,7 +30328,7 @@ inline int64_t RenderExplosionFixedLoadWalkBody( RenderExplosion * values, int64
 // them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+    TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     TableReport * out = report != NULL ? report : &local;
@@ -29728,7 +30336,10 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
     const int64_t n = RenderExplosionFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
     if ( n < 0 || out->damaged || out->refused )
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RenderExplosionReset( values[k] ); } }
+        if ( values != NULL )
+        {
+            for ( int64_t k = 0; k < capacity; ++k ) { RenderExplosionReset( values[k] ); }
+        }
         return -1;
     }
     return n;
@@ -30502,7 +31113,11 @@ inline bool RenderCameraCookBody( uint8_t * at, const RenderCamera & value, Tabl
     table_cook_put( at + 60, (uint64_t) value.camera_type, 4, order );
     table_cook_put( at + 64, (uint64_t) value.target_object_id, 4, order );
     if ( !TableFloatFinite( value.fov ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.fov, 4 ); table_cook_put( at + 68, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.fov, 4 );
+        table_cook_put( at + 68, (uint64_t) bits, 4, order );
+    }
     return true;
 }
 
@@ -30514,9 +31129,15 @@ inline bool RenderShipCookBody( uint8_t * at, const RenderShip & value, TableByt
     table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.target_object_id, 4, order );
     if ( !TableFloatFinite( value.thrust ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint32_t bits = 0; memcpy( &bits, &value.thrust, 4 ); table_cook_put( at + 72, (uint64_t) bits, 4, order ); }
+    {
+        uint32_t bits = 0;
+        memcpy( &bits, &value.thrust, 4 );
+        table_cook_put( at + 72, (uint64_t) bits, 4, order );
+    }
     table_cook_put( at + 76, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.ship_type ) > 3 ) );
     table_cook_put( at + 77, (uint64_t) value.ship_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 78, (uint64_t) value.team, 1, order );
     table_cook_put( at + 79, (uint64_t) ( value.has_target_lock ? 1 : 0 ), 1, order );
     table_cook_put( at + 80, (uint64_t) ( value.predicted_explode ? 1 : 0 ), 1, order );
@@ -30532,6 +31153,7 @@ inline bool RenderTurretCookBody( uint8_t * at, const RenderTurret & value, Tabl
     table_cook_put( at + 48, (uint64_t) value.turret_index, 4, order );
     table_cook_put( at + 52, (uint64_t) value.target_object_id, 4, order );
     table_cook_put( at + 56, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 57, (uint64_t) value.team, 1, order );
     table_cook_put( at + 58, (uint64_t) ( value.has_target_lock ? 1 : 0 ), 1, order );
     return true;
@@ -30544,7 +31166,9 @@ inline bool RenderMissileCookBody( uint8_t * at, const RenderMissile & value, Ta
     table_cook_put( at + 56, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.missile_type ) > 2 ) );
     table_cook_put( at + 69, (uint64_t) value.missile_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 70, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -30556,7 +31180,9 @@ inline bool RenderDynamicPropCookBody( uint8_t * at, const RenderDynamicProp & v
     table_cook_put( at + 56, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 64, (uint64_t) value.object_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.object_sequence, 1, order );
+    schema_assert( !( uint64_t( value.prop_type ) > 3 ) );
     table_cook_put( at + 69, (uint64_t) value.prop_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 70, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -30566,10 +31192,16 @@ inline bool RenderStaticPropCookBody( uint8_t * at, const RenderStaticProp & val
     if ( !RenderVector3CookBody( at + 0, value.position, order ) ) { return false; }
     if ( !RenderQuaternionCookBody( at + 24, value.rotation, order ) ) { return false; }
     if ( !TableFloatFinite( value.scale ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.scale, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.scale, 8 );
+        table_cook_put( at + 56, bits, 8, order );
+    }
     table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 72, (uint64_t) value.static_prop_id, 4, order );
+    schema_assert( !( uint64_t( value.prop_type ) > 3 ) );
     table_cook_put( at + 76, (uint64_t) value.prop_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 77, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -30579,11 +31211,17 @@ inline bool RenderCosmeticPropCookBody( uint8_t * at, const RenderCosmeticProp &
     if ( !RenderVector3CookBody( at + 0, value.position, order ) ) { return false; }
     if ( !RenderQuaternionCookBody( at + 24, value.rotation, order ) ) { return false; }
     if ( !TableFloatFinite( value.scale ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.scale, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.scale, 8 );
+        table_cook_put( at + 56, bits, 8, order );
+    }
     table_cook_put( at + 64, (uint64_t) value.flags, 8, order );
     table_cook_put( at + 72, (uint64_t) value.cosmetic_prop_id, 4, order );
     table_cook_put( at + 76, (uint64_t) value.prop_sequence, 1, order );
+    schema_assert( !( uint64_t( value.prop_type ) > 3 ) );
     table_cook_put( at + 77, (uint64_t) value.prop_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 78, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -30593,9 +31231,15 @@ inline bool RenderLaserCookBody( uint8_t * at, const RenderLaser & value, TableB
     if ( !RenderVector3CookBody( at + 0, value.start, order ) ) { return false; }
     if ( !RenderVector3CookBody( at + 24, value.finish, order ) ) { return false; }
     if ( !TableFloatFinite( value.t ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.t, 8 ); table_cook_put( at + 48, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.t, 8 );
+        table_cook_put( at + 48, bits, 8, order );
+    }
     table_cook_put( at + 56, (uint64_t) value.laser_id, 4, order );
+    schema_assert( !( uint64_t( value.laser_type ) > 2 ) );
     table_cook_put( at + 60, (uint64_t) value.laser_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 61, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -30605,10 +31249,16 @@ inline bool RenderExplosionCookBody( uint8_t * at, const RenderExplosion & value
     if ( !RenderVector3CookBody( at + 0, value.position, order ) ) { return false; }
     if ( !RenderQuaternionCookBody( at + 24, value.rotation, order ) ) { return false; }
     if ( !TableFloatFinite( value.t ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.t, 8 ); table_cook_put( at + 56, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.t, 8 );
+        table_cook_put( at + 56, bits, 8, order );
+    }
     table_cook_put( at + 64, (uint64_t) value.explosion_id, 4, order );
     table_cook_put( at + 68, (uint64_t) value.parent_object_id, 4, order );
+    schema_assert( !( uint64_t( value.explosion_type ) > 2 ) );
     table_cook_put( at + 72, (uint64_t) value.explosion_type, 1, order );
+    schema_assert( !( uint64_t( value.team ) > 4 ) );
     table_cook_put( at + 73, (uint64_t) value.team, 1, order );
     return true;
 }
@@ -30694,24 +31344,52 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
 inline bool RenderVector3CookBody( uint8_t * at, const RenderVector3 & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.x, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.x, 8 );
+        table_cook_put( at + 0, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.y, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.y, 8 );
+        table_cook_put( at + 8, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.z, 8 ); table_cook_put( at + 16, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.z, 8 );
+        table_cook_put( at + 16, bits, 8, order );
+    }
     return true;
 }
 
 inline bool RenderQuaternionCookBody( uint8_t * at, const RenderQuaternion & value, TableByteOrder order )
 {
     if ( !TableFloatFinite( value.x ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.x, 8 ); table_cook_put( at + 0, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.x, 8 );
+        table_cook_put( at + 0, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.y ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.y, 8 ); table_cook_put( at + 8, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.y, 8 );
+        table_cook_put( at + 8, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.z ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.z, 8 ); table_cook_put( at + 16, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.z, 8 );
+        table_cook_put( at + 16, bits, 8, order );
+    }
     if ( !TableFloatFinite( value.w ) ) { return false; } // a NaN or an infinity is refused (§3.3)
-    { uint64_t bits = 0; memcpy( &bits, &value.w, 8 ); table_cook_put( at + 24, bits, 8, order ); }
+    {
+        uint64_t bits = 0;
+        memcpy( &bits, &value.w, 8 );
+        table_cook_put( at + 24, bits, 8, order );
+    }
     return true;
 }
 

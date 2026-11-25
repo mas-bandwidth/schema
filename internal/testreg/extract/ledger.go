@@ -98,6 +98,7 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 //   - a data case that is a pinned output, by a golden row whose inputs name
 //     its files (every file of the case: its directory and stem); the rows
 //     of one case's files, one per file, share it.
+//   - a TLC configuration, by a model-check row whose inputs name it.
 //
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
@@ -124,6 +125,17 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				continue
 			}
 			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+		case "model-check":
+			// a TLC run of tla/<config>; the controls row runs no config
+			var in struct{ Config string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a model-check row whose inputs do not read: %v", reg.Path, t.Line, t.Key, err))
+				continue
+			}
+			if in.Config == "" {
+				continue
+			}
+			claim(t, Item{Kind: KindModel, Dir: "tla", Name: in.Config}, "tla/"+in.Config)
 		case "make":
 			var in struct{ File, Target string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {

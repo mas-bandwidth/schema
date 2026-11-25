@@ -125,6 +125,16 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 		t.Fatal("no table legs declared — this gate would pass over an empty set")
 	}
 
+	// The leg's only pull-request-workflow mention was ci-fast.yml's leg-gate
+	// job, which ran on a dispatch only: no pull request ever ran it. That job
+	// is leg-gates-nightly.yml's now (2026-11-24), every night over every leg,
+	// so coverage reads that workflow too; docs/CI-TIERS.md holds the leg's
+	// pull-request form as owed.
+	coverWorkflows := append(append([]string{}, prWorkflows...), "leg-gates-nightly.yml")
+	if _, ok := wfs["leg-gates-nightly.yml"]; !ok {
+		t.Fatal("no leg-gates-nightly.yml — the leg gates have no workflow")
+	}
+
 	makeText := makeSourceText(t, root)
 
 	for _, leg := range legs {
@@ -133,7 +143,7 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 		// comment-only lines and cuts each line's trailing `#` comment, so
 		// prose that merely mentions the leg can never satisfy this.
 		covered := false
-		for _, name := range prWorkflows {
+		for _, name := range coverWorkflows {
 			for _, l := range lines(name, wfs[name]) {
 				if strings.Contains(l.text, leg.leg) {
 					covered = true
@@ -145,7 +155,7 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 			}
 		}
 		if !covered {
-			t.Errorf("%s: no pull-request-triggered workflow names %q — a workflow line whose code (not prose) contains it is required, or a pull request runs nothing that holds this leg's evidence", leg.leg, leg.leg)
+			t.Errorf("%s: neither a pull-request-triggered workflow nor leg-gates-nightly.yml names %q — a workflow line whose code (not prose) contains it is required, or a pull request runs nothing that holds this leg's evidence", leg.leg, leg.leg)
 		}
 
 		// Clause 2 — HONESTY. The leg and every shard the row declares must be

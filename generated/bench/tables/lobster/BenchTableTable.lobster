@@ -3294,8 +3294,6 @@ def TableEntityFixedLoadWalk(values·:[TableEntity], data_in·:string, plan·:[s
     var entry_count· = TableEntityFixedPlan.count
     var holes· = TableEntityFixedHoles
     let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableEntityFixedHash:
         let lane· = TableEntityFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3303,10 +3301,6 @@ def TableEntityFixedLoadWalk(values·:[TableEntity], data_in·:string, plan·:[s
         entries· = lane·.entries
         entry_count· = lane·.count
         holes· = TableEntityFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3335,8 +3329,6 @@ def TableEntityFixedLoadWalk(values·:[TableEntity], data_in·:string, plan·:[s
         TableEntityFixedScatter(img·, 0, values·[k·])
         if not TableEntityFixedBoundsBody(values·[k·]):
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableStatReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3468,8 +3460,6 @@ def TableStatFixedLoadWalk(values·:[TableStat], data_in·:string, plan·:[schem
     var entry_count· = TableStatFixedPlan.count
     var holes· = TableStatFixedHoles
     let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableStatFixedHash:
         let lane· = TableStatFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3477,10 +3467,6 @@ def TableStatFixedLoadWalk(values·:[TableStat], data_in·:string, plan·:[schem
         entries· = lane·.entries
         entry_count· = lane·.count
         holes· = TableStatFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3509,8 +3495,6 @@ def TableStatFixedLoadWalk(values·:[TableStat], data_in·:string, plan·:[schem
         TableStatFixedScatter(img·, 0, values·[k·])
         if not TableStatFixedBoundsBody(values·[k·]):
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableHitEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3658,8 +3642,6 @@ def TableHitEventFixedLoadWalk(values·:[TableHitEvent], data_in·:string, plan�
     var entry_count· = TableHitEventFixedPlan.count
     var holes· = TableHitEventFixedHoles
     let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableHitEventFixedHash:
         let lane· = TableHitEventFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3667,10 +3649,6 @@ def TableHitEventFixedLoadWalk(values·:[TableHitEvent], data_in·:string, plan�
         entries· = lane·.entries
         entry_count· = lane·.count
         holes· = TableHitEventFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3699,8 +3677,6 @@ def TableHitEventFixedLoadWalk(values·:[TableHitEvent], data_in·:string, plan�
         TableHitEventFixedScatter(img·, 0, values·[k·])
         if not TableHitEventFixedBoundsBody(values·[k·]):
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableChatEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -3832,8 +3808,6 @@ def TableChatEventFixedLoadWalk(values·:[TableChatEvent], data_in·:string, pla
     var entry_count· = TableChatEventFixedPlan.count
     var holes· = TableChatEventFixedHoles
     let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableChatEventFixedHash:
         let lane· = TableChatEventFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -3841,10 +3815,6 @@ def TableChatEventFixedLoadWalk(values·:[TableChatEvent], data_in·:string, pla
         entries· = lane·.entries
         entry_count· = lane·.count
         holes· = TableChatEventFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -3873,8 +3843,6 @@ def TableChatEventFixedLoadWalk(values·:[TableChatEvent], data_in·:string, pla
         TableChatEventFixedScatter(img·, 0, values·[k·])
         if not TableChatEventFixedBoundsBody(values·[k·]):
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TablePickupEventReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -4006,8 +3974,6 @@ def TablePickupEventFixedLoadWalk(values·:[TablePickupEvent], data_in·:string,
     var entry_count· = TablePickupEventFixedPlan.count
     var holes· = TablePickupEventFixedHoles
     let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TablePickupEventFixedHash:
         let lane· = TablePickupEventFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -4015,10 +3981,6 @@ def TablePickupEventFixedLoadWalk(values·:[TablePickupEvent], data_in·:string,
         entries· = lane·.entries
         entry_count· = lane·.count
         holes· = TablePickupEventFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -4047,8 +4009,6 @@ def TablePickupEventFixedLoadWalk(values·:[TablePickupEvent], data_in·:string,
         TablePickupEventFixedScatter(img·, 0, values·[k·])
         if not TablePickupEventFixedBoundsBody(values·[k·]):
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 // TableMixedReset restores v to its declared defaults in place (docs/SPEC-TABLES.md §3.4).
@@ -4576,8 +4536,6 @@ def TableMixedFixedLoadWalk(values·:[TableMixed], data_in·:string, plan·:[sch
     var entry_count· = TableMixedFixedPlan.count
     var holes· = TableMixedFixedHoles
     let record_bytes· = known·.record
-    var census_unknown· = 0
-    var census_kind· = 0
     if hash· != TableMixedFixedHash:
         let lane· = TableMixedFixedLineagePlans[pick·]
         if lane·.why != "":
@@ -4585,10 +4543,6 @@ def TableMixedFixedLoadWalk(values·:[TableMixed], data_in·:string, plan·:[sch
         entries· = lane·.entries
         entry_count· = lane·.count
         holes· = TableMixedFixedLineageHoles[pick·]
-        census_unknown· = lane·.unknown
-        census_kind· = lane·.kind_mismatch
-    if census_kind· != 0:
-        return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseKindMismatch)
     if entry_count· > length(plan·):
         return schema_rt.fixed_refuse(report·, schema_rt.TableRefusePlanTooLarge)
     let records_start· = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes·
@@ -4620,8 +4574,6 @@ def TableMixedFixedLoadWalk(values·:[TableMixed], data_in·:string, plan·:[sch
             return schema_rt.fixed_refuse_non_finite(report·, nf·)
         if not TableMixedFixedBoundsBody(values·[k·]):
             return schema_rt.fixed_refuse(report·, schema_rt.TableRefuseOutOfRange)
-    report·.unknown += census_unknown·
-    report·.kind_mismatch += census_kind·
     return n·
 
 class TableEntityFixedRecordCodec : schema_rt.FixedRecordCodec

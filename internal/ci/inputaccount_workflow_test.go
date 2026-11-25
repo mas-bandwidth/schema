@@ -76,27 +76,31 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	if !ok {
 		t.Fatal("the input-accounting recipe is missing its variables")
 	}
-	script, _, ok = strings.Cut(script, "\n      # A SKIP NAMES A REASON")
+	// the recipe ends where the job's next step begins
+	script, _, ok = strings.Cut(script, "\n\n      - ")
 	if !ok {
 		t.Fatal("the end of the input-accounting recipe is missing")
 	}
 	for _, tc := range []struct {
-		family, leg, control string
-		want                 string
+		family, leg, control, shard string
+		want                        string
 	}{
-		{"conformance-corpus", "lobster", "", "-family conformance-corpus -leg lobster -check-extra VERIFY_JOBS=4\n" +
+		{"conformance-corpus", "lobster", "", "", "-family conformance-corpus -leg lobster -check-extra VERIFY_JOBS=4\n" +
 			"-family conformance-corpus -leg lobster -canary wrong VERIFY_JOBS=4\n"},
-		{"conformance-corpus", "squirrel", "", "-family conformance-corpus -leg squirrel -check-extra VERIFY_JOBS=4\n"},
-		{"conformance-corpus", "squirrel", "wrong", "-family conformance-corpus -leg squirrel -canary wrong VERIFY_JOBS=4\n"},
-		{"packet-defaults", "lobster", "", "-family packet-defaults -leg lobster\n" +
+		// a squirrel shard row accounts its share and records it; the merge
+		// job holds the union, and the sibling row runs the wrong control
+		{"conformance-corpus", "squirrel", "", "2/3", "-family conformance-corpus -leg squirrel -check-extra -shard 2/3 -opened-out RUNNER_TEMP/input-shard/record.json VERIFY_JOBS=4\n"},
+		{"conformance-corpus", "squirrel", "wrong", "", "-family conformance-corpus -leg squirrel -canary wrong VERIFY_JOBS=4\n"},
+		{"packet-defaults", "lobster", "", "", "-family packet-defaults -leg lobster\n" +
 			"-family packet-defaults -leg lobster -canary extra\n" +
 			"-family packet-defaults -leg lobster -canary wrong\n"},
-		{"packet-defaults", "squirrel", "", "-family packet-defaults -leg squirrel\n" +
+		{"packet-defaults", "squirrel", "", "", "-family packet-defaults -leg squirrel\n" +
 			"-family packet-defaults -leg squirrel -canary extra\n" +
 			"-family packet-defaults -leg squirrel -canary wrong\n"},
 	} {
-		t.Run(tc.family+"/"+tc.leg+"/"+tc.control, func(t *testing.T) {
+		t.Run(tc.family+"/"+tc.leg+"/"+tc.control+"/"+tc.shard, func(t *testing.T) {
 			dir := t.TempDir()
+			tc.want = strings.ReplaceAll(tc.want, "RUNNER_TEMP", dir)
 			bin := filepath.Join(dir, "inputaccount")
 			stub := "#!/bin/sh\nprintf '%s\\n' \"$*\"\n"
 			if err := os.WriteFile(bin, []byte(stub), 0o755); err != nil {
@@ -105,7 +109,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-eo", "pipefail", "-c", "vars=()\n"+script)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG="+tc.leg, "ACCOUNT_CONTROL="+tc.control)
+			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG="+tc.leg, "ACCOUNT_CONTROL="+tc.control, "SHARD="+tc.shard)
 			out, err := cmd.CombinedOutput()
 			if err != nil || string(out) != tc.want {
 				t.Fatalf("accounting arguments = %q, %v; want %q", out, err, tc.want)
@@ -218,7 +222,8 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 			testinputs.Files(t, ".github/workflows/ci-fast.yml", "make/conformance-handoff.py")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", start+script)
 			cmd.Dir = root
-			cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=")
+			cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=",
+				"make_shared=no", "touched_legs=", "clean_legs=", "clean_legs_json=[]")
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("input-family selector failed: %v\n%s", err, out)
 			}
@@ -226,9 +231,14 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			packages, ok := strings.CutPrefix(string(got), "dart_corpus_account="+tc.dart+"\ncpp_corpus_account="+tc.cpp+"\npackages=")
-			packages, rowsOK := strings.CutSuffix(packages, "\ninput_rows=[]\n")
-			if !ok || !rowsOK {
+			outputs := map[string]string{}
+			for line := range strings.Lines(string(got)) {
+				k, v, _ := strings.Cut(strings.TrimSuffix(line, "\n"), "=")
+				outputs[k] = v
+			}
+			packages := outputs["packages"]
+			if outputs["dart_corpus_account"] != tc.dart || outputs["cpp_corpus_account"] != tc.cpp || outputs["input_rows"] != "[]" ||
+				outputs["corpus_shards"] != "[]" || outputs["elixir_corpus_account"] != "false" {
 				t.Fatalf("input-family plan = %q, want dart=%s cpp=%s and no generic rows", got, tc.dart, tc.cpp)
 			}
 			if tc.wantPackage == "" && packages != "" {

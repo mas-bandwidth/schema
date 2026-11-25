@@ -25,7 +25,7 @@ const (
 // TestJsCountBelowMinRefused pins SPEC §5.1 row 3 ("a counted array's count
 // past its Max or below its Min") on every JavaScript read: the variable
 // read, the JSON read, the fixed read (a forged count word in the reader's
-// own layout; a writer outside the reader's lineage is refused layout_newer
+// own layout; a writer outside the reader's lineage is refused layout_unknown
 // first, and a lineage read decodes its image through the same count) and the message
 // read each refuse a count below the reader's Min, as the Go engine refuses
 // count_over_bound (tablewire/decode.go, messagedecode.go, fixed.go,

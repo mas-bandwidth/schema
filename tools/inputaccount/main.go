@@ -3,6 +3,8 @@
 // family that is on disk.
 //
 //	inputaccount -family NAME -leg LEG [-check-extra | -canary extra|wrong] [MAKEVAR=value ...]
+//	inputaccount -family NAME -leg LEG -check-extra -shard I/N -opened-out FILE [MAKEVAR=value ...]
+//	inputaccount -merge FILE...
 //
 // THE RULE (2026-11-22): every test input on disk is consumed and judged by
 // every leg that claims it, or the run fails and names the input. Drivers
@@ -25,6 +27,11 @@
 // With -check-extra, the same open trace must prove a passing leg opened
 // every genuine input and would fail an inventory that also owed the
 // physically present extra file. The wrong canary runs independently.
+//
+// With -shard I/N (and -check-extra), the leg runs one shard of its work
+// (CONFORMANCE_SHARD=I-1 CONFORMANCE_SHARDS=N on the make line) and writes
+// what it opened to -opened-out; -merge holds the shards' union to the whole
+// account (shard.go).
 //
 // A canary exits 0 when the planted run went red, and 1, CANARY FAILED,
 // when it stayed green. Both restore the tree before exiting.
@@ -54,10 +61,51 @@ func run(args []string, stdout, stderr io.Writer) int {
 	leg := fs.String("leg", "", "the reader leg")
 	canary := fs.String("canary", "", "plant a canary: extra or wrong")
 	checkExtra := fs.Bool("check-extra", false, "check the genuine inventory and the extra-file canary in one run")
+	shardFlag := fs.String("shard", "", "with -check-extra: run shard I of N (I/N) and write what it opened to -opened-out")
+	openedOut := fs.String("opened-out", "", "with -shard: the file the shard's record is written to")
+	merge := fs.Bool("merge", false, "hold the shard records named as arguments to the whole account")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	say := func(format string, a ...any) { _, _ = fmt.Fprintf(stderr, "inputaccount: "+format+"\n", a...) }
+	if *merge {
+		if *family != "" || *leg != "" || *canary != "" || *checkExtra || *shardFlag != "" || *openedOut != "" {
+			say("-merge takes only the shard record files")
+			return 2
+		}
+		var recs []shardRecord
+		for _, file := range fs.Args() {
+			r, err := readShardRecord(file)
+			if err != nil {
+				say("%v", err)
+				return 2
+			}
+			recs = append(recs, r)
+		}
+		if bad := mergeShards(recs); len(bad) > 0 {
+			for _, b := range bad {
+				say("%s", b)
+			}
+			say("FAILED the merge of %d shard records", len(recs))
+			return 1
+		}
+		r := recs[0]
+		say("%s %s: %d shards, every one of %d genuine inputs opened by a shard, every shard passed", r.Family, r.Leg, r.Shards, len(r.Owed))
+		say("canary extra %s %s: no shard opened the planted %s, so the expanded inventory is red", r.Family, r.Leg, r.Planted)
+		return 0
+	}
+	shard, shards := 0, 0
+	if *shardFlag != "" || *openedOut != "" {
+		if !*checkExtra || *shardFlag == "" || *openedOut == "" {
+			say("-shard and -opened-out go together, with -check-extra")
+			return 2
+		}
+		var err error
+		if shard, shards, err = parseShard(*shardFlag); err != nil {
+			say("%v", err)
+			return 2
+		}
+	}
 	if *checkExtra && *canary != "" {
 		say("-check-extra and -canary cannot be used together")
 		return 2
@@ -120,6 +168,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	target := f.RunTarget(*leg)
 	makeArgs = append(makeArgs, target)
 	makeArgs = append(makeArgs, fs.Args()...)
+	if shards > 0 {
+		makeArgs = append(makeArgs, fmt.Sprintf("CONFORMANCE_SHARD=%d", shard-1), fmt.Sprintf("CONFORMANCE_SHARDS=%d", shards))
+	}
 	say("%s %s: make %s (%d inputs owed)", *family, *leg, strings.Join(makeArgs, " "), len(want))
 	cmd := exec.Command("make", makeArgs...)
 	if *canary == "wrong" {
@@ -144,6 +195,27 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if runErr != nil {
 		say("leg %s: make %s: %v", *leg, target, runErr)
+	}
+	if shards > 0 {
+		rec := shardRecord{Family: *family, Leg: *leg, Shard: shard, Shards: shards, Planted: planted, Passed: runErr == nil}
+		for _, p := range want {
+			if p != planted {
+				rec.Owed = append(rec.Owed, p)
+			}
+			if opened[p] {
+				rec.Opened = append(rec.Opened, p)
+			}
+		}
+		if err := writeShardRecord(*openedOut, rec); err != nil {
+			say("%v", err)
+			return 2
+		}
+		if runErr != nil || len(rec.Opened) == 0 {
+			say("FAILED %s %s shard %d/%d: the leg must pass and open its share of the inputs (%d opened)", *family, *leg, shard, shards, len(rec.Opened))
+			return 1
+		}
+		say("%s %s shard %d/%d: the leg passed and opened %d of %d genuine inputs; -merge holds the union to all of them", *family, *leg, shard, shards, len(rec.Opened), len(rec.Owed))
+		return 0
 	}
 	if *checkExtra {
 		if runErr != nil || len(missing) != 1 || missing[0] != planted {

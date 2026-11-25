@@ -86,12 +86,12 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	}
 }
 
-// TestFastPlanCoversStreamToDevAndSelectsRelevantWork verifies that ci-fast.yml's
-// plan job diffs every pull request against main, whatever its base (a lane PR
-// is checked out merged with current main, .github/actions/merge-main), defaults
-// to dev on workflow_dispatch, and selects only relevant packages and
-// legs without broadening a single-leg change into the full suite.
-func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
+// TestFastPlanCoversEveryBaseAndSelectsRelevantWork verifies that ci-fast.yml's
+// plan job diffs every pull request and every dispatch against main, whatever
+// its base (a lane PR is checked out merged with current main,
+// .github/actions/merge-main), and selects only relevant packages and legs
+// without broadening a single-leg change into the full suite.
+func TestFastPlanCoversEveryBaseAndSelectsRelevantWork(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
 	if err != nil {
@@ -99,7 +99,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	}
 	wf := string(data)
 
-	const wantBaseLine = "BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}"
+	const wantBaseLine = "          BASE: main\n"
 	if !strings.Contains(wf, wantBaseLine) {
 		t.Fatalf("ci-fast.yml plan does not set %q", wantBaseLine)
 	}
@@ -186,12 +186,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "certify workflow edit runs readiness and workflow auditors",
 			files: ".github/workflows/certify.yml",
-			want:  `no|./internal/recipescan ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan|[]`,
+			want:  `no|./internal/recipescan ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan ./tools/wiredtargets|[]`,
 		},
 		{
 			name:  "nightly-readiness edit runs readiness and workflow auditors",
 			files: "test/conformance/nightly-readiness",
-			want:  `no|./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan|[]`,
+			want:  `no|./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan ./tools/wiredtargets|[]`,
 		},
 		{
 			name:  "docs only",
@@ -293,7 +293,8 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/recipescan ./internal/codegen/lua ./internal/codegen/luatable`},
-		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan`},
+		// a make file named for a language selects that leg (THE PATH MAP, 2026-11-24)
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan ./internal/codegen/darttable`},
 		{"docs only", "docs/TUTORIAL.md", `[]|./internal/docgate ./internal/tablepack ./compiler`},
 		// the compiler's own page-text tests read pages the docgate rule does
 		// not name: a nested page and the rulings file
@@ -379,14 +380,23 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 		{"rust codegen", "internal/codegen/rusttable/mapsarms.go", `yes|["rust"]`},
 		{"elixir codegen", "internal/codegen/elixirtable/block.go", `yes|["elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets"]`},
 		{"dart codegen", "internal/codegen/darttable/textform.go", `yes|[]`},
-		{"generated tree file", "generated/cpp/Types.h", `yes|[]`},
-		{"tables schema", "tables/stream/Stream.schema", `yes|["c","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
-		{"packet schema", "examples/Types.schema", `yes|["c","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
-		{"compiler go", "compiler/compiler.go", `yes|["elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4"]`},
+		{"generated tree file", "generated/cpp/Types.h", `yes|["cpp-format","cpp-warnings"]`},
+		{"tables schema", "tables/stream/Stream.schema", `yes|["c","cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
+		{"packet schema", "examples/Types.schema", `yes|["c","cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
+		{"compiler go", "compiler/compiler.go", `yes|["cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4"]`},
 		{"ci policy only", "internal/ci/ci_test.go", `no|[]`},
 		{"docs only", "README.md", `no|[]`},
 		{"c format allowlist", "make/c-format-allow.txt", `no|["c"]`},
 		{"eslint config", "eslint.config.mjs", `no|["js"]`},
+		// THE C++ CLEAN GATE RUNS ON THE PULL REQUEST (#424): #4501 added
+		// generated C++ table units (a new test/tables/ schema) and the gate,
+		// then on workflow_dispatch only, never ran
+		{"new C++ table unit", "test/tables/announce4096/Announce.schema", `yes|["c","cpp-format","cpp-warnings","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
+		{"cpp table codegen", "internal/codegen/cpptable/json.go", `yes|["cpp-format","cpp-warnings"]`},
+		{"committed C++ table pin", "generated/bench/tables/cpp/BenchTableTable.h", `yes|["cpp-format","cpp-warnings"]`},
+		{"cpp format allowlist", "make/cpp-format-allow.txt", `no|["cpp-format","cpp-warnings"]`},
+		{"cpp warn allowlist", "make/cpp-warn-allow.txt", `no|["cpp-format","cpp-warnings"]`},
+		{"cpp gate script", "make/checks/cpp-clean-format.sh", `no|["cpp-format","cpp-warnings"]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script

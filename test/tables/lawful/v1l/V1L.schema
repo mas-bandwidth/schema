@@ -1,0 +1,81 @@
+// V1L.schema — V1 as a LAWFUL older writer for V2 (docs/FIXED-FORM-ALGORITHM.md
+// §5.1, §5.2 MATCH and EMIT, §5.4 row 1, §5.9 #30). V1 is an UNLAWFUL lineage
+// entry for V2 three times over: V2 removes `b` (a field V2 names nowhere),
+// moves `a` from int32 to float32, and moves `ledger` from a positional array
+// to one keyed by Grade (two kinds off every ladder). A read of V1 is refused
+// `layout_malformed` (test/tables/fixedform_main.cpp holds that verdict).
+//
+// This writer is V1 with exactly those three taken back: no `b`, `a` already
+// float32, `ledger` already keyed. Every other edit V2 makes (a variant and an
+// arm inserted in the middle, the rename under `was`, the slid and the added
+// keys, the grown Inner, the grown bounds, the optional) is lawful,
+// and is still read through a plan compiled from this older writer's block.
+//
+// Two of V1's edits are narrowings, unlawful as the rest (FIXED-FORM-ALGORITHM
+// §5.2 EMIT): V1's Slot key Gamma, which V2 removed, and V1's [..6] slots,
+// which V2 shrank to [..3]. They are taken back here too: Slot has no Gamma
+// and MaxSlots is 2, a bound V2 GREW. The Go reference refuses either one, and
+// internal/codegen/gotable TestFixedV1LIsALawfulWriterForV2 holds this writer to it.
+//
+// It sits in its own directory on purpose: it is in no lineage (V2's is V1),
+// and the checks drive it through COMPILE directly, as v_case always has.
+package tblv1l
+
+const MaxSlots = 2
+
+const TallySlots = 3
+
+enum Mode { Alpha, Beta }
+
+enum Grade { Bronze, Gold }
+
+enum Slot { Alpha, Beta, Delta }
+
+type Inner
+{
+    factor float32 = 2.5
+}
+
+type Boost
+{
+    power int32 = 0
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
+fixed table Cell
+{
+    power int32 = 0 | min = 0, max = 1000
+    label string(8)
+}
+
+fixed table Cfg
+{
+    a      float32 = 5.0
+    mode   Mode = Beta
+    name   string(32)
+    inner  Inner
+    items  [..8]int32         | min = 0, max = 255
+    grade  Grade
+    grades [..4]Grade
+    podium [3]Grade
+    slots  [..MaxSlots]int32
+    tally  [TallySlots]int32
+    effect Effect
+    bank   [Slot]Cell
+    tokens [Slot]int32
+    ranks  [Slot]Grade
+    ledger [Grade]int32
+    extra  ?Inner
+    tier   ?int32
+    mark   ?Grade
+}

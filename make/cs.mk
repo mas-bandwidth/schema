@@ -303,7 +303,7 @@ tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp
 	$(COOK_CS) refuse Scene ../../build/cook-open/Scene-be.cook
 	$(COOK_CS) time Scene ../../build/cook-open/1mb.cook ../../build/cook-open/100mb.cook
 
-# THE GIGABYTE ARM, by hand (§7.5).
+# THE GIGABYTE ARM (§7.5), nightly (certify.yml nightly-gates row cook-1gb-cs).
 .PHONY: tables-cook-open-cs-1gb
 tables-cook-open-cs-1gb: build-cs-cook build/cook-open/.stamp
 	go build -o build/cookgen ./test/cookgen
@@ -643,11 +643,11 @@ tables-cs-leg:
 	$(MAKE) tables-cs-leg-debug
 	$(MAKE) tables-cs-leg-release
 
-tables-cs-leg-debug: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run
+tables-cs-leg-debug: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -- $(DOTNET) run
 
-tables-cs-leg-release: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release
+tables-cs-leg-release: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -- $(DOTNET) run -c Release
 
 # PER-COMMIT SHARDS of the leg above (card green-fit-cs-tables-leg): the
 # unsplit leg measured 133 s per configuration in CI run 42554833739
@@ -667,16 +667,16 @@ tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- core
 tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -- evolution
-tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-debug-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -- $(DOTNET) run -- fixed
 tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- wire
 tables-cs-leg-release-core: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- core
 tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
-tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
-	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+tables-cs-leg-release-fixed: build/retiredskips build/tables-generated-cs/.stamp
+	cd test/cs-tables && ../../build/retiredskips -leg cs -- $(DOTNET) run -c Release -- fixed
 
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).

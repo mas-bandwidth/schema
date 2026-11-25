@@ -77,6 +77,9 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
     size_t i, found = rows;
     uint32_t d;
     int pass;
+    static uint8_t own[4096];
+    static tblfx2_fx_root_t own_value;
+    int64_t own_bytes;
 
     (void) bytes;
     fixed_check( rows <= 64, "C bytes row: the rows fit the control's copy" );
@@ -90,11 +93,34 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
     swapped[found].dst = swapped[found].aux; /* the TEXT convention, as it was */
     swapped[found].aux = d;
 
+    /* FX1'S LAYOUT IS AN UNLAWFUL LINEAGE ENTRY FOR FX2: FX1 carries `gone`,
+       which FX2 names nowhere, so COMPILE lays no plan and answers -3, the
+       entry a load refuses layout_malformed (docs/FIXED-FORM-ALGORITHM.md §5.2
+       MATCH, §5.4, §5.9 #30). The control therefore reads a record FX2 wrote
+       itself: the rows under test are FX2's own, and so is the layout. */
     fixed_check( tblfx2_table_fixed_parse_layout( data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4,
                                            (int64_t) tblfx2_table_fixed_get32( data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES ),
                                            &theirs, &why ),
+                 "C bytes row: FX1's layout parses" );
+    {
+        int32_t g = 0, fc = 0;
+        uint32_t fa = 0;
+        fixed_check( tblfx2_table_fixed_compile( &theirs, tblfx2_fx_root_fixed_layout, (int32_t) sizeof( tblfx2_fx_root_fixed_layout ),
+                                                 tblfx2_fx_root_fixed_dst, tblfx2_fx_root_fixed_cover, tblfx2_fx_root_fixed_cover_count,
+                                                 g_plan, PlanCapacity, &g, &fa, &fc, NULL ) == -3,
+                     "UNLAWFUL: FX1's `gone`, a field FX2 names nowhere, lays no plan (-3, layout_malformed)" );
+    }
+    tblfx2_fx_root_reset( &own_value );
+    own_value.blob_length = 4;
+    own_value.blob[0] = 0xDE; own_value.blob[1] = 0xAD; own_value.blob[2] = 0xBE; own_value.blob[3] = 0xEF;
+    own_bytes = tblfx2_fx_root_fixed_save( &own_value, 1, own, (int64_t) sizeof( own ) );
+    fixed_check( own_bytes > 0, "C bytes row: FX2 saves its own bytes(N) record" );
+    if ( own_bytes <= 0 ) { return; }
+    fixed_check( tblfx2_table_fixed_parse_layout( own + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4,
+                                           (int64_t) tblfx2_table_fixed_get32( own + TBLFX2_K_TABLE_FIXED_HEADER_BYTES ),
+                                           &theirs, &why ),
                  "C bytes row: the writer's layout parses" );
-    body = data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) tblfx2_table_fixed_get32( data + TBLFX2_K_TABLE_FIXED_HEADER_BYTES ) + 8;
+    body = own + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) tblfx2_table_fixed_get32( own + TBLFX2_K_TABLE_FIXED_HEADER_BYTES ) + 8;
 
     for ( pass = 0; pass < 2; pass++ )
     {

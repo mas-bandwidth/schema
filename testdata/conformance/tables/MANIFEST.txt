@@ -2573,16 +2573,17 @@ unit tblann4096 test/tables/announce4096/Announce.schema
 unit tblann4097 test/tables/announce4097/Announce.schema
 connection surfaces_conn tblsurf 0xd4e8971dbc849333 testdata/conformance/tables/wire/surfaces_conn.bin
 
-# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap counts every
-# container (root=0, depth 128 = 129 nested containers max; 130th refuses
-# malformed), while the write cap counts table/type values only. 128 Links put
-# `vals` at container depth 129 (130th container), so `surf_chain128_vals` is
-# `no-text` on the positive round-trip corpus and `surf_chain127_vals` (depth
-# 128 = 129 containers) is the positive round-trip witness; one Link past the
-# write cap is refused (`graph_chain_past_cap`, above). FL-16 (§2.3): a null
+# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap and the write cap
+# count the same containers (root=0, depth 128 = 129 nested containers max;
+# the 130th refuses), an empty leaf array included. 127 Links put the last
+# Link's `vals` at depth 128, so `surf_chain127_vals` writes and reads back,
+# the lawful side of the boundary; 128 Links put `vals` at depth 129, so
+# `surf_chain128_vals` is `no-text` and every leg's text writer refuses it
+# (`surf_chain128_vals_write`). FL-16 (§2.3): a null
 # `*T | required` is written as index 0 and reads back null; its twin points at a node.
 instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin no-text
 instance surf_chain127_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain127_vals.bin
+json-write-refusal surf_chain128_vals_write tblsurf Chain testdata/conformance/tables/wire/surf_chain128_vals.bin none
 instance surf_holder_null_required tblsurf Holder  testdata/conformance/tables/wire/surf_holder_null_required.bin
 instance surf_holder_present       tblsurf Holder  testdata/conformance/tables/wire/surf_holder_present.bin
 instance surf_counted_full         tblsurf Counted testdata/conformance/tables/wire/surf_counted_full.bin
@@ -2693,6 +2694,16 @@ write-refusal-cook cref_infinite         tabledemo RootConfig testdata/conforman
 write-refusal-cook cref_finite_ok        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin           weapons[0].damage  float 1.5   wrote
 write-refusal-cook cref_fixed_long       tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 4     refused
 write-refusal-cook cref_fixed_ok         tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 3     wrote
+# SF-25, SF-26 (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15): an enum slot holds
+# None or a live variant. Mood is Calm 1, Old 2 (deprecated), Fierce 3: the
+# deprecated Old and the ordinal 9 past the set are refused, Fierce is written.
+write-refusal-cook cref_enum_deprecated  tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-cook cref_enum_range       tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 9 refused
+write-refusal-cook cref_enum_ok          tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+# The same rule on a list element of a pointered root (Mixed.grades holds
+# Grade, three variants), which some legs cook through a second writer.
+write-refusal-cook cref_var_enum_range   listdemo  Mixed      testdata/wire/tables/list_mixed.bin grades[0] ordinal 4 refused
+write-refusal-cook cref_var_enum_ok      listdemo  Mixed      testdata/wire/tables/list_mixed.bin grades[0] ordinal 3 wrote
 
 # THE BLOCK BUILDER holds the write contract too (SPEC-TABLES §19.1). SF-31: a
 # used length or a count past its maximum is refused by name in every build.

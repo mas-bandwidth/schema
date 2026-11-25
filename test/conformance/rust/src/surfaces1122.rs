@@ -252,6 +252,51 @@ pub(crate) fn write_refusal(manifest: &Manifest, form: &str, f: &[String]) -> Op
             };
             answer(wref_root_config(&mut v, path, kind, value), || wref_save(|| tabledemo::root_config_cook_write(&v, 1)))
         }
+        // AN ENUM SLOT (SPEC §5.1 row 5; SPEC-TABLES §2.15, §7.6): the table
+        // enums are native Rust enums (the crate root's Mood and Grade name the
+        // packet types), so an ordinal reaches the value through the fixed row's
+        // u8, and one past the set cannot be built (`unrepresentable`); the
+        // deprecated Old is the cook's to refuse
+        ("cook", "tabledemo", "MoodField") => {
+            use tabledemo::{MoodField, MoodFieldRow, mood_field_fixed_load};
+            if (path, kind) != ("mood", "ordinal") {
+                fail(&format!("write-refusal-cook: MoodField names no {kind} path {path}"));
+            }
+            let data = slurp(wire);
+            let Some(v) = fixed_storage_value!(tabledemo, MoodFieldRow, MoodField, mood_field_fixed_load, &data) else {
+                fail(&format!("{case}: fixed load refused {wire}"));
+            };
+            let mut row = MoodFieldRow::from(&v);
+            let built = value.parse::<u8>().ok().and_then(|n| {
+                row.mood = n;
+                MoodField::try_from(&row).ok()
+            });
+            match built {
+                Some(v) => answer(Mutation::Done, || wref_save(|| tabledemo::mood_field_cook_write(&v, 1))),
+                None => answer(Mutation::Unrepresentable, || "unrepresentable\n"),
+            }
+        }
+        ("cook", "listdemo", "Mixed") => {
+            if (path, kind) != ("grades[0]", "ordinal") {
+                fail(&format!("write-refusal-cook: Mixed names no {kind} path {path}"));
+            }
+            let mut report = listdemo::TableReport::default();
+            let mut v = listdemo::mixed_load(&slurp(wire), &mut report).unwrap_or_else(|| fail(&format!("{case}: load refused {wire}")));
+            if v.grades.is_empty() {
+                fail(&format!("{case}: Mixed.grades is empty"));
+            }
+            // the variant with that ordinal, taken from an element that holds it
+            let want: u64 = value.parse().unwrap_or(u64::MAX);
+            let grade = v.grades.iter().copied().find(|g| *g as u64 == want);
+            match grade {
+                Some(g) => {
+                    v.grades[0] = g;
+                    answer(Mutation::Done, || wref_save(|| listdemo::mixed_cook_write(&v, 1)))
+                }
+                None if want > 3 => answer(Mutation::Unrepresentable, || "unrepresentable\n"),
+                None => fail(&format!("{case}: no element of Mixed.grades holds ordinal {want}")),
+            }
+        }
         // THE BLOCK BUILDER (SPEC-TABLES §19.1): <root>_block_begin is handed
         // the storage and the root's counts (these roots declare none) and
         // writes the prologue; the projection's fields are the value's, filled

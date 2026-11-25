@@ -189,12 +189,18 @@ func TestFixedRoadmapCSharpT18ExactCounters(t *testing.T) {
             for (int k = 0; k < 4; ++k) { want.Items[k].A = 10 + k; want.Items[k].Drop = 50 + k; }
             byte[] buf = new byte[@OLD@.Schema.@ROOT@FixedMeasure(1)];
             if (@OLD@.Schema.@ROOT@FixedSave(want, buf) != buf.Length) { bad += ProbeLog.Fail(@NAME@, "save did not fill"); }
+            // §5.1 refuses the removal of Item.drop, so the handed-in entry is
+            // UNLAWFUL: the load refuses layout_malformed with unknown at zero —
+            // there is no compile census (FIXED-FORM-ALGORITHM §5.4, §5.9 #30) —
+            // and the row, poisoned first, is back at its declared defaults.
             @NEW@.@ROOT@ back = new @NEW@.@ROOT@();
+            back.Lead = 99u; back.Trail = 88u; back.Items[0].A = 7;
             @NEW@.TableReport r = new @NEW@.TableReport();
             long n = @NEW@.Schema.@ROOT@FixedLoad(back, buf, new @NEW@.TableFixedEntry[8192], r);
-            if (n != 1) { bad += ProbeLog.Fail(@NAME@, "n=" + n); }
-            if (r.Unknown != 1) { bad += ProbeLog.Fail(@NAME@, "unknown=" + r.Unknown + " want 1"); }
-            if (r.Widened != 0 || r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a counter moved or the read refused"); }`},
+            if (n != -1) { bad += ProbeLog.Fail(@NAME@, "the unlawful entry loaded n=" + n); }
+            if (!r.Refused || r.Reason != "layout_malformed") { bad += ProbeLog.Fail(@NAME@, "refused=" + r.Refused + " reason=" + r.Reason + " want layout_malformed"); }
+            if (r.Unknown != 0 || r.Widened != 0) { bad += ProbeLog.Fail(@NAME@, "a counter moved on a refusal: unknown=" + r.Unknown + " widened=" + r.Widened); }
+            if (back.Lead != 1u || back.Trail != 2u || back.Items[0].A != 0) { bad += ProbeLog.Fail(@NAME@, "the refused row is not at its declared defaults"); }`},
 		}
 
 		var calls []string

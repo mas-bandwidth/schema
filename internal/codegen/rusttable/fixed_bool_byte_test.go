@@ -1,7 +1,6 @@
 package rusttable
 
 import (
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -45,8 +44,8 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "rustc (it builds and runs the generated fixed-load probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatal(err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and rustc is not on PATH: %v", err)
 		}
 		t.Skipf("rustc is not on PATH: %v", err)
 	}
@@ -103,8 +102,10 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         if got.is_some() || !report.damaged || report.refused {
             failures.push(format!("{name}: a non-zero dead byte must refuse the whole load: {:?} {:?}", got, report));
         }
-        if !values[0].ok || !values[0].opt_present || values[0].flags_count != 1 || values[0].pick.tag != 1 {
-            failures.push(format!("{name}: a refused load changed the caller's destination"));
+        // RULING R4 (SPEC-TABLES §6.5): after ANY refusal every row handed in
+        // holds its DECLARED DEFAULTS, never the caller's old values.
+        if values[0].ok || values[0].opt_present || values[0].flags_count != 0 || values[0].pick.tag != 0 {
+            failures.push(format!("{name}: a refused load did not put the caller's row back at its declared defaults"));
         }
     }
     if failures.is_empty() { println!("FIXED_BOOL_BYTE ok"); }

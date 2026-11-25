@@ -44,18 +44,21 @@ var harnesses = map[string]harness{
 // ready, and every one of its instances is MISSING until it does.
 //
 // The language-free kinds have one adapter each: gotest runs a Go test by
-// name, make runs a make gate by target, plant runs a negative control (a
-// named test against a broken build, which must come out red).
-// docs/TEST-REGISTRY.md lists the kinds still to come (lint gates, TLC runs
-// and trace checks, benches) and the contract each will have.
+// name, make runs a make gate by target, golden checks a pinned output
+// against its writer, plant runs a negative control (a named test against a
+// broken build, which must come out red), model-check runs a TLC
+// configuration held to its recorded run. docs/TEST-REGISTRY.md lists the
+// kinds still to come (lint gates, trace checks, benches) and the contract
+// each will have.
 func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
-		"go":     &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
-		"lua":    &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
-		"gotest": goTestAdapter{log: log},
-		"make":   newMakeAdapter(),
-		"golden": newGoldenAdapter(),
+		"go":          &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
+		"lua":         &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
+		"gotest":      goTestAdapter{log: log},
+		"make":        newMakeAdapter(),
+		"golden":      newGoldenAdapter(),
+		"model-check": modelCheckAdapter{build: b, log: log},
 	}
 }
 

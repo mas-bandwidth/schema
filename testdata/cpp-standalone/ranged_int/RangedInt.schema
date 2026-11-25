@@ -1,0 +1,7 @@
+// A ranged integer (SPEC.md section 5.1 row 1), the only write-contract check.
+package rangedint
+
+table Root
+{
+    n int32 | min = -5, max = 5
+}

@@ -299,7 +299,9 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		{"widen sign", "lineage-read", "unchecked((ulong)FixedSigned(FixedGet(body, o.Src, o.Size), o.Size))", "FixedGet(body, o.Src, o.Size)", nil, ""},
 		{"widened count", "lineage-read", "report.Widened = lane.Widens * n;", "report.Widened = 0 * n;", nil, ""},
 		{"floor", "lineage-retired", "if (selected < floor)", "if (selected < 0)", nil, ""},
-		{"reset every row on a refusal", "defaults", "    if (loaded < 0)\n    {\n        for (int k = 0; k < values.Length; k++)", "    if (loaded < -1)\n    {\n        for (int k = 0; k < values.Length; k++)", nil, ""},
+		// The reset is written twice, in the walk's own refusal branch and again in the entry
+		// that calls it (R4), so the control removes both: either alone leaves every row at its defaults.
+		{"reset every row on a refusal", "defaults", "", `${1}< 0${2}`, regexp.MustCompile(`(if \((?:loaded < 0|why != TableReport\.Accepted)\)\s*\{\s*for \(int k = 0; k )< values\.Length(; k\+\+\) \{ Init)`), ""},
 		{"short header", "short", "if (data.Length < FixedHead) { return TableReport.Truncated; }", "", nil, ""},
 		{"reserved bytes", "reserved", "if (data[i] != 0) { return TableReport.ReservedNotZero; }", "if (data[i] == 255) { return TableReport.ReservedNotZero; }", nil, ""},
 		{"layout length", "layout-length", "if ((ulong)FixedHead + layoutBytes > (ulong)data.Length)", "if ((ulong)FixedHead + layoutBytes > (ulong)data.Length + 0xFFFFFFFFUL)", nil, ""},

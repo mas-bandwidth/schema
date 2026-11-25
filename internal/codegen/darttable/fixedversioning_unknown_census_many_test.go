@@ -5,36 +5,28 @@ import (
 	"testing"
 )
 
-// §5.4 says the compile census is once per endpoint AND NEVER PER RECORD. The
-// landed one-record row reads `old_unknown_census.bin`, a single record, where
-// "once per endpoint" and "once per record" are the SAME number (1) — so the second
-// half of that clause has never been under a gate. `many_unknown_census.bin`
-// carries THREE records of the same `Census` root, and only then does a
-// per-record `Unknown++` land 3 instead of 1.
-//
-// `report.unknown` is asserted EXACTLY `== 1`: `Item.drop` is ONE field of ONE
-// endpoint, so three records still owe ONE unknown — never 3, never the record count.
+// `many_unknown_census.bin`: THREE records under the DELIBERATELY UNLAWFUL
+// entry (Item.drop removed, §5.8 row 11). The entry is refused, never counted
+// (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30; the Go reference's
+// TestFixedVersioningUnknownCensusManyRecords): the whole load refuses
+// layout_malformed (this leg's layoutDamaged) before any of the three records
+// lands, no counter moves, and every row handed in is at its declared
+// defaults. This row once asserted the retired census, unknown == 1.
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	body := `  final data = File(FILE).readAsBytesSync();
-  final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 3, 'the newer reader did not read the older writer three records: n=$n ${why(report)}');
-  check(report.refused == 0,
-      'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
-  check(
-    report.widened == 0,
-    'counters that must not move did: ${why(report)}',
-  );
-  check(report.unknown == 1,
-      'unknown == ${report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per record');
   for (var k = 0; k < 3; k++) {
-    check(values[k].lead == 1 && values[k].trail == 2,
-        'record $k moved the bracketing fields: lead=${values[k].lead} trail=${values[k].trail}');
-    for (var i = 0; i < 4; i++) {
-      check(values[k].items[i].a == (k + 1) * 10 + i,
-          'record $k items[$i].a == ${values[k].items[i].a}, want ${(k + 1) * 10 + i}');
-    }
+    values[k].lead = 90 + k; // poisoned: a refusal resets every row handed in
+  }
+  final n = LOAD(values, values.length, data, data.length, plan, report);
+  check(n == -1 && report.refused == t.TableFixedRefusal.layoutDamaged,
+      'the unlawful lineage entry was not refused layout_malformed: n=$n ${why(report)}');
+  check(report.unknown == 0 && report.widened == 0,
+      'a refusal moved a counter: ${why(report)}');
+  for (var k = 0; k < 3; k++) {
+    check(values[k].lead == 1 && values[k].trail == 2 && values[k].items[0].a == 0,
+        'record $k is off its declared defaults after the refusal: lead=${values[k].lead} trail=${values[k].trail}');
   }
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_unknown_census", []string{"VOLD_unknown_census"}, 0,

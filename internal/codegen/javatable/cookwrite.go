@@ -71,6 +71,9 @@ public final class TableCookWrite {
         private Node[] slotNodes = new Node[16];
         private int slotCount;
         public long total;
+        /** the first enum slot the plan found holding an ordinal it may not cook,
+         *  as "<field>=<ordinal>"; null when there is none. write asserts it. */
+        java.lang.String unwritable;
         private long dataLength;
         private long alignment;
 
@@ -542,7 +545,11 @@ public final class TableCookWrite {
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize, f.compressed), f.elemSize);
+            long raw = bits(source, f.storage, f.elemSize, f.compressed);
+            if (f.writable != null && p.unwritable == null && (raw < 0 || raw >= f.writable.length || !f.writable[(int) raw])) {
+                p.unwritable = f.name + "=" + raw;
+            }
+            put(out, order, at, raw, f.elemSize);
         }
     }
 
@@ -607,6 +614,12 @@ public final class TableCookWrite {
         if (p == null || out == null || out.length < p.total || (order != LITTLE && order != BIG)) {
             return false;
         }
+        // AN ENUM SLOT HOLDS A LIVE VARIANT OR NONE (docs/SPEC.md §5.1 row 5;
+        // docs/SPEC-TABLES.md §2.15, §7.6): an ordinal past the variant set or
+        // a deprecated variant is the writer's to refuse, before the first byte.
+        // Java is an assert leg (SPEC.md §5.1), so the refusal is this assert,
+        // active under -ea. The measure stays the layout's: the plan only notes it.
+        assert p.unwritable == null : "cook refuses enum " + p.unwritable;
         java.util.Arrays.fill(out, 0, (int) p.total, (byte) 0);
         put(out, order, 0, 0x4b4f4f434d484353L, 8);
         put(out, order, 8, BuildVersion.value, 8);

@@ -170,7 +170,8 @@ func TestRustIdTableReaderContract(t *testing.T) {
 
 	for _, fnSig := range []string{
 		"fn packet_load_inner(",
-		"pub fn packet_load_measure(",
+		// the public measure delegates to its walk, which reads the id table
+		"fn packet_load_measure_walk(",
 	} {
 		body, err := extractRustFn(src, fnSig)
 		if err != nil {

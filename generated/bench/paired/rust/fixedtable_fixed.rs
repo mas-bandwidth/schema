@@ -469,7 +469,6 @@ fn fixed_table_fixed_load_records(
     let entries: &[TableFixedEntry] = &FIXED_TABLE_FIXED_PLAN;
     let guards: &[TableFixedGuard] = &[];
     let table: &[u16] = &[];
-    let census = (0u32, 0u32);
     // THE CALLER'S PLAN SLICE IS A CAPACITY DECLARATION and is no longer
     // written through: the plans are the BUILD's (§5.9 #5). The selected
     // plan's entry count is held to it, and a plan that does not fit is
@@ -563,13 +562,9 @@ fn fixed_table_fixed_load_records(
             return report.refuse(TableFixedReason::OutOfRange);
         }
     }
-    // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
-    // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own
-    // numbers, fixed when the plan was built — once per endpoint, never per record
-    // (§5.4) — and a refusal that came after would have moved a counter, where
-    // REFUSE IS TOTAL.
-    report.unknown += census.0;
-    let _ = census.1; // the compile census's kind changes stay on the plan, never a read counter
+    // THERE IS NO COMPILE CENSUS TO LAND (§5.4, §5.9 #30): a writer field this
+    // reader does not name, or a kind off every ladder, made the entry
+    // UNLAWFUL and the load refused above; a plan that exists counts nothing.
     Some(n)
 }
 

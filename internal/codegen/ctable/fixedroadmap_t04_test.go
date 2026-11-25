@@ -259,8 +259,10 @@ func cT04R10(t *testing.T) {
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan, which only a backward read over a locked
-// entry can reach; and the unknown-field count lands from the COMPILE census
-// after a returning read, never per record.
+// entry can reach; and there is NO compile census: a writer field the reader
+// names nowhere is an UNLAWFUL entry that lays no plan (docs/FIXED-FORM-ALGORITHM.md
+// §5.4, §5.9 #30), so the load adds no unknown count, and a kind that moved
+// refuses before the first record.
 func cT04R15(t *testing.T) {
 	text := cT04Retire(t, 0)
 	load := cT04Fn(text, "lineage_fixed_load")
@@ -275,7 +277,15 @@ func cT04R15(t *testing.T) {
 	if miss > records {
 		t.Error("R15: an unknown hash is not refused before the first record")
 	}
-	cT04Has(t, load, "census_unknown = lineage_fixed_lineage[pick].unknown;", "R15 unknown is the compile census")
+	if strings.Contains(load, "report->unknown +=") || strings.Contains(load, "census_unknown") {
+		t.Error("R15: the load still lands a compile census; an unlawful entry lays no plan and counts nothing (§5.4, §5.9 #30)")
+	}
+	kind := strings.Index(load, "if ( lineage_fixed_lineage[pick].kind_changed != 0 )")
+	if kind < 0 || !strings.Contains(load[kind:], "SCHEMA_TABLE_REFUSE_KIND_MISMATCH") {
+		t.Error("R15: the load does not refuse a moved kind by the selected entry")
+	} else if kind > records {
+		t.Error("R15: a moved kind is refused after a record landed, not before the first")
+	}
 	runtime := string(tableFixedRuntime)
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R15 the count clamp is the writer's bound")
 	cT04Has(t, runtime, "else if ( (uint32_t) v > cap )", "R15 the text clamp is the writer's span")
@@ -370,7 +380,10 @@ fixed table Lineage
 // is dropped and counted once per plan through the compile census; a narrower
 // integer or float is widened exactly and counts widened; a shorter array or
 // string lands with the reader's slack as the template's zeros; an older enum's
-// ordinals are the reader's, its list a prefix.
+// ordinals are the reader's, its list a prefix. A deprecated field stays in the
+// reader and is still named; a writer field the reader names NOWHERE is an
+// UNLAWFUL entry that lays no plan and is never counted (docs/FIXED-FORM-ALGORITHM.md
+// §5.2 MATCH, §5.4, §5.9 #30).
 func cT04R20(t *testing.T) {
 	text := cT04Retire(t, 0)
 	runtime := string(tableFixedRuntime)
@@ -379,10 +392,24 @@ func cT04R20(t *testing.T) {
 	cT04Has(t, text, "lineage_fixed_cover[]", "R20 the prefill image is emitted")
 	cT04Has(t, text, "table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults,", "R20 an added field lands the declared default")
 	cT04Has(t, text, "memset( (void *) &defaults, 0, sizeof( defaults ) );", "R20 the reader's slack is the template's zeros")
-	// A DEPRECATED FIELD, counted ONCE per plan: an array's element 0 is the only
-	// one that censuses.
-	cT04Has(t, runtime, "if ( !named && census && c->report != NULL ) { c->report->unknown++; }", "R20 an unknown field is counted once per FIELD per endpoint")
-	cT04Has(t, runtime, "census && i == 0", "R20 once per FIELD per endpoint, not per element")
+	// A FIELD THE READER NAMES NOWHERE: the entry is unlawful, no plan is laid,
+	// and nothing is counted, in any slot (root, nested table, every element).
+	cT04Has(t, runtime, "if ( !table_fixed_children_named( theirs, ti, mine, mi ) ) { c->unlawful = 1; return; }", "R20 a writer field the reader names nowhere makes the entry unlawful")
+	// AND EVERY OTHER NARROWING the reference refuses (gotable tableFixedCompileEntry):
+	// a removed arm or variant, a removed key or more keyed slots, a shrunk
+	// bound, a narrowed text capacity, a narrowed scalar. Never min() and drop.
+	cT04Has(t, runtime, "if ( !table_fixed_children_named( theirs, ti, mine, mi ) ) { c->unlawful = 1; break; }", "R20 a removed arm or variant makes the entry unlawful")
+	cT04Has(t, runtime, "if ( !table_fixed_children_named( theirs, ti + 1, mine, mi + 1 ) ) { c->unlawful = 1; break; }", "R20 a removed key makes the entry unlawful")
+	cT04Has(t, runtime, "te.size / tee.size > me.size / mee.size ) { c->unlawful = 1; break; }", "R20 more keyed slots than the reader holds make the entry unlawful")
+	cT04Has(t, runtime, "if ( their_n > my_n ) { c->unlawful = 1; break; }", "R20 a shrunk array bound makes the entry unlawful")
+	cT04Has(t, runtime, "if ( te.size > me.size ) { c->unlawful = 1; break; }", "R20 a narrowed text capacity makes the entry unlawful")
+	if strings.Contains(runtime, "n = their_n < my_n ? their_n : my_n;") || strings.Contains(runtime, "c->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH") {
+		t.Error("R20: the compile still lands min( their, mine ) or marks a narrowed scalar on the report; both are unlawful entries that lay no plan (§5.4, §5.9 #30)")
+	}
+	cT04Has(t, runtime, "if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }", "R20 an unlawful entry lays no plan")
+	if strings.Contains(runtime, "c->report->unknown++") || strings.Contains(runtime, "census && i == 0") {
+		t.Error("R20: the compile still counts a field it cannot name; the census is retired (§5.4, §5.9 #30)")
+	}
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	cT04Has(t, runtime, "(*widened)++;", "R20 a widen counts")
 	// AN OLDER ENUM: the ordinal is remapped through the plan's own table, whose
@@ -454,7 +481,8 @@ func cT04R29(t *testing.T) {
 	cT04Has(t, runtime, "if ( e.size > kTableFixedRecordMaxBytes )", "R29 an entry past the writer's declared record")
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R29 the count clamps to the writer's bound")
 	cT04Has(t, runtime, "else if ( (uint32_t) v > cap )", "R29 the text clamps to the writer's span")
-	cT04Has(t, runtime, "n = their_n < my_n ? their_n : my_n;", "R29 the count's bound is the writer's")
+	cT04Has(t, runtime, "n = their_n;", "R29 the count's bound is the writer's")
+	cT04Has(t, runtime, "if ( their_n > my_n ) { c->unlawful = 1; break; }", "R29 a writer bound past the reader's is unlawful, never clamped to min")
 }
 
 // ---- c/E5 -------------------------------------------------------------------

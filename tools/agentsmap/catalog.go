@@ -94,6 +94,7 @@ var catalog = []Entry{
 	e("internal/execref", "os/exec references resolved by binding, for the child-process policies", "go test ./internal/execref", "go test ./internal/execref"),
 	e("internal/errdiscard", "errors dropped by the Go programs under cmd/ and tools/, type-checked", "go test ./internal/errdiscard", "make errdiscard"),
 	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
+	e("internal/fixedunlawful", "fixed form's shared unlawful-lineage corpus", "go test ./internal/fixedunlawful", "go test ./internal/fixedunlawful"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
 	e("internal/githooks", "temp-repo tests for the .githooks/pre-push hook range and no-verify rules", "go test ./internal/githooks", "go test ./internal/githooks"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
@@ -198,6 +199,7 @@ var catalog = []Entry{
 
 	// testdata/
 	e("testdata/conformance", "table conformance dumps", "make conformance", "make conformance"),
+	e("testdata/cpp-standalone", "standalone C++ header schemas", "go test ./internal/codegen/cpptable -run TestStandalone", "go test ./internal/codegen/cpptable -run TestStandalone"),
 	e("testdata/golden", "generated-source goldens", "go test ./internal/goldens", "make update-goldens"),
 	e("testdata/golangci-lint-classes", "generated Go lint regression fixtures", "go test ./internal/goldens -run TestGolangciLintClassesShapes", "make schema-go-generated-golangci-lint-gate-classes-negative-control"),
 	e("testdata/jsontestsuite", "vendored JSONTestSuite (MIT)", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
@@ -220,6 +222,7 @@ var catalog = []Entry{
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
 	e("tools/hostilecorpusexec", "native-port hostile-corpus driver", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),
 	e("tools/hostileledger", "hostile-corpus runner ledger check", "go test ./tools/hostileledger", "go run ./tools/hostileledger"),
+	e("tools/conformancerows", "runs every conformance row file of a leg; any failing row is red", "go test ./tools/conformancerows", "make conformance-rows-LEG"),
 	e("tools/inputaccount", "inotify input-file accounting wrapper for reader legs", "go test ./tools/inputaccount", "go run ./tools/inputaccount -family NAME -leg LEG"),
 	e("tools/inputfamilies", "ci-fast input-family matrix selector and checker", "go test ./internal/inputfamilies", "go run ./tools/inputfamilies check"),
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
@@ -237,6 +240,7 @@ var catalog = []Entry{
 	e("tools/releasebin", "release binaries for six platforms", "go test ./tools/releasebin", "make release-binaries"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
 	e("tools/releasetargets", "certify release-gates planner from make's database", "go test ./tools/releasetargets", "go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066"),
+	e("tools/retiredskips", "fails a fixed-form gate on any skip line it prints", "go test ./tools/retiredskips", "build/retiredskips -leg LEG -- cmd"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
 	e("tools/schema-test", "the one test driver: run, list, coverage, extract", "go run ./tools/schema-test run --group pr", "go run ./tools/schema-test run --group nightly"),
@@ -245,6 +249,8 @@ var catalog = []Entry{
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
 	e("tools/vacuoustests", "vacuous-test analyzer command", "go test ./internal/vacuous", "go run ./tools/vacuoustests -all"),
 	e("tools/vuln", "govulncheck wrapper", "make vuln-selftest", "make vuln-selftest"),
+	e("tools/gatecontrol", "one shared gate on one leg with its oracle planted wrong", "go test ./tools/gatecontrol", "go run ./tools/gatecontrol -leg LEG -plant PLANT -target TARGET -want RE"),
+	e("tools/wiredtargets", "refuses a test-like make target no CI workflow reaches", "go test ./tools/wiredtargets", "go run ./tools/wiredtargets"),
 
 	// test/
 	e("test/bench", "C++ bench drivers", "make test", "./build/schema_test_bench"),

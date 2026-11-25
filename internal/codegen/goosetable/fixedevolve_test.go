@@ -97,21 +97,6 @@ func evolutionLoad(t *testing.T, schema string) *ir.Unit {
 	return u
 }
 
-// joinedProbe folds a probe's one input into one line: the verdict line then
-// the field lines it printed (one print per field).
-func joinedProbe(t *testing.T, out []byte) string {
-	t.Helper()
-	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	if len(lines) == 0 {
-		t.Fatalf("the probe printed nothing")
-	}
-	var parts []string
-	for _, line := range lines {
-		parts = append(parts, strings.TrimSpace(line))
-	}
-	return strings.Join(parts, " ")
-}
-
 // evolutionLines splits a probe's output into its one line per input.
 func evolutionLines(t *testing.T, out []byte, want int) []string {
 	t.Helper()
@@ -202,19 +187,18 @@ func TestGooseFixedFormNamesEveryRefusal(t *testing.T) {
 	}
 }
 
-// TestGooseFixedFormKindMismatchCensus pins the other half of §5.4's census:
-// a named field whose KIND moved outside the widening ladder is dropped and
-// counted once per FIELD per peer — like unknown, never once per array element.
-// The pair is deliberately unlawful (the lock refuses it), so the lineage
-// entry is handed in from the OLD build, exactly as unknown_census does it.
-func TestGooseFixedFormKindMismatchCensus(t *testing.T) {
+// TestGooseFixedFormKindMovedUnlawful pins the other half of §5.4: a named
+// field whose KIND moved off every widening ladder (int32 -> string(8), inside
+// an array of tables) is an UNLAWFUL lineage entry, like a writer field the
+// reader names nowhere. No plan is laid and nothing is counted: the read
+// refuses layout_malformed before any record, mismatch stays zero, and every
+// row is at its declared defaults (§5.2 EMIT, §5.4, §5.9 #30). The pair is
+// deliberately unlawful (the lock refuses it), so the lineage entry is handed
+// in from the OLD build, exactly as unknown_census does it.
+func TestGooseFixedFormKindMovedUnlawful(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	old := evolutionLoad(t, "test/tables/VOLD_unknown_census.schema")
-	entry, ok := FixedEvolutionOf(old, "Census")
-	if !ok {
-		t.Fatal("no fixed root Census in the old schema")
-	}
 	dirSchema := t.TempDir()
 	path := filepath.Join(dirSchema, "VNEW_kind_mismatch.schema")
 	const text = `package vnew_kind_mismatch
@@ -243,18 +227,19 @@ fixed table Census
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := evolutionUnit{unit: newer, lineage: map[string][]FixedEvolutionEntry{"Census": {entry}}}
-	out := t.TempDir()
-	main := evolutionProgram(t, &u, "Census", out, 1, []string{"old.bin"}, []string{
-		"values[0].Lead", "values[0].Items[0].A", "values[0].Items[1].A",
-		"values[0].Items[2].A", "values[0].Items[3].A", "values[0].Trail", "report.mismatch",
-	})
-	got := joinedProbe(t, gooserun.Run(t, out, main, map[string][]byte{"old.bin": data}))
-	const want = "1 ok 0 0 0 1 10 11 12 13 2 1"
-	if got != want {
-		t.Fatalf("kind_mismatch: the NEW reader answered %q, want %q", got, want)
+	prints := []string{"values[0].Lead", "values[0].Items[0].A", "values[0].Items[3].A",
+		"values[0].Items[0].DropLength", "values[0].Trail"}
+	got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{old}, root: "Census",
+		capacity: 2, poison: true, fresh: true, twice: true, data: data, print: prints})
+	got.file = "kind_mismatch"
+	got.refuses(t, "layout_malformed", false, 0)
+	if got.secondUnknown != 0 || got.secondCounters != "0 0 0 0" {
+		t.Fatalf("kind_mismatch: the second refusal moved a counter: %s", got.raw)
 	}
-	t.Logf("kind_mismatch: %s", got)
+	if want := "1 0 0 0 2"; strings.Join(got.printed, " ") != want {
+		t.Fatalf("kind_mismatch: after the second refusal row 0 holds %q, its declared defaults are %q", strings.Join(got.printed, " "), want)
+	}
+	t.Logf("kind_mismatch: %s", strings.Join(got.printed, " "))
 }
 
 func refuseSchema(t *testing.T, src string) string {

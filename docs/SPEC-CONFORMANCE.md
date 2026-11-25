@@ -146,6 +146,27 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+- **MF-ROSTER: every message-fuzz root is answered.** A root of the
+  message-fuzz roster that a leg answers with nothing (no known message in
+  any case) is dead, and `harness message-fuzz` is red on every dead root,
+  named. There is no ledger of roots a leg lacks.
+- **Every conformance row file runs.** A leg's row list is its directory
+  `test/conformance/<leg>/rows/`, never a list copied by hand: `make
+  conformance-rows-<leg>` (tools/conformancerows) builds and runs every row
+  file, and Go's rows are named off the `TestRow*` functions of its rows
+  directory. A row the leg cannot answer yet is red: there is no ledger of
+  rows a leg owes. A failing row is named by its cause, the failure itself,
+  read off the row's log (the compiler's error, the exception and its
+  message, the failed check): a banner around it ("error: compilation
+  failed", "Unhandled exception:", "N passed, M failed") or a line of the
+  row's own source is never the cause. A scripted row (Dart, Java, JavaScript,
+  Elixir) with no way to fail (no non-zero exit, throw, raise or assert)
+  checked nothing and is red when it exits 0, the twin of a Rust row whose
+  test binary ran no test.
+- **No fixed-form gate prints a skip.** A native leg's fixed-form gate that
+  prints a `SKIP`/`RETIRED` line for a test retired by FIXED-FORM-ALGORITHM.md
+  §5.6 has a test that did not run: `tools/retiredskips` wraps each gate and
+  any printed skip line is red. There is no ledger of retirements.
 
 **The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
 the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
@@ -166,7 +187,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |
 | SPEC-TABLES §6.5, §6.6: the plain region `Load` and a fixed-root `LoadRetain` zero a PRE-FILLED report ([below](#the-plain-region-load-and-a-fixed-root-retaining-load-zero-the-report-too)) | `read-into` (`region`, `retain-fixed`) | `ri_region`, `ri_retain_fixed` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
-| FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
+| FL-11: the text depth cap (read and write count every container, an empty leaf array included) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusals `graph_chain_past_cap`, `surf_chain128_vals_write` (row `json-depth-writers-count`) |
 | FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
 
 ## 3. The driver protocol
@@ -225,7 +246,20 @@ where the README says so.
   passes when the port refuses and fails when it accepts. The reason name,
   the detection order, counters and diagnostic text are NOT compared; a port
   should still use the specification's reason names, because they are how a
-  user finds the rule, but the suite does not enforce them.
+  user finds the rule, but the suite does not enforce them. The same holds
+  between ports: a cross-port differential (the Squirrel all-port
+  differential, `make schema-squirrel-all-port-differential`) compares two
+  refusals as the one verdict, never the bytes of either diagnostic. A
+  `message-prior` `<case>.refused` from one port equals any other port's
+  `<case>.refused`, whatever reason name, report or word each one holds; a
+  re-saved batch in `<case>` is still compared byte for byte
+  (`TestSquirrelAllPortDifferentialNormalizesOnlyTheHarnessEquivalences`).
+  It holds two ports equal wherever the harness credits both against the one
+  golden: a `retain-refusal` `save-refused` (python, ruby) equals `saved`; a
+  `read-into` `unrepresentable` (a fixed load that always takes a capacity)
+  and a `retain-refusal` answer its leg owes in `retain-refusal-owed.txt`
+  are not compared at all
+  (`TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut`).
 - **Writes are judged by bytes, exactly.** A case that requires a write
   passes only when the bytes the port produces equal the committed golden,
   byte for byte: canonical order, padding, zeros in dead bytes, every
@@ -352,6 +386,8 @@ per-port check where no shared case exercises it.
 | message-batch-refusal-resets-every-handed | a message batch read resets EVERY value it was handed, whatever the reason and wherever the refusal fell, a refusal before any body (`newer_form`, `no_vocabulary`, `batch_too_large`) included, and answers a count of `0` (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4). Java's `loadMessages` left the handed values as the caller held them on the capacity refusal | Java `TestMessageFormBatchJava/refusals_and_damage` (`batch_too_large_read`) |
 | fixed-lineage-refusal-resets-every-handed | a fixed batch read refused through a LINEAGE plan's check pass (an older writer's record) resets EVERY row it was handed, not only the first, the one a read filled, or those the wire reached (SPEC-TABLES §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4; census G14). Go's load already did; Go's `TestFixedVersioningRangeWidenHostile` owed defaults in row 0 only and zero in the other seven, so it went red on the conforming reset | the `read-into` row `ri_fixed_lineage_refused` (every leg); Go `TestFixedVersioningRangeWidenHostile/{range_widen,range_widen_u64,range_widen_array}` (8 rows handed) |
 | armmin-arm-born-and-text-assert | a union arm `[A..B]T` is established at count `A` (SPEC §4.2, §4.6), so the C++ union reset states the arm's birth count after the resets of the arms that share its storage; and a write of an arm below `A` is a debug assert in every C++ writer, the text writer included (SPEC §5.1, row 3; R10). Both had been dropped from the C++ generator when Wave 2 landed (#4843) | C++ `TestCppArmMinHolds` (`arm-select`, `json`) and `TestCppArmMinHoldsNegativeControl`, whose plants each fail by name when they patch nothing |
+| java-arm-born-once | selecting a counted union arm `[A..B]T` sets it at its minimum count `A` (SPEC §4.2, §4.6), so a fresh Java variable-form union value holds `A` default elements in the arm, once: the field initializer seeded `A` and the constructor added `A` more, and a `[2..4]` arm selected on a fresh value was written at count 4 where the engine writes 2. The initializer is now the empty list and the constructor alone states the birth count. The fault is in a value built by host code, which no corpus surface compares byte for byte, so the per-language engine comparison is the check | Java `TestJavaCountedMinElementsElideAtBornState` (`wire arm_selected`, `wire arm_one_set`) |
+| json-depth-writers-count | the text writer judges the depth cap of 128 at every container it writes, an empty `[]` or `{}` included, in the read's own unit (SPEC-TABLES §16.2, §16.14 W2), so a writer never emits a text its own reader refuses. Every writer had judged table and type values only, so a chain whose last node held an empty array at depth 129 was written and then refused by every reader, the Go oracle included. The refusal is the writer's -1 (§16.3) in every build, as the table-depth refusal already was | `json-write-refusal surf_chain128_vals_write` (every leg); `surf_chain127_vals` reads and writes back; Go `internal/tabletext` and Java `TestJavaTextReadDepthCap` (127 nodes write and read, 128 do neither) |
 | GAP-23 | Compressed-float range ends compare at the field's width (SPEC-TABLES §3.3); gaps Li6 | `feature-witnesses/compressed-f32-ends` |
 | GAP-24 | A float32 field is written as a float32 (SPEC-TABLES §16.2); gaps Sw11 | the `text_float*` rows |
 | GAP-25 | A node is reached along every kind-17 edge from the root (SPEC-TABLES §4); gaps Hs7 | `framing varevo_cycle_*` |
@@ -419,10 +455,11 @@ per-port check where no shared case exercises it.
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` (#4808 source registrations) |
+| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations); `cref_enum_deprecated`, `cref_enum_range`, `cref_enum_ok`, `cref_var_enum_range`, `cref_var_enum_ok` (an enum slot: a deprecated variant and an ordinal past the set refused on every leg, SPEC.md §5.1. The assert legs answer from their debug builds, where the refusal is the debug assert and a release build carries no write-side check: C and C++ `schema_assert`, Rust `debug_assert!` (a past-set ordinal cannot be built, so `cref_enum_range` answers `unrepresentable`), Java `assert` under `-ea`, C# and Unity `Debug.Assert`, Dart `assert` under `--enable-asserts`; the C, C++, Rust and Dart drivers refuse to answer a `write-refusal` surface from a build with asserts off. The 0x5a-buffer-untouched witness, with an in-test plant of a late assert, is `TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte`, `TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` and `TestJavaDeclaredDeprecatedEnumCook`) |
+| SF-25 (C assert hook) | a C unit whose only write check is the cook writer's enum refusal (an enum field, or an enum reached through a union arm of a table) includes `<assert.h>` and defines `schema_assert` before the first call, so the debug-only refusal compiles (SPEC.md §5.1 row 5; SPEC-TABLES §2.15, §7.6; census G18) | `internal/codegen/ctable` `TestCCookEnumArmDefinesAssertHook` |
 | SF-20 (packet) | the packet `Write` refuses a `[N]T` handed more or fewer than N values and never writes the first N of a longer one (SPEC.md §5.1); every every-build leg and Lobster's debug build refuse it by the leg's own mechanism, and a leg whose `[N]T` storage is a native `T[N]` (Goose) names the two count rows unrepresentable. A new port's packet writer checks the length before its element loop | `write-refusal-packet`: `fixed_long`, `fixed_short`, `fixed_exact` |
 | SF-20 (packet, byte container) | the `[N]T` length check accepts the container the leg's own constructor makes for a lawful `[N]T`: a leg that holds `[N]uint8` in a byte buffer (Squirrel's `blob`) checks that buffer's length, and a fresh `[N]uint8` writes (SPEC.md §5.1). Squirrel's check named only `array` and refused every lawful `[N]uint8`, which broke the `bench_mixed` round trip (`loadout [4]uint8`) | `write-refusal-packet`: the schema's `octets [4]uint8` field rides every `wrote` row on every leg; `bench-squirrel-gate` (`bench_mixed` variant round trip) |
 | Squirrel packet row 1 | the Squirrel packet `Write` refuses a value off its range with `false` on every kind but an `int32` or `int64` field, whose runtime trap is the refusal: an `int16` fixed-array element, counted-array element or arm payload, an `int128` and a `fixed(16, 16)` raw value (SPEC.md §5.1, the Squirrel line) | `write-refusal-packet`: `fixed_elem_high`, `list_elem_low`, `arm_payload_high`, `int128_high`, `int128_low`, `fixed_raw_high`, `fixed_raw_low`, each with its `_at_` twin |
-| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` (#4808 source registrations) |
 | SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` (#4808 source registrations) |
 | SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
@@ -437,6 +474,10 @@ per-port check where no shared case exercises it.
 | Elixir retained fixed-array arm evolution | When an older union arm carries a fixed array shorter than the current declaration, the retaining read supplies the current element default for every appended slot, exactly as the plain read does (SPEC-TABLES.md §3 fixed arrays; §4 append-only evolution). The resulting public values are equal, their plain and retaining saves are equal, and the retaining measure equals its save length. | `messagedemo.ToolEnvelope.body.spans`: `test/tables/widenbound/WidenBoundPeer.schema` declares `[1]int32`, while `tables/messages/Messages.schema` declares `[2]int32`; `internal/codegen/elixirtable` `TestRetainReadPadsEvolvedFixedArrayArm` writes the ordinary older value `{spans, [5]}` and reads `[5, 0]`. |
 | Elixir variable enum-keyed text completion and typed write extent | A text `[E]T` value may omit a named slot and the reader completes it with that slot's element default (SPEC-TABLES.md §16.2, §16.9.4). The resulting full typed value saves. A directly supplied typed keyed map must already contain exactly one value per variant; a short value refuses under SF-20 rather than being silently padded. | `internal/codegen/elixirtable` `TestElixirFiniteFloat` reads `{"keyed":{"A":5.25}}` for `Key { A, B }`, observes `B = 0.0`, and saves the completed value; the paired direct `%{"A" => 5.25}` save refuses. Shared `sref_keyed_short` independently requires the same typed-writer refusal. |
 | C and C++ block integer bounds | The generated block API must build for full-range signed and unsigned 64-bit fields and for fields that narrow either end by one. Values at each declared endpoint are legal. A narrower upper or lower bound still applies. | `internal/codegen/ctable` `TestCBlockRangeChecksElideStorageLimits` and `internal/codegen/cpptable` `TestCPPBlockRangeChecksElideStorageLimits` check the generated bound expressions for the six declarations. Run `make tables-clamp-limits` for the native limit checks. |
+| C and C++ block float32 ends | `BlockBytes` holds a ranged float, always float32 (SPEC.md §4.3), against ends held at float32, as the table write check and the Go, Rust and C# blocks hold it: `max = 0.1` admits the float32 0.1 and refuses the float32 one step past it (`tables/examples/Tables.schema` `FloatBound`). A double literal promoted the field to double, refused that 0.1 and drew `-Wdouble-promotion` in the C++ gate (#424). | `internal/codegen/ctable` `TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth` and `internal/codegen/cpptable` `TestCPPBlockFloatRangeEndsAreHeldAtTheFieldWidth` check the generated bound expressions; each goes red with its emitter's double-literal spelling planted back. |
+| JavaScript step-5 miss is `layout_unknown` | A fixed-form file whose header hash is in no lineage entry refuses at FIXED-FORM-ALGORITHM §5.3 step 5 as `layout_unknown`, never `layout_newer`: `n = -1`, `layoutHash` is the file's hash and nothing else, every counter is zero, and every value handed in holds its declared default (ruling R4). Fixed 2026-11-24; the JavaScript leg answered `layout_newer` before. | `test/conformance/js/rows/R15.mjs` (the build's own `Cell` file reads as its positive control, then the same file under hash `0xdeadbeefcafe0001`); `internal/codegen/jstable` `TestJSFixedVersioningOldRefusesNew`, `TestJSFixedVersioningHash`, `TestJSFixedVersioningReferenceForwardRefusal`, `TestFixedRoadmapT01Framing` (js/R8, js/R13) and `TestFixedRoadmapJsT03PlansVersions` (js/R15). |
+| JavaScript `TableFixedKnownLayout` carries the contract's members only | One known-layout entry has exactly FIXED-FORM-ALGORITHM §5.9 #19's members in #19's order, the hash as two `uint32` lanes (#34): `hashLo`, `hashHi`, `layout`, `layoutBytes`, `recordBytes`, and nothing else. The lock bytes' `DataView` the layout compare reads through rides beside the table in `<Name>FixedKnownViews`. Fixed 2026-11-24; the entry carried a sixth own key, `layoutView`, before. | `test/conformance/js/rows/R23.mjs` (`Object.keys` of an entry, and every `<Name>FixedKnown` entry of the v1 unit). |
+| JavaScript `const` op refuses a forged tag before it writes | The run's None `const` entry holds the writer's raw tag to the writer's arm count and refuses `out_of_range` (FIXED-FORM-ALGORITHM §4.6) before any destination byte is written, the same as the `ordinal` op and every §4.5 refusal; no counter moves. Fixed 2026-11-24; the op stored its None first and refused after. | `test/conformance/js/rows/R16.mjs` (TEST 7: the same forged tag 5 through the `ordinal` and the `const` op over a poisoned image, one refusal, not one byte written). |
 | Go packet Write: an off-range int128, fixed or ufixed refuses, never panics | Row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value off its raw range (`min << F` to `max << F`); a refuse-every-build leg refuses it in every build, and Go returns `serialize.ErrValueOutOfRange` from the packet `Write`, never the runtime's panic (SPEC.md §5.1 row 1 and the Go packet `Write` line). Both shared `PacketWriteRefusal` schemas declare an `int128 \| min = -10, max = 100000000000000000000`, a `fixed(16, 16) \| min = -10, max = 10` and a `ufixed(32, 32) = 1 \| min = 1, max = 4000000000`, whose top raw bound lies past int64: one raw step past each bound is refused and each bound is written | `write-refusal-packet`: in [`test/packet-write-refusal/cases.txt`](../test/packet-write-refusal/cases.txt) (the assert legs and Go) `int128_*`, `fixed_*` and `ufixed_*`; in [`rows.txt`](../test/conformance/write-refusal-packet/rows.txt) (the every-build legs) `int128_*`, `fixed_raw_*` and `ufixed_*`; `TestWriteRefusalPacket` (`test/conformance/harness`), whose second negative control drops the generated 128-bit and fixed-point refusals and requires `int128_high`, `fixed_high` and `ufixed_high` red |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
@@ -697,6 +738,53 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+### Unlawful handed-in lineage entry, every leg: a removed field and a moved kind
+
+A lineage entry an older writer hands a newer reader is UNLAWFUL when the
+writer carries a field the reader names nowhere (by id, so a `was =` rename
+still matches) or a field whose kind moved off every ladder
+([FIXED-FORM-ALGORITHM §5.2](FIXED-FORM-ALGORITHM.md) MATCH and EMIT, §5.4,
+§5.9 #30). Removing a field is never a lawful fixed-form step: §5.1 refuses it
+and a field is deprecated in place instead, so a lawful lineage never reaches
+this case. An unlawful entry lays no plan and moves no counter, and a load of
+a file under its hash refuses. It is never counted as `unknown` and read on.
+
+Two rows of the shared fixed-form corpus answer it
+([FIXED-FORM-VERSIONING-TESTS.md](FIXED-FORM-VERSIONING-TESTS.md)):
+
+| row | the file | the reader | the verdict |
+|---|---|---|---|
+| `unknown_census` | `old_unknown_census.bin` (one record) and `many_unknown_census.bin` (three), written by `VOLD_unknown_census` | `VNEW_unknown_census`, which removed `Item.drop`, handed the OLD entry | refuse |
+| `kind_moved` | `old_kind_moved.bin` (one record, `v = 7`), written by `VOLD_kind_moved` | `VNEW_kind_moved`, `v int32` declared `float32`, handed the OLD entry | refuse |
+
+Each load refuses. Every row handed in, poisoned with non-default values
+first, holds its declared defaults afterwards (SPEC-TABLES §6.5:
+`lead = 1`, `trail = 2`, every `items[i].a = 0`; `v = 0` for `kind_moved`).
+A second load refuses the same way. `kind_moved` is the one that tells the two
+wrong answers apart from the right one: both kinds are four bytes, so a leg
+that reinterprets the bits and a leg that counts the field and reads on both
+load. The verdict is compared across legs; the refusal name is not
+(`refusal-verdict-only`, 2026-11-03). Each leg's own test holds its name:
+`layout_malformed` (Dart: `layout_damaged`). A writer `?T` read into a bare `T`
+stays `kind_mismatch` (ruling R2).
+
+The tests, one per leg and row: `TestFixedVersioningUnknownCensus`,
+`TestFixedVersioningUnknownCensusManyRecords` and `TestFixedVersioningKindMoved`
+in `internal/codegen/{gotable,cpptable,ctable,cstable,javatable,rusttable,darttable,elixirtable}`;
+`TestJSFixedVersioningUnknownCensus` and `TestJSFixedVersioningKindMoved` in
+`jstable`; `TestLuauFixedVersioningUnknownCensus` and
+`TestLuauFixedVersioningKindMoved` in `luautable`;
+`TestUnityFixedUnlawfulLineage` in `unitytable`. Go already held the rule
+(`gotable`, `tableFixedChildrenNamed`). Elixir's
+`TestFixedVersioningUnlawfulEntryRefuses` adds the rest of Go's unlawful set:
+a removed union arm, enum variant or keyed slot, a shrunk array, and narrowed
+text or bytes. Run, with the corpus built (`make tables-fixedform-corpus`):
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
+  go test -count=1 ./internal/codegen/... \
+  -run 'Test(JS|Luau)?FixedVersioning(UnknownCensus|KindMoved)|TestUnityFixedUnlawfulLineage|TestFixedVersioningUnlawfulEntryRefuses'
+```
 
 ### Block forgery fuzzer seed projections
 
@@ -935,3 +1023,164 @@ with the flat tier's writes and the decode case green.
 | SPEC §4.3, §5: a `float32` field's default is the float32 of its declaration | `F32Lit` `default-d`, `default-e`, `verify-bitphase-<lang>` | red before its fix on JavaScript (both tiers construct through the module), Dart and Elixir. Green with no fix: C (the decimal assigned to a `float` rounds there), C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3, §5.1 row 10: a compressed float's write takes both float32 ends | `F32Lit` `write-min`, `write-max`, `verify-bitphase-<lang>` | red before its fix on the JavaScript stream tier, Lua and Luau, whose write guards compared against the decimals and refused both ends. Green with no fix: the JavaScript flat tier, Dart and Elixir (their guards were spelled as float32 by #4991), C, C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3: a table field's `float32` default is the float32 of its declaration | Go unit test `TestJsTableFloat32DefaultIsItsFloat32` (`internal/codegen/jstable`; no shared case: every table surface, the text form included, rounds a value through float32 before it spells or stores it, so the double default differs only in memory) | red before its fix on JavaScript tables (the constructor and the descriptor's `def`, which an absent field reads back, held the double `0.7`). The other table generators spell a float32 default as its float32 already |
+
+### The C text read makes no allocator call
+
+[SPEC-TABLES §16.1](SPEC-TABLES.md#161-the-surface) says `FromJson` allocates
+nothing beyond the caller's instance, and in C that covers the repeated-key
+set §16.2 keeps for every object. `make tables-c-soak` reads, writes and
+re-reads as text every case of the soak corpus
+([`soak_main.c`](../test/c-tables/soak_main.c)) with `malloc`, `calloc`,
+`realloc` and `free` interposed, and owes `0 allocator calls` over the
+measured loop. No shared case: the rule is an allocation count, which only a
+leg's own allocator can see, and the answers every driver gives are unchanged.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §16.1: the C text read allocates nothing beyond the instance | `make tables-c-soak` (`schema_test_c_soak`, any count of two or more) | red before its fix on C: every JSON object heap-allocated its repeated-key set, 502 allocator calls a pass over the corpus (257,024 over 512) |
+
+### A block build writes an absent optional's held value
+
+The block form leaves inline storage where it is (SPEC-TABLES §19.3): an
+optional's value slot rides beside its presence companion, and a block read
+keeps whatever value an absent slot holds. A builder handed that record gives
+back the bytes it read. The shared case is the `block block_padded` row of the
+tables manifest: `testdata/wire/tables/block_padded.bin`, whose row 2 holds
+`counter = 18` with `counter#present = false` (bytes `12 00 00 00` at offset
+312, presence `00` at 316), pinned in `block/block_padded.dump`. A leg that
+rebuilds the block compares its build to the image byte for byte.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §19.3: an absent optional's value slot is written as held, so a block rebuilt from its own read equals the image | `block_padded` (row 2 `counter`), `TestLobsterBlockForm` (`internal/codegen/lobstertable`, slow tier) | red before its fix on Lobster: `block_write_field` returned early for an absent optional, writing the presence byte and leaving the value zero, so the rebuild differed at byte 312 |
+
+### A block build names the non-finite float it refuses
+
+A block float is finite (SPEC-TABLES §3.3): the read refuses a NaN or an
+infinity on its raw bits and the builder refuses one in the value, and both
+name the field, `<Owner>.<field>`. The verdict is shared and already held by
+every leg; the name is a leg's own report (docs/rulings.json
+refusal-verdict-only), so the case is the leg's unit test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
+
+### No fixed read clamps, the tolerant walk included
+
+The fixed form has no tolerant read (SPEC-TABLES §3.4, §4: "no read
+clamps"): a compressed float past its declared range refuses the load
+`out_of_range`, and a counted array below its declared Min refuses
+`count_over_bound`, whichever entry point reads the file. The shared cases are
+the `shapes` instance rows `shapes_fixed_tenth_past_max`,
+`shapes_fixed_seventh_below_min` and `shapes_fixed_octets_below_min`
+(`FixedBounds`, `wire-refused`), beside their lawful twins `_at_max`,
+`_at_min` and `shapes_fixed_octets_at_min`.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §3.4, §4: a fixed read refuses a value past its range and a count below Min, never clamps | `shapes_fixed_tenth_past_max`, `shapes_fixed_seventh_below_min`, `shapes_fixed_octets_below_min`; `TestSquirrelTableSaveRoundTripsEveryInstance` (`internal/codegen/squirreltable`, slow tier) | red before its fix on Squirrel: the walk load's fixed path clamped the floats to their ends (counting `oor`) and took a count of 1 under `[2..8]`, so the value reached the save, which wrote 655 bytes |
+
+### Every save of a fixed root holds the write contract
+
+A fixed root is written by two public calls in some legs: the batch writer
+`<Root>FixedSave` and the whole-file `<Root>Save`. SPEC.md §5.1's refusals
+bind both, in every build for a refuse-every-build leg. The shared
+`write-refusal-fixed` rows reach the batch writer, so the whole-file save is
+held to the same rows by the leg's own test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC.md §5.1 rows 1 to 8 and 10: the whole-file save of a fixed root refuses what the fixed writer refuses | Go unit test `TestSquirrelFixedRootSaveRefusesOffContract` (`internal/codegen/squirreltable`, slow tier): every row of `TestSquirrelFixedSaveRefusesOffContract` through `RecSave`; no shared case, because the conformance driver writes a fixed root through `<Root>FixedSave` | red before its fix on Squirrel: `saveFixed` in runtime/save.nut walked the body itself with no range, count-minimum, width, text or type check, so `RecSave` wrote 18 off-contract rows and raised on 7 wrong-typed ones; it now delegates to `<Root>FixedSave` |
+
+### Every generated C++ table header compiles standalone
+
+A C++ table header carries the `schema_assert` hook whenever it calls
+`schema_assert` for any reason ([SPEC-TABLES §13.9](SPEC-TABLES.md), the hooks
+table; SPEC.md §5.1): a generated header is the first and only include of a
+translation unit and must compile there. A variable table with a ranged
+`fixed(48, 16)` field and no fixed form, list or storage check once emitted the
+write-contract call without the hook.
+
+```schema
+package rangedfixed
+table Root
+{
+    f fixed(48, 16) | min = -10, max = 10
+    n int64
+}
+```
+
+A new C++ implementation holds the same rule for its own generated table
+headers: every unit the shared corpus names, the manifest `unit` rows and the
+one-check units in `testdata/cpp-standalone`, generates headers that compile
+with `-std=c++17 -fsyntax-only` when included alone.
+`TestEveryGeneratedTableHeaderCompilesStandalone` sweeps that corpus and is red
+on the old generator for all four one-check units (`ranged_fixed`, `ranged_int`, `ranged_bits`, `ranged_float`).
+
+### Unlawful handed-in lineage entry, every leg: the narrowings, one shared corpus
+
+The rest of the unlawful set, as the Go reference already held it
+(`internal/codegen/gotable/fixedruntime.go`, `tableFixedChildrenNamed` and the
+EMIT checks beside it). A lineage entry is UNLAWFUL, lays no plan, moves no
+counter, and a file under its hash refuses, when the writer carries:
+
+- a union arm the reader names nowhere (an arm removed);
+- an enum variant the reader names nowhere (a variant removed), on the
+  grown-width widen path and on the same-width remap path alike, so a remap
+  never sends a removed variant to None;
+- a keyed key the reader names nowhere, or more keyed slots than the reader;
+- a `[N]`, `[..N]` or `bytes(N)` with more slots than the reader's (a shrunk
+  array), never truncated to the reader's bound;
+- a `string(N)` wider than the reader's (narrowed text);
+- a same-kind leaf wider than the reader's.
+
+[FIXED-FORM-ALGORITHM §5.2](FIXED-FORM-ALGORITHM.md) EMIT now says each of these
+where it used to take `min(their_n, my_n)` and `min(me.size, te.size)`;
+`min` is the writer's own number on every lawful entry, so the lawful rows do
+not move. The §5.4 table row names the whole set. §5.1 refuses every one of
+these at commit, so a lawful lineage never reaches them; the load refusal is
+for a handed-in or hostile entry, and it holds in every build on every leg.
+
+**One shared corpus, defined once** (`internal/fixedunlawful`): ten
+unlawful cases, `unknown_census`, `unknown_census_many`, `kind_moved` and the
+seven narrowing rows `arm_removed`, `variant_removed`, `key_removed`,
+`array_shrunk`, `counted_shrunk`, `text_narrowed`, `bytes_narrowed`
+([FIXED-FORM-VERSIONING-TESTS.md](FIXED-FORM-VERSIONING-TESTS.md)). Each OLD
+file is one that a leg which drops, remaps, truncates or checks only the live
+length would LOAD, and so fail; only a refusal passes. Most hold only values
+the NEW reader could still name or hold (arm `gamma`, variant `Gold`, a
+count of 2, a two-byte text or blob). Two do not: `key_removed` also stores
+`Silver = 22` at the key the NEW reader lacks, and `array_shrunk` stores
+`43`, `44` past the NEW `[2]`, the values such a leg silently drops. One
+LAWFUL control, `lawful_control` (the `uint_widen` pair, `old_uint_widen.bin`),
+must LOAD on every leg with its values checked. Every driver answers each case
+with a verdict read off its own load, `refused` or `loaded <n>: <values>`, and
+`fixedunlawful.Run` judges it, so a driver that never loads fails the control. Every leg in `fixedunlawful.Legs` answers every case
+through `fixedunlawful.Run`, which refuses a missing answer and a stray one by
+name, and `TestEveryLegAnswers` refuses a leg with no driver. The verdict is
+compared (refuses, counters zero, every poisoned row at its declared defaults,
+twice); the refusal name is each leg's own assertion (`refusal-verdict-only`):
+`layout_malformed`, Dart `layout_damaged`. The Go driver also holds the Go
+writer's bytes to every corpus file.
+
+| leg | before | after |
+|---|---|---|
+| go (reference), elixir | all ten refuse | all ten refuse |
+| cpp, c, cs, java, js, rust, luau, dart | the seven narrowing rows load | all ten refuse |
+| unity | `arm_removed`, `variant_removed`, `key_removed` load | all ten refuse |
+| goose, lobster | all ten load or count (`unknown`, `kind_mismatch`) | all ten refuse |
+| lua | all ten load | all ten refuse |
+
+A union's declared default is None. Java's refusal reset used to re-tag the
+union and leave the unselected arm's storage as the caller poisoned it; it now
+resets the whole row (SPEC-TABLES §6.5). JS's `Init` is the tag alone by the
+JS target's own design, so its driver holds the tag to None.
+
+Run, with the corpus built (`make tables-fixedform-corpus`):
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
+  go test -count=1 ./internal/fixedunlawful ./internal/codegen/... \
+  -run 'TestEvery(LegAnswers|CaseIsInTheCorpus)|TestUnansweredRefuses|Test[A-Za-z]*FixedUnlawfulCorpus'
+```

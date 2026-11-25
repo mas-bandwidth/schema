@@ -1,14 +1,11 @@
 package cpptable
 
-// §5.4 closes the second half of its own sentence: the compile census lands
-// ONCE PER ENDPOINT AND NEVER PER RECORD. The landed one-record row reads
-// old_unknown_census.bin, which holds ONE record, so "once per endpoint" and
-// "once per record" are the same number there and the clause never got a gate.
-// A per-record Unknown++ really exists (the union-tag path), so a three-record
-// file is the only read that tells the two apart. many_unknown_census.bin
-// carries THREE records of the same Census root the landed row uses; the one
-// dropped field, Item.drop, is ONE field of ONE endpoint, so the counter is '1'
-// EXACTLY — never 3, never '>='.
+// The three-record twin of unknown_census: many_unknown_census.bin carries
+// THREE records of the same Census root. The handed-in entry is UNLAWFUL
+// whatever the record count (§5.4, §5.9 #30): the load refuses
+// `layout_malformed` before any record lands, `unknown` stays zero (there is no
+// census to count once per endpoint or once per record), and every row handed
+// in is back at its declared defaults (SPEC-TABLES §6.5).
 
 import (
 	"path/filepath"
@@ -17,24 +14,9 @@ import (
 
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	corpus := cppFixedCorpus(t)
-	body := `
-    if ( n != 3 ) { printf( "unknown_census_many: n == %lld, not 3\n", (long long) n ); return 1; }
-    {
-        const int32_t want[3][4] = { { 10, 11, 12, 13 }, { 20, 21, 22, 23 }, { 30, 31, 32, 33 } };
-        int rec, k;
-        for ( rec = 0; rec < 3; ++rec )
-        {
-            if ( back[rec].lead != 1u || back[rec].trail != 2u )
-                { printf( "unknown_census_many: record %d bracket moved: lead=%u trail=%u\n", rec, back[rec].lead, back[rec].trail ); return 1; }
-            for ( k = 0; k < 4; ++k )
-                if ( back[rec].items[k].a != want[rec][k] ) { printf( "unknown_census_many: record %d items[%d].a is not %d: %d\n", rec, k, want[rec][k], back[rec].items[k].a ); return 1; }
-        }
-    }
-    if ( r.unknown != 1 ) { printf( "unknown is not exactly 1: %d\n", r.unknown ); return 1; }
-    if ( r.widened != 0 )
-        { printf( "unknown_census_many: a counter moved on a clean backward read: unknown=%d km=%d w=%d c=%d dup=%d\n", r.unknown, r.refused, r.widened, r.refused, r.refused ); return 1; }
-    if ( r.damaged || r.refused ) { printf( "unknown_census_many: a clean read refused: malformed=%d refused=%d\n", (int) r.damaged, (int) r.refused ); return 1; }
-`
+	body := cppUnlawfulBody("unknown_census_many", "Census",
+		`back[k].lead = 99u; back[k].trail = 88u; for ( int i = 0; i < 4; ++i ) { back[k].items[i].a = 5 + i; }`,
+		`back[k].lead == 1u && back[k].trail == 2u && back[k].items[0].a == 0 && back[k].items[3].a == 0`)
 	out, err := cppRunVersionProbe(t, "unknown_census",
 		filepath.Join(corpus, "many_unknown_census.bin"), body, "")
 	if err != nil {

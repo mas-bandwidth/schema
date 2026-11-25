@@ -12870,8 +12870,18 @@ contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
 count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
-is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both.
+is refused (row 7), as the save refuses it. An enum slot holding an ordinal
+past its variant set (row 5) or a deprecated variant (§2.15) is refused
+(`cref_enum_*`, `cref_var_enum_*`) by the write rule of SPEC §5.1. A leg that
+refuses in every build (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO,
+Goose) refuses it in every build. An assert leg
+refuses it by its debug assert only, and its release build carries no
+write-side check: C and C++ by `schema_assert`, Rust by `debug_assert!` (a
+native Rust enum cannot hold an ordinal past its set at all), Java by `assert`
+under `-ea`, C# and Unity by `Debug.Assert`, and Dart by `assert` under
+`--enable-asserts`. An assert leg's refusal is not promised before the first
+byte: the C and C++ fixed cooks clear the output before the slot's assert can
+fire. A leg whose measure and write share one body refuses in both.
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
@@ -15742,7 +15752,7 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form; and every other call the generated header makes (the SPEC.md §5.1 write contract: a range, a `bits(N)` width, a ranged float, a storage bound). A header carries this hook whenever it contains one such call, whatever unit shape emitted it, so every generated header compiles as the first and only include of a translation unit | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |
@@ -16781,6 +16791,13 @@ carries three accessors where C++ carries a tag offset and an arm offset.
   caller's; the read path allocates nothing beyond it. Fields the text does
   not mention keep their storage defaults (SPEC §4.2: zero, or the
   specified default), exactly as an absent field on the wire does (§4).
+  **In C that holds for the repeated-key check too** (§16.2): every open
+  object's key set is carved from ONE pool of 512 slots on the read's entry
+  frame, never from the walk's own frames and never from the heap, so a
+  text whose open objects' sets fit the pool (an object of up to 127 keys
+  at the top) reads with no allocator call. A set that outgrows the pool
+  moves to the heap, so no object is ever too wide to check. `make
+  tables-c-soak` counts the allocator calls over the corpus and owes zero.
 - **`ToJson` writes ONE instance as ONE text**, every field, in declaration
   order, defaults included — a text is for people and tools, and a text
   that elides is a text a reader has to know the schema to complete.
@@ -16893,8 +16910,10 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
-table and type values only (W2), so the two caps share a number and not a unit.
+inside it) are read and the 130th nested container refuses `malformed`. **The write's cap counts
+the same containers in the same unit** (W2): every object and array it writes,
+an empty `[]` or `{}` included, so a writer never emits a text its own reader
+refuses.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
@@ -17114,8 +17133,9 @@ written as something else.
 - **A compressed or ranged float off its range** — refused per leg as
   docs/SPEC.md §5.1 row 10 and docs/rulings.json `write-refusal` list: the
   verdict is the contract, the reason name per language.
-- **A graph nested past 128** (§16.2): the writer carries the reader's depth
-  cap, so it never produces a text its own reader would refuse.
+- **A container nested past 128** (§16.2, §16.14 W2): the writer judges the
+  reader's depth cap at every object and array it writes, an empty `[]` or `{}`
+  included, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
@@ -18319,7 +18339,7 @@ length past `N`, an enum ordinal outside its variant set, a union tag outside
 its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
 names, and a compressed or ranged float off its range — and, beside those rows,
 a deprecated enum variant (§2.15), a `required` value outside its declared range
-(§2.3), a text list past its declared total (§2.13), a table value past the
+(§2.3), a text list past its declared total (§2.13), a container past the
 depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
@@ -18347,13 +18367,20 @@ spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
 THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT: this `d`,
 which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
-judges it at each table or type value (W3): one at `d` past 128 refuses the
-write. The read judges the same `d` at each table value it places and at
-each container it skips (§16.2), so a document this writer emits never
-meets the read's cap, and a pointer chain of
-128 nodes under the root writes and reads and one of 129 does neither. A
-scalar, a string or a `null` written at depth 129 nests nothing and is
-written: the last node's null `next` does not count. No other whitespace is
+judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
+container it walks (§16.2): a table or type value (W3), an array, a text
+list, a flags value's array of names, a map's object, an enum-keyed array's
+object and a union's object, the empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+so a document this writer emits never meets the read's cap. A value is
+writable only when its deepest container, an empty leaf array included, sits
+at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes
+hold no container writes and reads, and one of 129 does neither; a chain whose
+nodes each hold an array writes and reads at 127 nodes, and at 128 the last
+node's array sits at 129 and the write refuses. A scalar, a string or a
+`null` written at depth 129 nests nothing and is written: the last node's null
+`next` does not count. The refusal is the text writer's own, the -1 of §16.3
+in every build and every leg, the one a table value past the cap already
+takes: one cap, one check, whatever the container. No other whitespace is
 ever written outside a string: no tab, no carriage return, no space before a
 `,` or a `:`, no space after a `,`.
 

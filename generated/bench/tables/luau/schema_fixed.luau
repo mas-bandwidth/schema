@@ -315,9 +315,9 @@ end
 -- selected, walked beside the READER's own, with the descriptors naming where
 -- each value lands. For the reader's own hash the two layouts are one and every
 -- pair is the identity; for an older lineage entry each pair takes §5.2's EMIT:
--- a field matched by id, a ladder widen counted `widened`, a kind that moved
--- left at its default and counted once (`kind_mismatch`, at compile), a writer
--- field no reader field names counted once (`unknown`, at compile), the
+-- a field matched by id, a ladder widen counted `widened` (a kind that moved
+-- off every ladder, or a writer field no reader field names, makes the entry
+-- UNLAWFUL and no plan is laid: see lawfulTable below), the
 -- writer's own bounds held on every count, length, tag and ordinal (bill
 -- §12.5), and the reader's tail its declared default. The destination is a
 -- FRESH VALUE from the descriptor's constructor, which is this leg's prefill:
@@ -326,8 +326,9 @@ end
 -- writer node's record offset plus `at`, the record's start in the file, so a
 -- record is read in place and never copied.
 
--- MISSING marks a pair EMIT lands nothing for (a kind that moved): the field
--- keeps the default the constructor gave it.
+-- MISSING marks a pair EMIT lands nothing for: the field keeps the default the
+-- constructor gave it. A lawful plan never reaches it for a moved kind; the
+-- plan for that entry was refused before any record (lawfulTable).
 local MISSING = table.freeze({})
 
 type Cx = { widened: number }
@@ -796,59 +797,129 @@ readPair = function(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, d
 	return bounds(f, readScalar(f, w, buf, w.off + at), cx, wr), nil
 end
 
--- THE CENSUS (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4): ONCE PER
--- WRITER-READER PAIR, at compile and never per record — an array element is visited once,
--- whatever its count — `unknown` for a writer field no reader field names and
--- `kind_mismatch` for a pair whose kind moved off every ladder.
-type Census = { unknown: number, kindMismatch: number }
+-- UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+-- A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
+-- removal; a field is deprecated in place) and moves no kind off the ladder. A
+-- writer field no reader field names, or a pair whose kind moved off every
+-- ladder, makes the handed-in lineage entry UNLAWFUL: no plan is laid, nothing
+-- is counted and read past, and a file under its hash refuses
+-- `layout_malformed` — the writer's ?T into this reader's bare T is
+-- `kind_mismatch` (ruling R2). It holds in every slot: the root, a nested
+-- table, the element of an array or a keyed array, a union arm. Go's
+-- tableFixedChildrenNamed and c.unlawful are the reference; as there, a later
+-- pair's verdict overwrites an earlier one.
+type Unlawful = { name: string? }
 
-local censusPair: (f: any, w: Node, r: Node, c: Census) -> ()
+local lawfulPair: (f: any, w: Node, r: Node, u: Unlawful) -> ()
 
-local function censusTable(d: any, w: Node, r: Node, c: Census)
+local function lawfulTable(d: any, w: Node, r: Node, u: Unlawful)
 	local rById = r.byId :: { [integer]: Node }
 	for _, wc in w.children do
-		if rById[wc.id] == nil then c.unknown += 1 end
+		if rById[wc.id] == nil then
+			u.name = "layout_malformed"
+			return
+		end
 	end
 	local wById = w.byId :: { [integer]: Node }
 	for _, f in d.fields do
 		local wc, rc = wById[f.id], rById[f.id]
 		if wc ~= nil and rc ~= nil then
 			if rc.kind == 35 and wc.kind == 35 then
-				censusPair(f, wc.children[1], rc.children[1], c)
+				lawfulPair(f, wc.children[1], rc.children[1], u)
 			elseif rc.kind == 35 then
-				censusPair(f, wc, rc.children[1], c)
+				lawfulPair(f, wc, rc.children[1], u)
 			elseif wc.kind == 35 then
-				c.kindMismatch += 1
+				u.name = "kind_mismatch"
 			else
-				censusPair(f, wc, rc, c)
+				lawfulPair(f, wc, rc, u)
 			end
 		end
 	end
 end
 
-censusPair = function(f: any, w: Node, r: Node, c: Census)
+-- childrenNamed is Go's tableFixedChildrenNamed: every writer child (a field,
+-- a union arm, an enum variant, a keyed array's key) is named, by id, by a
+-- reader child. Deprecation retains the slot and its name; a removal leaves
+-- the writer naming what the reader does not (§5.1, §5.2, §5.8 rule 6).
+local function childrenNamed(w: Node, r: Node): boolean
+	for _, wc in w.children do
+		if childIndexById(r.children, wc.id) == 0 then return false end
+	end
+	return true
+end
+
+-- slotsOf is a fixed array's element count past its head: the count word of a
+-- counted array and the length word of a bytes(N) are no slot.
+local function slotsOf(n: Node, head: number): number
+	local e = n.children[1]
+	if e == nil or e.size == 0 then return 0 end
+	return math.floor((n.size - head) / e.size)
+end
+
+lawfulPair = function(f: any, w: Node, r: Node, u: Unlawful)
 	if w.kind ~= r.kind then
-		if not ladder(w.kind, r.kind) then c.kindMismatch += 1 end
+		if not ladder(w.kind, r.kind) then
+			u.name = if w.kind == 35 then "kind_mismatch" else "layout_malformed"
+		end
 		return
 	end
 	local k = w.kind
 	if k == 13 then
-		censusTable(S.lookup(f.t), w, r, c)
+		lawfulTable(S.lookup(f.t), w, r, u)
 	elseif k == 14 then
-		if f.s ~= "bytes" then censusPair(f.e, w.children[1], r.children[1], c) end
+		-- A SHRUNK ARRAY IS UNLAWFUL (Go's theirN > myN): a fixed [N], a
+		-- counted [..N] and a bytes(N) alike; the writer's slots past the
+		-- reader's are never dropped and read on
+		local head = if f.s == "bytes" or f.array == "counted" then COUNT else 0
+		if w.size < head or r.size < head then
+			u.name = "layout_malformed"
+			return
+		end
+		if slotsOf(w, head) > slotsOf(r, head) then
+			u.name = "layout_malformed"
+			return
+		end
+		if f.s ~= "bytes" then lawfulPair(f.e, w.children[1], r.children[1], u) end
 	elseif k == 16 then
-		censusPair(f.e, w.children[2], r.children[2], c)
+		-- A REMOVED KEY, or more writer slots than reader slots, is unlawful
+		local wkey, we = w.children[1], w.children[2]
+		local rkey, re = r.children[1], r.children[2]
+		if not childrenNamed(wkey, rkey) then
+			u.name = "layout_malformed"
+			return
+		end
+		local theirs = if we.size > 0 then math.floor(w.size / we.size) else 0
+		local mine = if re.size > 0 then math.floor(r.size / re.size) else 0
+		if theirs > mine then
+			u.name = "layout_malformed"
+			return
+		end
+		lawfulPair(f.e, we, re, u)
 	elseif k == 15 then
+		-- A REMOVED ARM is unlawful: the writer's tag could take it
+		if not childrenNamed(w, r) then
+			u.name = "layout_malformed"
+			return
+		end
 		local d = S.lookup(f.t)
 		for i, rarm in r.children do
 			local j = childIndexById(w.children, rarm.id)
 			local arm = d.arms[i]
 			if j ~= 0 and arm ~= nil and arm.s ~= "void" then
-				censusPair(arm, w.children[j], rarm, c)
+				lawfulPair(arm, w.children[j], rarm, u)
 			end
 		end
-	elseif k ~= 12 and k ~= 30 and w.size ~= r.size then
-		if not (w.size < r.size and r.size <= 8) then c.kindMismatch += 1 end
+	elseif k == 30 then
+		-- A REMOVED VARIANT is unlawful, on the grown-width widen and on the
+		-- same-width remap alike
+		if not childrenNamed(w, r) then u.name = "layout_malformed" end
+	elseif k == 12 then
+		-- NARROWED TEXT is unlawful (Go's te.Size > me.Size)
+		if w.size > r.size then u.name = "layout_malformed" end
+	elseif w.size ~= r.size then
+		-- a same-kind leaf grown within eight bytes is a ZERO widen; any other
+		-- width moved is a narrowed span
+		if not (w.size < r.size and r.size <= 8) then u.name = "layout_malformed" end
 	end
 end
 
@@ -1113,8 +1184,8 @@ end
 -- has the one entry it can always compute, its own.
 -- a plan, compiled ONCE per lineage entry and cached by it (§4.2, §5.9 #3:
 -- "build time" in a language with no constant evaluation is first use): the
--- writer's node tree, the reader's, and the census that lands once per read.
-type Plan = { writer: Node, reader: Node, census: Census, ranges: any, refused: string? }
+-- writer's node tree and the reader's, or the name an unlawful entry refuses.
+type Plan = { writer: Node, reader: Node, ranges: any, refused: string? }
 local plans: { [any]: { [any]: Plan } } = setmetatable({}, { __mode = "k" }) :: any
 
 local function own(fixed: Fixed): Known
@@ -1137,16 +1208,20 @@ local function planFor(d: any, fixed: Fixed, k: Known, identity: boolean): Plan
 	local ok, res = pcall(function(): any
 		local reader = compile(fixed)
 		if identity then
-			return { writer = reader, reader = reader, census = { unknown = 0, kindMismatch = 0 }, ranges = nil }
+			return { writer = reader, reader = reader, ranges = nil }
 		end
 		local writer = compile({ hash = k.hash, recordBytes = k.recordBytes - 8, layout = k.layout })
-		local c: Census = { unknown = 0, kindMismatch = 0 }
-		censusTable(d, writer, reader, c)
-		return { writer = writer, reader = reader, census = c, ranges = k.ranges }
+		-- AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): the lane carries its name
+		local u: Unlawful = { name = nil }
+		lawfulTable(d, writer, reader, u)
+		if u.name ~= nil then
+			return { writer = nil :: any, reader = nil :: any, ranges = nil, refused = u.name }
+		end
+		return { writer = writer, reader = reader, ranges = k.ranges }
 	end)
 	if not ok then
 		local name = if type(res) == "table" and (res :: any).name ~= nil then (res :: any).name else "layout_malformed"
-		p = { writer = nil :: any, reader = nil :: any, census = { unknown = 0, kindMismatch = 0 }, ranges = nil, refused = name }
+		p = { writer = nil :: any, reader = nil :: any, ranges = nil, refused = name }
 	else
 		p = res :: Plan
 	end
@@ -1185,8 +1260,9 @@ end
 --
 -- REFUSE IS TOTAL: the values are built and returned only when every record
 -- read, so a refusal at record k lands nothing at all, and the counters move
--- only on a read that returns — the compile census once, after the loop
--- (§5.3, §5.9 #6). `batch_too_large` is the caller's capacity: a file holding
+-- only on a read that returns (§5.3, §5.9 #6); `unknown` and `kindMismatch`
+-- are held at zero, because the fixed form has no compile census (§5.4, §5.9
+-- #30): an unlawful lineage entry's plan refuses by name at step 8. `batch_too_large` is the caller's capacity: a file holding
 -- more records than it refuses before any record is checked or lands, and an
 -- omitted capacity is the file's own count; `plan_too_large` is the lineage entry's own
 -- lane (a layout past PLAN_MAX entries).
@@ -1277,23 +1353,19 @@ function F.loadWalk(d: any, fixed: Fixed, file: buffer, report: any?, capacity: 
 		error(err, 0)
 	end
 	rep.widened = cx.widened
-	rep.unknown, rep.kindMismatch = plan.census.unknown, plan.census.kindMismatch
 	return out
 end
 
 -- read is the PLAIN fixed-form read, and it is STRICT (docs/SPEC-TABLES.md
 -- §6.5, Go's <T>FixedLoad over <T>FixedLoadWalk): nil for every refusal
 -- of loadWalk (out_of_range and wire_damaged among them, raised as the
--- record is read) and for a plan whose census moved a kind off every ladder
--- (kind_mismatch), with report.reason that name and nothing handed back.
--- unknown and widened alone never refuse. The verdict is the contract; the
+-- record is read; layout_malformed and kind_mismatch for an unlawful lineage
+-- entry, refused before any record), with report.reason that name and nothing
+-- handed back. widened alone never refuses. The verdict is the contract; the
 -- name is this leg's diagnostic (docs/rulings.json refusal-verdict-only).
 function F.read(d: any, fixed: Fixed, file: buffer, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
-	local out = F.loadWalk(d, fixed, file, rep, capacity)
-	if out == nil then return nil end
-	if rep.kindMismatch > 0 then rep.reason = "kind_mismatch"; return nil end
-	return out
+	return F.loadWalk(d, fixed, file, rep, capacity)
 end
 
 -- load is the plain strict read for a caller that wants the refusal raised:

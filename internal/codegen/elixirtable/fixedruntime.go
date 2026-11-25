@@ -294,11 +294,11 @@ const fixedRuntimeBody = `  @moduledoc """
   read that RETURNS and on no other. On a LAWFUL lineage they are both zero,
   always (§5.9 #30): a newer reader names every field of every writer its lineage
   can select, so the census is the report of an UNLAWFUL or HOSTILE entry only.
+  An unlawful entry lays no plan and its lane refuses layout_malformed or
+  kind_mismatch (§5.4, §5.9 #30), so no compiled lane carries a non-zero
+  census and a kind that moved is never answered wire_damaged here.
   """
   def census(report, 0, 0), do: report
-
-  def census(_report, _unknown, mismatch) when mismatch > 0,
-    do: throw({:refuse, :wire_damaged})
 
   def census(report, unknown, _mismatch) do
     %{report | unknown: report.unknown + unknown}
@@ -1044,19 +1044,28 @@ const fixedRuntimeBody = `  @moduledoc """
   """
   def compile(theirs, mine, dst, capacity, report) do
     record = size_at(theirs, 0)
-    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, report, true)
+    {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, [], [], {[], 0}, report)
     {entries, n} = acc
 
+    # THE ORDER IS THE GO REFERENCE'S (tableFixedCompile): an entry past the
+    # writer's record first, then an UNLAWFUL entry, then the plan storage.
     cond do
+      any_past?(entries, record) ->
+        {:error, :layout_record_too_large, report}
+
+      # AN UNLAWFUL ENTRY LAYS NO PLAN (§5.2, §5.4, §5.9 #30): the plan is
+      # empty and the report carries the mark, :unlawful (layout_malformed) or
+      # :unlawful_kind (the writer's ?T into a bare T, kind_mismatch, R2), which
+      # lineage_lane_of turns into the lane's refusal. Nothing is counted.
+      unlawful?(report) ->
+        {:ok, [], 0, report}
+
       # A REMAP PAST THE uint16 LENGTH WORD REFUSES BY NAME (§5.2, §5.8
       # row 14): the table is as long as the writer's variant count, and a
       # count the length word cannot hold is plan_too_large, never a
       # truncated table answering a wrong value.
       Enum.any?(entries, &match?({:remap_too_large, _}, &1)) ->
         {:error, :plan_too_large, report}
-
-      any_past?(entries, record) ->
-        {:error, :layout_record_too_large, report}
 
       n > capacity ->
         {:error, :plan_too_large, report}
@@ -1072,6 +1081,27 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
+
+  # THE UNLAWFUL MARKS (the Go reference's c.unlawful): a removed writer field,
+  # arm, variant or key, a shrunk array, a narrowed span, or a kind moved off
+  # every ladder is :unlawful and refuses layout_malformed; the writer's ?T into
+  # a bare T is :unlawful_kind and refuses kind_mismatch (R2).
+  defp mark_unlawful(report), do: Map.update(report, :unlawful, 1, &(&1 + 1))
+  defp mark_unlawful_kind(report), do: Map.update(report, :unlawful_kind, 1, &(&1 + 1))
+
+  defp unlawful?(report),
+    do: Map.get(report, :unlawful, 0) > 0 or Map.get(report, :unlawful_kind, 0) > 0
+
+  # A lawful older writer names only fields, arms, variants and keys the reader
+  # retains (the Go reference's tableFixedChildrenNamed): every child of theirs
+  # at ti is named, by id, by a child of mine at mi.
+  defp children_named?(theirs, ti, mine, mi) do
+    my_children = children_at(mine, mi)
+
+    theirs
+    |> offsets(ti, children_at(theirs, ti))
+    |> Enum.all?(fn tc -> find_id(mine, mi, my_children, 0, id_at(theirs, tc)) != nil end)
+  end
 
   # THE LAST SOURCE BYTE, EXCLUSIVE, an entry reads — the guard included, so a
   # guarded entry loads the tag before anything else (docs/FIXED-FORM-ALGORITHM.md
@@ -1136,12 +1166,10 @@ const fixedRuntimeBody = `  @moduledoc """
 
   # match_children walks a TABLE's children on both sides, BY ID.
   #
-  # The census flag is whether THIS entry is the FIRST time the writer's field is
-  # seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-  # ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-  # writer's field dropped from a [4]Item is counted four times and the report says
-  # 4 where the law says 1 (the versioning tests' 5.8 row 11).
-  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
+  # There is no compile census to count (§5.4, §5.9 #30): a writer field the
+  # reader names nowhere marks the entry unlawful in every slot, and the entry
+  # lays no plan. §5.8 row 11 was that census, and it is retired.
+  defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
     their_children = children_at(theirs, ti)
     my_children = children_at(mine, mi)
 
@@ -1152,16 +1180,20 @@ const fixedRuntimeBody = `  @moduledoc """
             {acc, report}
 
           {tc, toff} ->
-            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report, census)
+            compile_entry(theirs, tc, toff, mine, mc, dst, my_at, guard, tag, acc, report)
         end
       end)
 
-    # EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE ` + "`" + `unknown` + "`" + `, and the bytes it
-    # occupies are stepped over because no entry ever names them.
+    # A FIELD OF THEIRS I COULD NOT NAME MAKES THE ENTRY UNLAWFUL (§5.2, §5.4,
+    # §5.9 #30; the Go reference's tableFixedChildrenNamed): a lawful older
+    # writer names only fields the reader retains, so a removed field is never
+    # counted and stepped over. The mark is set for EVERY slot, census or not,
+    # and lineage_lane_of turns it into the lane's refusal, layout_malformed;
+    # COMPILE lays no plan, and a file under the entry's hash refuses whole.
     report =
       Enum.reduce(offsets(theirs, ti, their_children), report, fn tc, report ->
         case find_id(mine, mi, my_children, 0, id_at(theirs, tc)) do
-          nil -> if census, do: bump(report, :unknown), else: report
+          nil -> Map.update(report, :unlawful, 1, &(&1 + 1))
           _ -> report
         end
       end)
@@ -1210,7 +1242,7 @@ const fixedRuntimeBody = `  @moduledoc """
   # function's question.
   defp signed_kind?(kind), do: (kind >= 2 and kind <= 5) or (kind >= 20 and kind <= 24)
 
-  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do
+  defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
     their_kind = kind_at(theirs, ti)
     my_kind = kind_at(mine, mi)
     row = elem(dst, mi)
@@ -1238,8 +1270,7 @@ const fixedRuntimeBody = `  @moduledoc """
           guard,
           tag,
           acc,
-          report,
-          census
+          report
         )
 
       their_kind != my_kind ->
@@ -1260,8 +1291,7 @@ const fixedRuntimeBody = `  @moduledoc """
           guard,
           tag,
           acc,
-          report,
-          census
+          report
         )
     end
   end
@@ -1283,8 +1313,14 @@ const fixedRuntimeBody = `  @moduledoc """
 
       {guarded(acc, guard, tag, entry), report}
     else
-      # A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-      {acc, Map.update(report, :mismatch, 1, &(&1 + 1))}
+      # A KIND THAT MOVED OFF EVERY LADDER MAKES THE ENTRY UNLAWFUL and is never
+      # reinterpreted (§4, §5.2 MATCH, §5.9 #30): layout_malformed, except the
+      # writer's ?T into my bare T, which is kind_mismatch (R2).
+      if their_kind == 35 do
+        {acc, mark_unlawful_kind(report)}
+      else
+        {acc, mark_unlawful(report)}
+      end
     end
   end
 
@@ -1302,8 +1338,7 @@ const fixedRuntimeBody = `  @moduledoc """
          guard,
          tag,
          acc,
-         report,
-         census
+         report
        ) do
     case kind_at(mine, mi) do
       # the OPTIONAL wrapper: the present byte, then the payload WHOLE, present
@@ -1327,15 +1362,14 @@ const fixedRuntimeBody = `  @moduledoc """
             guard,
             tag,
             acc,
-            report,
-            census
+            report
           )
 
         {wrap_new(acc, old_n, &present_wrap_entry(&1, their_at)), report}
 
       # a nested TABLE: match its fields
       13 ->
-        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report, census)
+        match_children(theirs, ti, their_at, mine, mi, dst, at, guard, tag, acc, report)
 
       # an ARRAY: the count, then min( their bound, my bound ) elements
       14 ->
@@ -1352,8 +1386,7 @@ const fixedRuntimeBody = `  @moduledoc """
           guard,
           tag,
           acc,
-          report,
-          census
+          report
         )
 
       # an ENUM-KEYED array: every slot, matched by the KEY's id
@@ -1370,8 +1403,7 @@ const fixedRuntimeBody = `  @moduledoc """
           guard,
           tag,
           acc,
-          report,
-          census
+          report
         )
 
       # a UNION: the tag, remapped, then each arm matched by id
@@ -1388,18 +1420,23 @@ const fixedRuntimeBody = `  @moduledoc """
           guard,
           tag,
           acc,
-          report,
-          census
+          report
         )
 
       # an ENUM: the ordinal is the layout's POSITION, so it remaps
       30 ->
         compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
 
+      # A NARROWED TEXT IS UNLAWFUL (§5.2 EMIT kind 12): the writer's span past
+      # mine would land bytes this reader has no room for.
       12 ->
-        units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)
-        entry = {:text, their_at, at, aux_at, units, elem(row, 4)}
-        {guarded(acc, guard, tag, entry), report}
+        if size_at(theirs, ti) > size_at(mine, mi) do
+          {acc, mark_unlawful(report)}
+        else
+          units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)
+          entry = {:text, their_at, at, aux_at, units, elem(row, 4)}
+          {guarded(acc, guard, tag, entry), report}
+        end
 
       _ ->
         # SAME-SIZE IS A COPY. A ranged integer's bound is held after the loop
@@ -1416,8 +1453,10 @@ const fixedRuntimeBody = `  @moduledoc """
             entry = {:widen, their_at, at, their_size, my_size, false}
             {guarded(acc, guard, tag, entry), report}
 
+          # A NARROWED SPAN (bytes(N) shrunk, a scalar past eight bytes) IS
+          # UNLAWFUL (§5.2 EMIT): never truncated, never counted.
           true ->
-            {acc, Map.update(report, :mismatch, 1, &(&1 + 1))}
+            {acc, mark_unlawful(report)}
         end
     end
   end
@@ -1435,8 +1474,7 @@ const fixedRuntimeBody = `  @moduledoc """
          guard,
          tag,
          acc,
-         report,
-         census
+         report
        ) do
     their_elem = size_at(theirs, ti + 1)
     my_elem = size_at(mine, mi + 1)
@@ -1461,6 +1499,10 @@ const fixedRuntimeBody = `  @moduledoc """
     counted = elem(row, 3) == 1
     n = min(their_n, my_n)
 
+    # A SHRUNK ARRAY IS UNLAWFUL (§5.2 EMIT kind 14): the writer's elements past
+    # my bound would be dropped, so the entry lays no plan.
+    report = if their_n > my_n, do: mark_unlawful(report), else: report
+
     Enum.reduce(0..(n - 1)//1, {acc, report}, fn i, {acc, report} ->
       {_, old_n} = acc
 
@@ -1476,8 +1518,7 @@ const fixedRuntimeBody = `  @moduledoc """
           guard,
           tag,
           acc,
-          report,
-          census and i == 0
+          report
         )
 
       acc =
@@ -1503,15 +1544,26 @@ const fixedRuntimeBody = `  @moduledoc """
          guard,
          tag,
          acc,
-         report,
-         census
+         report
        ) do
     their_keys = children_at(theirs, ti + 1)
     my_keys = children_at(mine, mi + 1)
     their_elem_at = ti + 1 + sub(theirs, ti + 1)
     my_elem_at = mi + 1 + sub(mine, mi + 1)
     their_elem = size_at(theirs, their_elem_at)
+    my_elem = size_at(mine, my_elem_at)
     stride = elem(row, 1)
+
+    # A REMOVED KEY, OR FEWER SLOTS THAN THE WRITER'S, IS UNLAWFUL (§5.2 EMIT
+    # kind 16; the Go reference's tableFixedChildrenNamed on the key enum): a
+    # writer slot this reader cannot name would be dropped.
+    report =
+      if children_named?(theirs, ti + 1, mine, mi + 1) and
+           div(size_at(theirs, ti), max(their_elem, 1)) <= div(size_at(mine, mi), max(my_elem, 1)) do
+        report
+      else
+        mark_unlawful(report)
+      end
 
     Enum.reduce(0..(my_keys - 1)//1, {acc, report}, fn k, {acc, report} ->
       case key_slot(theirs, ti, their_keys, id_at(mine, mi + 2 + k)) do
@@ -1530,8 +1582,7 @@ const fixedRuntimeBody = `  @moduledoc """
             guard,
             tag,
             acc,
-            report,
-            census and k == 0
+            report
           )
       end
     end)
@@ -1553,14 +1604,18 @@ const fixedRuntimeBody = `  @moduledoc """
          guard,
          tag,
          acc,
-         report,
-         census
+         report
        ) do
     their_tag = tag_bytes(theirs, ti)
     my_tag = tag_bytes(mine, mi)
     their_arms = children_at(theirs, ti)
     my_arms = children_at(mine, mi)
     argw = clamp_argw(their_tag)
+
+    # A REMOVED WRITER ARM IS UNLAWFUL (§5.2 EMIT kind 15; the Go reference's
+    # tableFixedChildrenNamed): a writer tag this reader cannot name would land
+    # None, so the entry lays no plan.
+    report = if children_named?(theirs, ti, mine, mi), do: report, else: mark_unlawful(report)
 
     # THE TAG PAST THE WRITER'S ARM SET IS COUNTED HERE, AND NOTHING IS WRITTEN.
     # Every tag value below is written under THEIR tag's guard, so a record
@@ -1616,8 +1671,7 @@ const fixedRuntimeBody = `  @moduledoc """
               guard ++ [{their_at, argw}],
               tag ++ [j + 1],
               acc,
-              report,
-              census
+              report
             )
         end
       end
@@ -1651,11 +1705,23 @@ const fixedRuntimeBody = `  @moduledoc """
     their_size = size_at(theirs, ti)
     my_size = size_at(mine, mi)
 
-    if their_size < my_size do
-      entry = {:widen, their_at, at, their_size, my_size, false}
-      {guarded(acc, guard, tag, entry), report}
-    else
-      compile_enum_remap(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
+    # A REMOVED WRITER VARIANT IS UNLAWFUL (§5.2 EMIT kind 30; the Go
+    # reference's tableFixedChildrenNamed), on the widen and the remap alike.
+    cond do
+      their_size < my_size and not children_named?(theirs, ti, mine, mi) ->
+        {acc, mark_unlawful(report)}
+
+      their_size < my_size ->
+        entry = {:widen, their_at, at, their_size, my_size, false}
+        {guarded(acc, guard, tag, entry), report}
+
+      # A writer past the uint16 length word is the remap's own refusal,
+      # plan_too_large, decided before the names (the Go reference's order).
+      children_at(theirs, ti) <= 65535 and not children_named?(theirs, ti, mine, mi) ->
+        {acc, mark_unlawful(report)}
+
+      true ->
+        compile_enum_remap(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
     end
   end
 
@@ -2432,6 +2498,16 @@ const fixedRuntimeBody = `  @moduledoc """
         # (§5.9 #6): it rides in the lane, and LOAD carries it onto the report
         # ONCE, after the record loop, on a read that RETURNS.
         case compile(theirs, mine, dst, capacity, report()) do
+          {:ok, _plan, _made, %{unlawful: n}} when n > 0 ->
+            # AN UNLAWFUL ENTRY IS REFUSED, NEVER COUNTED (§5.4): no plan is laid
+            # for it, and a file under its hash refuses layout_malformed.
+            {:error, :layout_malformed}
+
+          {:ok, _plan, _made, %{unlawful_kind: n}} when n > 0 ->
+            # THE WRITER'S ?T INTO MY BARE T IS kind_mismatch (R2), the one
+            # unlawful entry that keeps its own name.
+            {:error, :kind_mismatch}
+
           {:ok, plan, made, census} ->
             {:ok, plan, k.record_bytes - 8, made, census.unknown, Map.get(census, :mismatch, 0)}
 

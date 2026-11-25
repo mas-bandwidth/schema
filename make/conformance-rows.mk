@@ -1,73 +1,78 @@
-# make/conformance-rows.mk — THE FIXED-FORM ROWS THAT ARE STANDALONE FILES.
+# make/conformance-rows.mk — EVERY ROW FILE OF EVERY LEG'S ROWS DIRECTORY.
 #
 # A row under test/conformance/<leg>/rows/ is a self-contained program that
 # drives one law of docs/FIXED-FORM-ALGORITHM.md through the generated code.
-# Most legs run their rows through the leg's conformance driver; these nine
-# had no runner at all, and while nothing ran them they rotted against the
-# generated code (a renamed type, a report field that no longer exists, a law
-# that moved):
+# The rows a leg runs ARE its rows directory (tools/conformancerows lists it):
+# there is no list to copy by hand, so a row file added is a row run. Before
+# this file read the directory, nine hand lists ran c 3/23, cpp 1/35, dart
+# 3/41, java 2/26, rust 1/33 and elixir 1/21 rows, js and cs none, and the rows
+# nothing ran rotted against the generated code.
 #
-#   C     F4 F10 F12      C++   R15
-#   Dart  E8 R8 R13       Java  F10 R8
-#   Rust  F8
+# Nothing excuses a failing row: there is no ledger of rows a leg owes, so a
+# row the leg cannot answer today is red, named with the cause read off its
+# log. To write a leg's failures with their causes to a file, to read:
 #
-# Each target below generates only the unit its rows name, compiles them and
-# runs them; a row that fails, or does not build, fails the target. They are
-# prerequisites of verify-<leg>-conformance (make/verify-compiled.mk), the
-# per-leg lane ci-fast.yml runs on every pull request that touches the leg,
-# and the C++ lane also runs build/schema_test_tables there (the tables test
-# binary the CI never ran).
+#   make conformance-rows-<leg> CONFORMANCE_ROWS_MEASURED=build/<leg>-failing.tsv
 #
-# A row added to one of these legs goes in the list of its target; a row that
-# is not in a list is not run.
+# The Go rows are TestRow functions run by go test (make/go.mk derives their
+# names from the same directory), so Go is not a leg of this file.
+#
+# conformance-rows-<leg> runs every row (ci-fast.yml's conformance-rows job,
+# one per leg, and a prerequisite of test-<leg>, the nightly certify row);
+# CONFORMANCE_ROWS_SHARD=i/n runs shard i of n (every n-th row by name), for a
+# person splitting a run by hand.
 
-CONFORMANCE_ROWS_DIR := build/conformance-rows
+CONFORMANCE_ROWS_LEGS := $(filter-out go,$(patsubst test/conformance/%/rows,%,$(wildcard test/conformance/*/rows)))
+CONFORMANCE_ROWS_SHARD ?= 0/1
+CONFORMANCE_ROWS_MEASURED ?=
 
-CONFORMANCE_ROWS_C    := F4 F10 F12
-CONFORMANCE_ROWS_DART := E8 R8 R13
-CONFORMANCE_ROWS_JAVA := F10 R8
+build/conformancerows: $(wildcard tools/conformancerows/*.go)
+	@mkdir -p build
+	go build -o $@ ./tools/conformancerows
 
-.PHONY: conformance-rows-c conformance-rows-cpp conformance-rows-dart conformance-rows-java conformance-rows-rust
+# What each leg's rows build against: the generated trees the rows name, and
+# the toolchain, passed in the environment (tools/conformancerows refuses an
+# unset one by name). Each list is what the leg's rows READ and nothing more:
+# the Java rows compile only the generated units they name (the runner reads
+# them off the rows), and only the Dart rows read build/fixedform-corpus (R27,
+# its corpus law), so no other leg builds the C++ reference dump.
+CONFORMANCE_ROWS_DEPS_c      := build/tables-generated-c/.stamp build/tables-generated-c-fixed/.stamp
+CONFORMANCE_ROWS_ENV_c        = CC="$(CC)" SERIALIZE_C="$(SERIALIZE_C)"
+CONFORMANCE_ROWS_DEPS_cpp    := build/tables-generated/.stamp
+CONFORMANCE_ROWS_ENV_cpp      = CXX="$(CXX)" SERIALIZE="$(SERIALIZE)"
+CONFORMANCE_ROWS_DEPS_cs     := toolchain-cs sibling-cs build/tables-generated-cs/.stamp
+CONFORMANCE_ROWS_ENV_cs       = DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))"
+CONFORMANCE_ROWS_DEPS_dart   := toolchain-dart build/tables-generated-dart/.stamp build/dart-fixed/.stamp build/fixedform-corpus/.stamp
+CONFORMANCE_ROWS_ENV_dart     = DART="$(DART)"
+CONFORMANCE_ROWS_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build/elixir-fixedform/.stamp
+CONFORMANCE_ROWS_ENV_elixir   = ELIXIR='$(ELIXIR)'
+CONFORMANCE_ROWS_DEPS_java   := toolchain-java build/tables-generated-java/.stamp
+CONFORMANCE_ROWS_ENV_java     = JAVA="$(JAVA)" JAVAC="$(JAVAC)"
+CONFORMANCE_ROWS_DEPS_js     := build/tables-generated-js/.stamp build/js-fixed/.stamp
+CONFORMANCE_ROWS_ENV_js       = NODE="$(NODE)"
+CONFORMANCE_ROWS_DEPS_rust   := bin/schema build/tables-generated-rust/.stamp
+CONFORMANCE_ROWS_ENV_rust     = CARGO='PATH="$(RUSTUP_BIN):$$PATH" cargo' SCHEMA="$(CURDIR)/bin/schema"
 
-# C: F4 and F10 read V1's Cell, F12 reads K1's Root; every unit is the
-# generated one the conformance driver builds (the package-prefixed names).
-conformance-rows-c: bin/schema
-	@mkdir -p ${CONFORMANCE_ROWS_DIR}/c
-	./bin/schema generate --lang c --out ${CONFORMANCE_ROWS_DIR}/c/v1 test/tables/V1.schema
-	./bin/schema generate --lang c --out ${CONFORMANCE_ROWS_DIR}/c/k1 test/tables/K1.schema
-	@set -e; for row in ${CONFORMANCE_ROWS_C}; do \
-		case $$row in F12) unit=k1; table=K1Table.c ;; *) unit=v1; table=V1Table.c ;; esac; \
-		${CC} -std=c11 -Wall -Wextra -Werror -I${CONFORMANCE_ROWS_DIR}/c/$$unit -I${SERIALIZE_C} \
-			test/conformance/c/rows/$$row.c ${CONFORMANCE_ROWS_DIR}/c/$$unit/$$table \
-			-o ${CONFORMANCE_ROWS_DIR}/c/$$row -lm; \
-		${CONFORMANCE_ROWS_DIR}/c/$$row; \
-	done
+define conformance_rows_rule
+.PHONY: conformance-rows-$(1) verify-$(1)-rows
+conformance-rows-$(1): build/conformancerows $$(CONFORMANCE_ROWS_DEPS_$(1))
+	$$(CONFORMANCE_ROWS_ENV_$(1)) ./build/conformancerows -leg $(1) -shard $$(CONFORMANCE_ROWS_SHARD) \
+		$$(if $$(CONFORMANCE_ROWS_MEASURED),-measured $$(CONFORMANCE_ROWS_MEASURED))
+verify-$(1)-rows: conformance-rows-$(1)
+test-$(1): conformance-rows-$(1)
+endef
+$(foreach leg,$(CONFORMANCE_ROWS_LEGS),$(eval $(call conformance_rows_rule,$(leg))))
 
-# C++: R15 reads the four versioning pairs the tables stamp generates.
-conformance-rows-cpp: build/tables-generated/.stamp
-	@mkdir -p ${CONFORMANCE_ROWS_DIR}/cpp
-	${CXX} -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off \
-		-Ibuild/tables-generated/vnum \
-		-Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append \
-		-Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append \
-		-I${SERIALIZE} test/conformance/cpp/rows/R15.cpp -o ${CONFORMANCE_ROWS_DIR}/cpp/R15
-	${CONFORMANCE_ROWS_DIR}/cpp/R15
-
-# Dart: the rows import build/tables-generated-dart/{v1,v2,pointers}.
-conformance-rows-dart: toolchain-dart build/tables-generated-dart/.stamp
-	@set -e; for row in ${CONFORMANCE_ROWS_DART}; do \
-		${DART} --enable-asserts run test/conformance/dart/rows/$$row.dart; \
-	done
-
-# Java: V1's package tblv1 is compiled to a class directory the rows run
-# against in source-file mode, as their headers say.
-conformance-rows-java: toolchain-java bin/schema
-	@mkdir -p ${CONFORMANCE_ROWS_DIR}/java/classes
-	./bin/schema generate --lang java --out ${CONFORMANCE_ROWS_DIR}/java/v1 test/tables/V1.schema
-	find ${CONFORMANCE_ROWS_DIR}/java/v1 -name '*.java' -print0 | xargs -0 ${JAVAC} -d ${CONFORMANCE_ROWS_DIR}/java/classes
-	@set -e; for row in ${CONFORMANCE_ROWS_JAVA}; do \
-		${JAVA} -ea -cp ${CONFORMANCE_ROWS_DIR}/java/classes test/conformance/java/rows/$$row.java; \
-	done
+# ci-fast.yml's conformance-rows-elixir job takes the generated corpus
+# compiled strictly by lang-clean's agreement shards (make/elixir.mk
+# build-conformance-elixir-from-shards verifies each shard's identity and
+# compiles the driver) instead of compiling it again, and runs the rows on it
+# with -o build/elixir-tables-ebin/.stamp.
+.PHONY: conformance-rows-elixir-ebin-from-shards
+conformance-rows-elixir-ebin-from-shards: build-conformance-elixir-from-shards
+	rm -rf build/elixir-tables-ebin
+	cp -R $(ELIXIR_HANDOFF_EBIN) build/elixir-tables-ebin
+	touch build/elixir-tables-ebin/.stamp
 
 # The standard appendix's small executable witnesses use separate fast CI
 # rows so their toolchain compiles do not extend the conformance jobs.
@@ -83,17 +88,3 @@ appendix-go-fixed:
 appendix-python-fixed:
 	sh test/slowgate/proof $@ 'TestPythonFixedLoadCapacityWitness' \
 		-count=1 ./internal/codegen/pythontable -run '^TestPythonFixedLoadCapacityWitness$$'
-
-# Rust: F8 reads the block unit's PaddedRow. The row is a cargo integration
-# test of a probe crate over the generated one, built offline: the only
-# dependency is the sibling serialize.rs by path.
-conformance-rows-rust: bin/schema
-	@mkdir -p ${CONFORMANCE_ROWS_DIR}/rust/probe/src ${CONFORMANCE_ROWS_DIR}/rust/probe/tests
-	./bin/schema generate --lang rust --out ${CONFORMANCE_ROWS_DIR}/rust/blockdemo/src tables/block
-	@printf '[package]\nname = "blockdemo"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../${SERIALIZE_RS}" }\n' \
-		> ${CONFORMANCE_ROWS_DIR}/rust/blockdemo/Cargo.toml
-	@printf '[package]\nname = "probe"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nblockdemo = { path = "../blockdemo" }\n' \
-		> ${CONFORMANCE_ROWS_DIR}/rust/probe/Cargo.toml
-	@: > ${CONFORMANCE_ROWS_DIR}/rust/probe/src/lib.rs
-	@cp test/conformance/rust/rows/F8.rs ${CONFORMANCE_ROWS_DIR}/rust/probe/tests/F8.rs
-	PATH="${RUSTUP_BIN}:$$PATH" cargo test --quiet --offline --manifest-path ${CONFORMANCE_ROWS_DIR}/rust/probe/Cargo.toml
