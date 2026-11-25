@@ -95,8 +95,10 @@ fn main() {
             var arep = schema_rt::MsgReport { .. };
             if f[1] == "announce_second" {
                 if !schema_rt::announce_read(voc, data, arep) {
-                    write_stderr(str("runner: the first announcement of ", f[0], " was refused\n"));
-                    exit(1);
+                    // the case's own error, never the run's: every other
+                    // case still answers
+                    out.append(" error first_announcement_refused\n");
+                    continue;
                 }
                 arep = schema_rt::MsgReport { .. };
             }

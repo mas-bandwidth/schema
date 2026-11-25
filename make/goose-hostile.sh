@@ -18,8 +18,8 @@
 # re-saved wire must be the engine's own encode of that text. A message
 # batch's re-save is held the same way, by the input byte for byte or else by
 # the record's canonical text and the manifest's digest.
-# A case the port cannot read yet (a carrier, or a schema the target refuses)
-# is a named absence, counted, and the ledger is red on it by name. No list
+# A case the port cannot read (a carrier, or a schema the target refuses) is
+# a FAIL line naming it, counted, and the target is red. No list
 # carries a finding (docs/rulings.json no-skips): every disagreement is red by
 # its case's name.
 set -eu -o pipefail
