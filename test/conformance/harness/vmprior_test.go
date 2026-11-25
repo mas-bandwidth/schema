@@ -175,19 +175,9 @@ func mooLiteral(s string) string {
 func TestGooseDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "sh, awk and perl (it runs the Goose conformance driver)")
-	dir, manifest, out := priorTree(t, "goose", "main.goose", "unit.goose")
 	// the driver runs the program once per unit the surface's lines name, in
 	// the unit's generated directory beside the glue it writes there
-	if err := os.WriteFile(manifest, []byte("unit tblprior x.schema\n"+priorManifest), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	unit := filepath.Join(dir, "units", "tblprior")
-	if err := os.MkdirAll(unit, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(unit, "PriorNarrowTable.goose"), []byte("namespace tblprior;\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	dir, manifest, out := gooseBatchTree(t)
 	goose := standIn(t, dir, "goose", `for a; do last=$prev; prev=$a; done
 [ "$prev" = tblprior ] || { echo "stand-in: ran unit $prev" >&2; exit 1; }
 `+priorStandIn)

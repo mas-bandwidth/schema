@@ -1348,7 +1348,18 @@ batch_lock() {
 # warms every unit (batch_warm) and then writes warm.done; every other call
 # waits for warm.done, looking once a second.
 batch_dir() {
-	_k=$({ cat "$1" "$0" "$main" "$accel" "$accel_lib" test/conformance/goose/unit.goose test/conformance/goose/units/*.goose && echo "$goose"; } | cksum | cut -d" " -f1) || return 1
+	# the key's text is gathered first, so a file that cannot be read (or a
+	# units/*.goose that matches nothing) stops the batch by name instead of
+	# keying it on part of its inputs
+	mkdir -p "$base/batch" || return 1
+	_kf="$base/batch/key.$$"
+	if ! { cat "$1" "$0" "$main" "$accel" "$accel_lib" test/conformance/goose/unit.goose test/conformance/goose/units/*.goose && echo "$goose"; } >"$_kf"; then
+		echo "goose driver: the batch cache key's inputs cannot all be read; no batch" >&2
+		rm -f "$_kf"
+		return 1
+	fi
+	_k=$(cksum <"$_kf" | cut -d" " -f1)
+	rm -f "$_kf"
 	_d="$base/batch/$_k-$PPID"
 	mkdir -p "$_d" || return 1
 	while [ ! -f "$_d/warm.done" ]; do
@@ -1393,8 +1404,11 @@ batch_warm() {
 batch_fill() {
 	batch_fresh "$batch_d/$2.out" "$units/$2" && return 0
 	batch_lock "$batch_d/$2.lock"
-	_st=0
-	if ! batch_fresh "$batch_d/$2.out" "$units/$2"; then
+	# the fill runs in a subshell: glue exits on a failed rename, and that
+	# exit must end the fill, never the process that holds the unit's lock
+	(
+		batch_fresh "$batch_d/$2.out" "$units/$2" && exit 0
+		_st=0
 		_fs=$(batch_of "$batch_d/batch.map" "$2")
 		if [ -n "$_fs" ]; then
 			glue "$units/$2"
@@ -1403,8 +1417,10 @@ batch_fill() {
 		else
 			: >"$batch_d/$2.out.tmp"
 		fi
-		mv "$batch_d/$2.out.tmp" "$batch_d/$2.out"
-	fi
+		mv "$batch_d/$2.out.tmp" "$batch_d/$2.out" || exit 1
+		exit "$_st"
+	)
+	_st=$?
 	rm -rf "$batch_d/$2.lock"
 	return "$_st"
 }
@@ -1428,7 +1444,7 @@ batch_section() {
 		END {
 			if (!done) exit 1
 			for (i = 1; i <= n; i++) print out[i]
-		}' "$batch_d/$2.out" 2>/dev/null
+		}' "$batch_d/$2.out"
 }
 # batch_answer <manifest> <surface> <unit>: a main surface's answer lines for
 # one unit on stdout, and its exit status. A surface missing from the batch
@@ -1604,6 +1620,11 @@ for key in $keys; do
 	if [ "$status" -ne 0 ]; then
 		[ "$status" -eq 2 ] || cat "$dir/$2.$key.err" >&2
 		exit "$status"
+	fi
+	# a unit that answered says what it said on the way: a batch that fell
+	# back to its single run names itself here, never only in a file
+	if [ -s "$dir/$2.$key.err" ]; then
+		cat "$dir/$2.$key.err" >&2
 	fi
 	cat "$dir/$2.$key.out" >>"$out"
 done

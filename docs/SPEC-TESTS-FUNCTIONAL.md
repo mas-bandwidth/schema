@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2151. Language-free tests: 68.
+Functional tests every language answers: 2151. Language-free tests: 71.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2506,12 +2506,13 @@ a negative control: a named test run against a deliberately broken build must co
 | `none.functional.plant.align-arrays.go-valid-row-run-as-refuse` | `plant` | the go align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase63_valid_ab-e-acute.bin"}`<br>`target: go.functional.roundtrip.align-arrays.phase63-ab-e-acute` | the target runs and fails | `test/verify-bitphase/adapter.go PlantEnv` |
 | `none.functional.plant.align-arrays.lua-valid-row-run-as-refuse` | `plant` | the lua align-arrays harness reports a row red when its expectation is turned around: the run cannot pass a row it did not check | `env: {"SCHEMA_TEST_PLANT_BITPHASE_EXPECT_REFUSE":"aa_phase31_valid_nested.bin"}`<br>`target: lua.functional.roundtrip.align-arrays.phase31-nested` | the target runs and fails | `test/verify-bitphase/adapter.go PlantEnv` |
 
-#### `plant` family `corpus-plants`, 2 tests
+#### `plant` family `corpus-plants`, 3 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.plant.corpus-plants.go-absent-root-full` | `plant` | the go leg drops root\_full from its wire answers (it answers it absent): the corpus adapter must turn exactly that instance red as MISSING | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GO":"absent:root_full"}`<br>`reason: MISSING`<br>`target: go.functional.roundtrip.conformance-wire.root-full` | the target runs and fails as MISSING | `test/conformance/go/main.go plantEnv` |
 | `none.functional.plant.corpus-plants.go-wrong-byte-root-full` | `plant` | the go leg's wire reader writes root\_full back with its first byte flipped: the corpus adapter must turn exactly that instance red | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GO":"wrong-byte:root_full"}`<br>`reason: not the corpus's`<br>`target: go.functional.roundtrip.conformance-wire.root-full` | the target runs and fails: the answer is not the corpus's | `test/conformance/go/main.go plantEnv` |
+| `none.functional.plant.corpus-plants.goose-batch-wrong-byte-root-full` | `plant` | the goose driver hands back root\_full from its one-compile batch with its first hex digit flipped: the corpus adapter must turn exactly that instance red, which holds that the scored wire answers are the batch's | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GOOSE":"wrong-byte:root_full"}`<br>`reason: not the corpus's`<br>`target: goose.functional.roundtrip.conformance-wire.root-full` | the target runs and fails: the answer is not the corpus's | `test/conformance/goose/driver batch_section` |
 
 ### Type `tooling`
 
@@ -2528,6 +2529,13 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.plan-omission-log-names-every-job` | `gotest` | Go test TestPlanOmissionLogNamesEveryJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestPlanOmissionLogNamesEveryJob` | the Go test passes | `internal/ci/every_job_runs_test.go:231` |
 | `none.functional.tooling.ci.squirrel-all-port-differential-leaves-uncomparable-answers-out` | `gotest` | Go test TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:484` |
 | `none.functional.tooling.ci.touched-leg-reads-its-families-again` | `gotest` | Go test TestTouchedLegReadsItsFamiliesAgain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTouchedLegReadsItsFamiliesAgain` | the Go test passes | `internal/ci/touched_leg_rows_test.go:17` |
+
+#### `tooling` family `harness`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.harness.goose-driver-batch-falls-back-by-name` | `gotest` | Go test TestGooseDriverBatchFallsBackByName in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestGooseDriverBatchFallsBackByName` | the Go test passes | `test/conformance/harness/goosebatch_test.go:21` |
+| `none.functional.tooling.harness.goose-driver-refuses-an-unreadable-batch-key` | `gotest` | Go test TestGooseDriverRefusesAnUnreadableBatchKey in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestGooseDriverRefusesAnUnreadableBatchKey` | the Go test passes | `test/conformance/harness/goosebatch_test.go:88` |
 
 ### Type `resource-bounds`
 
