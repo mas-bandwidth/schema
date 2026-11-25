@@ -107,8 +107,8 @@ test-go: tables-go-shared-runtime
 #
 # THE NAMES ARE READ OFF THE ROWS DIRECTORY, never copied: every
 # `func TestRow…(t *testing.T)` in test/conformance/go/rows, sorted, split into
-# two halves by count. A row added is a row run, and the run-proof requires a
-# `--- PASS` for each. (The hand-copied halves this replaced listed 46 of the
+# two halves by count. A row added is a row run, and each half's make-gotest
+# rows (test/registry) read a pass for each by name. (The hand-copied halves this replaced listed 46 of the
 # 47 rows; TestRowR20FloatWidensExactly was in neither.)
 #
 # A row the registry holds on its own (a gotest row naming this package and the
@@ -116,7 +116,7 @@ test-go: tables-go-shared-runtime
 # the registry just as the names are read off the directory: it is left out of
 # the halves, or it would run twice, once here and once as its registry row
 # (TestRowR14GrownTagReadsTheWritersTagWidth did). Each row runs exactly once.
-GO_ROWS_REGISTERED := $(shell sed -n 's/.*"package":"\.\/test\/conformance\/go\/rows","test":"\(TestRow[A-Za-z0-9_]*\)".*/\1/p' test/registry/registry.jsonl)
+GO_ROWS_REGISTERED := $(shell sed -n '/"adapter":"gotest"/s/.*"package":"\.\/test\/conformance\/go\/rows","test":"\(TestRow[A-Za-z0-9_]*\)".*/\1/p' test/registry/registry.jsonl)
 GO_ROWS        := $(sort $(filter-out $(GO_ROWS_REGISTERED),$(shell sed -n 's/^func \(TestRow[A-Za-z0-9_]*\)(t \*testing\.T).*/\1/p' test/conformance/go/rows/*_test.go)))
 GO_ROWS_N      := $(words $(GO_ROWS))
 GO_ROWS_HALF   := $(shell expr \( $(GO_ROWS_N) + 1 \) / 2)
@@ -127,14 +127,14 @@ GO_ROWS_SPACE  := $(GO_ROWS_EMPTY) $(GO_ROWS_EMPTY)
 go_rows_run     = '^($(subst $(GO_ROWS_SPACE),|,$(strip $(1))))$$'
 conformance-go-rows-a: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	@test -n "$(GO_ROWS_A)" || { echo "conformance-go-rows-a: no TestRow function found in test/conformance/go/rows"; exit 1; }
-	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-a \
-		'$(GO_ROWS_A)' \
-		./rows/ -count=1 -timeout 600s -run $(call go_rows_run,$(GO_ROWS_A))
+	cd test/conformance/go && $(GO_TEST) \
+		./rows/ -count=1 -timeout 600s \
+		-run $(call go_rows_run,$(GO_ROWS_A))
 conformance-go-rows-b: build/tables-generated-go/.stamp tables-go-sibling-runtime
 	@test -n "$(GO_ROWS_B)" || { echo "conformance-go-rows-b: no TestRow function found in test/conformance/go/rows"; exit 1; }
-	cd test/conformance/go && SLOWGATE_LOG_DIR="$(CURDIR)/build/slowgate" sh $(CURDIR)/test/slowgate/proof conformance-go-rows-b \
-		'$(GO_ROWS_B)' \
-		./rows/ -count=1 -timeout 600s -run $(call go_rows_run,$(GO_ROWS_B))
+	cd test/conformance/go && $(GO_TEST) \
+		./rows/ -count=1 -timeout 600s \
+		-run $(call go_rows_run,$(GO_ROWS_B))
 conformance-go-rows: conformance-go-rows-a conformance-go-rows-b
 test-go: conformance-go-rows
 

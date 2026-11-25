@@ -425,6 +425,19 @@ func TestAMakeRowReadsOnlyWhatItsTargetDependsOn(t *testing.T) {
 	}
 }
 
+// TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames: a recipe that
+// calls a define whose name holds a - (moo-wire-fuzz-run) reaches what the
+// define names, so a row reading the driver it runs passes the vet.
+func TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames(t *testing.T) {
+	t.Parallel()
+	db := fakeDatabase("define wire-fuzz-run\n\t./build/harness wire-fuzz --driver test/conformance/x/wirefuzz-driver $(1)\nendef\n", "",
+		"gate-check: gate-plain\n\ngate-plain:\n\t$(call wire-fuzz-run,--seed 1)\n")
+	r, ran := vetRun(t, makeInputs{File: "make/x.mk", Target: "gate-check", Reads: []string{"test/conformance/x/wirefuzz-driver"}}, db, "")
+	if r.Verdict != testreg.Pass || !ran {
+		t.Errorf("%+v, ran %v: the define the recipe calls names the driver", r, ran)
+	}
+}
+
 // TestAMakeRowsDirectoryReadIsADirectoryItsRecipesWorkOnBare: a directory
 // read holds only where a recipe the target runs works on the directory
 // itself (a cd into it, a glob in it); a directory its target reaches only

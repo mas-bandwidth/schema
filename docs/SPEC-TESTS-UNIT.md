@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3188.
+Unit tests every language answers: 2. Language-free tests: 3190.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -377,7 +377,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.codegen-golang.tidy-leaves-no-bare-blocks` | `gotest` | Go test TestTidyLeavesNoBareBlocks in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestTidyLeavesNoBareBlocks` | the Go test passes | `internal/codegen/golang/tidy_test.go:61` |
 | `none.unit.compiler.codegen-golang.union-surface-emitted` | `gotest` | Go test TestUnionSurfaceEmitted in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestUnionSurfaceEmitted` | the Go test passes | `internal/codegen/golang/golang_test.go:264` |
 
-#### `compiler` family `compiler`, 521 tests
+#### `compiler` family `compiler`, 522 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -759,6 +759,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.registered-names-are-asked-once` | `gotest` | Go test TestRegisteredNamesAreAskedOnce in ./compiler | `package: ./compiler`<br>`test: TestRegisteredNamesAreAskedOnce` | the Go test passes | `compiler/generatorsnapshot_test.go:133` |
 | `none.unit.compiler.compiler.registered-names-are-the-names-that-were-checked` | `gotest` | Go test TestRegisteredNamesAreTheNamesThatWereChecked in ./compiler | `package: ./compiler`<br>`test: TestRegisteredNamesAreTheNamesThatWereChecked` | the Go test passes | `compiler/generatorsnapshot_test.go:201` |
 | `none.unit.compiler.compiler.registered-names-do-not-follow-the-callers-slice` | `gotest` | Go test TestRegisteredNamesDoNotFollowTheCallersSlice in ./compiler | `package: ./compiler`<br>`test: TestRegisteredNamesDoNotFollowTheCallersSlice` | the Go test passes | `compiler/generatorsnapshot_test.go:116` |
+| `none.unit.compiler.compiler.registry-rows-are-reach-roots` | `gotest` | Go test TestRegistryRowsAreReachRoots in ./compiler | `package: ./compiler`<br>`test: TestRegistryRowsAreReachRoots` | the Go test passes | `compiler/porting_test.go:705` |
 | `none.unit.compiler.compiler.required-refused-for-every-target-but-go` | `gotest` | Go test TestRequiredRefusedForEveryTargetButGo in ./compiler | `package: ./compiler`<br>`test: TestRequiredRefusedForEveryTargetButGo` | the Go test passes | `compiler/required_test.go:11` |
 | `none.unit.compiler.compiler.retire-loaded-layout-corpus` | `gotest` | Go test TestRetireLoadedLayoutCorpus in ./compiler | `package: ./compiler`<br>`test: TestRetireLoadedLayoutCorpus` | the Go test passes | `compiler/lock_retirement_corpus_test.go:16` |
 | `none.unit.compiler.compiler.retire-takes-effect-for-the-loaded-unit` | `gotest` | Go test TestRetireTakesEffectForTheLoadedUnit in ./compiler | `package: ./compiler`<br>`test: TestRetireTakesEffectForTheLoadedUnit` | the Go test passes | `compiler/lock_retire_read_test.go:17` |
@@ -815,7 +816,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.spec-json-wide-integer-refuses-number-token` | `gotest` | Go test TestSpecJsonWideIntegerRefusesNumberToken in ./compiler | `package: ./compiler`<br>`test: TestSpecJsonWideIntegerRefusesNumberToken` | the Go test passes | `compiler/spec_json_wide_number_token_test.go:66` |
 | `none.unit.compiler.compiler.spec-message-announcement-is-closed` | `gotest` | Go test TestSpecMessageAnnouncementIsClosed in ./compiler | `package: ./compiler`<br>`test: TestSpecMessageAnnouncementIsClosed` | the Go test passes | `compiler/spec_message_announcement_closed_test.go:14` |
 | `none.unit.compiler.compiler.spec-message-form-has-kind36-row` | `gotest` | Go test TestSpecMessageFormHasKind36Row in ./compiler | `package: ./compiler`<br>`test: TestSpecMessageFormHasKind36Row` | the Go test passes | `compiler/spec_message_kind36_test.go:17` |
-| `none.unit.compiler.compiler.spec-message-form-has-one-encoding` | `gotest` | Go test TestSpecMessageFormHasOneEncoding in ./compiler | `package: ./compiler`<br>`test: TestSpecMessageFormHasOneEncoding` | the Go test passes | `compiler/spec_message_one_encoding_test.go:17` |
+| `none.unit.compiler.compiler.spec-message-form-has-one-encoding` | `gotest` | Go test TestSpecMessageFormHasOneEncoding in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-message-form-has-one-encoding`<br>`reads: ["test/message-one-encoding/One.schema","testdata/wire/message-one-encoding/"]`<br>`test: TestSpecMessageFormHasOneEncoding` | the Go test passes | `compiler/spec_message_one_encoding_test.go:17` |
 | `none.unit.compiler.compiler.spec-packet-end-is-checked` | `gotest` | Go test TestSpecPacketEndIsChecked in ./compiler | `package: ./compiler`<br>`test: TestSpecPacketEndIsChecked` | the Go test passes | `compiler/spec_packet_end_test.go:66` |
 | `none.unit.compiler.compiler.spec-packet-guarantees-name-every-target` | `gotest` | Go test TestSpecPacketGuaranteesNameEveryTarget in ./compiler | `package: ./compiler`<br>`test: TestSpecPacketGuaranteesNameEveryTarget` | the Go test passes | `compiler/spec_packet_every_target_test.go:10` |
 | `none.unit.compiler.compiler.spec-packet-read-refuses-non-finite-float` | `gotest` | Go test TestSpecPacketReadRefusesNonFiniteFloat in ./compiler | `package: ./compiler`<br>`test: TestSpecPacketReadRefusesNonFiniteFloat` | the Go test passes | `compiler/spec_packet_floats_finite_test.go:14` |
@@ -2296,7 +2297,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.editors-vscode.editor-context-fixtures` | `gotest` | Go test TestEditorContextFixtures in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestEditorContextFixtures` | the Go test passes | `editors/vscode/editor_fixtures_test.go:13` |
+| `none.unit.tooling.editors-vscode.editor-context-fixtures` | `gotest` | Go test TestEditorContextFixtures in ./editors/vscode | `package: ./editors/vscode`<br>`read_plant: plant.read-credits.tooling-editors-vscode-editor-context-fixtures`<br>`reads: ["editors/testdata/grammar/"]`<br>`test: TestEditorContextFixtures` | the Go test passes | `editors/vscode/editor_fixtures_test.go:13` |
 | `none.unit.tooling.editors-vscode.grammar-colours-corpus` | `gotest` | Go test TestGrammarColoursCorpus in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarColoursCorpus` | the Go test passes | `editors/vscode/grammar_test.go:525` |
 | `none.unit.tooling.editors-vscode.grammar-compiles` | `gotest` | Go test TestGrammarCompiles in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarCompiles` | the Go test passes | `editors/vscode/grammar_test.go:511` |
 | `none.unit.tooling.editors-vscode.grammar-samples` | `gotest` | Go test TestGrammarSamples in ./editors/vscode | `package: ./editors/vscode`<br>`test: TestGrammarSamples` | the Go test passes | `editors/vscode/grammar_test.go:596` |
@@ -2907,7 +2908,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.matrix.load-ports-refuses-a-bad-declaration` | `gotest` | Go test TestLoadPortsRefusesABadDeclaration in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestLoadPortsRefusesABadDeclaration` | the Go test passes | `tools/matrix/proof_test.go:379` |
+| `none.unit.tooling.matrix.load-ports-refuses-a-bad-declaration` | `gotest` | Go test TestLoadPortsRefusesABadDeclaration in ./tools/matrix | `package: ./tools/matrix`<br>`read_plant: plant.read-credits.tooling-matrix-load-ports-refuses-a-bad-declaration`<br>`reads: ["test/proof/in-progress.json"]`<br>`test: TestLoadPortsRefusesABadDeclaration` | the Go test passes | `tools/matrix/proof_test.go:379` |
 | `none.unit.tooling.matrix.load-results-orders-like-the-registry` | `gotest` | Go test TestLoadResultsOrdersLikeTheRegistry in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestLoadResultsOrdersLikeTheRegistry` | the Go test passes | `tools/matrix/proof_test.go:405` |
 | `none.unit.tooling.matrix.load-rulings-refuses-a-pattern-match-cannot-read` | `gotest` | Go test TestLoadRulingsRefusesAPatternMatchCannotRead in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestLoadRulingsRefusesAPatternMatchCannotRead` | the Go test passes | `tools/matrix/rulings_pattern_test.go:12` |
 | `none.unit.tooling.matrix.proof-absent-is-red-unless-ruled` | `gotest` | Go test TestProofAbsentIsRedUnlessRuled in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestProofAbsentIsRedUnlessRuled` | the Go test passes | `tools/matrix/proof_test.go:95` |
@@ -2922,7 +2923,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.matrix.proof-whole-surface-absent-and-ruled-is-not-applicable` | `gotest` | Go test TestProofWholeSurfaceAbsentAndRuledIsNotApplicable in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestProofWholeSurfaceAbsentAndRuledIsNotApplicable` | the Go test passes | `tools/matrix/proof_test.go:118` |
 | `none.unit.tooling.matrix.release-refuses-unless-the-proof-is-green-at-that-commit` | `gotest` | Go test TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit` | the Go test passes | `tools/matrix/proof_test.go:234` |
 | `none.unit.tooling.matrix.surfaces-are-the-harness-surfaces` | `gotest` | Go test TestSurfacesAreTheHarnessSurfaces in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestSurfacesAreTheHarnessSurfaces` | the Go test passes | `tools/matrix/proof_test.go:544` |
-| `none.unit.tooling.matrix.the-committed-proof-is-well-formed` | `gotest` | Go test TestTheCommittedProofIsWellFormed in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestTheCommittedProofIsWellFormed` | the Go test passes | `tools/matrix/proof_test.go:428` |
+| `none.unit.tooling.matrix.the-committed-proof-is-well-formed` | `gotest` | Go test TestTheCommittedProofIsWellFormed in ./tools/matrix | `package: ./tools/matrix`<br>`read_plant: plant.read-credits.tooling-matrix-the-committed-proof-is-well-formed`<br>`reads: ["test/proof/proof.json"]`<br>`test: TestTheCommittedProofIsWellFormed` | the Go test passes | `tools/matrix/proof_test.go:428` |
 | `none.unit.tooling.matrix.the-tree-inputs-load` | `gotest` | Go test TestTheTreeInputsLoad in ./tools/matrix | `package: ./tools/matrix`<br>`test: TestTheTreeInputsLoad` | the Go test passes | `tools/matrix/proof_test.go:262` |
 
 #### `tooling` family `modulemove`, 9 tests
@@ -3161,7 +3162,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 164 tests
+#### `tooling` family `schema-test`, 165 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3193,6 +3194,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.a-make-go-test-timeout-is-named` | `gotest` | Go test TestAMakeGoTestTimeoutIsNamed in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeGoTestTimeoutIsNamed` | the Go test passes | `tools/schema-test/make_gotest_test.go:200` |
 | `none.unit.tooling.schema-test.a-make-row-lacking-a-tool-or-a-sibling-fails-naming-the-runner` | `gotest` | Go test TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowLackingAToolOrASiblingFailsNamingTheRunner` | the Go test passes | `tools/schema-test/make_test.go:200` |
 | `none.unit.tooling.schema-test.a-make-row-reads-only-what-its-target-depends-on` | `gotest` | Go test TestAMakeRowReadsOnlyWhatItsTargetDependsOn in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowReadsOnlyWhatItsTargetDependsOn` | the Go test passes | `tools/schema-test/make_test.go:393` |
+| `none.unit.tooling.schema-test.a-make-row-reads-what-a-function-with-a-hyphenated-name-names` | `gotest` | Go test TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowReadsWhatAFunctionWithAHyphenatedNameNames` | the Go test passes | `tools/schema-test/make_test.go:431` |
 | `none.unit.tooling.schema-test.a-make-row-red-is-judged-by-the-line-holding-the-marker` | `gotest` | Go test TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowRedIsJudgedByTheLineHoldingTheMarker` | the Go test passes | `tools/schema-test/plant_test.go:348` |
 | `none.unit.tooling.schema-test.a-make-row-runs-with-the-cores-and-a-control-without` | `gotest` | Go test TestAMakeRowRunsWithTheCoresAndAControlWithout in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowRunsWithTheCoresAndAControlWithout` | the Go test passes | `tools/schema-test/make_test.go:143` |
 | `none.unit.tooling.schema-test.a-make-row-sets-its-variables-on-the-command-line` | `gotest` | Go test TestAMakeRowSetsItsVariablesOnTheCommandLine in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestAMakeRowSetsItsVariablesOnTheCommandLine` | the Go test passes | `tools/schema-test/make_test.go:165` |
