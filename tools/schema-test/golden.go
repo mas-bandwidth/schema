@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
@@ -45,13 +46,13 @@ import (
 // The checkout is never written except by --update.
 type goldenAdapter struct {
 	// write runs the writer in a copy of the tree, with each file in fresh
-	// (every file a golden row of the writer names) overwritten in the copy
-	// with goldenUnwritten first, so the writer must write each one again: a
-	// golden it no longer writes still holds the marker, never the committed
-	// file copied in. (A marker and not a deletion: some writers re-pin only
-	// the goldens that are there.) It returns the copy, the writer's log and
-	// a cleanup; a unit test hands in its own, so no unit test copies a tree
-	// or runs make.
+	// (every file a golden row of the writer names) aged to goldenSeeded in the
+	// copy first; the copy reports a golden the writer left untouched
+	// (untouched), so one it no longer writes fails, never passing as the
+	// committed file copied in. (Aged and not deleted or overwritten: some
+	// writers re-pin only the goldens that are there, and some load them
+	// first.) It returns the copy, the writer's log and a cleanup; a unit test
+	// hands in its own, so no unit test copies a tree or runs make.
 	write func(ctx context.Context, writer string, fresh []string) (fileTree, func(), string, error)
 	// checkout is the tree the goldens are committed in.
 	checkout fileTree
@@ -123,9 +124,30 @@ func withUpdate(ctx context.Context) context.Context {
 
 func updating(ctx context.Context) bool { v, _ := ctx.Value(updateKey{}).(bool); return v }
 
-// goldenUnwritten is what each golden of a writer holds in the copy before
-// the writer runs: a golden that still holds it was not written.
-const goldenUnwritten = "schema-test: this golden was not written by its writer\n"
+// goldenSeeded is the time each golden of a writer is aged to in the copy
+// before the writer runs: a golden that still has it was not written.
+var goldenSeeded = time.Unix(1, 0)
+
+// untouched is a tree that knows which of its goldens the writer left as
+// they were seeded.
+type untouched interface {
+	Untouched(path string) bool
+}
+
+// seededTree is the writer's copy: a dirTree whose seeded goldens report
+// whether the writer wrote them.
+type seededTree struct {
+	dirTree
+	seeded map[string]bool
+}
+
+func (s seededTree) Untouched(p string) bool {
+	if !s.seeded[p] {
+		return false
+	}
+	info, err := os.Stat(s.path(p))
+	return err == nil && info.ModTime().Equal(goldenSeeded)
+}
 
 func newGoldenAdapter() goldenAdapter {
 	var once sync.Once
@@ -253,7 +275,7 @@ func (a goldenAdapter) judge(ctx context.Context, written fileTree, registered m
 		var bad []string
 		for _, f := range ins[inst.Full].Files {
 			got, err := written.Read(f)
-			if err != nil || string(got) == goldenUnwritten {
+			if u, ok := written.(untouched); err != nil || ok && u.Untouched(f) {
 				bad = append(bad, fmt.Sprintf("%s: its writer no longer writes it, so nothing generates it: a golden nobody generates was written by hand", f))
 				continue
 			}
@@ -327,12 +349,14 @@ func writeInCopy(ctx context.Context, writer string, fresh []string) (fileTree, 
 			return nil, nil, "", err
 		}
 	}
+	seeded := map[string]bool{}
 	for _, f := range fresh {
 		p := filepath.Join(work, filepath.FromSlash(f))
 		if _, err := os.Stat(p); errors.Is(err, fs.ErrNotExist) {
 			continue // not committed: its row is MISSING, and the writer may write it
 		}
-		if err := os.WriteFile(p, []byte(goldenUnwritten), 0o644); err != nil {
+		seeded[f] = true
+		if err := os.Chtimes(p, goldenSeeded, goldenSeeded); err != nil {
 			cleanup()
 			return nil, nil, "", err
 		}
@@ -351,7 +375,7 @@ func writeInCopy(ctx context.Context, writer string, fresh []string) (fileTree, 
 		cleanup()
 		return nil, nil, out.String(), fmt.Errorf("make %s: %w", writer, err)
 	}
-	return dirTree(work), cleanup, out.String(), nil
+	return seededTree{dirTree(work), seeded}, cleanup, out.String(), nil
 }
 
 // goldenOnly refuses an --update run that selects anything but goldens: a

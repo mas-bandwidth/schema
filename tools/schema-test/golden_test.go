@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -11,7 +13,8 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
-// memTree is a fileTree held in memory: no unit test reads or writes disk.
+// memTree is a fileTree held in memory: the adapter's tests read and write
+// no disk (one test of the seeded copy writes only its own temp dir).
 type memTree map[string]string
 
 func (m memTree) Read(p string) ([]byte, error) {
@@ -213,13 +216,26 @@ func TestTheWriterWritesEveryGoldenAfresh(t *testing.T) {
 	}
 }
 
-// TestAGoldenStillHoldingTheMarkerWasNotWritten: a writer that re-pins only
-// the goldens that are there leaves a golden it no longer writes holding
-// the marker its copy was seeded with: that row fails, named.
-func TestAGoldenStillHoldingTheMarkerWasNotWritten(t *testing.T) {
+// untouchedTree is a writer's copy that left the goldens in untouched as
+// they were seeded.
+type untouchedTree struct {
+	memTree
+	untouched map[string]bool
+}
+
+func (u untouchedTree) Untouched(p string) bool { return u.untouched[p] }
+
+// TestAGoldenTheWriterLeftUntouchedWasNotWritten: a writer that re-pins
+// only the goldens that are there, or loads them first, leaves one it no
+// longer writes as it was seeded, bytes and all: that row fails, named.
+func TestAGoldenTheWriterLeftUntouchedWasNotWritten(t *testing.T) {
 	t.Parallel()
 	calls := 0
-	a := goldenFake(memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": "BBBB"}, memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": goldenUnwritten}, &calls)
+	a := goldenFake(memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": "BBBB"}, memTree{}, &calls)
+	a.write = func(context.Context, string, []string) (fileTree, func(), string, error) {
+		calls++
+		return untouchedTree{memTree{"testdata/g/a.bin": "AAAA", "testdata/g/b.bin": "BBBB"}, map[string]bool{"testdata/g/b.bin": true}}, func() {}, "", nil
+	}
 	got := goldenVerdicts(t, a, context.Background(), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"), goldenInst(t, "b", "pins-x", "testdata/g/b.bin"))
 	if got["a"].Verdict != testreg.Pass || got["b"].Verdict != testreg.Fail || !strings.Contains(got["b"].Reason, "no longer writes it") {
 		t.Fatalf("verdicts %+v", got)
@@ -246,5 +262,31 @@ func TestUpdateWithAStrayPinRepinsNothing(t *testing.T) {
 	got := goldenVerdicts(t, a, withUpdate(context.Background()), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"))
 	if got["a"].Verdict != testreg.Fail || !strings.Contains(got["a"].Reason, "testdata/g/stray.bin") || checkout["testdata/g/a.bin"] != "old" {
 		t.Fatalf("update with a stray pin: %+v, checkout %v", got, checkout)
+	}
+}
+
+// TestASeededGoldenReportsWhetherItWasWritten: a golden aged in the
+// writer's copy is untouched until the writer writes it, even with the same
+// bytes; a file that was not seeded is never reported untouched.
+func TestASeededGoldenReportsWhetherItWasWritten(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, f := range []string{"a.bin", "b.bin"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte("A"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(filepath.Join(dir, "a.bin"), goldenSeeded, goldenSeeded); err != nil {
+		t.Fatal(err)
+	}
+	tree := seededTree{dirTree(dir), map[string]bool{"a.bin": true}}
+	if !tree.Untouched("a.bin") || tree.Untouched("b.bin") {
+		t.Fatal("a seeded golden the writer left is untouched; a file never seeded is not")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a.bin"), []byte("A"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if tree.Untouched("a.bin") {
+		t.Fatal("a golden the writer rewrote with the same bytes is still reported untouched")
 	}
 }
