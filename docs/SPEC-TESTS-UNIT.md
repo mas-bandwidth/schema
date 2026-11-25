@@ -33,16 +33,6 @@ generated source compiles and is clean.
 
 Each runs once, as `none.unit.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
-### Type `load-refusal`
-
-hostile bytes are refused in every build, with the named reason.
-
-#### `load-refusal` family `javatable`, 1 test
-
-| full name | adapter | checks | inputs | expected result | source |
-|---|---|---|---|---|---|
-| `none.unit.load-refusal.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | refused on load, in every build (verdict only) | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:117` |
-
 ### Type `codegen`
 
 generated source compiles and is clean.
@@ -58,6 +48,12 @@ generated source compiles and is clean.
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.codegen.ctable.c-block-float-range-ends-are-held-at-the-field-width` | `gotest` | Go test TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCBlockFloatRangeEndsAreHeldAtTheFieldWidth` | the Go test passes | `internal/codegen/ctable/block_range_limits_test.go:53` |
+
+#### `codegen` family `javatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.codegen.javatable.java-fixed-no-malformed-flag` | `gotest` | Go test TestJavaFixedNoMalformedFlag in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedNoMalformedFlag` | the Go test passes | `internal/codegen/javatable/fixed_no_malformed_flag_test.go:117` |
 
 ### Type `fuzz`
 

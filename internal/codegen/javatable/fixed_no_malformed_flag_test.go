@@ -11,6 +11,9 @@ package javatable
 // 5, "STEP 5's ANSWER IS layout_unknown"). TableFixed.Report carries no
 // `damaged` member, and no fixed-form source writes one.
 //
+// A guard chain in the run loop that reaches past the writer's record refuses
+// layoutMalformed and stops, whatever the report already holds.
+//
 // TestJavaFixedNoMalformedFlagPlants puts each retired answer back into a copy
 // of the real generated source and requires the same checks to go red.
 //
@@ -110,6 +113,11 @@ func javaNoMalformedCheck(src map[string]string) []string {
 		need(strings.Contains(src[key], "rest % recordSize != 0) { report.refuse(TableFixed.Reason.truncated); return -1; }"), key+": a ragged tail does not refuse truncated")
 		need(strings.Contains(src[key], "if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutUnknown, fileHash); return -1; }"), key+": a hash in no lineage entry does not refuse layoutUnknown with the file's hash")
 	}
+	// A GUARD CHAIN THAT REACHES PAST THE WRITER'S RECORD refuses
+	// layoutMalformed and stops, whatever the report already holds; a chain
+	// that misses only skips its arm (§5.3, "a known hash whose LINEAGE ENTRY
+	// would not build").
+	need(strings.Contains(src["runtime"], "if (chain == chainPastRecord) { report.refuse(Reason.layoutMalformed); return; } if (chain == chainMissed) { continue; }"), "run: a guard chain past the writer's record does not refuse layoutMalformed and stop, or a missed chain does not skip its arm")
 	need(strings.Contains(src["sealed"], "if (!TableFixed.integrityHolds(data)) { report.refuse(TableFixed.Reason.integrityMismatch);"), "sealed: an integrity trailer that does not hold does not refuse integrityMismatch")
 	return bad
 }
@@ -147,6 +155,12 @@ func TestJavaFixedNoMalformedFlagPlants(t *testing.T) {
 			"report.refuse(TableFixed.Reason.integrityMismatch);", "report.damaged = true;"},
 		{"run-loop-sets-malformed", "runtime",
 			"report.refuse(Reason.layoutMalformed); return;", "report.damaged = true; return;"},
+		{"chain-past-record-continues", "runtime",
+			"if (chain == chainPastRecord) { report.refuse(Reason.layoutMalformed); return; }",
+			"if (chain == chainPastRecord) { continue; }"},
+		{"chain-past-record-only-on-a-clean-report", "runtime",
+			"if (chain == chainPastRecord) { report.refuse(Reason.layoutMalformed); return; }",
+			"if (chain == chainPastRecord && !report.refused) { report.refuse(Reason.layoutMalformed); return; }"},
 	}
 	for _, p := range plants {
 		t.Run(p.name, func(t *testing.T) {
