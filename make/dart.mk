@@ -710,10 +710,14 @@ build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) b
 # this kernel snapshot: the same prerequisites as build/conformance-dart, so
 # it is rebuilt whenever the AOT driver is, and each of those surfaces starts
 # in about a second where compiling main.dart from source took about
-# eighteen. Every target that runs the leg through that driver depends on it.
+# eighteen. It is an order-only prerequisite of build/conformance-dart, so
+# every target that builds the AOT driver builds or refreshes it too, while a
+# restored AOT driver is never rebuilt for the snapshot's timestamp. A make run
+# with -o build/conformance-dart (the CI claims job) names it itself.
 build/conformance-dart-asserts.dill: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile kernel -o $@ test/conformance/dart/main.dart >/dev/null
+build/conformance-dart: | build/conformance-dart-asserts.dill
 
 # Every unit build/conformance-dart reads, into any build root, from any
 # compiler: the corpus list above, the cards unit and the CountedMin framing
@@ -1493,9 +1497,6 @@ TOOLCHAIN_PINS_dart := DART
 CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
 REGISTRY_NA       += goldens:dart
 REGISTRY_NA_WHY.goldens.dart := no committed table goldens; its packet goldens (testdata/golden/dart) are rewritten by internal/goldens at the top of update-goldens
-# `make conformance` runs the dart leg through test/conformance/dart/driver,
-# which needs the assert surfaces' snapshot whenever it needs build/conformance-dart.
-conformance: $(if $(filter build/conformance-dart,$(CONFORMANCE_LEGS)),build/conformance-dart-asserts.dill)
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/dart/.stamp: bin/schema test/packet-text/Text.schema
 	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Text.schema

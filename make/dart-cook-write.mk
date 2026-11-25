@@ -7,7 +7,7 @@
 # zero the region fill wrote (docs/rulings.json fixed-dead-bytes-are-zero).
 DART_COOK_WRITE := build/conformance-dart-cook-write
 .PHONY: conformance-dart-cook-write conformance-dart-cook-write-negative-control
-conformance-dart-cook-write: build/conformance-harness build/conformance-dart
+conformance-dart-cook-write: build/conformance-harness build/conformance-dart build/conformance-dart-asserts.dill
 	@rm -rf $(DART_COOK_WRITE) && mkdir -p $(DART_COOK_WRITE)
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --only dart --work $(DART_COOK_WRITE)/work > $(DART_COOK_WRITE)/log 2>&1 || true
