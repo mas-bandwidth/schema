@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // textSchema is this card's probe unit: the kinds the first slice of the
@@ -116,8 +117,10 @@ type textRun struct {
 }
 
 // textSweepProgram is one manifest unit's default document through the text
-// form: every table reads "()", writes canonical JSON, and exposes its value, each
-// answer named by its root.
+// form: every table without a required field reads "()", writes canonical
+// JSON, and exposes its value; a table with one refuses "()" by its §16.9.4
+// name, since a missing required field is refused (§16.9.1). Each answer is
+// named by its root.
 func textSweepProgram(g *loadUnit, roots []string) string {
 	var b strings.Builder
 	for _, m := range g.mods {
@@ -125,21 +128,77 @@ func textSweepProgram(g *loadUnit, roots []string) string {
 	}
 	b.WriteString("import .load\n")
 	b.WriteString(dumpLobster)
+	b.WriteString(sweepChunksLobster)
 	for _, r := range roots {
 		fmt.Fprintf(&b, "def sweep_%s():\n", r)
+		if tableHasRequired(g.u.Tables[r]) {
+			fmt.Fprintf(&b, "    let doc, why = schema_rt.text_read(%s, \"()\")\n", lobsterString(r))
+			fmt.Fprintf(&b, "    print(%s + \" \" + (if doc: \"read\" else: \"refused \" + why))\n", lobsterString(r))
+			fmt.Fprintf(&b, "sweep_%s()\n", r)
+			continue
+		}
 		fmt.Fprintf(&b, "    let doc = schema_rt.text_load(%s, \"()\")\n", lobsterString(r))
 		b.WriteString("    assert doc\n")
 		b.WriteString("    let text, reason = schema_rt.json_write(doc.rec)\n    assert reason == \"\"\n")
-		fmt.Fprintf(&b, "    print(%s + \" \" + hexs(text))\n", lobsterString(r))
+		fmt.Fprintf(&b, "    pchunks(%s, hexs(text))\n", lobsterString(r))
 		fmt.Fprintf(&b, "    print(%s + \" read\")\n", lobsterString(r))
-		fmt.Fprintf(&b, "    print(%s + \" \" + drec(doc.rec))\n", lobsterString(r))
+		fmt.Fprintf(&b, "    pchunks(%s, drec(doc.rec))\n", lobsterString(r))
 		fmt.Fprintf(&b, "sweep_%s()\n", r)
+	}
+	return b.String()
+}
+
+// sweepChunksLobster prints one long answer as a count line and that many
+// lines of at most 50000 bytes, each named by its root: Lobster's print cuts
+// a string past 100000 bytes to "..", and a [..70000] array's value dump
+// (tabledemo.WideBlob) is twice that.
+const sweepChunksLobster = `def pchunks(name:string, s:string):
+    print(name + " " + string((length(s) + 49999) / 50000))
+    var at = 0
+    while at < length(s):
+        let w = min(50000, length(s) - at)
+        print(name + " " + substring(s, at, w))
+        at += w
+`
+
+// takeChunks reads one pchunks answer for root name from out at *at.
+func takeChunks(t *testing.T, out []string, at *int, unit, name string) string {
+	t.Helper()
+	line := func() string {
+		if *at >= len(out) {
+			t.Fatalf("%s.%s: the sweep printed %d lines, want more", unit, name, len(out))
+		}
+		l := out[*at]
+		*at++
+		if !strings.HasPrefix(l, name+" ") {
+			t.Fatalf("%s.%s: line %q is not this root's", unit, name, l)
+		}
+		return l[len(name)+1:]
+	}
+	var n int
+	if _, err := fmt.Sscanf(line(), "%d", &n); err != nil {
+		t.Fatalf("%s.%s: no chunk count: %v", unit, name, err)
+	}
+	var b strings.Builder
+	for range n {
+		b.WriteString(line())
 	}
 	return b.String()
 }
 
 func lobsterString(s string) string {
 	return fmt.Sprintf("%q", s)
+}
+
+// tableHasRequired reports whether a root declares a `| required` field, whose
+// absence from "()" the text form refuses (§16.9.1).
+func tableHasRequired(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.Required {
+			return true
+		}
+	}
+	return false
 }
 
 // sweepManifest runs every unit the tables manifest names, one empty document
@@ -168,7 +227,7 @@ func sweepManifest(t *testing.T) {
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
 	}
-	seen := 0
+	seen, refused := 0, 0
 	for _, unit := range units {
 		var full []string
 		for _, p := range unit.paths {
@@ -198,30 +257,53 @@ func sweepManifest(t *testing.T) {
 		for _, name := range roots {
 			m := tabletext.NewModel(g.u)
 			inst := m.New(m.Lookup(name))
+			if tableHasRequired(g.u.Tables[name]) {
+				// the oracle refuses the empty record too (verdict only), and
+				// the leg names the refusal the spec names for its own form
+				var rep tabletext.Report
+				if m.Read(m.New(m.Lookup(name)), []byte("{}"), &rep) {
+					t.Fatalf("%s.%s: Go read {} for a table with a required field", unit.key, name)
+				}
+				if at >= len(out) {
+					t.Fatalf("%s.%s: the sweep printed %d lines, want a verdict", unit.key, name, len(out))
+				}
+				if got, want := out[at][len(name)+1:], "refused text_missing_required"; got != want {
+					t.Fatalf("%s.%s: \"()\" answered %q, want %q", unit.key, name, got, want)
+				}
+				at++
+				refused++
+				continue
+			}
 			want, err := m.Write(inst)
 			want = append(want, '\n')
 			if err != nil {
 				t.Fatalf("%s.%s: %v", unit.key, name, err)
 			}
-			if at+3 > len(out) {
-				t.Fatalf("%s.%s: the sweep printed %d lines, want 3 per root", unit.key, name, len(out))
-			}
-			if got := out[at][len(name)+1:]; got != hex.EncodeToString(want) {
+			if got := takeChunks(t, out, &at, unit.key, name); got != hex.EncodeToString(want) {
 				t.Fatalf("%s.%s: the text form saved %s, Go saved %x", unit.key, name, got, want)
 			}
 			dumper := &goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}
 			wantReport, wantDump := "read", dumper.rec(inst)
-			if got := out[at+1][len(name)+1:]; got != wantReport {
+			if at >= len(out) {
+				t.Fatalf("%s.%s: the sweep printed %d lines, want a verdict", unit.key, name, len(out))
+			}
+			if got := out[at][len(name)+1:]; got != wantReport {
 				t.Fatalf("%s.%s: text verdict %q, Go %q", unit.key, name, got, wantReport)
 			}
-			if got := out[at+2][len(name)+1:]; got != wantDump {
+			at++
+			if got := takeChunks(t, out, &at, unit.key, name); got != wantDump {
 				t.Fatalf("%s.%s: decoded value is not Go's at byte %s", unit.key, name, divergence(got, wantDump))
 			}
-			at += 3
 			seen++
 		}
+		if at != len(out) {
+			t.Fatalf("%s: the sweep printed %d lines, the roots answered %d", unit.key, len(out), at)
+		}
 	}
-	t.Logf("manifest sweep: %d units; %d table roots read and written as Go did", len(units), seen)
+	if refused == 0 {
+		t.Fatalf("manifest sweep: no root with a required field was swept, so the refusal branch held nothing")
+	}
+	t.Logf("manifest sweep: %d units; %d table roots read and written as Go did; %d roots with a required field refused \"()\" as text_missing_required", len(units), seen, refused)
 }
 
 func runText(t *testing.T, schema, input, editPath, editToken string) textRun {
