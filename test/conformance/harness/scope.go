@@ -58,9 +58,10 @@ func closeScope(asked map[caseKey]bool, legWants map[string][]expectation, disc 
 		for _, p := range partners[k] {
 			add(p)
 		}
-		if group, ok := disc.refusal[caseRef{k.surface, k.name}]; ok {
+		if group, ok := disc.refusal[caseRef(k)]; ok {
 			for _, twin := range disc.twins(group) {
-				add(caseKey{twin.surface, twin.name})
+				add(caseKey(twin))
+
 			}
 		}
 	}
