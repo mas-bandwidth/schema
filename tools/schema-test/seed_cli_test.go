@@ -46,7 +46,8 @@ func TestTheRunsSeedIsPrintedAndHandedToEveryAdapter(t *testing.T) {
 	if m := passLine.FindStringSubmatch("PASS go.nightly.fuzz.f.c (1.25s): seed 7"); m == nil || m[1] != "go.nightly.fuzz.f.c" || m[2] != "1.25" {
 		t.Errorf("a pass with a reason is not read for its seconds: %q", m)
 	}
-	for _, bad := range []string{"x", "-3", "1.5"} {
+	// an empty --seed is refused, never taken for the date's
+	for _, bad := range []string{"x", "-3", "1.5", ""} {
 		if code, out := cli(t, seedFake{}, "run", "go.functional.roundtrip.fam.one", "--seed", bad); code != 2 || !strings.Contains(out, "--seed") {
 			t.Errorf("--seed %s: exit %d, want 2:\n%s", bad, code, out)
 		}

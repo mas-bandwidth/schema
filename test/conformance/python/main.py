@@ -39,6 +39,7 @@ def main(argv):
         for name in surface_names():
             print(name)
         print("unit shapes")
+        print("unit tblmoodmap")
         return 0
     if len(argv) == 4:
         name = argv[2]
