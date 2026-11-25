@@ -81,7 +81,8 @@ func markChains(src string) (string, []markedChain) {
 					o := &open{at: start, branches: []int{i}, starts: []int{start}}
 					if len(stack) > 0 {
 						o.parent = stack[len(stack)-1]
-						o.dead = o.parent.dead
+						// only the first branch of a dead twin is dead: its #else is the live side
+						o.dead = o.parent.dead && len(o.parent.branches) == 1
 					}
 					if g := ppIfndefName.FindStringSubmatch(strings.TrimRight(line, "\r\n")); g != nil && start == i {
 						o.once = g[1]

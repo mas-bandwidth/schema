@@ -80,7 +80,7 @@ func configsFor(src string, chains []markedChain) [][]string {
 	return out
 }
 
-var ppAnyDirectiveLine = regexp.MustCompile(`(?m)^[ \t]*#[ \t]*(?:if|ifdef|ifndef|elif|define|undef)\b(?:[^\n]*\\\n)*[^\n]*`)
+var ppAnyDirectiveLine = regexp.MustCompile(`(?m)^[ \t]*#[ \t]*(?:if|ifdef|ifndef|elif|elifdef|elifndef|define|undef)\b(?:[^\n]*\\\n)*[^\n]*`)
 
 // sameAs says, for each configuration, which earlier one gives src the same
 // preprocessed text, or -1. In directives-only mode the output depends on a

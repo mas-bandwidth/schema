@@ -254,3 +254,19 @@ func TestSinglePassCheckRunsEachDistinctConfigurationOnce(t *testing.T) {
 		t.Errorf("c++: got %s, want %s", got, want)
 	}
 }
+
+// Only a dead twin's first branch is dead: a chain in its #else is live, so
+// one no configuration reaches there is named; and a name an #elifdef tests
+// keeps a configuration that differs on it from being skipped.
+func TestSinglePassCheckDeadTwinsAndElifdef(t *testing.T) {
+	src := "#if defined( _WIN32 ) && defined( __clang__ )\n#ifndef G\n#define G\n#endif\n#ifndef G\nint dead;\n#else\n#if defined( A )\nint a;\n#else\nint b;\n#endif\n#endif\n#endif\n"
+	_, chains := markChains(src)
+	for _, c := range chains {
+		if c.line == 8 && c.dead {
+			t.Fatal("the chain in the dead twin's #else is called dead")
+		}
+	}
+	if got := fmt.Sprint(sameAs("#if 1\n#elifdef K\n#endif\n", "c", [][]string{{}, {"-DK=1"}})); got != "[-1 -1]" {
+		t.Fatalf("sameAs %s: a configuration that defines the name an #elifdef tests was skipped", got)
+	}
+}
