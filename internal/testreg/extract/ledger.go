@@ -150,6 +150,8 @@ func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) 
 //     language the registry lists (tools/namebuild's
 //     TestNameBuildability_<lang>);
 //   - a make target, by a make row whose inputs name its file and target;
+//     the rows of a sharded gate (each sets one *_SHARD var to K/N) share
+//     it: shards 1..N of one var and one N, each once, and no whole row;
 //   - a negative control, by a plant row whose inputs name its make target
 //     and its group in make/negative-controls.json;
 //   - a data case that is a pinned output, by a golden row whose inputs name
@@ -179,6 +181,14 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
 	readCase := map[string]string{}   // a data case a make row reads, by the first such row
 	var readOrder []string
+	// a sharded make target: its shard var and N, and the row of each K
+	type sharding struct {
+		var_, of string
+		n        int
+		line     int
+		by       map[int]string
+	}
+	sharded := map[string]*sharding{}
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()
 		if prev, dup := out[id]; dup {
@@ -260,12 +270,31 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			var in struct {
 				File, Target string
 				Reads        []string
+				Vars         map[string]string
 			}
 			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make row without a file and a target in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
+			it := Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}
+			if v, k, n, isShard, err := makeShard(in.Vars); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s: %v", reg.Path, t.Line, t.Key, err))
+			} else if !isShard {
+				claim(t, it, "make "+in.Target)
+			} else if sh := sharded[it.ID()]; sh == nil {
+				if prev, dup := out[it.ID()]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s runs shard %d/%d of make %s, which %s already runs whole", reg.Path, t.Line, t.Key, k, n, in.Target, prev))
+				} else {
+					out[it.ID()] = t.Key
+					sharded[it.ID()] = &sharding{var_: v, of: in.Target, n: n, line: t.Line, by: map[int]string{k: t.Key}}
+				}
+			} else if sh.var_ != v || sh.n != n {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s shards make %s as %s=%d/%d, but %s shards it as %s of %d", reg.Path, t.Line, t.Key, in.Target, v, k, n, sh.by[firstShard(sh.by)], sh.var_, sh.n))
+			} else if prev, dup := sh.by[k]; dup {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs shard %d/%d of make %s, which %s already runs", reg.Path, t.Line, t.Key, k, n, in.Target, prev))
+			} else {
+				sh.by[k] = t.Key
+			}
 			for _, f := range in.Reads {
 				dir, name := path.Split(f)
 				if !isDataPath(f) || name == "" || f != path.Clean(f) {
@@ -343,12 +372,50 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			}
 		}
 	}
+	for _, id := range slices.Sorted(maps.Keys(sharded)) {
+		sh := sharded[id]
+		for k := 1; k <= sh.n; k++ {
+			if _, ok := sh.by[k]; !ok {
+				problems = append(problems, fmt.Sprintf("%s:%d: no row runs shard %d/%d of make %s (%s), so the files of that shard are never judged", reg.Path, sh.line, k, sh.n, sh.of, sh.var_))
+			}
+		}
+	}
 	for _, id := range readOrder {
 		if _, held := out[id]; !held {
 			out[id] = readCase[id]
 		}
 	}
 	return out, problems
+}
+
+// makeShard reads a make row's shard: the one var named *_SHARD and its K/N.
+// A row with no such var is whole; two such vars, or a value that is not
+// K/N with 1 <= K <= N and N >= 2, is an error.
+func makeShard(vars map[string]string) (name string, k, n int, ok bool, err error) {
+	for v := range vars {
+		if !strings.HasSuffix(v, "_SHARD") {
+			continue
+		}
+		if ok {
+			return "", 0, 0, false, fmt.Errorf("sets two shard vars, %s and %s: a row is one shard of one gate", min(name, v), max(name, v))
+		}
+		name, ok = v, true
+	}
+	if !ok {
+		return "", 0, 0, false, nil
+	}
+	kk, nn, cut := strings.Cut(vars[name], "/")
+	k, errK := strconv.Atoi(kk)
+	n, errN := strconv.Atoi(nn)
+	if !cut || errK != nil || errN != nil || n < 2 || k < 1 || k > n {
+		return "", 0, 0, false, fmt.Errorf("%s=%q is not a shard K/N with 1 <= K <= N and N >= 2", name, vars[name])
+	}
+	return name, k, n, true, nil
+}
+
+// firstShard is the lowest K a sharding has a row for.
+func firstShard(by map[int]string) int {
+	return slices.Min(slices.Collect(maps.Keys(by)))
 }
 
 // CoveredIn is Covered held to the extract: a row covers a data case only
