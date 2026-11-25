@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3154.
+Unit tests every language answers: 2. Language-free tests: 3160.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -62,14 +62,16 @@ generated source compiles and is clean.
 
 seeded mutations.
 
-#### `fuzz` family `fuzz`, 4 tests
+#### `fuzz` family `fuzz`, 6 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.unit.fuzz.fuzz.fuzz-format-idempotent` | `gotest` | Go test FuzzFormatIdempotent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzFormatIdempotent` | the Go test passes | `internal/fuzz/property_test.go:208` |
 | `none.unit.fuzz.fuzz.fuzz-pipeline` | `gotest` | Go test FuzzPipeline in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzPipeline` | the Go test passes | `internal/fuzz/fuzz_test.go:257` |
 | `none.unit.fuzz.fuzz.fuzz-pipeline-two-files` | `gotest` | Go test FuzzPipelineTwoFiles in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: FuzzPipelineTwoFiles` | the Go test passes | `internal/fuzz/fuzz_test.go:274` |
-| `none.unit.fuzz.fuzz.fuzz-table-front-end` | `gotest` | Go test FuzzTableFrontEnd in ./internal/fuzz | `inputs.files` (353 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/fuzz`<br>`test: FuzzTableFrontEnd` | the Go test passes | `internal/fuzz/tablefrontend_test.go:125` |
+| `none.unit.fuzz.fuzz.table-front-end-regression-seeds` | `gotest` | Go test TestTableFrontEndRegressionSeeds in ./internal/fuzz | `inputs.files` (353 bytes, held in the registry row's `inputs.files`)<br>`package: ./internal/fuzz`<br>`test: TestTableFrontEndRegressionSeeds` | the Go test passes | `internal/fuzz/tablefrontend_test.go:336` |
+| `none.unit.fuzz.fuzz.table-front-end-regression-seeds-are-fuzz-seeds` | `gotest` | Go test TestTableFrontEndRegressionSeedsAreFuzzSeeds in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestTableFrontEndRegressionSeedsAreFuzzSeeds` | the Go test passes | `internal/fuzz/tablefrontend_test.go:352` |
+| `none.unit.fuzz.fuzz.table-front-end-seeds-are-every-distinct-schema-once` | `gotest` | Go test TestTableFrontEndSeedsAreEveryDistinctSchemaOnce in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestTableFrontEndSeedsAreEveryDistinctSchemaOnce` | the Go test passes | `internal/fuzz/tablefrontend_test.go:161` |
 
 #### `fuzz` family `tabletext`, 1 test
 
@@ -365,7 +367,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.codegen-golang.tidy-leaves-no-bare-blocks` | `gotest` | Go test TestTidyLeavesNoBareBlocks in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestTidyLeavesNoBareBlocks` | the Go test passes | `internal/codegen/golang/tidy_test.go:61` |
 | `none.unit.compiler.codegen-golang.union-surface-emitted` | `gotest` | Go test TestUnionSurfaceEmitted in ./internal/codegen/golang | `package: ./internal/codegen/golang`<br>`test: TestUnionSurfaceEmitted` | the Go test passes | `internal/codegen/golang/golang_test.go:264` |
 
-#### `compiler` family `compiler`, 520 tests
+#### `compiler` family `compiler`, 521 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -393,6 +395,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.compiler.competition-records-the-importer-position` | `gotest` | Go test TestCompetitionRecordsTheImporterPosition in ./compiler | `package: ./compiler`<br>`test: TestCompetitionRecordsTheImporterPosition` | the Go test passes | `compiler/importerposition_test.go:21` |
 | `none.unit.compiler.compiler.count-on-write-is-debug-only-where-the-language-has-that-idiom` | `gotest` | Go test TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom in ./compiler | `package: ./compiler`<br>`test: TestCountOnWriteIsDebugOnlyWhereTheLanguageHasThatIdiom` | the Go test passes | `compiler/countedbirth_test.go:226` |
 | `none.unit.compiler.compiler.counted-array-is-born-at-its-declared-minimum` | `gotest` | Go test TestCountedArrayIsBornAtItsDeclaredMinimum in ./compiler | `package: ./compiler`<br>`test: TestCountedArrayIsBornAtItsDeclaredMinimum` | the Go test passes | `compiler/countedbirth_test.go:205` |
+| `none.unit.compiler.compiler.cpp-cook-extent-cases-are-each-in-one-test` | `gotest` | Go test TestCppCookExtentCasesAreEachInOneTest in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCasesAreEachInOneTest` | the Go test passes | `compiler/tablecookalignment_test.go:101` |
 | `none.unit.compiler.compiler.cpp-emits-table-headers` | `gotest` | Go test TestCppEmitsTableHeaders in ./compiler | `package: ./compiler`<br>`test: TestCppEmitsTableHeaders` | the Go test passes | `compiler/tables_test.go:155` |
 | `none.unit.compiler.compiler.cpp-keyed-self-initializing-slots-carry-no-value-init` | `gotest` | Go test TestCppKeyedSelfInitializingSlotsCarryNoValueInit in ./compiler | `package: ./compiler`<br>`test: TestCppKeyedSelfInitializingSlotsCarryNoValueInit` | the Go test passes | `compiler/tablescpp_test.go:179` |
 | `none.unit.compiler.compiler.cpp-no-plan-clamps` | `gotest` | Go test TestCppNoPlanClamps in ./compiler | `package: ./compiler`<br>`test: TestCppNoPlanClamps` | the Go test passes | `compiler/tablefixedclamp_test.go:127` |
@@ -947,7 +950,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.format.qualified-variant-list-is-one-per-line-without-commas` | `gotest` | Go test TestQualifiedVariantListIsOnePerLineWithoutCommas in ./internal/format | `package: ./internal/format`<br>`test: TestQualifiedVariantListIsOnePerLineWithoutCommas` | the Go test passes | `internal/format/doctags_test.go:27` |
 | `none.unit.compiler.format.variant-deprecated-round-trip` | `gotest` | Go test TestVariantDeprecatedRoundTrip in ./internal/format | `package: ./internal/format`<br>`test: TestVariantDeprecatedRoundTrip` | the Go test passes | `internal/format/format_test.go:160` |
 
-#### `compiler` family `fuzz`, 17 tests
+#### `compiler` family `fuzz`, 18 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -957,6 +960,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.fuzz.def-line-matchers` | `gotest` | Go test TestDefLineMatchers in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestDefLineMatchers` | the Go test passes | `internal/fuzz/oracle_test.go:193` |
 | `none.unit.compiler.fuzz.diagnostic-order-is-deterministic` | `gotest` | Go test TestDiagnosticOrderIsDeterministic in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestDiagnosticOrderIsDeterministic` | the Go test passes | `internal/fuzz/property_test.go:247` |
 | `none.unit.compiler.fuzz.expected-classes-name-real-cards` | `gotest` | Go test TestExpectedClassesNameRealCards in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestExpectedClassesNameRealCards` | the Go test passes | `internal/fuzz/tablediff_classes_test.go:42` |
+| `none.unit.compiler.fuzz.fixed-point-verdicts-read-each-package` | `gotest` | Go test TestFixedPointVerdictsReadEachPackage in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestFixedPointVerdictsReadEachPackage` | the Go test passes | `internal/fuzz/tablegen_fixedpoint_test.go:108` |
 | `none.unit.compiler.fuzz.format-is-idempotent` | `gotest` | Go test TestFormatIsIdempotent in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestFormatIsIdempotent` | the Go test passes | `internal/fuzz/property_test.go:173` |
 | `none.unit.compiler.fuzz.fuzz-pipeline-drives-every-target` | `gotest` | Go test TestFuzzPipelineDrivesEveryTarget in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestFuzzPipelineDrivesEveryTarget` | the Go test passes | `internal/fuzz/fuzz_test.go:291` |
 | `none.unit.compiler.fuzz.generated-output-is-deterministic` | `gotest` | Go test TestGeneratedOutputIsDeterministic in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestGeneratedOutputIsDeterministic` | the Go test passes | `internal/fuzz/property_test.go:82` |
@@ -965,9 +969,9 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.fuzz.protocol-id-is-stable` | `gotest` | Go test TestProtocolIdIsStable in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestProtocolIdIsStable` | the Go test passes | `internal/fuzz/property_test.go:145` |
 | `none.unit.compiler.fuzz.random-table-generator` | `gotest` | Go test TestRandomTableGenerator in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestRandomTableGenerator` | the Go test passes | `internal/fuzz/tablediff_test.go:71` |
 | `none.unit.compiler.fuzz.seed-dir-counts-what-it-adds` | `gotest` | Go test TestSeedDirCountsWhatItAdds in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestSeedDirCountsWhatItAdds` | the Go test passes | `internal/fuzz/fuzz_test.go:194` |
-| `none.unit.compiler.fuzz.seed-schemas-counts-what-it-adds` | `gotest` | Go test TestSeedSchemasCountsWhatItAdds in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestSeedSchemasCountsWhatItAdds` | the Go test passes | `internal/fuzz/tablefrontend_test.go:86` |
+| `none.unit.compiler.fuzz.seed-schemas-counts-what-it-adds` | `gotest` | Go test TestSeedSchemasCountsWhatItAdds in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestSeedSchemasCountsWhatItAdds` | the Go test passes | `internal/fuzz/tablefrontend_test.go:88` |
 | `none.unit.compiler.fuzz.the-real-corpora-are-both-read` | `gotest` | Go test TestTheRealCorporaAreBothRead in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestTheRealCorporaAreBothRead` | the Go test passes | `internal/fuzz/corpusunits_test.go:81` |
-| `none.unit.compiler.fuzz.zero-stride-and-edge-shapes-all-targets` | `gotest` | Go test TestZeroStrideAndEdgeShapesAllTargets in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestZeroStrideAndEdgeShapesAllTargets` | the Go test passes | `internal/fuzz/tablefrontend_test.go:171` |
+| `none.unit.compiler.fuzz.zero-stride-and-edge-shapes-all-targets` | `gotest` | Go test TestZeroStrideAndEdgeShapesAllTargets in ./internal/fuzz | `package: ./internal/fuzz`<br>`test: TestZeroStrideAndEdgeShapesAllTargets` | the Go test passes | `internal/fuzz/tablefrontend_test.go:422` |
 
 #### `compiler` family `goname`, 3 tests
 
@@ -2388,10 +2392,11 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.githooks.pre-push-new-branch-and-delete` | `gotest` | Go test TestPrePushNewBranchAndDelete in ./internal/githooks | `package: ./internal/githooks`<br>`test: TestPrePushNewBranchAndDelete` | the Go test passes | `internal/githooks/prepush_test.go:125` |
 | `none.unit.tooling.githooks.pre-push-wrong-identity-refused` | `gotest` | Go test TestPrePushWrongIdentityRefused in ./internal/githooks | `package: ./internal/githooks`<br>`test: TestPrePushWrongIdentityRefused` | the Go test passes | `internal/githooks/prepush_test.go:112` |
 
-#### `tooling` family `goldens`, 33 tests
+#### `tooling` family `goldens`, 34 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
+| `none.unit.tooling.goldens.a-scanner-finds-what-its-expression-finds` | `gotest` | Go test TestAScannerFindsWhatItsExpressionFinds in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestAScannerFindsWhatItsExpressionFinds` | the Go test passes | `internal/goldens/generated_text_test.go:234` |
 | `none.unit.tooling.goldens.corpus-is-canonical` | `gotest` | Go test TestCorpusIsCanonical in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestCorpusIsCanonical` | the Go test passes | `internal/goldens/goldens_test.go:71` |
 | `none.unit.tooling.goldens.corpus-regression-pins-present` | `gotest` | Go test TestCorpusRegressionPinsPresent in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestCorpusRegressionPinsPresent` | the Go test passes | `internal/goldens/regressions_test.go:155` |
 | `none.unit.tooling.goldens.cpp-type-escape-is-faithful` | `gotest` | Go test TestCppTypeEscapeIsFaithful in ./internal/goldens | `package: ./internal/goldens`<br>`test: TestCppTypeEscapeIsFaithful` | the Go test passes | `internal/goldens/cpp_escape_test.go:45` |
@@ -3142,7 +3147,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 146 tests
+#### `tooling` family `schema-test`, 147 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3274,6 +3279,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.the-database-is-read-once-per-run` | `gotest` | Go test TestTheDatabaseIsReadOncePerRun in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheDatabaseIsReadOncePerRun` | the Go test passes | `tools/schema-test/make_test.go:520` |
 | `none.unit.tooling.schema-test.the-main-tree-action-exports-the-base-the-event-names` | `gotest` | Go test TestTheMainTreeActionExportsTheBaseTheEventNames in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMainTreeActionExportsTheBaseTheEventNames` | the Go test passes | `tools/schema-test/pinsbase_test.go:103` |
 | `none.unit.tooling.schema-test.the-matrix-is-the-pr-group` | `gotest` | Go test TestTheMatrixIsThePRGroup in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixIsThePRGroup` | the Go test passes | `tools/schema-test/ci_test.go:1` |
+| `none.unit.tooling.schema-test.the-matrix-plans-headroom-under-the-limit` | `gotest` | Go test TestTheMatrixPlansHeadroomUnderTheLimit in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheMatrixPlansHeadroomUnderTheLimit` | the Go test passes | `tools/schema-test/ci_test.go:155` |
 | `none.unit.tooling.schema-test.the-not-yet-generated-list-only-shrinks` | `gotest` | Go test TestTheNotYetGeneratedListOnlyShrinks in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheNotYetGeneratedListOnlyShrinks` | the Go test passes | `tools/schema-test/cipins_test.go:1` |
 | `none.unit.tooling.schema-test.the-planted-copy-finds-its-siblings` | `gotest` | Go test TestThePlantedCopyFindsItsSiblings in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedCopyFindsItsSiblings` | the Go test passes | `tools/schema-test/plant_test.go:258` |
 | `none.unit.tooling.schema-test.the-planted-runs-report-is-its-verdict` | `gotest` | Go test TestThePlantedRunsReportIsItsVerdict in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestThePlantedRunsReportIsItsVerdict` | the Go test passes | `tools/schema-test/plant_test.go:368` |
