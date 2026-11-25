@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -71,6 +72,7 @@ func nightlyCampaign(t *testing.T) string {
 // that cannot write it is a red naming make's own words.
 func nightlyCorpusFromMake(t *testing.T) string {
 	t.Helper()
+	testinputs.Make(t)
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
