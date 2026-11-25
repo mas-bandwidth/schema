@@ -959,7 +959,7 @@ jobs:
           echo "clean_legs=$clean_legs_json"   >> "$GITHUB_OUTPUT"
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           cpp_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "cpp")' <<<"$input_rows")
-          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver|driver_[a-z0-9_]+\.cpp|driver\.h|manifest\.h|block_walk\.h)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             cpp_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "cpp"))' <<<"$input_rows")
@@ -3240,7 +3240,13 @@ jobs:
   #
   # Measured cold on captain (2026-11-25, load 5-7, 64 cores): the go leg
   # 55.0 s, the goose leg 9.3 s; replayed, make rebuilds nothing but the go
-  # driver's own `go build` (its rule names the phony cards-generate).
+  # driver's own `go build` (its rule names the phony cards-generate). The
+  # cpp leg, the reference driver in its translation units (Makefile,
+  # CONFORMANCE_DRIVER_TUS), CPP-LEG-COLD cold under make -j4 on 4 of
+  # captain's cores; replayed, make rebuilds nothing. Its row also holds
+  # every driver unit to the compile budget beside that list (`make
+  # conformance-cpp-tu-budget`): a unit that grows back toward the old
+  # single one is red by name here before the leg stops fitting.
   # schema-test-pr's env plants run these legs (plant.corpus-plants.*); the
   # plants' own Prepare then finds them built.
   produce:
@@ -3264,6 +3270,10 @@ jobs:
             target: conformance-leg-goose
             pins: goose
             paths: bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose
+          - name: conformance-leg-cpp
+            target: conformance-leg-cpp
+            pins: ''
+            paths: bin/schema build/conformance-cpp build/conformance-cpp-objs build/conformance-harness-vm build/schema_test_cook build/tables-generated
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -3306,6 +3316,13 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: make -j"$(nproc)" --no-print-directory "$TARGET"
+      # every driver unit's recorded compile seconds (the build above wrote
+      # them beside the objects, or the kept tree carries the ones its own
+      # build wrote) held to CONFORMANCE_DRIVER_TU_BUDGET; a unit with no
+      # timing is red
+      - name: the C++ driver's compile budget, per unit
+        if: matrix.name == 'conformance-leg-cpp'
+        run: make --no-print-directory conformance-cpp-tu-budget
       - name: pack the tree
         env:
           NAME: ${{ matrix.name }}

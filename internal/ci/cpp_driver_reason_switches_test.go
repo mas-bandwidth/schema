@@ -52,7 +52,7 @@ func TestCPPDriverReasonSwitchesNameEveryRefusal(t *testing.T) {
 	}
 	for _, driver := range []string{
 		filepath.Join("test", "tables", "cook_main.cpp"),
-		filepath.Join("test", "conformance", "cpp", "main.cpp"),
+		filepath.Join("test", "conformance", "cpp", "driver_blocks.cpp"), // the block surfaces, split out of main.cpp
 	} {
 		data, err := os.ReadFile(filepath.Join(root, driver))
 		if err != nil {

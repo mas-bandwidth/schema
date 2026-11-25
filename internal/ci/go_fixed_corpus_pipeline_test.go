@@ -92,10 +92,14 @@ func TestThePRShardsRunOnTheProducedLegs(t *testing.T) {
 	}
 	jobs := yamlJobs(string(data))
 	producer, shards := jobs["produce"], jobs["schema-test-pr"]
-	for _, want := range []string{"timeout-minutes: 2", "name: conformance-leg-go", "name: conformance-leg-goose", "actions/cache/restore@", "actions/cache/save@", "tools/produce.sh pack", "sh tools/produce.sh identity", "key: produce-${{ matrix.name }}-${{ runner.os }}-${{ env.PRODUCE_ID }}", "build/produce/${{ matrix.name }}.id", "actions/upload-artifact@", "produce-${{ matrix.name }}-${{ github.run_id }}-${{ github.sha }}"} {
+	for _, want := range []string{"timeout-minutes: 2", "name: conformance-leg-go", "name: conformance-leg-goose", "name: conformance-leg-cpp", "target: conformance-leg-cpp", "if: matrix.name == 'conformance-leg-cpp'", "run: make --no-print-directory conformance-cpp-tu-budget", "actions/cache/restore@", "actions/cache/save@", "tools/produce.sh pack", "sh tools/produce.sh identity", "key: produce-${{ matrix.name }}-${{ runner.os }}-${{ env.PRODUCE_ID }}", "build/produce/${{ matrix.name }}.id", "actions/upload-artifact@", "produce-${{ matrix.name }}-${{ github.run_id }}-${{ github.sha }}"} {
 		if !strings.Contains(producer, want) {
 			t.Errorf("produce misses %s", want)
 		}
+	}
+	// the budget reads the timings the leg's build writes, so it runs after it
+	if build, budget := strings.Index(producer, `make -j"$(nproc)" --no-print-directory "$TARGET"`), strings.Index(producer, "conformance-cpp-tu-budget"); build < 0 || budget < build {
+		t.Error("produce holds the C++ driver's units to their compile budget before the build that times them")
 	}
 	for _, want := range []string{"needs: [go-fixed-corpus, produce]", "needs.produce.result == 'success'", "pattern: produce-*-${{ github.run_id }}-${{ github.sha }}", "tools/produce.sh unpack build/produce"} {
 		if !strings.Contains(shards, want) {

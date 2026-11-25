@@ -214,6 +214,7 @@ var catalog = []Entry{
 	// tools/
 	e("tools/agentsmap", "AGENTS.md generator and drift guard", "go test ./tools/agentsmap", "make map"),
 	e("tools/cellmerge", "three-way PORTING.md row merge for diff3 hunks", "go test ./tools/cellmerge", "go run ./tools/cellmerge docs/PORTING.md"),
+	e("tools/compilebudget", "holds every C++ conformance driver unit to its compile-seconds budget; a missing timing is red", "go test ./tools/compilebudget", "make conformance-cpp-tu-budget"),
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
 	e("tools/gotestreport", "go test -json row report; every skip is red", "go test ./tools/gotestreport", "go run ./tools/gotestreport build/go-test-json"),
 	e("tools/errdiscard", "refuses an error dropped in cmd/ or tools/ with no reason", "go test ./internal/errdiscard", "make errdiscard"),

@@ -5452,14 +5452,20 @@ conformance-cpp-objects: build/tables-generated/.stamp
 #
 # Measured on captain (2026-11-25, -O0, CPU seconds per unit, the leg cold
 # under make -j4 on 4 cores):
-#   MEASURED-TU-SECONDS
-# The budget is the slowest unit with room for compiler and machine variance
-# beside it (BUDGET-MARGIN), and well under the 15 s a unit may take before
-# the leg's cold build stops fitting the produce job's two minutes.
-CONFORMANCE_DRIVER_TUS := main driver_codec driver_blocks driver_wref driver_examples driver_maps \
-	driver_lists driver_cooktorture driver_messages driver_varevo12 driver_varevo3 driver_tblsurf \
-	driver_pointers driver_backend driver_evolution_a driver_evolution_b
-CONFORMANCE_DRIVER_TU_BUDGET := BUDGET-SECONDS
+#   driver_maps 9.17, driver_examples 8.43, driver_backend 6.37,
+#   driver_lists 6.12, driver_tblsurf 5.64, driver_cooktorture 5.39,
+#   driver_varevo12 5.36, driver_messages 4.99, driver_varevo3 4.90,
+#   driver_pointers 4.88, driver_wref 4.84, driver_evolution_b 3.94,
+#   driver_evolution_a 3.57, driver_blocks 2.60, driver_codec 1.19, main 0.74
+# (the slowest seen under load: driver_lists 9.73 s, captain at load 12). The
+# budget, 15 s, is that worst unit with half again as much beside it for a
+# slower runner and compiler variance; a unit past it is a unit growing back
+# toward the old one, and is cut, never given a larger budget.
+# Listed slowest first, the order make starts them in.
+CONFORMANCE_DRIVER_TUS := driver_maps driver_examples driver_backend driver_lists driver_tblsurf \
+	driver_cooktorture driver_varevo12 driver_messages driver_varevo3 driver_pointers driver_wref \
+	driver_evolution_b driver_evolution_a driver_blocks driver_codec main
+CONFORMANCE_DRIVER_TU_BUDGET := 15
 CONFORMANCE_DRIVER_SOURCES := $(patsubst %,test/conformance/cpp/%.cpp,$(CONFORMANCE_DRIVER_TUS))
 CONFORMANCE_DRIVER_HEADERS := test/conformance/cpp/driver.h test/conformance/cpp/manifest.h test/conformance/cpp/block_walk.h
 CONFORMANCE_DRIVER_OBJECTS := $(patsubst %,build/conformance-cpp-objs/driver/%.o,$(CONFORMANCE_DRIVER_TUS))
@@ -5469,7 +5475,6 @@ build/conformance-cpp-objs/driver/%.o: test/conformance/cpp/%.cpp $(CONFORMANCE_
 	@mkdir -p $(@D)
 	perl tools/compile-seconds.pl $(@:.o=.seconds) $(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
-#
 # The objects are the link's own prerequisites (named from the schemas, so
 # safe at parse time, as CONFORMANCE_OBJECTS says): no sub-make reparses this
 # Makefile before the first compiler starts, and an object rebuilt for any
