@@ -41,16 +41,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *dir == "" || flags.NArg() == 0 {
-		fmt.Fprintln(stderr, "usage: compilebudget -budget SECONDS -dir DIR UNIT...")
+		say(stderr, "usage: compilebudget -budget SECONDS -dir DIR UNIT...\n")
 		return 2
 	}
 	report, err := check(os.DirFS(*dir), *dir, *budget, flags.Args())
-	fmt.Fprint(stdout, report)
+	if !say(stdout, report) {
+		return 1
+	}
 	if err != nil {
-		fmt.Fprintf(stderr, "compilebudget: %v\n", err)
+		say(stderr, "compilebudget: "+err.Error()+"\n")
 		return 1
 	}
 	return 0
+}
+
+// say writes s to w and reports whether all of it was written. A caller
+// that cannot write its report exits non-zero: an unread pass is no pass.
+func say(w io.Writer, s string) bool {
+	_, err := io.WriteString(w, s)
+	return err == nil
 }
 
 // check reads UNIT.seconds for every unit from fsys (named dir in messages)

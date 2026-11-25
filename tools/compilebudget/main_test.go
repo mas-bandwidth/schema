@@ -141,3 +141,32 @@ func TestCheckRedsAnUnreadableTiming(t *testing.T) {
 		t.Error("a zero budget passed")
 	}
 }
+
+// TestRunExitsByTheVerdict holds the command's exit status to the check:
+// zero only when every unit is timed and within budget, one on a unit past
+// it or a unit with no timing, two on a call that names no directory or unit.
+// The timing files are the package's testdata; nothing is compiled or timed.
+func TestRunExitsByTheVerdict(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want int
+		says string
+	}{
+		{"within", []string{"-budget", "15", "-dir", "testdata/within", "a", "b"}, 0, "every one within 15 s"},
+		{"over", []string{"-budget", "15", "-dir", "testdata/over", "a", "b"}, 1, "unit b took 15.50 s"},
+		{"untimed", []string{"-budget", "15", "-dir", "testdata/within", "a", "b", "c"}, 1, "no timing for unit c"},
+		{"no unit", []string{"-budget", "15", "-dir", "testdata/within"}, 2, "usage"},
+		{"no dir", []string{"-budget", "15", "a"}, 2, "usage"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr strings.Builder
+			if got := run(tc.args, &stdout, &stderr); got != tc.want {
+				t.Errorf("exit %d, want %d\nstdout: %s\nstderr: %s", got, tc.want, stdout.String(), stderr.String())
+			}
+			if out := stdout.String() + stderr.String(); !strings.Contains(out, tc.says) {
+				t.Errorf("the output does not say %q: %s", tc.says, out)
+			}
+		})
+	}
+}

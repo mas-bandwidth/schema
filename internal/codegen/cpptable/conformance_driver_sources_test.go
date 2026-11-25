@@ -116,7 +116,7 @@ func TestCppConformanceDriverRegistersEveryFamily(t *testing.T) {
 	for _, m := range unregisteredFamilies(sources, mainSource) {
 		t.Error(m)
 	}
-	planted := append(sources, driverSource{path: "planted.cpp", text: []byte("extern const DriverTables driver_tables_planted;\nconst DriverTables driver_tables_planted = {};\n")})
+	planted := append(append([]driverSource{}, sources...), driverSource{path: "planted.cpp", text: []byte("extern const DriverTables driver_tables_planted;\nconst DriverTables driver_tables_planted = {};\n")})
 	if got := unregisteredFamilies(planted, mainSource); len(got) != 1 || !strings.Contains(got[0], "driver_tables_planted") {
 		t.Errorf("a planted family main.cpp does not list was not named: %v", got)
 	}
