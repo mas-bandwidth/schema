@@ -358,9 +358,9 @@ each run is the whole manifest (tools/schema-test/hostile.go).
   controls, never the corpus run's.
 - A case no line names fails ("gave the case no verdict"). A run with no
   block (a target that does not exist yet, a build that broke) or with a line
-  in its block that is no case's verdict (a carried FIX-CARD, a ledger that
+  in its block that is no case's verdict (a FIX-CARD line, a ledger that
   did not close) fails every asked case with what the run said. A target that
-  exits non-zero with every case passing is the run's error.
+  exits non-zero with no case failing by name is the run's error.
 - No case runs twice: the per-case rows are the make target's only rows, and
   their inputs name the Go test a Go-written target runs (`go_tests`), so
   `schema-test extract` counts the target and the test as the rows'.
