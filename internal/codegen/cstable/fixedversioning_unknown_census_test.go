@@ -21,7 +21,6 @@ import (
 // first, is back at its declared defaults (SPEC-TABLES §6.5), and a second load
 // refuses the same way.
 func TestFixedVersioningUnknownCensus(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 	corpus := csFixedCorpusFile(t, "old_unknown_census.bin")
 	csRunOneVersionProbe(t, corpus, csVersionProbe{
 		name:   "unknown_census/new_reads_old",

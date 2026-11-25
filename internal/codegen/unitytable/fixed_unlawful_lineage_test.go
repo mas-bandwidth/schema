@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestUnityFixedUnlawfulLineage is the unity (C#) leg's answer to the
@@ -20,7 +19,6 @@ import (
 // row handed in, poisoned first, at its declared defaults (SPEC-TABLES §6.5).
 // A second load refuses the same way.
 func TestUnityFixedUnlawfulLineage(t *testing.T) {
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect fixed unlawful lineage")
 	t.Parallel()
 	rows := []struct {
 		name, older, newer, save, poison, check, reason string

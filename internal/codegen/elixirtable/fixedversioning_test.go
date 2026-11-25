@@ -953,7 +953,6 @@ func runRootProbe(t *testing.T, elixirBin, reader, root string, older []string, 
 // already built: the unlawful-entry rows hand in pairs written in the test
 // itself, never read from test/tables.
 func runUnitProbe(t *testing.T, elixirBin string, u *ir.Unit, root string, lineage map[string][]FixedLineageEntry, file, body string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	// THE PACKET LIBRARY TOO: a row's unions, enums and flags lower to modules
