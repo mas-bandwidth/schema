@@ -25,7 +25,7 @@ import (
 
 // plantAdapter runs negative controls. A plant passes only when the
 // sabotage it plants turns exactly the tests it names red. Its inputs take
-// one of three forms:
+// one of four forms:
 //
 //   - {"target": <full name>, "env": {...}, "reason": <text>}: the target runs
 //     with env set, which turns on a hook its harness carries; it must run and
@@ -50,6 +50,16 @@ import (
 //     row does: what its gate needs from the runner (DART=dart), set and
 //     checked the same way, so a control never runs on a default the runner
 //     does not have.
+//   - {"credits": <row key>, "delete": [[<file>...]...]}: a read plant, the
+//     proof of a row's read credits (extract.CreditPlant). The row runs green
+//     in the checkout and in a copy of the tracked tree; then each deletion
+//     in turn takes its files (one data case's, or one driver's) out of the
+//     copy, and every instance of the row must be red, by name, until the
+//     files go back; with every file back the row must be green again. A
+//     make row's red must also name a deleted file by its path, since its
+//     exit status is what any failure gives. A deletion that leaves the
+//     row green, or red for no deleted file, fails the plant by name: take
+//     it out of the plant, and its item goes back to the ledger.
 type plantAdapter struct {
 	rn   *testreg.Runner
 	make makeAdapter
@@ -57,6 +67,12 @@ type plantAdapter struct {
 	// run the names there, returning each name's status. A unit test hands
 	// in its own, so no unit test copies a tree or starts a process.
 	tree func(ctx context.Context, edits []plantEdit, names []string) (plantRun, error)
+	// credit runs the read plant form: copy the tracked tree, run the names
+	// there, then, for each deletion in turn, take its files out of the
+	// copy, run the names and put the files back, then run them once more
+	// with every file back. It returns the run before any deletion, one run
+	// per deletion, and the run after. A unit test hands in its own.
+	credit func(ctx context.Context, deletions [][]string, names []string) ([]plantRun, error)
 	// now times each plant, its baseline and its sabotaged run, which its
 	// result carries as Seconds, so the sharder weighs a plant by what it
 	// costs; nil measures nothing (a unit test hands in its own clock).
@@ -84,6 +100,10 @@ type plantInputs struct {
 	Vars     map[string]string `json:"vars"`
 	Tools    []string          `json:"tools"`
 	Siblings []string          `json:"siblings"`
+	// Credits and Delete are a read plant (extract.CreditPlant): the row
+	// whose reads it proves, and the deletions, each one item's files.
+	Credits string     `json:"credits"`
+	Delete  [][]string `json:"delete"`
 }
 
 // plantEdit is one exact replacement: anchor, in file, becomes with.
@@ -96,7 +116,7 @@ type plantEdit struct {
 func newPlantAdapter(rn *testreg.Runner) plantAdapter {
 	serial := newMakeAdapter()
 	serial.jobs = 0 // the controls ran with no -j
-	return plantAdapter{rn: rn, make: serial, tree: plantInTree, now: time.Now, markerHeld: markerInTree}
+	return plantAdapter{rn: rn, make: serial, tree: plantInTree, credit: creditInTree, now: time.Now, markerHeld: markerInTree}
 }
 
 // minPlantReason is the shortest stated reason a plant may give.
@@ -112,6 +132,30 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 	env := in.Target != "" || len(in.Env) > 0
 	edits := len(in.Edits) > 0 || len(in.Red) > 0 || len(in.Run) > 0
 	mk := in.Make != "" || in.Group != "" || in.File != "" || len(in.Vars) > 0 || len(in.Tools) > 0 || len(in.Siblings) > 0
+	if in.Credits != "" || len(in.Delete) > 0 {
+		if env || edits || mk || in.Reason != "" {
+			return in, "", fmt.Errorf("a read plant is {credits, delete} alone: its red is the credited row's, by name, for each deletion")
+		}
+		if in.Credits == "" || len(in.Delete) == 0 {
+			return in, "", fmt.Errorf("a read plant names the row whose reads it proves and the deletions, each one item's files")
+		}
+		seen := map[string]bool{}
+		for i, g := range in.Delete {
+			if len(g) == 0 {
+				return in, "", fmt.Errorf("deletion %d deletes no file", i+1)
+			}
+			for _, f := range g {
+				if f == "" || filepath.IsAbs(f) || strings.Contains(f, "..") || f != path.Clean(f) {
+					return in, "", fmt.Errorf("deletion %d: %q: want a clean repository file (test/x/a.bin, never ./test/x/a.bin)", i+1, f)
+				}
+				if seen[f] {
+					return in, "", fmt.Errorf("deletion %d: %s is deleted twice: each deletion is one item's own files", i+1, f)
+				}
+				seen[f] = true
+			}
+		}
+		return in, "credit", nil
+	}
 	if mk && in.Reason != "" {
 		return in, "", fmt.Errorf("a make control holds its own gate red: it states no reason")
 	}
@@ -145,7 +189,7 @@ func decodePlant(raw json.RawMessage) (plantInputs, string, error) {
 		}
 		return in, "make", nil
 	}
-	return in, "", fmt.Errorf("plant inputs are one form: {target, env, reason}, {edits, red, run, reason} or {make, file, group}")
+	return in, "", fmt.Errorf("plant inputs are one form: {target, env, reason}, {edits, red, run, reason}, {make, file, group} or {credits, delete}")
 }
 
 func (plantAdapter) Answers(t testreg.Test) bool {
@@ -170,6 +214,8 @@ func (a plantAdapter) Run(ctx context.Context, _ string, instances []testreg.Ins
 			r, err = a.runEnv(ctx, inst, in)
 		case "edits":
 			r, err = a.runEdits(ctx, inst, in)
+		case "credit":
+			r, err = a.runCredit(ctx, inst, in)
 		case "make":
 			var res []testreg.Result
 			mi := inst
@@ -313,6 +359,117 @@ func (a plantAdapter) runEdits(ctx context.Context, inst testreg.Instance, in pl
 	}
 	if bad != "" {
 		return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: bad + "\n" + tail(run.log, 30)}, nil
+	}
+	return testreg.Result{Instance: inst.Full, Verdict: testreg.Pass}, nil
+}
+
+// creditNames is every instance of the row a read plant proves, in a
+// language with an adapter (a language with none runs nothing anywhere).
+func (a plantAdapter) creditNames(in plantInputs) []testreg.Instance {
+	var out []testreg.Instance
+	for _, inst := range a.rn.Reg.Instances() {
+		if inst.Test.Key != in.Credits || inst.Test.Type == "plant" {
+			continue
+		}
+		if inst.Test.PerLang() {
+			if l, ok := a.rn.Reg.Lang(inst.Lang); !ok || !l.Ready() {
+				continue
+			}
+		}
+		out = append(out, inst)
+	}
+	return out
+}
+
+// runCredit is the read plant form: the row is green in the checkout and
+// in the copy before any deletion, then red, by name, after each one.
+func (a plantAdapter) runCredit(ctx context.Context, inst testreg.Instance, in plantInputs) (testreg.Result, error) {
+	fail := func(why string) (testreg.Result, error) {
+		return testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why}, nil
+	}
+	row, ok := a.rn.Reg.Test(in.Credits)
+	if !ok || row.Type == "plant" {
+		return fail(fmt.Sprintf("%s is no row that is not a plant: a read plant proves a row's reads", in.Credits))
+	}
+	insts := a.creditNames(in)
+	if len(insts) == 0 {
+		return fail(fmt.Sprintf("%s has no instance in a language with an adapter, so nothing it reads can turn it red", in.Credits))
+	}
+	if a.credit == nil {
+		return testreg.Result{}, fmt.Errorf("%s: a read plant needs a copy of the tree to delete in, and this adapter has none", inst.Full)
+	}
+	if bad := a.greenBefore(ctx, insts); bad != "" {
+		return fail(bad)
+	}
+	names := make([]string, 0, len(insts))
+	for _, t := range insts {
+		names = append(names, t.Full)
+	}
+	runs, err := a.credit(ctx, in.Delete, names)
+	if err != nil {
+		var pe plantEditError
+		if asEditError(err, &pe) {
+			return fail(pe.Error())
+		}
+		return testreg.Result{}, fmt.Errorf("%s: %w", inst.Full, err)
+	}
+	if len(runs) != len(in.Delete)+2 {
+		return testreg.Result{}, fmt.Errorf("%s: the copy gave %d runs for %d deletions and the runs before and after them", inst.Full, len(runs), len(in.Delete))
+	}
+	status := func(o outcome) string {
+		if o.status == "" {
+			return "not run"
+		}
+		return o.status
+	}
+	var bad []string
+	for _, n := range names {
+		if o := runs[0].status[n]; o.status != testreg.StatusPass {
+			bad = append(bad, fmt.Sprintf("in the copy, before any deletion, %s was %s: %s", n, status(o), firstLine(o.reason)))
+		}
+	}
+	if len(runs[0].problems) > 0 {
+		bad = append(bad, "the copy's run before any deletion had run-level problems: "+strings.Join(runs[0].problems, "; "))
+	}
+	if len(bad) > 0 {
+		return fail(strings.Join(bad, "\n") + "\n" + tail(runs[0].log, 30))
+	}
+	held := 0 // deletions that did not turn the row red
+	for i, g := range in.Delete {
+		run := runs[i+1]
+		before := len(bad)
+		for _, n := range names {
+			o := run.status[n]
+			switch {
+			case o.status != testreg.StatusFail:
+				bad = append(bad, fmt.Sprintf("deleting %s left %s %s", strings.Join(g, " "), n, status(o)))
+			case row.Adapter == "make" && !slices.ContainsFunc(g, func(f string) bool { return strings.Contains(o.reason, f) }):
+				bad = append(bad, fmt.Sprintf("deleting %s turned %s red for a reason that names no deleted file by its path: %s", strings.Join(g, " "), n, firstLine(o.reason)))
+			}
+		}
+		if len(run.problems) > 0 {
+			bad = append(bad, fmt.Sprintf("deleting %s: the run had run-level problems: %s", strings.Join(g, " "), strings.Join(run.problems, "; ")))
+		}
+		if len(bad) > before {
+			held++
+		}
+	}
+	if held > 0 {
+		return fail(fmt.Sprintf("%d of %d deletions do not turn %s red: their credits do not hold, so take each out of the plant and its item goes back to the ledger:\n%s", held, len(in.Delete), in.Credits, strings.Join(bad, "\n")))
+	}
+	// every file back: the copy is green again, or a red a deletion saw may
+	// be what an earlier one left behind
+	last := runs[len(runs)-1]
+	for _, n := range names {
+		if o := last.status[n]; o.status != testreg.StatusPass {
+			bad = append(bad, fmt.Sprintf("in the copy, every file back, %s was %s: %s", n, status(o), firstLine(o.reason)))
+		}
+	}
+	if len(last.problems) > 0 {
+		bad = append(bad, "the copy's run with every file back had run-level problems: "+strings.Join(last.problems, "; "))
+	}
+	if len(bad) > 0 {
+		return fail("a deletion left the copy changed, so its reds are not the deletions' alone:\n" + strings.Join(bad, "\n") + "\n" + tail(last.log, 30))
 	}
 	return testreg.Result{Instance: inst.Full, Verdict: testreg.Pass}, nil
 }
@@ -467,45 +624,127 @@ type plantRun struct {
 // plant of the runner itself reaches the runner), writing its report as
 // JSON. The worktree is removed afterwards.
 func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantRun, error) {
+	var run plantRun
+	log, err := inCopy(ctx, edits, func(work, self, parent string) error {
+		var err error
+		run, err = runInCopy(ctx, self, work, filepath.Join(parent, "report.json"), names)
+		return err
+	})
+	if run.log == "" {
+		run.log = log
+	}
+	return run, err
+}
+
+// creditInTree is the read plant form for real: in one copy made as
+// plantInTree makes it (with no edits), the names run once as the tree
+// stands, then once per deletion with that deletion's files moved out of
+// the copy, which go back before the next. A file of a deletion the copy
+// does not hold fails the plant by name (plantEditError).
+func creditInTree(ctx context.Context, deletions [][]string, names []string) ([]plantRun, error) {
+	var runs []plantRun
+	log, err := inCopy(ctx, nil, func(work, self, parent string) error {
+		run, err := runInCopy(ctx, self, work, filepath.Join(parent, "report-0.json"), names)
+		if err != nil {
+			return err
+		}
+		runs = append(runs, run)
+		aside := filepath.Join(parent, "deleted")
+		for i, g := range deletions {
+			var moved []string
+			restore := func() error {
+				for _, f := range moved {
+					if err := os.Rename(filepath.Join(aside, filepath.FromSlash(f)), filepath.Join(work, filepath.FromSlash(f))); err != nil {
+						return fmt.Errorf("putting %s back in the copy: %w", f, err)
+					}
+				}
+				return nil
+			}
+			for _, f := range g {
+				to := filepath.Join(aside, filepath.FromSlash(f))
+				if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+					return err
+				}
+				if err := os.Rename(filepath.Join(work, filepath.FromSlash(f)), to); err != nil {
+					if rerr := restore(); rerr != nil {
+						return rerr
+					}
+					if errors.Is(err, fs.ErrNotExist) {
+						return plantEditError{fmt.Sprintf("deletion %d: %s is not in the tree", i+1, f)}
+					}
+					return err
+				}
+				moved = append(moved, f)
+			}
+			run, err := runInCopy(ctx, self, work, filepath.Join(parent, fmt.Sprintf("report-%d.json", i+1)), names)
+			if rerr := restore(); rerr != nil {
+				return rerr
+			}
+			if err != nil {
+				return fmt.Errorf("deletion %d: %w\n%s", i+1, err, tail(run.log, 30))
+			}
+			runs = append(runs, run)
+		}
+		run, err = runInCopy(ctx, self, work, filepath.Join(parent, "report-after.json"), names)
+		if err != nil {
+			return fmt.Errorf("with every file back: %w\n%s", err, tail(run.log, 30))
+		}
+		runs = append(runs, run)
+		return nil
+	})
+	if err != nil {
+		var pe plantEditError
+		if !asEditError(err, &pe) && log != "" {
+			err = fmt.Errorf("%w\n%s", err, tail(log, 30))
+		}
+	}
+	return runs, err
+}
+
+// inCopy makes a copy of the checkout as plantInTree describes it, with
+// edits applied and the copy's own schema-test built, and hands fn the
+// copy, the built schema-test and the directory that holds them; the copy
+// is removed afterwards. It returns the log of a step that failed.
+func inCopy(ctx context.Context, edits []plantEdit, fn func(work, self, parent string) error) (string, error) {
 	root, err := os.Getwd()
 	if err != nil {
-		return plantRun{}, err
+		return "", err
 	}
 	files, err := trackedFiles(ctx, root)
 	if err != nil {
-		return plantRun{}, err
+		return "", err
 	}
 	edited, err := applyEdits(edits, func(p string) ([]byte, error) { return os.ReadFile(filepath.Join(root, filepath.FromSlash(p))) }, files)
 	if err != nil {
-		return plantRun{}, err
+		return "", err
 	}
 	if _, err := sweepStale(filepath.Dir(root), copyHost(), processAlive); err != nil {
-		return plantRun{}, err
+		return "", err
 	}
 	if log, err := gitIn(ctx, root, "worktree", "prune"); err != nil {
-		return plantRun{log: log}, fmt.Errorf("git worktree prune: %w", err)
+		return log, fmt.Errorf("git worktree prune: %w", err)
 	}
 	parent, err := os.MkdirTemp(filepath.Dir(root), copyPrefix("plant"))
 	if err != nil {
-		return plantRun{}, err
+		return "", err
 	}
 	defer func() { _ = os.RemoveAll(parent) }()
 	if err := linkSiblings(root, parent); err != nil {
-		return plantRun{}, err
+		return "", err
 	}
 	work := filepath.Join(parent, filepath.Base(root))
 	if log, err := gitIn(ctx, root, "worktree", "add", "--detach", "--quiet", work, "HEAD"); err != nil {
-		return plantRun{log: log}, fmt.Errorf("git worktree add: %w", err)
+		return log, fmt.Errorf("git worktree add: %w", err)
 	}
 	defer func() { _, _ = gitIn(context.WithoutCancel(ctx), root, "worktree", "remove", "--force", work) }()
 	for _, f := range files {
 		if err := copyFile(filepath.Join(root, filepath.FromSlash(f)), filepath.Join(work, filepath.FromSlash(f))); err != nil {
-			return plantRun{}, err
+			return "", err
 		}
 	}
 	for f, data := range edited {
 		if err := os.WriteFile(filepath.Join(work, filepath.FromSlash(f)), data, 0o644); err != nil {
-			return plantRun{}, err
+			return "", err
 		}
 	}
 	self := filepath.Join(parent, "schema-test-planted")
@@ -513,9 +752,14 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 	bound(build)
 	build.Dir = work
 	if log, err := build.CombinedOutput(); err != nil {
-		return plantRun{log: string(log)}, fmt.Errorf("building schema-test in the planted tree: %w", err)
+		return string(log), fmt.Errorf("building schema-test in the planted tree: %w", err)
 	}
-	reportPath := filepath.Join(parent, "report.json")
+	return "", fn(work, self, parent)
+}
+
+// runInCopy runs names with the copy's own schema-test in the copy, its
+// report written to reportPath, and reads the report.
+func runInCopy(ctx context.Context, self, work, reportPath string, names []string) (plantRun, error) {
 	cmd := exec.CommandContext(ctx, self, append([]string{"run", "--timeout", "0", "--report", reportPath}, names...)...)
 	bound(cmd)
 	cmd.Dir = work
@@ -721,6 +965,10 @@ func (a plantAdapter) Prepare(ctx context.Context, _ string, instances []testreg
 		case "edits":
 			if names, err = a.plantNames(inst, in); err != nil {
 				continue
+			}
+		case "credit":
+			for _, t := range a.creditNames(in) {
+				names = append(names, t.Full)
 			}
 		}
 		for _, n := range names {

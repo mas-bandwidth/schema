@@ -141,7 +141,39 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 // claim holds.
 //
 // Each kind's rows join this as its layer moves it in.
+//
+// A read is a proposal, not yet a credit: CoveredIn keeps a credit a read
+// makes only where the row's read plant proves it (creditPlants).
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
+	out, _, problems := covered(reg)
+	return out, problems
+}
+
+// readCredit records the credits reads make: the rows that read each item,
+// in registry order, and the items a read (no exclusive claim) credits.
+type readCredit struct {
+	readers map[string][]string
+	byRead  map[string]bool
+	// files is the files each make row reads by name, and whole the items
+	// a directory, tree or Go read holds whole, by row: a reader whose
+	// plant proves an item must read all of it (creditPlants)
+	files map[string]map[string]bool
+	whole map[string]map[string]bool
+}
+
+// readsWhole reports whether row key reads every file of an item.
+func (rc readCredit) readsWhole(id, key string, files []string) bool {
+	return rc.whole[id][key] || !slices.ContainsFunc(files, func(f string) bool { return !rc.files[key][f] })
+}
+
+func (rc readCredit) reads(id, key string) {
+	if !slices.Contains(rc.readers[id], key) {
+		rc.readers[id] = append(rc.readers[id], key)
+	}
+}
+
+func covered(reg *testreg.Registry) (map[string]string, readCredit, []string) {
+	rc := readCredit{readers: map[string][]string{}, byRead: map[string]bool{}, files: map[string]map[string]bool{}, whole: map[string]map[string]bool{}}
 	out := map[string]string{}
 	var problems []string
 	// a data case several golden rows share: one row per pinned file, and
@@ -216,6 +248,11 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					continue
 				}
 				id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+				rc.reads(id, t.Key)
+				if rc.files[t.Key] == nil {
+					rc.files[t.Key] = map[string]bool{}
+				}
+				rc.files[t.Key][f] = true
 				if _, seen := readCase[id]; !seen {
 					readCase[id] = t.Key
 					readOrder = append(readOrder, id)
@@ -289,9 +326,10 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	for _, id := range readOrder {
 		if _, held := out[id]; !held {
 			out[id] = readCase[id]
+			rc.byRead[id] = true
 		}
 	}
-	return out, problems
+	return out, rc, problems
 }
 
 // CoveredIn is Covered held to the extract: a row covers a data case only
@@ -302,8 +340,18 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // "already runs" against the golden row. A make row that reads a file no
 // case of the extract holds names a test that does not exist, by name.
 func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
-	out, problems := Covered(reg)
+	out, rc, problems := covered(reg)
 	problems = append(problems, perLangClaims(res, reg, out)...)
+	problems = append(problems, coverWhole(res, reg, out)...)
+	problems = append(problems, readCredits(res, reg, out, rc)...)
+	problems = append(problems, creditPlants(res, reg, out, rc)...)
+	return out, problems
+}
+
+// coverWhole takes from out each data case not every file of which is
+// pinned or read (CoveredIn), and names a read of a file no case holds.
+func coverWhole(res *Result, reg *testreg.Registry, out map[string]string) []string {
+	var problems []string
 	pinned := map[string]bool{}            // a file some golden row pins
 	readBy := map[string]map[string]bool{} // the files each make row reads
 	held := map[string]bool{}
@@ -360,8 +408,169 @@ func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string)
 			}
 		}
 	}
-	problems = append(problems, readCredits(res, reg, out)...)
-	return out, problems
+	return problems
+}
+
+// ReadCredits is what the rows' reads would credit with no plant asked of
+// them: each item a read credits, by the row that reads it first. It is the
+// proposal a read plant is written from (schema-test reads --plant).
+func ReadCredits(res *Result, reg *testreg.Registry) map[string]string {
+	out, rc, _ := covered(reg)
+	_ = perLangClaims(res, reg, out)
+	_ = coverWhole(res, reg, out)
+	_ = readCredits(res, reg, out, rc)
+	credits := map[string]string{}
+	for id := range rc.byRead {
+		if k, ok := out[id]; ok {
+			credits[id] = k
+		}
+	}
+	return credits
+}
+
+// ItemFiles is what a read credit's plant deletes for item id: a data
+// case's files, or a driver's source files, sorted; nil for an item with
+// none (a case of a .jsonl line), which no plant can prove.
+func ItemFiles(res *Result, id string) []string {
+	files := res.CaseFiles[id]
+	if len(files) == 0 {
+		files = res.DriverFiles[id]
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	return slices.Sorted(slices.Values(files))
+}
+
+// CreditPlant is a read plant's inputs (tools/schema-test, the plant
+// adapter's credit form): the row whose reads it proves, and the deletions,
+// each one item's files, each of which must turn that row red.
+type CreditPlant struct {
+	Credits string     `json:"credits"`
+	Delete  [][]string `json:"delete"`
+}
+
+// ReadPlantOf is the read plant a row names in its inputs ("read_plant"),
+// or "".
+func ReadPlantOf(t testreg.Test) string {
+	var in struct {
+		ReadPlant string `json:"read_plant"`
+	}
+	if json.Unmarshal(t.Inputs, &in) != nil {
+		return ""
+	}
+	return in.ReadPlant
+}
+
+// CreditPlantOf is t's inputs as a read plant; ok is false for any other row.
+func CreditPlantOf(t testreg.Test) (CreditPlant, bool) {
+	var in CreditPlant
+	if t.Type != "plant" || t.Adapter != "plant" || json.Unmarshal(t.Inputs, &in) != nil || in.Credits == "" {
+		return CreditPlant{}, false
+	}
+	return in, true
+}
+
+// groupKey is one deletion's files as one key, in any order.
+func groupKey(files []string) string {
+	return strings.Join(slices.Sorted(slices.Values(files)), "\n")
+}
+
+// creditPlants holds every credit a read makes to a mutation plant: a read
+// credit counts only where its row names a read plant ("read_plant": the
+// key of a plant row, tier nightly, whose inputs are {"credits": <the row>,
+// "delete": [[files]...]}) and one deletion of that plant is exactly the
+// item's files (ItemFiles). The plant deletes each group in a copy of the
+// tree and requires the row red, by name, each time; a deletion that leaves
+// the row green fails the nightly by name, and taking that group out of the
+// plant takes the credit back to the ledger here. Where several rows read an
+// item, the first that reads all of it and whose plant deletes it holds it. A credit with no plant is no credit:
+// its item stays in the ledger. A plant that names no row, a row whose
+// read_plant is not the plant that credits it, a plant off the nightly tier
+// and a deletion that is no credit of its row are problems by name.
+func creditPlants(res *Result, reg *testreg.Registry, out map[string]string, rc readCredit) []string {
+	var problems []string
+	byKey := map[string]testreg.Test{}
+	rowPlant := map[string]string{}
+	for _, t := range reg.Tests {
+		byKey[t.Key] = t
+		if p := ReadPlantOf(t); p != "" {
+			rowPlant[t.Key] = p
+		}
+	}
+	plants := map[string]map[string]bool{} // the groups each row's plant deletes
+	plantLine := map[string]testreg.Test{}
+	for _, t := range reg.Tests {
+		in, ok := CreditPlantOf(t)
+		if !ok {
+			continue
+		}
+		row, known := byKey[in.Credits]
+		switch {
+		case !known || row.Type == "plant":
+			problems = append(problems, fmt.Sprintf("%s:%d: %s proves the reads of %s, which is no row that is not a plant", reg.Path, t.Line, t.Key, in.Credits))
+			continue
+		case t.Tier != "nightly":
+			problems = append(problems, fmt.Sprintf("%s:%d: %s is a read plant of tier %s: read plants run in the nightly tier", reg.Path, t.Line, t.Key, t.Tier))
+			continue
+		case rowPlant[in.Credits] != t.Key:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s proves the reads of %s, which names its read plant as %q: a credit names its plant (read_plant)", reg.Path, t.Line, t.Key, in.Credits, rowPlant[in.Credits]))
+			continue
+		case plants[in.Credits] != nil:
+			problems = append(problems, fmt.Sprintf("%s:%d: %s proves the reads of %s, which %s already proves: one read plant per row", reg.Path, t.Line, t.Key, in.Credits, plantLine[in.Credits].Key))
+			continue
+		}
+		groups := map[string]bool{}
+		for _, g := range in.Delete {
+			groups[groupKey(g)] = true
+		}
+		plants[in.Credits] = groups
+		plantLine[in.Credits] = t
+	}
+	for _, row := range slices.Sorted(maps.Keys(rowPlant)) {
+		if plants[row] == nil {
+			t := byKey[row]
+			problems = append(problems, fmt.Sprintf("%s:%d: %s names the read plant %q, which is no read plant of it (type plant, tier nightly, credits %s)", reg.Path, t.Line, row, rowPlant[row], row))
+		}
+	}
+	used := map[string]map[string]bool{}
+	for _, id := range slices.Sorted(maps.Keys(rc.byRead)) {
+		if _, ok := out[id]; !ok {
+			continue // not credited after all (a case not read whole)
+		}
+		files := ItemFiles(res, id)
+		g := groupKey(files)
+		// a reader proves the item only by a plant of exactly its files and a
+		// read of all of them: a row that reads one file of a case runs none
+		// of it whole, whatever its plant deletes
+		owner := ""
+		for _, r := range rc.readers[id] {
+			if len(files) == 0 || !plants[r][g] || !rc.readsWhole(id, r, files) {
+				continue
+			}
+			if owner == "" {
+				owner = r
+			}
+			if used[r] == nil {
+				used[r] = map[string]bool{}
+			}
+			used[r][g] = true // a second planted reader's proof is no stale deletion
+		}
+		if owner == "" {
+			delete(out, id) // a read with no plant: the item stays in the ledger
+			continue
+		}
+		out[id] = owner
+	}
+	for _, row := range slices.Sorted(maps.Keys(plants)) {
+		for _, g := range slices.Sorted(maps.Keys(plants[row])) {
+			if !used[row][g] {
+				t := plantLine[row]
+				problems = append(problems, fmt.Sprintf("%s:%d: %s deletes %s, which is no data case or driver the reads of %s credit: the deletion is stale", reg.Path, t.Line, t.Key, strings.ReplaceAll(g, "\n", " "), row))
+			}
+		}
+	}
+	return problems
 }
 
 // IsDirRead reports whether a row's read names a directory: it is written
@@ -404,7 +613,7 @@ func readDir(r string) string { return strings.TrimSuffix(strings.TrimSuffix(r, 
 // it holds another row already runs or reads), or that its row's make files
 // or source do not name, is a problem by name: a reads list goes stale the
 // day what it names moves.
-func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []string {
+func readCredits(res *Result, reg *testreg.Registry, out map[string]string, rc readCredit) []string {
 	var problems []string
 	drivers := map[string]bool{}
 	for _, it := range res.Items {
@@ -415,12 +624,21 @@ func readCredits(res *Result, reg *testreg.Registry, out map[string]string) []st
 	indexed := Indexed(reg)
 	take := func(t testreg.Test, id string, held, n *int) {
 		*held++
-		if _, ok := out[id]; ok {
-			return
-		}
 		if _, ok := indexed[id]; ok {
 			return
 		}
+		if rc.whole[id] == nil {
+			rc.whole[id] = map[string]bool{}
+		}
+		rc.whole[id][t.Key] = true
+		if _, ok := out[id]; ok {
+			if rc.byRead[id] {
+				rc.reads(id, t.Key) // another reader: its plant may prove it (creditPlants)
+			}
+			return
+		}
+		rc.reads(id, t.Key)
+		rc.byRead[id] = true
 		out[id] = t.Key
 		*n++
 	}

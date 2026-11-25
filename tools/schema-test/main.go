@@ -10,11 +10,12 @@
 //	schema-test langs [--ready]
 //	schema-test addenda [--check] [--root DIR]
 //	schema-test seconds [--registry PATH] LOG...
-//	schema-test reads [--write] [--registry PATH]
+//	schema-test reads [--write] [--plant ROW]... [--registry PATH]
 //
-// reads works out the make rows' directory reads from make's database
-// (reads.go) and fails when the registry's are not those; --write writes
-// them.
+// reads proposes read credits (reads.go): it works out the make rows' file
+// reads from make's database and fails when the registry's are not those,
+// --write writes them, --plant ROW writes the read plant that proves ROW's
+// credits; it prints Go reads to consider and credits with no plant.
 //
 // seconds records, in the registry, the measured seconds of every test a
 // run's log (a CI job's, say) shows passing: what --shard weighs it by.
@@ -72,7 +73,7 @@ const usage = `usage:
   schema-test langs [--ready]   the registry's languages as a JSON list (a CI matrix)
   schema-test addenda [--check] [--root DIR]
   schema-test seconds [--registry PATH] LOG...
-  schema-test reads [--write] [--registry PATH]   the make rows' directory reads, from make's database
+  schema-test reads [--write] [--plant ROW]... [--registry PATH]   propose read credits; --plant writes a row's read plant
   NAME is <lang>.<tier>.<type>.<family>.<case>; a PATTERN has "*" in it
   --group G         a stored query of the registry (rec "group"); --lang narrows it
   --shard i/n       the i-th of n parts of the expanded list

@@ -87,6 +87,9 @@ type makeInputs struct {
 	Tools    []string          `json:"tools,omitempty"`
 	Siblings []string          `json:"siblings,omitempty"`
 	Reads    []string          `json:"reads,omitempty"`
+	// ReadPlant is the key of the read plant that proves what Reads
+	// credits (extract.CreditPlant): a read with no plant credits nothing.
+	ReadPlant string `json:"read_plant,omitempty"`
 	// Seed names the make variable a fuzz row's random pass takes its seed
 	// in (LUA_FUZZ_SEED). The seed is the run's, read from SeedEnv in the
 	// context's environment, set on make's command line and named in the

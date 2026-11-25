@@ -625,3 +625,174 @@ func TestAPlantResultCarriesItsMeasuredSeconds(t *testing.T) {
 		t.Fatalf("the plant weighs %.2f s, want the 5 s its run took", res[0].Seconds)
 	}
 }
+
+// greenMake answers every make row and passes it: the make rows an edit
+// plant first runs green, with no make started.
+type greenMake struct{}
+
+func (greenMake) Answers(t testreg.Test) bool { return t.Adapter == "make" }
+
+func (greenMake) Run(_ context.Context, _ string, insts []testreg.Instance) ([]testreg.Result, error) {
+	var out []testreg.Result
+	for _, inst := range insts {
+		out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
+	}
+	return out, nil
+}
+
+// TestAnEditPlantPutsTheMarkerLineFirstBeforeItJudges: runEdits itself puts
+// the log line holding the marker first before judging a make row's red, so
+// a make row red "make gate: exit status 2" with the marker on a later line
+// is the plant's red; with that step undone the red is judged by its exit
+// status line, and the plant fails. A make row red without the marker still
+// fails the plant.
+func TestAnEditPlantPutsTheMarkerLineFirstBeforeItJudges(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(cliRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, `{"rec":"type","name":"harness-run","what":"a make gate"}
+{"rec":"test","key":"harness-run.makefile.gate","type":"harness-run","family":"makefile","case":"gate","tier":"functional","scope":"none","adapter":"make","checks":"make gate exits 0","inputs":{"file":"Makefile","target":"gate"},"expect":"exit 0"}
+`...)
+	reg, err := testreg.Parse("r.jsonl", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const (
+		marker = "PlantMarkerWiringRunEdits"
+		gate   = "none.functional.harness-run.makefile.gate"
+	)
+	in, err := json.Marshal(plantInputs{Edits: []plantEdit{{File: "test/x/a.schema", Anchor: "type A", With: "type " + marker}}, Red: []string{gate}, Reason: marker})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "none.functional.plant.fam.marker-wiring", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: in}}
+	for _, c := range []struct {
+		log     string
+		verdict string
+	}{
+		{"make gate: exit status 2\nbuilding\nerror: unknown type " + marker + " at a.schema:3\n", testreg.Pass},
+		{"make gate: exit status 2\ncc: not found\n", testreg.Fail},
+	} {
+		a := plantAdapter{
+			rn: &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{"make": greenMake{}}, Context: testreg.WithTimeout(0)},
+			tree: func(context.Context, []plantEdit, []string) (plantRun, error) {
+				return plantRun{status: map[string]outcome{gate: {testreg.StatusFail, c.log}}}, nil
+			},
+			markerHeld: func(context.Context, string) (string, error) { return "", nil },
+		}
+		res, err := a.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+		if err != nil || len(res) != 1 || res[0].Verdict != c.verdict {
+			t.Errorf("log %q: %v %+v, want %s", c.log, err, res, c.verdict)
+		}
+	}
+}
+
+// redMake answers every make row and fails it: a row red before any plant.
+type redMake struct{}
+
+func (redMake) Answers(t testreg.Test) bool { return t.Adapter == "make" }
+
+func (redMake) Run(_ context.Context, _ string, insts []testreg.Instance) ([]testreg.Result, error) {
+	var out []testreg.Result
+	for _, inst := range insts {
+		out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: "make gate: exit status 2"})
+	}
+	return out, nil
+}
+
+// TestAReadPlantIsTheRowRedForEachDeletion: a read plant passes only when
+// its row is green in the checkout and in the copy before any deletion, and
+// red after each deletion, and green again with every file back; a make
+// row's red must name a deleted file by its path. A deletion that leaves
+// the row green, or a make red that names no deleted file, fails the plant
+// naming the deletion; a copy left red fails it; a file the copy does not
+// hold fails it by name.
+func TestAReadPlantIsTheRowRedForEachDeletion(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(cliRegistry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, `{"rec":"type","name":"harness-run","what":"a make gate"}
+{"rec":"test","key":"harness-run.makefile.gate","type":"harness-run","family":"makefile","case":"gate","tier":"functional","scope":"none","adapter":"make","checks":"make gate exits 0","inputs":{"file":"Makefile","target":"gate"},"expect":"exit 0"}
+`...)
+	reg, err := testreg.Parse("r.jsonl", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const gate = "none.functional.harness-run.makefile.gate"
+	in, err := json.Marshal(plantInputs{Credits: "harness-run.makefile.gate", Delete: [][]string{{"test/x/a.schema"}, {"test/x/b.bin", "test/x/b.bits"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := testreg.Instance{Full: "none.nightly.plant.read-credits.harness-run-makefile-gate", Lang: testreg.LangFree, Test: testreg.Test{Scope: testreg.LangFree, Type: "plant", Adapter: "plant", Inputs: in}}
+	run := func(status, reason string) plantRun {
+		return plantRun{status: map[string]outcome{gate: {status, reason}}}
+	}
+	green := run(testreg.StatusPass, "")
+	redA := run(testreg.StatusFail, "make gate: exit status 2\nschema: open test/x/a.schema: no such file")
+	redB := run(testreg.StatusFail, "make gate: exit status 2\ncannot read test/x/b.bits")
+	for _, c := range []struct {
+		name    string
+		before  testreg.Adapter
+		runs    []plantRun
+		err     error
+		verdict string
+		says    string
+	}{
+		{"every deletion red", greenMake{}, []plantRun{green, redA, redB, green}, nil, testreg.Pass, ""},
+		{"red with every file back", greenMake{}, []plantRun{green, redA, redB, redB}, nil, testreg.Fail, "a deletion left the copy changed"},
+		{"a red naming a deleted file by its base name only", greenMake{}, []plantRun{green, redA, run(testreg.StatusFail, "make gate: exit status 2\ncannot read b.bits"), green}, nil, testreg.Fail, "names no deleted file by its path"},
+		{"a deletion leaves it green", greenMake{}, []plantRun{green, redA, green, green}, nil, testreg.Fail, "1 of 2 deletions do not turn harness-run.makefile.gate red: their credits do not hold, so take each out of the plant and its item goes back to the ledger:\ndeleting test/x/b.bin test/x/b.bits left " + gate + " PASS"},
+		{"a make red naming no deleted file", greenMake{}, []plantRun{green, run(testreg.StatusFail, "make gate: exit status 2\ncc: not found"), redB, green}, nil, testreg.Fail, "deleting test/x/a.schema turned " + gate + " red for a reason that names no deleted file by its path"},
+		{"red in the copy before any deletion", greenMake{}, []plantRun{redA, redA, redB, green}, nil, testreg.Fail, "in the copy, before any deletion, " + gate + " was FAIL"},
+		{"red in the checkout", redMake{}, nil, nil, testreg.Fail, "before the sabotage, the plant's rows are not green"},
+		{"a file the copy does not hold", greenMake{}, nil, plantEditError{"deletion 2: test/x/b.bin is not in the tree"}, testreg.Fail, "deletion 2: test/x/b.bin is not in the tree"},
+	} {
+		a := plantAdapter{
+			rn: &testreg.Runner{Reg: reg, Adapters: map[string]testreg.Adapter{"make": c.before}, Context: testreg.WithTimeout(0)},
+			credit: func(_ context.Context, del [][]string, names []string) ([]plantRun, error) {
+				if len(del) != 2 || len(names) != 1 || names[0] != gate {
+					return nil, errors.New("the copy was handed the wrong plant")
+				}
+				return c.runs, c.err
+			},
+		}
+		if !a.Answers(inst.Test) {
+			t.Fatal("the read plant is not answered")
+		}
+		res, err := a.Run(context.Background(), testreg.LangFree, []testreg.Instance{inst})
+		if err != nil || len(res) != 1 || res[0].Verdict != c.verdict || !strings.Contains(res[0].Reason, c.says) {
+			t.Errorf("%s: %v %+v, want %s saying %q", c.name, err, res, c.verdict, c.says)
+		}
+	}
+}
+
+// TestAReadPlantIsOneWholeForm: a read plant is {credits, delete} alone,
+// each deletion clean repository files, no file deleted twice.
+func TestAReadPlantIsOneWholeForm(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		in   string
+		form string
+	}{
+		"credits and deletions":   {`{"credits":"k.row","delete":[["test/a.bin"],["test/b.bin","test/b.bits"]]}`, "credit"},
+		"no deletion":             {`{"credits":"k.row","delete":[]}`, ""},
+		"no row":                  {`{"delete":[["test/a.bin"]]}`, ""},
+		"an empty deletion":       {`{"credits":"k.row","delete":[[]]}`, ""},
+		"a file deleted twice":    {`{"credits":"k.row","delete":[["test/a.bin"],["test/a.bin"]]}`, ""},
+		"an unclean file":         {`{"credits":"k.row","delete":[["./test/a.bin"]]}`, ""},
+		"a file above the tree":   {`{"credits":"k.row","delete":[["../a.bin"]]}`, ""},
+		"with a stated reason":    {`{"credits":"k.row","delete":[["test/a.bin"]],"reason":"the row reads test/a.bin"}`, ""},
+		"with a red of its own":   {`{"credits":"k.row","delete":[["test/a.bin"]],"red":["none.unit.k.row"]}`, ""},
+		"with an edit beside it":  {`{"credits":"k.row","delete":[["test/a.bin"]],"edits":[{"file":"a","anchor":"x","with":"y"}]}`, ""},
+		"with a make control too": {`{"credits":"k.row","delete":[["test/a.bin"]],"make":"x","file":"Makefile","group":"g"}`, ""},
+	} {
+		_, form, err := decodePlant(json.RawMessage(c.in))
+		if form != c.form || (c.form == "") != (err != nil) {
+			t.Errorf("%s: form %q err %v, want form %q", name, form, err, c.form)
+		}
+	}
+}

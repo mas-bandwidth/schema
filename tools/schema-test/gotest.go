@@ -85,6 +85,9 @@ type goTestInputs struct {
 	// source to naming it (extract.CoveredIn); the run itself needs nothing
 	// of it.
 	Reads []string `json:"reads,omitempty"`
+	// ReadPlant is the key of the read plant that proves what Reads
+	// credits (extract.CreditPlant): a read with no plant credits nothing.
+	ReadPlant string `json:"read_plant,omitempty"`
 	// Files are the committed data files the test reads (a case folder it
 	// replays): the registry indexes them where they are
 	// (internal/testreg/extract, Indexed).

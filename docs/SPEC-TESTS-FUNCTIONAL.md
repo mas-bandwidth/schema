@@ -2531,7 +2531,7 @@ hostile bytes are refused in every build, with the named reason.
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
-| `L.functional.load-refusal.wire-pointer-target-type.blob-kind-refused` | testdata/wire/pointer-target-type blobkind: a pointer whose target is a blob of the wrong kind is refused on load | `reads: ["testdata/wire/pointer-target-type/blobkind/","test/pointer-target-type/blobkind/writer/"]`<br>`inputs.tests` (1439 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/pointer_target_blob_kind_test.go:52` |
+| `L.functional.load-refusal.wire-pointer-target-type.blob-kind-refused` | testdata/wire/pointer-target-type blobkind: a pointer whose target is a blob of the wrong kind is refused on load | `read_plant: plant.read-credits.load-refusal-wire-pointer-target-type-blob-kind-refused`<br>`reads: ["testdata/wire/pointer-target-type/blobkind/","test/pointer-target-type/blobkind/writer/"]`<br>`inputs.tests` (1439 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/pointer_target_blob_kind_test.go:52` |
 | `L.functional.load-refusal.wire-pointer-target-type.type-checked` | testdata/wire/pointer-target-type: a pointer's target is checked against its declared type; the canonical file reads and each mistyped target is refused | `inputs.tests` (1275 bytes, held in the registry row's `inputs.tests`) | refused on load, in every build (verdict only) | `internal/codegen/gotable/pointer_target_type_test.go:23` |
 
 #### `load-refusal` family `wire-skipped-value`, 1 test
@@ -2804,7 +2804,7 @@ generated source compiles and is clean.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`reads: ["testdata/cpp-standalone/..."]`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
+| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`read_plant: plant.read-credits.codegen-cpptable-every-generated-table-header-compiles-standalone`<br>`reads: ["testdata/cpp-standalone/..."]`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
 
 ### Type `golden`
 
@@ -4682,13 +4682,13 @@ seeded mutations.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay` | `make` | make schema-lua-fuzz-replay (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`reads: ["testdata/lua-nightly-fuzz/partial-find.sh"]`<br>`target: schema-lua-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:164` |
+| `none.functional.fuzz.make-schema-lua-nightly-fuzz.schema-lua-fuzz-replay` | `make` | make schema-lua-fuzz-replay (make/schema-lua-nightly-fuzz.mk) exits 0 | `file: make/schema-lua-nightly-fuzz.mk`<br>`read_plant: plant.read-credits.fuzz-make-schema-lua-nightly-fuzz-schema-lua-fuzz-replay`<br>`reads: ["testdata/lua-nightly-fuzz/partial-find.sh"]`<br>`target: schema-lua-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-lua-nightly-fuzz.mk:164` |
 
 #### `fuzz` family `make-schema-luau-nightly-fuzz`, 1 test
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay` | `make` | make luau-nightly-fuzz-replay (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`reads: ["testdata/luau-nightly-fuzz/"]`<br>`target: luau-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:712` |
+| `none.functional.fuzz.make-schema-luau-nightly-fuzz.luau-nightly-fuzz-replay` | `make` | make luau-nightly-fuzz-replay (make/schema-luau-nightly-fuzz.mk) exits 0 | `file: make/schema-luau-nightly-fuzz.mk`<br>`read_plant: plant.read-credits.fuzz-make-schema-luau-nightly-fuzz-luau-nightly-fuzz-replay`<br>`inputs.reads` (165 bytes, held in the registry row's `inputs.reads`)<br>`target: luau-nightly-fuzz-replay` | the target exits 0 with no skip in its log | `make/schema-luau-nightly-fuzz.mk:712` |
 
 #### `fuzz` family `make-verify-vm`, 2 tests
 
@@ -4848,7 +4848,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.codegen-csharp.c-sharp-packet-checked-build` | `gotest` | Go test TestCSharpPacketCheckedBuild in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpPacketCheckedBuild` | the Go test passes | `internal/codegen/csharp/checked_build_test.go:21` |
 | `none.functional.compiler.codegen-csharp.c-sharp-packet-checked-build-negative-control` | `gotest` | Go test TestCSharpPacketCheckedBuildNegativeControl in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpPacketCheckedBuildNegativeControl` | the Go test passes | `internal/codegen/csharp/checked_build_test.go:42` |
 | `none.functional.compiler.codegen-csharp.c-sharp-union-then-fixed-byte-array-wire` | `gotest` | Go test TestCSharpUnionThenFixedByteArrayWire in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`test: TestCSharpUnionThenFixedByteArrayWire` | the Go test passes | `internal/codegen/csharp/unionbytes_test.go:40` |
-| `none.functional.compiler.codegen-csharp.name-corpus-builds-cs` | `gotest` | Go test TestNameCorpusBuildsCs in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`reads: ["testdata/name-buildability-emit/..."]`<br>`test: TestNameCorpusBuildsCs` | the Go test passes | `internal/codegen/csharp/name_buildability_test.go:22` |
+| `none.functional.compiler.codegen-csharp.name-corpus-builds-cs` | `gotest` | Go test TestNameCorpusBuildsCs in ./internal/codegen/csharp | `package: ./internal/codegen/csharp`<br>`read_plant: plant.read-credits.compiler-codegen-csharp-name-corpus-builds-cs`<br>`reads: ["testdata/name-buildability-emit/..."]`<br>`test: TestNameCorpusBuildsCs` | the Go test passes | `internal/codegen/csharp/name_buildability_test.go:22` |
 
 #### `compiler` family `codegen-golang`, 11 tests
 
@@ -4926,7 +4926,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.checked-cook-go-consumers` | `gotest` | Go test TestCheckedCookGoConsumers in ./compiler | `package: ./compiler`<br>`test: TestCheckedCookGoConsumers` | the Go test passes | `compiler/cookconsumer_go_test.go:29` |
 | `none.functional.compiler.compiler.checked-cook-go-consumers-negative-controls` | `gotest` | Go test TestCheckedCookGoConsumersNegativeControls in ./compiler | `package: ./compiler`<br>`test: TestCheckedCookGoConsumersNegativeControls` | the Go test passes | `compiler/cookconsumer_go_test.go:362` |
 | `none.functional.compiler.compiler.cook-absent-optional-payload-zero` | `gotest` | Go test TestCookAbsentOptionalPayloadZero in ./compiler | `package: ./compiler`<br>`test: TestCookAbsentOptionalPayloadZero` | the Go test passes | `compiler/cookabsentoptional_test.go:66` |
-| `none.functional.compiler.compiler.corpus-non-canonical-spellings` | `gotest` | Go test TestCorpusNonCanonicalSpellings in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/message-one-encoding/","testdata/wire/non-canonical/"]`<br>`test: TestCorpusNonCanonicalSpellings` | the Go test passes | `compiler/corpus_non_canonical_test.go:30` |
+| `none.functional.compiler.compiler.corpus-non-canonical-spellings` | `gotest` | Go test TestCorpusNonCanonicalSpellings in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-corpus-non-canonical-spellings`<br>`reads: ["testdata/wire/message-one-encoding/","testdata/wire/non-canonical/"]`<br>`test: TestCorpusNonCanonicalSpellings` | the Go test passes | `compiler/corpus_non_canonical_test.go:30` |
 | `none.functional.compiler.compiler.cpp-blob-named-twice` | `gotest` | Go test TestCPPBlobNamedTwice in ./compiler | `package: ./compiler`<br>`test: TestCPPBlobNamedTwice` | the Go test passes | `compiler/cppblobshared_test.go:270` |
 | `none.functional.compiler.compiler.cpp-collection-widening` | `gotest` | Go test TestCppCollectionWidening in ./compiler | `package: ./compiler`<br>`test: TestCppCollectionWidening` | the Go test passes | `compiler/collectionwiden_test.go:13` |
 | `none.functional.compiler.compiler.cpp-cook-extent-canonical-alignment` | `gotest` | Go test TestCppCookExtentCanonicalAlignment in ./compiler | `package: ./compiler`<br>`test: TestCppCookExtentCanonicalAlignment` | the Go test passes | `compiler/tablecookalignment_test.go:62` |
@@ -5020,9 +5020,9 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.ruby-fixed-writer-lock` | `gotest` | Go test TestRubyFixedWriterLock in ./compiler | `package: ./compiler`<br>`test: TestRubyFixedWriterLock` | the Go test passes | `compiler/ruby_fixed_writer_test.go:13` |
 | `none.functional.compiler.compiler.ruby-fixed-writer-lock-negative-control` | `gotest` | Go test TestRubyFixedWriterLockNegativeControl in ./compiler | `package: ./compiler`<br>`test: TestRubyFixedWriterLockNegativeControl` | the Go test passes | `compiler/ruby_fixed_writer_test.go:18` |
 | `none.functional.compiler.compiler.rust-every-schema-name-is-reachable` | `gotest` | Go test TestRustEverySchemaNameIsReachable in ./compiler | `package: ./compiler`<br>`test: TestRustEverySchemaNameIsReachable` | the Go test passes | `compiler/rustnames_test.go:52` |
-| `none.functional.compiler.compiler.spec-blob-target-outside-closure-refused` | `gotest` | Go test TestSpecBlobTargetOutsideClosureRefused in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/pointer-target-type/","test/pointer-target-type/blobkind/reader/"]`<br>`test: TestSpecBlobTargetOutsideClosureRefused` | the Go test passes | `compiler/spec_pointer_target_type_test.go:208` |
-| `none.functional.compiler.compiler.spec-fixed-form-edges` | `gotest` | Go test TestSpecFixedFormEdges in ./compiler | `package: ./compiler`<br>`reads: ["testdata/wire/fixed-empty-batch/"]`<br>`test: TestSpecFixedFormEdges` | the Go test passes | `compiler/spec_fixed_form_edges_test.go:33` |
-| `none.functional.compiler.compiler.spec-pointer-target-type-checked` | `gotest` | Go test TestSpecPointerTargetTypeChecked in ./compiler | `package: ./compiler`<br>`reads: ["test/pointer-target-type/reader/"]`<br>`test: TestSpecPointerTargetTypeChecked` | the Go test passes | `compiler/spec_pointer_target_type_test.go:27` |
+| `none.functional.compiler.compiler.spec-blob-target-outside-closure-refused` | `gotest` | Go test TestSpecBlobTargetOutsideClosureRefused in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-blob-target-outside-closure-refused`<br>`reads: ["testdata/wire/pointer-target-type/","test/pointer-target-type/blobkind/reader/"]`<br>`test: TestSpecBlobTargetOutsideClosureRefused` | the Go test passes | `compiler/spec_pointer_target_type_test.go:208` |
+| `none.functional.compiler.compiler.spec-fixed-form-edges` | `gotest` | Go test TestSpecFixedFormEdges in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-fixed-form-edges`<br>`reads: ["testdata/wire/fixed-empty-batch/"]`<br>`test: TestSpecFixedFormEdges` | the Go test passes | `compiler/spec_fixed_form_edges_test.go:33` |
+| `none.functional.compiler.compiler.spec-pointer-target-type-checked` | `gotest` | Go test TestSpecPointerTargetTypeChecked in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-spec-pointer-target-type-checked`<br>`reads: ["test/pointer-target-type/reader/"]`<br>`test: TestSpecPointerTargetTypeChecked` | the Go test passes | `compiler/spec_pointer_target_type_test.go:27` |
 | `none.functional.compiler.compiler.squirrel-carries-optional-variable-closure` | `gotest` | Go test TestSquirrelCarriesOptionalVariableClosure in ./compiler | `package: ./compiler`<br>`test: TestSquirrelCarriesOptionalVariableClosure` | the Go test passes | `compiler/target_squirrel_optionalclosure_test.go:21` |
 | `none.functional.compiler.compiler.squirrel-carries-text-lists-and-array-root` | `gotest` | Go test TestSquirrelCarriesTextListsAndArrayRoot in ./compiler | `package: ./compiler`<br>`test: TestSquirrelCarriesTextListsAndArrayRoot` | the Go test passes | `compiler/target_squirrel_textlists_test.go:23` |
 | `none.functional.compiler.compiler.squirrel-carries-unbounded-text` | `gotest` | Go test TestSquirrelCarriesUnboundedText in ./compiler | `package: ./compiler`<br>`test: TestSquirrelCarriesUnboundedText` | the Go test passes | `compiler/target_squirrel_unboundedtext_test.go:43` |
@@ -5039,7 +5039,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.functional.compiler.compiler.unity-fixed-form-sabotages7` | `gotest` | Go test TestUnityFixedFormSabotages7 in ./compiler | `package: ./compiler`<br>`test: TestUnityFixedFormSabotages7` | the Go test passes | `compiler/unityfixedform_test.go:180` |
 | `none.functional.compiler.compiler.unity-fixed-form-sabotages8` | `gotest` | Go test TestUnityFixedFormSabotages8 in ./compiler | `package: ./compiler`<br>`test: TestUnityFixedFormSabotages8` | the Go test passes | `compiler/unityfixedform_test.go:181` |
 | `none.functional.compiler.compiler.unity-fixed-form-sabotages9` | `gotest` | Go test TestUnityFixedFormSabotages9 in ./compiler | `package: ./compiler`<br>`test: TestUnityFixedFormSabotages9` | the Go test passes | `compiler/unityfixedform_test.go:182` |
-| `none.functional.compiler.compiler.unity-packet-wire-goldens` | `gotest` | Go test TestUnityPacketWireGoldens in ./compiler | `package: ./compiler`<br>`reads: ["test/unity/"]`<br>`test: TestUnityPacketWireGoldens` | the Go test passes | `compiler/unitypacket_test.go:16` |
+| `none.functional.compiler.compiler.unity-packet-wire-goldens` | `gotest` | Go test TestUnityPacketWireGoldens in ./compiler | `package: ./compiler`<br>`read_plant: plant.read-credits.compiler-compiler-unity-packet-wire-goldens`<br>`reads: ["test/unity/"]`<br>`test: TestUnityPacketWireGoldens` | the Go test passes | `compiler/unitypacket_test.go:16` |
 | `none.functional.compiler.compiler.unity-table-surface-and-bool-int-frame` | `gotest` | Go test TestUnityTableSurfaceAndBoolIntFrame in ./compiler | `package: ./compiler`<br>`test: TestUnityTableSurfaceAndBoolIntFrame` | the Go test passes | `compiler/tablesunity_test.go:156` |
 
 #### `compiler` family `fixedproof`, 3 tests
@@ -5380,7 +5380,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-rust.tables-rust-clippy` | `make` | make tables-rust-clippy (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`siblings: ["../serialize.rs"]`<br>`target: tables-rust-clippy`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/rust.mk:136` |
+| `none.functional.lint.make-rust.tables-rust-clippy` | `make` | make tables-rust-clippy (make/rust.mk) exits 0 | `file: make/rust.mk`<br>`read_plant: plant.read-credits.lint-make-rust-tables-rust-clippy`<br>`reads: ["test/tables/FE1.schema","test/tables/FE2.schema"]`<br>`siblings: ["../serialize.rs"]`<br>`target: tables-rust-clippy`<br>`tools: ["cargo"]` | the target exits 0 with no skip in its log | `make/rust.mk:136` |
 
 #### `lint` family `make-schema-dart-generated-strict-analyze-gate`, 2 tests
 
@@ -5393,7 +5393,7 @@ generated or runtime code is clean under the language's strict analyser.
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`inputs.reads` (106 bytes, held in the registry row's `inputs.reads`)<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
+| `none.functional.lint.make-schema-go-generated-golangci-lint-gate.schema-go-generated-golangci-lint-gate` | `make` | make schema-go-generated-golangci-lint-gate (make/schema-go-generated-golangci-lint-gate.mk) exits 0 | `file: make/schema-go-generated-golangci-lint-gate.mk`<br>`inputs.read_plant` (106 bytes, held in the registry row's `inputs.read_plant`)<br>`inputs.reads` (106 bytes, held in the registry row's `inputs.reads`)<br>`siblings: ["../serialize.go"]`<br>`target: schema-go-generated-golangci-lint-gate`<br>`tools: ["golangci-lint"]` | the target exits 0 with no skip in its log | `make/schema-go-generated-golangci-lint-gate.mk:133` |
 
 #### `lint` family `make-schema-lobster-generated-strict-gate`, 1 test
 
@@ -5596,7 +5596,7 @@ a battery run as one step (a make target over a leg or a corpus): it passes when
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`reads: ["test/generated-tree/verify"]`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
+| `none.functional.harness-run.makefile.generated-current` | `make` | make generated-current (Makefile) exits 0 | `file: Makefile`<br>`read_plant: plant.read-credits.harness-run-makefile-generated-current`<br>`reads: ["test/generated-tree/verify"]`<br>`target: generated-current` | the target exits 0 with no skip in its log | `Makefile:5225` |
 | `none.functional.harness-run.makefile.pins-framing` | `make` | make pins-framing (Makefile) exits 0: every committed framing vector under testdata/wire/tables/framing is what its Go vector script writes, and no file there is hand-written | `file: Makefile`<br>`target: pins-framing` | the target exits 0 with no skip in its log | `Makefile:8273` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-heavy` | `make` | make tables-block-zero-cost-c-heavy (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-heavy` | the target exits 0 with no skip in its log | `Makefile:8506` |
 | `none.functional.harness-run.makefile.tables-block-zero-cost-c-rest` | `make` | make tables-block-zero-cost-c-rest (Makefile) exits 0 | `file: Makefile`<br>`target: tables-block-zero-cost-c-rest` | the target exits 0 with no skip in its log | `Makefile:8515` |

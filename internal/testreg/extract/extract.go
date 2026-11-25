@@ -35,6 +35,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -89,6 +90,9 @@ type Result struct {
 	// none), by its ID: a golden row covers a case only when it pins them
 	// all (CoveredIn).
 	CaseFiles map[string][]string `json:"-"`
+	// DriverFiles is each driver's source files, by its ID: what a read
+	// credit's plant deletes to show its row reads the driver (ItemFiles).
+	DriverFiles map[string][]string `json:"-"`
 	// GoStrings is every string literal of each package's _test.go files,
 	// by the package's directory: a gotest row's read must be one its
 	// test source names (readCredits).
@@ -210,6 +214,7 @@ func Extract(root string) (*Result, error) {
 	s := &scan{root: root, res: &Result{}, ignored: ign}
 	var goFiles, makeFiles, workflows, dataFiles, models []string
 	drivers := map[string]string{}
+	driverFiles := map[string][]string{}
 	s.walk(func(rel string, d fs.DirEntry) {
 		name := d.Name()
 		ext := strings.ToLower(filepath.Ext(name))
@@ -233,6 +238,7 @@ func Extract(root string) (*Result, error) {
 					if _, ok := drivers[dir]; !ok {
 						drivers[dir] = rel
 					}
+					driverFiles[dir] = append(driverFiles[dir], rel)
 				}
 				return
 			}
@@ -249,8 +255,11 @@ func Extract(root string) (*Result, error) {
 		dirs = append(dirs, dir)
 	}
 	sort.Strings(dirs)
+	s.res.DriverFiles = map[string][]string{}
 	for _, dir := range dirs {
-		s.add(Item{Kind: KindDriver, Dir: dir, Name: filepath.Base(dir), Source: drivers[dir] + ":1", Tier: "functional"})
+		it := Item{Kind: KindDriver, Dir: dir, Name: filepath.Base(dir), Source: drivers[dir] + ":1", Tier: "functional"}
+		s.add(it)
+		s.res.DriverFiles[it.ID()] = slices.Sorted(slices.Values(driverFiles[dir]))
 	}
 	for _, m := range models {
 		s.add(Item{Kind: KindModel, Dir: filepath.ToSlash(filepath.Dir(m)), Name: filepath.Base(m), Source: m + ":1", Tier: "nightly"})

@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"encoding/json"
 	"go/parser"
 	"go/token"
 	"maps"
@@ -350,7 +351,7 @@ func TestAMakeRowsReadsCoverTheCasesItRuns(t *testing.T) {
 		return testreg.Test{Key: "harness-run.makefile.gate", Adapter: "make", Inputs: []byte(`{"file":"Makefile","target":"gate","reads":[` + reads + `]}`)}
 	}
 	golden := testreg.Test{Key: "golden.p.h", Adapter: "golden", Inputs: []byte(`{"writer":"pins-x","files":["testdata/pins/p.h"]}`)}
-	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{golden, mk(`"test/tables/VNEW_a.schema","testdata/pins/p.h","test/tables/pair.in"`)}}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: append([]testreg.Test{golden}, withPlant(mk(`"test/tables/VNEW_a.schema","testdata/pins/p.h","test/tables/pair.in"`), []string{"test/tables/VNEW_a.schema"})...)}
 	covered, p := CoveredIn(res, reg)
 	if len(p) != 0 {
 		t.Fatalf("a golden row and a make row on one case: %v", p)
@@ -406,7 +407,8 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 	// two files: read whole or not at all
 	pair := Item{Kind: KindDataCase, Dir: "testdata/wire/json-integers", Name: "pair"}
 	res := &Result{
-		Items: []Item{drv, cargo, vec, sib, nb, tsv, one, pair, nbInner, nbInnerData},
+		Items:       []Item{drv, cargo, vec, sib, nb, tsv, one, pair, nbInner, nbInnerData},
+		DriverFiles: map[string][]string{drv.ID(): {"test/packet-end/rust/src/main.rs"}},
 		CaseFiles: map[string][]string{
 			cargo.ID():       {"test/packet-end/rust/Cargo.toml", "test/packet-end/rust/Cargo.lock"},
 			vec.ID():         {"test/packet-end/rust/vectors/v.bin"},
@@ -435,7 +437,12 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 	// a row reading both files of a two-file case credits it once
 	both := testreg.Test{Key: "roundtrip.wire-json-integers.pair", Adapter: "gotest", Line: 4,
 		Inputs: []byte(`{"package":"./internal/codegen/table","test":"TestPair","reads":["testdata/wire/json-integers/pair.bin","testdata/wire/json-integers/pair.json"]}`)}
-	covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, corpus, file, both}})
+	var rows []testreg.Test
+	rows = append(rows, withPlant(mk, []string{"test/packet-end/rust/src/main.rs"}, []string{"test/packet-end/rust/Cargo.lock", "test/packet-end/rust/Cargo.toml"})...)
+	rows = append(rows, withPlant(corpus, []string{"testdata/name-buildability/b_x/x.schema"}, []string{"testdata/name-buildability/cases.tsv"})...)
+	rows = append(rows, withPlant(file, []string{"testdata/wire/json-integers/wide.json"})...)
+	rows = append(rows, withPlant(both, []string{"testdata/wire/json-integers/pair.json", "testdata/wire/json-integers/pair.bin"})...)
+	covered, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: rows})
 	if len(p) != 0 {
 		t.Fatalf("problems: %v", p)
 	}
@@ -499,6 +506,93 @@ func TestDirectoryAndGoTestReadsCreditWhatTheyHold(t *testing.T) {
 	again := testreg.Test{Key: "k.g", Adapter: "make", Line: 5, Inputs: []byte(`{"file":"m.mk","target":"t","reads":["test/packet-end/rust/"]}`)}
 	if _, p := CoveredIn(res, &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{mk, again}}); !strings.Contains(strings.Join(p, "\n"), "k.g reads test/packet-end/rust/, and another row already runs or reads everything it holds") {
 		t.Errorf("a read of what another row holds: want it named in:\n%s", strings.Join(p, "\n"))
+	}
+}
+
+// withPlant is row naming its read plant, and that plant: tier nightly,
+// deleting each of groups.
+func withPlant(row testreg.Test, groups ...[]string) []testreg.Test {
+	key := "plant.read-credits." + strings.ReplaceAll(row.Key, ".", "-")
+	row.Inputs = []byte(strings.TrimSuffix(string(row.Inputs), "}") + `,"read_plant":"` + key + `"}`)
+	in, err := json.Marshal(CreditPlant{Credits: row.Key, Delete: groups})
+	if err != nil {
+		panic(err)
+	}
+	return []testreg.Test{row, {Key: key, Type: "plant", Adapter: "plant", Tier: "nightly", Scope: testreg.LangFree, Line: row.Line + 100, Inputs: in}}
+}
+
+// TestAReadCreditCountsOnlyWithItsPlant: a read proposes a credit; the
+// credit counts only where the row names its read plant and the plant
+// deletes exactly the item's files. With no plant the item is not covered
+// (it stays in the ledger) and nothing is a problem; a second reader whose
+// plant proves the item holds it where the first reader has none. A plant
+// off the nightly tier, one its row does not name, one for no row, a row
+// naming a plant that does not prove it, and a deletion that is no credit
+// of its row are problems by name.
+func TestAReadCreditCountsOnlyWithItsPlant(t *testing.T) {
+	t.Parallel()
+	a := Item{Kind: KindDataCase, Dir: "test/tables", Name: "A"}
+	pair := Item{Kind: KindDataCase, Dir: "test/tables", Name: "P"}
+	res := &Result{Items: []Item{a, pair}, CaseFiles: map[string][]string{
+		a.ID():    {"test/tables/A.schema"},
+		pair.ID(): {"test/tables/P.in", "test/tables/P.out"},
+	}}
+	mk := func(key string, line int) testreg.Test {
+		return testreg.Test{Key: key, Adapter: "make", Line: line, Inputs: []byte(`{"file":"Makefile","target":"` + key + `","reads":["test/tables/A.schema","test/tables/P.in","test/tables/P.out"]}`)}
+	}
+	first, second := mk("k.first", 1), mk("k.second", 2)
+	reg := func(rows ...testreg.Test) *testreg.Registry { return &testreg.Registry{Path: "r.jsonl", Tests: rows} }
+
+	covered, p := CoveredIn(res, reg(first))
+	if len(p) != 0 || covered[a.ID()] != "" || covered[pair.ID()] != "" {
+		t.Errorf("reads with no plant: covered %v, problems %v; want nothing covered and no problem", covered, p)
+	}
+	covered, p = CoveredIn(res, reg(withPlant(first, []string{"test/tables/A.schema"}, []string{"test/tables/P.out", "test/tables/P.in"})...))
+	if len(p) != 0 || covered[a.ID()] != first.Key || covered[pair.ID()] != first.Key {
+		t.Errorf("planted reads: covered %v, problems %v; want both cases the row's", covered, p)
+	}
+	covered, p = CoveredIn(res, reg(withPlant(first, []string{"test/tables/A.schema"})...))
+	if len(p) != 0 || covered[a.ID()] != first.Key || covered[pair.ID()] != "" {
+		t.Errorf("one deletion taken out: covered %v, problems %v; want only A the row's", covered, p)
+	}
+	covered, _ = CoveredIn(res, reg(append([]testreg.Test{first}, withPlant(second, []string{"test/tables/A.schema"})...)...))
+	if covered[a.ID()] != second.Key {
+		t.Errorf("a second reader with the plant: A is credited to %q, want %s", covered[a.ID()], second.Key)
+	}
+
+	planted := withPlant(first, []string{"test/tables/A.schema"})
+	offTier := slices.Clone(planted)
+	offTier[1].Tier = "unit"
+	unnamed := []testreg.Test{first, planted[1]}
+	noRow := planted[1]
+	noRow.Inputs = []byte(`{"credits":"k.gone","delete":[["test/tables/A.schema"]]}`)
+	stale := withPlant(first, []string{"test/tables/A.schema"}, []string{"test/tables/P.in"})
+	for name, c := range map[string]struct {
+		rows []testreg.Test
+		says string
+	}{
+		"a plant off the nightly tier":  {offTier, "is a read plant of tier unit: read plants run in the nightly tier"},
+		"a plant its row does not name": {unnamed, `proves the reads of k.first, which names its read plant as "": a credit names its plant`},
+		"a plant for no row":            {[]testreg.Test{noRow}, "proves the reads of k.gone, which is no row that is not a plant"},
+		"a row naming no plant of it":   {planted[:1], `k.first names the read plant "plant.read-credits.k-first", which is no read plant of it`},
+		"a deletion that is no credit":  {stale, "deletes test/tables/P.in, which is no data case or driver the reads of k.first credit: the deletion is stale"},
+	} {
+		if _, p := CoveredIn(res, reg(c.rows...)); !strings.Contains(strings.Join(p, "\n"), c.says) {
+			t.Errorf("%s: want %q in:\n%s", name, c.says, strings.Join(p, "\n"))
+		}
+	}
+	if covered, _ := CoveredIn(res, reg(stale...)); covered[pair.ID()] != "" {
+		t.Errorf("a stale deletion of part of a case credits it to %s", covered[pair.ID()])
+	}
+	// a row that reads one file of a case runs none of it whole, though its
+	// plant deletes the case and a whole reader stands before it unplanted
+	part := testreg.Test{Key: "k.part", Adapter: "make", Line: 3, Inputs: []byte(`{"file":"Makefile","target":"part","reads":["test/tables/P.in"]}`)}
+	if covered, _ := CoveredIn(res, reg(append([]testreg.Test{first}, withPlant(part, []string{"test/tables/P.in", "test/tables/P.out"})...)...)); covered[pair.ID()] != "" {
+		t.Errorf("a planted reader of one file of a case is credited it: %s", covered[pair.ID()])
+	}
+	// two planted readers: the first holds it, and the second's plant is no stale deletion
+	if covered, p := CoveredIn(res, reg(append(withPlant(first, []string{"test/tables/A.schema"}), withPlant(second, []string{"test/tables/A.schema"})...)...)); covered[a.ID()] != first.Key || len(p) != 0 {
+		t.Errorf("two planted readers: A is %q, problems %v; want %s and none", covered[a.ID()], p, first.Key)
 	}
 }
 

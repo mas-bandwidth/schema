@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
@@ -17,11 +18,12 @@ import (
 // TestMakeReadsCreditWhatTheReachNames: a data case goes to the make row
 // whose reach names every file of it (a prerequisite, or a whole path in a
 // recipe or a variable it expands), as reads of its files, of several such
-// rows the one that makes least; a case and a driver in a directory a
-// recipe works on bare go to that row as a read of the directory. A case
-// one of whose files no row names, a case in a subdirectory of a directory
-// worked on bare, a directory only a comment or a negative control names,
-// and a package's own testdata get nothing, the first three named.
+// rows the one that makes least. The proposer gives files only: a case and
+// a driver in a directory a recipe works on bare get no directory read. A
+// case one of whose files no row names, the cases and drivers of a
+// directory worked on bare, a directory only a comment or a negative
+// control names, and a package's own testdata get nothing, all but the last
+// named.
 func TestMakeReadsCreditWhatTheReachNames(t *testing.T) {
 	t.Parallel()
 	named := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables", Name: "V1"}
@@ -58,20 +60,21 @@ func TestMakeReadsCreditWhatTheReachNames(t *testing.T) {
 	got, none := makeReads(res, reg, reach)
 	want := map[string][]string{
 		"harness-run.makefile.check": {"test/tables/V1.schema"},
-		"harness-run.make-go.go":     {"test/go/"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("reads %v, want %v", got, want)
 	}
-	if !reflect.DeepEqual(none, []string{half.ID(), below.ID(), remark.ID()}) {
-		t.Errorf("no row reaches %v, want %s (one file named), %s (below a bare directory) and %s (a comment and a negative control)", none, half.ID(), below.ID(), remark.ID())
+	if !reflect.DeepEqual(none, []string{half.ID(), drv.ID(), inDrv.ID(), below.ID(), remark.ID()}) {
+		t.Errorf("no row reaches %v, want %s (one file named), %s, %s and %s (a bare directory: no directory read) and %s (a comment and a negative control)", none, half.ID(), drv.ID(), inDrv.ID(), below.ID(), remark.ID())
 	}
 }
 
 // TestARegenerationKeepsAReadItsRowStillReaches: a read a make row writes
 // stays on that row while its reach names it, though a narrower row reaches
-// it too; a read its reach no longer names is dropped; and an item no row
-// reads goes to the narrowest row that reaches it.
+// it too; a read its reach no longer names is dropped, and so is a
+// directory read though a recipe works on the directory (the proposer gives
+// files only); and an item no row reads goes to the narrowest row that
+// reaches it.
 func TestARegenerationKeepsAReadItsRowStillReaches(t *testing.T) {
 	t.Parallel()
 	v1 := extract.Item{Kind: extract.KindDataCase, Dir: "test/tables", Name: "V1"}
@@ -79,17 +82,17 @@ func TestARegenerationKeepsAReadItsRowStillReaches(t *testing.T) {
 	res := &extract.Result{
 		Items:     []extract.Item{v1, v2},
 		CaseFiles: map[string][]string{v1.ID(): {"test/tables/V1.schema"}, v2.ID(): {"test/tables/V2.schema"}},
-		MakeText:  "check:\n\tschema check test/tables/V1.schema test/tables/V2.schema\n",
+		MakeText:  "wide:\n\tcd test/tables\ncheck:\n\tschema check test/tables/V1.schema test/tables/V2.schema\n",
 	}
 	db, err := parseMakeDB(fakeDatabase("", "",
-		"wide: check\n\t./wide\n\ncheck:\n\tschema check test/tables/V1.schema test/tables/V2.schema\n"))
+		"wide: check\n\tcd test/tables && ./wide\n\ncheck:\n\tschema check test/tables/V1.schema test/tables/V2.schema\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	src := `{"rec":"lang","name":"go","write":"refuse","adapter":""}
 {"rec":"tier","name":"nightly","what":"long"}
 {"rec":"type","name":"harness-run","what":"a make target"}
-{"rec":"test","key":"harness-run.m.wide","type":"harness-run","family":"m","case":"wide","tier":"nightly","checks":"make wide","inputs":{"file":"Makefile","target":"wide","reads":["test/gone/a.schema","test/tables/V1.schema"]},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}
+{"rec":"test","key":"harness-run.m.wide","type":"harness-run","family":"m","case":"wide","tier":"nightly","checks":"make wide","inputs":{"file":"Makefile","target":"wide","reads":["test/gone/a.schema","test/tables/","test/tables/V1.schema"]},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}
 {"rec":"test","key":"harness-run.m.check","type":"harness-run","family":"m","case":"check","tier":"nightly","checks":"make check","inputs":{"file":"Makefile","target":"check"},"expect":"exits 0","source":"Makefile:4","scope":"none","adapter":"make"}
 `
 	want, _, text, err := regenerateReads(src, "r.jsonl", res, db)
@@ -102,7 +105,7 @@ func TestARegenerationKeepsAReadItsRowStillReaches(t *testing.T) {
 	}) {
 		t.Errorf("reads %v", want)
 	}
-	if !strings.Contains(text, `"target":"wide","reads":["test/tables/V1.schema"]`) || strings.Contains(text, "test/gone/") {
+	if !strings.Contains(text, `"target":"wide","reads":["test/tables/V1.schema"]`) || strings.Contains(text, "test/gone/") || strings.Contains(text, `"test/tables/"`) {
 		t.Errorf("regenerated:\n%s", text)
 	}
 }
@@ -199,5 +202,103 @@ func TestAReadTheRegenerationDoesNotGiveIsStale(t *testing.T) {
 	}
 	if !reflect.DeepEqual(unwritten, []string{"r.jsonl:5: harness-run.m.a test/x/B.schema"}) {
 		t.Errorf("unwritten %q", unwritten)
+	}
+}
+
+// TestGoSuggestionsComeFromTheRowsOwnTestFunction: a gotest row is
+// suggested a read of a data case no row runs only when a string in the
+// body of its own test function names every file of the case whole, from
+// the package's directory or the repository root; a string in another
+// function of the package, a case named in part, and a case a row already
+// reads are not suggested.
+func TestGoSuggestionsComeFromTheRowsOwnTestFunction(t *testing.T) {
+	t.Parallel()
+	one := extract.Item{Kind: extract.KindDataCase, Dir: "testdata/c", Name: "one"}
+	root := extract.Item{Kind: extract.KindDataCase, Dir: "testdata/c", Name: "root"}
+	other := extract.Item{Kind: extract.KindDataCase, Dir: "testdata/c", Name: "other"}
+	pair := extract.Item{Kind: extract.KindDataCase, Dir: "testdata/c", Name: "pair"}
+	held := extract.Item{Kind: extract.KindDataCase, Dir: "testdata/c", Name: "held"}
+	res := &extract.Result{Items: []extract.Item{one, root, other, pair, held}, CaseFiles: map[string][]string{
+		one.ID():   {"testdata/c/one.bin"},
+		root.ID():  {"testdata/c/root.bin"},
+		other.ID(): {"testdata/c/other.bin"},
+		pair.ID():  {"testdata/c/pair.in", "testdata/c/pair.out"},
+		held.ID():  {"testdata/c/held.bin"},
+	}}
+	fsys := fstest.MapFS{"internal/x/x_test.go": {Data: []byte(`package x
+
+import "testing"
+
+func TestA(t *testing.T) {
+	_ = "../../testdata/c/one.bin"
+	_ = "testdata/c/root.bin"
+	_ = "../../testdata/c/pair.in"
+	_ = "../../testdata/c/held.bin"
+}
+
+func TestB(t *testing.T) { _ = "../../testdata/c/other.bin" }
+`)}}
+	reg := &testreg.Registry{Path: "r.jsonl", Tests: []testreg.Test{{Key: "k.a", Adapter: "gotest", Line: 1, Inputs: []byte(`{"package":"./internal/x","test":"TestA"}`)}}}
+	got, err := goSuggestions(fsys, res, reg, map[string]string{held.ID(): "k.other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"r.jsonl:1: k.a may read testdata/c/one.bin", "r.jsonl:1: k.a may read testdata/c/root.bin"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("suggested %q, want %q", got, want)
+	}
+}
+
+// TestWithReadPlantWritesThePlantAndNamesIt: --plant writes the row's read
+// plant, one deletion per item its reads credit (only its own), after the
+// row's line, and names it in the row's inputs; written again it replaces
+// the plant line; a row naming another plant, a plant row, and a row whose
+// reads credit nothing are refused.
+func TestWithReadPlantWritesThePlantAndNamesIt(t *testing.T) {
+	t.Parallel()
+	a := extract.Item{Kind: extract.KindDataCase, Dir: "test/t", Name: "a"}
+	b := extract.Item{Kind: extract.KindDataCase, Dir: "test/t", Name: "b"}
+	c := extract.Item{Kind: extract.KindDataCase, Dir: "test/t", Name: "c"}
+	res := &extract.Result{CaseFiles: map[string][]string{a.ID(): {"test/t/a.schema"}, b.ID(): {"test/t/b.out", "test/t/b.in"}, c.ID(): {"test/t/c.schema"}}}
+	credits := map[string]string{a.ID(): "harness-run.m.gate", b.ID(): "harness-run.m.gate", c.ID(): "harness-run.m.other"}
+	src := `{"rec":"lang","name":"go","write":"refuse","adapter":""}
+{"rec":"tier","name":"nightly","what":"long"}
+{"rec":"type","name":"harness-run","what":"a make target"}
+{"rec":"type","name":"plant","what":"a negative control"}
+{"rec":"test","key":"harness-run.m.gate","type":"harness-run","family":"m","case":"gate","tier":"nightly","checks":"make gate","inputs":{"file":"Makefile","target":"gate","reads":["test/t/a.schema","test/t/b.in","test/t/b.out"]},"expect":"exits 0","source":"Makefile:1","scope":"none","adapter":"make"}
+{"rec":"test","key":"harness-run.m.other","type":"harness-run","family":"m","case":"other","tier":"nightly","checks":"make other","inputs":{"file":"Makefile","target":"other","read_plant":"plant.x.y"},"expect":"exits 0","source":"Makefile:2","scope":"none","adapter":"make"}
+`
+	text, n, err := withReadPlant(src, "r.jsonl", "harness-run.m.gate", res, credits)
+	if err != nil || n != 2 {
+		t.Fatal(n, err)
+	}
+	reg, err := testreg.Parse("r.jsonl", strings.NewReader(text))
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, _ := reg.Test("harness-run.m.gate")
+	plant, ok := reg.Test("plant.read-credits.harness-run-m-gate")
+	if !ok || extract.ReadPlantOf(row) != plant.Key || plant.Line != row.Line+1 || plant.Tier != "nightly" {
+		t.Fatalf("the row names %q; the plant %+v", extract.ReadPlantOf(row), plant)
+	}
+	in, ok := extract.CreditPlantOf(plant)
+	if !ok || in.Credits != row.Key || !reflect.DeepEqual(in.Delete, [][]string{{"test/t/a.schema"}, {"test/t/b.in", "test/t/b.out"}}) {
+		t.Errorf("the plant's inputs %+v", in)
+	}
+	again, _, err := withReadPlant(text, "r.jsonl", "harness-run.m.gate", res, map[string]string{a.ID(): "harness-run.m.gate"})
+	if err != nil || strings.Count(again, `"key":"plant.read-credits.harness-run-m-gate"`) != 1 || strings.Contains(again, "b.out\"]]") {
+		t.Errorf("written again: %v\n%s", err, again)
+	}
+	for row, says := range map[string]string{
+		"harness-run.m.other":                   `names the read plant "plant.x.y"`,
+		"plant.read-credits.harness-run-m-gate": "no row that is not a plant",
+		"harness-run.m.gone":                    "no row that is not a plant",
+	} {
+		if _, _, err := withReadPlant(text, "r.jsonl", row, res, credits); err == nil || !strings.Contains(err.Error(), says) {
+			t.Errorf("--plant %s: %v, want %q", row, err, says)
+		}
+	}
+	if _, _, err := withReadPlant(src, "r.jsonl", "harness-run.m.gate", res, map[string]string{}); err == nil || !strings.Contains(err.Error(), "credit nothing") {
+		t.Errorf("a row whose reads credit nothing: %v", err)
 	}
 }
