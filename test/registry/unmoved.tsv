@@ -139,7 +139,6 @@ go-test	tools/hostileledger	8	L3	language-free Go tests: the gotest adapter runs
 go-test	tools/inputaccount	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/matrix	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/mustrun	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/namebuild	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/negativecontrols	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/pgroup	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	tools/releasebin	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
@@ -225,7 +224,6 @@ make-target	make/moo-packet-write-bareint.mk	1	L6	make gates: the make adapter r
 make-target	make/moo-tables.mk	1	L6	make gates: the make adapter runs them
 make-target	make/moo-tagged.mk	1	L6	make gates: the make adapter runs them
 make-target	make/moo.mk	1	L6	make gates: the make adapter runs them
-make-target	make/name-buildability.mk	1	L6	make gates: the make adapter runs them
 make-target	make/python-array-growth.mk	2	L6	make gates: the make adapter runs them
 make-target	make/python-array-root.mk	1	L6	make gates: the make adapter runs them
 make-target	make/python-blob-wire-driver.mk	1	L6	make gates: the make adapter runs them
@@ -728,7 +726,6 @@ workflow-job	.github/workflows/schema-luau-runs-hostile-corpus.yml	2	L7	workflow
 workflow-job	.github/workflows/schema-moo-generated-analyze-strict-gate.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-moo-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-name-buildability.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-nightly-fuzz.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-python-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
@@ -1364,7 +1361,7 @@ data-case	testdata/moo-wire-fuzz-pinned-controls/no-final-newline	1	L4	corpus da
 data-case	testdata/moo-wire-fuzz-pinned-controls/no-final-newline/pins	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/moo-wire-fuzz-pinned-controls/unlisted-saved	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/moo-wire-fuzz-pinned-controls/unlisted-saved/pins	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/name-buildability	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/name-buildability	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit/enum_kind	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/name-buildability-emit/table_Math	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

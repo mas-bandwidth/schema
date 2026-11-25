@@ -86,6 +86,11 @@ type Test struct {
 // no language answers: a Go tooling test, a TLA model check, a roadmap check.
 const LangFree = "none"
 
+// LangPlaceholder stands for the language in a per-language row's inputs:
+// one row serves every language, and its adapter puts the language in its
+// place (tools/namebuild's TestNameBuildability_{lang}).
+const LangPlaceholder = "{lang}"
+
 // PerLang reports whether every language answers the test.
 func (t Test) PerLang() bool { return t.Scope == "" }
 

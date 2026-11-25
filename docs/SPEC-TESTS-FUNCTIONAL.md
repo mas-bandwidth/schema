@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2151. Language-free tests: 72.
+Functional tests every language answers: 2151. Language-free tests: 73.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -2537,6 +2537,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.harness.goose-driver-answers-an-announce-only-unit-alone` | `gotest` | Go test TestGooseDriverAnswersAnAnnounceOnlyUnitAlone in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestGooseDriverAnswersAnAnnounceOnlyUnitAlone` | the Go test passes | `test/conformance/harness/goosebatch_test.go:115` |
 | `none.functional.tooling.harness.goose-driver-batch-falls-back-by-name` | `gotest` | Go test TestGooseDriverBatchFallsBackByName in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestGooseDriverBatchFallsBackByName` | the Go test passes | `test/conformance/harness/goosebatch_test.go:21` |
 | `none.functional.tooling.harness.goose-driver-refuses-an-unreadable-batch-key` | `gotest` | Go test TestGooseDriverRefusesAnUnreadableBatchKey in ./test/conformance/harness | `package: ./test/conformance/harness`<br>`test: TestGooseDriverRefusesAnUnreadableBatchKey` | the Go test passes | `test/conformance/harness/goosebatch_test.go:88` |
+
+#### `tooling` family `schema-test`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.schema-test.run-name-build-reads-what-the-run-wrote` | `gotest` | Go test TestRunNameBuildReadsWhatTheRunWrote in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestRunNameBuildReadsWhatTheRunWrote` | the Go test passes | `tools/schema-test/namebuild_test.go:130` |
 
 ### Type `resource-bounds`
 

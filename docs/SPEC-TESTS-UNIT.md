@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 0. Language-free tests: 148.
+Unit tests every language answers: 0. Language-free tests: 156.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -130,6 +130,16 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.inputaccount.merge-reads-the-record-files` | `gotest` | Go test TestMergeReadsTheRecordFiles in ./tools/inputaccount | `package: ./tools/inputaccount`<br>`test: TestMergeReadsTheRecordFiles` | the Go test passes | `tools/inputaccount/shard_test.go:68` |
 | `none.unit.tooling.inputaccount.parse-shard` | `gotest` | Go test TestParseShard in ./tools/inputaccount | `package: ./tools/inputaccount`<br>`test: TestParseShard` | the Go test passes | `tools/inputaccount/shard_test.go:93` |
 
+#### `tooling` family `namebuild`, 5 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.unit.tooling.namebuild.every-target-has-its-test` | `gotest` | Go test TestEveryTargetHasItsTest in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestEveryTargetHasItsTest` | the Go test passes | `tools/namebuild/namebuild_test.go:77` |
+| `none.unit.tooling.namebuild.plan-covers-the-corpus` | `gotest` | Go test TestPlanCoversTheCorpus in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestPlanCoversTheCorpus` | the Go test passes | `tools/namebuild/namebuild_test.go:32` |
+| `none.unit.tooling.namebuild.registry-cases-are-distinct` | `gotest` | Go test TestRegistryCasesAreDistinct in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryCasesAreDistinct` | the Go test passes | `tools/namebuild/namebuild_test.go:140` |
+| `none.unit.tooling.namebuild.registry-holds-every-builds-row` | `gotest` | Go test TestRegistryHoldsEveryBuildsRow in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestRegistryHoldsEveryBuildsRow` | the Go test passes | `tools/namebuild/namebuild_test.go:160` |
+| `none.unit.tooling.namebuild.targets-are-the-generators` | `gotest` | Go test TestTargetsAreTheGenerators in ./tools/namebuild | `package: ./tools/namebuild`<br>`test: TestTargetsAreTheGenerators` | the Go test passes | `tools/namebuild/namebuild_test.go:59` |
+
 #### `tooling` family `nightlyrows`, 5 tests
 
 | full name | adapter | checks | inputs | expected result | source |
@@ -147,7 +157,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.retiredskips.every-skip-is-red` | `gotest` | Go test TestEverySkipIsRed in ./tools/retiredskips | `package: ./tools/retiredskips`<br>`test: TestEverySkipIsRed` | the Go test passes | `tools/retiredskips/main_test.go:27` |
 | `none.unit.tooling.retiredskips.skip-line-is-the-readiness-reading` | `gotest` | Go test TestSkipLineIsTheReadinessReading in ./tools/retiredskips | `package: ./tools/retiredskips`<br>`test: TestSkipLineIsTheReadinessReading` | the Go test passes | `tools/retiredskips/main_test.go:8` |
 
-#### `tooling` family `schema-test`, 16 tests
+#### `tooling` family `schema-test`, 18 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -161,6 +171,8 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.extract-refuses-a-grown-ledger` | `gotest` | Go test TestExtractRefusesAGrownLedger in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesAGrownLedger` | the Go test passes | `tools/schema-test/extract_test.go:134` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:86` |
 | `none.unit.tooling.schema-test.langs-is-the-registrys-list` | `gotest` | Go test TestLangsIsTheRegistrysList in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestLangsIsTheRegistrysList` | the Go test passes | `tools/schema-test/main_test.go:192` |
+| `none.unit.tooling.schema-test.name-build-plan-selects-exactly-the-asked` | `gotest` | Go test TestNameBuildPlanSelectsExactlyTheAsked in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildPlanSelectsExactlyTheAsked` | the Go test passes | `tools/schema-test/namebuild_test.go:38` |
+| `none.unit.tooling.schema-test.name-build-results-reads-the-events` | `gotest` | Go test TestNameBuildResultsReadsTheEvents in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestNameBuildResultsReadsTheEvents` | the Go test passes | `tools/schema-test/namebuild_test.go:82` |
 | `none.unit.tooling.schema-test.the-addenda-verb-checks-the-committed-pages` | `gotest` | schema-test addenda --check exits 0 against the repository's pages and 1 naming a missing page, and refuses a stray argument | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbChecksTheCommittedPages` | the Go test passes | `tools/schema-test/main_test.go:188` |
 | `none.unit.tooling.schema-test.the-addenda-verb-writes-every-page-and-removes-the-stale` | `gotest` | schema-test addenda writes every generated page, removes a stale one, and stops naming the page on a failed write or remove | `package: ./tools/schema-test`<br>`test: TestTheAddendaVerbWritesEveryPageAndRemovesTheStale` | the Go test passes | `tools/schema-test/main_test.go:213` |
 | `none.unit.tooling.schema-test.the-command-exits-non-zero-on-every-adapter-fault` | `gotest` | Go test TestTheCommandExitsNonZeroOnEveryAdapterFault in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestTheCommandExitsNonZeroOnEveryAdapterFault` | the Go test passes | `tools/schema-test/main_test.go:145` |
@@ -220,7 +232,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.unrepresentable-is-data-not-a-name` | `gotest` | Go test TestUnrepresentableIsDataNotAName in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestUnrepresentableIsDataNotAName` | the Go test passes | `internal/testreg/run_test.go:162` |
 | `none.unit.tooling.testreg.wildcards-expand-to-an-explicit-list` | `gotest` | Go test TestWildcardsExpandToAnExplicitList in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWildcardsExpandToAnExplicitList` | the Go test passes | `internal/testreg/run_test.go:279` |
 
-#### `tooling` family `testreg-extract`, 15 tests
+#### `tooling` family `testreg-extract`, 16 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -228,6 +240,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.a-file-that-does-not-parse-is-named` | `gotest` | Go test TestAFileThatDoesNotParseIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAFileThatDoesNotParseIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:126` |
 | `none.unit.tooling.testreg-extract.a-model-check-row-covers-its-config` | `gotest` | Go test TestAModelCheckRowCoversItsConfig in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAModelCheckRowCoversItsConfig` | the Go test passes | `internal/testreg/extract/extract_test.go:205` |
 | `none.unit.tooling.testreg-extract.a-new-test-without-a-row-is-named` | `gotest` | Go test TestANewTestWithoutARowIsNamed in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestANewTestWithoutARowIsNamed` | the Go test passes | `internal/testreg/extract/extract_test.go:309` |
+| `none.unit.tooling.testreg-extract.a-per-language-row-covers-its-test-for-every-language` | `gotest` | Go test TestAPerLanguageRowCoversItsTestForEveryLanguage in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestAPerLanguageRowCoversItsTestForEveryLanguage` | the Go test passes | `internal/testreg/extract/langtest_test.go:15` |
 | `none.unit.tooling.testreg-extract.a-row-indexes-the-corpus-it-reads` | `gotest` | Go test TestARowIndexesTheCorpusItReads in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestARowIndexesTheCorpusItReads` | the Go test passes | `internal/testreg/extract/extract_test.go:287` |
 | `none.unit.tooling.testreg-extract.a-skip-red-line-stays-while-its-skip-does` | `gotest` | Go test TestASkipRedLineStaysWhileItsSkipDoes in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestASkipRedLineStaysWhileItsSkipDoes` | the Go test passes | `internal/testreg/extract/extract_test.go:254` |
 | `none.unit.tooling.testreg-extract.check-holds-the-repository-the-registry-and-the-ledger-exactly` | `gotest` | Go test TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestCheckHoldsTheRepositoryTheRegistryAndTheLedgerExactly` | the Go test passes | `internal/testreg/extract/extract_test.go:162` |

@@ -91,8 +91,11 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 }
 
 // Covered reports, for each item a registry row runs, the row's key. A Go
-// test is covered by a gotest row whose inputs name its package and test; a
-// TLC configuration by a model-check row whose inputs name it.
+// test is covered by a gotest row whose inputs name its package and test, or
+// by a per-language row whose inputs name its package and a test named with
+// testreg.LangPlaceholder, which covers that test for every language the
+// registry lists (tools/namebuild's TestNameBuildability_<lang>); a TLC
+// configuration by a model-check row whose inputs name it.
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	out := map[string]string{}
@@ -114,6 +117,23 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				continue
 			}
 			out[id] = t.Key
+			continue
+		}
+		if t.PerLang() {
+			var in struct{ Package, Test string }
+			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
+				continue // a row whose inputs name no per-language Go test
+			}
+			for _, l := range reg.Langs {
+				if l.Name == testreg.LangFree {
+					continue
+				}
+				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: strings.ReplaceAll(in.Test, testreg.LangPlaceholder, l.Name)}.ID()
+				// every case row of the family names the same test
+				if _, seen := out[id]; !seen {
+					out[id] = t.Key
+				}
+			}
 			continue
 		}
 		if t.Adapter != "gotest" {
