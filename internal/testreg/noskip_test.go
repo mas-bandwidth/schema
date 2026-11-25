@@ -128,7 +128,7 @@ func noSkipsSkipsDir(rel, name string) bool {
 }
 
 var (
-	// a skip or lane variable: what a gate read, or a lane promised
+	// a skip or lane variable: what a gate read, or a lane promised.
 	skipVar = regexp.MustCompile(`\b(SCHEMA_SLOW|SCHEMA_REQUIRE_[A-Z0-9_]+|SCHEMA_SKIP[A-Z0-9_]*|SKIP_SLOW_OK|SCHEMA_[A-Z0-9_]*ALLOC_ANY[A-Z0-9_]*)\b`)
 	orTrue  = regexp.MustCompile(`\|\|\s*(true|:|exit\s+0)\b|\|\|\s*:\s*$|\|\|\s*:\s*[;)]`)
 	contErr = regexp.MustCompile(`^\s*-?\s*continue-on-error\s*:`)
@@ -136,9 +136,9 @@ var (
 	branch  = regexp.MustCompile(`startsWith\(\s*github\.(head_ref|ref_name|ref)\s*,\s*'(refs/heads/)?sprint/'\s*\)`)
 	goTest  = regexp.MustCompile(`\bgo\s+test\b.*\s-(skip|test\.skip|short)(=|\s|$)`)
 	// an announcement that something is being skipped; a message that a
-	// skip happened and is a failure ("a test SKIPPED", exit 1) is a refusal
+	// skip happened and is a failure ("a test SKIPPED", exit 1) is a refusal.
 	echo = regexp.MustCompile(`\b(echo|printf)\b.*(\b(?i:skipping)\b|\b(?i:skip):)`)
-	// a driver's verdict word for a row it did not run
+	// a driver's verdict word for a row it did not run.
 	verdict = regexp.MustCompile(`["'](SKIP|SKIPPED|skip|skipped)["']|["'](?i:skipping|skipped)\b[^"']*["']|\bSKIP:`)
 	ledger  = regexp.MustCompile(`(?i)(^|[-_/])(known-)?skips?(-ledger)?\.(tsv|txt)$`)
 	// a variable named for skipping, set or read in a script
@@ -321,7 +321,7 @@ func goSkips(path, rel string) ([]string, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, rel, src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %v", rel, err)
+		return nil, fmt.Errorf("%s: %w", rel, err)
 	}
 	var out []string
 	hit := func(pos token.Pos, rule, what string) {
@@ -438,8 +438,7 @@ func goSkips(path, rel string) ([]string, error) {
 			}
 		}
 	}
-	var visitFunc func(params *ast.FieldList, results *ast.FieldList, body *ast.BlockStmt, name string)
-	visitFunc = func(params, results *ast.FieldList, body *ast.BlockStmt, name string) {
+	visitFunc := func(params, results *ast.FieldList, body *ast.BlockStmt, name string) {
 		takesT := false
 		for _, p := range params.List {
 			if isTesting(p.Type) {
