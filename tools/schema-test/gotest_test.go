@@ -336,3 +336,53 @@ func TestAGoTestRowWhoseDataIsGoneFails(t *testing.T) {
 		t.Fatalf("results %+v", res)
 	}
 }
+
+// TestAGoTestRowsMakeTargetIsBuiltFirst: a row naming a make target in its
+// inputs has that target made once in Prepare, before any call runs, however
+// many rows name it; a row naming none makes nothing; a target that does not
+// make fails Prepare naming the row and the target; and a make input that is
+// not one target is refused as the row's inputs.
+func TestAGoTestRowsMakeTargetIsBuiltFirst(t *testing.T) {
+	t.Parallel()
+	row := func(full, inputs string) testreg.Instance {
+		return testreg.Instance{Full: full, Test: testreg.Test{Scope: testreg.LangFree, Adapter: "gotest", Inputs: []byte(inputs)}}
+	}
+	rows := []testreg.Instance{
+		row("a", `{"package":"./p","test":"TestA","make":"build/tree/.stamp"}`),
+		row("b", `{"package":"./p","test":"TestB","make":"build/tree/.stamp"}`),
+		row("c", `{"package":"./p","test":"TestC"}`),
+	}
+	var made [][]string
+	a := newGoTestAdapterBuilding(nil, t.TempDir(), 1, func(_ context.Context, argv []string) error {
+		made = append(made, argv)
+		return nil
+	})
+	if err := a.Prepare(context.Background(), "", rows); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(made) != "[[make build/tree/.stamp]]" {
+		t.Fatalf("made %v, want the one target once", made)
+	}
+
+	var tried [][]string
+	broken := newGoTestAdapterBuilding(nil, t.TempDir(), 1, func(_ context.Context, argv []string) error {
+		tried = append(tried, argv)
+		return errors.New("build step failed")
+	})
+	err := broken.Prepare(context.Background(), "", rows)
+	if err == nil || !strings.Contains(err.Error(), "a: build step failed") || fmt.Sprint(tried) != "[[make build/tree/.stamp]]" {
+		t.Fatalf("a target that does not make: got %v, want the row named", err)
+	}
+
+	none := newGoTestAdapter(nil, t.TempDir(), 1)
+	if err := none.Prepare(context.Background(), "", rows[2:]); err != nil {
+		t.Fatalf("a row naming no target: %v", err)
+	}
+	if err := none.Prepare(context.Background(), "", rows[:1]); err == nil || !strings.Contains(err.Error(), "make build/tree/.stamp") {
+		t.Fatalf("no builder: got %v, want the target named", err)
+	}
+
+	if _, err := goTestInputsOf(row("d", `{"package":"./p","test":"TestD","make":"a b; rm"}`).Test); err == nil {
+		t.Fatal("a make input that is not one target was accepted")
+	}
+}

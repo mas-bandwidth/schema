@@ -136,7 +136,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		// to its harness for any language, and a case a language does not
 		// answer yet runs and is red
 		"corpus":      &harnessAdapter{build: b, log: log},
-		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
+		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},

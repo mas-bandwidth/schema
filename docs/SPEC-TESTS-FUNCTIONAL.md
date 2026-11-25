@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2468. Language-free tests: 2245.
+Functional tests every language answers: 2468. Language-free tests: 2246.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4612,13 +4612,14 @@ one schema version reads or writes another's data.
 | `none.functional.evolution.goosetable.goose-fixed-form-kind-moved-unlawful` | `gotest` | Go test TestGooseFixedFormKindMovedUnlawful in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedFormKindMovedUnlawful` | the Go test passes | `internal/codegen/goosetable/fixedevolve_test.go:198` |
 | `none.functional.evolution.goosetable.goose-fixed-unlawful-corpus` | `gotest` | Go test TestGooseFixedUnlawfulCorpus in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/goosetable/fixed_unlawful_corpus_test.go:60` |
 
-#### `evolution` family `gotable`, 3 tests
+#### `evolution` family `gotable`, 4 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
 | `none.functional.evolution.gotable.fixed-unlawful-corpus` | `gotest` | Go test TestFixedUnlawfulCorpus in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/gotable/fixed_unlawful_corpus_test.go:85` |
 | `none.functional.evolution.gotable.fixed-v1-l-is-a-lawful-writer-for-v2` | `gotest` | Go test TestFixedV1LIsALawfulWriterForV2 in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedV1LIsALawfulWriterForV2` | the Go test passes | `internal/codegen/gotable/fixed_v1l_lawful_test.go:19` |
 | `none.functional.evolution.gotable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/gotable/fixedversioning_kind_moved_test.go:14` |
+| `none.functional.evolution.gotable.json-walk-generated-go-tables` | `gotest` | every unit of the generated Go tables tree (build/tables-generated-go, which the row makes first) emits one generic JSON walker matching its reference profile; a run without the tree fails naming it (Go test TestJsonWalkGeneratedGoTables in ./internal/codegen/gotable) | `make: build/tables-generated-go/.stamp`<br>`package: ./internal/codegen/gotable`<br>`test: TestJsonWalkGeneratedGoTables` | the Go test passes | `internal/codegen/gotable/jsonwalk_test.go:329` |
 
 #### `evolution` family `javatable`, 2 tests
 

@@ -212,7 +212,7 @@ runs may use N=0; they never stand in for the six positive release runs.
   language, phases, seeds, counts, package test selection and pass criteria
   have no override. GOFLAGS is fixed to build concurrency only; SCHEMA_SLOW and
   SCHEMA_REQUIRE_CORPUS are enforced. Inherited MAKEFLAGS, MFLAGS,
-  GNUMAKEFLAGS, MAKEOVERRIDES, MAKEFILES, SCHEMA_SKIP_LEGS and all
+  GNUMAKEFLAGS, MAKEOVERRIDES, MAKEFILES and all
   SCHEMA_UPDATE_* switches are cleared.
   Actual packet programs must print their unique existing success marker.
   A separate phase contract rejects missing/duplicate execution, and only a

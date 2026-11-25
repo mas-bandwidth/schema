@@ -88,19 +88,9 @@ table Root
 	}{
 		{"t", `{"t":"%s"}`},
 		{"inner", `{"i":{"n":"%s"}}`},
-	}
-	// a [..4]string(8) element reads as a bare JSON string once the text-list
-	// lift lands in this leg; at BASE the compiler's element record rides as a
-	// table, so the row is skipped with a note rather than compared to Go's
-	// Root.l reason.
-	var tableSource strings.Builder
-	for _, data := range tables {
-		tableSource.Write(data)
-	}
-	if !strings.Contains(tableSource.String(), "_M.RootLTextDescriptor") {
-		forms = append(forms, struct{ name, format string }{"list", `{"l":["ok","%s"]}`})
-	} else {
-		t.Logf("skipping the [..4]string(8) row: the text-list lift has not landed in squirreltable (the element reads as a table)")
+		// a [..4]string(8) element reads as a bare JSON string, and its zero
+		// refuses with Go's Root.l reason
+		{"list", `{"l":["ok","%s"]}`},
 	}
 	zeros := []string{`\u0000ab`, `a\u0000b`, `ab\u0000`}
 
