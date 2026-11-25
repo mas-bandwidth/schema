@@ -421,6 +421,18 @@ type goTestRunning struct {
 	ran  string // how long it had run, in go test's words
 }
 
+// wasRunning is whether test, a top-level test, or a subtest of it, was
+// running when the limit fired: test2json may close such a test as failed,
+// and the timeout is why.
+func (to goTestTimeoutRun) wasRunning(test string) bool {
+	for _, r := range to.running {
+		if top, _, _ := strings.Cut(r.test, "/"); top == test {
+			return true
+		}
+	}
+	return false
+}
+
 // goTestTimeoutPanic is go test's own timeout panic, and its limit.
 var goTestTimeoutPanic = regexp.MustCompile(`^panic: test timed out after (\S+)$`)
 

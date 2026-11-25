@@ -39,12 +39,13 @@ import (
 //   - a test the file shows run that no row of the target names fails every
 //     row of the call, naming it: a Go test the target runs has a row;
 //   - go test's own timeout fails the running test's row naming the limit and
-//     how long it ran, and every row it never reached naming the test that
-//     was (goTestTimedOut);
+//     how long it ran (also when test2json closed it as failed), and every
+//     row it never reached naming the test that was (goTestTimedOut);
 //   - a test started more times than it finished (a package run twice, the
 //     second cut short) fails: one run's pass is not the test's;
-//   - a package that failed outside its tests (TestMain, a build) fails its
-//     rows that passed, with the package's own output;
+//   - a package that failed outside its tests (TestMain, a build), with none
+//     of its tests failed or left running, fails its rows that passed,
+//     with the package's own output;
 //   - a skip make's log reports that no event names (a recipe's own words)
 //     fails every row; a skip go test reported is the skipped row's alone;
 //   - make exiting non-zero with no row failed fails every row with make's
@@ -315,10 +316,8 @@ func (a makeGoTestAdapter) verdicts(target string, rows, all []testreg.Instance,
 	// a skip the log reports that no event names (a recipe's own words,
 	// not go test's) fails every row; a skip go test reported is the
 	// skipped row's own red, by its name, below
-	if ev.skips == 0 {
-		if err := testreg.RefuseSkips(lines); err != nil {
-			return failAll(rows, fmt.Sprintf("make %s: %v", target, err)), nil
-		}
+	if err := testreg.RefuseSkips(withoutGoTestSkips(lines, ev.skipNames)); err != nil {
+		return failAll(rows, fmt.Sprintf("make %s: %v", target, err)), nil
 	}
 	if ev.ran == 0 {
 		why := fmt.Sprintf("make %s ran 0 Go tests: its $(GO_TEST) wrote no test to %s", target, makeGoTestJSON(target))
@@ -347,7 +346,7 @@ func (a makeGoTestAdapter) verdicts(target string, rows, all []testreg.Instance,
 		open := s != nil && s.runs > s.closes
 		to, timedOut := goTestTimedOut(strings.Join(ev.byPkg[k.pkg], "\n"))
 		switch {
-		case timedOut && (s == nil || open):
+		case timedOut && (s == nil || open || s.failed && to.wasRunning(k.test)):
 			// go test's own -timeout fired in this test's package before the
 			// test finished: the limit and the test running, never "not run"
 			res = to.verdicts("in make "+target, map[string]string{k.test: r.Full}, nil)[0]
@@ -361,7 +360,7 @@ func (a makeGoTestAdapter) verdicts(target string, rows, all []testreg.Instance,
 			// run more often than it finished (a package run twice, the
 			// second cut short): a pass of one run is not the test's
 			res = testreg.Result{Instance: r.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("make %s started %s %d times and it finished %d: a run that never finished is no pass", target, k.test, s.runs, s.closes)}
-		case ev.pkgFailed[k.pkg] && !timedOut:
+		case ev.pkgFailed[k.pkg] && !ev.pkgTestFailed[k.pkg] && !timedOut:
 			res = testreg.Result{Instance: r.Full, Verdict: testreg.Fail, Reason: fmt.Sprintf("make %s: package %s failed outside its tests (its TestMain, a build, or after the tests) though %s passed:\n%s", target, k.pkg, k.test, tail(strings.Join(ev.pkgOutput[k.pkg], "\n"), 20))}
 		case s.passed:
 			res = testreg.Result{Instance: r.Full, Verdict: testreg.Pass}
@@ -390,15 +389,19 @@ type goTestRead struct {
 	tests     map[goTestKey]*goTestSeen
 	byPkg     map[string][]string // a package's event lines, for go test's own timeout
 	pkgFailed map[string]bool     // a package-level fail event (no test named)
-	pkgOutput map[string][]string // a package's output that names no test
-	ran       int                 // top-level test runs
-	skips     int                 // skip events, of tests and subtests
+	// pkgTestFailed: a test of the package failed or never finished, which
+	// go test's package-level fail reports too, so that fail is not one
+	// outside the tests
+	pkgTestFailed map[string]bool
+	skipNames     map[string]bool     // every test and subtest a skip event names
+	pkgOutput     map[string][]string // a package's output that names no test
+	ran           int                 // top-level test runs
 }
 
 // readGoTestEvents reads go test -json events; a line that is not one is
 // an error, never a line passed over.
 func readGoTestEvents(raw []byte) (goTestRead, error) {
-	ev := goTestRead{tests: map[goTestKey]*goTestSeen{}, byPkg: map[string][]string{}, pkgFailed: map[string]bool{}, pkgOutput: map[string][]string{}}
+	ev := goTestRead{pkgTestFailed: map[string]bool{}, skipNames: map[string]bool{}, tests: map[goTestKey]*goTestSeen{}, byPkg: map[string][]string{}, pkgFailed: map[string]bool{}, pkgOutput: map[string][]string{}}
 	sc := bufio.NewScanner(bytes.NewReader(raw))
 	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -432,7 +435,7 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 		case "output":
 			s.output = append(s.output, strings.TrimRight(e.Output, "\n"))
 		case "skip":
-			ev.skips++
+			ev.skipNames[e.Test] = true
 			if isSub {
 				s.skipped = append(s.skipped, sub)
 			} else {
@@ -454,7 +457,29 @@ func readGoTestEvents(raw []byte) (goTestRead, error) {
 	if err := sc.Err(); err != nil {
 		return ev, fmt.Errorf("could not be read: %w", err)
 	}
+	for k, s := range ev.tests {
+		if s.failed || s.runs > s.closes {
+			ev.pkgTestFailed[k.pkg] = true
+		}
+	}
 	return ev, nil
+}
+
+// withoutGoTestSkips is make's log without the lines in which gotestrun
+// copied go test's report of a skip an event names ("--- SKIP: TestB"):
+// that skip is its row's red, by name. Any other skip the log reports is
+// the recipe's own, and fails every row.
+func withoutGoTestSkips(lines []string, named map[string]bool) []string {
+	out := make([]string, 0, len(lines))
+	for _, l := range lines {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(l), "--- SKIP: "); ok {
+			if name, _, _ := strings.Cut(rest, " "); named[name] {
+				continue
+			}
+		}
+		out = append(out, l)
+	}
+	return out
 }
 
 // openGoTests are the Go tests the events show started and not finished,

@@ -25,9 +25,11 @@ func makeGoTestRow(t *testing.T, test string) testreg.Instance {
 }
 
 // goTestEvents is a go test -json run of example.com/x: each test name with
-// its last action (pass, fail, skip), and a subtest written as Test/sub.
+// its last action (pass, fail, skip), and a subtest written as Test/sub. As
+// go test does, the package fails when one of its tests failed.
 func goTestEvents(tests ...[2]string) string {
 	var b strings.Builder
+	pkg := "pass"
 	line := func(action, test, output string) {
 		ev := map[string]string{"Action": action, "Package": "example.com/x"}
 		if test != "" {
@@ -46,10 +48,11 @@ func goTestEvents(tests ...[2]string) string {
 		line("output", tc[0], "=== RUN   "+tc[0]+"\n")
 		if tc[1] == "fail" {
 			line("output", tc[0], "    x_test.go:9: the planted failure\n")
+			pkg = "fail"
 		}
 		line(tc[1], tc[0], "")
 	}
-	line("pass", "", "")
+	line(pkg, "", "")
 	return b.String()
 }
 
@@ -209,6 +212,16 @@ func TestAMakeGoTestTimeoutIsNamed(t *testing.T) {
 			t.Errorf("TestBlocks: %+v, want %q in its reason", b, w)
 		}
 	}
+	// test2json may close the running test as failed: the timeout is still
+	// why, and the reason names it (the plant: that fail read as a plain
+	// failure, whose output never names the limit)
+	closed := strings.Replace(goTestTimeoutReplay, `{"Action":"output","Package":"example.com/x","Output":"FAIL`,
+		`{"Action":"fail","Package":"example.com/x","Test":"TestBlocks"}
+{"Action":"output","Package":"example.com/x","Output":"FAIL`, 1)
+	got = runMakeGoTest(t, fakeMakeGoTest(t, closed, errors.New("exit status 2")), "TestQuick", "TestBlocks")
+	if b := got["TestBlocks"]; b.Verdict != testreg.Fail || !strings.Contains(b.Reason, "-timeout of 1s while TestBlocks was running") {
+		t.Errorf("TestBlocks closed as failed: %+v, want the timeout named", b)
+	}
 }
 
 // TestAMakeGoTestTargetWithoutGoTestIsRefused: a target whose recipes run
@@ -251,6 +264,11 @@ func TestAMakeGoTestReadsWhatTheEventsSayNotTheLogAlone(t *testing.T) {
 			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "TestB skipped"},
 		{"a skip no event names", goTestEvents([2]string{"TestA", "pass"}), "SKIP: the recipe skipped its check\n", nil,
 			[]string{"TestA"}, "TestA", nil, "reported a skip"},
+		{"the recipe's own skip beside a go test skip", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "skip"}),
+			"--- SKIP: TestB (0.00s)\nSKIP: the recipe skipped its check\n", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestA", nil, "reported a skip"},
+		{"a sibling's failure is not the package's", goTestEvents([2]string{"TestA", "pass"}, [2]string{"TestB", "fail"}), "ok", errors.New("exit status 1"),
+			[]string{"TestA", "TestB"}, "TestB", []string{"TestA"}, "the planted failure"},
 		{"started twice, finished once", ev(`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"pass","Package":"example.com/x","Test":"TestA"}`,
 			`{"Action":"run","Package":"example.com/x","Test":"TestA"}`, `{"Action":"output","Package":"example.com/x","Output":"FAIL\texample.com/x\n"}`),
 			"ok", errors.New("exit status 2"), []string{"TestA"}, "TestA", nil, "started TestA 2 times and it finished 1"},
