@@ -5,13 +5,23 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 200. Language-free tests: 71.
+Nightly tests every language answers: 201. Language-free tests: 71.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
 ## Tests every language answers
 
 Each test's full name for language `L` is `L.nightly.<type>.<family>.<case>`: every language in the registry has this instance, unless the registry declares it unrepresentable there (listed at the end of this page). The language's adapter receives the inputs as written in the registry row and must establish the expected result.
+
+### Type `roundtrip`
+
+read bytes, write them back, same bytes.
+
+#### `roundtrip` family `fixedroadmap-t08`, 1 test
+
+| full name | checks | inputs | expected result | source |
+|---|---|---|---|---|
+| `L.nightly.roundtrip.fixedroadmap-t08.fixed-roadmap-t08-writes-conformance` | the fixed-form writer output conforms to the spec rows for argument and metadata lanes, nested union tags and counters, and reads back | `inputs.tests` (383 bytes, held in the registry row's `inputs.tests`) | each language's own Go test for the case (inputs.tests) passes; a language with none is red | `internal/codegen/gotable/fixedroadmap_t08_test.go:20` |
 
 ### Type `codegen`
 
