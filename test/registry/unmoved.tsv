@@ -115,13 +115,7 @@ data-case	cmd/schema/testdata/tree_root_name/expected/Player	1	L4	corpus data an
 data-case	cmd/schema/testdata/tree_root_name/input/Plain	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	cmd/schema/testdata/tree_root_name/input/Player	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/crefordinal	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	compiler/testdata/go-basenames	10	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/headerput128	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	compiler/testdata/javaplatform	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	compiler/testdata/javaplatform/accepted	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	compiler/testdata/javaplatform/nested	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	compiler/testdata/javaplatform/refused	15	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	compiler/testdata/javaplatform/siblings	45	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/lock-retirement	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/refordinal	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	compiler/testdata/registration	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
