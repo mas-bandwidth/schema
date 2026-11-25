@@ -386,7 +386,7 @@ func writeInCopy(ctx context.Context, writer string, fresh []string) (fileTree, 
 	if err != nil {
 		return nil, nil, "", err
 	}
-	if _, err := sweepStale(filepath.Dir(root), processAlive); err != nil {
+	if _, err := sweepStale(filepath.Dir(root), copyHost(), processAlive); err != nil {
 		return nil, nil, "", err
 	}
 	work, err := os.MkdirTemp(filepath.Dir(root), copyPrefix("golden"))

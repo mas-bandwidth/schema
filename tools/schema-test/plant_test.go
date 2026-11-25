@@ -337,25 +337,25 @@ func TestAPlantReachesACopyInAHeader(t *testing.T) {
 }
 
 // TestACopyAKilledRunLeftIsSwept: a copy beside the checkout whose run is
-// gone is removed; one whose run is alive, this run's own, one of another
-// naming, and anything else stay.
+// gone is removed; one whose run is alive, another host's, this run's own,
+// one of another naming, and anything else stay.
 func TestACopyAKilledRunLeftIsSwept(t *testing.T) {
 	t.Parallel()
 	beside := t.TempDir()
 	own := strings.TrimSuffix(copyPrefix("plant"), "-") + "-1"
-	for _, d := range []string{".schema-test-golden-111-1", ".schema-test-plant-222-1", own, ".schema-test-golden-333", "schema"} {
+	for _, d := range []string{".schema-test-golden-h.local-111-1", ".schema-test-golden-h2-111-1", ".schema-test-plant-h.local-222-1", own, ".schema-test-golden-333", "schema"} {
 		if err := os.MkdirAll(filepath.Join(beside, d, "inner"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	removed, err := sweepStale(beside, func(pid int) bool { return pid == 222 })
+	removed, err := sweepStale(beside, "h.local", func(pid int) bool { return pid == 222 })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(removed) != 1 || removed[0] != ".schema-test-golden-111-1" {
+	if len(removed) != 1 || removed[0] != ".schema-test-golden-h.local-111-1" {
 		t.Fatalf("removed %v", removed)
 	}
-	for _, d := range []string{".schema-test-plant-222-1", own, ".schema-test-golden-333", "schema"} {
+	for _, d := range []string{".schema-test-golden-h2-111-1", ".schema-test-plant-h.local-222-1", own, ".schema-test-golden-333", "schema"} {
 		if _, err := os.Stat(filepath.Join(beside, d)); err != nil {
 			t.Errorf("%s: %v", d, err)
 		}

@@ -423,7 +423,7 @@ func plantInTree(ctx context.Context, edits []plantEdit, names []string) (plantR
 	if err != nil {
 		return plantRun{}, err
 	}
-	if _, err := sweepStale(filepath.Dir(root), processAlive); err != nil {
+	if _, err := sweepStale(filepath.Dir(root), copyHost(), processAlive); err != nil {
 		return plantRun{}, err
 	}
 	if log, err := gitIn(ctx, root, "worktree", "prune"); err != nil {
@@ -579,19 +579,35 @@ func copyFile(from, to string) error {
 }
 
 // copyPrefix is the name of a run's copy beside the checkout: it carries
-// the run's process id, so a later run tells a copy a killed run left (its
-// process gone, its cleanup never run) from one a run beside it is using.
+// the run's host and process id, so a later run on the same host tells a
+// copy a killed run left (its process gone, its cleanup never run) from one
+// a run beside it is using, and never judges another host's copy (a
+// checkout on a shared mount) by a process table it cannot see.
 func copyPrefix(kind string) string {
-	return fmt.Sprintf(".schema-test-%s-%d-", kind, os.Getpid())
+	return fmt.Sprintf(".schema-test-%s-%s-%d-", kind, copyHost(), os.Getpid())
 }
 
-var staleCopy = regexp.MustCompile(`^\.schema-test-(?:golden|plant)-(\d+)-`)
+// copyHost is this host's name as a copy carries it: letters, digits and
+// dots, anything else an underscore, so a dash only ever ends it.
+func copyHost() string {
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		h = "unnamed"
+	}
+	return strings.Map(func(r rune) rune {
+		if r == '.' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' {
+			return r
+		}
+		return '_'
+	}, h)
+}
 
-// sweepStale removes each copy beside the checkout (copyPrefix) whose run
-// is no longer alive, and returns their names: a run killed before its
+// sweepStale removes each copy beside the checkout (copyPrefix) of host
+// whose run is no longer alive, and returns their names: a run killed before its
 // cleanup leaves a whole tree, and on a runner that keeps its disk the next
 // run would find it there.
-func sweepStale(beside string, alive func(pid int) bool) ([]string, error) {
+func sweepStale(beside, host string, alive func(pid int) bool) ([]string, error) {
+	staleCopy := regexp.MustCompile(`^\.schema-test-(?:golden|plant)-` + regexp.QuoteMeta(host) + `-(\d+)-`)
 	entries, err := os.ReadDir(beside)
 	if err != nil {
 		return nil, err
