@@ -1071,7 +1071,7 @@ data-case	testdata/conformance/tables/json-hostile/vd-var-omitted	1	L4	corpus da
 data-case	testdata/conformance/tables/message-batch	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/message-verdict	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/read-into	6	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	testdata/conformance/tables/rewrite	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
+data-case	testdata/conformance/tables/rewrite	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/save-wire	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/shapes-loose	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	testdata/conformance/tables/wire	155	L4	corpus data and harnesses: each language's adapter answers them when their family moves in

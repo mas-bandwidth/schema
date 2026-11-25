@@ -160,7 +160,17 @@ func TestUpdateRepinsOnlyTheNamedGoldens(t *testing.T) {
 	checkout := memTree{"testdata/g/a.bin": "old", "testdata/g/b.bin": "old"}
 	written := memTree{"testdata/g/a.bin": "new", "testdata/g/b.bin": "new"}
 	calls := 0
-	got := goldenVerdicts(t, goldenFake(checkout, written, &calls), withUpdate(context.Background()), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"))
+	a := goldenFake(checkout, written, &calls)
+	// b.bin is another row's pin, stale too: it is that row's to re-pin
+	reg, err := testreg.Parse("golden.jsonl", strings.NewReader(`{"rec":"type","name":"golden","what":"pinned","contract":"equal"}
+{"rec":"tier","name":"functional","what":"a toolchain"}
+{"rec":"test","key":"golden.x.b","type":"golden","family":"x","case":"b","tier":"functional","checks":"b","inputs":{"writer":"pins-x","files":["testdata/g/b.bin"]},"expect":"same","scope":"none","adapter":"golden"}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.reg = reg
+	got := goldenVerdicts(t, a, withUpdate(context.Background()), goldenInst(t, "a", "pins-x", "testdata/g/a.bin"))
 	if got["a"].Verdict != testreg.Pass || checkout["testdata/g/a.bin"] != "new" || checkout["testdata/g/b.bin"] != "old" {
 		t.Fatalf("update: %+v, checkout %v", got, checkout)
 	}

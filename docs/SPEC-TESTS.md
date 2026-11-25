@@ -14,9 +14,9 @@ The registry and the driver are described in [TEST-REGISTRY.md](TEST-REGISTRY.md
 
 | tier | page | what the tier is | tests every language answers | language-free tests |
 |---|---|---|---|---|
-| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 0 | 72 |
-| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 36 | 2 |
-| `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 0 | 0 |
+| `unit` | [SPEC-TESTS-UNIT.md](SPEC-TESTS-UNIT.md) | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory | 0 | 125 |
+| `functional` | [SPEC-TESTS-FUNCTIONAL.md](SPEC-TESTS-FUNCTIONAL.md) | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it | 36 | 1603 |
+| `nightly` | [SPEC-TESTS-NIGHTLY.md](SPEC-TESTS-NIGHTLY.md) | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded | 0 | 1312 |
 
 ## Names
 
@@ -77,6 +77,8 @@ Every test has one type. Each type's contract is what an adapter must do to answ
 | `soak` | long-running repeated use, with no leak or drift | repeat the use the inputs name for the count they give (a count, never a duration), and pass only when nothing leaks or drifts |
 | `resource-bounds` | memory, allocation and depth limits are held | drive the language's code to the memory, allocation or depth limit the inputs name, and pass only when the limit holds and a breach is refused |
 | `model` | a TLA+ model checks under TLC, or a code trace is a behaviour of the spec | run TLC on the model and config the inputs name, or check the code's trace against the spec; a counterexample, or a trace that is not a behaviour of the spec, fails |
+| `harness-run` | a battery run as one step (a make target over a leg or a corpus): it passes when the step exits 0 with no skip; a migration item until its cases are named rows | run the make target the inputs name over its leg or corpus, and pass only when it exits 0 with no skip line in its output; a target the make file no longer writes fails |
+| `ci-plumbing` | a step that provisions or builds what other tests run on (a pinned toolchain, a compiled harness): it passes when it provisions; it checks nothing else | run the make target the inputs name, which provisions or builds what other tests run on, and pass only when it exits 0 with no skip line in its output |
 
 ## The stored queries
 
