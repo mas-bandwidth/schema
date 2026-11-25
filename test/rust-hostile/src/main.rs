@@ -3,12 +3,12 @@
 // One raw input per manifest line, the port's generated reader underneath, and
 // the Go engine's committed verdict as the oracle. The corpus is read as files:
 // no network, no clock beyond the per-case budget, no outside service. The
-// runner prints one PASS line per case it agrees with, one FIX-CARD line per
-// carried disagreement, and fails on a carrier the port has no API for (a
-// runner error, never a pass) and on a disagreement no FIX-CARD names (or a
-// FIX-CARD whose case has gone green).
+// runner prints one PASS line per case it agrees with and one FAIL line per
+// case it does not, and fails on any FAIL, including a carrier the port has no
+// API for (a runner error, never a pass). A disagreement is never excused by
+// name.
 //
-// usage: rust-hostile <corpus-dir> <known-findings.tsv> <profile>
+// usage: rust-hostile <corpus-dir> <profile>
 //        rust-hostile --case <carrier> <schema> <table> <input-file>
 //        rust-hostile --scorer <scorer-outcomes.tsv>
 //
@@ -53,7 +53,6 @@
 // shape difference removed: the port ends its text with one newline and the
 // engine's canonical text (internal/tabletext.Model.Write) does not.
 
-use std::collections::HashMap;
 use std::io::Read as _;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
@@ -570,13 +569,12 @@ fn main() {
     if args.len() == 3 && args[1] == "--scorer" {
         std::process::exit(scorer(Path::new(&args[2])));
     }
-    if args.len() != 4 {
-        eprintln!("usage: rust-hostile <corpus-dir> <known-findings.tsv> <profile>");
+    if args.len() != 3 {
+        eprintln!("usage: rust-hostile <corpus-dir> <profile>");
         std::process::exit(2);
     }
     let corpus = Path::new(&args[1]).to_path_buf();
-    let findings_path = Path::new(&args[2]);
-    let profile = args[3].as_str();
+    let profile = args[2].as_str();
     let budget = Duration::from_millis(
         env::var("HOSTILE_CASE_BUDGET_MS").ok().and_then(|v| v.parse().ok()).unwrap_or(5000),
     );
@@ -586,36 +584,6 @@ fn main() {
         .unwrap_or_else(|| thread::available_parallelism().map_or(1, |n| n.get()).min(4))
         .max(1);
 
-    // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line, where
-    // the answer is what this port gives the case today, `accept <digest>` or
-    // `refuse` (docs/HOSTILE-CORPUS.md); a finding carries that answer and no
-    // other (F-079). A name of the form <case>@<profile> is a finding in that
-    // build profile only.
-    let mut findings: HashMap<String, Vec<String>> = HashMap::new();
-    if findings_path.exists() {
-        match rows(findings_path, 5) {
-            Ok(rs) => {
-                for f in rs {
-                    let answer_ok = f[3] == "refuse"
-                        || f[3].strip_prefix("accept ").is_some_and(|d| !d.is_empty() && !d.contains(' '));
-                    if !answer_ok {
-                        eprintln!("{}: a finding's answer is `accept <digest>` or `refuse`: {}", findings_path.display(), f.join("\t"));
-                        std::process::exit(2);
-                    }
-                    let key = match f[0].split_once('@') {
-                        Some((name, p)) if p == profile => name.to_string(),
-                        Some(_) => continue,
-                        None => f[0].clone(),
-                    };
-                    findings.insert(key, f);
-                }
-            }
-            Err(e) => {
-                eprintln!("{e}");
-                std::process::exit(2);
-            }
-        }
-    }
     let manifest = match rows(&corpus.join("manifest.tsv"), 9) {
         Ok(m) => m,
         Err(e) => {
@@ -652,9 +620,8 @@ fn main() {
     }
     let results = results.lock().expect("results");
 
-    let (mut passed, mut carried) = (0, 0);
+    let mut passed = 0;
     let mut bad = Vec::new();
-    let mut stale = Vec::new();
     // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
     // name, which tools/hostileledger holds to the corpus folder. A case no
     // worker reached is a case not run.
@@ -666,52 +633,29 @@ fn main() {
         let got = got.clone().unwrap_or_else(|| "runner error: no result".to_string());
         let (name, carrier) = (&f[0], &f[1]);
         let expected = expected(&f[6], carrier, &f[7], &f[8]);
-        let finding = findings.get(name);
         if agrees(&got, &expected) {
-            if let Some(fc) = finding {
-                println!("STALE {name}: FIX-CARD {} no longer reproduces ({profile})", fc[1]);
-                stale.push(name.clone());
-            } else {
-                println!("PASS {name}");
-                passed += 1;
-            }
-        } else if let Some(fc) = finding.filter(|fc| if fc[3] == "refuse" { got.starts_with("refuse ") } else { got == fc[3] }) {
-            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
-            // execution failure (F-070: a timeout, a crash or a runner error),
-            // and never a different verdict or digest (F-079: a refusal under
-            // a finding for a wrong digest). Anything else falls through to FAIL.
-            println!("FIX-CARD: {}: {} {} (got {got})", fc[1], fc[2], fc[4]);
-            carried += 1;
+            println!("PASS {name}");
+            passed += 1;
         } else {
             println!("FAIL {name} carrier={carrier} got={got} want={expected}");
             bad.push(name.clone());
         }
     }
-    // A FIX-CARD WHOSE CASE HAS LEFT THE MANIFEST is stale too: the finding it
-    // carries is no longer checked by anything, so it can never go green.
-    let names: std::collections::HashSet<&str> = manifest.iter().map(|f| f[0].as_str()).collect();
-    let mut orphans: Vec<(&String, &Vec<String>)> = findings.iter().filter(|(k, _)| !names.contains(k.as_str())).collect();
-    orphans.sort();
-    for (name, fc) in orphans {
-        println!("STALE {name}: FIX-CARD {} names a case the manifest does not carry ({profile})", fc[1]);
-        stale.push(name.clone());
-    }
     println!(
-        "rust ({profile}): {} cases: {passed} pass, {carried} carried as FIX-CARD, {} unexplained, {} stale",
+        "rust ({profile}): {} cases: {passed} pass, {} unexplained",
         manifest.len(),
-        bad.len(),
-        stale.len()
+        bad.len()
     );
     for name in &ran {
         println!("hostile-ledger ran {name}");
     }
     println!("hostile-ledger end");
     // The count line build/mustrun reads: a case is RUN when the port answered
-    // it (a pass, a carried FIX-CARD or an unexplained verdict), and an empty
+    // it (a pass or an unexplained verdict), and an empty
     // manifest runs nothing and is red.
-    let ran = passed + carried + bad.len();
-    println!("rust-hostile ({profile}): ran {ran}, failed {}", bad.len() + stale.len());
-    if !bad.is_empty() || !stale.is_empty() || ran == 0 {
+    let ran = passed + bad.len();
+    println!("rust-hostile ({profile}): ran {ran}, failed {}", bad.len());
+    if !bad.is_empty() || ran == 0 {
         std::process::exit(1);
     }
 }

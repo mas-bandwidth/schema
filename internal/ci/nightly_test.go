@@ -171,7 +171,7 @@ func TestNightlyRunsHaveNoTimeout(t *testing.T) {
 		wfs   map[string]string
 	}{
 		{"unit-codegen given its fifteen minutes back", nightlyNoTimeoutErrors, plant("ci-full.yml", "\n  go-test:\n", "\n  go-test:\n    timeout-minutes: 15\n")},
-		{"a nightly go test given -timeout 600s", nightlyNoTimeoutErrors, plant("schema-lua-nightly-fuzz.yml", "-count=1 -timeout 0", "-count=1 -timeout 600s")},
+		{"a nightly go test given -timeout 600s", nightlyNoTimeoutErrors, plant("lobster-fixed-proof-qualification.yml", "-count=1 -timeout 0", "-count=1 -timeout 600s")},
 		{"a nightly go test given -timeout=10m", nightlyNoTimeoutErrors, plant("nightly-conformance.yml", "-json -timeout=0", "-json -timeout=10m")},
 		{"the shim's lift dropped", nightlyNoTimeoutErrors, plant("certify.yml", "\n  PGROUP_GO_TEST_TIMEOUT: '0'\n", "\n")},
 		{"a job the verdict does not need", verdictErrors, plant("certify.yml", ", schema-legs, big-endian]", ", big-endian]")},
@@ -294,7 +294,7 @@ func TestOnlyTheFastLaneRunsOnPushOrPullRequest(t *testing.T) {
 		check func(map[string]string) []string
 		wfs   map[string]string
 	}{
-		{"a hostile corpus back on push to main", nightlyOnlyErrors, plant("schema-c-runs-hostile-corpus.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
+		{"a nightly fuzz back on push to main", nightlyOnlyErrors, plant("schema-python-nightly-fuzz.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},
 		{"ci-full back on pull requests", nightlyOnlyErrors, plant("ci-full.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on pull requests", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  pull_request:\n")},
 		{"python-leg back on push to main", nightlyOnlyErrors, plant("python-leg.yml", "\non:\n", "\non:\n  push:\n    branches: [ main ]\n")},

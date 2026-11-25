@@ -17,9 +17,10 @@ ruby-wirefuzz-$(1)-$(2): build/conformance-harness build/conformance-ruby ruby-t
 	@set -eu; \
 	if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi; \
 	mkdir -p $(RUBY_WIRE_FUZZ_DIR); log=$(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).log; \
+	echo "$$@: seed $$(WIRE_FUZZ_RUN_SEED) (a red re-runs with: make $$@ SCHEMA_TEST_SEED=$$(WIRE_FUZZ_RUN_SEED))"; \
 	sh test/conformance/wire-fuzz-complete "$$$$log" ./build/conformance-harness wire-fuzz $(if $(filter mixed,$(2)),--mixed-builder,$(if $(filter retain,$(2)),--retain,)) \
 	  --driver '$(if $(filter current,$(1)),$(RUBY),$(RUBY_FLOOR)) --disable-gems -w test/conformance/ruby/wirefuzz.rb build/conformance-ruby' \
-	  --seed $(SEED) --n $(N) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).bin
+	  --seed $$(WIRE_FUZZ_RUN_SEED) --n $(N) --failed $(RUBY_WIRE_FUZZ_DIR)/$(1)-$(2).bin
 endef
 $(foreach pin,current floor,$(foreach arm,plain mixed retain,$(eval $(call ruby_wirefuzz_row,$(pin),$(arm)))))
 
@@ -38,13 +39,13 @@ $(foreach pin,current floor,$(foreach arm,plain mixed retain,$(foreach shard,$(R
 tables-ruby-wire-fuzz: $(RUBY_WIRE_FUZZ_ROWS)
 
 tables-ruby-wire-fuzz-negative-control: ruby-toolchain-check
-	go test -count=1 -timeout 600s -run '^TestRubyWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/rubytable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestRubyWireFuzzVerdictPipeNegativeControl$$' ./internal/codegen/rubytable/
 
 tables-ruby-wire-fuzz-retain-negative-control: ruby-toolchain-check
-	go test -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainNegativeControl$$' ./internal/codegen/rubytable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainNegativeControl$$' ./internal/codegen/rubytable/
 
 ruby-wirefuzz-retain-loss-negative-control: ruby-toolchain-check
-	go test -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainLoss$$' ./internal/codegen/rubytable/
+	$(GO_TEST) -count=1 -timeout 600s -run '^TestRubyWireFuzzRetainLoss$$' ./internal/codegen/rubytable/
 
 ruby-wirefuzz-release-check: build/conformance-ruby
 	@if find build/conformance-ruby -name '*.refused' -print | grep .; then echo 'wire-fuzz: a corpus unit was refused'; exit 1; fi

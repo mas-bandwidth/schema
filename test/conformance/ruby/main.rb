@@ -30,6 +30,7 @@ module RubyConformanceMain
     if argv.length == 2 && argv[1] == 'list'
       surface_names.each { |name| puts name }
       puts 'unit shapes'
+      puts 'unit tblmoodmap'
       return 0
     end
     if argv.length == 3

@@ -90,13 +90,13 @@ public final class R9 {
 
     /** the report a read that lands values owes (§5.3's joint table). */
     private static boolean clean(TableFixed.Report r) {
-        return !r.refused && !r.damaged && r.reason == TableFixed.Reason.none
+        return !r.refused && r.reason == TableFixed.Reason.none
                 && r.unknown == 0 && r.widened == 0
                 && r.layoutHash == 0;
     }
 
     private static String shape(TableFixed.Report r) {
-        return "n/a reason=" + r.reason + " refused=" + r.refused + " malformed=" + r.damaged
+        return "n/a reason=" + r.reason + " refused=" + r.refused
                 + " layoutHash=0x" + Long.toHexString(r.layoutHash);
     }
 
@@ -172,7 +172,7 @@ public final class R9 {
         final boolean underKnown = TableFixed.get64(f, TableFixed.hashAt) == CfgFixed.hash;
         final boolean oneName = read.n == -1 && r.refused
                 && r.reason == TableFixed.Reason.layoutMalformed;
-        final boolean joint = !r.damaged && r.unknown == 0
+        final boolean joint = r.unknown == 0
                 && r.widened == 0 && r.layoutHash == 0;
         final boolean total = v[0].a == MARKER;
         check(underKnown && oneName && joint && total,

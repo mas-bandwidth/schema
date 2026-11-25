@@ -75,9 +75,9 @@ var javaUnlawfulAnswers = map[string]javaUnlawfulAnswer{
 // driver answers what the probe printed. The LAWFUL control must load one
 // record, and the probe prints the values row 0 landed. Per UNLAWFUL case the
 // load is made three times (a fresh report, a second fresh one, the first
-// handed back): each refuses before any record (-1), by layoutMalformed (not
-// damaged: the java leg's own refusal name, pinned here and never compared
-// across legs, refusal-verdict-only), every counter zero, every poisoned row
+// handed back): each refuses before any record (-1), by layoutMalformed (the
+// java leg's own refusal name, pinned here and never compared across legs,
+// refusal-verdict-only), every counter zero, every poisoned row
 // back at its declared defaults (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH/EMIT,
 // §5.4; SPEC-TABLES §6.5). The probe prints "refused" only after all of those
 // held.
@@ -117,8 +117,8 @@ public final class %[1]s {
         short[] remap = new short[1 << 14];
         byte[] image = %[2]s.%[3]sFixed.image();
         int n = %[2]s.%[3]sFixed.load(vals, vals.length, data, plan, remap, image, r);
-        if (n < 0 || r.refused || r.damaged) {
-            throw new AssertionError("the LAWFUL control refused: n=" + n + " refused=" + r.refused + " damaged=" + r.damaged + " reason=" + r.reason);
+        if (n < 0 || r.refused) {
+            throw new AssertionError("the LAWFUL control refused: n=" + n + " refused=" + r.refused + " reason=" + r.reason);
         }
         %[2]s.%[3]sFixed.Value v = vals[0];
         System.out.println("VERDICT loaded " + n + ": " + %[5]s);
@@ -154,12 +154,12 @@ public final class %[1]s {
             int n = %[2]s.%[3]sFixed.load(vals, vals.length, data, plan, remap, image, r);
             int at = 0;
             for (int k = 0; k < vals.length; k++) { if (atDefaults(vals[k])) { at++; } }
-            String say = "LOAD" + pass + " n=" + n + " refused=" + r.refused + " damaged=" + r.damaged + " reason=" + r.reason
+            String say = "LOAD" + pass + " n=" + n + " refused=" + r.refused + " reason=" + r.reason
                 + " unknown=" + r.unknown + " widened=" + r.widened + " atDefaults=" + at;
             System.out.println(say);
             check(n == -1, say + ": the UNLAWFUL entry LOADED, want -1 (no plan is laid, §5.4)");
-            check(r.refused && !r.damaged && String.valueOf(r.reason).equals("layoutMalformed"),
-                say + ": want refused by layoutMalformed and not damaged");
+            check(r.refused && String.valueOf(r.reason).equals("layoutMalformed"),
+                say + ": want refused by layoutMalformed");
             check(r.unknown == 0 && r.widened == 0, say + ": a refusal moved a counter (there is no compile census, §5.9 #30)");
             check(at == 8, say + ": the poisoned rows are not at their declared defaults after the refusal (SPEC-TABLES §6.5)");
         }

@@ -53,10 +53,10 @@ public final class NegZeroProbe {
         if (n != 1) {
             fail("the reader refused a compressed -0: n=" + n + " reason=" + r.reason);
         }
-        if (r.unknown != 0 || r.widened != 0 || r.damaged || r.refused
+        if (r.unknown != 0 || r.widened != 0 || r.refused
                 || r.reason != TableFixed.Reason.none || r.nonFiniteFloat != null || r.layoutHash != 0) {
             fail("the report is not at its zero value: unknown=" + r.unknown + " widened=" + r.widened
-                    + " damaged=" + r.damaged + " refused=" + r.refused + " reason=" + r.reason
+                    + " refused=" + r.refused + " reason=" + r.reason
                     + " nonFiniteFloat=" + r.nonFiniteFloat + " layoutHash=" + r.layoutHash);
         }
         if (!(back[0].value == 0.0f)) {

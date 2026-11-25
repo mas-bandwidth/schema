@@ -115,18 +115,70 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 	return ReadLedger(bytes.NewReader(data), path)
 }
 
-// Covered reports, for each item a registry row runs, the row's key. A Go
-// test is covered by a gotest row whose inputs name its package and test, or
-// by a per-language row whose inputs name its package and a test named with
-// testreg.LangPlaceholder, which covers that test for every language the
-// registry lists (tools/namebuild's TestNameBuildability_<lang>); a TLC
-// configuration by a model-check row whose inputs name it.
+// Covered reports, for each item a registry row runs, the row's key:
+//   - a Go test, by a gotest row whose inputs name its package and test, or
+//     by a per-language row whose inputs name its package and a test named
+//     with testreg.LangPlaceholder, which covers that test for every
+//     language the registry lists (tools/namebuild's
+//     TestNameBuildability_<lang>);
+//   - a make target, by a make row whose inputs name its file and target;
+//   - a negative control, by a plant row whose inputs name its make target
+//     and its group in make/negative-controls.json;
+//   - a data case that is a pinned output, by a golden row whose inputs name
+//     its files (every file of the case: its directory and stem); the rows
+//     of one case's files, one per file, share it.
+//   - a TLC configuration, by a model-check row whose inputs name it.
+//   - a data case a make target runs, by a make row whose inputs name the
+//     case's files in "reads" (the target's dry run names each: the make
+//     adapter holds the row to it).
+//
+// A claim is exclusive (two rows running one item is a problem named) but
+// for a data case: the golden rows of one case share it, and a make row's
+// reads claim it beside them, since a golden row checks the pinned output
+// while the make row runs the case, two different checks of one case. The
+// first exclusive claim keeps the item; a read fills only what no exclusive
+// claim holds.
+//
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	out := map[string]string{}
 	var problems []string
+	// a data case several golden rows share: one row per pinned file, and
+	// a case is its files (a .cpp and its .h; a .bin and its .bits)
+	goldenCase := map[string]bool{}
+	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
+	readCase := map[string]string{}   // a data case a make row reads, by the first such row
+	var readOrder []string
+	claim := func(t testreg.Test, it Item, what string) {
+		id := it.ID()
+		if prev, dup := out[id]; dup {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s, which %s already runs", reg.Path, t.Line, t.Key, what, prev))
+			return
+		}
+		out[id] = t.Key
+	}
 	for _, t := range reg.Tests {
-		if t.Adapter == "model-check" {
+		if tests, ok, err := testreg.GoTestsOf(t); ok {
+			// a union row: each language's own Go test for the case
+			if err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %v", reg.Path, t.Line, err))
+				continue
+			}
+			for _, lang := range slices.Sorted(maps.Keys(tests)) {
+				g := tests[lang]
+				claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(g.Package, "./"), Name: g.Test}, g.Package+" "+g.Test+" for "+lang)
+			}
+			continue
+		}
+		switch t.Adapter {
+		case "gotest":
+			var in struct{ Package, Test string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+		case "model-check":
 			// a TLC run of tla/<config>; the controls row runs no config
 			var in struct{ Config string }
 			if err := json.Unmarshal(t.Inputs, &in); err != nil {
@@ -136,32 +188,73 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 			if in.Config == "" {
 				continue
 			}
-			id := Item{Kind: KindModel, Dir: "tla", Name: in.Config}.ID()
-			if prev, dup := out[id]; dup {
-				problems = append(problems, fmt.Sprintf("%s:%d: %s runs tla/%s, which %s already runs", reg.Path, t.Line, t.Key, in.Config, prev))
+			claim(t, Item{Kind: KindModel, Dir: "tla", Name: in.Config}, "tla/"+in.Config)
+		case "make":
+			var in struct {
+				File, Target string
+				Reads        []string
+			}
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make row without a file and a target in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			out[id] = t.Key
-			continue
-		}
-		if tests, ok, err := testreg.GoTestsOf(t); ok {
-			// a union row: each language's own Go test for the case
-			if err != nil {
-				problems = append(problems, fmt.Sprintf("%s:%d: %v", reg.Path, t.Line, err))
-				continue
-			}
-			for _, lang := range slices.Sorted(maps.Keys(tests)) {
-				g := tests[lang]
-				id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(g.Package, "./"), Name: g.Test}.ID()
-				if prev, dup := out[id]; dup {
-					problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s for %s, which %s already runs", reg.Path, t.Line, t.Key, g.Package, g.Test, lang, prev))
+			claim(t, Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}, "make "+in.Target)
+			for _, f := range in.Reads {
+				dir, name := path.Split(f)
+				if !isDataPath(f) || name == "" || f != path.Clean(f) {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which is no data case's file", reg.Path, t.Line, t.Key, f))
 					continue
 				}
-				out[id] = t.Key
+				id := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}.ID()
+				if _, seen := readCase[id]; !seen {
+					readCase[id] = t.Key
+					readOrder = append(readOrder, id)
+				}
 			}
-			continue
-		}
-		if t.Adapter != "gotest" && t.PerLang() {
+		case "plant":
+			var in struct{ Make, Group string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s: plant inputs: %v", reg.Path, t.Line, t.Key, err))
+				continue
+			}
+			if in.Make == "" {
+				continue // a plant of its own (env or edits), not a make control
+			}
+			if in.Group == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs make control %s and names no group of %s", reg.Path, t.Line, t.Key, in.Make, NegativeControlsFile))
+				continue
+			}
+			claim(t, Item{Kind: KindNegativeControl, Dir: in.Group, Name: in.Make}, "negative control "+in.Make)
+		case "golden":
+			var in struct{ Files []string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || len(in.Files) == 0 {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a golden row without files in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			for _, f := range in.Files {
+				if prev, dup := goldenFile[f]; dup {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s pins %s, which golden row %s already pins: one golden row per pinned file", reg.Path, t.Line, t.Key, f, prev))
+					continue
+				}
+				goldenFile[f] = t.Key
+				if !isDataPath(f) {
+					continue // a pin outside the data paths is no data case: the row checks it all the same
+				}
+				dir, name := path.Split(f)
+				if name == "" {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s pins %s, which is not a file", reg.Path, t.Line, t.Key, f))
+					continue
+				}
+				it := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}
+				if !goldenCase[it.ID()] {
+					goldenCase[it.ID()] = true
+					claim(t, it, "pin "+f)
+				}
+			}
+		default:
+			if !t.PerLang() {
+				continue
+			}
 			var in struct{ Package, Test string }
 			if json.Unmarshal(t.Inputs, &in) != nil || in.Package == "" || !strings.Contains(in.Test, testreg.LangPlaceholder) {
 				continue // a corpus row whose inputs name no per-language Go test
@@ -181,24 +274,130 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					out[id] = t.Key
 				}
 			}
-			continue
 		}
-		if t.Adapter != "gotest" {
-			continue
+	}
+	for _, id := range readOrder {
+		if _, held := out[id]; !held {
+			out[id] = readCase[id]
 		}
-		var in struct{ Package, Test string }
-		if err := json.Unmarshal(t.Inputs, &in); err != nil || in.Package == "" || in.Test == "" {
-			problems = append(problems, fmt.Sprintf("%s:%d: %s is a gotest row without a package and a test in its inputs", reg.Path, t.Line, t.Key))
-			continue
-		}
-		id := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}.ID()
-		if prev, dup := out[id]; dup {
-			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s, which %s already runs", reg.Path, t.Line, t.Key, in.Package, in.Test, prev))
-			continue
-		}
-		out[id] = t.Key
 	}
 	return out, problems
+}
+
+// CoveredIn is Covered held to the extract: a row covers a data case only
+// when every file of the case is a file the rows name (a golden row's pins
+// and a make row's reads together). A case with an input beside its pinned
+// expectation is a case the languages still run (L4), so a pin of one of its
+// files leaves it in the ledger, and its language rows will not read as
+// "already runs" against the golden row. A make row that reads a file no
+// case of the extract holds names a test that does not exist, by name.
+func CoveredIn(res *Result, reg *testreg.Registry) (map[string]string, []string) {
+	out, problems := Covered(reg)
+	problems = append(problems, perLangClaims(res, reg, out)...)
+	named := map[string]bool{}
+	held := map[string]bool{}
+	for _, files := range res.CaseFiles {
+		for _, f := range files {
+			held[f] = true
+		}
+	}
+	for _, t := range reg.Tests {
+		var in struct{ Files, Reads []string }
+		switch t.Adapter {
+		case "golden", "make":
+		default:
+			continue
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil {
+			continue // Covered named it
+		}
+		for _, f := range in.Files {
+			named[f] = true
+		}
+		for _, f := range in.Reads {
+			named[f] = true
+			if !held[f] && isDataPath(f) {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s reads %s, which the repository does not hold", reg.Path, t.Line, t.Key, f))
+			}
+		}
+	}
+	for id := range out {
+		if !strings.HasPrefix(id, KindDataCase+" ") {
+			continue
+		}
+		for _, f := range res.CaseFiles[id] {
+			if !named[f] {
+				delete(out, id)
+				break
+			}
+		}
+	}
+	return out, problems
+}
+
+// perLangClaims adds to out what a per-language row's one run per language
+// runs (docs/TEST-REGISTRY.md, "The hostile corpus"): its inputs' "target",
+// a make target with {lang} for each listed language, and "go_tests",
+// "<package> <Test>" with {lang}, the Go tests such a target runs. Each
+// language's item is claimed when the extract holds it (a language whose
+// target runs no Go test has none), by the first row of the family that
+// names it, since every case row of the family names the same run. An item
+// another row already claims is a problem named: it would run twice.
+func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []string {
+	var problems []string
+	byID := map[string]bool{}
+	targets := map[string][]Item{}
+	for _, it := range res.Items {
+		byID[it.ID()] = true
+		if it.Kind == KindMakeTarget {
+			targets[it.Name] = append(targets[it.Name], it)
+		}
+	}
+	family := map[string]string{} // an item, by the family whose rows claim it
+	claim := func(t testreg.Test, it Item) {
+		id := it.ID()
+		if family[id] == t.Family {
+			return
+		}
+		if prev, dup := out[id]; dup {
+			problems = append(problems, fmt.Sprintf("%s:%d: %s runs %s %s, which %s already runs", reg.Path, t.Line, t.Key, it.Kind, it.Name, prev))
+			return
+		}
+		out[id] = t.Key
+		family[id] = t.Family
+	}
+	for _, t := range reg.Tests {
+		if !t.PerLang() {
+			continue
+		}
+		var in struct {
+			Target  string   `json:"target"`
+			GoTests []string `json:"go_tests"`
+		}
+		if json.Unmarshal(t.Inputs, &in) != nil || !strings.Contains(in.Target, testreg.LangPlaceholder) {
+			continue // a row whose inputs name no per-language target
+		}
+		for _, l := range reg.Langs {
+			if l.Name == testreg.LangFree {
+				continue
+			}
+			for _, it := range targets[strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)] {
+				claim(t, it)
+			}
+			for _, g := range in.GoTests {
+				pkg, name, ok := strings.Cut(g, " ")
+				if !ok {
+					problems = append(problems, fmt.Sprintf("%s:%d: %s: go_tests entry %q is not \"<package> <Test>\"", reg.Path, t.Line, t.Key, g))
+					continue
+				}
+				it := Item{Kind: KindGoTest, Dir: strings.TrimPrefix(pkg, "./"), Name: strings.ReplaceAll(name, testreg.LangPlaceholder, l.Name)}
+				if byID[it.ID()] {
+					claim(t, it)
+				}
+			}
+		}
+	}
+	return problems
 }
 
 // Indexed reports, for each data case and driver a per-language registry row
@@ -215,7 +414,15 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // answers it (a ready language, one with an adapter, that does not declare it
 // unrepresentable), and its driver only for those languages. A
 // row no adapter answers, and the driver of a language with no adapter, stay
-// unmoved.
+// unmoved. A language-free row (scope none) runs through the adapter it
+// names, so it indexes the files its inputs name (a Go test that replays a
+// committed case folder), and one that names no adapter indexes nothing.
+// filesHeld are the language-free adapters that hold a row to the files its
+// inputs name: gotest fails a row whose files are gone before it runs, and
+// its rows' tests read exactly those files. A language-free row of another
+// adapter indexes no files.
+var filesHeld = map[string]bool{"gotest": true}
+
 func Indexed(reg *testreg.Registry) map[string]string {
 	out := map[string]string{}
 	claim := func(id, key string) {
@@ -223,8 +430,35 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			out[id] = key
 		}
 	}
+	dataCase := func(f, key string) {
+		dir, name := path.Split(f)
+		if strings.HasSuffix(name, ".jsonl") || name == "" {
+			return // each line of a .jsonl file is a case of its own
+		}
+		stem := name
+		if i := strings.Index(name[1:], "."); i >= 0 {
+			stem = name[:i+1]
+		}
+		claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), key)
+	}
 	for _, t := range reg.Tests {
 		if !t.PerLang() {
+			// a language-free row runs through the adapter it names, and
+			// the files its inputs name are the data it runs over (a Go
+			// test that replays a committed case folder names its files),
+			// but only through an adapter that holds a row to its files: a
+			// row of any other adapter could name files it never reads
+			if !filesHeld[t.Adapter] {
+				continue
+			}
+			var in struct {
+				Files []string `json:"files"`
+			}
+			if json.Unmarshal(t.Inputs, &in) == nil {
+				for _, f := range in.Files {
+					dataCase(f, t.Key)
+				}
+			}
 			continue
 		}
 		var in struct {
@@ -245,15 +479,7 @@ func Indexed(reg *testreg.Registry) map[string]string {
 			continue // no language runs it: what it reads is not yet the registry's
 		}
 		for _, f := range in.Files {
-			dir, name := path.Split(f)
-			if strings.HasSuffix(name, ".jsonl") || name == "" {
-				continue // each line of a .jsonl file is a case of its own
-			}
-			stem := name
-			if i := strings.Index(name[1:], "."); i >= 0 {
-				stem = name[:i+1]
-			}
-			claim(Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: stem}.ID(), t.Key)
+			dataCase(f, t.Key)
 		}
 		if in.Driver != "" {
 			for _, l := range answering {
@@ -265,9 +491,11 @@ func Indexed(reg *testreg.Registry) map[string]string {
 	return out
 }
 
-// Runs is every item a registry row runs or reads: Covered and Indexed.
-func Runs(reg *testreg.Registry) map[string]string {
-	covered, _ := Covered(reg)
+// Runs is every item a registry row runs or reads: CoveredIn (Covered held to
+// the extract, so a data case counts only when the rows name every file of
+// it, and a make, plant or golden row claims what it reads) and Indexed.
+func Runs(res *Result, reg *testreg.Registry) map[string]string {
+	covered, _ := CoveredIn(res, reg)
 	for id, key := range Indexed(reg) {
 		if _, ok := covered[id]; !ok {
 			covered[id] = key
@@ -286,9 +514,9 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	for _, u := range res.Unparsed {
 		problems = append(problems, fmt.Sprintf("%s: could not be read for tests: %s", u.File, u.Reason))
 	}
-	covered, p := Covered(reg)
+	covered, p := CoveredIn(res, reg)
 	problems = append(problems, p...)
-	runs := Runs(reg)
+	runs := Runs(res, reg)
 	exists := map[string]bool{}
 	goTests := map[string]Item{}
 	uncovered := map[string][]Item{}
@@ -354,14 +582,15 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 }
 
 // NewWithoutRows names each test res holds that before (main's tree) did
-// not, and that no registry row runs. A count tells a ledger line it grew;
-// this tells which test grew it.
+// not, and that no registry row runs or reads (Runs, what the ledger counts
+// as moved). A count tells a ledger line it grew; this tells which test grew
+// it.
 func NewWithoutRows(before, res *Result, reg *testreg.Registry) []string {
 	old := map[string]bool{}
 	for _, it := range before.Items {
 		old[it.ID()] = true
 	}
-	covered, _ := Covered(reg)
+	covered := Runs(res, reg)
 	var problems []string
 	for _, it := range res.Items {
 		if old[it.ID()] {
@@ -445,7 +674,7 @@ func Shrinks(old, now []LedgerLine) []string {
 // run, each line's layer and reason given by plan(kind, place, the unmoved
 // tests).
 func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string, items []Item) (layer, reason string)) []LedgerLine {
-	covered := Runs(reg)
+	covered := Runs(res, reg)
 	names := map[string][]Item{}
 	var order []string
 	for _, it := range res.Items {
@@ -476,4 +705,24 @@ func WriteLedger(w io.Writer, header string, lines []LedgerLine) error {
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// DroppedMakeTargets is each make target main's tree (before) counts as a
+// test that this tree no longer counts while its rule still stands: a
+// target is a test because a workflow or a registry row runs it, and
+// deleting the row (or the workflow line) is not a way to stop testing it.
+// Remove the rule, or give the target its row back.
+func DroppedMakeTargets(before, res *Result) []string {
+	now := map[string]bool{}
+	for _, it := range res.Items {
+		now[it.ID()] = true
+	}
+	var problems []string
+	for _, it := range before.Items {
+		if it.Kind != KindMakeTarget || now[it.ID()] || !res.Rules[RuleID(it.Dir, it.Name)] {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("make target %s (%s) is a test on main and no longer one here, though its rule stands: give it its registry row back, or remove the rule", it.Name, it.Dir))
+	}
+	return problems
 }

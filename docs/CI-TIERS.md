@@ -125,7 +125,7 @@ next table. Every job of every other workflow is a row here.
 | `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
 | `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test extract` |
-| `schema-test-pr` | `ci-fast.yml` | per-PR, main, dispatch | always: `schema-test run --group pr --shard i/N`, the registry's unit and functional tests cut by measured seconds |
+| `schema-test-pr` | `ci-fast.yml` | per-PR, main, dispatch | always: `schema-test run --group pr --shard i/N`, the registry's language-free unit and functional tests cut by measured seconds, among them the goldens (once the `pins` job) and the block zero-cost gate (once `block-gate`) |
 | `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
 | `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
 | `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
@@ -145,11 +145,11 @@ next table. Every job of every other workflow is a row here.
 | `conformance-rows-elixir` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir leg, as for conformance-rows; `make conformance-rows-elixir` on the corpus the lang-clean agreement shards compile |
 | `input-family-merge` | `ci-fast.yml` | per-PR, main, dispatch | plan: a sharded corpus account (`corpus_shards`); folds the shards' records into the whole account |
 | `input-family-elixir-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir corpus account; runs on lang-clean's uploaded elixir build |
-| `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
+| `stage-compiler` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account; builds bin/schema once for build-cpp-conformance-account and checks nothing |
 | `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
 | `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | always: the schema-test-pr shards and the tables-go-fixedform row read it |
+| `produce` | `ci-fast.yml` | per-PR, main, dispatch | always: one row per producer (the go and goose conformance legs), restored from the runner's cache by the tree's identity (the merged tree and the Go toolchain), built cold on a miss inside two minutes; the schema-test-pr shards unpack them (tools/produce.sh), which refuses a tree built from any other source |
 | `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
-| `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
 | `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
 | `caa-self-test` | `caa-self-test.yml` | per-PR, main, dispatch | trigger paths: the CAA workflow, its script, tools/pgroup, go.mod |
 | `caa` | `cla.yml` | per-PR, fork-PR, comment | pull_request_target, and a signing or `recheck` comment |
@@ -180,59 +180,27 @@ Every nightly-only workflow gets one decision, recorded in the table below.
 
 Adding a nightly-only workflow means adding its row here in the same change.
 
+The lint, fuzz, resource-bounds and differential workflows that ran one gate each are retired: their jobs are registry rows (docs/TEST-REGISTRY.md), run by `schema-test-pr` per pull request (tier functional: the lint gates, the replays, the fast resource bounds and the squirrel differential's fast half) and by `schema-test-nightly.yml` (tier nightly: the campaigns, the whole differentials and the controls that need them). `internal/ci` TestRetiredWorkflowsAreRegistryRows holds each retired workflow to its rows.
+
 ## The table
 
 Nightly times are the newest completed scheduled run of each workflow on the fleet (2026-11-22), job wall time including setup.
 
 | Workflow | Decision | Pull-request form | Notes |
 |---|---|---|---|
-| `schema-c-runs-hostile-corpus.yml` | fast | `hostile-c` | corpus 61 s (run 44981851584); negative control nightly |
-| `schema-cpp-runs-hostile-corpus.yml` | fast | `hostile-cpp` | corpus 86 s (run 44982111522); negative control (128 s) nightly |
-| `schema-cs-runs-hostile-corpus.yml` | fast | `hostile-cs` | corpus 34 s (run 44982338085) |
-| `schema-dart-runs-hostile-corpus.yml` | fast | `hostile-dart` | corpus 40 s (run 44981703537) |
-| `schema-elixir-runs-hostile-corpus.yml` | fast | `hostile-elixir` | corpus 44 s (run 44981220951) |
-| `schema-java-runs-hostile-corpus.yml` | fast | `hostile-java` | corpus 44 s (run 44981946729) |
-| `schema-js-runs-hostile-corpus.yml` | fast | `hostile-js` | corpus 13 s (run 44982312636) |
-| `schema-lua-runs-hostile-corpus.yml` | fast | `hostile-lua` | 22 s with the planted control (run 44981181866) |
-| `schema-luau-runs-hostile-corpus.yml` | fast | `hostile-luau` | corpus 21 s (run 44981201086) |
-| `schema-moo-runs-hostile-corpus.yml` | fast | `hostile-moo` | the workflow has no completed run at all; the gate is 1.2 s on amd-2 |
-| `schema-python-runs-hostile-corpus.yml` | fast | `hostile-python` | 20 s (run 44980609046) |
-| `schema-ruby-runs-hostile-corpus.yml` | fast | `hostile-ruby` | 38 s with its control (run 44980926937) |
-| `schema-rust-runs-hostile-corpus.yml` | fast | `hostile-rust` | debug profile 32 s (run 44982389122); release profile and control nightly |
-| `schema-squirrel-runs-hostile-corpus.yml` | fast | `hostile-squirrel` | 24 s (run 45004138819) |
-| `schema-unity-runs-hostile-corpus.yml` | fast | `hostile-unity` | corpus 25 s (run 44982450182) |
-| `schema-shared-hostile-corpus.yml` | covered | `schema-test-pr` | its tests (drift and control) are registry rows of internal/ci, so the pr group runs them on every pull request |
-| `schema-lua-resource-bounds.yml` | fast | `bounds-lua` | 9 + 10 s (run 44980779456) |
-| `schema-luau-resource-bounds.yml` | fast | `bounds-luau` | 15 s (run 44983802065) |
-| `schema-python-resource-bounds.yml` | fast | `bounds-python` | 25 s (run 44980674960) |
-| `schema-ruby-resource-bounds.yml` | fast | `bounds-ruby` | 19 s (run 44981451380) |
-| `schema-squirrel-resource-bounds.yml` | fast | `bounds-squirrel` | fast half 9 s; whole campaign 14 s nightly (run 44988950875) |
-| `certify.yml` | covered | `go-test-touched`, `verify-leg`, `lang-lint`, `lang-clean`, `block-gate`, `generated-current`, `nightly-fast` | the release certificate: the whole suite at one SHA, Linux and macOS. Only the night sees macOS and the full matrix at once. Its nightly-gates job runs every row of .github/nightly-gates.txt (every leg's fixed form and versioning, and the gates no workflow ran before), and its negative-controls groups gate-controls-<gate> run each shared gate's control on all 18 legs; none of these runs per pull request (heavy is nightly only, 2026-11-15) |
-| `ruby-leg.yml` | fast | `strict-ruby`, `strict-ruby-2`, `strict-ruby-3`, `strict-ruby-4`, `strict-ruby-5`, `strict-ruby-6` (the six shards of the strict gate), `hostile-ruby`, `bounds-ruby` | the strict gate's fast form, below; `verify-leg` (ruby) runs the leg's conformance, bench and fuzz rows. test-ruby itself now runs nightly without the silent fallback |
-| `schema-dart-generated-strict-analyze-gate.yml` | fast | `strict-dart-all` | `lang-lint` (dart) runs the packet trees (11 s); the whole-corpus `-all` half is 69 s (run 44998125720) |
-| `schema-go-generated-golangci-lint-gate.yml` | covered | `lang-lint` | the packet-corpus ratchet runs per Go diff; the table-corpus `-nightly` half (95 s job, run 44980872816) is too close to the cap and stays nightly |
-| `schema-lua-generated-luacheck-gate.yml` | covered | `lang-lint` | lang-lint (lua) runs the same four targets |
-| `schema-luau-generated-analyze-strict-gate.yml` | fast | `strict-luau` | 21 s with its control (run 44979785127) |
-| `schema-moo-generated-analyze-strict-gate.yml` | fast | `strict-moo` | 23 s (run 44981804000); the pin control stays nightly |
-| `schema-lobster-generated-strict-gate.yml` | fast | `strict-lobster` | 19 s (run 44999452012) |
+| `certify.yml` | covered | `go-test-touched`, `verify-leg`, `lang-lint`, `lang-clean`, `schema-test`, `generated-current`, `nightly-fast` | the release certificate: the whole suite at one SHA, Linux and macOS. Only the night sees macOS and the full matrix at once. Its nightly-gates job runs every row of .github/nightly-gates.txt (every leg's fixed form and versioning, and the gates no workflow ran before), and its negative-controls groups gate-controls-<gate> run each shared gate's control on all 18 legs; none of these runs per pull request (heavy is nightly only, 2026-11-15) |
+| `ruby-leg.yml` | fast | `strict-ruby`, `strict-ruby-2`, `strict-ruby-3`, `strict-ruby-4`, `strict-ruby-5`, `strict-ruby-6` (the six shards of the strict gate), `hostile-ruby` | the strict gate's fast form, below; `verify-leg` (ruby) runs the leg's conformance, bench and fuzz rows. test-ruby itself now runs nightly without the silent fallback |
 | `schema-dart-nightly-fuzz.yml` | fast | `replay-dart`, `verify-dart-fuzz` | replay 16 s (run 44980533495); the 24M-case campaign (127 s) stays nightly; verify-dart-fuzz runs the seeded smoke |
-| `schema-lua-nightly-fuzz.yml` | fast | `replay-lua`, `verify-leg` | the 600 s campaign stays nightly |
-| `schema-luau-nightly-fuzz.yml` | fast | `replay-luau`, `verify-leg` | the 600 s campaign stays nightly |
 | `schema-moo-nightly-fuzz.yml` | covered | `verify-leg`, `schema-test-pr` | verify-leg (moo, fuzz) runs the seeded wire, JSON and message fuzz; the pr group runs the wiring test; the 100-round campaign (195 s) stays nightly |
-| `schema-python-nightly-fuzz.yml` | covered | `verify-leg` | verify-leg (python, fuzz) runs the seeded wire fuzz on both arms; the 500k-case matrix (130-430 s a row) stays nightly |
-| `schema-ruby-nightly-fuzz.yml` | covered | `verify-leg` | as python: 170-410 s a row nightly |
-| `schema-squirrel-nightly-fuzz.yml` | covered | `verify-leg`, `schema-test-pr` | the pr group runs the harness tests; the 128 s campaign stays nightly |
-| `schema-squirrel-all-port-differential.yml` | fast | `differential-squirrel` | the comparison and its planted control, 8 s; the whole differential (721 s) stays nightly |
-| `schema-lua-version-differential.yml` | held | `make schema-lua-version-differential` (32 s) | RED ON MAIN: run 44994938828, Lua 5.3 fails beyond the documented refusal. The static half runs in `schema-test-pr`. Add the row when the nightly is green |
 | `schema-engine-is-the-oracle.yml` | covered | `schema-test-pr` | TestSchemaEngineIsTheOracle* are registry rows, so the pr group runs them on every pull request |
 | `schema-nightly.yml` | covered | `schema-test` | the whole test set through the one launcher (tools/fullrun): every registry instance of every tier and language, and every test the unmoved ledger still holds, by its own command. The `schema-test` job runs the registry's `pr` group on every pull request; the rest of the set runs only at night, and a fixer re-runs a night's reds on a bench with `fullrun retest` |
 | `lobster-fixed-proof-qualification.yml` | fast | `lobster-fixed-proof` | the four fixed-proof gates against the live C++ corpus: 63 s nightly (run 44994152761), 50 s cold on amd-2 |
-| `schema-test-nightly.yml` | covered | `schema-test` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list |
+| `schema-test-nightly.yml` | covered | `schema-test`, `hostile-c`, `hostile-cpp`, `hostile-cs`, `hostile-dart`, `hostile-elixir`, `hostile-java`, `hostile-js`, `hostile-lua`, `hostile-luau`, `hostile-moo`, `hostile-python`, `hostile-ruby`, `hostile-rust`, `hostile-squirrel`, `hostile-unity` | the one test driver (docs/TEST-REGISTRY.md). The `schema-test` job runs the registry's `pr` group (unit and functional, every language whose adapter has landed, every language-free test) on every pull request and prints the coverage matrix. Only the night runs the `nightly` group: every tier in every language, where each instance of a language with no adapter is MISSING and red by design, the work list. The shared hostile corpus is its `hostile` family: one row per manifest case, which each language answers from one run of its corpus target (tools/schema-test/hostile.go; it replaced the per-language hostile-corpus workflows and the shared one). Each `hostile-<lang>` row is that target's pull-request form, run when a diff touches the corpus or the port's runner |
 | `tla-nightly.yml` | covered | `schema-test-pr` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
-| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed`, `cs-block-compile`, `cs-block-compile-negative-control`, `hostile-lobster` | ci-fast is ci-full selected by path. `hostile-lobster` (24 s cold on a bench) is the lobster hostile corpus's pull-request form; go's (106 s, not light) and goose's (red on main) run nightly as certify.yml nightly-gates rows. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
-| `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
-| `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
+| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `schema-test`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed`, `cs-block-compile`, `cs-block-compile-negative-control`, `hostile-lobster` | ci-fast is ci-full selected by path. `hostile-lobster` (24 s cold on a bench) is the lobster hostile corpus's pull-request form; go's (106 s, not light) and goose's (red on main) run nightly as certify.yml nightly-gates rows. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
+| `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
+| `python-leg.yml` | covered | `verify-leg`, `hostile-python` | the dispatch form of the above |
 | `leg-gates-nightly.yml` | held | `verify-leg`, `input-family`, `go-fixed-corpus`, `nightly-fast` run parts of it per pull request | RED ON MAIN: run 43759152936 (dispatch on main, 2026-11-15): fifteen fixed form + versioning rows failed. The five leg-gate jobs moved here from ci-fast.yml, where they ran on a dispatch only; the whole goose fuzz gate (`goose-fuzz-whole`) runs here too. A per-leg fast form of each fixed-form harness, inside two minutes, joins ci-fast.yml when the nightly is green |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
 | `release.yml` | not-a-gate | | cuts a release |

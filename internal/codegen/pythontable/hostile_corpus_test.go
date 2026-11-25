@@ -485,15 +485,26 @@ func TestPythonHostileScorerOutcomes(t *testing.T) {
 	}
 }
 
-// TestPythonRunsHostileCorpus: every corpus input reaches the manifest's
+// TestHostileCorpus_python: every corpus input reaches the manifest's
 // verdict and decoded-value digest under both pinned
 // interpreters, and no input crashes or hangs the leg.
-func TestPythonRunsHostileCorpus(t *testing.T) {
+func TestHostileCorpus_python(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..", "..")
 	corpusDir := pythonHostileCorpusDir(root)
 	cases := pythonHostileCorpusCases(t, corpusDir)
 	answers := pythonHostileRun(t, root, corpusDir, cases, false)
+	// the per-case verdicts the registry reads (hostilecorpus.WriteVerdicts)
+	failed := map[string]string{}
+	for _, c := range cases {
+		a, ok := answers[c.Name]
+		if why := pythonHostileGrade(c, a, ok); why != "" {
+			failed[c.Name] = why
+		}
+	}
+	if err := hostilecorpus.WriteVerdicts(hostilecorpus.VerdictsPath(t.TempDir()), slices.Collect(maps.Keys(answers)), failed); err != nil {
+		t.Fatal(err)
+	}
 	if bad := pythonHostileCompare(cases, answers); len(bad) != 0 {
 		t.Fatalf("the Python port disagrees with %d of %d hostile-corpus cases:\n  %s",
 			len(bad), len(cases), strings.Join(bad, "\n  "))
@@ -555,7 +566,7 @@ func TestPythonHostileLane(t *testing.T) {
 		"schema-python-runs-hostile-corpus-negative-control:",
 		"schema-python-resource-bounds:",
 		"schema-python-resource-bounds-negative-control:",
-		"TestPythonRunsHostileCorpus",
+		"TestHostileCorpus_python",
 		"TestPythonHostileCorpusPlantedReader",
 		"TestPythonResourceBoundsHostileShapes",
 		"TestPythonResourceBoundsPlantedPattern",
@@ -566,27 +577,13 @@ func TestPythonHostileLane(t *testing.T) {
 			t.Errorf("make/python-hostile.mk does not carry %q", want)
 		}
 	}
-	for _, wf := range []struct {
-		name string
-		want []string
-	}{
-		{"schema-python-runs-hostile-corpus.yml", []string{"cron:", "workflow_dispatch:", "make schema-python-runs-hostile-corpus\n", "make schema-python-runs-hostile-corpus-negative-control"}},
-		{"schema-python-resource-bounds.yml", []string{"cron:", "workflow_dispatch:", "make schema-python-resource-bounds\n", "make schema-python-resource-bounds-negative-control"}},
-	} {
-		data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", wf.name))
-		if err != nil {
+	// the two workflows that ran these targets are retired: the registry's
+	// rows run them, so a workflow that came back would run them twice
+	for _, name := range []string{"schema-python-runs-hostile-corpus.yml", "schema-python-resource-bounds.yml"} {
+		if _, err := os.Stat(filepath.Join(root, ".github", "workflows", name)); err == nil {
+			t.Errorf("%s is back: the registry's rows run its targets", name)
+		} else if !os.IsNotExist(err) {
 			t.Fatal(err)
-		}
-		text := string(data)
-		for _, want := range wf.want {
-			if !strings.Contains(text, want) {
-				t.Errorf("%s does not carry %q", wf.name, want)
-			}
-		}
-		for _, heavy := range []string{"\n  push:", "\n  pull_request:"} {
-			if strings.Contains(text, heavy) {
-				t.Errorf("%s has a per-commit trigger %q; the heavy lane is nightly and dispatch only", wf.name, heavy)
-			}
 		}
 	}
 }

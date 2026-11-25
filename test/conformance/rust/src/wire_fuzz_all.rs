@@ -62,6 +62,7 @@ mod tblsurf;
 mod packetunions;
 mod tblvaluedefaults;
 mod tbla1;
+mod tblmoodmap;
 
 use std::io::{self, Read, Write};
 
@@ -406,6 +407,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("packetunions", "ShapeMsg"),
     ("tblvaluedefaults", "FixedDefaults"),
     ("tblvaluedefaults", "VarDefaults"),
+    ("tblmoodmap", "MoodMap"),
 ];
 
 // A declared fixed root reads form 3 and refuses every other form by name
@@ -668,6 +670,7 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("packetunions", "ShapeMsg") => arm!(packetunions, shape_msg_load, shape_msg_load_retain, shape_msg_save, shape_msg_save_checked, shape_msg_save_retain, shape_msg_load_measure, wire, retain),
         ("tblvaluedefaults", "FixedDefaults") => arm!(tblvaluedefaults, fixed_defaults_load, fixed_defaults_load_retain, fixed_defaults_save, fixed_defaults_save_checked, fixed_defaults_save_retain, fixed_defaults_load_measure, wire, retain),
         ("tblvaluedefaults", "VarDefaults") => arm!(tblvaluedefaults, var_defaults_load, var_defaults_load_retain, var_defaults_save, var_defaults_save_checked, var_defaults_save_retain, var_defaults_load_measure, wire, retain),
+        ("tblmoodmap", "MoodMap") => arm!(tblmoodmap, mood_map_load, mood_map_load_retain, mood_map_save, mood_map_save_checked, mood_map_save_retain, mood_map_load_measure, wire, retain),
         _ => None,
     }
 }

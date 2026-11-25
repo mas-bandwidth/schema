@@ -58,14 +58,14 @@ toolchain-lobster:
 # (internal/codegen/lobster) and the table surface
 # (internal/codegen/lobstertable), each under the pinned toolchain. The
 # fixed-form tests read the shared byte-oracle corpus, so it is built first,
-# and the rule that nothing skips makes a missing oracle a failure rather than the
-# skip a bare `go test` takes. The package run is its own target,
+# and a missing oracle is a failure that names it, never a skip
+# (docs/rulings.json no-skips). The package run is its own target,
 # test-lobster-packages, so ci-fast's Lobster rows can run it on a row of its
 # own; test-lobster runs it exactly as before.
 .PHONY: test-lobster test-lobster-packages update-goldens-lobster
 test-lobster: toolchain-lobster build/fixedform-corpus/.stamp test-lobster-packages
 test-lobster-packages: toolchain-lobster build/fixedform-corpus/.stamp
-	go test -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/lobster/... ./internal/codegen/lobstertable/...
 update-goldens-lobster: ;
 
 # build/conformance-lobster is the manifest's units generated for lobster, one
@@ -179,7 +179,7 @@ GOLDENS_LEGS      += update-goldens-lobster
 # test-lobster already includes these tests through its package-wide command.
 .PHONY: tables-lobster-view
 tables-lobster-view: toolchain-lobster
-	go test -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
+	$(GO_TEST) -count=1 -timeout 600s ./internal/codegen/lobstertable/ -run '^TestLobsterUnitViewListing$$' -v
 
 # THE PULL-REQUEST FORM of lobster-fixed-proof-qualification.yml (docs/CI-TIERS.md;
 # ci-fast.yml nightly-fast row lobster-fixed-proof): the four fixed-proof

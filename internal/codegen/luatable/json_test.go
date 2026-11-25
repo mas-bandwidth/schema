@@ -167,11 +167,14 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 	}
 	refused := map[string]string{}
 	readCompared, writeCompared := 0, 0
-	instances, skipped := 0, 0
+	// a row the manifest marks as having no text form has nothing to read or
+	// write here; every other row is compared, and a unit the Lua generator
+	// refuses fails its rows by name
+	instances, noText := 0, 0
 	var mismatches []string
 	for _, row := range jsonManifestRows(t, manifestPath, "instance") {
 		if row.noText {
-			skipped++
+			noText++
 			continue
 		}
 		paths, ok := unitFiles[row.unit]
@@ -179,14 +182,14 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 			mismatches = append(mismatches, fmt.Sprintf("instance %s: no manifest unit", row.caseName))
 			continue
 		}
-		if _, bad := refused[row.unit]; bad {
-			skipped++
+		if why, bad := refused[row.unit]; bad {
+			mismatches = append(mismatches, fmt.Sprintf("instance %s: the Lua generator refuses unit %s: %s", row.caseName, row.unit, why))
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
-			skipped++
+			mismatches = append(mismatches, fmt.Sprintf("instance %s: the Lua generator refuses unit %s: %v", row.caseName, row.unit, err))
 			continue
 		}
 		instances++
@@ -230,24 +233,24 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 		t.Error(m)
 	}
 	if readCompared == 0 || writeCompared == 0 {
-		t.Fatalf("no instance round-tripped (read %d, write %d, %d instances, %d skipped)", readCompared, writeCompared, instances, skipped)
+		t.Fatalf("no instance round-tripped (read %d, write %d, %d instances, %d rows with no text form)", readCompared, writeCompared, instances, noText)
 	}
 
-	hostileCompared, hostileSkipped := 0, 0
+	hostileCompared := 0
 	for _, row := range jsonManifestRows(t, manifestPath, "json-hostile") {
 		paths, ok := unitFiles[row.unit]
 		if !ok {
 			t.Errorf("json-hostile %s: no manifest unit", row.caseName)
 			continue
 		}
-		if _, bad := refused[row.unit]; bad {
-			hostileSkipped++
+		if why, bad := refused[row.unit]; bad {
+			t.Errorf("json-hostile %s: the Lua generator refuses unit %s: %s", row.caseName, row.unit, why)
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
-			hostileSkipped++
+			t.Errorf("json-hostile %s: the Lua generator refuses unit %s: %v", row.caseName, row.unit, err)
 			continue
 		}
 		textData, err := os.ReadFile(filepath.Join(repo, row.path, row.root+".json"))
@@ -279,9 +282,9 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 	for _, unit := range names {
 		t.Logf("refused unit %s: %s", unit, refused[unit])
 	}
-	t.Logf("instances: %d json-read and %d json-write compared (%d instances, %d no-text/refused skipped)",
-		readCompared, writeCompared, instances, skipped)
-	t.Logf("json-hostile: %d rows compared (%d skipped by a refused unit)", hostileCompared, hostileSkipped)
+	t.Logf("instances: %d json-read and %d json-write compared (%d instances, %d rows with no text form)",
+		readCompared, writeCompared, instances, noText)
+	t.Logf("json-hostile: %d rows compared", hostileCompared)
 }
 
 // TestLuaJsonNegativeControl patches the emitted runtime in memory — one

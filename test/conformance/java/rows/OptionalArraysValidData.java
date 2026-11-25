@@ -103,7 +103,7 @@ public final class OptionalArraysValidData {
     // refusal — the "acceptance" half of the cell's title.
     private static boolean clean(TableFixed.Report r) {
         return r.widened == 0 && r.unknown == 0
-                && !r.damaged && !r.refused;
+                && !r.refused;
     }
 
     // THE WIRE ID IS fnv1a64 OF THE WIRE NAME (docs/SPEC-TABLES.md §5), and
@@ -174,7 +174,7 @@ public final class OptionalArraysValidData {
         if (!clean(r)) {
             System.out.println("       report: widened=" + r.widened
                     + " unknown=" + r.unknown
-                    + " damaged=" + r.damaged + " refused=" + r.refused + " " + r.reason);
+                    + " refused=" + r.refused + " " + r.reason);
         }
     }
 

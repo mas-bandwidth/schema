@@ -162,7 +162,7 @@ public final class TableMain {
     }
 
     static boolean fixedClean() {
-        return !fixedReport.refused && !fixedReport.damaged && fixedReport.unknown == 0
+        return !fixedReport.refused && fixedReport.unknown == 0
                 && fixedReport.widened == 0;
     }
 

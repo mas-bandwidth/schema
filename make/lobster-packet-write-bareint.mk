@@ -8,7 +8,7 @@ PACKET_WRITE_BAREINT_LOBSTER_NEG := build/packet-write-bareint/lobster-negative
 
 .PHONY: packet-write-bareint-lobster packet-write-bareint-lobster-negative-control
 packet-write-bareint-lobster: toolchain-lobster
-	go test -count=1 -run '^TestLobsterPacketWriteBareInt$$' ./test/packet-write-bareint/lobster
+	$(GO_TEST) -count=1 -run '^TestLobsterPacketWriteBareInt$$' ./test/packet-write-bareint/lobster
 
 packet-write-bareint-lobster-negative-control: packet-write-bareint-lobster
 	@mkdir -p $(PACKET_WRITE_BAREINT_LOBSTER_NEG)
@@ -16,7 +16,7 @@ packet-write-bareint-lobster-negative-control: packet-write-bareint-lobster
 		-out $(PACKET_WRITE_BAREINT_LOBSTER_NEG)/write.gotext internal/codegen/lobster/write.go
 	@printf '{"Replace":{"%s/internal/codegen/lobster/write.go":"%s/$(PACKET_WRITE_BAREINT_LOBSTER_NEG)/write.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_BAREINT_LOBSTER_NEG)/overlay.json
-	@if go test -count=1 -overlay=$(PACKET_WRITE_BAREINT_LOBSTER_NEG)/overlay.json \
+	@if $(GO_TEST_RED) -count=1 -overlay=$(PACKET_WRITE_BAREINT_LOBSTER_NEG)/overlay.json \
 		-run '^TestLobsterPacketWriteBareInt$$' ./test/packet-write-bareint/lobster \
 		> $(PACKET_WRITE_BAREINT_LOBSTER_NEG)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: removing the signed narrow width assert left the packet write gate green'; exit 1; fi

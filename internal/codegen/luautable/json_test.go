@@ -184,14 +184,18 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 	units, _ := readManifest(t)
 	cache := map[string]*generatedUnit{}
 	readCompared, writeCompared, hostileCompared := 0, 0, 0
-	instances, skipped, ungenerated := 0, 0, 0
+	// an instance row the manifest marks as having no text form has nothing
+	// to read or write here; every other row is compared, and a row whose
+	// unit is missing or refused by the generator fails by name
+	instances, noText := 0, 0
 	var mismatches []string
 	for _, row := range jsonManifestRows(t) {
 		if _, ok := units[row.unit]; !ok {
+			mismatches = append(mismatches, fmt.Sprintf("%s %s: no manifest unit %s", row.kind, row.caseName, row.unit))
 			continue
 		}
 		if row.kind == "instance" && row.noText {
-			skipped++
+			noText++
 			continue
 		}
 		g, ok := cache[row.unit]
@@ -200,7 +204,7 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 			cache[row.unit] = g
 		}
 		if g.err != nil {
-			ungenerated++
+			mismatches = append(mismatches, fmt.Sprintf("%s %s: the Luau generator refuses unit %s: %v", row.kind, row.caseName, row.unit, g.err))
 			continue
 		}
 		if row.kind == "instance" {
@@ -268,8 +272,8 @@ func TestLuauJsonAgreesWithTheCorpus(t *testing.T) {
 	if hostileCompared == 0 {
 		t.Fatal("no json-hostile row compared")
 	}
-	t.Logf("%d instances compared (json-read %d, json-write %d), %d json-hostile rows compared, %d text-less instances skipped, %d rows of units the target refuses to generate",
-		instances, readCompared, writeCompared, hostileCompared, skipped, ungenerated)
+	t.Logf("%d instances compared (json-read %d, json-write %d), %d json-hostile rows compared, %d instance rows with no text form",
+		instances, readCompared, writeCompared, hostileCompared, noText)
 }
 
 // TestLuauJsonNegativeControl patches the emitted runtime in memory — one

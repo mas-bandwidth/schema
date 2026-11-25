@@ -5,7 +5,8 @@ package ci
 // — huge counts, deep nesting, recursion, giant strings, many unknown fields —
 // must cost bounded memory and time, with nesting depth capped at 128 and
 // refused by the text_limit name. This is the Go-unit half of the gate:
-// it holds the make target and its workflow to the contract, proves the
+// it holds the make target to the contract (the target and its control run as
+// nightly registry rows, TestRetiredWorkflowsAreRegistryRows), proves the
 // allocation counter by a planted unbounded allocation, and forces each planted
 // pattern to go red.
 
@@ -18,12 +19,11 @@ import (
 )
 
 const resourceBoundsMake = "make/schema-squirrel-resource-bounds.mk"
-const resourceBoundsWorkflow = ".github/workflows/schema-squirrel-resource-bounds.yml"
 const resourceBoundsDepthCap = "128"
 
 // squirrelrelResourceBoundsProblems is the gate. An empty result is a pass;
 // every string is one broken property, named.
-func squirrelrelResourceBoundsProblems(mk, wf string) []string {
+func squirrelrelResourceBoundsProblems(mk string) []string {
 	var bad []string
 	want := func(body, needle, what string) {
 		if !strings.Contains(body, needle) {
@@ -44,17 +44,6 @@ func squirrelrelResourceBoundsProblems(mk, wf string) []string {
 	want(mk, "giant", "the giant-string hostile shape is not named")
 	want(mk, "unknown", "the many-unknown-fields hostile shape is not named")
 	want(mk, "schema-squirrel-resource-bounds-negative-control", "the negative control is not defined")
-	// THE WORKFLOW: nightly and dispatch only (the owner, 2026-11-15: "I want
-	// everything that is not light moved to nightly test now." "no
-	// exceptions."); no push and no pull request starts it. The fast half and
-	// the whole campaign both run there, the campaign confined to the nightly
-	// triggers.
-	want(wf, "schedule:", "the workflow has no schedule trigger")
-	want(wf, "workflow_dispatch:", "the workflow has no dispatch trigger")
-	bad = append(bad, nightlyOnlyTriggerProblems(wf)...)
-	want(wf, "make schema-squirrel-resource-bounds-fast", "the workflow does not run the fast half")
-	want(wf, "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", "the whole campaign is not confined to the nightly triggers")
-	want(wf, "make schema-squirrel-resource-bounds", "the workflow does not run the whole campaign")
 	return bad
 }
 
@@ -65,33 +54,25 @@ func TestSquirrelResourceBoundsGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf, err := os.ReadFile(filepath.Join(root, resourceBoundsWorkflow))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bad := squirrelrelResourceBoundsProblems(string(mk), string(wf)); len(bad) > 0 {
+	if bad := squirrelrelResourceBoundsProblems(string(mk)); len(bad) > 0 {
 		t.Fatalf("the squirrel resource-bounds harness is incomplete:\n  %s", strings.Join(bad, "\n  "))
 	}
 
 	// THE PLANTED PATTERNS. A copy with the depth cap, the allocation counter,
-	// a hostile shape or the nightly trigger removed must be refused; a copy
+	// or a hostile shape removed must be refused; a copy
 	// with the plant out must pass. This is the gate's red line, kept in the
 	// test.
 	plants := []struct {
-		name, mk, wf string
-		needle       string // the text the plant removes
+		name, mk string
+		needle   string // the text the plant removes
 	}{
-		{"no depth cap", strings.ReplaceAll(string(mk), "SQUIRREL_RESOURCE_BOUNDS_DEPTH_CAP ?= 128", ""), string(wf), "depth cap"},
-		{"no allocation counter", strings.ReplaceAll(string(mk), "SCHEMA_SQUIRREL_RESOURCE_BOUNDS_ALLOC_COUNTER ?= runtime_readmemstats", ""), string(wf), "allocation counter"},
-		{"no text_limit", strings.ReplaceAll(string(mk), "text_limit", ""), string(wf), "text_limit"},
-		{"no deep nesting", strings.ReplaceAll(string(mk), "deep nesting", ""), string(wf), "deep nesting"},
-		{"no schedule", string(mk), strings.ReplaceAll(string(wf), "schedule:", ""), "schedule"},
-		{"campaign unguarded", string(mk), strings.ReplaceAll(string(wf), "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'", ""), "trigger"},
-		{"pull request restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  pull_request:\n", 1), "pull_request"},
-		{"push restored", string(mk), strings.Replace(string(wf), "\non:\n", "\non:\n  push:\n", 1), "push"},
+		{"no depth cap", strings.ReplaceAll(string(mk), "SQUIRREL_RESOURCE_BOUNDS_DEPTH_CAP ?= 128", ""), "depth cap"},
+		{"no allocation counter", strings.ReplaceAll(string(mk), "SCHEMA_SQUIRREL_RESOURCE_BOUNDS_ALLOC_COUNTER ?= runtime_readmemstats", ""), "allocation counter"},
+		{"no text_limit", strings.ReplaceAll(string(mk), "text_limit", ""), "text_limit"},
+		{"no deep nesting", strings.ReplaceAll(string(mk), "deep nesting", ""), "deep nesting"},
 	}
 	for _, p := range plants {
-		bad := squirrelrelResourceBoundsProblems(p.mk, p.wf)
+		bad := squirrelrelResourceBoundsProblems(p.mk)
 		if len(bad) == 0 {
 			t.Fatalf("PLANTED PATTERN %q left the gate GREEN: %s", p.name, p.needle)
 		}

@@ -194,11 +194,11 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 
 # THE VERDICT PIPE is the strict-read gate. The builder arm is one load
 # (the whole value or a refusal). The retain arm is the retaining write-back.
-# the rule that nothing skips is required so slowtest.Gate does not skip. The negative
+# Without the pinned toolchain it fails by name (docs/rulings.json no-skips). The negative
 # control plants its fault in the generated artifact the VM compiles.
 .PHONY: tables-lobster-wire-fuzz-verdict tables-lobster-wire-fuzz-verdict-negative-control
 tables-lobster-wire-fuzz-verdict:
-	go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipe$$'
+	$(GO_TEST) -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipe$$'
 tables-lobster-wire-fuzz-verdict-negative-control:
-	go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipeNegativeControl$$'
+	$(GO_TEST) -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipeNegativeControl$$'
 test-lobster: tables-lobster-wire-fuzz-verdict tables-lobster-wire-fuzz-verdict-negative-control

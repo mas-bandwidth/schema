@@ -91,7 +91,7 @@ func t14CompressedFloats(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.damaged {
+	if r.n != 1 || r.refused {
 		t.Fatalf("R30: the off-grid round trip did not read: %+v", r)
 	}
 	if got := parseDumpedFloatBits(t, r.value["aim"]); got != 0x3E99999A {

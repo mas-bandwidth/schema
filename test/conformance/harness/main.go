@@ -55,6 +55,9 @@ func usage() {
              cook's canonical node dump, and the block forgery battery
              resolved to byte offsets. Both come from the FIRST driver in the
              registry, which is the reference leg.
+             -surfaces cook or -surfaces block-dump pins one of them, and
+             -driver names the reference command to pin from instead (make
+             pins-conformance-block pins from the block walk alone).
 
   run        materialise the fixtures, run every driver in the registry over
              every surface it lists, compare against the data, and print the
@@ -92,6 +95,14 @@ func usage() {
              fixed and variable roots, run the compiler engine as oracle, and
              verify FromJson verdict, canonical ToJson, Save wire, and
              Load(wire) -> ToJson across matching drivers in two batched calls.
+  wire-fuzz-rows
+             print every pinned wire-fuzz vector and every random-pass arm
+             and seed as a test registry row (wirefuzz_registry.go)
+  wire-fuzz-adapter
+             answer the registry's wire-fuzz requests on standard input in
+             every --config NAME=COMMAND of one --lang leg, each random
+             pass with the leg's --leg-flags, --jobs runs at once; a
+             request that is not its row fails by name
   registry-rows
              print every case of every surface as a test registry row
              (adapter.go); test/registry/registry.jsonl holds exactly
@@ -156,7 +167,7 @@ func main() {
 	family := fs.String("family", "", "every row's registry family, for a manifest other than the corpus's (registry-rows only; the BOM entry gate's is bom-entry)")
 	only := fs.String("only", "", "run one registered language")
 	resultsOut := fs.String("results", "", "write every case's verdict to this JSON file, the input of tools/matrix proof (run only)")
-	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz only)")
+	driver := fs.String("driver", "", "the leg to fuzz, as a command (wire-fuzz); the leg to pin from instead of the registry's first (pin)")
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
 	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
 	maxMutants := fs.Int("max-mutants", 0, "cap total mutants while covering every seed, pinned vector, stateful valid->refused->valid reuse triad per root, and an even stride over enumerated/random passes (wire-fuzz only)")
@@ -178,13 +189,17 @@ func main() {
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", strings.Join(cardSurfaces, ","), "comma-separated required card surfaces, default all nine (cards only)")
 	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
-	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run only)")
+	onlySurfaces := fs.String("surfaces", "", "run only these surfaces, comma separated; the rest are not run, so they are neither answers nor absences (run); pin only these of cook, block-dump (pin)")
 	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
 	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
 	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
 	in := fs.String("in", "", "where the coverage rows are (coverage only)")
 	requireNine := fs.Bool("require-original-nine", false, "require original-nine completion (coverage only)")
 	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
+	var configs configFlag
+	fs.Var(&configs, "config", "NAME=COMMAND: one configuration of the leg and its wire-fuzz driver, repeatable (wire-fuzz-adapter only)")
+	jobs := fs.Int("jobs", 4, "runs at once (wire-fuzz-adapter only)")
+	legFlags := fs.String("leg-flags", "", "the flags every random pass of this leg runs with, as the release gate gives them (wire-fuzz-adapter only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -275,7 +290,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "pin":
-		if err := pin(m, *drivers, *work, "testdata/conformance/tables/cook"); err != nil {
+		if err := pin(m, *drivers, *driver, *onlySurfaces, *work, "testdata/conformance/tables/cook"); err != nil {
 			fatalf("%v", err)
 		}
 	case "json-fuzz":
@@ -344,6 +359,18 @@ func main() {
 		if !ok {
 			os.Exit(1)
 		}
+	case "wire-fuzz-rows":
+		rows, err := wireFuzzRows(*vectors, mooPinnedList)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if err := writeWireFuzzRows(os.Stdout, rows); err != nil {
+			fatalf("%v", err)
+		}
+	case "wire-fuzz-adapter":
+		if err := runWireFuzzAdapter(*vectors, *lang, configs, *legFlags, *work, *jobs); err != nil {
+			fatalf("%v", err)
+		}
 	case "registry-rows":
 		reps, err := readReports(*reports)
 		if err != nil {
@@ -363,13 +390,13 @@ func main() {
 		if *lang == "" {
 			fatalf("adapter: --lang names the leg whose instances are on standard input")
 		}
-		legRunner := func(lang string) (legRun, error) {
+		legRunner := func(lang string, cases map[caseKey]bool) (legRun, error) {
 			set, err := claimsFor(m, *drivers, lang, true)
 			if err != nil {
 				return legRun{}, err
 			}
 			var got legRun
-			opts := runOptions{claims: set, strictRows: true, capture: func(results map[string]map[string]*result, legFailures map[string][]string) {
+			opts := runOptions{claims: set, strictRows: true, cases: cases, capture: func(results map[string]map[string]*result, legFailures map[string][]string) {
 				got = legRun{results: results[lang], legFailures: legFailures[lang]}
 			}}
 			// the matrix is the run's log: on stderr, never the protocol

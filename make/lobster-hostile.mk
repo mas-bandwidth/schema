@@ -9,12 +9,10 @@
 # toolchain, and holds every answer to the engine's committed verdict. Reads
 # files only: no network, no clock.
 #
-# A disagreement the port already owes is carried, by name, in
-# test/conformance/lobster/hostile-known-findings.tsv and printed as a
-# FIX-CARD. A schema the Lobster target refuses is a NAMED ABSENCE: each of its
-# cases is printed ABSENT with the refusal and counted, never passed. A
-# disagreement no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
-# too, so the list cannot rot into silence.
+# No list carries a finding (docs/rulings.json no-skips): every disagreement
+# is a FAIL line naming its case, and the run is red. A schema the Lobster
+# target refuses is a NAMED ABSENCE: each of its cases is printed ABSENT with
+# the refusal, never passed, and the ledger is red on each by name.
 #
 # The planted-bad-pattern control inverts the variable walk's root body
 # verdict and makes the fixed read answer nothing, in a copy of the generated
@@ -29,9 +27,8 @@ LOBSTER_HOSTILE_PACKET := internal_ci_hostilecorpus_corpus_packet_hostile_schema
 
 .PHONY: schema-lobster-runs-hostile-corpus schema-lobster-runs-hostile-corpus-negative-control
 schema-lobster-runs-hostile-corpus: lobster-dist-present
-	go test -count=1 -run '^TestScorerOutcomes$$' ./test/conformance/lobster/hostile
+	$(GO_TEST) -count=1 -run '^TestScorerOutcomes$$' ./test/conformance/lobster/hostile
 	go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)
-	sh make/checks/hostile-carry-controls.sh lobster findings-lobster $(LOBSTER_HOSTILE_BUILD)-carry 'go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD) --no-generate --corpus "$$CARRY_CORPUS" --findings "$$CARRY_FINDINGS"'
 
 # the port's unit target runs the corpus (the prerequisite lands here, so
 # make/lobster.mk itself is untouched)

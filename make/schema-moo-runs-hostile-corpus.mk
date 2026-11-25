@@ -19,14 +19,14 @@
 # once more, so it is the nightly half.
 .PHONY: schema-moo-runs-hostile-corpus schema-moo-runs-hostile-corpus-negative-control
 
-# The tests shell out to the pinned interpreter, so they sit behind
-# slowtest.Gate; both targets run through test/slowgate/proof, which sets
-# the rule that nothing skips, refuses a gate skip and requires each named --- PASS, so a
-# skipped run can never pass as green.
+# The tests shell out to the pinned interpreter and fail by name without it
+# (docs/rulings.json no-skips); both targets run through test/slowgate/proof,
+# which refuses a SKIP in the log and requires each named --- PASS, so a run
+# that tested nothing can never pass as green.
 schema-moo-runs-hostile-corpus: toolchain-moo
 	sh test/slowgate/proof schema-moo-runs-hostile-corpus \
-		'TestSchemaMooRunsHostileCorpus TestSchemaMooHostileScorerOutcomes' \
-		./internal/ci -run '^(TestSchemaMooRunsHostileCorpus|TestSchemaMooHostileScorerOutcomes)$$' -count=1 -timeout 600s
+		'TestHostileCorpus_moo TestSchemaMooHostileScorerOutcomes' \
+		./internal/ci -run '^(TestHostileCorpus_moo|TestSchemaMooHostileScorerOutcomes)$$' -count=1 -timeout 600s
 
 schema-moo-runs-hostile-corpus-negative-control: toolchain-moo
 	sh test/slowgate/proof schema-moo-runs-hostile-corpus-negative-control \

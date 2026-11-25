@@ -269,16 +269,16 @@ static partial class Program
 
         FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
 
-        // CASE empty-file: ZERO BYTES. There is no first byte, so no name can be
-        // earned; the residue is malformed and nothing else claims success.
+        // CASE empty-file: ZERO BYTES. There is no first byte, and §5.3's refusal
+        // table names it truncated; this form's report has no malformed flag.
         {
             FX1.FxRoot v = Poison();
             string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, ReadOnlySpan<byte>.Empty, plan, r);
-            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+            Check(n == -1 && !r.Damaged && r.Refused && r.Reason == "truncated" &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
-                  "empty-file: zero bytes is malformed and claims no success" + Clean(r));
+                  "empty-file: zero bytes refuses truncated by name (§5.3)" + Clean(r));
             Check(Fp(v) == before, "empty-file: the row is at its declared defaults");
         }
 
@@ -336,9 +336,9 @@ static partial class Program
             string before = DefaultsFp();
             FX1.TableReport r = new FX1.TableReport();
             long n = FX1.Schema.FxRootFixedLoad(v, reserved, plan, r);
-            Check(n == -1 && r.Damaged && !r.Refused && r.Reason == null &&
+            Check(n == -1 && !r.Damaged && r.Refused && r.Reason == "reserved_not_zero" &&
                   r.Unknown == 0 && r.Widened == 0 && r.LayoutHash == 0,
-                  "reserved-byte3: a nonzero reserved byte is malformed and claims no success" + Clean(r));
+                  "reserved-byte3: a nonzero reserved byte refuses reserved_not_zero by name (§5.3)" + Clean(r));
             Check(Fp(v) == before, "reserved-byte3: the row is at its declared defaults");
         }
     }

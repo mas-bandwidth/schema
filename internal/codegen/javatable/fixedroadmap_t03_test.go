@@ -147,8 +147,8 @@ func t03R32(t *testing.T) {
 		if r.layoutHash != wantHash {
 			t.Errorf("R32: %s read: layoutHash=%s, want the file's own hash %s (§5.9 #7)", half, r.layoutHash, wantHash)
 		}
-		if r.damaged || r.unknown != 0 || r.widened != 0 {
-			t.Errorf("R32: %s read moved a counter or set malformed: %+v; a refusal is one answer, once", half, r)
+		if r.unknown != 0 || r.widened != 0 {
+			t.Errorf("R32: %s read moved a counter: %+v; a refusal is one answer, once", half, r)
 		}
 		for k, want := range r.fresh {
 			if have, ok := r.value[k]; ok && have != want {
@@ -227,7 +227,7 @@ func t03R10(t *testing.T) {
 
 // t03R15: R15 "the four forward-read clamps are retired — count clamp across
 // bounds, range clamp across versions, remap of an unknown variant to None,
-// drop-and-count of an unknown field: each is layout_newer now". The four
+// drop-and-count of an unknown field: each is layout_unknown now". The four
 // rows' OLD-REFUSES-NEW columns are TestFixedVersioningRows' (the rows are in
 // versioningRows and none is a sameHash row, so the column runs); this
 // subtest proves the four rows are in the suite and runs one of them for
@@ -245,24 +245,24 @@ func t03R15(t *testing.T) {
 			}
 		}
 		if !inRows {
-			t.Errorf("R15: %s is not in TestFixedVersioningRows' rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+			t.Errorf("R15: %s is not in TestFixedVersioningRows' rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_unknown by name", row)
 		}
 		if sameHashRows[row] {
 			t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
 		}
 	}
 	// And the run: a newer writer's file under the older reader refuses
-	// layout_newer before any record, on the file's hash alone.
+	// layout_unknown before any record, on the file's hash alone.
 	newFile := t03CorpusFile(t, "new_enum_append.bin")
 	_, classes := buildRow(t, t.TempDir(), "enum_append", []sideSpec{
 		{key: "reads", schema: "VNEW_enum_append.schema", older: []string{"VOLD_enum_append.schema"}},
 		{key: "refuses", schema: "VOLD_enum_append.schema"},
 	})
 	ref := runProbe(t, classes, "Probe_refuses", newFile)
-	if !ref.refused || ref.reason != "layoutNewer" {
-		t.Errorf("R15: the retired remap-to-None read: refused=%v reason=%s, want a refusal named layoutNewer", ref.refused, ref.reason)
+	if !ref.refused || ref.reason != "layoutUnknown" {
+		t.Errorf("R15: the retired remap-to-None read: refused=%v reason=%s, want a refusal named layoutUnknown", ref.refused, ref.reason)
 	}
-	if ref.damaged || ref.n != -1 {
+	if ref.n != -1 {
 		t.Errorf("R15: the retired clamp moved on a newer file: %+v; a forward read refuses whole, before any record", ref)
 	}
 }
@@ -298,7 +298,6 @@ public final class %s {
         out.append("REPORT n=").append(n)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
            .append(" widened=").append(report.widened)
            .append('\n');
@@ -415,7 +414,6 @@ public final class %s {
         out.append("FIRST n=").append(n1)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
            .append(" widened=").append(report.widened)
            .append(" layoutHash=").append("0x" + Long.toHexString(report.layoutHash))
@@ -426,7 +424,6 @@ public final class %s {
         out.append("SECOND n=").append(n2)
            .append(" refused=").append(report.refused)
            .append(" reason=").append(report.reason)
-           .append(" damaged=").append(report.damaged)
            .append(" unknown=").append(report.unknown)
            .append(" widened=").append(report.widened)
            .append(" layoutHash=").append("0x" + Long.toHexString(report.layoutHash))
@@ -495,8 +492,6 @@ func t03ReportField(r *probeRun, k, v string) {
 		r.refused = v == "true"
 	case "reason":
 		r.reason = v
-	case "damaged":
-		r.damaged = v == "true"
 	case "unknown":
 		r.unknown, _ = strconv.Atoi(v)
 	case "widened":
@@ -512,7 +507,7 @@ func t03ReportField(r *probeRun, k, v string) {
 // row; the capability this subtest adds is the WRITE: the leg's own generated
 // writer saves the per-slot raw floor, zero and ceiling, the reader loads
 // them back exact with no counter moved, and the OLDER reader refuses the
-// saved file layout_newer on its hash alone.
+// saved file layout_unknown on its hash alone.
 func t03E3FixedArrayElement(t *testing.T) {
 	classes := t03Build(t, t.TempDir(), "fixed_I_grow_element", []sideSpec{
 		{key: "reads", schema: "VNEW_fixed_I_grow_element.schema", older: []string{"VOLD_fixed_I_grow_element.schema"}},
@@ -531,7 +526,7 @@ func t03E3FixedArrayElement(t *testing.T) {
 	})
 	out := t03RunSaveLoad(t, classes, "Probe_capability")
 	r := parseProbe(t, out)
-	if r.n != 1 || r.refused || r.damaged {
+	if r.n != 1 || r.refused {
 		t.Fatalf("E3/fixed-array-element: the round trip did not read: %+v", r)
 	}
 	if r.widened != 0 || r.unknown != 0 {
@@ -545,13 +540,13 @@ func t03E3FixedArrayElement(t *testing.T) {
 	} // THE OLDER READER REFUSES the newer writer's file, on its hash alone.
 	saved := t03BytesOf(t, out)
 	ref := runProbe(t, classes, "Probe_refuses", saved)
-	if !ref.refused || ref.reason != "layoutNewer" {
-		t.Errorf("E3/fixed-array-element: the older reader: refused=%v reason=%s, want layoutNewer", ref.refused, ref.reason)
+	if !ref.refused || ref.reason != "layoutUnknown" {
+		t.Errorf("E3/fixed-array-element: the older reader: refused=%v reason=%s, want layoutUnknown", ref.refused, ref.reason)
 	}
 	if want := fileHash(t, saved); ref.layoutHash != want {
 		t.Errorf("E3/fixed-array-element: the refusal carries %s, want the file's own hash %s", ref.layoutHash, want)
 	}
-	if ref.n != -1 || ref.damaged {
+	if ref.n != -1 {
 		t.Errorf("E3/fixed-array-element: the older reader moved on a newer file: %+v", ref)
 	}
 }
@@ -615,7 +610,7 @@ func t03E3OtherWidens(t *testing.T) {
 			})
 			out := t03RunSaveLoad(t, classes, "Probe_capability")
 			r := parseProbe(t, out)
-			if r.n != 1 || r.refused || r.damaged {
+			if r.n != 1 || r.refused {
 				t.Fatalf("%s: the round trip did not read: %+v", tc.row, r)
 			}
 			if r.widened != 0 || r.unknown != 0 {
@@ -632,8 +627,8 @@ func t03E3OtherWidens(t *testing.T) {
 			}
 			saved := t03BytesOf(t, out)
 			ref := runProbe(t, classes, "Probe_refuses", saved)
-			if !ref.refused || ref.reason != "layoutNewer" {
-				t.Errorf("%s: the older reader: refused=%v reason=%s, want layoutNewer before any record", tc.row, ref.refused, ref.reason)
+			if !ref.refused || ref.reason != "layoutUnknown" {
+				t.Errorf("%s: the older reader: refused=%v reason=%s, want layoutUnknown before any record", tc.row, ref.refused, ref.reason)
 			}
 			if want := fileHash(t, saved); ref.layoutHash != want {
 				t.Errorf("%s: the refusal carries %s, want the file's own hash %s", tc.row, ref.layoutHash, want)
@@ -707,7 +702,7 @@ func t03C8(t *testing.T) {
 		requireNamedRefusal(t, "C8 bits(12) = 0xFFFF", runProbe(t, classes, "Probe_reads", path), "outOfRange")
 		// The unforged 0xFFF is the width's own top and reads whole.
 		clean := runProbe(t, classes, "Probe_reads", newFile)
-		if clean.n != 1 || clean.refused || clean.damaged || clean.value["v"] != "4095" {
+		if clean.n != 1 || clean.refused || clean.value["v"] != "4095" {
 			t.Errorf("C8: bits(12) = 4095, the width's own top, must read whole: %+v", clean)
 		}
 	})
@@ -777,7 +772,7 @@ func t03R21(t *testing.T) {
 		}
 		return
 	}
-	if got.n != 1 || got.refused || got.damaged {
+	if got.n != 1 || got.refused {
 		t.Fatalf("R21: the old file must read: %+v", got)
 	}
 	src := parseDumpedFloatBits(t, oracle.value["v"])
@@ -818,7 +813,7 @@ func t03R29(t *testing.T) {
 			{key: "refuses", schema: "VOLD_uint_widen.schema"},
 		})
 		got := runProbe(t, classes, "Probe_reads", oldFile)
-		if got.n != 1 || got.refused || got.damaged {
+		if got.n != 1 || got.refused {
 			t.Fatalf("R29: the old file must read: %+v", got)
 		}
 		if v := got.value["v"]; v != "65535" {
@@ -862,7 +857,7 @@ func t03R29(t *testing.T) {
 		// The clean value 100 lands whole on the same build, so the refusal
 		// above is the forged byte's and not the read's.
 		clean := runProbe(t, classes, "Probe_reads", oldFile)
-		if clean.n != 1 || clean.refused || clean.damaged || clean.value["v"] != "100" {
+		if clean.n != 1 || clean.refused || clean.value["v"] != "100" {
 			t.Errorf("R29: the lawful 100 must land whole: %+v", clean)
 		}
 	})
@@ -881,7 +876,7 @@ func t03E5(t *testing.T) {
 		{key: "refuses", schema: "VOLD_optional_add.schema"},
 	})
 	got := runProbe(t, classes, "Probe_reads", oldFile)
-	if got.n != 1 || got.refused || got.damaged {
+	if got.n != 1 || got.refused {
 		t.Fatalf("E5: the plain-T file must read through the ?T reader: %+v", got)
 	}
 	if p := got.value["linkPresent"]; p != "true" {

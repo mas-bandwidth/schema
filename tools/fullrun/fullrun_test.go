@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -66,7 +67,7 @@ func testLedger() []extract.LedgerLine {
 
 func testPlan(t *testing.T) []Unit {
 	t.Helper()
-	units, err := planUnits(testReg(t), testExtract(), testLedger(), map[string]float64{"./internal/x": 50})
+	units, err := planUnits(testReg(t), testExtract(), testLedger(), map[string]float64{"./internal/x": 50}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestPlanHoldsEveryTestOnce(t *testing.T) {
 func TestAssignDealsEachUnitOnceTheSameWayEveryTime(t *testing.T) {
 	t.Parallel()
 	units := testPlan(t)
-	benches := []Bench{{"a", 2}, {"b", 1}}
+	benches := []Bench{{Host: "a", Shards: 2}, {Host: "b", Shards: 1}}
 	s1, err := assign(units, benches)
 	if err != nil {
 		t.Fatal(err)
@@ -234,7 +235,7 @@ func TestGoTestVerdicts(t *testing.T) {
 // fail; a name with no outcome fails naming the run's problem.
 func TestSchemaTestVerdicts(t *testing.T) {
 	t.Parallel()
-	out := []byte("schema-test run a b c d: 4 names\n  a\n  b\nPASS a\nFAIL b: wrong bytes\nMISSING c: language lua has no adapter\nFAIL run: the go adapter crashed\nschema-test FAIL: expected 4, ran 2\n")
+	out := []byte("schema-test run a b c d: 4 names\n  a\n  b\nPASS a\nFAIL b: wrong bytes\nMISSING c: language lua has no adapter\nFAIL run: the go adapter crashed\nschema-test FAIL: expected 4, ran 2, passed 1, failed 1, missing 1, unrepresentable 0\n")
 	got := schemaTestVerdicts(out, []string{"a", "b", "c", "d"}, errors.New("exit status 1"))
 	want := map[string]string{"b": "FAIL: wrong bytes", "c": "MISSING: language lua has no adapter"}
 	for n, first := range want {
@@ -245,11 +246,11 @@ func TestSchemaTestVerdicts(t *testing.T) {
 	if a := got["a"]; a.Verdict != Fail || !strings.Contains(a.First, "FAIL run: the go adapter crashed") {
 		t.Errorf("a pass beside a crashed adapter: %+v", a)
 	}
-	summed := schemaTestVerdicts([]byte("PASS a\nFAIL b: wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	summed := schemaTestVerdicts([]byte("PASS a\nFAIL b: wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
 	if a := summed["a"]; a.Verdict != Pass {
 		t.Errorf("a pass beside another name's failure and the run's summary: %+v", a)
 	}
-	exited := schemaTestVerdicts([]byte("PASS a\n"), []string{"a"}, errors.New("exit status 2"))
+	exited := schemaTestVerdicts([]byte("PASS a\nschema-test PASS: expected 1, ran 1, passed 1, failed 0, missing 0, unrepresentable 0\n"), []string{"a"}, errors.New("exit status 2"))
 	if a := exited["a"]; a.Verdict != Fail || !strings.Contains(a.First, "exit status 2") {
 		t.Errorf("a pass from a run that exited non-zero: %+v", a)
 	}
@@ -949,7 +950,7 @@ func TestUntarRefusesWhatIsNotAFileOrDirectory(t *testing.T) {
 // TestLaunchRefusesAShortSha: --sha names a whole commit.
 func TestLaunchRefusesAShortSha(t *testing.T) {
 	t.Parallel()
-	_, err := launch(context.Background(), Options{Sha: "5e80dac", Benches: []Bench{{"h", 1}}, OutRoot: t.TempDir(), Work: "w"},
+	_, err := launch(context.Background(), Options{Sha: "5e80dac", Benches: []Bench{{Host: "h", Shards: 1}}, OutRoot: t.TempDir(), Work: "w"},
 		&fakeRemote{}, func(time.Duration) {}, func() time.Time { return time.Unix(0, 0) }, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "40-hex") {
 		t.Fatalf("a short --sha: %v", err)
@@ -964,7 +965,7 @@ func TestARegistryRowTheExtractCannotReadIsARed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	units, err := planUnits(reg, testExtract(), testLedger(), nil)
+	units, err := planUnits(reg, testExtract(), testLedger(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1017,5 +1018,597 @@ func TestAShardThatFinishesWhileLookedAtIsDone(t *testing.T) {
 	}
 	if !st.Done || st.Alive {
 		t.Errorf("a shard that finished while looked at: %+v", st)
+	}
+}
+
+// TestATimedOutcomeLineIsRead: schema-test prints how long an instance
+// took after its name ("PASS a (0.02s)", "FAIL b (1.20s): reason"); the
+// outcome is the name's, not "no outcome".
+func TestATimedOutcomeLineIsRead(t *testing.T) {
+	t.Parallel()
+	got := schemaTestVerdicts([]byte("PASS a (0.02s)\nFAIL b (1.20s): wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Pass {
+		t.Errorf("a timed pass: %+v", a)
+	}
+	if b := got["b"]; b.Verdict != Fail || b.First != "FAIL: wrong bytes" {
+		t.Errorf("a timed fail: %+v", b)
+	}
+}
+
+// TestAShortRunTheMissingNamesExplainIsTheirs: "expected N instances to
+// run, M ran" is the MISSING names' own red when they are exactly the
+// N-M; a pass beside it stays a pass. When they are not, it is the run's
+// problem and fails the passes too.
+func TestAShortRunTheMissingNamesExplainIsTheirs(t *testing.T) {
+	t.Parallel()
+	got := schemaTestVerdicts([]byte("PASS a\nMISSING b: lobster owes it\nFAIL run: expected 2 instances to run, 1 ran\nschema-test FAIL: expected 2, ran 1, passed 1, failed 0, missing 1, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Pass {
+		t.Errorf("a pass beside a MISSING name: %+v", a)
+	}
+	if b := got["b"]; b.Verdict != Fail || !strings.HasPrefix(b.First, "MISSING") {
+		t.Errorf("the MISSING name: %+v", b)
+	}
+	odd := schemaTestVerdicts([]byte("PASS a\nMISSING b: owed\nFAIL run: expected 3 instances to run, 1 ran\nschema-test FAIL: expected 3, ran 1, passed 1, failed 0, missing 1, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := odd["a"]; a.Verdict != Fail || !strings.Contains(a.First, "expected 3 instances to run, 1 ran") {
+		t.Errorf("a pass beside a short run its MISSING names do not explain: %+v", a)
+	}
+	// an adapter that echoes a name's MISSING line: the name is MISSING once
+	echoed := schemaTestVerdicts([]byte("MISSING b: owed\nPASS a\nMISSING b: owed\nFAIL run: expected 2 instances to run, 1 ran\nschema-test FAIL: expected 2, ran 1, passed 1, failed 0, missing 1, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := echoed["a"]; a.Verdict != Pass {
+		t.Errorf("a pass beside a MISSING name printed twice: %+v", a)
+	}
+}
+
+// TestRereadCorrectsARegistryVerdictFromItsLog: reread reads a finished
+// shard's logs again, every kind it runs, rewrites the verdicts and first
+// lines it misread, keeps
+// the results as written, leaves other units alone, and refuses a second
+// reread and a log with no exit line.
+func TestRereadCorrectsARegistryVerdictFromItsLog(t *testing.T) {
+	t.Parallel()
+	out := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(out, "logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{Run: "r", Shard: "h-1", Bench: "h", Units: []Unit{
+		{ID: "registry/x", Kind: KindRegistry, Args: []string{"a", "b"}, Names: []Name{{Name: "a"}, {Name: "b"}}},
+		{ID: "make/y", Kind: KindMake, Args: []string{"y"}, Names: []Name{{Name: "y"}}},
+	}}
+	mb, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"manifest.json": string(mb),
+		doneFile:        "",
+		"logs/1.log":    "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\nFAIL b (0.10s): wrong bytes\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n\n# exit: exit status 1, 1.0s\n",
+		resultsFile: `{"name":"a","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
+			`{"name":"b","unit":"registry/x","verdict":"FAIL","first":"schema-test reported no outcome for it","log":"logs/1.log","seconds":0.5}` + "\n" +
+			`{"name":"y","unit":"make/y","verdict":"FAIL","first":"warning: a fixture failed to load","log":"logs/2.log","seconds":1}` + "\n",
+		"logs/2.log": "# fullrun r make/y on h, shard h-1\n# make --no-print-directory y\nwarning: a fixture failed to load\ny: 3 rows FAILED\nmake: *** [y] Error 1\n\n# exit: exit status 2, 1.0s\n",
+	}
+	for p, body := range files {
+		if err := os.WriteFile(filepath.Join(out, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var log strings.Builder
+	if err := reread(out, &log); err != nil {
+		t.Fatal(err)
+	}
+	res, err := loadResults(filepath.Join(out, resultsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"a": Pass, "b": Fail, "y": Fail}
+	for _, r := range res {
+		if r.Verdict != want[r.Name] {
+			t.Errorf("%s: %+v, want %s", r.Name, r, want[r.Name])
+		}
+	}
+	if res[1].First != "FAIL: wrong bytes" || res[2].First != "y: 3 rows FAILED" || res[0].Seconds != 0.5 {
+		t.Errorf("reread results: %+v", res)
+	}
+	if !strings.Contains(log.String(), "3 results read again, 3 changed from the results as written: 1 red to green") {
+		t.Errorf("reread said: %s", log.String())
+	}
+	if b, err := os.ReadFile(filepath.Join(out, rereadBackup)); err != nil || string(b) != files[resultsFile] {
+		t.Errorf("the results as written were not kept: %v", err)
+	}
+	// a second reread reads the results as written again, not the reread
+	first, err := os.ReadFile(filepath.Join(out, resultsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log.Reset()
+	if err := reread(out, &log); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(filepath.Join(out, resultsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(first) || !strings.Contains(log.String(), "3 changed from the results as written") {
+		t.Errorf("a second reread: %s\n%s", log.String(), again)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, rereadBackup)); err != nil || string(b) != files[resultsFile] {
+		t.Errorf("a second reread changed the results as written: %v", err)
+	}
+	cut := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cut, "logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for p, body := range map[string]string{"manifest.json": string(mb), doneFile: "", "logs/1.log": "# fullrun r registry/x on h, shard h-1\n# schema-test run a b\nPASS a (0.02s)\n", resultsFile: files[resultsFile]} {
+		if err := os.WriteFile(filepath.Join(cut, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := reread(cut, io.Discard); err == nil || !strings.Contains(err.Error(), "no exit line") {
+		t.Errorf("a log with no exit line: %v", err)
+	}
+}
+
+// TestRereadRefusesAShardThatHasNotFinished: a shard with no DONE is still
+// running or was never finished; its logs may be cut short, so it is not
+// reread. Nor are results that leave a name without one; a line cut short
+// that a later result covers is dropped, as the shard dropped it.
+func TestRereadRefusesAShardThatHasNotFinished(t *testing.T) {
+	t.Parallel()
+	out := t.TempDir()
+	mb, err := json.Marshal(Manifest{Run: "r", Shard: "h-1", Units: []Unit{{ID: "u", Kind: KindGoTest, Args: []string{"TestA", "TestB"}, Names: []Name{{Name: "a"}, {Name: "b"}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p, body := range map[string]string{"manifest.json": string(mb), "l.log": "# fullrun r u on h, shard h-1\n# go test\n\n# exit: exit status 1, 1.0s\n", resultsFile: "{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\",\"log\":\"l.log\"}\n{\"name\":\"b\",\"unit\n"} {
+		if err := os.WriteFile(filepath.Join(out, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "has not finished") {
+		t.Errorf("a shard with no DONE: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(out, doneFile), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := reread(out, io.Discard); err == nil || !strings.Contains(err.Error(), "b of unit u has no result") {
+		t.Errorf("results with a cut line nothing after it covers: %v", err)
+	}
+	// the shard ran the unit again after the cut, as a shard does
+	if err := os.WriteFile(filepath.Join(out, resultsFile), []byte("{\"name\":\"a\",\"unit\":\"u\",\"verdict\":\"FAIL\",\"log\":\"l.log\"}\n{\"name\":\"b\",\"unit\n{\"name\":\"b\",\"unit\":\"u\",\"verdict\":\"PASS\",\"log\":\"l.log\"}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := reread(out, io.Discard); err != nil {
+		t.Errorf("results with a cut line a later result covers: %v", err)
+	}
+}
+
+// TestTwoOutcomesForOneNameAreTheRunsProblem: a reason that spans lines,
+// or an adapter's output schema-test passes through, can print an outcome
+// line. Outcomes for a name that disagree, more passes than the summary
+// counts, and a run with no summary are not trusted, and the passes beside
+// them fail; an echo that agrees with the report is harmless, and lines
+// after the summary are not schema-test's.
+func TestTwoOutcomesForOneNameAreTheRunsProblem(t *testing.T) {
+	t.Parallel()
+	got := schemaTestVerdicts([]byte("PASS a\nFAIL b: x\nMISSING b: y\nFAIL run: expected 3 instances to run, 2 ran\nschema-test FAIL: expected 3, ran 2, passed 1, failed 1, missing 1, unrepresentable 0\n"), []string{"a", "b", "c"}, errors.New("exit status 1"))
+	if a := got["a"]; a.Verdict != Fail || !strings.Contains(a.First, "outcomes for b that disagree") {
+		t.Errorf("a pass beside a name whose outcomes disagree: %+v", a)
+	}
+	forged := schemaTestVerdicts([]byte("PASS a\nFAIL b: x\nPASS b\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if b := forged["b"]; b.Verdict != Fail {
+		t.Errorf("a forged pass after a name's fail: %+v", b)
+	}
+	counted := schemaTestVerdicts([]byte("PASS a\nPASS b: x\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"a", "b"}, errors.New("exit status 1"))
+	if a := counted["a"]; a.Verdict != Fail || !strings.Contains(a.First, "summary counts 1 passes") {
+		t.Errorf("more passes than the summary counts: %+v", a)
+	}
+	cut := schemaTestVerdicts([]byte("FAIL b: x\nPASS c\n"), []string{"b", "c"}, errors.New("signal: killed"))
+	if c := cut["c"]; c.Verdict != Fail || !strings.Contains(c.First, "no summary (exit: signal: killed)") {
+		t.Errorf("a pass from a run that printed no summary: %+v", c)
+	}
+	killed := schemaTestVerdicts([]byte("FAIL b: x\nPASS c\nschema-test FAIL: expected 2, ran 2, passed 1, failed 1, missing 0, unrepresentable 0\n"), []string{"b", "c"}, errors.New("signal: killed"))
+	if c := killed["c"]; c.Verdict != Fail || !strings.Contains(c.First, "summary says FAIL, but it exited signal: killed") {
+		t.Errorf("a pass beside a summary a killed run did not print: %+v", c)
+	}
+	echoed := schemaTestVerdicts([]byte("PASS a\nPASS a (0.01s)\nPASS b (0.01s)\nschema-test PASS: expected 2, ran 2, passed 2, failed 0, missing 0, unrepresentable 0\nFAIL a: after the report\n"), []string{"a", "b"}, nil)
+	if a, b := echoed["a"], echoed["b"]; a.Verdict != Pass || b.Verdict != Pass {
+		t.Errorf("an adapter's echo of a pass, and a line after the summary: %+v %+v", a, b)
+	}
+}
+
+// TestANestedModuleTestRunsInItsModule: a Go test in a directory under a
+// nested go.mod runs go in that module (go -C), naming its package from
+// there, not from the repository's root, where go cannot find it.
+func TestANestedModuleTestRunsInItsModule(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, d := range []string{"test/go-tables/sub", "internal/x"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, m := range []string{"go.mod", "test/go-tables/go.mod"} {
+		if err := os.WriteFile(filepath.Join(root, m), []byte("module m\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	of := moduleOf(root)
+	for dir, want := range map[string]string{"test/go-tables/sub": "test/go-tables", "test/go-tables": "test/go-tables", "internal/x": "", ".": ""} {
+		if got := of(dir); got != want {
+			t.Errorf("moduleOf(%s) = %q, want %q", dir, got, want)
+		}
+	}
+	res := &extract.Result{Items: []extract.Item{
+		{Kind: extract.KindGoTest, Dir: "test/go-tables/sub", Name: "TestN", Tier: "unit"},
+		{Kind: extract.KindGoTest, Dir: "test/go-tables", Name: "TestM", Tier: "unit"},
+		{Kind: extract.KindGoTest, Dir: "test/go-tables", Name: "BenchmarkM", Tier: "nightly"},
+	}}
+	units, err := planUnits(testReg(t), res, nil, nil, of)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"gotest/test/go-tables/sub/001": "go -C test/go-tables test -count=1 -timeout 0 -json -run ^(TestN)$ ./sub",
+		"gotest/test/go-tables/001":     "go -C test/go-tables test -count=1 -timeout 0 -json -run ^(TestM)$ .",
+		"gobench/test/go-tables":        "go -C test/go-tables test -count=1 -timeout 0 -json -run ^$ -bench ^(BenchmarkM)$ -benchtime 1x .",
+	}
+	found := 0
+	for _, u := range units {
+		w, ok := want[u.ID]
+		if !ok {
+			continue
+		}
+		found++
+		argv, _ := unitArgv(u, "schema-test", nil)
+		if got := strings.Join(argv, " "); got != w {
+			t.Errorf("%s runs %q, want %q", u.ID, got, w)
+		}
+	}
+	if found != len(want) {
+		t.Errorf("the plan holds %d of the %d nested-module units: %+v", found, len(want), units)
+	}
+	root1, _ := unitArgv(Unit{Kind: KindGoTest, Dir: "./internal/x", Args: []string{"TestA"}}, "schema-test", nil)
+	if got := strings.Join(root1, " "); got != "go test -count=1 -timeout 0 -json -run ^(TestA)$ ./internal/x" {
+		t.Errorf("a test of the root module runs %q", got)
+	}
+}
+
+// TestAWindowsTestRunsOnABenchThatRunsWindows: a Go test built only for
+// Windows is a unit of its own, built with GOOS=windows, dealt only to a
+// bench that runs Windows tests (captain=N+windows); with no such bench it
+// is NOT RUN, naming what it needs.
+func TestAWindowsTestRunsOnABenchThatRunsWindows(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		gates        []string
+		source, want string
+	}{
+		{[]string{"build: windows"}, "tools/treelock/x_test.go:10", "windows"},
+		{nil, "tools/treelock/treelock_windows_test.go:10", "windows"},
+		{nil, "tools/treelock/lock_darwin_arm64_test.go:3", "darwin"},
+		{[]string{"build: !windows"}, "a/x_test.go:1", ""},
+		{[]string{"build: unix"}, "a/x_test.go:1", ""},
+		{[]string{"build: linux || windows"}, "a/x_test.go:1", ""},
+		{[]string{"build: schema_leg_moo"}, "a/x_test.go:1", ""},
+		{[]string{"build: windows || !schema_leg_moo"}, "a/x_test.go:1", ""},
+		{[]string{"build: windows && schema_leg_moo"}, "a/x_test.go:1", "windows"},
+		{[]string{"build: schema_leg_moo", "build: windows"}, "a/x_test.go:1", "windows"},
+		{nil, "a/windows_test.go:1", ""},
+		{nil, "internal/codegen/js/serialize_js_lookup_test.go:1", ""},
+		{nil, "a/x_amd64_test.go:1", ""},
+	} {
+		if got := needsGOOS(c.gates, c.source); got != c.want {
+			t.Errorf("needsGOOS(%v, %s) = %q, want %q", c.gates, c.source, got, c.want)
+		}
+	}
+	res := &extract.Result{Items: []extract.Item{
+		{Kind: extract.KindGoTest, Dir: "tools/treelock", Name: "TestTreelockWindowsRefusal", Tier: "unit", Gates: []string{"build: windows"}, Source: "tools/treelock/treelock_windows_test.go:10"},
+		{Kind: extract.KindGoTest, Dir: "tools/treelock", Name: "TestTreelock", Tier: "unit", Source: "tools/treelock/treelock_test.go:10"},
+	}}
+	units, err := planUnits(testReg(t), res, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var win Unit
+	for _, u := range units {
+		if u.ID == "gotest/tools/treelock/goos-windows/001" {
+			win = u
+		}
+	}
+	if win.GOOS != "windows" || len(win.Args) != 1 || win.Args[0] != "TestTreelockWindowsRefusal" {
+		t.Fatalf("the Windows test's unit: %+v", win)
+	}
+	if _, env := unitArgv(win, "schema-test", map[string]string{"A": "1"}); env["GOOS"] != "windows" || env["A"] != "1" {
+		t.Errorf("a Windows unit runs with %v", env)
+	}
+	shards, err := assign(units, []Bench{{Host: "a", Shards: 2}, {Host: "captain", Shards: 1, GOOS: []string{"windows"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range shards {
+		for _, u := range s.Units {
+			if u.GOOS == "windows" && s.Bench != "captain" {
+				t.Errorf("a Windows unit dealt to %s", s.ID)
+			}
+		}
+	}
+	// no bench runs Windows: the unit is in no shard, and NOT RUN says why
+	benches := []Bench{{Host: "a", Shards: 2}}
+	shards, err = assign(units, benches)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := &State{Dir: t.TempDir(), Units: units, Benches: benches}
+	for _, s := range shards {
+		for _, u := range s.Units {
+			if u.GOOS != "" {
+				t.Errorf("a Windows unit dealt to %s, which does not run Windows", s.ID)
+			}
+		}
+		st.Shards = append(st.Shards, &ShardState{Shard: s})
+	}
+	a, err := account(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, r := range a.Rows {
+		if r.Name.Name == "unmoved/go-test/tools/treelock/TestTreelockWindowsRefusal" {
+			seen = true
+			if r.Verdict != Fail || !strings.Contains(r.First, "no bench in this run runs windows tests") || !strings.Contains(r.First, "captain") {
+				t.Errorf("a Windows test no bench runs: %+v", r)
+			}
+		}
+	}
+	if !seen {
+		t.Error("the Windows test is not in the run's rows")
+	}
+	got, err := parseBenches([]string{"captain=2+windows", "a=4"})
+	if err != nil || len(got) != 2 || !got[0].Runs("windows") || got[1].Runs("windows") || !got[1].Runs("") {
+		t.Errorf("parseBenches: %+v, %v", got, err)
+	}
+	if _, err := parseBenches([]string{"a=4+linux"}); err == nil {
+		t.Error("a bench named for linux, which every bench runs, was taken")
+	}
+}
+
+// TestAWarningIsNotTheFirstLineBesideAFailure: a warning that says
+// something failed is passed over when a line that is not a warning says
+// so; when no other line does, the warning is the first line.
+func TestAWarningIsNotTheFirstLineBesideAFailure(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		lines []string
+		want  string
+	}{
+		{[]string{"warning: table WideBlob refused: past the fixed-form ceiling", "build ok", "rust fixed form: 21 FAILED", "make: *** [x] Error 1"}, "rust fixed form: 21 FAILED"},
+		{[]string{"x.c:3:5: warning: an error-prone cast", "unit.c:(.text+0x3a): undefined reference to `f'", "collect2: error: ld returned 1 exit status"}, "unit.c:(.text+0x3a): undefined reference to `f'"},
+		{[]string{"warning: cards_test.go:12: a fixture failed to load", "cards_test.go:40: wrong bytes"}, "cards_test.go:40: wrong bytes"},
+		{[]string{"checking", "warning: go key order: the control failed to go red", "done"}, "warning: go key order: the control failed to go red"},
+		{[]string{"warning: x refused", "# the root refuses form 1, so", "PASS TestRefuseBeforePublishing", "0 Error(s)", "tables conformance: 7 rows FAILED", "make: *** [t] Error 1"}, "tables conformance: 7 rows FAILED"},
+		{[]string{"warning: x refused", "u.c:(.text+0x3a): undefined reference to 'f'", "collect2: error: ld returned 1 exit status", "make: *** [t] Error 1"}, "u.c:(.text+0x3a): undefined reference to 'f'"},
+		{[]string{"warning: x refused", "wire-fuzz roster incomplete: a codec is absent", "echo the roster was not read here", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2", ""}, "wire-fuzz roster incomplete: a codec is absent"},
+		{[]string{"warning: x refused", "NEGATIVE CONTROL: the sabotage did not apply", "make: *** [t] Error 2"}, "NEGATIVE CONTROL: the sabotage did not apply"},
+		{[]string{"roster built", "make[1]: *** [Makefile:9: t] Error 1", "make: *** [t] Error 2"}, "make[1]: *** [Makefile:9: t] Error 1"},
+		{[]string{"warning: x failed", "./gen --check", "make: *** [t] Error 2"}, "warning: x failed"},
+		{[]string{"u.c: undefined reference to 'f'", "link step over"}, "u.c: undefined reference to 'f'"},
+		{[]string{"warning: y refused", "note: the cache is not warm, rebuilding", "make: *** [check] Error 3"}, "warning: y refused"},
+		{[]string{"generating tables", "note: the cache is not warm, rebuilding", "./gen --check", "make: *** [check] Error 3"}, "make: *** [check] Error 3"},
+	} {
+		if got := firstFailLine(c.lines, "make x: exit status 2"); got != c.want {
+			t.Errorf("firstFailLine(%q) = %q, want %q", c.lines, got, c.want)
+		}
+	}
+}
+
+// TestAPartHoldsNoUnitItsRunnerCannotRun: a part runs on a Linux runner, so
+// a unit built for Windows is in no part; every part runs exactly what it
+// is dealt, and the merge reports the Windows test NOT RUN, naming the
+// bench it needs, instead of refusing the parts.
+func TestAPartHoldsNoUnitItsRunnerCannotRun(t *testing.T) {
+	t.Parallel()
+	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
+		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
+	units := []Unit{makeUnit("a"), makeUnit("b"), win}
+	parts := t.TempDir()
+	for k := 1; k <= 2; k++ {
+		p, err := part(units, k, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shards, err := assign(p, []Bench{{Host: LocalHost, Shards: 2}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := &State{Run: "part", Sha: "abc", Part: fmt.Sprintf("%d/2", k), Dir: filepath.Join(parts, fmt.Sprintf("p%d", k)), Benches: []Bench{{Host: LocalHost, Shards: 2}}}
+		n := 0
+		for _, s := range shards {
+			s.ID = fmt.Sprintf("p%d-%s", k, s.ID)
+			st.Shards = append(st.Shards, &ShardState{Shard: s, Label: "runner"})
+			sd := filepath.Join(st.Dir, "shards", s.ID)
+			if err := os.MkdirAll(sd, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			var b strings.Builder
+			for _, u := range s.Units {
+				n++
+				if u.GOOS != "" {
+					t.Errorf("part %d/2 holds %s, built for %s", k, u.ID, u.GOOS)
+				}
+				j, _ := json.Marshal(Result{Name: u.Names[0].Name, Unit: u.ID, Verdict: Pass, Log: "l"})
+				b.Write(append(j, '\n'))
+			}
+			if err := os.WriteFile(filepath.Join(sd, resultsFile), []byte(b.String()), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if n != len(p) {
+			t.Errorf("part %d/2 is dealt %d units, and its runner's shards hold %d", k, len(p), n)
+		}
+		if err := st.save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := t.TempDir()
+	err := mergeParts(units, "abc", parts, out, func() time.Time { return time.Unix(0, 0) }, io.Discard)
+	if err != nil && strings.Contains(err.Error(), "one merge is one plan") {
+		t.Fatalf("the merge refused the parts: %v", err)
+	}
+	if r := readReds(t, out); !strings.Contains(r, "unmoved/go-test/tools/treelock/TestW") || !strings.Contains(r, "no bench in this run runs windows tests") {
+		t.Errorf("the Windows test is not NOT RUN by name:\n%s", r)
+	}
+}
+
+// TestTheWindowsPartRunsEveryWindowsTest: the part named windows holds
+// exactly the plan's units built for Windows and needs a bench that runs
+// them; the merge holds it to that deal, names it missing when its job
+// uploaded nothing, and is green when every part, numbered and named, is.
+func TestTheWindowsPartRunsEveryWindowsTest(t *testing.T) {
+	t.Parallel()
+	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
+		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
+	units := []Unit{makeUnit("a"), makeUnit("b"), win}
+	// a unit no shard runs is in no part, whatever it is built for
+	noShard := Unit{ID: "unrunnable/w", Kind: KindUnrunnable, GOOS: "windows", Names: []Name{{Name: "UNRUNNABLE w"}}}
+	if p, err := goosPart(append(slices.Clip(units), noShard), "windows"); err != nil || len(p) != 1 || p[0].ID != win.ID {
+		t.Fatalf("the windows part is %v (%v), want exactly %s", p, err, win.ID)
+	}
+	if _, err := goosPart(units, "darwin"); err == nil || !strings.Contains(err.Error(), "holds no unit") {
+		t.Errorf("an empty darwin part: %v", err)
+	}
+	if _, _, _, err := parsePart("windows", []Bench{{Host: LocalHost, Shards: 2}}); err == nil || !strings.Contains(err.Error(), "needs a bench that runs windows") {
+		t.Errorf("--part windows on a Linux bench: %v", err)
+	}
+	if _, _, g, err := parsePart("windows", []Bench{{Host: LocalHost, Shards: 1, GOOS: []string{"windows"}}}); err != nil || g != "windows" {
+		t.Errorf("--part windows on a windows bench: %q %v", g, err)
+	}
+	if k, n, g, err := parsePart("2/3", nil); err != nil || k != 2 || n != 3 || g != "" {
+		t.Errorf("--part 2/3: %d %d %q %v", k, n, g, err)
+	}
+	if _, _, _, err := parsePart("linux", []Bench{{Host: LocalHost, Shards: 1, GOOS: []string{"linux"}}}); err == nil || !strings.Contains(err.Error(), "nor one of") {
+		t.Errorf("--part linux, on a bench said to run it: %v", err)
+	}
+	write := func(dir, name, partOf string, us []Unit, b Bench) {
+		st := &State{Run: "part", Sha: "abc", Part: partOf, Dir: filepath.Join(dir, name), Benches: []Bench{b},
+			Shards: []*ShardState{{Shard: Shard{ID: name + "-local-1", Bench: LocalHost, Units: us}, Label: "runner"}}}
+		sd := filepath.Join(st.Dir, "shards", st.Shards[0].ID)
+		if err := os.MkdirAll(sd, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		var lines strings.Builder
+		for _, u := range us {
+			j, _ := json.Marshal(Result{Name: u.Names[0].Name, Unit: u.ID, Verdict: Pass, Log: "l"})
+			lines.Write(append(j, '\n'))
+		}
+		if err := os.WriteFile(filepath.Join(sd, resultsFile), []byte(lines.String()), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := st.save(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linux := Bench{Host: LocalHost, Shards: 2}
+	windows := Bench{Host: LocalHost, Shards: 1, GOOS: []string{"windows"}}
+	numbered := func(dir string) {
+		for k := 1; k <= 2; k++ {
+			p, err := part(units, k, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(dir, fmt.Sprintf("p%d", k), fmt.Sprintf("%d/2", k), p, linux)
+		}
+	}
+	now := func() time.Time { return time.Unix(0, 0) }
+
+	dir, out := t.TempDir(), t.TempDir()
+	numbered(dir)
+	if err := mergeParts(units, "abc", dir, out, now, io.Discard); err == nil {
+		t.Error("a merge without the windows part passed")
+	}
+	if r := readReds(t, out); !strings.Contains(r, "PART MISSING windows") || !strings.Contains(r, win.Names[0].Name+"\t-\t") {
+		t.Errorf("the missing windows part is not named, or its test not NOT RUN:\n%s", r)
+	}
+
+	write(dir, "pwindows", "windows", []Unit{win}, windows)
+	out = t.TempDir()
+	if err := mergeParts(units, "abc", dir, out, now, io.Discard); err != nil {
+		t.Fatalf("every part green: %v\n%s", err, readReds(t, out))
+	}
+
+	for _, c := range []struct {
+		why  string
+		add  func(dir string)
+		want string
+	}{
+		{"the windows part ran a Linux unit", func(d string) { write(d, "pwindows", "windows", []Unit{win, makeUnit("a")}, windows) }, "one merge is one plan"},
+		{"the windows part twice", func(d string) {
+			write(d, "pwindows", "windows", []Unit{win}, windows)
+			write(d, "pwindows2", "windows", []Unit{win}, windows)
+		}, "part windows is there twice"},
+	} {
+		d := t.TempDir()
+		numbered(d)
+		c.add(d)
+		if err := mergeParts(units, "abc", d, t.TempDir(), now, io.Discard); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: merge said %v, want %q", c.why, err, c.want)
+		}
+	}
+
+	d, o := t.TempDir(), t.TempDir()
+	write(d, "pwindows", "windows", []Unit{win}, windows)
+	if err := mergeParts(units, "abc", d, o, now, io.Discard); err == nil || !strings.Contains(readReds(t, o), "PART MISSING i/n") {
+		t.Errorf("only the windows part: %v\n%s", err, readReds(t, o))
+	}
+}
+
+// planRemote answers launch's planner with units and every other script
+// with nothing, as a bench that prepared cleanly.
+type planRemote struct{ units []Unit }
+
+func (p planRemote) Run(_ context.Context, _, script string, _ []byte) ([]byte, error) {
+	if strings.Contains(script, " items --root ") {
+		return json.Marshal(p.units)
+	}
+	return nil, nil
+}
+
+func (planRemote) Fetch(context.Context, string, string, string) error { return nil }
+
+// TestLaunchRunsTheWindowsPartAlone: launch --part windows plans exactly
+// the units built for Windows onto the bench that runs them, records the
+// part by name so the merge takes it, and names its shards for it.
+func TestLaunchRunsTheWindowsPartAlone(t *testing.T) {
+	t.Parallel()
+	win := Unit{ID: "gotest/tools/treelock/goos-windows/001", Kind: KindGoTest, Dir: "./tools/treelock", GOOS: "windows", Args: []string{"TestW"},
+		Names: []Name{{Name: "unmoved/go-test/tools/treelock/TestW"}}, Weight: 9}
+	sha := strings.Repeat("ab", 20)
+	o := Options{Sha: sha, Benches: []Bench{{Host: "captain", Shards: 2, GOOS: []string{"windows"}}}, OutRoot: t.TempDir(), Work: "w",
+		PartGOOS: "windows", PlanOnly: true, Retries: 1, Poll: time.Minute}
+	st, err := launch(context.Background(), o, planRemote{units: []Unit{makeUnit("a"), win, makeUnit("b")}},
+		func(time.Duration) {}, func() time.Time { return time.Unix(0, 0) }, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Part != "windows" || !strings.HasPrefix(filepath.Base(st.Dir), "part-windows") {
+		t.Errorf("the windows part is recorded as part %q in %s", st.Part, st.Dir)
+	}
+	if len(st.Units) != 1 || st.Units[0].ID != win.ID {
+		t.Errorf("the windows part plans %v, want only %s", st.Units, win.ID)
+	}
+	var ran []string
+	for _, s := range st.Shards {
+		if !strings.HasPrefix(s.ID, "pwindows-") {
+			t.Errorf("shard %s is not named for the windows part", s.ID)
+		}
+		for _, u := range s.Units {
+			ran = append(ran, u.ID)
+		}
+	}
+	if !slices.Equal(ran, []string{win.ID}) {
+		t.Errorf("the windows part's shards hold %v, want only %s", ran, win.ID)
+	}
+	loaded, err := loadState(st.Dir)
+	if err != nil || loaded.Part != "windows" {
+		t.Errorf("the saved state's part is %q (%v), and merge reads it", loaded.Part, err)
 	}
 }
