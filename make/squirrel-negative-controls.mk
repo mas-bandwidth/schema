@@ -2,8 +2,8 @@
 # controls as make targets, the shape the nine ports give theirs (make/go.mk's
 # tables-go-accessor-negative-control, make/dart.mk's text-differential
 # control): one target per Test*NegativeControl, run alone through
-# test/slowgate/proof (the rule that nothing skips, a gate skip refused, the test's own
-# --- PASS line required), so tools/negativecontrols enumerates each one and
+# test/slowgate/proof (a SKIP in the log refused, the test's own --- PASS line
+# required), so tools/negativecontrols enumerates each one and
 # make/negative-controls.json places it in a group. Each test plants its defect
 # in memory or in a scratch copy and requires the gate it watches to go red on
 # exactly its rows; the target passes when the control does.

@@ -17,6 +17,12 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 m = importlib.util.module_from_spec(spec)
 loader.exec_module(m)
 
+# What the checker must refuse lives in a data file beside it: a go test -json
+# action that is neither pass nor fail, and native lines announcing a test
+# that did not run.
+PLANTS = json.loads((ROOT/"test/conformance/nightly-readiness.plants.json").read_text(encoding="utf-8"))
+NOT_RUN = PLANTS["not_run_action"]
+
 
 def native(package="gotable", name="TestReady", action="pass", output=""):
     pkg = "github.com/mas-bandwidth/schema/v2/" + m.package_path(package)
@@ -125,7 +131,7 @@ class Contracts(unittest.TestCase):
         for text,listed in (("",[]),(native(),[]),(native(),["TestOther"]),
                             (native(package="ctable"),["TestReady"]),
                             (native(action="fail"),["TestReady"]),
-                            (native(action="skip",output="owed"),["TestReady"]),
+                            (native(action=NOT_RUN,output="owed"),["TestReady"]),
                             (native()+"\n"+native(),["TestReady"]),
                             ("not JSON",["TestReady"])):
             with self.subTest(text=text):
@@ -138,9 +144,9 @@ class Contracts(unittest.TestCase):
     def test_native_skip_is_a_failure(self):
         name="TestFixedFormPlanPath"
         reason="retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness"
-        text="\n".join(native(name=name,action="skip",output=reason).splitlines()[:-1])+"\n"+native()
+        text="\n".join(native(name=name,action=NOT_RUN,output=reason).splitlines()[:-1])+"\n"+native()
         self.assertTrue(m.native_result(text,[name,"TestReady"],"gotable"))
-        self.assertTrue(m.native_result(native(name=name,action="skip",output="owed"),[name,"TestReady"],"gotable"))
+        self.assertTrue(m.native_result(native(name=name,action=NOT_RUN,output="owed"),[name,"TestReady"],"gotable"))
         self.assertTrue(m.native_result(text.replace("gotable","ctable"),[name,"TestReady"],"ctable"))
 
     def test_fuzz_positive_all_seeds_arms(self):
@@ -391,17 +397,15 @@ class Contracts(unittest.TestCase):
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
     def test_every_native_program_skip_marker_is_a_failure(self):
-        for marker in ("SKIP: unknown future test","SKIPPED: owed live ruling","SKIP",
-                       "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): versioning — owed on the lineage harness",
-                       "RETIRED by §5.6: anOlderWriter — held by the versioning harness",
-                       "fixed_test.go:12: SKIP: nested in a Go test log"):
+        self.assertEqual(len(PLANTS["not_run_markers"]),6)
+        for marker in PLANTS["not_run_markers"]:
             with self.subTest(marker=marker):
                 self.assertTrue(m.native_skip_errors(marker))
         self.assertEqual(m.native_skip_errors("PASS\nok"),[])
 
     def test_inherited_noop_skip_and_update_flags_are_removed(self):
         unsafe={"MAKEFLAGS":"-n","MFLAGS":"-n","GNUMAKEFLAGS":"-n","MAKEFILES":"/tmp/injected.mk","MAKEOVERRIDES":"SKIP=1",
-                "SCHEMA_SKIP_LEGS":"go","SCHEMA_UPDATE_WIRE_GOLDENS":"1",
+                "SCHEMA_UPDATE_WIRE_GOLDENS":"1",
                 "SCHEMA_UPDATE_HEADER_GOLDEN":"1","GOFLAGS":"-run=Nothing",
                 "JAVA":"/approved/tool/java"}
         with tempfile.TemporaryDirectory() as tmp,patch.dict(m.os.environ,unsafe):
@@ -541,8 +545,8 @@ class Contracts(unittest.TestCase):
             self.assertIn(phase,required)
         # no native skip is admitted for Goose
         self.assertTrue(m.native_skip_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything"))
-        skip="\n".join(native("goosetable","TestFixedFormPlanPath","skip","retired by docs/FIXED-FORM-ALGORITHM.md §5.6").splitlines()[:-1])+"\n"+native("goosetable")
-        self.assertTrue(m.native_result(skip,["TestFixedFormPlanPath","TestReady"],"goosetable"))
+        retired="\n".join(native("goosetable","TestFixedFormPlanPath",NOT_RUN,"retired by docs/FIXED-FORM-ALGORITHM.md §5.6").splitlines()[:-1])+"\n"+native("goosetable")
+        self.assertTrue(m.native_result(retired,["TestFixedFormPlanPath","TestReady"],"goosetable"))
         self.assertEqual(m.driver_command(ROOT,"goose"),"build/goose-wirefuzz-dispatch build/goose-wirefuzz-legs/legs")
         self.assertIn("goose",m.MIXED_BUILDER)
 

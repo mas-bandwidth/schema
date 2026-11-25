@@ -348,7 +348,8 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 				rep.Ran++
 				switch res.Verdict {
 				case Pass:
-					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Seconds: secondsOf(res)}
+					// a pass keeps its reason: a fuzz row's names its seed
+					status[res.Instance] = Outcome{Full: res.Instance, Status: StatusPass, Reason: res.Reason, Seconds: secondsOf(res)}
 				case Fail:
 					reason := res.Reason
 					if strings.TrimSpace(reason) == "" {

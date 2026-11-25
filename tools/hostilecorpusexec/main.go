@@ -5,7 +5,7 @@
 // hang costs only its own case:
 //
 //	hostilecorpusexec run -port c -exec build/c-hostile/case \
-//	    -corpus internal/ci/hostilecorpus/corpus -findings test/c-hostile/known-findings.tsv
+//	    -corpus internal/ci/hostilecorpus/corpus
 //	hostilecorpusexec probe-schema <out>   # write the corpus's probe schema
 //
 // The case binary is invoked as `<exec> <carrier> <schema> <table> <input>` and
@@ -23,17 +23,14 @@
 //	error <what>\n          the port could not answer
 //
 // A non-zero exit, a signal, a sanitizer report on stderr, or a case past its
-// budget (5 s, HOSTILE_CASE_BUDGET_MS overrides) is a FAIL for that case. A
-// disagreement the port owes is carried in known-findings.tsv (name, slug,
-// input, one line) and printed as a FIX-CARD; a disagreement no FIX-CARD names
-// fails the run, and so does a FIX-CARD whose case agrees, is skipped, or is
-// gone from the manifest. A skip is a failure: there is no list that allows one,
-// so a carrier the port has no API for, or a binding dropped from the case
-// binary, reads red by name. Which cases run is chosen at the root. Reads files only: no network.
+// budget (5 s, HOSTILE_CASE_BUDGET_MS overrides) is a FAIL for that case, and
+// so is every disagreement with the manifest: there is no list that carries a
+// finding (docs/rulings.json no-skips), so each one reads red by its case's
+// name. A skip is a failure too, so a carrier the port has no API for, or a
+// binding dropped from the case binary, reads red by name. Which cases run is chosen at the root. Reads files only: no network.
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -67,13 +64,12 @@ func main() {
 		return
 	}
 	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fatal(errors.New("usage: hostilecorpusexec run -port NAME -exec BINARY -corpus DIR -findings TSV [-jobs N] [-case NAME]"))
+		fatal(errors.New("usage: hostilecorpusexec run -port NAME -exec BINARY -corpus DIR [-jobs N] [-case NAME]"))
 	}
 	flags := flag.NewFlagSet("run", flag.ExitOnError)
 	port := flags.String("port", "", "the port's name, for the report")
 	binary := flags.String("exec", "", "the port's case binary")
 	corpus := flags.String("corpus", "internal/ci/hostilecorpus/corpus", "corpus directory")
-	findings := flags.String("findings", "", "the port's known-findings.tsv")
 	jobs := flags.Int("jobs", defaultJobs(), "cases run at once")
 	only := flags.String("case", "", "run one case and print its raw answer")
 	if err := flags.Parse(os.Args[2:]); err != nil {
@@ -90,7 +86,7 @@ func main() {
 		}
 		budget = time.Duration(ms) * time.Millisecond
 	}
-	ok, err := run(*port, *binary, *corpus, *findings, *only, *jobs, budget)
+	ok, err := run(*port, *binary, *corpus, *only, *jobs, budget)
 	if err != nil {
 		fatal(err)
 	}
@@ -119,63 +115,7 @@ type answer struct {
 
 func (a answer) String() string { return a.kind + " " + a.detail }
 
-// finding is one carried line of known-findings.tsv: name, slug, input,
-// answer and one line, where the answer is what this port gives the case
-// today, `accept <digest>` or `refuse` (docs/HOSTILE-CORPUS.md). A finding
-// carries that answer and no other (F-079).
-type finding struct {
-	name, slug, input, answer, line string
-}
-
-// carries says whether a finding carries got: a refusal under `refuse`,
-// whatever its reason (docs/rulings.json refusal-verdict-only), or the very
-// accept and digest the finding records. An execution failure never (F-070).
-func (f finding) carries(got answer) bool {
-	if f.answer == "refuse" {
-		return got.kind == "refuse"
-	}
-	return got.kind == "accept" && f.answer == got.String()
-}
-
-func validAnswer(a string) bool {
-	d, ok := strings.CutPrefix(a, "accept ")
-	return a == "refuse" || (ok && d != "" && !strings.ContainsAny(d, " \t"))
-}
-
-func loadFindings(path string) (map[string]finding, []string, error) {
-	out := map[string]finding{}
-	var order []string
-	if path == "" {
-		return out, order, nil
-	}
-	f, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return out, order, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = f.Close() }()
-	s := bufio.NewScanner(f)
-	for n := 1; s.Scan(); n++ {
-		line := s.Text()
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		cols := strings.Split(line, "\t")
-		if len(cols) != 5 || cols[4] == "" || !validAnswer(cols[3]) {
-			return nil, nil, fmt.Errorf("%s:%d: a finding is name, slug, input, answer (accept <digest> or refuse) and one line, tab-separated", path, n)
-		}
-		if _, dup := out[cols[0]]; dup {
-			return nil, nil, fmt.Errorf("%s:%d: %s is carried twice", path, n, cols[0])
-		}
-		out[cols[0]] = finding{cols[0], cols[1], cols[2], cols[3], cols[4]}
-		order = append(order, cols[0])
-	}
-	return out, order, s.Err()
-}
-
-func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.Duration) (bool, error) {
+func run(port, binary, corpus, only string, jobs int, budget time.Duration) (bool, error) {
 	cases, err := hostilecorpus.Registered(corpus)
 	if err != nil {
 		return false, err
@@ -189,10 +129,6 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 			}
 		}
 		return false, fmt.Errorf("no case %s", only)
-	}
-	findings, order, err := loadFindings(findingsPath)
-	if err != nil {
-		return false, err
 	}
 	if jobs < 1 {
 		jobs = 1
@@ -213,20 +149,17 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 	close(next)
 	wg.Wait()
 
-	var pass, carried, skipped, unexplained, stale int
-	seen := map[string]bool{}
+	var pass, skipped, unexplained int
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): cases the binary
 	// answered against cases the folder registers, per carrier. answers is
 	// filled by the workers; a slot none of them reached has no kind.
 	ledger := hostilecorpus.NewLedger(cases)
 	for i, c := range cases {
-		seen[c.Name] = true
 		got := answers[i]
 		if got.kind != "skip" && got.kind != "" {
 			ledger.Ran(c.Name)
 		}
 		want := expected(c)
-		f, has := findings[c.Name]
 		switch {
 		case got.kind == "skip":
 			// a skip is a failure: a case that did not run is never a pass
@@ -234,37 +167,32 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 			skipped++
 			unexplained++
 		case agrees(got, want):
-			if has {
-				fmt.Printf("STALE %s: FIX-CARD %s no longer reproduces\n", c.Name, f.slug)
-				stale++
-			} else {
-				pass++
-			}
-		// A finding carries the answer it records and no other: never an
-		// execution failure (crash, sanitizer, timeout, or broken runner:
-		// F-070), and never a different verdict or digest (F-079).
-		case has && f.carries(got):
-			fmt.Printf("FIX-CARD: %s: %s %s (got %s, want %s)\n", f.slug, f.input, f.line, got, want)
-			carried++
+			pass++
 		default:
 			fmt.Printf("FAIL %s carrier=%s got=%s want=%s\n", c.Name, c.Carrier, got, want)
 			unexplained++
 		}
 	}
-	for _, name := range order {
-		if !seen[name] {
-			fmt.Printf("STALE %s: FIX-CARD %s names no case the manifest carries\n", name, findings[name].slug)
-			stale++
+	// the per-case block (internal/ci/hostilecorpus/verdicts.go): a ran
+	// line per case the binary answered, then the ledger, then the end, so
+	// a ledger that does not close is inside the block the registry reads
+	for i, c := range cases {
+		if k := answers[i].kind; k != "skip" && k != "" {
+			fmt.Printf("hostile-ledger ran %s\n", c.Name)
 		}
 	}
-	fmt.Printf("%s: %d cases: %d pass, %d carried as FIX-CARD, %d skipped, %d unexplained, %d stale\n",
-		port, len(cases), pass, carried, skipped, unexplained, stale)
-	if err := ledger.Check(); err != nil {
-		fmt.Printf("FAIL %s %v\n", port, err)
+	ledgerErr := ledger.Check()
+	if ledgerErr != nil {
+		fmt.Printf("FAIL %s %v\n", port, ledgerErr)
+	}
+	fmt.Println("hostile-ledger end")
+	fmt.Printf("%s: %d cases: %d pass, %d skipped, %d unexplained\n",
+		port, len(cases), pass, skipped, unexplained)
+	if ledgerErr != nil {
 		return false, nil
 	}
 	fmt.Printf("%s hostile-corpus ledger: %s\n", port, ledger.Summary())
-	return unexplained == 0 && stale == 0, nil
+	return unexplained == 0, nil
 }
 
 func expected(c hostilecorpus.Case) answer {

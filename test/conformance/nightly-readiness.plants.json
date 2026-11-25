@@ -1,0 +1,12 @@
+{
+  "about": "Inputs nightly_readiness_test.py feeds the nightly-readiness checker, each of which the checker must refuse: a go test -json action that is neither pass nor fail, and native program lines that announce a test was not run.",
+  "not_run_action": "skip",
+  "not_run_markers": [
+    "SKIP: unknown future test",
+    "SKIPPED: owed live ruling",
+    "SKIP",
+    "RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): versioning — owed on the lineage harness",
+    "RETIRED by §5.6: anOlderWriter — held by the versioning harness",
+    "fixed_test.go:12: SKIP: nested in a Go test log"
+  ]
+}

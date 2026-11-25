@@ -10,10 +10,8 @@
 # FAIL for its case and the rest still run. Reads files only: no network, no
 # clock.
 #
-# A disagreement the port already owes is carried, by name, in
-# test/cs-hostile/known-findings.tsv, and printed as a FIX-CARD. A disagreement
-# no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a
-# failure too, so the list cannot rot into silence.
+# A disagreement is never excused by name: every one is a FAIL line naming its
+# case.
 #
 # The planted-verdict control requires the unplanted corpus green, then copies
 # the corpus to a scratch directory, flips the committed verdict of one passing
@@ -22,7 +20,6 @@
 
 CS_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 CS_HOSTILE_BUILD    ?= build/cs-hostile
-CS_HOSTILE_FINDINGS ?= test/cs-hostile/known-findings.tsv
 
 CS_HOSTILE_DOTNET_FLAGS = -v q --nologo \
 	-p:HostileGeneratedDir=$(CURDIR)/$(CS_HOSTILE_BUILD)/generated \
@@ -47,8 +44,7 @@ CS_HOSTILE_CASES ?= $(shell grep -vc '^\#' $(CS_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-cs-runs-hostile-corpus
 schema-cs-runs-hostile-corpus: build/mustrun $(CS_HOSTILE_BUILD)/bin/.stamp
 	$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	$(call hostile_ledgered,cs,$(CS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-cs-runs-hostile-corpus -count $(CS_HOSTILE_CASES) -- $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)",$(CS_HOSTILE_CORPUS))
-	sh make/checks/hostile-carry-controls.sh cs findings $(CS_HOSTILE_BUILD)/carry '$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$$CARRY_CORPUS" "$$CARRY_FINDINGS"'
+	$(call hostile_ledgered,cs,$(CS_HOSTILE_BUILD)/run.log,$(MUSTRUN) -name schema-cs-runs-hostile-corpus -count $(CS_HOSTILE_CASES) -- $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)",$(CS_HOSTILE_CORPUS))
 
 # The port's normal unit target runs the corpus: this file is included after
 # make/cs.mk by the Makefile's wildcard, so the prerequisite lands here and
@@ -59,7 +55,7 @@ test-cs: schema-cs-runs-hostile-corpus
 schema-cs-runs-hostile-corpus-negative-control: $(CS_HOSTILE_BUILD)/bin/.stamp
 	@rm -rf $(CS_HOSTILE_BUILD)/plant && mkdir -p $(CS_HOSTILE_BUILD)/plant/corpus
 	@cp -R $(CS_HOSTILE_CORPUS)/. $(CS_HOSTILE_BUILD)/plant/corpus/
-	@$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" "$(CS_HOSTILE_FINDINGS)" > $(CS_HOSTILE_BUILD)/plant/clean.log 2>&1 || \
+	@$(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_CORPUS)" > $(CS_HOSTILE_BUILD)/plant/clean.log 2>&1 || \
 		{ echo 'NEGATIVE CONTROL FAILED: the unplanted corpus is not green'; cat $(CS_HOSTILE_BUILD)/plant/clean.log; exit 1; }
 	@sed -n 's/^PASS //p' $(CS_HOSTILE_BUILD)/plant/clean.log > $(CS_HOSTILE_BUILD)/plant/pass; \
 	acc=$$(awk -F'\t' 'NR == FNR { ok[$$0] = 1; next } !/^#/ && $$7 == "accept" && ($$1 in ok) { print $$1; exit }' \
@@ -76,7 +72,7 @@ schema-cs-runs-hostile-corpus-negative-control: $(CS_HOSTILE_BUILD)/bin/.stamp
 		$(CS_HOSTILE_CORPUS)/manifest.tsv > $(CS_HOSTILE_BUILD)/plant/corpus/manifest.tsv; \
 	if cmp -s $(CS_HOSTILE_CORPUS)/manifest.tsv $(CS_HOSTILE_BUILD)/plant/corpus/manifest.tsv; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted verdicts did not apply'; exit 1; fi; \
-	if $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_BUILD)/plant/corpus" "$(CS_HOSTILE_FINDINGS)" \
+	if $(DOTNET) $(CS_HOSTILE_BUILD)/bin/cshostile.dll "$(CS_HOSTILE_BUILD)/plant/corpus" \
 			> $(CS_HOSTILE_BUILD)/plant/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: changed verdicts left the corpus green'; cat $(CS_HOSTILE_BUILD)/plant/log; exit 1; fi; \
 	for name in $$acc $$ref; do \

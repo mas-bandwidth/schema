@@ -87,6 +87,11 @@ type makeInputs struct {
 	Tools    []string          `json:"tools,omitempty"`
 	Siblings []string          `json:"siblings,omitempty"`
 	Reads    []string          `json:"reads,omitempty"`
+	// Seed names the make variable a fuzz row's random pass takes its seed
+	// in (LUA_FUZZ_SEED). The seed is the run's, read from SeedEnv in the
+	// context's environment, set on make's command line and named in the
+	// row's verdict, so a red re-runs by name with --seed and that number.
+	Seed string `json:"seed,omitempty"`
 }
 
 func newMakeAdapter() makeAdapter {
@@ -177,6 +182,14 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 			return in, fmt.Errorf("make variable %s is make's own: set on a row it could turn the gate off", k)
 		}
 	}
+	if in.Seed != "" {
+		if !makeVarName.MatchString(in.Seed) || makeOwnVar(in.Seed) {
+			return in, fmt.Errorf("seed variable %q: want an upper-case make variable that is not make's own", in.Seed)
+		}
+		if _, ok := in.Vars[in.Seed]; ok {
+			return in, fmt.Errorf("make variable %s is the row's seed: the seed is the run's, never fixed on the row", in.Seed)
+		}
+	}
 	for _, tool := range in.Tools {
 		if tool == "" || strings.ContainsAny(tool, "/\\ \t") {
 			return in, fmt.Errorf("tool %q: want a program name, found on PATH", tool)
@@ -226,6 +239,16 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 				Reason: fmt.Sprintf("%s writes no rule %q: the target this row runs does not exist", in.File, in.Target)})
 			continue
 		}
+		seed := ""
+		if in.Seed != "" {
+			n, err := testreg.ParseSeed(testreg.EnvFrom(ctx)[testreg.SeedEnv])
+			if err != nil {
+				out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail,
+					Reason: fmt.Sprintf("make %s takes its seed in %s: %v", in.Target, in.Seed, err)})
+				continue
+			}
+			seed = fmt.Sprint(n)
+		}
 		if why := a.needs(in); why != "" {
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Fail, Reason: why})
 			continue
@@ -249,7 +272,11 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 		for _, k := range slices.Sorted(maps.Keys(in.Vars)) {
 			argv = append(argv, k+"="+in.Vars[k])
 		}
+		if seed != "" {
+			argv = append(argv, in.Seed+"="+seed)
+		}
 		log, err := a.exec(ctx, argv)
+		first := len(out)
 		if ctx.Err() != nil {
 			return out, fmt.Errorf("make %s: %w\n%s", in.Target, ctx.Err(), tail(log, 40))
 		}
@@ -267,6 +294,11 @@ func (a makeAdapter) Run(ctx context.Context, _ string, instances []testreg.Inst
 				Reason: fmt.Sprintf("make %s exited 0, and its log holds go test's plain output, which prints nothing for a skipped test, so a skip would read as a pass: %q", in.Target, plain)})
 		default:
 			out = append(out, testreg.Result{Instance: inst.Full, Verdict: testreg.Pass})
+		}
+		if seed != "" {
+			// every verdict of a seeded row names its seed, a pass's too
+			r := &out[first]
+			r.Reason = strings.TrimSuffix("seed "+seed+": "+r.Reason, ": ")
 		}
 	}
 	return out, nil

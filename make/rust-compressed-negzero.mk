@@ -9,7 +9,7 @@
 # writer, the cook) holds a -0 to its +0 twin's bytes, with the plain float's
 # -0 rows as the control
 # (internal/codegen/rusttable/compressed_negzero_corpus_test.go).
-# the rule that nothing skips makes a missing rustc a failure, never a skip. Its
+# A missing rustc is a failure that names it, never a skip (docs/rulings.json no-skips). Its
 # fast twin, TestRustCompressedFloatStoresAreGuarded, runs in the package's
 # ordinary go test. The recipe uses $(RUSTUP_BIN) from make/rust.mk.
 .PHONY: conformance-rust-compressed-negzero

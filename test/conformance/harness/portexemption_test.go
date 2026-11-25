@@ -45,15 +45,9 @@ func TestHostileIllFormedRowHasNoPortExemption(t *testing.T) {
 	// the harness's own expectations, not a second copy of the rule
 	byLang := map[string]expectation{}
 	for _, lang := range langs {
-		legWant, exemptions := hostileExpectations(m, lang)
-		for _, e := range legWant {
+		for _, e := range hostileExpectations(m, lang) {
 			if e.name == caseName {
 				byLang[lang] = e
-			}
-		}
-		for _, line := range exemptions {
-			if line != "" {
-				t.Fatalf("%s: %s still carries a retired exemption: %s", caseName, lang, line)
 			}
 		}
 		if got := string(byLang[lang].want); got != "refused\n" {

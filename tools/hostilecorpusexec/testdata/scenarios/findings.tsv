@@ -1,1 +1,0 @@
-probe	test-probe	inputs/probe.bin	accept -	known verdict mismatch

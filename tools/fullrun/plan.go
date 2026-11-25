@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/build/constraint"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,10 +53,16 @@ const (
 // Unit is what one command runs. Args are parallel to Names for every
 // kind a shard runs: Args[i] is how the command names Names[i].
 type Unit struct {
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	Dir      string   `json:"dir,omitempty"`
-	Tags     string   `json:"tags,omitempty"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Dir  string `json:"dir,omitempty"`
+	Tags string `json:"tags,omitempty"`
+	// Module is the directory of the nested Go module that holds Dir
+	// ("" for the repository's own): go runs there, with -C.
+	Module string `json:"module,omitempty"`
+	// GOOS is the operating system the unit's tests build for when it
+	// is not Linux; only a bench that runs it takes the unit.
+	GOOS     string   `json:"goos,omitempty"`
 	Args     []string `json:"args,omitempty"`
 	Names    []Name   `json:"names"`
 	Weight   float64  `json:"weight"`
@@ -110,17 +118,46 @@ func buildUnits(root string) ([]Unit, error) {
 	if err != nil {
 		return nil, err
 	}
-	return planUnits(reg, res, ledger, weights)
+	return planUnits(reg, res, ledger, weights, moduleOf(root))
+}
+
+// moduleOf answers, for a directory under root, the directory of the
+// go.mod nearest above it, "" when that is root's own.
+func moduleOf(root string) func(string) string {
+	seen := map[string]string{}
+	var of func(string) string
+	of = func(dir string) string {
+		dir = filepath.ToSlash(filepath.Clean(dir))
+		if dir == "." || dir == "" || dir == "/" {
+			return ""
+		}
+		if m, ok := seen[dir]; ok {
+			return m
+		}
+		m := ""
+		if _, err := os.Stat(filepath.Join(root, dir, "go.mod")); err == nil {
+			m = dir
+		} else {
+			m = of(filepath.Dir(dir))
+		}
+		seen[dir] = m
+		return m
+	}
+	return of
 }
 
 // planUnits is buildUnits on what it has read.
-func planUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.LedgerLine, weights map[string]float64) ([]Unit, error) {
+// modOf names the nested module a directory is in (nil: none are).
+func planUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.LedgerLine, weights map[string]float64, modOf func(string) string) ([]Unit, error) {
+	if modOf == nil {
+		modOf = func(string) string { return "" }
+	}
 	counts := packageTestCounts(res)
 	units, err := registryUnits(reg, weights, counts)
 	if err != nil {
 		return nil, err
 	}
-	units = append(units, unmovedUnits(reg, res, ledger, weights, counts)...)
+	units = append(units, unmovedUnits(reg, res, ledger, weights, counts, modOf)...)
 	sort.Slice(units, func(i, j int) bool { return units[i].ID < units[j].ID })
 	ids, names := map[string]bool{}, map[string]string{}
 	for _, u := range units {
@@ -208,7 +245,7 @@ func unmovedName(it extract.Item) string {
 // is that row's, and the row's verdict in this run is its verdict. Counting
 // only what a row runs by name (Covered) would call those inputs UNRUNNABLE
 // although a row in this very run reads each one.
-func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.LedgerLine, weights map[string]float64, counts map[string]int) []Unit {
+func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.LedgerLine, weights map[string]float64, counts map[string]int, modOf func(string) string) []Unit {
 	_, problems := extract.CoveredIn(res, reg)
 	covered := extract.Runs(res, reg)
 	var units []Unit
@@ -227,7 +264,7 @@ func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.L
 	for _, l := range ledger {
 		lineOf[l.Kind+"\t"+l.Dir] = l.Line
 	}
-	type goKey struct{ dir, tags string }
+	type goKey struct{ dir, tags, goos string }
 	goTests := map[goKey][]extract.Item{}
 	goBenches := map[string][]extract.Item{}
 	rides := map[string][]extract.Item{}
@@ -257,7 +294,7 @@ func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.L
 				goBenches[it.Dir] = append(goBenches[it.Dir], it)
 				continue
 			}
-			k := goKey{it.Dir, buildTags(it.Gates)}
+			k := goKey{it.Dir, buildTags(it.Gates), needsGOOS(it.Gates, it.Source)}
 			goTests[k] = append(goTests[k], it)
 		case extract.KindMakeTarget, extract.KindNegativeControl:
 			if strings.ContainsAny(it.Name, "%$()") {
@@ -307,7 +344,10 @@ func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.L
 				if k.tags != "" {
 					id = fmt.Sprintf("gotest/%s/tags-%s/%03d", k.dir, k.tags, n)
 				}
-				cur = &Unit{ID: id, Kind: KindGoTest, Dir: "./" + k.dir, Tags: k.tags}
+				if k.goos != "" {
+					id = strings.Replace(id, fmt.Sprintf("/%03d", n), fmt.Sprintf("/goos-%s/%03d", k.goos, n), 1)
+				}
+				cur = &Unit{ID: id, Kind: KindGoTest, Dir: "./" + k.dir, Tags: k.tags, Module: modOf(k.dir), GOOS: k.goos}
 			}
 			cur.Args = append(cur.Args, it.Name)
 			cur.Names = append(cur.Names, Name{Name: unmovedName(it), Tier: it.Tier, Type: it.Kind, Lang: langOf(it.Dir, langs), Pkg: "./" + it.Dir, Test: it.Name})
@@ -317,7 +357,7 @@ func unmovedUnits(reg *testreg.Registry, res *extract.Result, ledger []extract.L
 	}
 	for dir, items := range goBenches {
 		sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
-		u := Unit{ID: "gobench/" + dir, Kind: KindGoBench, Dir: "./" + dir, Weight: goUnitOverhead}
+		u := Unit{ID: "gobench/" + dir, Kind: KindGoBench, Dir: "./" + dir, Module: modOf(dir), Weight: goUnitOverhead}
 		for _, it := range items {
 			u.Args = append(u.Args, it.Name)
 			u.Names = append(u.Names, Name{Name: unmovedName(it), Tier: it.Tier, Type: it.Kind, Lang: langOf(it.Dir, langs), Pkg: "./" + it.Dir, Test: it.Name})
@@ -360,6 +400,71 @@ func ownerPackage(dir string) string {
 var tagRE = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 var osTags = map[string]bool{"linux": true, "unix": true, "windows": true, "darwin": true, "freebsd": true, "openbsd": true, "netbsd": true, "plan9": true, "js": true, "wasip1": true, "ios": true, "android": true}
+
+// needsGOOS is the operating system a Go test builds only for, when
+// that is not Linux: its build constraint is false on linux/amd64 and true
+// on windows or darwin, or its file is named for one (x_windows_test.go).
+// "" when Linux builds it.
+func needsGOOS(gates []string, source string) string {
+	file, _, _ := strings.Cut(filepath.Base(source), ":")
+	parts := strings.Split(strings.TrimSuffix(file, "_test.go"), "_")
+	// go reads *_GOOS, *_GOARCH and *_GOOS_GOARCH; "unix" is not one
+	n := len(parts)
+	if n >= 3 && archTags[parts[n-1]] {
+		parts, n = parts[:n-1], n-1
+	}
+	if p := parts[n-1]; n >= 2 && osTags[p] && p != "linux" && p != "unix" {
+		return p
+	}
+	var exprs []constraint.Expr
+	for _, g := range gates {
+		c, ok := strings.CutPrefix(g, "build: ")
+		if !ok {
+			continue
+		}
+		e, err := constraint.Parse("//go:build " + strings.TrimSpace(c))
+		if err != nil {
+			continue
+		}
+		exprs = append(exprs, e)
+	}
+	set := map[string]bool{}
+	for _, t := range strings.Split(buildTags(gates), ",") {
+		set[t] = true
+	}
+	builds := func(goos string) bool {
+		for _, e := range exprs {
+			ok := e.Eval(func(tag string) bool {
+				switch {
+				case tag == goos, tag == "amd64":
+					return true
+				case tag == "unix":
+					return goos != "windows"
+				case osTags[tag], archTags[tag]:
+					return false
+				}
+				// a plain tag: on Linux, set when buildTags passes it; on another
+				// GOOS, as the constraint asks, so "windows && tag" is Windows's
+				return set[tag] || goos != "linux"
+			})
+			if !ok {
+				return false
+			}
+		}
+		return true
+	}
+	if builds("linux") {
+		return ""
+	}
+	for _, goos := range []string{"windows", "darwin"} {
+		if builds(goos) {
+			return goos
+		}
+	}
+	return ""
+}
+
+var archTags = map[string]bool{"386": true, "amd64": true, "arm": true, "arm64": true, "loong64": true, "mips": true, "mipsle": true, "mips64": true, "mips64le": true, "ppc64": true, "ppc64le": true, "riscv64": true, "s390x": true, "wasm": true}
 
 // buildTags is the -tags a test's build gates ask for, space separated.
 func buildTags(gates []string) string {
@@ -564,16 +669,26 @@ type Shard struct {
 type Bench struct {
 	Host   string `json:"host"`
 	Shards int    `json:"shards"`
+	// GOOS are the operating systems besides Linux whose tests it runs
+	// (captain: windows, through WSL).
+	GOOS []string `json:"goos,omitempty"`
 }
+
+// Runs reports whether the bench runs a unit built for goos ("": Linux).
+func (b Bench) Runs(goos string) bool { return goos == "" || slices.Contains(b.GOOS, goos) }
 
 // assign deals the units a shard runs to the shards, heaviest first, each
 // to the least loaded shard (ties to the first): the same units and
-// benches always give the same shards.
+// benches always give the same shards. A unit built for an operating
+// system no bench runs is in no shard: the run reports it NOT RUN, naming
+// what it needs.
 func assign(units []Unit, benches []Bench) ([]Shard, error) {
 	var shards []Shard
+	var of []Bench // each shard's bench
 	for _, b := range benches {
 		for i := 1; i <= b.Shards; i++ {
 			shards = append(shards, Shard{ID: fmt.Sprintf("%s-%d", b.Host, i), Bench: b.Host, Clone: i})
+			of = append(of, b)
 		}
 	}
 	if len(shards) == 0 {
@@ -592,11 +707,14 @@ func assign(units []Unit, benches []Bench) ([]Shard, error) {
 		return run[i].ID < run[j].ID
 	})
 	for _, u := range run {
-		best := 0
+		best := -1
 		for i := range shards {
-			if shards[i].Load < shards[best].Load {
+			if of[i].Runs(u.GOOS) && (best < 0 || shards[i].Load < shards[best].Load) {
 				best = i
 			}
+		}
+		if best < 0 {
+			continue
 		}
 		shards[best].Units = append(shards[best].Units, u)
 		shards[best].Load += u.Weight

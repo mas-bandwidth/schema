@@ -169,7 +169,7 @@ conformance-go-rows-negative-control: build/tables-generated-go/.stamp build/fix
 tables-go-json-walk: build/tables-generated-go/.stamp
 	SCHEMA_GO_JSON_WALK_DIR="$(CURDIR)/build/tables-generated-go" \
 		SCHEMA_GO_JSON_WALK_OUT="$(CURDIR)/build/json-walk-go" \
-		$(GO_TEST) -count=1 -v ./internal/codegen/gotable -run '^TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)$$'
+		$(GO_TEST) -count=1 -v ./internal/codegen/gotable -run '^(TestGoJsonWalk(IsOneGenericRuntime|NegativeControl)|TestJsonWalkGeneratedGoTables)$$'
 
 # THE GO TABLE LEG's generated packages. Each unit is its own MODULE, because
 # a generated package names its schema's `package` and Go resolves an import by
@@ -843,6 +843,24 @@ conformance-negative-control-go-walk: build/conformance-harness build/conformanc
 conformance-negative-control-go-key-order: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control key-order
 
+# THE WRITE ORDER's controls (docs/SPEC-TABLES.md §22.7, THE NEGATIVE
+# CONTROLS): the Go leg's writer is broken three times, each in a copy of its
+# generated code reached through a build overlay, and each run must go red on
+# the surface that owns its break and stay green where the break cannot reach.
+# A loaded region's map entries walked DESCENDING turn go / wire red on
+# edge_map_keys; a builder's map written in INSERTION ORDER turns go /
+# json-read red on edge_map_keys_unsorted while wire stays green; the
+# numbering walk taking a body's fields in REVERSE turns go / wire red on
+# edge_graph_diamond and go / rewrite red on node_diamond_chain.
+# The edge vectors run through the wire surface on the derived rewrite
+# manifest, so their reds print under go / rewrite (node_diamond_chain,
+# also a framing row that reads, under go / framing too).
+.PHONY: conformance-negative-control-write-order
+conformance-negative-control-write-order: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-order-descending
+	sh test/conformance/go/negative-control write-order-insertion
+	sh test/conformance/go/negative-control write-order-numbering
+
 # THE WRITE REFUSAL's control (docs/SPEC-TABLES.md §16.14, W0): the generated
 # Go text writer writes ill-formed UTF-8 raw and an unpaired surrogate as
 # U+FFFD instead of refusing them, and the text_refuse_illformed and
@@ -1220,13 +1238,9 @@ test-go: tables-go-versioning
 # OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
 # alone (§5.3).
 #
-# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
-# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
-# a bare `go test ./...` on a tree that never built the oracle — and is exactly
-# how a §5 regression would have ridden into CI green, since the go-test job
-# runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
-# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
-# sets the rule that nothing skips, which turns that skip into a FAILURE: under this
+# THE TARGET BUILDS THE ORACLE FIRST (`tables-fixedform-corpus`, the C++
+# reference's own dump, about 7 s): the suite's harness fails by name when
+# build/fixedform-corpus is absent (docs/rulings.json no-skips), so under this
 # name a missing corpus can never pass silently.
 .PHONY: tables-go-versioning
 tables-go-versioning: tables-fixedform-corpus $(SERIALIZE_GO_RUNTIME)/go.mod
@@ -1345,7 +1359,7 @@ test-go: cards-conformance-go-negative-control
 # cook, block, message} omitted (docs/SPEC-TABLES.md, "GO's optional forms"): every corpus unit,
 # all sixteen subsets, through the emitter's own omit path (GenerateOmitting),
 # built and vetted against the sibling serialize.go. Part of the default gate:
-# it needs no the rule that nothing skips.
+# it needs nothing built first.
 .PHONY: tables-go-subsets
 tables-go-subsets:
 	sh test/slowgate/proof tables-go-subsets \
@@ -1386,8 +1400,9 @@ test-go: tables-go-finite-float
 # generated VALID units through compiler.New().Generate, the generated Go leg
 # under -race, every read/write path, every damage, hostile JSON plants and the
 # compiler's engine in both directions. Nightly in certify.yml, never in
-# ci-fast or ci-full: SCHEMA_TABLE_DIFF=1, set only here, is what opts the two
-# tests in; ci-full's the rule that nothing skips run of ./internal/fuzz skips them.
+# ci-fast or ci-full: both tests are tier nightly in test/registry, so the
+# root leaves them out of every per-commit run of ./internal/fuzz by name
+# (docs/rulings.json no-skips).
 TABLE_DIFF_FROM ?= 0
 TABLE_DIFF_TO ?= 200
 .PHONY: fuzz-tables-diff

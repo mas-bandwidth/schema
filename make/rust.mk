@@ -132,18 +132,30 @@ tables-rust-features: build/tables-generated-rust/.stamp
 
 # RUST_CLIPPY_ROOT is the tree the gate walks; its control hands it a copy.
 RUST_CLIPPY_ROOT ?= build/tables-generated-rust
+# THE GATE RUNS WHOLE OR AS SHARD K OF N (make/checks/shard-filter.sh): a
+# row may set RUST_CLIPPY_SHARD=K/N; shard K's workspace holds the units
+# that land in it, so N rows lint every unit once.
+RUST_CLIPPY_SHARD ?=
 .PHONY: tables-rust-clippy
-tables-rust-clippy: build/tables-generated-rust/.stamp
+TABLES_RUST_CLIPPY_INPUTS := build/tables-generated-rust/.stamp
+# tables-rust-clippy-inputs builds what tables-rust-clippy reads and nothing else:
+# a producer job can build it once and hand the trees to every shard.
+.PHONY: tables-rust-clippy-inputs
+tables-rust-clippy-inputs: $(TABLES_RUST_CLIPPY_INPUTS)
+
+tables-rust-clippy: $(TABLES_RUST_CLIPPY_INPUTS)
 	@set -e; \
 	root="$(RUST_CLIPPY_ROOT)"; \
 	rm -f "$$root/Cargo.toml" "$$root/Cargo.lock"; \
 	members=""; \
-	for unit in "$$root"/*/; do \
-		[ -f "$$unit/Cargo.toml" ] || continue; \
-		name=$$(basename "$$unit"); \
+	mkdir -p build; \
+	( cd "$$root" && for u in */; do if [ -f "$$u/Cargo.toml" ]; then printf '%s\n' "$${u%/}"; fi; done ) | LC_ALL=C sort > build/rust-clippy-units.txt || { echo "tables-rust-clippy: cannot list the units under $$root" >&2; exit 1; }; \
+	units=$$(cd "$$root" && sh $(CURDIR)/make/checks/shard-filter.sh '$(RUST_CLIPPY_SHARD)' $(CURDIR)/build/rust-clippy-units.txt < $(CURDIR)/build/rust-clippy-units.txt) || { echo "tables-rust-clippy: cannot shard the units under $$root" >&2; exit 1; }; \
+	for name in $$units; do \
 		members="$${members:+$${members}, }\"$$name\""; \
 	done; \
-	[ -n "$$members" ] || { echo "tables-rust-clippy: no Cargo.toml units under $$root" >&2; exit 1; }; \
+	[ -n "$$members" ] || { echo "tables-rust-clippy: no Cargo.toml units under $$root$(if $(RUST_CLIPPY_SHARD), in shard $(RUST_CLIPPY_SHARD))" >&2; exit 1; }; \
+	echo "tables-rust-clippy: $$(printf '%s\n' $$units | wc -l | tr -d ' ') units$(if $(RUST_CLIPPY_SHARD), (shard $(RUST_CLIPPY_SHARD)))"; \
 	printf "[workspace]\nresolver = \"2\"\nmembers = [%s]\n" "$$members" > "$$root/Cargo.toml"; \
 	status=0; \
 	( cd "$$root" && CARGO_TARGET_DIR="$(CURDIR)/build/rust-clippy-target" PATH="$(RUSTUP_BIN):$$PATH" cargo clippy --workspace --quiet -- -D warnings ) || status=$$?; \
@@ -207,7 +219,7 @@ RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
 tables-rust-big-endian: build/tables-generated-rust/.stamp
-# rustc answers nothing for a target that is not installed; the empty answer is the skip below, named, and a failure under the rule that nothing skips
+# rustc answers nothing for a target that is not installed; the empty answer fails below, naming the target (docs/rulings.json no-skips)
 	@libdir="$$(PATH="$(RUSTUP_BIN):$$PATH" rustc --print target-libdir --target $(RUST_BE_TARGET) 2>/dev/null)"; \
 	if [ -z "$$libdir" ] || ! ls "$$libdir"/libstd* >/dev/null 2>&1; then \
 		echo "FAIL tables-rust-big-endian: $(RUST_BE_TARGET) is not installed"; \
@@ -433,9 +445,9 @@ tables-rust-fixedform: build/retiredskips build/tables-generated-rust/.stamp bui
 # a bare `go test ./...` on a tree that never built the oracle — and is exactly
 # how a §5 regression would have ridden into CI green, since the go-test job
 # runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
-# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
-# sets the rule that nothing skips, which turns that skip into a FAILURE: under this
-# name a missing corpus can never pass silently.
+# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s), and a
+# missing corpus fails by name (docs/rulings.json no-skips): under this name
+# it can never pass silently.
 #
 # AND IT IS A GO TEST THAT SHELLS OUT TO CARGO, so the PATH carries $(RUSTUP_BIN)
 # the way every other Rust row in this file does: the suite's one `cargo test
@@ -746,8 +758,8 @@ test-rust:
 # text form's &node sharing — held byte for byte against the Go oracle over
 # tables/pointers, tables/blobs and tables/lists by
 # TestVariableClassBeyondCardConstructsRust, and every construct the leg still
-# refuses named by TestOtherVariableConstructsAreRefusedByName.
-# the rule that nothing skips turns the rustc skip into a failure, so the target
+# refuses named by TestOtherVariableConstructsAreRefusedByName. A missing
+# rustc is a failure that names it (docs/rulings.json no-skips), so the target
 # never passes on a SKIP.
 .PHONY: tables-rust-variable-class
 tables-rust-variable-class:
@@ -762,9 +774,9 @@ test-rust: tables-rust-variable-class
 # Rust leg's producer surfaces, pinned to the Go builder and Go's cook writer
 # (gotable/blockbuild.go, gotable/cookwrite.go) by
 # TestBlockBuildAndCookWriteRust, which recomputes every emitted constant from
-# the same ir layouts the Go emitter holds. the rule that nothing skips makes the
-# functional test fail by name rather than skip, so this target never passes
-# on a SKIP.
+# the same ir layouts the Go emitter holds. Without rustc the functional test
+# fails by name rather than skip (docs/rulings.json no-skips), so this target
+# never passes on a SKIP.
 tables-rust-block-build:
 	PATH="$$PATH:$(RUSTUP_BIN)" \
 		$(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 20m \
@@ -774,8 +786,8 @@ tables-rust-block-build:
 test-rust: tables-rust-block-build
 
 # Maps and union arms on the variable wire (docs/SPEC-TABLES.md §2.6, §2.8, §3).
-# the rule that nothing skips turns the rustc skip into a failure, so the target
-# never passes on a SKIP.
+# A missing rustc is a failure that names it (docs/rulings.json no-skips), so
+# the target never passes on a SKIP.
 .PHONY: tables-rust-variable-arms
 tables-rust-variable-arms:
 	PATH="$$PATH:$(RUSTUP_BIN)" \
@@ -826,8 +838,8 @@ test-rust: tables-rust-number-walk-negative-control
 # string, bytes and flags defaults, the table rename and the variant, arm and
 # type-field renames under `was`, every report row equal to the oracle's.
 # TestAcceleratorsEmitted holds that a fixed-table unit emits the form-1
-# runtime. the rule that nothing skips turns the rustc skip into a failure, so the
-# target never passes on a SKIP.
+# runtime. A missing rustc is a failure that names it (docs/rulings.json
+# no-skips), so the target never passes on a SKIP.
 .PHONY: tables-rust-variable-fixed-class
 tables-rust-variable-fixed-class:
 	PATH="$$PATH:$(RUSTUP_BIN)" $(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedClassOnTableWireRust|TestAcceleratorsEmitted' -v
@@ -840,8 +852,9 @@ test-rust: tables-rust-variable-fixed-class
 # form-1 reader and cooked in both byte orders by the generated
 # <t>_cook_write, byte for byte against the engine `schema cook` runs; the
 # reversed witnesses plant each layout rule's wrong answer into the oracle and
-# hold that the bytes this leg wrote tell it apart. the rule that nothing skips
-# turns the rustc skip into a failure, so the target never passes on a SKIP.
+# hold that the bytes this leg wrote tell it apart. A missing rustc is a
+# failure that names it (docs/rulings.json no-skips), so the target never
+# passes on a SKIP.
 .PHONY: tables-rust-cook-write
 tables-rust-cook-write:
 	PATH="$$PATH:$(RUSTUP_BIN)" $(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteCarriesTheExtent' -v
@@ -877,8 +890,8 @@ tables-rust-cook-write-negative-control:
 
 # THE MESSAGE FORM's BATCH on the Rust leg (docs/SPEC-TABLES.md §3.3):
 # MeasureMessages, SaveMessages and LoadMessages, byte for byte against the
-# manifest's message rows and the Go codec, beside the announcement.
-# the rule that nothing skips turns the rustc skip into a failure, so the target
+# manifest's message rows and the Go codec, beside the announcement. A missing
+# rustc is a failure that names it (docs/rulings.json no-skips), so the target
 # never passes on a SKIP.
 .PHONY: tables-rust-message-batch
 tables-rust-message-batch:
@@ -896,8 +909,8 @@ test-rust: tables-rust-message-batch
 # takes each half of the rule out of the generated Rust in turn (the variable
 # read and writer, the retain test, the message read and writer, the fixed
 # read's finite pass and writer, the cook writer), and each must red exactly
-# its own clauses. the rule that nothing skips turns the rustc skip into a
-# failure, so neither target passes on a SKIP.
+# its own clauses. A missing rustc is a failure that names it
+# (docs/rulings.json no-skips), so neither target passes on a SKIP.
 .PHONY: tables-rust-finite-float tables-rust-finite-float-negative-control
 tables-rust-finite-float:
 	PATH="$$PATH:$(RUSTUP_BIN)" $(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloat$$' -v
@@ -912,8 +925,8 @@ test-rust: tables-rust-finite-float
 # optimized build, and iterate key beside slot. The gate compiles a probe
 # against tables/examples' HullConfig (its variable struct and its fixed row);
 # its control takes the None half, the E.Max half and the shift out of the
-# emitted runtime in turn, and each must red exactly its own clause.
-# the rule that nothing skips turns the rustc skip into a failure.
+# emitted runtime in turn, and each must red exactly its own clause. A missing
+# rustc is a failure that names it (docs/rulings.json no-skips).
 .PHONY: tables-rust-keyed tables-rust-keyed-negative-control
 tables-rust-keyed:
 	PATH="$$PATH:$(RUSTUP_BIN)" $(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRust$$' -v
@@ -1015,8 +1028,8 @@ test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negati
 # driver's ROOTS equal, both ways, to the roster roots the generator carries,
 # fails on any of them the driver cannot open, drives every pinned seed of every
 # carried root through the plain and the retaining pair against the Go oracle,
-# and pins widening on read. the rule that nothing skips turns its rustc skip into a
-# failure, so the target never passes on a SKIP. Then the harness's own fuzzer,
+# and pins widening on read. A missing rustc is a failure that names it
+# (docs/rulings.json no-skips), so the target never passes on a SKIP. Then the harness's own fuzzer,
 # the arm tables-go-wire-fuzz runs (make/go.mk) and its retain arm, both with
 # the all-roots driver; each must report 0 divergences. The roster roots the
 # harness counts absent are the ones no Rust codec exists for: fixed-class
@@ -1099,8 +1112,8 @@ test-rust: tables-rust-fuzz
 
 # THE DOCUMENTED SURFACE (docs/PORTING.md I12): docs/USAGE.md's Rust table
 # example, between its rust-table-usage markers, compiled against the
-# tables/examples crate and run. the rule that nothing skips turns the rustc skip
-# into a failure, so the target never passes on a SKIP.
+# tables/examples crate and run. A missing rustc is a failure that names it
+# (docs/rulings.json no-skips), so the target never passes on a SKIP.
 .PHONY: tables-rust-usage
 tables-rust-usage:
 	PATH="$$PATH:$(RUSTUP_BIN)" $(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$'
@@ -1203,8 +1216,8 @@ test-rust: tables-rust-clippy-negative-control tables-rust-release-negative-cont
 # the leg's root_from_json_bytes reads the engine's text back to the same wire
 # (TestTextDifferentialRust). The control caps the emitted float32 window at six
 # significant digits in memory and must go red on the TEXT comparison
-# (TestTextDifferentialRustNegativeControl). the rule that nothing skips makes a
-# missing rustc a FAILURE rather than a skip.
+# (TestTextDifferentialRustNegativeControl). A missing rustc is a FAILURE that
+# names it, never a skip (docs/rulings.json no-skips).
 .PHONY: tables-rust-json-differential tables-rust-json-differential-negative-control
 tables-rust-json-differential:
 	@mkdir -p build
@@ -1893,8 +1906,8 @@ tables-rust-bool-byte-negative-control:
 # TestMessageStorageDebugAssertRust builds and runs the probe in both profiles.
 # The control strips the generated debug_assert! through a `go test -overlay`
 # of internal/codegen/rusttable/messagebatch.go (no tracked file is edited) and
-# requires the test red. the rule that nothing skips turns the rustc skip into a
-# failure, so neither target passes on a SKIP.
+# requires the test red. A missing rustc is a failure that names it
+# (docs/rulings.json no-skips), so neither target passes on a SKIP.
 .PHONY: tables-rust-message-storage-assert tables-rust-message-storage-assert-negative-control
 tables-rust-message-storage-assert:
 	PATH="$$PATH:$(RUSTUP_BIN)" $(GO_TEST) ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMessageStorageDebugAssertRust$$' -v
@@ -1929,8 +1942,8 @@ test-rust: tables-rust-message-storage-assert
 # message batch in its debug profile and wants Old refused (element and
 # scalar, measure and save) and Calm and Fierce written and read back.
 # TestRustDeprecatedVariantMessageNegativeControl removes each generated assert
-# in turn and requires exactly that refusal red. the rule that nothing skips turns
-# the rustc skip into a failure, and a SKIP in the log fails the target.
+# in turn and requires exactly that refusal red. A missing rustc is a failure
+# that names it (docs/rulings.json no-skips), and a SKIP in the log fails the target.
 .PHONY: tables-rust-deprecated-message-write
 tables-rust-deprecated-message-write:
 	@mkdir -p build/rust-deprecated-message

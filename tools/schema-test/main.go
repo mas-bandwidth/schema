@@ -52,6 +52,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
+// now is the clock a run's default seed is read from; a test sets --seed.
+var now = time.Now
+
 // usageError is a command line schema-test cannot run; it exits 2.
 type usageError struct{ msg string }
 
@@ -77,6 +80,9 @@ const usage = `usage:
   --report FILE     run: also write the run's report (every outcome and run-level problem) to FILE as JSON
   --registry PATH   the registry (default ` + testreg.DefaultPath + `)
   --timeout D       one adapter call's limit, 0 for none (default 90s)
+  --seed N          the run's seed, handed to every adapter as SCHEMA_TEST_SEED
+                    (default: the UTC date as YYYYMMDD, printed before the run);
+                    a red fuzz row re-runs by name with the seed its run printed
   --write-seconds   record each passing test's measured seconds in the registry,
                     which --shard weighs it by (run it on a fleet runner)
 `
@@ -176,6 +182,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	update := fs.Bool("update", false, "")
 	report := fs.String("report", "", "")
 	writeSeconds := fs.Bool("write-seconds", false, "")
+	seedFlag := fs.String("seed", "", "")
 	// flags may come before or after the names
 	rest := args[1:]
 	for {
@@ -275,6 +282,22 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	if _, err := fmt.Fprintf(stdout, "schema-test run: %s\n", plan); err != nil {
 		return err
 	}
+	// the run's seed: --seed, or the UTC date; every adapter is handed it
+	// (testreg.SeedEnv), and it is printed so a red fuzz row re-runs by name
+	// with it
+	// with the clock read only when no --seed names it
+	var seed uint64
+	if *seedFlag != "" {
+		if seed, err = testreg.ParseSeed(*seedFlag); err != nil {
+			return usageError{"--seed: " + err.Error()}
+		}
+	} else {
+		seed = testreg.DateSeed(now())
+	}
+	ctx = testreg.WithEnv(ctx, map[string]string{testreg.SeedEnv: strconv.FormatUint(seed, 10)})
+	if _, err := fmt.Fprintf(stdout, "schema-test run: seed %d (a red fuzz row re-runs with: schema-test run NAME --seed %d)\n", seed, seed); err != nil {
+		return err
+	}
 	rep := rn.Run(ctx, instances)
 	rep.Unrep = sel.Unrep
 	if err := rep.Print(stdout); err != nil {
@@ -301,7 +324,7 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 }
 
 // passLine is a run's line for an instance that passed, with its seconds.
-var passLine = regexp.MustCompile(`(?:^|\s)PASS (\S+) \(([0-9.]+)s\)$`)
+var passLine = regexp.MustCompile(`(?:^|\s)PASS (\S+) \(([0-9.]+)s\)(?:: .*)?$`)
 
 // secondsCmd is "schema-test seconds LOG...": every passing instance a log
 // names with its seconds has them recorded on its test's registry line, the

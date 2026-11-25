@@ -60,22 +60,18 @@ table Root
 
 	forms := []struct {
 		name, template, field string
-		control, skip         bool
+		control               bool
 	}{
-		{"t", `{"t":"%s"}`, "Root.t", true, false},
-		{"s", `{"s":"%s"}`, "Root.s", true, false},
-		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true, false},
-		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true, false},
-		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false, false},
-		{"l", `{"l":["ok","%s"]}`, "Root.l", false, true},
-		{"u", `{"u":{"ok":1,"%s":2}}`, "Root.u", false, true},
-		{"at", `{"at":"%s"}`, "Root.at", false, true},
+		{"t", `{"t":"%s"}`, "Root.t", true},
+		{"s", `{"s":"%s"}`, "Root.s", true},
+		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true},
+		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true},
+		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false},
+		{"l", `{"l":["ok","%s"]}`, "Root.l", false},
+		{"u", `{"u":{"ok":1,"%s":2}}`, "Root.u", false},
+		{"at", `{"at":"%s"}`, "Root.at", false},
 	}
 	for _, f := range forms {
-		if f.skip {
-			t.Logf("skipped %s: the Lua JSON read does not carry this construct yet", f.name)
-			continue
-		}
 		for _, at := range []string{`\u0000ab`, `a\u0000b`, `ab\u0000`} {
 			text := fmt.Sprintf(f.template, at)
 			lines := textZeroRun(t, dir, text)
