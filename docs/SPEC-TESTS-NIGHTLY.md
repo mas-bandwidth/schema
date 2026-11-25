@@ -5,7 +5,7 @@ Part of the specification: every test of tier `nightly`, from the test registry.
 
 **Tier nightly:** heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded.
 
-Nightly tests every language answers: 625. Language-free tests: 1343.
+Nightly tests every language answers: 625. Language-free tests: 1344.
 
 Run this tier for a language with `schema-test run --tier nightly --lang L`, one test with `schema-test run <full name>`.
 
@@ -4277,6 +4277,12 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 ### Type `tooling`
 
 CI policy, docs, roadmap, repo-structure and harness self-tests.
+
+#### `tooling` family `ci`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.nightly.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
 
 #### `tooling` family `makefile`, 4 tests
 

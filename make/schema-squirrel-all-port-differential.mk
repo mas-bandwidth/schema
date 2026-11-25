@@ -35,12 +35,19 @@ SQUIRREL_DIFFERENTIAL_FAST  = ./internal/ci -run '^TestSquirrelAllPortDifferenti
 # after the prerequisites above are done, so no target is built by two makes at
 # once, and the legs already built are up to date and cost nothing.
 .PHONY: schema-squirrel-all-port-differential
-schema-squirrel-all-port-differential: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
+schema-squirrel-all-port-differential: schema-squirrel-all-port-differential-tree
+	@SCHEMA_SQUIRREL_DIFFERENTIAL_WORK=$(SQUIRREL_DIFFERENTIAL_WORK) \
+		nice -n 19 $(GO_TEST) -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_TEST)
+
+# The harness half alone: a fresh answer tree under $(SQUIRREL_DIFFERENTIAL_WORK),
+# every leg built and run. The Go test builds it through this target when no
+# make target hands it a tree, so a plain go test (the registry's row) compares
+# a tree made from this checkout, never one an earlier run left in build/.
+.PHONY: schema-squirrel-all-port-differential-tree
+schema-squirrel-all-port-differential-tree: build/conformance-harness build/conformance-cpp build/conformance-squirrel build/schema_test_cook toolchain $(CONFORMANCE_LEGS)
 	$(if $(strip $(CONFORMANCE_LEGS)),@$(MAKE) --no-print-directory $(CONFORMANCE_LEGS))
 	@rm -rf $(SQUIRREL_DIFFERENTIAL_WORK)
 	@$(CONFORMANCE_ENV) ./build/conformance-harness run --work $(SQUIRREL_DIFFERENTIAL_WORK)
-	@SCHEMA_SQUIRREL_DIFFERENTIAL_WORK=$(SQUIRREL_DIFFERENTIAL_WORK) \
-		nice -n 19 $(GO_TEST) -count=1 -timeout 600s $(SQUIRREL_DIFFERENTIAL_TEST)
 
 # The fast half: the comparison and its planted-bad-pattern control, on a
 # t.TempDir() tree, with no toolchain and no corpus. This is what the push

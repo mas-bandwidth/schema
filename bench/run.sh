@@ -1110,7 +1110,7 @@ fi
 # ---- #175: an --only run that produced zero data rows is a failure, not a
 # quietly green empty CSV — nothing was measured. Refuse. grep -c exits 1
 # on a zero count (the refusal below names it); any other status is a failure. ----
-DATA_ROWS="$(grep -c -E '$1' "$OUT")" || [ "$?" -eq 1 ]
+DATA_ROWS="$(grep -c -E '^(c|cpp|go|rust|cs|js|java|dart|elixir|goose|lobster|luau|squirrel|python),' "$OUT")" || [ "$?" -eq 1 ]
 if [ -n "$ONLY" ] && [ "${DATA_ROWS:-0}" -eq 0 ]; then
     echo "REFUSED (#175): --only $ONLY produced ZERO rows; nothing was measured" >&2
     echo "results: $OUT (EMPTY — refused)" >&2

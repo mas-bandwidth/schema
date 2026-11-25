@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 2938.
+Unit tests every language answers: 2. Language-free tests: 2939.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1408,7 +1408,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tabletext.write-read-write-is-stable` | `gotest` | Go test TestWriteReadWriteIsStable in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestWriteReadWriteIsStable` | the Go test passes | `internal/tabletext/text_test.go:362` |
 | `none.unit.compiler.tabletext.wrong-type-refuses` | `gotest` | Go test TestWrongTypeRefuses in ./internal/tabletext | `package: ./internal/tabletext`<br>`test: TestWrongTypeRefuses` | the Go test passes | `internal/tabletext/text_test.go:104` |
 
-#### `compiler` family `tablewire`, 227 tests
+#### `compiler` family `tablewire`, 228 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -1447,6 +1447,7 @@ the compiler or IR itself (parse, check, plan), with no generated language invol
 | `none.unit.compiler.tablewire.diamond-chain-loads-linear` | `gotest` | Go test TestDiamondChainLoadsLinear in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestDiamondChainLoadsLinear` | the Go test passes | `internal/tablewire/cycle_test.go:238` |
 | `none.unit.compiler.tablewire.encode-decode-round-trip` | `gotest` | Go test TestEncodeDecodeRoundTrip in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEncodeDecodeRoundTrip` | the Go test passes | `internal/tablewire/wire_test.go:143` |
 | `none.unit.compiler.tablewire.encode-refuses-more-than4096-ids` | `gotest` | Go test TestEncodeRefusesMoreThan4096Ids in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEncodeRefusesMoreThan4096Ids` | the Go test passes | `internal/tablewire/idcap_test.go:15` |
+| `none.unit.compiler.tablewire.engine-bench-fixture-reads` | `gotest` | Go test TestEngineBenchFixtureReads in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEngineBenchFixtureReads` | the Go test passes | `internal/tablewire/engine_bench_test.go:42` |
 | `none.unit.compiler.tablewire.engine-has-no-tolerant-paths` | `gotest` | Go test TestEngineHasNoTolerantPaths in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEngineHasNoTolerantPaths` | the Go test passes | `internal/tablewire/strictonly_test.go:17` |
 | `none.unit.compiler.tablewire.engine-pointer-target-blob-kind` | `gotest` | Go test TestEnginePointerTargetBlobKind in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEnginePointerTargetBlobKind` | the Go test passes | `internal/tablewire/pointer_target_type_test.go:43` |
 | `none.unit.compiler.tablewire.engine-pointer-target-type-checked` | `gotest` | Go test TestEnginePointerTargetTypeChecked in ./internal/tablewire | `package: ./internal/tablewire`<br>`test: TestEnginePointerTargetTypeChecked` | the Go test passes | `internal/tablewire/pointer_target_type_test.go:35` |
