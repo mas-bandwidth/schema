@@ -1160,7 +1160,9 @@ tables-cs-clean-negative-control: build/tables-generated-cs/.stamp cards-cs-gene
 	@if command -v $(DOTNET) >/dev/null 2>&1; then $(MAKE) --no-print-directory tables-cs-clean-negative-control-run; fi
 
 .PHONY: tables-cs-clean-negative-control-run
-tables-cs-clean-negative-control-run:
+# The run copies the generated tree, so it builds it: the registry runs this
+# target as its own row, without the wrapper above.
+tables-cs-clean-negative-control-run: build/tables-generated-cs/.stamp cards-cs-generate
 	@rm -rf $(TABLES_CS_CLEAN_NEG) && mkdir -p $(TABLES_CS_CLEAN_NEG)
 	@cp -R build/tables-generated-cs $(TABLES_CS_CLEAN_NEG)/cs
 	@awk 'done != 1 && $$0 ~ /^            if \(value == null\) return;$$/ { print "              if (value == null) return;"; done = 1; next } { print }' \
