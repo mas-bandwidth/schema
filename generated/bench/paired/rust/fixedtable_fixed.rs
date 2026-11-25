@@ -367,7 +367,7 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// Returns the records read, or None on a refusal `report` names.
 ///
 /// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
-/// meets damage anywhere answers None with `malformed` set, and every record
+/// meets damage anywhere answers None, refused `wire_damaged`, and every record
 /// in `values` goes back to its declared defaults, so nothing the read
 /// decoded before or after the damage is a value to use.
 ///

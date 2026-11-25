@@ -268,8 +268,10 @@ pub enum TableFixedReason {
     /// step 5, SPEC-TABLES §21.3). Nothing in the lineage proves it newer: it
     /// is a newer writer, an older layout nobody locked, another table's file
     /// or a damaged hash byte, and step 5 cannot tell them apart. The report
-    /// carries THE FILE'S HASH AND NOTHING ELSE (§5.9 #7). Appended, so no
-    /// ordinal moves.
+    /// carries THE FILE'S HASH AND NOTHING ELSE (§5.9 #7). LayoutNewer is
+    /// gone from the list, so every reason after its old place moved up one
+    /// ordinal; nothing casts a reason to its ordinal (the wire names it by
+    /// its name() method).
     LayoutUnknown,
     /// FRAMING DAMAGE (§5.3 steps 1, 2 and 9): no first byte, fewer than 20
     /// bytes, a header and a layout with no record behind them, a record size
