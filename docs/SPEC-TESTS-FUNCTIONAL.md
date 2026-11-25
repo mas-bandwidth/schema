@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2256. Language-free tests: 2245.
+Functional tests every language answers: 2256. Language-free tests: 2244.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -4903,7 +4903,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.bench-tools.table-pass-requires-every-requested-language` | `gotest` | Go test TestTablePassRequiresEveryRequestedLanguage in ./bench/tools | `package: ./bench/tools`<br>`test: TestTablePassRequiresEveryRequestedLanguage` | the Go test passes | `bench/tools/table_pass_test.go:79` |
 | `none.functional.tooling.bench-tools.two-regressed-files-in-one-commit-cannot-reset-the-axis` | `gotest` | Go test TestTwoRegressedFilesInOneCommitCannotResetTheAxis in ./bench/tools | `package: ./bench/tools`<br>`test: TestTwoRegressedFilesInOneCommitCannotResetTheAxis` | the Go test passes | `bench/tools/ledger_test.go:279` |
 
-#### `tooling` family `ci`, 63 tests
+#### `tooling` family `ci`, 62 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -4960,7 +4960,6 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-hostile-shapes` | `gotest` | Go test TestSchemaRubyResourceBoundsHostileShapes in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsHostileShapes` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:769` |
 | `none.functional.tooling.ci.schema-ruby-resource-bounds-planted-pattern` | `gotest` | Go test TestSchemaRubyResourceBoundsPlantedPattern in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyResourceBoundsPlantedPattern` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:797` |
 | `none.functional.tooling.ci.schema-ruby-runs-hostile-corpus` | `gotest` | Go test TestSchemaRubyRunsHostileCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaRubyRunsHostileCorpus` | the Go test passes | `internal/ci/schema_ruby_runs_hostile_corpus_test.go:517` |
-| `none.functional.tooling.ci.schema-squirrel-all-port-differential` | `gotest` | Go test TestSchemaSquirrelAllPortDifferential in ./internal/ci | `package: ./internal/ci`<br>`test: TestSchemaSquirrelAllPortDifferential` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:548` |
 | `none.functional.tooling.ci.serialize-fetch-tries-the-mirror-first` | `gotest` | Go test TestSerializeFetchTriesTheMirrorFirst in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeFetchTriesTheMirrorFirst` | the Go test passes | `internal/ci/serializefetch_test.go:33` |
 | `none.functional.tooling.ci.serialize-go-runtime-when-the-sibling-arrives-mid-run` | `gotest` | Go test TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun in ./internal/ci | `package: ./internal/ci`<br>`test: TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun` | the Go test passes | `internal/ci/serializegorace_test.go:30` |
 | `none.functional.tooling.ci.siblings-present-make-deps-fetches-nothing` | `gotest` | Go test TestSiblingsPresentMakeDepsFetchesNothing in ./internal/ci | `package: ./internal/ci`<br>`test: TestSiblingsPresentMakeDepsFetchesNothing` | the Go test passes | `internal/ci/siblings_test.go:119` |

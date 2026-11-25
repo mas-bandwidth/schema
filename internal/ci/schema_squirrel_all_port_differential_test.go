@@ -51,11 +51,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // differentialWorkEnv names the harness output tree the corpus test reads.
@@ -511,6 +514,17 @@ func TestSchemaSquirrelAllPortDifferential(t *testing.T) {
 	root := repoRoot(t)
 	work := os.Getenv(differentialWorkEnv)
 	if work == "" {
+		// NOT HANDED A TREE (the registry runs this row as a plain go test):
+		// build a fresh one, never compare whatever an earlier run left in
+		// build/. The tree target is the harness half of
+		// make schema-squirrel-all-port-differential, which hands its own tree
+		// in by env and runs this test after it.
+		testinputs.Build(t, "test/conformance", "testdata/conformance")
+		build := exec.Command("make", "schema-squirrel-all-port-differential-tree")
+		build.Dir = root
+		if out, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("%s is unset and make schema-squirrel-all-port-differential-tree failed: %v\n%s", differentialWorkEnv, err, out)
+		}
 		work = filepath.Join(root, "build", "conformance-differential")
 	} else if !filepath.IsAbs(work) {
 		work = filepath.Join(root, work)
