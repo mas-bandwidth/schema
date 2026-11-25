@@ -447,33 +447,34 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/fixedevo -I$(1)/varevo1 -I$(1)/varevo2 -I$(1)/varevo3 -I$(1)/prior -I$(1)/cooktorture -I$(1)/cooktorturewide -I$(1)/shapes -I$(1)/moodmap -I$(1)/valuedefaults -I$(1)/packetunions -I$(1)/maps -I$(1)/lists -I$(1)/widelist -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(1)/features -I$(SERIALIZE)
 
-# $(call tables_generate_by_dir,<VAR>) runs the lines of the exported variable
-# <VAR> -- a generate macro's expansion -- side by side, ONE PROCESS PER --out
-# DIRECTORY: the lines that write one directory run in it one after another,
-# in the macro's order, joined by &&, so a directory is never written by two
-# processes at once (the versioning law's units all go to vnum). The longest
-# group starts first: vnum's 59 calls are 4.6 s on one core, the rest 0.5 s or
-# less each, and started in the macro's order vnum waited behind them and the
-# phase took 11.8 s on 4 cores. Comment lines are dropped, a line with no
-# --out is an error by name, and xargs fails when any group fails. Run one
-# after another, the C++ tree's 155 generate calls were 20 s of the
-# conformance-leg-cpp build before any compiler started (captain, 2026-11-25,
-# 4 cores), inside the produce job's two minutes.
-define tables_generate_by_dir
+# $(call tables_generate_cpp_side_by_side,<VAR>,<file>) runs the lines of the
+# exported variable <VAR> -- the C++ generate macro's expansion -- side by
+# side, ONE PROCESS PER LINE, sixteen at a time, even the 59 lines that write
+# one directory (the versioning law's units, vnum). That is safe for C++ and
+# only for C++: a C++ generate writes the files it emits and removes nothing
+# (cmd/schema/generated.go, planGenerated: the stale cleanup is go's alone),
+# each file is staged under a random name beside the one it replaces
+# (internal/atomicfile), and no two of vnum's units emit one file name (59
+# units, 470 files, 470 names: captain, 2026-11-25). So every line must be a
+# `generate --lang cpp`; any other line is an error by name, as is a
+# variable with no line. Kept in order, vnum's 59 calls were one chain of
+# 4.6 s on one core that the whole phase waited on (11.8 s on 4 cores); one
+# after another, the tree's 155 calls were 20 s of the conformance-leg-cpp
+# build before any compiler started, inside the produce job's two minutes.
+# xargs fails when any line fails.
+define tables_generate_cpp_side_by_side
 	@awk 'BEGIN { n = split( ENVIRON["$(1)"], lines, "\n" ); k = 0; \
 		for ( i = 1; i <= n; i++ ) { l = lines[i]; sub( /^[ \t]+/, "", l ); if ( l == "" || l ~ /^#/ ) continue; \
-			if ( !match( l, /--out [^ ]+/ ) ) { print "tables_generate_by_dir: a line with no --out: " l > "/dev/stderr"; exit 1 } \
-			d = substr( l, RSTART + 6, RLENGTH - 6 ); if ( !( d in group ) ) { order[++k] = d; group[d] = l; size[d] = 1 } \
-			else { group[d] = group[d] " && " l; size[d]++ } if ( size[d] > most ) most = size[d] } \
-		if ( k == 0 ) { print "tables_generate_by_dir: $(1) names no generate line" > "/dev/stderr"; exit 1 } \
-		for ( c = most; c >= 1; c-- ) for ( j = 1; j <= k; j++ ) if ( size[order[j]] == c ) print group[order[j]] }' > $(2)
+			if ( l !~ /^[^ ]+ generate --lang cpp --out [^ ]+ / || l ~ /&&|;|\|/ ) { print "tables_generate_cpp_side_by_side: not one C++ generate: " l > "/dev/stderr"; exit 1 } \
+			print l; k++ } \
+		if ( k == 0 ) { print "tables_generate_cpp_side_by_side: $(1) names no generate line" > "/dev/stderr"; exit 1 } }' > $(2)
 	tr '\n' '\0' < $(2) | xargs -0 -P 16 -n 1 sh -c 'echo "$$0"; eval "$$0"'
 endef
 
 build/tables-generated/.stamp: export TABLES_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
 build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/prior/PriorNarrow.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/shapes/Shapes.schema test/tables/moodmap/MoodMap.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/DeadBytes.schema test/tables/FNZ.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/HB.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FD1.schema test/tables/FH1.schema test/tables/FH2.schema test/tables/FG1.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING) testdata/conformance/feature-witnesses/full/Features.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated
-	$(call tables_generate_by_dir,TABLES_CPP_GENERATE,build/tables-generated.lines)
+	$(call tables_generate_cpp_side_by_side,TABLES_CPP_GENERATE,build/tables-generated.lines)
 	@touch $@
 
 # The ZERO-COST GATE (docs/SPEC-TABLES.md): a table with no pointer in its by-value
