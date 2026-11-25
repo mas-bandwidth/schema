@@ -514,7 +514,7 @@ func TestFastGoTestLanesReadTheSkipLedger(t *testing.T) {
 	}
 	// the jobs of the fast lane with an explicit skip ledger; a reader
 	// that finds none of them is reading the wrong text
-	for _, job := range []string{"ci-policy", "go-test-touched", "verify-leg", "verify-elixir-conformance"} {
+	for _, job := range []string{"go-test-touched", "verify-leg", "verify-elixir-conformance"} {
 		if !read[job] {
 			t.Errorf("ci-fast.yml's %s job does not read the skip ledger over its go test record", job)
 		}

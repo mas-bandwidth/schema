@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -54,10 +55,14 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 	return map[string]testreg.Adapter{
 		"go":          &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
 		"lua":         &harnessAdapter{families: []string{"align-arrays"}, build: b, log: log},
-		"gotest":      goTestAdapter{log: log},
+		"gotest":      newGoTestAdapter(log, ".", goTestJobs()),
 		"model-check": modelCheckAdapter{build: b, log: log},
 	}
 }
+
+// goTestJobs is how many Go packages the gotest adapter runs at once: half
+// the machine, since each package's own tests run in parallel too.
+func goTestJobs() int { return min(8, max(1, runtime.NumCPU()/2)) }
 
 // withPlant adds the plant adapter, which runs its targets through rn.
 func withPlant(ads map[string]testreg.Adapter, rn *testreg.Runner) {

@@ -158,6 +158,92 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		t.Errorf("a writer snapshot that is not the entry's must stop generation, got %v", err)
 	}
 
+	unityFixedFormSlow(t, unityFixedEntries{old: old, unlawful: unlawful, oldEntry: oldEntry, ownEntry: ownEntry, unlawfulEntry: unlawfulEntry, retired: retired}, -1)
+}
+
+// unityFixedSabotageParts is how many tests the sabotages of the Unity fixed
+// form are cut into (sabotage i runs in part i mod this), so each part is a
+// registry row that fits one per-PR shard: every sabotage is a Unity build
+// of its own. TestUnityFixedFormSabotagesPartsAreEveryPart holds the
+// TestUnityFixedFormSabotages<k> tests to it.
+const unityFixedSabotageParts = 10
+
+// TestUnityFixedFormSabotages0 .. 9 are the negative controls of
+// TestUnityFixedFormMatchesCpp: each sabotage of their part, planted in a copy
+// of the generated code and built, must turn a probe it decides red.
+func TestUnityFixedFormSabotages0(t *testing.T) { unityFixedFormSabotages(t, 0) }
+func TestUnityFixedFormSabotages1(t *testing.T) { unityFixedFormSabotages(t, 1) }
+func TestUnityFixedFormSabotages2(t *testing.T) { unityFixedFormSabotages(t, 2) }
+func TestUnityFixedFormSabotages3(t *testing.T) { unityFixedFormSabotages(t, 3) }
+func TestUnityFixedFormSabotages4(t *testing.T) { unityFixedFormSabotages(t, 4) }
+func TestUnityFixedFormSabotages5(t *testing.T) { unityFixedFormSabotages(t, 5) }
+func TestUnityFixedFormSabotages6(t *testing.T) { unityFixedFormSabotages(t, 6) }
+func TestUnityFixedFormSabotages7(t *testing.T) { unityFixedFormSabotages(t, 7) }
+func TestUnityFixedFormSabotages8(t *testing.T) { unityFixedFormSabotages(t, 8) }
+func TestUnityFixedFormSabotages9(t *testing.T) { unityFixedFormSabotages(t, 9) }
+
+// TestUnityFixedFormSabotagesPartsAreEveryPart: a TestUnityFixedFormSabotages<k>
+// test exists for every part k and for no other, so every sabotage runs. The
+// plant is a part count one larger: its last part has no test, and is named.
+func TestUnityFixedFormSabotagesPartsAreEveryPart(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile("unityfixedform_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unityFixedPartsDeclared(string(src), unityFixedSabotageParts); err != nil {
+		t.Fatal(err)
+	}
+	if err := unityFixedPartsDeclared(string(src), unityFixedSabotageParts+1); err == nil || !strings.Contains(err.Error(), fmt.Sprintf("TestUnityFixedFormSabotages%d", unityFixedSabotageParts)) {
+		t.Errorf("plant, one part more than the tests: %v", err)
+	}
+}
+
+// unityFixedPartsDeclared is nil when src declares exactly the tests
+// TestUnityFixedFormSabotages0 .. parts-1.
+func unityFixedPartsDeclared(src string, parts int) error {
+	var got []string
+	for _, m := range regexp.MustCompile(`(?m)^func (TestUnityFixedFormSabotages[0-9]+)\(`).FindAllStringSubmatch(src, -1) {
+		got = append(got, m[1])
+	}
+	var want []string
+	for k := range parts {
+		want = append(want, fmt.Sprintf("TestUnityFixedFormSabotages%d", k))
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		return fmt.Errorf("the sabotage part tests are %v, want %v", got, want)
+	}
+	return nil
+}
+
+func unityFixedFormSabotages(t *testing.T, part int) {
+	t.Parallel()
+	old := compiler.UnitFromSourceForTest(t, unityFixedOldWriter)
+	reader := compiler.UnitFromSourceForTest(t, unityFixedReader)
+	unlawful := compiler.UnitFromSourceForTest(t, unityFixedUnlawfulWriter)
+	oldEntry, _ := unitytable.FixedLineageOf(old, "Row")
+	ownEntry, _ := unitytable.FixedLineageOf(reader, "Row")
+	unlawfulEntry, _ := unitytable.FixedLineageOf(unlawful, "Row")
+	retired := oldEntry
+	retired.Retired = true
+	unityFixedFormSlow(t, unityFixedEntries{old: old, unlawful: unlawful, oldEntry: oldEntry, ownEntry: ownEntry, unlawfulEntry: unlawfulEntry, retired: retired}, part)
+}
+
+// unityFixedEntries are the lineage the slow half reads and writes through.
+type unityFixedEntries struct {
+	old, unlawful                              *ir.Unit
+	oldEntry, ownEntry, unlawfulEntry, retired unitytable.FixedLineageEntry
+}
+
+// unityFixedFormSlow is the slow half: the proof rows against the C++
+// reference and the probes. Part -1 builds the leg under test and holds every
+// probe to its answer; part k builds only the sabotages of part k
+// (unityFixedSabotageParts), each of which must turn a probe it decides red.
+func unityFixedFormSlow(t *testing.T, fx unityFixedEntries, part int) {
+	old, unlawful := fx.old, fx.unlawful
+	oldEntry, ownEntry, unlawfulEntry, retired := fx.oldEntry, fx.ownEntry, fx.unlawfulEntry, fx.retired
 	slowtest.Gate(t, "dotnet and the C++ compiler")
 	dotnet := compiler.FindDotnetForTest()
 	if dotnet == "" {
@@ -314,6 +400,20 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		{"record hash", "last-record-hash", "if (FixedGet(one, 0, 8) != hash)", "if (FixedGet(one, 0, 8) != FixedGet(one, 0, 8))", nil, ""},
 		{"writer contract", "assert-", "Debug.Assert(value.", "Debug.Assert(body.Length >= 0 || value.", nil, ""},
 	}
+	if part < 0 {
+		sabotages = nil
+	} else {
+		var mine []unityFixedSabotage
+		for i, s := range sabotages {
+			if i%unityFixedSabotageParts == part {
+				mine = append(mine, s)
+			}
+		}
+		if len(mine) == 0 {
+			t.Fatalf("sabotage part %d holds no sabotage: unityFixedSabotageParts is more than the %d sabotages", part, len(sabotages))
+		}
+		sabotages = mine
+	}
 	gen := filepath.Join(h.Tmp(), "fixed-gen")
 	compiler.WriteFilesForTest(t, gen, assembly)
 	host, err := buildUnityFixedHost(t, h)
@@ -324,6 +424,9 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 	errs := make([]error, len(sabotages)+1)
 	var wg sync.WaitGroup
 	for i := range len(sabotages) + 1 {
+		if i == 0 && part >= 0 {
+			continue // a sabotage part builds only its sabotages
+		}
 		dir := gen
 		if i > 0 {
 			dir = filepath.Join(h.Tmp(), fmt.Sprintf("fixed-planted%d", i))
@@ -343,20 +446,22 @@ func TestUnityFixedFormMatchesCpp(t *testing.T) {
 		}
 	}
 
-	got := p.run(t, h, host, units[0], "build")
-	bad := 0
-	for i, want := range p.want {
-		if got[i] != want {
-			bad++
-			if bad <= 12 {
-				t.Errorf("probe %s (%s):\n unity %q\n want  %q", p.names[i], p.lines[i], got[i], want)
+	if part < 0 {
+		got := p.run(t, h, host, units[0], "build")
+		bad := 0
+		for i, want := range p.want {
+			if got[i] != want {
+				bad++
+				if bad <= 12 {
+					t.Errorf("probe %s (%s):\n unity %q\n want  %q", p.names[i], p.lines[i], got[i], want)
+				}
 			}
 		}
+		if bad > 0 {
+			t.Fatalf("unity disagrees on %d of %d probes", bad, len(p.want))
+		}
+		t.Logf("unity answers all %d probes: every carried row's C++ bytes loaded, re-saved and saved from scratch byte for byte, every damaged file refused by name with every row at its defaults, the lineage read through its plan", len(p.want))
 	}
-	if bad > 0 {
-		t.Fatalf("unity disagrees on %d of %d probes", bad, len(p.want))
-	}
-	t.Logf("unity answers all %d probes: every carried row's C++ bytes loaded, re-saved and saved from scratch byte for byte, every damaged file refused by name with every row at its defaults, the lineage read through its plan", len(p.want))
 
 	// THE OTHER DIRECTION needs no second run: every byte Unity wrote above is
 	// the C++ reference's own save byte for byte (the probes compare the hex),

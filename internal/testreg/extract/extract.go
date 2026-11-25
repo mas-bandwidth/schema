@@ -59,8 +59,8 @@ type Item struct {
 	// Source is file:line, from the repository root.
 	Source string `json:"source"`
 	// Gates are the conditions under which it does not run today: "build:
-	// <constraint>", "slow" (slowtest.Gate or SCHEMA_SLOW), "skip: file:line
-	// <condition>". The driver has no skip verdict, so each becomes a tier or
+	// <constraint>", "slow" (slowtest.Gate or SCHEMA_SLOW), "short" (it reads
+	// testing.Short()), "skip: file:line <condition>". The driver has no skip verdict, so each becomes a tier or
 	// a tool requirement when the test moves in.
 	Gates []string `json:"gates,omitempty"`
 	// Tier is the tier its gates give it: functional when it is slow-gated
@@ -110,11 +110,12 @@ func (s *scan) rel(p string) string {
 }
 
 // skipDir is a directory no test lives in: version control, dependencies,
-// build output, and the sibling checkouts and agent scratch kept beside or
-// inside a clone.
+// build output (a dotnet build leaves obj/ beside its project and
+// bin/Debug or bin/Release in it), and the sibling checkouts and agent
+// scratch kept beside or inside a clone.
 func skipDir(rel, name string) bool {
 	switch name {
-	case ".git", "node_modules", "_build", "deps", "target", ".dart_tool", "__pycache__", ".venv":
+	case ".git", "node_modules", "_build", "deps", "target", "obj", "Debug", "Release", ".dart_tool", "__pycache__", ".venv":
 		return true
 	}
 	switch rel {

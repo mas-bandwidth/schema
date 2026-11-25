@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -24,6 +25,9 @@ import (
 //	schema-test extract --write-ledger     rewrite the ledger to what is unmoved now
 //	schema-test extract --shrinks-from F   also hold the ledger to F (main's), which it may not exceed
 //	schema-test extract --since DIR        also name each test DIR (main's tree) lacks that has no row
+//	schema-test extract --move L           give every unmoved test of layer L's ledger lines its
+//	                                       registry row (the kinds the driver has an adapter for), then
+//	                                       rewrite the ledger
 func extractCmd(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("schema-test extract", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -33,6 +37,7 @@ func extractCmd(args []string, stdout io.Writer) error {
 	write := fs.Bool("write-ledger", false, "")
 	shrinks := fs.String("shrinks-from", "", "")
 	since := fs.String("since", "", "")
+	move := fs.String("move", "", "")
 	if err := fs.Parse(args); err != nil {
 		return usageError{err.Error()}
 	}
@@ -60,13 +65,30 @@ func extractCmd(args []string, stdout io.Writer) error {
 		return err
 	}
 	ledgerPath := filepath.Join(*root, extract.LedgerPath)
+	if *move != "" {
+		ledger, err := extract.LoadLedger(ledgerPath)
+		if err != nil {
+			return err
+		}
+		n, err := moveLayer(*root, *path, *move, res, reg, ledger)
+		if err != nil {
+			return err
+		}
+		if reg, err = testreg.Load(filepath.Join(*root, *path)); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "schema-test extract: moved %d tests of layer %s into %s\n", n, *move, *path); err != nil {
+			return err
+		}
+		*write = true
+	}
 	if *write {
 		if len(res.Unparsed) > 0 {
 			return fmt.Errorf("--write-ledger: %d files the extract could not read, first %s: %s; a ledger written now would miscount", len(res.Unparsed), res.Unparsed[0].File, res.Unparsed[0].Reason)
 		}
 		// the unmoved lines are counted again; the skip-red lines are
 		// measurements, not counts, so they carry over as they are
-		lines := extract.Ledger(res, reg, plan(reg))
+		lines := extract.Ledger(res, reg, plan(*root, reg))
 		if old, err := extract.LoadLedger(ledgerPath); err == nil {
 			lines = append(lines, extract.SkipReds(old)...)
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -173,18 +195,30 @@ const ledgerHeader = `# The unmoved ledger: the tests the repository holds that 
 `
 
 // plan is the layer that moves a kind's tests in, and why they wait.
-func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
+func plan(root string, reg *testreg.Registry) func(kind, dir string, items []extract.Item) (string, string) {
 	langs := map[string]bool{}
 	for _, l := range reg.Langs {
 		langs[l.Name] = true
 	}
-	return func(kind, dir string) (string, string) {
+	return func(kind, dir string, items []extract.Item) (string, string) {
 		switch kind {
 		case extract.KindGoTest:
 			if l := langOf(dir, langs); l != "" {
 				return "L5", "per-language (" + l + ") Go tests: " + l + "'s adapter runs them when their families move in"
 			}
-			return "L3", "language-free Go tests: the gotest adapter runs them when their package moves in"
+			layer, reason := "", ""
+			for _, it := range items {
+				l, r := goTestLayer(root, it)
+				if l == "L3" {
+					return l, r
+				}
+				if layer == "" {
+					layer, reason = l, r
+				} else if r != reason && !strings.Contains(reason, r) {
+					reason += "; " + r
+				}
+			}
+			return layer, reason
 		case extract.KindDataCase, extract.KindDriver:
 			return "L4", "corpus data and harnesses: each language's adapter answers them when their family moves in"
 		case extract.KindNegativeControl:
@@ -198,6 +232,41 @@ func plan(reg *testreg.Registry) func(kind, dir string) (string, string) {
 		}
 		panic(errors.New("unknown kind " + kind))
 	}
+}
+
+// goTestLayer is the layer that moves one language-free Go test in. The
+// gotest adapter (L3) runs a test of the root module; a
+// benchmark waits for the bench adapter, a test in a Go module of its own
+// runs against the generated Go it is copied beside (go's adapter), and a
+// test that can still skip and has no row yet is one a make target drives, with the build and
+// environment its recipe provides, or on a volume a runner provides (the
+// make adapter).
+func goTestLayer(root string, it extract.Item) (string, string) {
+	switch {
+	case strings.HasPrefix(it.Name, "Benchmark"):
+		return "L6", "Go benchmarks: the bench adapter runs them"
+	case it.Dir == "tools/namebuild" && strings.HasPrefix(it.Name, "TestNameBuildability"):
+		return "L4", "the name-buildability build of every target: L4 splits it into one test per target and owns their rows"
+	case nestedModule(root, it.Dir):
+		return "L5", "Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them"
+	case slices.ContainsFunc(it.Gates, func(g string) bool { return strings.HasPrefix(g, "build: schema_leg_") }):
+		return "L5", "Go tests behind a leg's build tag (schema_leg_<leg>): that language's adapter runs them"
+	case slices.ContainsFunc(it.Gates, func(g string) bool { return g == "build: windows" || g == "build: darwin" }):
+		return "L6", "Go tests built only for another platform: a runner of that platform runs them"
+	case slices.ContainsFunc(it.Gates, func(g string) bool { return strings.HasPrefix(g, "skip:") }):
+		return "L6", "Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them"
+	}
+	return "L3", "language-free Go tests: the gotest adapter runs them when their package moves in"
+}
+
+// nestedModule reports whether a directory is in a Go module below root's.
+func nestedModule(root, dir string) bool {
+	for d := filepath.FromSlash(dir); d != "." && d != string(filepath.Separator); d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(root, d, "go.mod")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // langOf is the language a path names: a segment that is a language, or

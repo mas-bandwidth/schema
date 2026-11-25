@@ -29,8 +29,8 @@ make/checks/schema-shared-hostile-corpus.mk
 .github/workflows/schema-shared-hostile-corpus.yml
     the nightly (schedule) and workflow_dispatch run of the drift gate and of
     its negative controls; no pull request starts this workflow. The same
-    tests are Go tests of internal/ci, and ci-fast.yml's ci-policy job runs
-    `go test ./internal/ci/` on every pull request and every push to main.
+    tests are Go tests of internal/ci, registry rows the pr group runs
+    (ci-fast.yml schema-test-pr) on every pull request and every push to main.
 ```
 
 `internal/ci/hostilecorpus/wide/` is a second corpus directory in the same format: its own `manifest.tsv`, `inputs/` and schema, built and checked by the same `Generate` and `Verify`.
@@ -231,8 +231,8 @@ as well. `TestSchemaSharedHostileCorpusSourcesNegativeControl`
 plants an uncited conformance vector and requires the source walk to see it.
 Both controls run in `make schema-shared-hostile-corpus-negative-control`, which
 the nightly workflow invokes. On a pull request they run as Go tests of
-internal/ci: ci-fast.yml's ci-policy job runs `go test ./internal/ci/` on every
-pull request and every push to main, and with it the drift, source and
+internal/ci, registry rows ci-fast.yml's schema-test-pr shards run on every
+pull request and every push to main, among them the drift, source and
 excluded-source tests.
 
 `TestSchemaSharedHostileCorpusSources` holds the source claim two ways: every

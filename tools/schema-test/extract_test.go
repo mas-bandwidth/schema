@@ -194,3 +194,21 @@ func TestExtractHoldsARenamedSkipRedTest(t *testing.T) {
 		t.Fatalf("a renamed test that left its line behind passed (err %v):\n%s", err, out.String())
 	}
 }
+
+// TestNameBuildabilityIsL4s: the name-buildability build, whole or split by
+// target, is L4's to give rows, so --move L3 never gives it one; the
+// package's other tests are L3's. The plant is the routing removed: the
+// build reads as L3 and is named.
+func TestNameBuildabilityIsL4s(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ name, want string }{
+		{"TestNameBuildability", "L4"},
+		{"TestNameBuildability_rust", "L4"},
+		{"TestPlanCoversTheCorpus", "L3"},
+	} {
+		got, _ := goTestLayer(t.TempDir(), extract.Item{Kind: extract.KindGoTest, Dir: "tools/namebuild", Name: c.name})
+		if got != c.want {
+			t.Errorf("tools/namebuild %s is layer %s, want %s", c.name, got, c.want)
+		}
+	}
+}

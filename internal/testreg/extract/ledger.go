@@ -136,7 +136,9 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 // Check holds the extract, the registry and the ledger to each other: every
 // test the repository holds is a registry row or counted in the ledger,
 // exactly; every registry row that claims a test names one that exists;
-// nothing is unparsed. It returns each disagreement, named.
+// nothing is unparsed. A test that opens the slow gate (it needs a toolchain)
+// is not a row of tier unit (a skip is the driver's to fail, at run time).
+// It returns each disagreement, named.
 func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	var problems []string
 	for _, u := range res.Unparsed {
@@ -144,11 +146,16 @@ func Check(res *Result, reg *testreg.Registry, ledger []LedgerLine) []string {
 	}
 	covered, p := Covered(reg)
 	problems = append(problems, p...)
+	tierOf := map[string]string{}
+	for _, t := range reg.Tests {
+		tierOf[t.Key] = t.Tier
+	}
 	exists := map[string]bool{}
 	uncovered := map[string][]Item{}
 	for _, it := range res.Items {
 		exists[it.ID()] = true
-		if _, ok := covered[it.ID()]; ok {
+		if key, ok := covered[it.ID()]; ok {
+			problems = append(problems, rowGates(it, key, tierOf[key])...)
 			continue
 		}
 		k := it.Kind + "\t" + it.Dir
@@ -249,6 +256,20 @@ func SkipReds(ledger []LedgerLine) []LedgerLine {
 	for _, l := range ledger {
 		if l.Kind == KindSkipRed {
 			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// rowGates is what a registered test's gates break: a test that needs a
+// toolchain is not unit. A skip is not refused here: the driver fails every
+// skip when it runs (the gotest adapter has no skipped verdict), and the
+// repository-wide no-skip policy test owns the static refusal.
+func rowGates(it Item, key, tier string) []string {
+	var out []string
+	for _, g := range it.Gates {
+		if g == "slow" && tier == "unit" {
+			out = append(out, fmt.Sprintf("registry row %s runs %s, which opens the slow gate (it needs a toolchain), and is tier unit: make it functional", key, it.Name))
 		}
 	}
 	return out
@@ -435,26 +456,27 @@ func Shrinks(old, now []LedgerLine) []string {
 }
 
 // Ledger is the ledger that counts exactly what res holds and reg does not
-// run, each line's layer and reason given by plan(kind, place).
-func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string) (layer, reason string)) []LedgerLine {
+// run, each line's layer and reason given by plan(kind, place, the unmoved
+// tests).
+func Ledger(res *Result, reg *testreg.Registry, plan func(kind, dir string, items []Item) (layer, reason string)) []LedgerLine {
 	covered, _ := Covered(reg)
-	count := map[string]int{}
+	names := map[string][]Item{}
 	var order []string
 	for _, it := range res.Items {
 		if _, ok := covered[it.ID()]; ok {
 			continue
 		}
 		k := it.Kind + "\t" + it.Dir
-		if count[k] == 0 {
+		if len(names[k]) == 0 {
 			order = append(order, k)
 		}
-		count[k]++
+		names[k] = append(names[k], it)
 	}
 	out := make([]LedgerLine, 0, len(order))
 	for _, k := range order {
 		kind, dir, _ := strings.Cut(k, "\t")
-		layer, reason := plan(kind, dir)
-		out = append(out, LedgerLine{Kind: kind, Dir: dir, Count: count[k], Layer: layer, Reason: reason})
+		layer, reason := plan(kind, dir, names[k])
+		out = append(out, LedgerLine{Kind: kind, Dir: dir, Count: len(names[k]), Layer: layer, Reason: reason})
 	}
 	return out
 }

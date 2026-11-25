@@ -63,6 +63,8 @@ schema-test run  NAME|PATTERN... [--lang L]... [--tier T]... [--type Y]... [--fa
 schema-test run  --group G [--shard i/n]
 schema-test list (the same)
 schema-test coverage
+schema-test extract [--json] [--write-ledger] [--shrinks-from LEDGER] [--since MAIN-TREE] [--move LAYER]
+schema-test seconds [--registry PATH] LOG...
 schema-test addenda [--check] [--root DIR]
 ```
 
@@ -77,8 +79,16 @@ name in it runs and passes or fails; nothing downstream drops a name.
   whose adapter has landed. `--lang none` selects the language-free tests.
 - `--group G` runs a stored query. The workflows run groups, so which tests a
   job runs is data here, never a list in a workflow: `pr` and `nightly`.
-- `--shard i/n` runs the i-th of n parts of the expanded list: name k goes to
-  part k mod n + 1, so the parts cover every name exactly once. An empty part fails.
+- `--shard i/n` runs the i-th of n parts of the expanded list. The parts are
+  contiguous in registry order (one Go package's tests stay together) and cut
+  by each test's measured seconds (its `"seconds"`; a test with none weighs
+  1 s): the heaviest part is as light as a contiguous cut allows, and the
+  others end near their share of what is left. The parts cover every name
+  exactly once. An empty part fails.
+- `--write-seconds` records each passing test's measured seconds in the
+  registry; `schema-test seconds LOG...` does the same from the logs of runs
+  on fleet runners (each outcome line carries `(1.23s)`), which is where the
+  numbers come from: a bench's seconds are not a runner's.
 - Adapters for different languages run in parallel within one run.
 - `coverage` prints the matrix of every per-language test times every language,
   each cell `ok` (answered), `un` (declared unrepresentable) or `MISS`, then
@@ -154,7 +164,7 @@ Built today:
 | adapter | for | how |
 |---|---|---|
 | `go`, `lua` | per-language rows of family `align-arrays` | `make bin/schema build/verify-bitphase-bin`, then `verify-bitphase --adapter --lang L` |
-| `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -json -run '^(...)$' <package>`, one verdict per top-level test; skip is fail |
+| `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -count=1 -json -run '^(A|B|...)$' <package>` per package, cut into calls of at most `testreg.ShardBudget` measured seconds, run one after another within a package and several packages at once, each given the driver's remaining deadline less a 10 s margin as `-timeout`; a row a call never reports fails by name, and a call that exits non-zero with every test passed (a `TestMain` check) fails its rows, every event mapped to its row by full name, with `SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1` set (a test's tier says what it needs; under the driver no gate skips). A test or subtest that skips fails; a row whose test is not in its package's source is MISSING; one that never reports fails. A package in a module of its own runs from that module |
 | `plant` | negative controls; inputs `{"target", "env"}` | runs the target by name with `env` set, which breaks what the target checks; passes only when the target runs and fails |
 | `model-check` | TLA+ model checks (type `model`); inputs `{"config", "workers"}`, or `{"controls": true}` | `go build ./tools/tlcrun`, then `tlcrun -adapter`: TLC over `tla/<config>`, judged against its `tla/RUNS.tsv` row (an exhaustive run explores the recorded distinct states with no error; a reversed witness violates exactly the invariant its row names). The controls row runs the judge's three broken-tree controls. No TLC jar or no java fails every instance naming the runner. `SCHEMA_TEST_TLC_PLANT_APPEND` is the plant hook: its text is appended to the config in a scratch copy of `tla/` |
 
@@ -244,6 +254,63 @@ that helper's skip moves into the test.
 `--write-ledger` rewrites the ledger to what is unmoved now, and keeps every
 `skip-red` line as it is. It refuses to write while any file does not parse.
 Use it only when tests move in or go away.
+`--move L` gives every test on layer L's ledger lines that the driver can
+run its registry row (a language-free Go test becomes a `gotest` row, tier
+from its gates) and rewrites the ledger.
+
+A registry row's test never skips when the driver runs it: the gotest adapter
+has no skipped verdict, so a skip, or a subtest's, fails by name.
+`TestEveryTestIsARowOrInTheLedger` refuses a row whose test opens the slow
+gate (it needs a toolchain) with tier unit.
+
+## Sharding: the per-PR shards, by measured seconds
+
+This is the one sharding design for every per-PR group. Other layers
+(L6's make and golden rows among them) use it as it is. Its API and its
+seconds format stay stable. A change to either changes this section in the
+same commit.
+
+**The format.** A `test` line may end with `"seconds":S`. S is that test's
+measured run time in seconds, as a JSON number, on a fleet runner where one
+was measured, else on a bench (the run that measured it is named in the
+commit that wrote it).
+- A test with no `seconds` weighs `testreg.DefaultSeconds` (1 s).
+- A measured test weighs at least 0.01 s.
+- Every instance of a per-language test weighs its row's seconds.
+
+`schema-test run ... --write-seconds` writes the field for every passing
+test it ran. `schema-test seconds LOG...` writes it from the logs of driver
+runs (outcome lines such as `PASS <name> (1.23s)`). Neither tool touches any other byte of the
+file (`TestWriteSecondsKeepsEveryOtherByte`).
+
+**The API** (package `internal/testreg`):
+- `Weight(Instance) float64` is what one instance costs a shard.
+- `Parts(instances []Instance, n int) [][]Instance` cuts the expanded list, in
+  registry order, into n contiguous parts. The heaviest part is as light as a
+  contiguous cut allows, and the rest are as even as that allows. Every
+  instance is in exactly one part (`TestShardsCoverEveryNameExactlyOnce`), and
+  one heavy test leaves no part empty (`TestAHeavyTestLeavesNoPartEmpty`).
+- `PartSeconds([][]Instance) []float64` is each part's weight.
+- `schema-test run --group G --shard i/n` runs part i of n.
+
+**The budget.** A per-PR shard carries at most 60 s of measured tests (the
+two-minute job less its setup). `TestThePRShardsFitTheirJobs` holds ci-fast's
+`schema-test-pr` matrix to exactly 1/N..N/N, with every part within the
+budget, and N is the least count that fits: the same list cut into N-1 parts
+must overflow. When the pr group grows past N parts, add shards; when it
+shrinks or speeds up so that N-1 fit, remove one. Either way the test is red
+until the matrix changes.
+
+**A test heavier than one shard** is red by its own name. The fix is to split
+it into rows that each fit, such as one row per package or per make target:
+- `go vet ./...` becomes a `go vet` row per package.
+- A gate over every target becomes one row per target.
+- A Go test over every target becomes one top-level test per target, each
+  its own row (L4 splits `TestNameBuildability` into
+  `TestNameBuildability_<target>` this way, and owns their rows).
+
+Moving such a test to nightly to get it under the budget is not a fix. Its tier
+says what the test needs, never what fits.
 
 ## Adding a test
 
@@ -290,8 +357,13 @@ every pull request.
 
 ## CI
 
-- Per PR: ci-fast.yml job `schema-test` prints `coverage`, then runs
-  `--group pr`: unit and functional, every ready language, every language-free test.
+- Per PR: ci-fast.yml job `schema-test` prints `coverage` and runs `extract`
+  against main's ledger. Job `schema-test-pr` is a matrix of shards, each
+  `schema-test run --group pr --shard i/N`: unit and functional, every ready
+  language, every language-free test. `TestThePRShardsFitTheirJobs` holds the
+  matrix to exactly 1/N..N/N, each shard within its 60 s of measured tests.
+  A workflow job that runs the driver is not itself an unmoved test: its tests
+  are the rows it selects.
 - Nightly: `schema-test-nightly.yml` runs `--group nightly` (every tier, every
   language, no timeout) and names every MISSING instance red. It is red by
   intent until every language has an adapter: its MISSING list is the
@@ -332,7 +404,20 @@ load-refusal rows), through the `go` and `lua` adapters, plus a plant for each.
 Each layer is one pull request, and each moves its tests out of the unmoved
 ledger and into rows:
 
-- **L3:** the language-free Go tests, through `gotest`, batched by package.
+- **L3 (done):** the language-free Go tests, through `gotest`, batched by
+  package. Left in the ledger:
+  - Go benchmarks (L6, the bench adapter).
+  - Go tests in modules of their own beside generated Go (L5).
+  - Go tests behind a leg's build tag (L5).
+  - Go tests built only for another platform (L6).
+  - The tests that still skip without a build, environment or volume a make
+    target or runner provides (L6).
+
+  There is no exemption list. A test red once its slow gate opens is an
+  ordinary row in its tier, and it runs red until it is fixed. A test heavier
+  than a shard is split into rows that fit. `TestNameBuildability` stays on
+  the ledger's `tools/namebuild` line until L4 splits it into one test per
+  target and gives each its row.
 - **L4:** one adapter per language over the conformance drivers' protocol,
   corpus families first.
 - **L5:** the per-language Go tests, through each language's adapter.

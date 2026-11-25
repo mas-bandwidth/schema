@@ -10,7 +10,7 @@ import (
 
 // TestGoModMatchesPinBoundary holds go.mod's module path and `schema pin`'s
 // boundary (internal/modulemove.FirstV3ModuleTag) in step on every pull
-// request: ci-policy runs this package whatever the diff touches. Today go.mod
+// request: it is a registry row of the pr group, whatever the diff touches. Today go.mod
 // names /v2 and the boundary is unset, so pin refuses every v3 tag; #4445 moves
 // go.mod to /v3 and must set the boundary in the same commit, or this fails.
 // tools/releasetag holds the tag being cut to the same rule at release time.

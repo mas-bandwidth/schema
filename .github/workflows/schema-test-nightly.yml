@@ -29,7 +29,11 @@ concurrency:
 
 env:
   PGROUP_GO_TEST_TIMEOUT: '0'
+  SERIALIZE_TAG: v2.1.6
+  SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
+  SERIALIZE_RS_TAG: v5.0.0
+  SERIALIZE_CS_TAG: v2.2.1
 
 jobs:
   nightly:
@@ -40,10 +44,26 @@ jobs:
     if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: the pinned Go runtime the go adapter builds against
+      # what the language-free Go tests of tier functional and nightly read
+      # (the gotest rows run them with SCHEMA_SLOW=1 and
+      # SCHEMA_REQUIRE_CORPUS=1, so a missing runtime, pin or corpus fails
+      # by name): the sibling runtimes, the dist pins and the fixed corpus,
+      # as ci-fast.yml's schema-test-pr shards have them.
+      - name: the C++, C, C#, Go and Rust serialize runtimes (pinned releases)
         run: |
           set -euo pipefail
-          (cd .. && rm -rf serialize.go && git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go)
+          cd ..
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+      - uses: ./.github/actions/dist-pins
+        with:
+          pins: lua luau goose lobster
+      - name: produce the complete fixed corpus
+        run: sh tools/go-ci-corpus.sh produce
       - name: the coverage matrix, every test times every language
         run: go run ./tools/schema-test coverage
       - name: schema-test run --group nightly

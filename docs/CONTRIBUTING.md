@@ -278,7 +278,7 @@ class of lane that is meant to satisfy it. `go test ./internal/ci` reads every
 `t.Skip` in the tree against that file: a skip with no reason, or a reason no
 line names, fails at the pull request that writes it. The same test refuses a
 `TestMain` that leaves before `m.Run`, and a `_test.go` file whose build
-constraint no lane compiles under. In `ci-fast.yml`, the `ci-policy`,
+constraint no lane compiles under. In `ci-fast.yml`, the
 `go-test-touched` and `verify-leg` jobs record their `go test -json` events
 and end with `tools/gotestreport -skips`, which lists the job's skips by
 reason and fails on a skip the job provides for: a missing toolchain in the

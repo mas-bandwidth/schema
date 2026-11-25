@@ -8,33 +8,20 @@
 # hides a red, measured: its count is the test's Skip sites, and it stays
 # until the skip is gone. --write-ledger carries those lines over as they are.
 # kind	place	count	layer	reason
-go-test	bench/corpus	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	bench/paired	83	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	bench/paired	3	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
 go-test	bench/tables/moo	1	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
-go-test	bench/tools	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	bench/tools/realpacket-gen	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	cmd/schema	101	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	compiler	615	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	editors/vscode	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/atomicfile	15	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/baseline	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/check	123	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci	329	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/ci/hostilecorpus	10	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	cmd/schema	3	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
+go-test	compiler	10	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them; Go tests behind a leg's build tag (schema_leg_<leg>): that language's adapter runs them
+go-test	internal/ci	1	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
 go-test	internal/codegen/c	18	L5	per-language (c) Go tests: c's adapter runs them when their families move in
-go-test	internal/codegen/ccommon	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/codegen/cfmt	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cpp	28	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
 go-test	internal/codegen/cpptable	182	L5	per-language (cpp) Go tests: cpp's adapter runs them when their families move in
-go-test	internal/codegen/cqualify	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/codegen/csharp	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/cstable	171	L5	per-language (cs) Go tests: cs's adapter runs them when their families move in
 go-test	internal/codegen/ctable	187	L5	per-language (c) Go tests: c's adapter runs them when their families move in
 go-test	internal/codegen/dart	13	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/darttable	279	L5	per-language (dart) Go tests: dart's adapter runs them when their families move in
 go-test	internal/codegen/elixir	13	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	internal/codegen/elixirtable	291	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
-go-test	internal/codegen/golang	25	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	internal/codegen/goose	10	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/goosetable	195	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	internal/codegen/gotable	395	L5	per-language (go) Go tests: go's adapter runs them when their families move in
@@ -62,96 +49,34 @@ go-test	internal/codegen/squirrel	15	L5	per-language (squirrel) Go tests: squirr
 go-test	internal/codegen/squirreltable	223	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
 go-test	internal/codegen/unity	6	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
 go-test	internal/codegen/unitytable	37	L5	per-language (unity) Go tests: unity's adapter runs them when their families move in
-go-test	internal/docgate	12	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/errdiscard	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/execref	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/fixedproof	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/fixedvector	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/format	20	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/fuzz	34	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/githooks	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/goldens	34	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/goname	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/inputfamilies	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/languages	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/listwalk	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/lockfile	170	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/mapwalk	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/memceiling	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/modulemove	9	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/modulemove/pincorpus	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/nightlyrows	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/parser	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/pathid	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/provesran	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/publicapi	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/recipescan	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/rfc3339	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/runmatch	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/scanner	11	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/skipledger	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/slowtest	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablecook	33	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablenames	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablepack	35	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tabletext	91	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/tablewire	233	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/testinputs	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/testproc	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/vacuous	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/version	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	internal/viewlisting	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	ir	96	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tables/cards	36	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tables/cards/example	1	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	internal/fuzz	7	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
+go-test	internal/listwalk	1	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
+go-test	internal/mapwalk	1	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
+go-test	internal/tablecook	2	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
+go-test	internal/tablepack	2	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
+go-test	internal/tablewire	3	L6	Go benchmarks: the bench adapter runs them
+go-test	tables/cards	36	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
+go-test	tables/cards/example	1	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	tables/goruntime	3	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/elixir	2	L5	per-language (elixir) Go tests: elixir's adapter runs them when their families move in
 go-test	test/conformance/go	4	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/go/rows	47	L5	per-language (go) Go tests: go's adapter runs them when their families move in
 go-test	test/conformance/goose/wirefuzzdispatch	5	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
 go-test	test/conformance/goose/writerefusalpacket	2	L5	per-language (goose) Go tests: goose's adapter runs them when their families move in
-go-test	test/conformance/harness	369	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/conformance/harness	7	L6	Go tests that still skip without a build, an environment or a volume a make target or a runner provides: the make adapter runs them
 go-test	test/conformance/js	2	L5	per-language (js) Go tests: js's adapter runs them when their families move in
 go-test	test/conformance/lobster	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lobster/hostile	2	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
 go-test	test/conformance/lua	2	L5	per-language (lua) Go tests: lua's adapter runs them when their families move in
 go-test	test/conformance/luau	2	L5	per-language (luau) Go tests: luau's adapter runs them when their families move in
 go-test	test/conformance/moo	2	L5	per-language (moo) Go tests: moo's adapter runs them when their families move in
-go-test	test/conformance/packet	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
 go-test	test/conformance/python	2	L5	per-language (python) Go tests: python's adapter runs them when their families move in
 go-test	test/conformance/ruby	2	L5	per-language (ruby) Go tests: ruby's adapter runs them when their families move in
 go-test	test/conformance/squirrel	2	L5	per-language (squirrel) Go tests: squirrel's adapter runs them when their families move in
-go-test	test/cs-hostile/gen	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/go-tables	18	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	test/go-tables	18	L5	Go tests in a module of their own, run beside the generated Go they test: go's adapter runs them
 go-test	test/packet-write-bareint/lobster	1	L5	per-language (lobster) Go tests: lobster's adapter runs them when their families move in
-go-test	test/unity-hostile/gen	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-bitphase	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-canonical	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	test/verify-tablegen	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/agentsmap	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/cellmerge	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/fixedtwin	16	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestreport	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrows	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/gotestrun	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/hostilecorpusexec	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/hostileledger	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/inputaccount	3	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/matrix	17	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/mustrun	2	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/namebuild	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/negativecontrols	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/pgroup	22	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasebin	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasediff	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasetag	6	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/releasetargets	4	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/roadmap	14	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/slowgatescan	45	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/testguard	45	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/tlcrun	5	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/treelock	7	L3	language-free Go tests: the gotest adapter runs them when their package moves in
-go-test	tools/wirefuzzrelease	8	L3	language-free Go tests: the gotest adapter runs them when their package moves in
+go-test	tools/namebuild	1	L4	the name-buildability build of every target: L4 splits it into one test per target and owns their rows
+go-test	tools/treelock	1	L6	Go tests built only for another platform: a runner of that platform runs them
 make-target	Makefile	41	L6	make gates: the make adapter runs them
 make-target	make/bench-check.mk	1	L6	make gates: the make adapter runs them
 make-target	make/c-fixed-default-copy.mk	1	L6	make gates: the make adapter runs them
@@ -692,7 +617,7 @@ negative-control	write-refusal-storage-debug-dart	1	L6	negative controls: the pl
 negative-control	write-refusal-storage-debug-java	1	L6	negative controls: the plant adapter runs them
 workflow-job	.github/workflows/caa-self-test.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/certify.yml	11	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/ci-fast.yml	31	L7	workflow jobs: CI is generated from the registry
+workflow-job	.github/workflows/ci-fast.yml	29	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/ci-full.yml	23	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/cla.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/leg.yml	2	L7	workflow jobs: CI is generated from the registry
@@ -741,9 +666,7 @@ workflow-job	.github/workflows/schema-squirrel-all-port-differential.yml	2	L7	wo
 workflow-job	.github/workflows/schema-squirrel-nightly-fuzz.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-squirrel-resource-bounds.yml	2	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-squirrel-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/schema-test-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 workflow-job	.github/workflows/schema-unity-runs-hostile-corpus.yml	2	L7	workflow jobs: CI is generated from the registry
-workflow-job	.github/workflows/tla-nightly.yml	1	L7	workflow jobs: CI is generated from the registry
 data-case	bench/tables/moo/testdata	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	cmd/schema/testdata/fmt_directory	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	cmd/schema/testdata/form_classification	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -1188,11 +1111,6 @@ data-case	test/tables/valuedefaults/vd_var_defaults	1	L4	corpus data and harness
 data-case	test/tables/valuedefaults/vd_var_values	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/varevo	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/tables/widenbound	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard	3	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-python-legs/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	69	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	422	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fslowtest	45	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-data-case	test/testguard/ci-policy-selectors/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	132	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/unity-hostile	2	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 data-case	test/verify-bitphase	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
@@ -2646,7 +2564,6 @@ driver	test/table-base64/cs	1	L4	corpus data and harnesses: each language's adap
 driver	test/table-base64/python	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/tables	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/testguard	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
-driver	test/testguard/ci-policy-rest/github.com%2Fmas-bandwidth%2Fschema%2Fv2%2Finternal%2Fci	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity-hostile	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
 driver	test/unity-hostile/units	1	L4	corpus data and harnesses: each language's adapter answers them when their family moves in
