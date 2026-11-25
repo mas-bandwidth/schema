@@ -531,6 +531,8 @@ type staged struct {
 	name    string
 	serial  bool
 	prepErr error
+	prepCtx bool               // Prepare returns its context's error, as a build cut off does
+	timed   map[string]float64 // rows the adapter times itself, and their seconds
 	log     *eventLog
 	during  func()
 }
@@ -540,6 +542,9 @@ func (a staged) Serial() bool      { return a.serial }
 
 func (a staged) Prepare(ctx context.Context, _ string, _ []Instance) error {
 	a.log.add(fmt.Sprintf("prepare %s live=%t", a.name, ctx.Err() == nil))
+	if a.prepCtx {
+		return ctx.Err()
+	}
 	return a.prepErr
 }
 
@@ -549,7 +554,11 @@ func (a staged) Run(_ context.Context, _ string, instances []Instance) ([]Result
 		a.during()
 	}
 	a.log.add("end " + a.name)
-	return passAll(instances), nil
+	out := passAll(instances)
+	for i := range out {
+		out[i].Seconds = a.timed[out[i].Instance]
+	}
+	return out, nil
 }
 
 func freeInstance(adapter string) Instance {
@@ -571,25 +580,56 @@ func stagedRunner(t *testing.T, log *eventLog, deadline func(parent context.Cont
 }
 
 // TestPrepareRunsBeforeAnyCallOutsideItsDeadline: a cold build happens
-// once, before the first call, under the run's own context: a call whose
-// deadline has already passed still had its adapter prepared live.
+// once, before the first call, under a deadline of its own: a call whose
+// deadline has already passed still had its adapter prepared live, and each
+// prepare's deadline was made for it, not borrowed from a call.
 func TestPrepareRunsBeforeAnyCallOutsideItsDeadline(t *testing.T) {
 	t.Parallel()
 	log := &eventLog{}
-	expired := func(parent context.Context) (context.Context, context.CancelFunc) {
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", serial: true, log: log}, staged{name: "b", log: log})
+	rn.Context = func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		if strings.HasPrefix(group, "prepare ") {
+			return context.WithCancel(parent)
+		}
 		return context.WithDeadline(parent, time.Unix(0, 0))
 	}
-	rn := stagedRunner(t, log, expired, staged{name: "a", serial: true, log: log}, staged{name: "b", log: log})
 	rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
 	for _, name := range []string{"a", "b"} {
 		if !log.has("prepare " + name + " live=true") {
-			t.Fatalf("adapter %s was not prepared under the run's live context: %q", name, log.ev)
+			t.Fatalf("adapter %s was not prepared under a live context: %q", name, log.ev)
+		}
+		if log.at("deadline prepare none/"+name) > log.at("prepare "+name+" live=true") {
+			t.Fatalf("adapter %s was prepared before its own deadline was made: %q", name, log.ev)
 		}
 		for _, other := range []string{"a", "b"} {
 			if log.at("prepare "+name+" live=true") > log.at("deadline none/"+other) {
 				t.Fatalf("adapter %s was prepared after none/%s's call began: %q", name, other, log.ev)
 			}
 		}
+	}
+}
+
+// TestAPrepareThatOutlastsItsDeadlineFailsByName: a build is held to the
+// limit a call has; one cut off fails its group naming the timeout, and the
+// group's call never runs. That prepare's deadline has already passed.
+func TestAPrepareThatOutlastsItsDeadlineFailsByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", log: log, prepCtx: true}, staged{name: "b", log: log})
+	rn.Context = func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		if group == "prepare none/a" {
+			return context.WithDeadline(parent, time.Unix(0, 0))
+		}
+		return context.WithCancel(parent)
+	}
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "timed out preparing none/a", "deadline exceeded")
+	if log.has("start a") {
+		t.Fatalf("adapter a's call ran after its prepare timed out: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Fatalf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
 	}
 }
 
@@ -724,6 +764,29 @@ func TestARowsSecondsAreItsCallsShareAndItsPrepares(t *testing.T) {
 	for _, o := range rep.Outcomes {
 		if o.Seconds != 4 {
 			t.Errorf("%s weighs %.2f s, want 4 (6 s of call and 6 s of Prepare over 3 rows)", o.Full, o.Seconds)
+		}
+	}
+}
+
+// TestARowsShareIsWhatTheCallTookBeyondTheTimedRows: in a call where the
+// adapter timed one row itself (3 s of the call's 6 s), the rows it did not
+// time share only the other 3 s, so no second is counted twice; every row
+// still carries its third of the 6 s Prepare.
+func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := stagedRunner(t, log, context.WithCancel, staged{name: "a", log: log, timed: map[string]float64{"none.unit.tooling.a.one": 3}})
+	rn.Now = (&stepClock{step: 6 * time.Second}).now
+	one, two, three := freeInstance("a"), freeInstance("a"), freeInstance("a")
+	two.Full, three.Full = "none.unit.tooling.a.two", "none.unit.tooling.a.three"
+	rep := rn.Run(context.Background(), []Instance{one, two, three})
+	if !rep.OK() {
+		t.Fatalf("the run is red: %v", rep.Problems)
+	}
+	want := map[string]float64{"none.unit.tooling.a.one": 5, "none.unit.tooling.a.two": 3.5, "none.unit.tooling.a.three": 3.5}
+	for _, o := range rep.Outcomes {
+		if o.Seconds != want[o.Full] {
+			t.Errorf("%s weighs %.2f s, want %.2f (its own or a half of the call's untimed 3 s, plus 2 s of Prepare)", o.Full, o.Seconds, want[o.Full])
 		}
 	}
 }

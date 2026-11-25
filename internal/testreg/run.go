@@ -31,7 +31,9 @@ type Adapter interface {
 // driver, a harness). The runner calls Prepare for every group, one after
 // another, before any call starts and outside every call's deadline: a cold
 // checkout's build is the run's cost, paid once, and never eats the deadline
-// of the call that happens to need it first. A shard pays it whole, so the
+// of the call that happens to need it first. Each Prepare has a deadline of
+// its own, the limit a call has (Runner.Context, group "prepare <group>"),
+// starting when it starts: a build that outlasts it fails its group by name. A shard pays it whole, so the
 // rows that need it are measured cold and kept in one block (unitOf).
 type Preparer interface {
 	Prepare(ctx context.Context, lang string, instances []Instance) error
@@ -308,11 +310,22 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 		for _, inst := range g.instances {
 			asked[inst.Full] = true
 		}
-		// a row's seconds: its adapter's, else its share of the call's,
-		// and its share of its group's Prepare either way
+		// a row's seconds: its adapter's, else its share of what the call
+		// took beyond the rows its adapter timed, shared over the asked rows
+		// it did not time; and its share of its group's Prepare either way
+		rest, n := run.seconds, 0
+		for _, res := range run.results {
+			switch {
+			case !asked[res.Instance]:
+			case res.Seconds > 0:
+				rest -= res.Seconds
+			default:
+				n++
+			}
+		}
 		share := 0.0
-		if n := len(run.results); n > 0 {
-			share = run.seconds / float64(n)
+		if n > 0 && rest > 0 {
+			share = rest / float64(n)
 		}
 		prep := prepSeconds[gi] / float64(len(g.instances))
 		secondsOf := func(res Result) float64 {
@@ -382,8 +395,9 @@ func (rn *Runner) Run(parent context.Context, instances []Instance) *Report {
 	return rep
 }
 
-// prepare runs each group's Prepare (Preparer), one after another, under the
-// run's own context and no call's deadline, and returns each group's error.
+// prepare runs each group's Prepare (Preparer), one after another, each under
+// a deadline of its own (Runner.Context for "prepare <group>") and no call's,
+// and returns each group's error.
 func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []float64) {
 	out := make([]error, len(groups))
 	seconds := make([]float64, len(groups))
@@ -392,11 +406,18 @@ func (rn *Runner) prepare(parent context.Context, groups []group) ([]error, []fl
 		if !ok {
 			continue
 		}
+		ctx, cancel := rn.Context(parent, "prepare "+g.name)
 		start := rn.clock()
-		if err := p.Prepare(parent, g.lang, g.instances); err != nil {
+		err := p.Prepare(ctx, g.lang, g.instances)
+		seconds[gi] = rn.clock().Sub(start).Seconds()
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded)
+		cancel()
+		switch {
+		case err != nil && timedOut:
+			out[gi] = fmt.Errorf("adapter %s timed out preparing %s: %w", g.adapter, g.name, err)
+		case err != nil:
 			out[gi] = fmt.Errorf("adapter %s could not prepare %s: %w", g.adapter, g.name, err)
 		}
-		seconds[gi] = rn.clock().Sub(start).Seconds()
 	}
 	return out, seconds
 }

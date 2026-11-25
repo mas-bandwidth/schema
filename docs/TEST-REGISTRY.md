@@ -127,12 +127,13 @@ failure and a non-zero exit, never a pass, a skip or an empty result:
 | an adapter omits an instance it was asked for, or reports one twice | `TestExpectedNotRanFails`, `TestAResultReportedTwiceFails` |
 | an adapter crashes | `TestAnAdapterCrashFails` |
 | an adapter times out (the deadline is an argument; the test hands in one already past) | `TestAnAdapterTimeoutFails` |
-| a build a call needs (a leg, a harness) runs before any call, outside every deadline (`testreg.Preparer`); a plant prepares the rows it runs | `TestPrepareRunsBeforeAnyCallOutsideItsDeadline`, `TestABuildStepRunsInPrepare`, `TestAPlantPreparesTheRowsItRunsInTheCheckout` |
+| a build a call needs (a leg, a harness) runs before any call, outside every call's deadline and under one of its own, the limit a call has (`testreg.Preparer`); a plant prepares the rows it runs; a step already built answers without waiting for the checkout | `TestPrepareRunsBeforeAnyCallOutsideItsDeadline`, `TestABuildStepRunsInPrepare`, `TestAPlantPreparesTheRowsItRunsInTheCheckout`, `TestABuildStepAlreadyRunNeverWaitsForTheCheckout` |
+| a build that outlasts its deadline fails every row that needed it, naming the timeout | `TestAPrepareThatOutlastsItsDeadlineFailsByName` |
 | a build that fails fails every row that needed it, by name, and its call never runs | `TestAFailedPrepareFailsItsGroupByName` |
-| the adapters that take the checkout (make, golden, plant, model-check) run one after another, each deadline starting with its own call (`testreg.Serial`) | `TestSerialAdaptersRunOneAfterAnother`, `TestTheCheckoutAdaptersRunOneAfterAnother` |
+| the adapters that take the checkout (make, golden, plant, model-check, corpus) run one after another, each deadline starting with its own call (`testreg.Serial`) | `TestSerialAdaptersRunOneAfterAnother`, `TestTheCheckoutAdaptersRunOneAfterAnother` |
 | the env plants of one language are one block of a shard, as a golden writer's rows are | `TestAnEnvPlantsRowsShareOneShardByLanguage` |
 | each golden writer, each language's env plants, every other plant and every make row is an adapter call of its own, under its own deadline | `TestEachWriterAndPlantIsACallOfItsOwn` |
-| a row is weighed by what it cost: its adapter's seconds, else its share of its call's time, plus its share of its group's Prepare; a plant by its baseline and sabotaged run | `TestARowsSecondsAreItsCallsShareAndItsPrepares`, `TestAPlantResultCarriesItsMeasuredSeconds` |
+| a row is weighed by what it cost: its adapter's seconds, else its share of what its call took beyond the rows the adapter timed, plus its share of its group's Prepare; a plant by its baseline and sabotaged run | `TestARowsSecondsAreItsCallsShareAndItsPrepares`, `TestARowsShareIsWhatTheCallTookBeyondTheTimedRows`, `TestAPlantResultCarriesItsMeasuredSeconds` |
 | a verdict other than pass or fail: there is no skipped verdict | `TestThereIsNoSkippedVerdict` |
 | a harness that logs a skip | `TestAHarnessSkipLineFails` |
 | a Go test that skips | `TestGoTestEventsGiveOneVerdictEach` |

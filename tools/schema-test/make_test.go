@@ -535,11 +535,30 @@ func TestTheCheckoutAdaptersRunOneAfterAnother(t *testing.T) {
 	t.Parallel()
 	ads := adapters(io.Discard)
 	withRunner(ads, &testreg.Runner{})
-	for name, want := range map[string]bool{"make": true, "golden": true, "plant": true, "model-check": true, "gotest": false, "corpus": false} {
+	for name, want := range map[string]bool{"make": true, "golden": true, "plant": true, "model-check": true, "corpus": true, "gotest": false} {
 		s, ok := ads[name].(testreg.Serial)
 		if got := ok && s.Serial(); got != want {
 			t.Errorf("adapter %s Serial is %t, want %t", name, got, want)
 		}
+	}
+}
+
+// TestABuildStepAlreadyRunNeverWaitsForTheCheckout: a step the builder has
+// run answers from its record while another make holds the checkout, so a
+// call whose leg Prepare built does not spend its deadline in that wait. The
+// context is already done: a builder that took the lock first would fail
+// naming the wait.
+func TestABuildStepAlreadyRunNeverWaitsForTheCheckout(t *testing.T) {
+	t.Parallel()
+	planted := errors.New("planted: the recorded result")
+	b := &builder{log: io.Discard, done: map[string]error{"make\x00conformance-leg-go": planted}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	checkoutMake <- struct{}{}
+	err := b.run(ctx, []string{"make", "conformance-leg-go"})
+	<-checkoutMake
+	if !errors.Is(err, planted) {
+		t.Fatalf("a step already run returned %v, want its recorded result without waiting for the checkout", err)
 	}
 }
 

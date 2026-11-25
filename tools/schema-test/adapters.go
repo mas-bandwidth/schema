@@ -144,15 +144,17 @@ type builder struct {
 func (b *builder) run(ctx context.Context, argv []string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	// a step already run answers at once: it touches nothing, so it never
+	// waits for the checkout another make holds
+	key := strings.Join(argv, "\x00")
+	if err, ok := b.done[key]; ok {
+		return err
+	}
 	release, err := holdCheckout(ctx)
 	if err != nil {
 		return fmt.Errorf("build step %q: %w", strings.Join(argv, " "), err)
 	}
 	defer release()
-	key := strings.Join(argv, "\x00")
-	if err, ok := b.done[key]; ok {
-		return err
-	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	bound(cmd)
 	var out bytes.Buffer
@@ -174,6 +176,11 @@ type harnessAdapter struct {
 	build *builder
 	log   io.Writer
 }
+
+// Serial: the harness takes the checkout for its whole run (runHarness), so
+// it runs between the other checkout-taking groups, never waiting for one
+// inside its own deadline (testreg.Serial).
+func (a *harnessAdapter) Serial() bool { return true }
 
 func (a *harnessAdapter) Answers(t testreg.Test) bool {
 	_, ok := harnessFor(t)

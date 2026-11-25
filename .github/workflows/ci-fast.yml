@@ -3286,13 +3286,19 @@ jobs:
         if: matrix.pins != ''
         with:
           pins: ${{ matrix.pins }}
+      # The key is the tree's identity (tools/produce.sh: the merged tree and
+      # the Go toolchain), the same words unpack checks, so a kept tree is
+      # only ever one built from exactly this source. A list of input globs
+      # would miss inputs (embedded runtimes, help text, test/tables schemas).
       - name: what the cache is keyed by
-        run: echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+        run: echo "PRODUCE_ID=$(sh tools/produce.sh identity | tr ' ' '-')" >> "$GITHUB_ENV"
       - id: kept
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: build/produce/${{ matrix.name }}.tgz
-          key: produce-${{ matrix.name }}-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_TAG }}-${{ env.SERIALIZE_GO_TAG }}-${{ hashFiles('**/*.go', 'go.mod', 'go.sum', 'Makefile', 'make/**', 'tables/**', 'testdata/conformance/**', 'test/conformance/**', 'SIBLINGS') }}
+          path: |
+            build/produce/${{ matrix.name }}.tgz
+            build/produce/${{ matrix.name }}.id
+          key: produce-${{ matrix.name }}-${{ runner.os }}-${{ env.PRODUCE_ID }}
       - name: the kept tree, stood newer than this checkout
         if: steps.kept.outputs.cache-hit == 'true'
         run: sh tools/produce.sh unpack build/produce
@@ -3310,12 +3316,16 @@ jobs:
       - if: steps.kept.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: build/produce/${{ matrix.name }}.tgz
+          path: |
+            build/produce/${{ matrix.name }}.tgz
+            build/produce/${{ matrix.name }}.id
           key: ${{ steps.kept.outputs.cache-primary-key }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: produce-${{ matrix.name }}-${{ github.run_id }}-${{ github.sha }}
-          path: build/produce/${{ matrix.name }}.tgz
+          path: |
+            build/produce/${{ matrix.name }}.tgz
+            build/produce/${{ matrix.name }}.id
           if-no-files-found: error
           retention-days: 1
 

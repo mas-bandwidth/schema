@@ -92,7 +92,7 @@ func TestThePRShardsRunOnTheProducedLegs(t *testing.T) {
 	}
 	jobs := yamlJobs(string(data))
 	producer, shards := jobs["produce"], jobs["schema-test-pr"]
-	for _, want := range []string{"timeout-minutes: 2", "name: conformance-leg-go", "name: conformance-leg-goose", "actions/cache/restore@", "actions/cache/save@", "tools/produce.sh pack", "actions/upload-artifact@", "produce-${{ matrix.name }}-${{ github.run_id }}-${{ github.sha }}"} {
+	for _, want := range []string{"timeout-minutes: 2", "name: conformance-leg-go", "name: conformance-leg-goose", "actions/cache/restore@", "actions/cache/save@", "tools/produce.sh pack", "sh tools/produce.sh identity", "key: produce-${{ matrix.name }}-${{ runner.os }}-${{ env.PRODUCE_ID }}", "build/produce/${{ matrix.name }}.id", "actions/upload-artifact@", "produce-${{ matrix.name }}-${{ github.run_id }}-${{ github.sha }}"} {
 		if !strings.Contains(producer, want) {
 			t.Errorf("produce misses %s", want)
 		}
