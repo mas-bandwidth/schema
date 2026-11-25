@@ -441,8 +441,8 @@ func TestARecipeThatRunsGoTestWithoutJSONFails(t *testing.T) {
 		"\t$(MAKE) --no-print-directory gate-inner":                     true,
 		// -json in a path is no -json flag
 		"\t@if go test -v -overlay build/c-json-label-nc/overlay.json ./compiler; then exit 1; fi": true,
-		"\tgo test ./x > build/x-json.log":                                                       true,
-		"\tgo test -json=true ./x":                                                                false,
+		"\tgo test ./x > build/x-json.log":                              true,
+		"\tgo test -json=true ./x":                                      false,
 		"\tgo test -count=1 \\\n\t\t-json ./internal/x -run '^TestA$$'": false,
 		"\tgo test -json ./x | tee build/x.json":                        false,
 		"\t$(GO_TEST_JSON) ./x":                                         false,
