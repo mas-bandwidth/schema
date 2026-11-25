@@ -668,7 +668,7 @@ fuzz-generated-readers-go:
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
-	@# loud-ok: with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
+	@# with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
 	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > build/conformance-go-fuzz-work.log 2>&1; echo "exited $$? (the verdict is read from build/conformance-go-fuzz-work.log below)"
 	@test -n "$$(ls -A build/conformance-go-fuzz-work/fixtures 2>/dev/null)" || \
 		{ cat build/conformance-go-fuzz-work.log; echo "tables-go-fuzz: the harness wrote no fixtures under build/conformance-go-fuzz-work/fixtures"; exit 1; }

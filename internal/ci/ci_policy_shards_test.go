@@ -17,7 +17,7 @@ import (
 // ciPolicyRowRe reads one row of ci-fast.yml's ci-policy matrix: the shard
 // name, then its selection, `-run '^(A|B|...)'` or the complement `-not
 // '^(A|B|...)'`, which ciPolicyCommand expands to test names at the root (no
-// row skips: Glenn, 2026-11-25, "NO SKIPS").
+// row skips: docs/rulings.json no-skips, 2026-11-25, "NO SKIPS").
 var ciPolicyRowRe = regexp.MustCompile(`(?m)^          - shard: ([a-z-]+)\n            select: -(run|not) '\^\(([A-Za-z0-9_|]+)\)'\n`)
 
 // ciPolicyCommand is the ci-policy step: the row's selection listed by name

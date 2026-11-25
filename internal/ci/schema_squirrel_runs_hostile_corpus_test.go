@@ -456,7 +456,7 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 	}
 	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Squirrel
 	// reader printed a verdict for against the cases the folder registers. No
-	// case is held back (Glenn, 2026-11-25: "NO SKIPS"): a case of a schema the
+	// case is held back (docs/rulings.json no-skips, 2026-11-25: "NO SKIPS"): a case of a schema the
 	// generator refuses did not run, and the ledger is red on it by name.
 	summary, err := hostilecorpus.RanEvery(squirrelHostileCorpusDir(t), slices.Collect(maps.Keys(got)))
 	if err != nil {

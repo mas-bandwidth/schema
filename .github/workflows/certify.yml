@@ -321,7 +321,7 @@ jobs:
             "MIX=mix"
             "NODE=node"
           )
-          # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+          # make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
           PREREQS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && /^test:/{for(i=2;i<=NF;i++) if($i != "toolchain") print $i; done=1}')
           if [ -z "$PREREQS" ]; then
             echo "::error::make -qp printed no prerequisites for test:"
@@ -499,10 +499,10 @@ jobs:
             local leg_target="$1" idx="$2" total="$3" filter_mode="$4"
             local all_prereqs
             if [ "$leg_target" = "test-python" ]; then
-              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              # make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
               all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '$1 == "test-python:" || $1 == "python-ci-support:" {for(i=2;i<=NF;i++) if($i != "python-ci-support") print $i}')
             else
-              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              # make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
               all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk -v tgt="${leg_target}:" '!done && $1 == tgt {for(i=2;i<=NF;i++) print $i; done=1}')
             fi
             if [ -z "$all_prereqs" ]; then
@@ -571,7 +571,7 @@ jobs:
               make python-ci-packages "${MAKE_VARS[@]}"
               make python-ci-compiler "${MAKE_VARS[@]}"
             elif [ "$SHARD_IDX" = "2" ]; then
-              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              # make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
               WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && $1 == "test-python:" {for(i=2;i<=NF;i++) if($i ~ /^python-wirefuzz-.*-shard-[0-9]+$/) print $i; done=1}')
               if [ -z "$WF_SHARDS" ]; then
                 echo "::error::no python-wirefuzz-*-shard-* targets found on test-python:"
@@ -595,7 +595,7 @@ jobs:
               make conformance CONFORMANCE_ONLY="$BASE_LEG" "${MAKE_VARS[@]}"
               make test-ruby-recipe "${MAKE_VARS[@]}"
             elif [ "$SHARD_IDX" = "2" ]; then
-              # loud-ok: make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
+              # make -q exits 1 for a target that is out of date, the one status accepted; the reader reads to the end, so make is never cut short; the empty-result check right below is the loud refusal
               WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || [ $? -eq 1 ]; } | awk '!done && $1 == "test-ruby:" {for(i=2;i<=NF;i++) if($i ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) print $i; done=1}')
               if [ -z "$WF_SHARDS" ]; then
                 echo "::error::no ruby-wirefuzz-*-shard-* targets found on test-ruby:"
