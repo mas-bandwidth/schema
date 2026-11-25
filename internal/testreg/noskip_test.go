@@ -476,6 +476,45 @@ func goSkips(path, rel string, probes *probeIndex) ([]string, error) {
 	}
 	isTesting := func(e ast.Expr) bool { return isTestingType(e, testingName) }
 	g := newGateReader(probes, f, rel)
+	// a probe declared inside a function (have := func() bool {...}) reads
+	// what its literal reads
+	ast.Inspect(f, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok || len(as.Lhs) != len(as.Rhs) {
+			return true
+		}
+		for i, r := range as.Rhs {
+			fl, isLit := r.(*ast.FuncLit)
+			id, isID := as.Lhs[i].(*ast.Ident)
+			if !isLit || !isID {
+				continue
+			}
+			k := 0
+			ast.Inspect(fl.Body, func(x ast.Node) bool {
+				if sel, ok := x.(*ast.SelectorExpr); ok {
+					if p, ok := sel.X.(*ast.Ident); ok {
+						k |= gateSelectors[p.Name+"."+sel.Sel.Name]
+					}
+				}
+				if c, ok := x.(*ast.CallExpr); ok && g.reads(c, probeGate|probeOutside) {
+					k |= probeGate
+					if g.reads(c, probeOutside) {
+						k |= probeOutside
+					}
+				}
+				return true
+			})
+			if k != 0 {
+				local := maps.Clone(g.local)
+				if local == nil {
+					local = map[string]int{}
+				}
+				local[id.Name] |= k
+				g.local = local
+			}
+		}
+		return true
+	})
 	root := strings.TrimSuffix(path, filepath.FromSlash(rel))
 	if strings.HasSuffix(rel, "_test.go") {
 		for _, cg := range f.Comments {
@@ -1293,6 +1332,10 @@ func elseOnlySaysWhy(ifs *ast.IfStmt) bool {
 	if ifs.Else == nil {
 		return true
 	}
+	if elif, ok := ifs.Else.(*ast.IfStmt); ok {
+		// else if: each arm only says why, and none fails
+		return elseOnlySaysWhy(&ast.IfStmt{Else: elif.Body}) && elseOnlySaysWhy(elif)
+	}
 	e, ok := ifs.Else.(*ast.BlockStmt)
 	if !ok || !onlyReports(e) {
 		return false
@@ -1452,6 +1495,9 @@ var noSkipPlants = []struct{ file, body, rule string }{
 	// package of the module
 	{"p/w8_test.go", "package p\n\nimport (\n\t\"os/exec\"\n\t\"sync\"\n\t\"testing\"\n)\n\nvar haveCC = sync.OnceValue(func() bool {\n\t_, err := exec.LookPath(\"cc\")\n\treturn err == nil\n})\n\nfunc TestW8(t *testing.T) {\n\tif !haveCC() {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
 	{"p/w9_test.go", "package p\n\nimport (\n\t\"testing\"\n\n\t\"example/lib\"\n)\n\nfunc need() bool { return lib.Have(\"cc\") }\n\nfunc TestW9(t *testing.T) {\n\tif !need() {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
+	// an else if that only logs, and a probe declared inside the test
+	{"p/w11_test.go", "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestW11(t *testing.T) {\n\tif os.Getenv(\"CI\") != \"\" {\n\t\tx := 1\n\t\tif x != 1 {\n\t\t\tt.Fatal(x)\n\t\t}\n\t} else if os.Getenv(\"LOCAL\") != \"\" {\n\t\tt.Log(\"local\")\n\t}\n}\n", "go-early-out"},
+	{"p/w12_test.go", "package p\n\nimport (\n\t\"os/exec\"\n\t\"testing\"\n)\n\nfunc TestW12(t *testing.T) {\n\thave := func() bool {\n\t\t_, err := exec.LookPath(\"cc\")\n\t\treturn err == nil\n\t}\n\tif !have() {\n\t\treturn\n\t}\n\tt.Log(\"ran\")\n}\n", "go-early-out"},
 	// a skip notice built of a literal and a value
 	{"p/w10_test.go", "package p\n\nimport \"testing\"\n\nfunc TestW10(t *testing.T) {\n\twhy := \"no seed\"\n\tt.Log(\"random pass skipped: \" + why)\n}\n", "go-skip-print"},
 	// a job that never runs unless the event names one repository
