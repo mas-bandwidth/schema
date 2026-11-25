@@ -281,11 +281,11 @@ public final class TableFixed {
     public static boolean readHeader(byte[] data, Header out, Report report) {
         // THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed
         // form-1 file is TEN bytes and a form-2 batch THREE, so a reader that
-        // measured first would answer damaged for every real file of the two
+        // measured first would answer truncated for every real file of the two
         // forms it is supposed to name. Only a file with NO FIRST BYTE is
-        // damaged before the byte is read.
+        // truncated before the byte is read (§5.3 refusal table).
         if (data == null || data.length < 1) {
-            report.damaged = true;
+            report.refuse(Reason.truncated);
             return false;
         }
         if (data[0] != form) {
@@ -296,13 +296,13 @@ public final class TableFixed {
             return false;
         }
         if (data.length < fileHeaderBytes + 4) {
-            report.damaged = true;
+            report.refuse(Reason.truncated);
             return false;
         }
         // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
         for (int i = 1; i < hashAt; i++) {
             if (data[i] != 0) {
-                report.damaged = true;
+                report.refuse(Reason.reservedNotZero);
                 return false;
             }
         }
@@ -536,11 +536,13 @@ public final class TableFixed {
         batchTooLarge,
 
         /**
-         * A HASH IN NO LINEAGE ENTRY: the writer is NEWER than this reader, and the operator's
-         * answer is SHIP THE READER. Its report carries the file's hash AND NOTHING ELSE (ALG 5.3,
-         * bill 12.4).
+         * A HASH IN NO LINEAGE ENTRY: a layout hash this build's lineage does not hold. Nothing
+         * proves a hash newer, so every step-5 miss is this name in every leg, and the retired
+         * layout_newer is gone (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, "STEP 5's ANSWER IS
+         * layout_unknown"; SPEC-TABLES §21.3). This enum's ordinals cross no wire, file or leg, so
+         * no ordinal is held for it. Its report carries the file's hash AND NOTHING ELSE.
          */
-        layoutNewer,
+        layoutUnknown,
 
         /**
          * A HASH THIS BUILD ONCE SERVED AND HAS RETIRED -- below the floor. The operator's answer
@@ -572,7 +574,24 @@ public final class TableFixed {
          * A BOOL OR A PRESENT BYTE OTHER THAN 0 OR 1 in live data (docs/FIXED-FORM-ALGORITHM.md
          * §4.5): no writer emits one, and the read refuses it by name rather than land it.
          */
-        wireDamaged
+        wireDamaged,
+
+        /**
+         * FRAMING DAMAGE, BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3's refusal table): no bytes at
+         * all, shorter than 20 bytes after the form byte answered, a header and layout followed by
+         * no record, and a ragged tail (rest mod record_bytes != 0). There is no malformed flag on
+         * this form's report.
+         */
+        truncated,
+
+        /** any reserved header byte 1..7 nonzero (§5.3's refusal table). */
+        reservedNotZero,
+
+        /**
+         * THE INTEGRITY TRAILER DOES NOT HOLD (docs/SPEC-TABLES.md §2.14): whole-file damage, named
+         * integrity_mismatch, refused before any layout is compared.
+         */
+        integrityMismatch
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
@@ -583,10 +602,10 @@ public final class TableFixed {
         /** a kind that grew since the writer; the value landed exactly. */
         public int widened;
 
-        /** framing damage: the two ends of the record met. */
-        public boolean damaged;
-
-        /** a refusal, which is never damage. */
+        /**
+         * a refusal. Every answer that is not a read is one, framing damage included: "There is no
+         * malformed flag on this form's report" (docs/FIXED-FORM-ALGORITHM.md §5.3).
+         */
         public boolean refused;
 
         /** which refusal, BY NAME. */
@@ -610,7 +629,6 @@ public final class TableFixed {
         public void reset() {
             unknown = 0;
             widened = 0;
-            damaged = false;
             refused = false;
             reason = Reason.none;
             layoutHash = 0;
@@ -661,8 +679,8 @@ public final class TableFixed {
     // build's own record and reading anybody else's.
     //
     // EVERY REACH INTO THE RECORD IS BOUNDED. A compiled plan came from a
-    // stranger's layout, so an entry that would read past the record body is
-    // framing damage and is reported rather than thrown: an exception escaping
+    // stranger's layout, so an entry that would read past the record body
+    // refuses layoutMalformed (§5.3) rather than throwing: an exception escaping
     // into a caller that asked a question is the one thing this must not do.
 
     /**
@@ -745,25 +763,35 @@ public final class TableFixed {
         return true;
     }
 
+    /** chainHolds' three answers. */
+    static final int chainHeld = 1;
+
+    static final int chainMissed = 0;
+    static final int chainPastRecord = -1;
+
     /**
      * EVERY LINK OF A GUARD CHAIN PAST TWO HOLDS (docs/FIXED-FORM-ALGORITHM.md §4.1): an arm inside
      * an arm inside an arm answers to every enclosing tag, outermost first, each at its own width
-     * and inside the writer's record. A link past the record sets damaged.
+     * and inside the writer's record. The answer is three-way: chainHeld when every link holds,
+     * chainMissed when a link names another arm, and chainPastRecord when a link reaches past the
+     * record, which the caller refuses as layoutMalformed: the build laid a plan its own entry
+     * cannot hold (§5.3, "a known hash whose LINEAGE ENTRY would not build"). The bounds answer is
+     * its own value because the report keeps its first refusal, so an earlier refusal on the same
+     * record (a count over its bound) must not be read as this one.
      */
-    static boolean chainHolds(Entry p, byte[] src, int srcAt, int srcLength, Report report) {
+    static int chainHolds(Entry p, byte[] src, int srcAt, int srcLength) {
         for (int j = 0; j < p.gcount; j++) {
             final long gl = p.gpool[2 * (p.gindex + j)];
             final int g = (int) gl;
             final int gw = guardWidth((byte) (gl >>> 32));
             if (g < 0 || g + gw > srcLength) {
-                report.damaged = true;
-                return false;
+                return chainPastRecord;
             }
             if (tagAt(src, srcAt + g, gw) != p.gpool[2 * (p.gindex + j) + 1]) {
-                return false;
+                return chainMissed;
             }
         }
-        return true;
+        return chainHeld;
     }
 
     /** run one plan over one record body, landing it in this reader's image. */
@@ -791,7 +819,7 @@ public final class TableFixed {
                 // bounded by the writer's record like every other offset (5.2).
                 final int gw = guardWidth(p.argw);
                 if (p.guard < 0 || p.guard + gw > srcLength) {
-                    report.damaged = true;
+                    report.refuse(Reason.layoutMalformed);
                     return;
                 }
                 if (tagAt(src, srcAt + p.guard, gw) != p.arg) {
@@ -804,24 +832,28 @@ public final class TableFixed {
                 // when BOTH tags hold their ordinal.
                 final int gw2 = guardWidth(p.argw2);
                 if (p.guard2 < 0 || p.guard2 + gw2 > srcLength) {
-                    report.damaged = true;
+                    report.refuse(Reason.layoutMalformed);
                     return;
                 }
                 if (tagAt(src, srcAt + p.guard2, gw2) != p.arg2) {
                     continue;
                 }
             }
-            if (p.gcount > 2 && !chainHolds(p, src, srcAt, srcLength, report)) {
-                if (report.damaged) {
+            if (p.gcount > 2) {
+                final int chain = chainHolds(p, src, srcAt, srcLength);
+                if (chain == chainPastRecord) {
+                    report.refuse(Reason.layoutMalformed);
                     return;
                 }
-                continue;
+                if (chain == chainMissed) {
+                    continue;
+                }
             }
             switch (p.op) {
                 case opCopy:
                     {
                         if (p.size < 0 || p.src < 0 || p.src + p.size > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         java.lang.System.arraycopy(src, srcAt + p.src, image, p.dst, p.size);
@@ -830,7 +862,7 @@ public final class TableFixed {
                 case opCount:
                     {
                         if (p.src + 4 > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         int v = get32(src, srcAt + p.src);
@@ -848,7 +880,7 @@ public final class TableFixed {
                     {
                         final int cap = p.size;
                         if (p.src + 4 + p.size > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         int v = get32(src, srcAt + p.src);
@@ -874,14 +906,14 @@ public final class TableFixed {
                 case opDead:
                     {
                         if (p.src < 0 || p.src + p.size > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         int deadStart = p.src;
                         int deadBytes = p.size;
                         if (p.deadCountAt >= 0) {
                             if (p.deadCountAt + 4 > srcLength) {
-                                report.damaged = true;
+                                report.refuse(Reason.layoutMalformed);
                                 return;
                             }
                             final int live = get32(src, srcAt + p.deadCountAt);
@@ -895,7 +927,7 @@ public final class TableFixed {
                         } else if (p.deadTagAt >= 0) {
                             final int tagWidth = guardWidth(p.deadTagWidth);
                             if (p.deadTagAt + tagWidth > srcLength) {
-                                report.damaged = true;
+                                report.refuse(Reason.layoutMalformed);
                                 return;
                             }
                             if (tagAt(src, srcAt + p.deadTagAt, tagWidth) != p.deadTag) {
@@ -903,7 +935,7 @@ public final class TableFixed {
                             }
                         }
                         if (deadStart < 0 || deadBytes < 0 || deadStart + deadBytes > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         for (int j = 0; j < deadBytes; j++) {
@@ -920,7 +952,7 @@ public final class TableFixed {
                         // writer whose enum gained a variant IN THE MIDDLE is
                         // remapped here and never reinterpreted.
                         if (p.src + p.size > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         // AN ORDINAL IS UNSIGNED, AT EVERY WIDTH. An eight-byte
@@ -955,7 +987,7 @@ public final class TableFixed {
                 case opWiden:
                     {
                         if (p.src + p.size > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the
@@ -977,7 +1009,7 @@ public final class TableFixed {
                 case opWidenF:
                     {
                         if (p.src + 4 > srcLength) {
-                            report.damaged = true;
+                            report.refuse(Reason.layoutMalformed);
                             return;
                         }
                         // THE FLOAT RUNG IS THE ORDINARY CONVERSION (docs/SPEC-TABLES.md
@@ -1013,7 +1045,7 @@ public final class TableFixed {
                         if (p.aux == 0 && p.dstsize != 0) {
                             final int tagW = p.sign > 0 ? (p.sign & 0xFF) : p.size;
                             if (p.src < 0 || p.src + tagW > srcLength) {
-                                report.damaged = true;
+                                report.refuse(Reason.layoutMalformed);
                                 return;
                             }
                             final long raw = tagAt(src, srcAt + p.src, tagW);

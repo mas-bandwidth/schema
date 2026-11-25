@@ -1718,7 +1718,7 @@ public final class Main {
             int wantCnt = isA ? 2 : 1;
             TableFixed.Report rep = new TableFixed.Report();
             int cnt = FixedDocFixed.load(fbatch, 2, w, plan, remap, fimage, rep);
-            check(cnt == wantCnt && !rep.damaged && !rep.refused, "java Fixed.load");
+            check(cnt == wantCnt && !rep.refused, "java Fixed.load");
             byte[] out = new byte[w.length];
             int sn = FixedDocFixed.save(fbatch, cnt, out);
             check(sn == w.length && Arrays.equals(out, w), "java Fixed.save");

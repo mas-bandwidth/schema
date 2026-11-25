@@ -138,7 +138,7 @@ func t15JavaProbe(class string, chain bool) string {
             byte[] image = probe.RootFixed.image();
             probe.TableFixed.Report r = new probe.TableFixed.Report();
             probe.TableFixed.run(plan, made, remap, file, rec, probe.RootFixed.bodyBytes, image, r);
-            if (r.damaged || r.refused) { bad += fail("compiled poison " + poison + ": malformed=" + r.damaged); continue; }
+            if (r.refused) { bad += fail("compiled poison " + poison + ": refused " + r.reason); continue; }
             probe.RootFixed.Value back = new probe.RootFixed.Value();
             probe.RootFixed.scatter(image, 0, back, r);
             int x = back.o.m.i.a.x;

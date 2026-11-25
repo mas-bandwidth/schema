@@ -85,3 +85,47 @@ func TestReadVerdictsCountsOnlyTheBlocks(t *testing.T) {
 		t.Errorf("a run with no end has no verdicts: %+v", none)
 	}
 }
+
+// TestNameUnansweredNamesEveryCaseARunLeftOut is the guard that keeps every
+// failure a case's: a case the log neither ran nor failed is printed as its
+// own FAIL (with the runner's exit when it failed), a log that never closed
+// its block is read whole, and a failed runner whose log names no case's
+// failure is refused as a defect of the runner.
+func TestNameUnansweredNamesEveryCaseARunLeftOut(t *testing.T) {
+	t.Parallel()
+	cases := []Case{{Name: "a", Carrier: "wire"}, {Name: "b", Carrier: "text"}, {Name: "c", Carrier: "text"}}
+	for _, tc := range []struct {
+		name   string
+		log    string
+		exit   int
+		want   []string
+		errHas string
+	}{
+		{name: "whole-and-green", log: "hostile-ledger ran a\nhostile-ledger ran b\nhostile-ledger ran c\nhostile-ledger end\n"},
+		{name: "a-carrier-never-read", log: "hostile-ledger ran a\nhostile-ledger end\n",
+			want: []string{"FAIL b the runner gave it no verdict (text carrier)", "FAIL c the runner gave it no verdict (text carrier)", "hostile-ledger end"}},
+		{name: "stopped-inside-its-block", log: "hostile-ledger ran a\nFAIL b: wrong\n", exit: 2,
+			want: []string{"FAIL c the runner exited 2 before it answered the case (text carrier)", "hostile-ledger end"}},
+		{name: "failed-and-named", log: "FAIL b: wrong\nhostile-ledger ran a\nhostile-ledger ran b\nhostile-ledger ran c\nhostile-ledger end\n", exit: 1},
+		{name: "failed-and-named-nothing", log: "hostile-ledger ran a\nhostile-ledger ran b\nhostile-ledger ran c\nhostile-ledger end\n", exit: 1,
+			errHas: "the runner exited 1 and every registered case ran with no FAIL line naming one"},
+		{name: "a-fail-for-no-case-names-nothing", log: "FAIL zz: not a case\nhostile-ledger ran a\nhostile-ledger ran b\nhostile-ledger ran c\nhostile-ledger end\n", exit: 1,
+			errHas: "defect of the runner"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := NameUnanswered(cases, tc.log, tc.exit)
+			if tc.errHas != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.errHas) {
+					t.Fatalf("err %v, want one saying %q", err, tc.errHas)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(got, "\n") != strings.Join(tc.want, "\n") {
+				t.Fatalf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tc.want, "\n"))
+			}
+		})
+	}
+}

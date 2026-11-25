@@ -331,7 +331,6 @@ public final class RangedIntegersValidData {
                 TableFixed.plan(4096), new short[4096], RangedSignedFixed.image(), r);
         check(got == write.length, "signed: load reads all three records (got " + got + ")");
         check(!r.refused, "signed: the read is not refused");
-        check(!r.damaged, "signed: the read is not malformed");
         check(r.unknown == 0 && r.widened == 0,
                 "signed: no census counter moved on valid data");
         for (int k = 0; k < write.length; k++) {
@@ -365,7 +364,6 @@ public final class RangedIntegersValidData {
                 TableFixed.plan(4096), new short[4096], RangedUnsignedFixed.image(), r);
         check(got == write.length, "unsigned: load reads all three records (got " + got + ")");
         check(!r.refused, "unsigned: the read is not refused");
-        check(!r.damaged, "unsigned: the read is not malformed");
         check(r.unknown == 0 && r.widened == 0,
                 "unsigned: no census counter moved on valid data");
         for (int k = 0; k < write.length; k++) {

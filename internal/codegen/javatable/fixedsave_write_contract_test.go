@@ -151,7 +151,7 @@ public final class Driver {
         final TableFixed.Report r = new TableFixed.Report();
         final int got = RecFixed.load(new RecFixed.Value[] { back }, 1, buf,
                 TableFixed.plan(256), new short[256], RecFixed.image(), r);
-        if (got != 1 || r.refused || r.damaged) { return "saved"; }
+        if (got != 1 || r.refused) { return "saved"; }
         if (get.get(back) != get.get(v)) { return "saved"; }
         final byte[] again = new byte[buf.length];
         try {

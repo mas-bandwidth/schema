@@ -82,7 +82,7 @@ public final class Main {
         final int n = tblfx1.FxRootFixed.load(v, v.length, golden,
                 tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
         check(n == 2, "fx1.bin: two records");
-        check(!r.refused && !r.damaged && r.unknown == 0 && r.widened == 0,
+        check(!r.refused && r.unknown == 0 && r.widened == 0,
                 "fx1.bin: its own layout is the identity plan, and a clean read moves no counter");
         check(v[0].keep == 4242 && (v[0].narrow & 0xffff) == 40000 && v[0].renamed == 321 && v[0].gone == 654,
                 "fx1.bin: the scalars are the reference's");
@@ -100,7 +100,7 @@ public final class Main {
         final int n = tblfx2.FxRootFixed.load(v, v.length, golden,
                 tblfx2.TableFixed.plan(1024), new short[1024], tblfx2.FxRootFixed.image(), r);
         check(n == 1, "fx2.bin: one record");
-        check(!r.refused && !r.damaged && r.unknown == 0,
+        check(!r.refused && r.unknown == 0,
                 "fx2.bin: a clean read moves no counter");
         check(v[0].keep == 5150 && v[0].narrow == 70000 && v[0].renamedTo == 808 && v[0].added == 909,
                 "fx2.bin: the scalars are the reference's");
@@ -118,7 +118,7 @@ public final class Main {
         final int n = tblp1.ChainFixed.load(v, v.length, golden,
                 tblp1.TableFixed.plan(1024), new short[1024], tblp1.ChainFixed.image(), r);
         check(n == 1, "p1.bin: one record");
-        check(!r.refused && !r.damaged, "p1.bin: a clean read moves no counter");
+        check(!r.refused, "p1.bin: a clean read moves no counter");
         check(textOf(v[0].name, v[0].nameLength).equals("chain-one"), "p1.bin: the text lands at its used length");
         check(v[0].link.value == 77 && textOf(v[0].link.tag, v[0].link.tagLength).equals("tagged"),
                 "p1.bin: the nested record");
@@ -189,7 +189,7 @@ public final class Main {
         final int n = tabledemo.KeyedConfigFixed.load(v, v.length, golden,
                 tabledemo.TableFixed.plan(4096), new short[4096], tabledemo.KeyedConfigFixed.image(), r);
         check(n == 2, "keyed.bin: two records");
-        check(!r.refused && !r.damaged, "keyed.bin: a clean read moves no counter");
+        check(!r.refused, "keyed.bin: a clean read moves no counter");
         // record 1: k = 1
         check(v[1].teams[0].spawnCount == 14, "keyed: a keyed array's slot");
         check(textOf(v[1].teams[2].banner, v[1].teams[2].bannerLength).equals("green"), "keyed: text in a keyed slot");
@@ -215,7 +215,7 @@ public final class Main {
         final int n = tabledemo.PackConfigFixed.load(v, v.length, golden,
                 tabledemo.TableFixed.plan(4096), new short[4096], tabledemo.PackConfigFixed.image(), r);
         check(n == 2, "pack.bin: two records");
-        check(!r.refused && !r.damaged, "pack.bin: a clean read moves no counter");
+        check(!r.refused, "pack.bin: a clean read moves no counter");
         check(v[0].version == 7 && v[0].settings.tickRate == 120, "pack: the scalars");
         // AN ENUM RIDES ITS ORDINAL, FROM 1: Hard is the third variant.
         check(v[0].settings.difficulty == tabledemo.Pack.Difficulty.HARD, "pack: an enum rides its ORDINAL, from 1");
@@ -363,7 +363,7 @@ public final class Main {
         final tblut.TableFixed.Report r = new tblut.TableFixed.Report();
         check(tblut.UtRootFixed.load(id, 1, wire, tblut.TableFixed.plan(512), new short[512],
                 tblut.UtRootFixed.image(), r) == 1, "arm text: the identity path reads the record");
-        check(!r.refused && !r.damaged && r.unknown == 0,
+        check(!r.refused && r.unknown == 0,
                 "arm text: a clean read moves no counter");
         check(id[0].pick.type == tblut.UtPickFixed.b, "arm text: the SECOND arm is the selected one");
         check(textOf(id[0].pick.b.label, id[0].pick.b.labelLength).equals("hello"),
@@ -376,7 +376,7 @@ public final class Main {
                 "arm text: a COMPILED plan lands a text field under the SECOND arm");
         check(viaPlan.pick.b.grade == tblut.UT.UtGrade.GOLD && viaPlan.pick.b.m == 42 && viaPlan.tail == 11,
                 "arm text: and the rest of that arm with it");
-        check(!rc.damaged && !rc.refused,
+        check(!rc.refused,
                 "arm text: the compiled read moves no counter either");
         check(utSame(viaPlan, id[0]),
                 "arm text: a COMPILED plan lands exactly what the identity plan lands");
@@ -398,11 +398,10 @@ public final class Main {
                     tblut.UtRootFixed.image(), r1) == -1, "tag past the last arm: the load refuses");
             check(r1.refused && r1.reason == tblut.TableFixed.Reason.outOfRange,
                     "tag past the last arm: the identity path refuses outOfRange");
-            check(!r1.damaged, "tag past the last arm: a bad VALUE is not framing damage");
 
             final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
             utCompiled(bad, r2);
-            check(r2.refused && r2.reason == tblut.TableFixed.Reason.outOfRange && !r2.damaged,
+            check(r2.refused && r2.reason == tblut.TableFixed.Reason.outOfRange,
                     "tag past the last arm: the compiled plan refuses outOfRange too");
         }
 
@@ -420,12 +419,12 @@ public final class Main {
             final tblut.TableFixed.Report r1 = new tblut.TableFixed.Report();
             check(tblut.UtRootFixed.load(v, 1, bad, tblut.TableFixed.plan(512), new short[512],
                     tblut.UtRootFixed.image(), r1) == -1, "ordinal past the last variant: the load refuses");
-            check(r1.refused && r1.reason == tblut.TableFixed.Reason.outOfRange && !r1.damaged,
+            check(r1.refused && r1.reason == tblut.TableFixed.Reason.outOfRange,
                     "ordinal past the last variant: the identity path refuses outOfRange");
 
             final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
             utCompiled(bad, r2);
-            check(r2.refused && r2.reason == tblut.TableFixed.Reason.outOfRange && !r2.damaged,
+            check(r2.refused && r2.reason == tblut.TableFixed.Reason.outOfRange,
                     "ordinal past the last variant: the plan's ordinal op refuses outOfRange too");
         }
     }
@@ -479,7 +478,7 @@ public final class Main {
         check(tblfu1.FuRootFixed.load(mine, 2, file, tblfu1.TableFixed.plan(1024),
                 new short[1024], tblfu1.FuRootFixed.image(), r) == 2,
                 "text under an arm: the identity read takes both records");
-        check(!r.refused && !r.damaged && r.unknown == 0,
+        check(!r.refused && r.unknown == 0,
                 "text under an arm: its own layout is the identity plan, and it moves no counter");
         check(mine[0].pick.type == tblfu1.PickFixed.labelled,
                 "text under an arm: identity, the SECOND arm");
@@ -504,8 +503,8 @@ public final class Main {
         check(tblfu2.FuRootFixed.load(theirs, 2, file, tblfu2.TableFixed.plan(1024),
                 new short[1024], tblfu2.FuRootFixed.image(), r2) == 2,
                 "text under an arm: the compiled read takes both records");
-        check(!r2.damaged && !r2.refused,
-                "text under an arm: and nothing was damaged, clamped or refused");
+        check(!r2.refused,
+                "text under an arm: and nothing was clamped or refused");
         check(theirs[0].pick.type == tblfu2.PickFixed.labelled,
                 "text under an arm: compiled, the SECOND arm");
         check(theirs[0].pick.labelled.lead == 101,
@@ -548,7 +547,7 @@ public final class Main {
         check(v[0].extra.x == 0 && v[0].extra.y == 0, "MISSING: a whole nested type takes its defaults");
         check(v[0].nested.a == 111 && v[0].nested.b == 222, "older writer: the nesting");
         check(r.unknown == 1, "older writer: `gone` is the one field this reader cannot name");
-        check(!r.damaged && !r.refused, "older writer: nothing else fired");
+        check(!r.refused, "older writer: nothing else fired");
         check(v[1].keep == 1 && v[1].narrow == 2 && v[1].renamedTo == 3 && v[1].nested.b == 6,
                 "older writer: the second record too");
     }
@@ -569,7 +568,7 @@ public final class Main {
         check(v[0].nested.a == 33 && v[0].nested.b == 44, "newer writer: the nesting lands past the unknown type");
         check(r.unknown == 2, "newer writer: two names this reader does not have");
         check(v[0].narrow == 3, "newer writer: a narrowing leaves the declared default");
-        check(!r.damaged && !r.refused, "newer writer: no damage and no refusal");
+        check(!r.refused, "newer writer: no damage and no refusal");
     }
 
     static void anOptional(String dir) {
@@ -585,7 +584,7 @@ public final class Main {
         check(n == 1, "optional: P3 reads P1's record");
         check(textOf(v[0].name, v[0].nameLength).equals("chain-one"), "optional: the field before the edit lands");
         check(!v[0].linkPresent, "optional: the edited field takes its declared default");
-        check(!r.damaged && !r.refused, "optional: no damage and no refusal");
+        check(!r.refused, "optional: no damage and no refusal");
     }
 
     static void theSlide() {
@@ -622,7 +621,7 @@ public final class Main {
         check(back[0].tierPresent && back[0].tier == 77, "OPTIONAL: the present flag and the payload");
         check(back[0].c, "MISSING: V2's own `c` takes its declared default");
         check(back[0].a == 5.0f, "KIND MOVED: int32 -> float32 leaves the declared default");
-        check(!r.damaged && !r.refused, "V2 reads V1: no damage and no refusal");
+        check(!r.refused, "V2 reads V1: no damage and no refusal");
     }
 
     // ------------------------------------------------------------------
@@ -637,7 +636,6 @@ public final class Main {
         final int n = tblfx1.FxRootFixed.load(v, 1, other,
                 tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
         check(n < 0 && r.refused && r.reason == want, what + " (got " + r.reason + ")");
-        check(!r.damaged, what + ": never damage");
     }
 
     static void negativeControls(String dir) {
@@ -666,17 +664,16 @@ public final class Main {
         // and the loader never takes that path: the HASH is what selects the plan
         // — which under §5.3 it does by SELECTING OUT OF THE LINEAGE, so a
         // stranger's file is not compiled at all. An FX1 build that never locked
-        // FX2's layout answers layout_newer, and it carries the FILE's hash.
+        // FX2's layout answers layout_unknown, and it carries the FILE's hash.
         {
             final tblfx1.FxRootFixed.Value[] right = { new tblfx1.FxRootFixed.Value() };
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(right, 1, fx2,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
-                    "REFUSED BY NAME: a layout this build never locked is layout_newer");
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutUnknown,
+                    "REFUSED BY NAME: a layout this build never locked is layout_unknown");
             check(r.layoutHash == tblfx1.TableFixed.get64(fx2, tblfx1.TableFixed.hashAt),
-                    "layout_newer reports THE FILE'S hash, and nothing else");
-            check(!r.damaged, "a refusal by name never sets malformed too");
+                    "layout_unknown reports THE FILE'S hash, and nothing else");
         }
 
         // 2. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER
@@ -711,9 +708,8 @@ public final class Main {
             // — a hash the lineage holds whose layout bytes differ — is
             // layout_malformed, and the versioning harness's
             // hash_known_bytes_differ row is where it is asserted.
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutUnknown,
                     "REFUSED BY NAME: a header hash no lineage entry holds");
-            check(!r.damaged, "a lying header is a refusal and never damage");
         }
 
         // 3. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY
@@ -722,22 +718,24 @@ public final class Main {
         //    plan slice is checked against the selected LINEAGE plan's entry
         //    count and never written through. A build with no lineage has only
         //    its identity plan, so a one-entry slice can no longer reach the
-        //    check here — a stranger's file is layout_newer before any plan is
+        //    check here — a stranger's file is layout_unknown before any plan is
         //    selected — and the control moves to the lineage harness with it.
         {
             retired("negativeControls: the plan_too_large control",
                     "a one-entry plan slice against a LINEAGE plan's entry count, owed in the versioning harness (§5.9 #5, §7's control)");
         }
 
-        // 4. A RAGGED TAIL: the two ends of the file have met, which is framing
-        //    damage and not a refusal.
+        // 4. A RAGGED TAIL: the two ends of the file have met, which refuses by
+        //    name (docs/FIXED-FORM-ALGORITHM.md §5.3 refusal table; no malformed
+        //    flag on this form's report).
         {
             final byte[] ragged = Arrays.copyOf(fx1, fx1.length + 1);
             final tblfx1.FxRootFixed.Value[] v = { new tblfx1.FxRootFixed.Value(), new tblfx1.FxRootFixed.Value() };
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(v, 2, ragged,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.damaged, "a ragged tail: malformed, because the two ends of the file met");
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.truncated,
+                    "a ragged tail: refused truncated, because the two ends of the file met (got " + r.reason + ")");
         }
 
         // 5. MORE RECORDS THAN THE CALLER'S OWN ARRAY: a refusal by name, and
@@ -762,7 +760,7 @@ public final class Main {
     // no form defines newer_form — WHATEVER THE FILE'S LENGTH. The lengths
     // below are the REAL lengths of the two forms this reader names: a
     // committed form-1 file is TEN bytes and a form-2 batch THREE. A reader
-    // that measured first would answer malformed for both of the forms it is
+    // that measured first would answer truncated for both of the forms it is
     // supposed to name. THE MODEL IS test/elixir-fixedform/main.exs.
     //
     // Each probe runs the reader on the EXACT input, asserts the report's two
@@ -770,7 +768,7 @@ public final class Main {
     // asserts (ruling R4) the destination is back at its declared default: it
     // is pre-poisoned first and compared with a fresh value after the refusal.
     static void expectHeaderOutcome(byte[] file, tblfx1.TableFixed.Reason want,
-                                    boolean wantMalformed, String what) {
+                                    String what) {
         final tblfx1.FxRootFixed.Value v = new tblfx1.FxRootFixed.Value();
         v.keep = 0x5EED;
         v.nested.a = 0x1234;
@@ -780,15 +778,9 @@ public final class Main {
         final int n = tblfx1.FxRootFixed.load(dest, 1, file,
                 tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
         check(n < 0, what + ": no record was read (got n=" + n + ")");
-        if (wantMalformed) {
-            check(r.damaged && !r.refused && r.reason == tblfx1.TableFixed.Reason.none,
-                    what + ": the report is damage and names no reason (refused=" + r.refused
-                            + ", malformed=" + r.damaged + ", reason=" + r.reason + ")");
-        } else {
-            check(r.refused && r.reason == want && !r.damaged,
-                    what + ": the report is the name " + want + " and never damage (refused="
-                            + r.refused + ", malformed=" + r.damaged + ", reason=" + r.reason + ")");
-        }
+        check(r.refused && r.reason == want,
+                what + ": the report is the name " + want + " (refused="
+                        + r.refused + ", reason=" + r.reason + ")");
         check(r.unknown == 0 && r.widened == 0
                         && r.layoutHash == 0,
                 what + ": no counter claims a read happened");
@@ -800,33 +792,34 @@ public final class Main {
     static void formHeaderProbes(String dir) {
         final byte[] fx1 = slurp(dir, "fx1.bin");
 
-        // 1. empty-file: there is no first byte to earn a name, so the residue.
-        expectHeaderOutcome(new byte[0], null, true,
-                "empty-file: zero bytes is malformed, with no reason");
+        // 1. empty-file: no bytes at all refuses truncated (docs/FIXED-FORM-ALGORITHM.md
+        //    §5.3 refusal table; no malformed flag on this form's report).
+        expectHeaderOutcome(new byte[0], tblfx1.TableFixed.Reason.truncated,
+                "empty-file: zero bytes refuses truncated");
 
         // 2. short-form1: a TEN-byte form-1 file, the form's own real length.
         expectHeaderOutcome(new byte[] { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-                tblfx1.TableFixed.Reason.previousForm, false,
-                "short-form1: a TEN-byte form-1 file is previous_form, not malformed");
+                tblfx1.TableFixed.Reason.previousForm,
+                "short-form1: a TEN-byte form-1 file is previous_form");
 
         // 3. short-form2: a THREE-byte form-2 batch, the form's own real length.
         expectHeaderOutcome(new byte[] { 2, 1, 0 },
-                tblfx1.TableFixed.Reason.messageFormAsFile, false,
-                "short-form2: a THREE-byte form-2 batch is message_form_as_file, not malformed");
+                tblfx1.TableFixed.Reason.messageFormAsFile,
+                "short-form2: a THREE-byte form-2 batch is message_form_as_file");
 
         // 4. unassigned-form0: form byte 0 on the otherwise valid fixture tail.
         //    No form defines 0, and the registry is ordered, so it is newer.
         final byte[] form0 = fx1.clone();
         form0[0] = 0;
-        expectHeaderOutcome(form0, tblfx1.TableFixed.Reason.newerForm, false,
-                "unassigned-form0: form byte 0 on a valid fixture tail is newer_form, not malformed");
+        expectHeaderOutcome(form0, tblfx1.TableFixed.Reason.newerForm,
+                "unassigned-form0: form byte 0 on a valid fixture tail is newer_form");
 
         // 5. reserved-byte3: a valid form-3 fixture with reserved byte 3 set
         //    nonzero. The seven reserved bytes are REFUSED, not ignored.
         final byte[] reserved3 = fx1.clone();
         reserved3[3] = 1;
-        expectHeaderOutcome(reserved3, null, true,
-                "reserved-byte3: a nonzero reserved byte 3 is malformed");
+        expectHeaderOutcome(reserved3, tblfx1.TableFixed.Reason.reservedNotZero,
+                "reserved-byte3: a nonzero reserved byte 3 refuses reservedNotZero");
     }
 
     // ------------------------------------------------------------------
@@ -856,7 +849,7 @@ public final class Main {
         check(n < 0 && r.refused && r.reason == want, what + " (got " + r.reason + ")");
         // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read
         // a record would be the damage the refusal exists to prevent.
-        check(r.unknown == 0 && r.widened == 0 && !r.damaged,
+        check(r.unknown == 0 && r.widened == 0,
                 "a layout refusal sets nothing and counts nothing: " + what);
     }
 
@@ -1025,7 +1018,7 @@ public final class Main {
         // THE SIX FAMILIES §5.6 RETIRES, each a FORWARD read or a run-time walk
         // of a stranger's layout — the two things "the fixed table reads
         // backward, never forward" removed. Under §5.3 every one of these files
-        // now comes back `layout_newer`, which is the right answer and not a
+        // now comes back `layout_unknown`, which is the right answer and not a
         // regression, and the coverage moves to the LINEAGE harness
         // (internal/codegen/javatable/fixedversioning_test.go) where the reader
         // is built with the writer's layout in its lineage.
@@ -1034,7 +1027,7 @@ public final class Main {
         retired("anOlderWriter",
                 "NEW-READS-OLD on FX1/FX2: held by the versioning harness's field_append, nested_append and rename_without_was rows");
         retired("aNewerWriter",
-                "a FORWARD read, which is now layout_newer by name: held by the harness's OLD-REFUSES-NEW column on every row");
+                "a FORWARD read, which is now layout_unknown by name: held by the harness's OLD-REFUSES-NEW column on every row");
         retired("anOptional",
                 "T into ?T across a pair: held by the harness's optional_add row, both columns");
         retired("theSlide",

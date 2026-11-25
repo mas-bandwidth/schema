@@ -26,8 +26,14 @@
 // message_form_as_file, batch_too_large, as the engine's MessageReason names
 // them), and `damaged` for every other, a bound's included: conformance
 // compares the verdict, never a bound's own name (docs/rulings.json
-// refusal-verdict-only). A case whose carrier the port
-// does not read yet is `<name> absent <carrier>`. The make target holds the
+// refusal-verdict-only). A `message_novocab` case reads the batch with no announcement. An
+// announcement case (`announce`, and `announce_second`, `announce_bytes`,
+// `announce_entries` under the bound each names) reads the input as the
+// unit's announcement into a fresh vocabulary and answers `accept -` or the
+// refusal by name. A `text` case is the strict text read through the flat
+// value table (json_load_table), answered as an accepted wire is. A case
+// whose carrier the port does not read is `<name> absent <carrier>`, which
+// the make target fails by name. The make target holds the
 // lines to the manifest.
 import os;
 import .conformance_unit;
@@ -67,7 +73,8 @@ fn main() {
         let f = split(line, '\t');
         if f.len < 9 || f[2] != argv[2] { continue; }
         out.append(f[0]);
-        if f[1] != "wire" && f[1] != "message" {
+        let announcing = f[1] == "announce" || f[1] == "announce_second" || f[1] == "announce_bytes" || f[1] == "announce_entries";
+        if f[1] != "wire" && f[1] != "message" && f[1] != "message_novocab" && f[1] != "text" && !announcing {
             out.append(" absent ");
             out.append(f[1]);
             out.push('\n');
@@ -78,10 +85,87 @@ fn main() {
             write_stderr(str("runner: cannot read ", f[4], "\n"));
             exit(1);
         }
-        if f[1] == "message" {
+        if announcing {
+            // THE ANNOUNCEMENT READ (docs/SPEC-TABLES.md §3.3) into a fresh
+            // vocabulary under the bound the carrier names; announce_second
+            // reads it once first, so the read answered is the second
+            var voc = schema_rt::MsgVocabulary { .. };
+            if f[1] == "announce_bytes" { voc.max_bytes = 8; }
+            if f[1] == "announce_entries" { voc.max_entries = 1; }
+            var arep = schema_rt::MsgReport { .. };
+            if f[1] == "announce_second" {
+                if !schema_rt::announce_read(voc, data, arep) {
+                    // the case's own error, never the run's: every other
+                    // case still answers
+                    out.append(" error first_announcement_refused\n");
+                    continue;
+                }
+                arep = schema_rt::MsgReport { .. };
+            }
+            if schema_rt::announce_read(voc, data, arep) {
+                // an announcement carries no value: its verdict is the answer
+                out.append(" accept -\n");
+            } else if arep.reason == schema_rt::MsgRefuseNewerForm || arep.reason == schema_rt::MsgRefuseSecondAnnouncement || arep.reason == schema_rt::MsgRefuseVocabularyTooLarge || arep.reason == schema_rt::MsgRefuseMessageFormAsFile {
+                out.append(" refuse ");
+                out.append(schema_rt::msg_reason_name(arep.reason));
+                out.push('\n');
+            } else {
+                out.append(" refuse damaged\n");
+            }
+            continue;
+        }
+        if f[1] == "text" {
+            // THE TEXT FORM'S STRICT READ (docs/SPEC-TABLES.md §16.1, §16.2)
+            // through the flat value table, then the value saved to the wire
+            // and to its canonical text, as an accepted wire is
+            var tdata: u8[>..] = [];
+            var tvals: schema_rt::LoadVal[>..] = [];
+            var tnodes: schema_rt::LoadNode[>..] = [];
+            var trep = schema_rt::json_report();
+            let at = schema_rt::json_load_table(unit, conformance_text(), f[3], data, tdata, tvals, tnodes, trep);
+            if at < 0 || trep.damaged {
+                out.append(" refuse damaged\n");
+                continue;
+            }
+            // a fixed root's encode is its fixed form (form 3), every other
+            // root's the variable form
+            var fsaved: u8[>..] = [];
+            var tsaved: u8[>..<] = [];
+            let fs = conformance_fixed_save(f[3], tdata, tvals, at, fsaved);
+            if fs == 1000 {
+                out.append(" error fixed_save_refused\n");
+                continue;
+            }
+            if fs > 0 {
+                out.append(" error fixed_bridge_refused\n");
+                continue;
+            }
+            if fs < 0 {
+                let trefusal = schema_rt::save_table(unit, f[3], tdata, tvals, tnodes, at, tsaved);
+                if trefusal != 0 {
+                    out.append(" error save_refused:");
+                    out.append(schema_rt::save_refusal_name(trefusal));
+                    out.push('\n');
+                    continue;
+                }
+            }
+            var tcanonical: u8[>..] = [];
+            let tn = schema_rt::json_save_table(unit, conformance_text(), f[3], tdata, tvals, tnodes, at, tcanonical);
+            if tn <= 0 {
+                out.append(" error text_save_refused\n");
+                continue;
+            }
+            out.append(" accept ");
+            if fs == 0 { hex(out, fsaved); } else { hex(out, tsaved); }
+            out.push(' ');
+            hex(out, tcanonical[0..tn - 1]);
+            out.push('\n');
+            continue;
+        }
+        if f[1] == "message" || f[1] == "message_novocab" {
             var msaved: u8[>..] = [];
             var mtext: u8[>..] = [];
-            let mr = conformance_message(f[3], announce, data, msaved, mtext);
+            let mr = conformance_message(f[3], f[1] == "message", announce, data, msaved, mtext);
             if mr == -1 {
                 out.append(" absent message-root\n");
                 continue;
