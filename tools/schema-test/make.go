@@ -223,10 +223,10 @@ func decodeMakeInputs(raw json.RawMessage) (makeInputs, error) {
 	for _, g := range in.GoTests {
 		pkg, name, ok := strings.Cut(g, " ")
 		dir, dotted := strings.CutPrefix(pkg, "./")
-		if !ok || !dotted || dir == "" || dir == ".." || path.Clean(dir) != dir || strings.HasPrefix(dir, "../") || !goTestName.MatchString(name) || seen[name] {
+		if !ok || !dotted || dir == "" || dir == ".." || path.Clean(dir) != dir || strings.HasPrefix(dir, "../") || !goTestName.MatchString(name) || seen[dir+" "+name] {
 			return in, fmt.Errorf("go_tests entry %q: want \"./<package> <Test>\", each test named once", g)
 		}
-		seen[name] = true
+		seen[dir+" "+name] = true // a test is its package and its name
 	}
 	for pkg, imp := range in.GoImport {
 		named := false

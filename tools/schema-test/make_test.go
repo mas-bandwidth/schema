@@ -698,4 +698,8 @@ func TestAMakeRowNamesItsGoTestsWithTheirPackage(t *testing.T) {
 	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/cards FuzzB"],"go_import":{"./tables/cards":"cards"}}`)); err != nil {
 		t.Errorf("a lawful row: %v", err)
 	}
+	// one name in two packages is two tests
+	if _, err := decodeMakeInputs(json.RawMessage(`{"file":"make/x.mk","target":"a","go_tests":["./tables/cards TestA","./tables/other TestA"]}`)); err != nil {
+		t.Errorf("one test name in two packages: %v", err)
+	}
 }

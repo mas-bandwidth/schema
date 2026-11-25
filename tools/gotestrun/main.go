@@ -133,6 +133,13 @@ func read(in io.Reader, text io.Writer) tally {
 			_, _ = text.Write(append(bytes.Clone(line), '\n')) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 			continue
 		}
+		if e.Action == "build-output" {
+			// a build's own text (the compiler's errors) comes as
+			// build-output with an ImportPath and no Package: it is the
+			// named cause of the package's [build failed], so it is written
+			out.write("", e.Output)
+			continue
+		}
 		if e.Package != "" {
 			if _, ok := t.perPackage[e.Package]; !ok {
 				t.perPackage[e.Package] = 0

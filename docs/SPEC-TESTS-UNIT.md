@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 685. Language-free tests: 3108.
+Unit tests every language answers: 685. Language-free tests: 3109.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -5411,7 +5411,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrows.the-registry-rows-read-their-packages` | `gotest` | Go test TestTheRegistryRowsReadTheirPackages in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestTheRegistryRowsReadTheirPackages` | the Go test passes | `tools/gotestrows/registered_test.go:54` |
 | `none.unit.tooling.gotestrows.the-table-parses` | `gotest` | Go test TestTheTableParses in ./tools/gotestrows | `package: ./tools/gotestrows`<br>`test: TestTheTableParses` | the Go test passes | `tools/gotestrows/main_test.go:206` |
 
-#### `tooling` family `gotestrun`, 11 tests
+#### `tooling` family `gotestrun`, 12 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -5422,6 +5422,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.gotestrun.read-passes-text-through` | `gotest` | Go test TestReadPassesTextThrough in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadPassesTextThrough` | the Go test passes | `tools/gotestrun/main_test.go:100` |
 | `none.unit.tooling.gotestrun.read-reports-a-stream-it-could-not-finish` | `gotest` | Go test TestReadReportsAStreamItCouldNotFinish in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadReportsAStreamItCouldNotFinish` | the Go test passes | `tools/gotestrun/main_test.go:144` |
 | `none.unit.tooling.gotestrun.read-writes-each-package-whole` | `gotest` | Go test TestReadWritesEachPackageWhole in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadWritesEachPackageWhole` | the Go test passes | `tools/gotestrun/main_test.go:316` |
+| `none.unit.tooling.gotestrun.read-writes-the-builds-errors` | `gotest` | Go test TestReadWritesTheBuildsErrors in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestReadWritesTheBuildsErrors` | the Go test passes | `tools/gotestrun/main_test.go:426` |
 | `none.unit.tooling.gotestrun.red-verdict` | `gotest` | Go test TestRedVerdict in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRedVerdict` | the Go test passes | `tools/gotestrun/main_test.go:` |
 | `none.unit.tooling.gotestrun.run-refuses-no-arguments-and-foreign-flags` | `gotest` | Go test TestRunRefusesNoArgumentsAndForeignFlags in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestRunRefusesNoArgumentsAndForeignFlags` | the Go test passes | `tools/gotestrun/main_test.go:111` |
 | `none.unit.tooling.gotestrun.the-summary-reports-a-skip-only-when-one-happened` | `gotest` | Go test TestTheSummaryReportsASkipOnlyWhenOneHappened in ./tools/gotestrun | `package: ./tools/gotestrun`<br>`test: TestTheSummaryReportsASkipOnlyWhenOneHappened` | the Go test passes | `tools/gotestrun/main_test.go:` |

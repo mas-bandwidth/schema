@@ -422,3 +422,25 @@ func TestAPackageBehindTheHeadIsWrittenWhenTheHeadEnds(t *testing.T) {
 		t.Errorf("after b ends the text is %q, want b's output then all of c's", text.String())
 	}
 }
+
+// TestReadWritesTheBuildsErrors: go test -json (Go 1.24 and later) reports
+// a build's own text, the compiler's errors, as build-output events with an
+// ImportPath and no Package; they are the named cause of the package's
+// [build failed] line, so the text carries them.
+func TestReadWritesTheBuildsErrors(t *testing.T) {
+	t.Parallel()
+	stream := `{"ImportPath":"brk [brk.test]","Action":"build-output","Output":"# brk [brk.test]\n"}
+{"ImportPath":"brk [brk.test]","Action":"build-output","Output":"./x_test.go:5:28: undefined: undefinedThing\n"}
+{"ImportPath":"brk [brk.test]","Action":"build-fail"}
+{"Action":"start","Package":"brk"}
+{"Action":"output","Package":"brk","Output":"FAIL\tbrk [build failed]\n"}
+{"Action":"fail","Package":"brk","FailedBuild":"brk [brk.test]"}
+`
+	var text bytes.Buffer
+	read(strings.NewReader(stream), &text)
+	got := text.String()
+	cause := strings.Index(got, "./x_test.go:5:28: undefined: undefinedThing\n")
+	if cause < 0 || cause > strings.Index(got, "[build failed]") {
+		t.Errorf("text %q, want the compiler's error before the package's [build failed] line", got)
+	}
+}
