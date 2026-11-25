@@ -96,3 +96,25 @@ func TestAnEmptySelectionFails(t *testing.T) {
 		t.Errorf("an empty selection: %q, %v", got, err)
 	}
 }
+
+// TestANameNightlyInOnePackageOnlyFails: the pattern is names only and go
+// test applies it to every package, so a name nightly in one package of the
+// selection and kept in another cannot be said; Select refuses it.
+func TestANameNightlyInOnePackageOnlyFails(t *testing.T) {
+	t.Parallel()
+	root, dir := plant(t, "tier\tp:TestB\t1\tL3\tnightly: a long campaign\n", "")
+	q := filepath.Join(root, "q")
+	if err := os.MkdirAll(q, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(q, "b_test.go"), []byte("package q\n\nimport \"testing\"\n\nfunc TestB(t *testing.T) {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Select(linux(), root, []string{dir, q}, nil, nil, false); err == nil || !strings.Contains(err.Error(), "TestB is nightly in p") {
+		t.Errorf("a name nightly in p and kept in q: %q, %v", got, err)
+	}
+	// apart, each is said
+	if got, err := Select(linux(), root, []string{q}, nil, nil, false); err != nil || got != "^(TestB)$" {
+		t.Errorf("q alone: %q, %v", got, err)
+	}
+}

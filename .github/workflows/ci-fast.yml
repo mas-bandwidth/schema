@@ -1278,10 +1278,11 @@ jobs:
   # Measured serially on amd-2 the package is ~74 s of test time, a third of
   # it the fast-plan and opt-verify selector tests (one bash per case) and
   # another seventh the Python plan. So the package runs as three rows side
-  # by side, each on its own runner with the cap to itself. The rows are
-  # COMPLETE BY CONSTRUCTION: every row but `rest` selects with `-run`, and
-  # `rest` lists by name every test outside the union of those patterns (tools/gotestselect -not), so a new test
-  # lands in `rest` unless it is named into a row.
+  # by side, each on its own runner with the cap to itself. Every row is
+  # expanded to test names at the root (tools/gotestselect, which fails the
+  # step when it names none) and is COMPLETE BY CONSTRUCTION: every row but
+  # `rest` selects with `-run`, and `rest` with `-not` the union of those
+  # patterns, so a new test lands in `rest` unless it is named into a row.
   # TestCIPolicyShardsCoverEveryTest holds that union and checks every Test
   # function in the package is selected by exactly one row.
   ci-policy:
@@ -1304,7 +1305,7 @@ jobs:
           - shard: python-legs
             select: -run '^(TestPython|TestConformance|TestCertify|TestNo)'
           - shard: rest
-            select: -run "$(go run ./tools/gotestselect -not '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)' ./internal/ci)"
+            select: -not '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1346,7 +1347,7 @@ jobs:
 
       # The slowtest package and the bench parse cost seconds; they run once,
       # in the `rest` row.
-      - name: every toolchain test source calls slowtest.Gate (issue #1025)
+      - name: the slowtest helpers' own tests (issue #1025)
         if: matrix.shard == 'rest'
         run: go test ./internal/slowtest/...
       # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
@@ -1354,7 +1355,7 @@ jobs:
       # tag in a trailing comment, nothing runs @latest, and every csproj
       # agrees with the one .NET SDK pin.
       - name: CI lints itself — action pins and the .NET SDK pin
-        run: go test ${{ matrix.select }} ./internal/ci/
+        run: sel=$(go run ./tools/gotestselect ${{ matrix.select }} ./internal/ci) || exit 1; go test -run "$sel" ./internal/ci/
       - name: bench scripts parse
         if: matrix.shard == 'rest'
         run: bash -n bench/run.sh
