@@ -107,8 +107,8 @@ public final class Driver {
             if (n != -1) {
                 fail("empty batch (capacity " + cap + ") read " + n + " records, want a refusal");
             }
-            if (!report.refused && !report.damaged) {
-                fail("empty batch (capacity " + cap + ") left no refusal");
+            if (!report.refused || report.reason != %[1]s.TableFixed.Reason.truncated) {
+                fail("empty batch (capacity " + cap + ") left no truncated refusal (refused=" + report.refused + " reason=" + report.reason + ")");
             }
         }
 
@@ -121,7 +121,7 @@ public final class Driver {
         if (n != 1) {
             fail("one-record file read " + n + " records, want 1");
         }
-        if (report.refused || report.damaged) {
+        if (report.refused) {
             fail("one-record file was refused");
         }
 

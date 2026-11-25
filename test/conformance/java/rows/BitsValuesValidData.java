@@ -123,8 +123,6 @@ public final class BitsValuesValidData {
         check(n == 1, "the production load reads back exactly one record (n=" + n + ")");
         check(!report.refused,
                 "no refusal, and the file's own hash IS the reader's own (refused=" + report.refused + ")");
-        check(!report.damaged,
-                "no malformed framing on the writer's bytes (malformed=" + report.damaged + ")");
 
         // The ACCEPTANCE counters, all of them: §4's ledger, each zero on
         // valid input (every value is inside bits(N)'s implied [0, 2^N - 1], so

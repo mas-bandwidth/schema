@@ -2006,7 +2006,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("};\n\n")
 	g.pf("// THE FLOOR: below it a layout this build once served is RETIRED, and the\n")
 	g.pf("// answer is layout_unsupported — upgrade the client — rather than\n")
-	g.pf("// layout_newer, which is ship the reader (§5.2).\n")
+	g.pf("// layout_unknown, a hash in no lineage entry (§5.3 step 5).\n")
 	g.pf("public const int %sFixedFloor = %d;\n\n", name, floor)
 	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this\n")
 	g.pf("// type's static initializer: nothing compiles on the load path, and there\n")
@@ -2122,8 +2122,13 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// form-2 batch THREE. And the DIRECTIONS are §5.3's, the same eight other
 	// legs answer: 1 previous_form, 2 message_form_as_file, OTHERWISE newer_form
 	// — never "below this form" for a byte, which named 0 previous_form.
+	// FRAMING DAMAGE IS A REFUSAL BY NAME (docs/FIXED-FORM-ALGORITHM.md §5.3,
+	// the refusal table and "There is no `malformed` flag on this form's
+	// report"): no first byte, a short header and a ragged tail are
+	// `truncated`, a reserved byte is `reserved_not_zero`, and Damaged is never
+	// set by this load.
 	g.pf("    if (data.Length < 1)\n    {\n")
-	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"truncated\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    if (data[0] != TableFixedWire.Form)\n    {\n")
 	g.pf("        if (report != null)\n        {\n")
@@ -2134,15 +2139,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n        }\n")
 	g.pf("        return -1;\n    }\n")
 	if st.Integrity == "crc32c" {
-		g.pf("    if (!TableWire.IntegrityRead(ref data)) { if (report != null) { TableWire.IntegrityDamage(report); } return -1; }\n")
+		// AN INTEGRITY TRAILER THAT DOES NOT HOLD REFUSES integrity_mismatch BY
+		// NAME (docs/SPEC-TABLES.md §2.14): there is no malformed flag on this
+		// form's report (docs/FIXED-FORM-ALGORITHM.md §5.3), so Damaged stays unset.
+		g.pf("    if (!TableWire.IntegrityRead(ref data)) { if (report != null) { report.Refused = true; report.Reason = \"integrity_mismatch\"; report.Verdict = TableWire.Verdict.Refused; } return -1; }\n")
 	}
 	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
-	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"truncated\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	// STEP 2's second half: THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED.
 	g.pf("    for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)\n    {\n")
 	g.pf("        if (data[reserved] != 0)\n        {\n")
-	g.pf("            if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"reserved_not_zero\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n    }\n")
 	g.pf("    uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));\n")
 	g.pf("    if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)\n    {\n")
@@ -2154,12 +2162,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// re-derived from a file at all (§5.3).
 	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));\n")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
-	// upgrade the client. BOTH report THE FILE'S hash (§5.9 #7), and what
-	// belongs to layout_newer alone is "and nothing else".
+	// layout_unknown, in every leg — nothing proves a hash newer, and
+	// layout_newer is retired (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5,
+	// SPEC-TABLES §21.3); below the floor is layout_unsupported. BOTH report
+	// THE FILE'S hash (§5.9 #7), and what belongs to layout_unknown alone is
+	// "and nothing else".
 	g.pf("    int pick = TableFixedWire.Select(%sFixedKnown, hash);\n", name)
 	g.pf("    if (pick < 0)\n    {\n")
-	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_newer\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unknown\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    if (pick < %sFixedFloor)\n    {\n", name)
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unsupported\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
@@ -2221,9 +2231,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    }\n")
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6,
 	// docs/FIXED-FORM-ALGORITHM.md §5.3 step 9): a header and a layout followed
-	// by no record is truncated, whatever capacity the caller offered.
+	// by no record is truncated, whatever capacity the caller offered. A
+	// RAGGED TAIL — rest mod record_bytes != 0 — is `truncated` too, a refusal
+	// by name and never a malformed flag (§5.3's refusal table).
 	g.pf("    if (record_bytes <= 8 || rest == 0 || rest %% record_bytes != 0)\n    {\n")
-	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"truncated\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
 	g.pf("    if (n > values.Length)\n    {\n")

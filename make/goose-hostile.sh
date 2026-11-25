@@ -18,8 +18,8 @@
 # re-saved wire must be the engine's own encode of that text. A message
 # batch's re-save is held the same way, by the input byte for byte or else by
 # the record's canonical text and the manifest's digest.
-# A case the port cannot read yet (a carrier, or a schema the target refuses)
-# is a named absence, counted, and the ledger is red on it by name. No list
+# A case the port cannot read (a carrier, or a schema the target refuses) is
+# a FAIL line naming it, counted, and the target is red. No list
 # carries a finding (docs/rulings.json no-skips): every disagreement is red by
 # its case's name.
 set -eu -o pipefail
@@ -34,6 +34,9 @@ grade() {
 		ok=0 why="the runner printed no line"
 	elif [ "$got_verdict" != "$verdict" ]; then
 		ok=0 why="the port says $got_verdict${got:+ $got}, the engine says $verdict${reason:+ $reason}"
+	elif [ "$verdict" = accept ] && case "$carrier" in announce*) true ;; *) false ;; esac; then
+		# an announcement carries no value: its verdict is the whole answer
+		:
 	elif [ "$verdict" = accept ] && [ "$carrier" = packet ]; then
 		# a packet accept is held by the sha256 of the bytes the port writes back
 		[ "$(printf %s "$got" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" = "$digest" ] ||
@@ -55,8 +58,8 @@ grade() {
 			src=$schema_path
 			[ "$schema_path" = schemas/probe.schema ] && src=test/goose-hostile/probe.schema
 			[ -f "$schema_path" ] && [ -f "$(dirname "$schema_path")/schema.lock" ] && src=$(dirname "$schema_path")
-			if ! "$schema" pack --root "$table" --out "$tree/encode.bin" "$tree" "$src" >/dev/null 2>&1 ||
-				[ "$got" != "$(od -An -v -tx1 "$tree/encode.bin" | tr -d ' \n')" ]; then
+			if ! "$schema" pack --root "$table" --out "$tree.bin" "$tree" "$src" >/dev/null 2>&1 ||
+				[ "$got" != "$(od -An -v -tx1 "$tree.bin" | tr -d ' \n')" ]; then
 				ok=0 why="the port re-saves a different wire than the engine's own encode of its value"
 			fi
 		fi
@@ -196,21 +199,59 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 		done
 		echo "    return -1;"
 		echo "}"
+		# THE FIXED FORM'S SAVE OF A VALUE READ FROM TEXT (docs/SPEC-TABLES.md
+		# §3.4, §16.1): a fixed root's file is form 3, so a text the strict
+		# read accepts into the flat value table is bridged to the root's
+		# typed record (<Root>FromLoaded) and saved by <Root>FixedSave, as the
+		# conformance driver saves it (test/conformance/goose/driver). It
+		# answers -1 for a root with no fixed save (the variable save is its
+		# encode), 0 for a save (the bytes appended), 1 when the root has no
+		# typed bridge or the bridge refuses the value, and 1000 when the fixed
+		# writer refuses it.
+		echo "fn conformance_fixed_save(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], at: i64, saved: u8[>..]&) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedSave(.*/\1/p' "$u"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var v = $ns::$r { .. };"
+			if grep -q "^fn ${r}FromLoaded(" "$u"/*.goose; then
+				echo "        if !$ns::${r}FromLoaded(v, conformance_unit(), data, vals, at) { return 1; }"
+			else
+				# no typed bridge (a fixed-point field): the record body from
+				# the flat value table, read back by the root's own reader
+				echo "        var body: u8[>..] = [];"
+				echo "        if !fixed_body_from_loaded(conformance_unit(), \"$r\", data, vals, at, body) { return 1; }"
+				echo "        if body.len != $ns::${r}FixedBodyBytes { return 1; }"
+				echo "        $ns::_${r}FixedRead(body, 0, v);"
+			fi
+			echo "        let one: $ns::$r[1] = [v];"
+			echo "        if $ns::${r}FixedSave(one[0..1], saved) < 0 { return 1000; }"
+			echo "        return 0;"
+			echo "    }"
+		done
+		echo "    return -1;"
+		echo "}"
+		# the record-body bridge, for a fixed root with no FromLoaded
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedSave(.*/\1/p' "$u"/*Table.goose); do
+			if ! grep -q "^fn ${r}FromLoaded(" "$u"/*.goose; then
+				cat test/conformance/goose/fixed_bridge.goose
+				break
+			fi
+		done
 		# THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): one arm per root the
 		# unit emits a <Root>LoadMessages for (a fixed root), as the
 		# conformance driver glues it (test/conformance/goose/driver). The
-		# unit's announcement is read into a fresh vocabulary, then the batch
-		# at capacity 1, as the C, Squirrel and Lobster runners read it. It
+		# unit's announcement is read into a fresh vocabulary (unless the
+		# carrier withholds it, message_novocab), then the batch at capacity 1,
+		# as the C, Squirrel and Lobster runners read it. It
 		# answers -1 for a root with no message form, -2 for an announcement
 		# the reader refused, 0 for a read (the re-saved batch and the
 		# record's canonical text appended), and otherwise the read's refusal
 		# code (schema_rt::MsgRefuse*), 100 for damage that names none.
-		echo "fn conformance_message(root: const u8[:], announce: const u8[:], data: const u8[:], saved: u8[>..]&, text: u8[>..]&) -> i64 {"
+		echo "fn conformance_message(root: const u8[:], announced: bool, announce: const u8[:], data: const u8[:], saved: u8[>..]&, text: u8[>..]&) -> i64 {"
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)LoadMessages(.*/\1/p' "$u"/*Table.goose); do
 			echo "    if root == \"$r\" {"
 			echo "        var voc = schema_rt::MsgVocabulary { .. };"
 			echo "        var rep = schema_rt::MsgReport { .. };"
-			echo "        if !schema_rt::announce_read(voc, announce, rep) { return -2; }"
+			echo "        if announced && !schema_rt::announce_read(voc, announce, rep) { return -2; }"
 			echo "        var values: $ns::$r[1] = [$ns::$r { .. }; 1];"
 			echo "        let n = $ns::${r}LoadMessages(values[0..1], voc, data, rep);"
 			echo "        if rep.reason != 0 { return rep.reason; }"
@@ -249,7 +290,11 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 	set -- $line
 	got_verdict=$2 got=${3:-} text=${4:--}
 	if [ "$got_verdict" = absent ]; then
+		# a case the port cannot read is red by its name (docs/rulings.json
+		# no-skips), never a pass and never left for the ledger to find
 		absent=$((absent + 1))
+		echo "FAIL $name: the port does not read it (${got:-no reason})"
+		fail=1
 		continue
 	fi
 	# THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
@@ -264,7 +309,7 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 		fail=1
 	fi
 done <"$manifest"
-echo "goose hostile corpus: $pass agree with the engine, $absent absent (carriers or schemas the port does not read yet)"
+echo "goose hostile corpus: $pass agree with the engine, $absent the port does not read (each a FAIL by name)"
 cat "$work/ran"
 echo "hostile-ledger end"
 if [ $pass -eq 0 ]; then

@@ -3261,6 +3261,22 @@ jobs:
             target: conformance-leg-goose
             pins: goose
             paths: bin/schema build/conformance-goose build/conformance-harness-vm build/schema-goose
+          - name: lint-cpp
+            target: tables-cpp-clean-inputs
+            pins: ''
+            paths: bin/schema build/tables-generated generated/cpp generated/bench/cpp generated/bench/tables/cpp generated/bench/paired/cpp
+          - name: lint-js
+            target: tables-js-clean-inputs
+            pins: ''
+            paths: bin/schema build/tables-generated-js generated/js generated/js-ludicrous generated/bench/js generated/bench/paired/js
+          - name: lint-rust
+            target: tables-rust-clippy-inputs
+            pins: ''
+            paths: bin/schema build/tables-generated-rust build/tables-generated-rust-witnesses
+          - name: lint-lua
+            target: tables-lua-luacheck-inputs
+            pins: ''
+            paths: bin/schema build/lua-luacheck-corpus build/lua-luacheck.rc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main

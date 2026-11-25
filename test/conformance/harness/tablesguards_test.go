@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // THE GUARDS OF THE TABLES CARD, each refusing by name (authored-text rows,
@@ -111,6 +113,9 @@ func TestRegistryRowsOfAnotherManifestNameTheirFamily(t *testing.T) {
 // that is not a language are each refused.
 func TestBOMWrapperDriverModeRefusesByName(t *testing.T) {
 	root := conformanceRoot(t)
+	// the wrapper is the one repository file the sh child runs; the fake
+	// driver it starts is written below, outside the repository
+	testinputs.Files(t, "test/conformance/bom-entry")
 	script, err := os.ReadFile(filepath.Join(root, "test/conformance/bom-entry"))
 	if err != nil {
 		t.Fatal(err)

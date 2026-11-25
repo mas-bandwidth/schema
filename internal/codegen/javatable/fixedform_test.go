@@ -209,7 +209,7 @@ public final class Driver {
         final TableFixed.Report r = new TableFixed.Report();
         final int n = ByRootFixed.load(new ByRootFixed.Value[] { got }, 1, buf,
                 TableFixed.plan(256), new short[256], ByRootFixed.image(), r);
-        if (n != 1 || r.refused || r.damaged) { fail("identity load"); }
+        if (n != 1 || r.refused) { fail("identity load"); }
         if (got.blobLength != 2 || got.blob[0] != (byte) 0xAA || got.blob[1] != (byte) 0xBB) {
             fail("identity blob live");
         }
@@ -373,7 +373,7 @@ fixed table LiveRoot
 // is the Java leg's twin of the pilot's TestFixedFormArgLaneTextUnderSecondArm —
 // it asserts that a DIFFERENT hash compiles a plan from the stranger's layout
 // and reads it, which is the forward read "the fixed table reads backward, never
-// forward" removed. Under §5.3 the FU1 file comes back `layout_newer` on an FU2
+// forward" removed. Under §5.3 the FU1 file comes back `layout_unknown` on an FU2
 // build that never locked it. THE COVERAGE IS OWED as a LINEAGE PAIR (FU1/FU2,
 // one of §5.7's seven pairs) in internal/codegen/javatable/fixedversioning_test.go,
 // where the newer build is given the older layout in its lineage; the arm's
@@ -625,7 +625,7 @@ const fu1fu2Driver = `public final class Driver {
         final tblfu1.TableFixed.Report r = new tblfu1.TableFixed.Report();
         final int n = tblfu1.FuRootFixed.load(mine, 2, file, tblfu1.TableFixed.plan(1024),
                 new short[1024], tblfu1.FuRootFixed.image(), r);
-        if (n != 2) { fail("identity n=" + n + " refused=" + r.refused + " malformed=" + r.damaged); }
+        if (n != 2) { fail("identity n=" + n + " refused=" + r.refused + " reason=" + r.reason); }
         if (mine[0].pick.type != tblfu1.PickFixed.labelled) { fail("identity arm"); }
         if (mine[0].pick.labelled.lead != 101) { fail("identity lead"); }
         if (mine[0].pick.labelled.labelLength != 5
@@ -639,7 +639,7 @@ const fu1fu2Driver = `public final class Driver {
         if (mine[1].pick.type != tblfu1.PickFixed.plain || mine[1].pick.plain.n != 303 || mine[1].tail != 12) {
             fail("identity plain");
         }
-        if (r.refused || r.damaged) { fail("identity report"); }
+        if (r.refused) { fail("identity report"); }
 
         final tblfu2.FuRootFixed.Value[] theirs = {
             new tblfu2.FuRootFixed.Value(), new tblfu2.FuRootFixed.Value()
@@ -647,7 +647,7 @@ const fu1fu2Driver = `public final class Driver {
         final tblfu2.TableFixed.Report r2 = new tblfu2.TableFixed.Report();
         final int n2 = tblfu2.FuRootFixed.load(theirs, 2, file, tblfu2.TableFixed.plan(1024),
                 new short[1024], tblfu2.FuRootFixed.image(), r2);
-        if (n2 != 2) { fail("compiled n=" + n2 + " refused=" + r2.refused + " malformed=" + r2.damaged + " reason=" + r2.reason); }
+        if (n2 != 2) { fail("compiled n=" + n2 + " refused=" + r2.refused + " reason=" + r2.reason); }
         if (theirs[0].pick.type != tblfu2.PickFixed.labelled) { fail("compiled arm"); }
         if (theirs[0].pick.labelled.lead != 101) { fail("compiled lead"); }
         final String got = textOf(theirs[0].pick.labelled.label, theirs[0].pick.labelled.labelLength);
@@ -664,7 +664,7 @@ const fu1fu2Driver = `public final class Driver {
             fail("compiled plain");
         }
         if (theirs[1].extra != 11) { fail("compiled extra default on plain"); }
-        if (r2.refused || r2.damaged) { fail("compiled report"); }
+        if (r2.refused) { fail("compiled report"); }
         System.out.println("ok");
     }
 }
@@ -797,7 +797,7 @@ public final class Hostile {
         final byte[] image = new byte[10];
         final TableFixed.Report r = new TableFixed.Report();
         TableFixed.run(plan, made, remap, body, 0, body.length, image, r);
-        if (r.damaged) { fail("guardWidth: a record inside the writer's own bounds came back malformed"); }
+        if (r.reason == TableFixed.Reason.layoutMalformed) { fail("guardWidth: a record inside the writer's own bounds was refused as a plan reaching past the record (layoutMalformed)"); }
         for (int i = 0; i < image.length; i++) {
             if (image[i] != 0) {
                 fail("guardWidth: 0x0101 landed arm bytes at " + i + " = " + (image[i] & 0xFF)
@@ -839,7 +839,6 @@ public final class Hostile {
                 fail("unsignedOrdinal: refused=" + r.refused + " reason=" + r.reason
                      + ", want an outOfRange refusal for an ordinal past the writer's own variant count");
             }
-            if (r.damaged) { fail("unsignedOrdinal: a record inside the writer's bounds came back malformed"); }
         }
     }
 
@@ -870,7 +869,7 @@ public final class Hostile {
             fail("remapPastTwoFiftyFive: variant 299 landed " + got
                  + "; the remap table is as long as the WRITER's variant count and never 255");
         }
-        if (r.refused || r.damaged) {
+        if (r.refused) {
             fail("remapPastTwoFiftyFive: refused=" + r.refused + " reason=" + r.reason
                  + ", want a whole read: a variant this reader NAMES is never refused");
         }

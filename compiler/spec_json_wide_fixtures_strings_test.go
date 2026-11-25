@@ -750,14 +750,10 @@ func gatherHostileCorpusFixtures(root string) ([]wideFixture, error) {
 	var out []wideFixture
 	for _, manifest := range []string{
 		"internal/ci/hostilecorpus/corpus/manifest.tsv",
-		"internal/ci/hostilecorpus/corpus/number-token.tsv",
 		"internal/ci/hostilecorpus/wide/manifest.tsv",
 	} {
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(manifest)))
 		if err != nil {
-			if os.IsNotExist(err) && strings.HasSuffix(manifest, "/number-token.tsv") {
-				continue // as above: its exemption line then binds nothing
-			}
 			return nil, err
 		}
 		for line := range strings.SplitSeq(string(data), "\n") {

@@ -33,8 +33,8 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	if r.n != 1 {
 		t.Errorf("n=%d, want 1", r.n)
 	}
-	if r.refused || r.damaged {
-		t.Errorf("a clean NEW-READS-OLD refused: refused=%v reason=%s malformed=%v", r.refused, r.reason, r.damaged)
+	if r.refused {
+		t.Errorf("a clean NEW-READS-OLD refused: refused=%v reason=%s", r.refused, r.reason)
 	}
 	if got := r.value["lead"]; got != "1" {
 		t.Errorf("lead=%s, want 1", got)

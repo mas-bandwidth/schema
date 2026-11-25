@@ -1523,6 +1523,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-nightly-fuzz.yml:wiring",
 		"schema-nightly.yml:part",
 		"schema-nightly.yml:verdict",
+		"schema-nightly.yml:windows",
 		"schema-test-nightly.yml:nightly",
 		"tla-nightly.yml:tlc",
 	}

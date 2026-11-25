@@ -627,7 +627,21 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 			targets[it.Name] = append(targets[it.Name], it)
 		}
 	}
-	family := map[string]string{} // an item, by the family whose rows claim it
+	// every rule name a make file writes, and the pattern rules among
+	// them: a per-language target no make file defines runs nothing, and
+	// every instance of its rows would be red for a reason no case shows
+	defined := map[string]bool{}
+	var patterns []string
+	for id := range res.Rules {
+		_, name, _ := strings.Cut(id, "\x00")
+		defined[name] = true
+		if strings.Count(name, "%") == 1 {
+			patterns = append(patterns, name)
+		}
+	}
+	sort.Strings(patterns)
+	undefined := map[string]bool{} // a target already named as undefined
+	family := map[string]string{}  // an item, by the family whose rows claim it
 	claim := func(t testreg.Test, it Item) {
 		id := it.ID()
 		if family[id] == t.Family {
@@ -655,7 +669,12 @@ func perLangClaims(res *Result, reg *testreg.Registry, out map[string]string) []
 			if l.Name == testreg.LangFree {
 				continue
 			}
-			for _, it := range targets[strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)] {
+			target := strings.ReplaceAll(in.Target, testreg.LangPlaceholder, l.Name)
+			if _, unrep := reg.Unrepresentable(t.Key, l.Name); !unrep && !undefined[target] && !makeDefines(defined, patterns, target) {
+				undefined[target] = true
+				problems = append(problems, fmt.Sprintf("%s:%d: %s (and every row of family %s) runs make %s for %s, which no make file defines", reg.Path, t.Line, t.Key, t.Family, target, l.Name))
+			}
+			for _, it := range targets[target] {
 				claim(t, it)
 			}
 			for _, g := range in.GoTests {
@@ -700,6 +719,21 @@ func sourceNames(lits map[string]bool, pkg, p string) bool {
 			c = c[3:]
 		}
 		if strings.Contains(c, "/") && c == p {
+			return true
+		}
+	}
+	return false
+}
+
+// makeDefines reports whether a make file writes a rule for target: by its
+// own name, or by a pattern rule (one %) that matches it with a stem.
+func makeDefines(defined map[string]bool, patterns []string, target string) bool {
+	if defined[target] {
+		return true
+	}
+	for _, p := range patterns {
+		pre, suf, _ := strings.Cut(p, "%")
+		if len(target) > len(pre)+len(suf) && strings.HasPrefix(target, pre) && strings.HasSuffix(target, suf) {
 			return true
 		}
 	}

@@ -262,8 +262,8 @@ public final class VD_signed_integers {
         final int n = RangedSignedFixed.load(out, 1, file,
                 TableFixed.plan(1024), new short[1024], RangedSignedFixed.image(), rep);
         check("ranged: load answers 1", n == 1);
-        check("ranged: a clean read is not refused and not malformed",
-                !rep.refused && !rep.damaged);
+        check("ranged: a clean read is not refused",
+                !rep.refused);
         check("ranged: a value inside every declared range moves no counter"
                         + " (clamped/unknown/kindMismatch/widened all 0)",
                 rep.unknown == 0 && rep.widened == 0);
@@ -355,8 +355,8 @@ public final class VD_signed_integers {
         final int n = ProfileConfigFixed.load(out, 2, buf,
                 TableFixed.plan(1024), new short[1024], ProfileConfigFixed.image(), rep);
         check("bare: load answers 2", n == 2);
-        check("bare: a clean read is not refused and not malformed",
-                !rep.refused && !rep.damaged);
+        check("bare: a clean read is not refused",
+                !rep.refused);
         check("bare: bare fields carry no range to clamp — every counter 0",
                 rep.unknown == 0 && rep.widened == 0);
         check("bare: int8/int16/int64 minimums round-trip exactly",
