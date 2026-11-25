@@ -92,7 +92,7 @@ _verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
-		./build/conformance-harness message-fuzz --only $(1)) \
+		./build/conformance-harness message-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
 

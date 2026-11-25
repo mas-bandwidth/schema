@@ -30,9 +30,15 @@ type harness struct {
 
 // alignArrays is test/verify-bitphase --adapter: the align-arrays family's
 // driver for every leg, reading its rows from the requests (alignarrays.go).
+// Its build is the leg's own: make verify-align-arrays-deps-<lang>
+// (make/verify-widen-18.mk) builds the driver, bin/schema and what
+// VERIFY_WIDEN_DEPS_<lang> names, build/schema-moo for moo among them, so
+// every path Cmd names exists before it runs.
 var alignArrays = harness{
-	Name:  "align-arrays",
-	Build: func(string) [][]string { return [][]string{{"make", "bin/schema", "build/verify-bitphase-bin"}} },
+	Name: "align-arrays",
+	Build: func(lang string) [][]string {
+		return [][]string{{"make", "verify-align-arrays-deps-" + lang}}
+	},
 	Cmd: func(lang, work string) []string {
 		return []string{"./build/verify-bitphase-bin", "--adapter", "--lang", lang,
 			"--schema", "./bin/schema", "--schema-moo", "./build/schema-moo",
@@ -152,6 +158,7 @@ func adapters(log io.Writer) map[string]testreg.Adapter {
 		"corpus":      newHarnessAdapter(b, log),
 		"gotest":      newGoTestAdapterBuilding(log, ".", goTestJobs(), b.run),
 		"make":        newMakeAdapter(),
+		"make-gotest": newMakeGoTestAdapter("."),
 		"golden":      newGoldenAdapter(),
 		"model-check": modelCheckAdapter{build: b, log: log},
 	}
@@ -164,6 +171,10 @@ func withRunner(ads map[string]testreg.Adapter, rn *testreg.Runner) {
 	if g, ok := ads["golden"].(goldenAdapter); ok {
 		g.reg = rn.Reg
 		ads["golden"] = g
+	}
+	if m, ok := ads["make-gotest"].(makeGoTestAdapter); ok {
+		m.reg = rn.Reg
+		ads["make-gotest"] = m
 	}
 }
 

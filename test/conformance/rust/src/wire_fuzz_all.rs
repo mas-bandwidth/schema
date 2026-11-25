@@ -58,6 +58,10 @@ mod vocab9demo;
 mod vocabdemo;
 mod widelist;
 mod shapes;
+mod tblsurf;
+mod packetunions;
+mod tblvaluedefaults;
+mod tbla1;
 mod tblmoodmap;
 
 use std::io::{self, Read, Write};
@@ -255,7 +259,7 @@ const MESSAGE_ROOTS: &[(&str, &str)] = &[
 
 const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
     ("backenddemo", "LoginRequest"), ("backenddemo", "MatchResult"),
-    ("backenddemo", "StorePurchase"),
+    ("backenddemo", "StorePurchase"), ("backenddemo", "Envelope"),
     ("vocabdemo", "Wide00"), ("vocabdemo", "Wide09"),
     ("vocab9demo", "Wide00"), ("vocab9demo", "Wide19"),
     ("messagedemo", "ToolMessage"),
@@ -264,6 +268,7 @@ const MESSAGE_FUZZ_ROOTS: &[(&str, &str)] = &[
     ("tabledemo", "RootConfig"), ("tabledemo", "ProfileConfig"), ("tabledemo", "KeyedConfig"),
     ("tblv1", "Cfg"), ("tblv2", "Cfg"),
     ("tblm1", "Msg"), ("tblm2", "Msg"),
+    ("tbla1", "Root"),
     ("tbla2", "Root"),
     ("tblk1", "Root"), ("tblk2", "Root"),
     ("scalars", "SimState"), ("tblscalars2", "SimState"),
@@ -274,6 +279,7 @@ fn drive_message_framed(unit: &str, root: &str, frame: &[u8]) -> Option<Reply> {
         ("backenddemo", "LoginRequest") => message_framed_arm!(backenddemo, login_request_message_default, login_request_load_messages, login_request_measure_messages, login_request_save_messages, frame),
         ("backenddemo", "MatchResult") => message_framed_arm!(backenddemo, match_result_message_default, match_result_load_messages, match_result_measure_messages, match_result_save_messages, frame),
         ("backenddemo", "StorePurchase") => message_framed_arm!(backenddemo, store_purchase_message_default, store_purchase_load_messages, store_purchase_measure_messages, store_purchase_save_messages, frame),
+        ("backenddemo", "Envelope") => message_framed_arm!(backenddemo, envelope_message_default, envelope_load_messages, envelope_measure_messages, envelope_save_messages, frame),
         ("vocabdemo", "Wide00") => message_framed_arm!(vocabdemo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, frame),
         ("vocabdemo", "Wide09") => message_framed_arm!(vocabdemo, wide09_message_default, wide09_load_messages, wide09_measure_messages, wide09_save_messages, frame),
         ("vocab9demo", "Wide00") => message_framed_arm!(vocab9demo, wide00_message_default, wide00_load_messages, wide00_measure_messages, wide00_save_messages, frame),
@@ -290,6 +296,7 @@ fn drive_message_framed(unit: &str, root: &str, frame: &[u8]) -> Option<Reply> {
         ("tblv2", "Cfg") => message_framed_arm!(tblv2, cfg_message_default, cfg_load_messages, cfg_measure_messages, cfg_save_messages, frame),
         ("tblm1", "Msg") => message_framed_arm!(tblm1, msg_message_default, msg_load_messages, msg_measure_messages, msg_save_messages, frame),
         ("tblm2", "Msg") => message_framed_arm!(tblm2, msg_message_default, msg_load_messages, msg_measure_messages, msg_save_messages, frame),
+        ("tbla1", "Root") => message_framed_arm!(tbla1, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
         ("tbla2", "Root") => message_framed_arm!(tbla2, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
         ("tblk1", "Root") => message_framed_arm!(tblk1, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
         ("tblk2", "Root") => message_framed_arm!(tblk2, root_message_default, root_load_messages, root_measure_messages, root_save_messages, frame),
@@ -385,6 +392,21 @@ const ROOTS: &[(&str, &str)] = &[
     ("widelist", "Wide"),
     ("shapes", "Bounds"),
     ("shapes", "FixedBounds"),
+    ("tabledemo", "CountedMin"),
+    ("tabledemo", "MinArmFix"),
+    ("tabledemo", "MinPlainFix"),
+    ("tabledemo", "MoodField"),
+    ("tabledemo", "Moods"),
+    ("tblsurf", "Arrays"),
+    ("tblsurf", "Chain"),
+    ("tblsurf", "Counted"),
+    ("tblsurf", "Holder"),
+    ("tblsurf", "Narrow"),
+    ("tblsurf", "Wide"),
+    ("packetunions", "ShapeDoc"),
+    ("packetunions", "ShapeMsg"),
+    ("tblvaluedefaults", "FixedDefaults"),
+    ("tblvaluedefaults", "VarDefaults"),
     ("tblmoodmap", "MoodMap"),
 ];
 
@@ -426,6 +448,16 @@ const FIXED_ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide00"),
     ("vocabdemo", "Wide09"),
     ("shapes", "FixedBounds"),
+    ("tabledemo", "CountedMin"),
+    ("tabledemo", "MinArmFix"),
+    ("tabledemo", "MinPlainFix"),
+    ("tabledemo", "MoodField"),
+    ("tabledemo", "Moods"),
+    ("tblsurf", "Arrays"),
+    ("tblsurf", "Narrow"),
+    ("tblsurf", "Wide"),
+    ("packetunions", "ShapeMsg"),
+    ("tblvaluedefaults", "FixedDefaults"),
 ];
 
 // THE FIXED FORM (docs/SPEC-TABLES.md §3.4): every file of a declared
@@ -450,14 +482,14 @@ macro_rules! fixed_arm {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = TableFixedReport::default();
         let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
-        let read = read.filter(|_| !report.refused && !report.damaged);
+        let read = read.filter(|_| !report.refused);
         // a file of no record is truncated: there is no root to read
         let empty = read == Some(0);
         let read = read.filter(|_| !empty);
         let mut reply = Reply { loaded: read.is_some(), ..Default::default() };
         reply.unknown = u64::from(report.unknown);
         reply.widened = u64::from(report.widened);
-        reply.damaged = report.damaged || empty;
+        reply.damaged = empty;
         reply.refused = report.refused;
         match read {
             Some(n) => {
@@ -490,11 +522,10 @@ macro_rules! fixed_load_only_arm {
         let mut remap = vec![0u16; FIXED_PLAN];
         let mut report = TableFixedReport::default();
         let read = $load(&mut values, $wire, &mut plan, &mut remap, &mut report);
-        let read = read.filter(|_| !report.refused && !report.damaged);
+        let read = read.filter(|_| !report.refused);
         let mut reply = Reply { loaded: read.is_some(), measure: -1, save_fail: true, ..Default::default() };
         reply.unknown = u64::from(report.unknown);
         reply.widened = u64::from(report.widened);
-        reply.damaged = report.damaged;
         reply.refused = report.refused;
         Some(reply)
     }};
@@ -539,6 +570,16 @@ fn drive_fixed(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
         ("vocab9demo", "Wide00") => fixed_arm!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, wire),
         ("vocab9demo", "Wide19") => fixed_arm!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, wire),
         ("shapes", "FixedBounds") => fixed_arm!(shapes, fixed_bounds_fixed_load, fixed_bounds_fixed_save, fixed_bounds_fixed_measure, FixedBoundsRow, wire),
+        ("tabledemo", "CountedMin") => fixed_arm!(tabledemo, counted_min_fixed_load, counted_min_fixed_save, counted_min_fixed_measure, CountedMinRow, wire),
+        ("tabledemo", "MinArmFix") => fixed_arm!(tabledemo, min_arm_fix_fixed_load, min_arm_fix_fixed_save, min_arm_fix_fixed_measure, MinArmFixRow, wire),
+        ("tabledemo", "MinPlainFix") => fixed_arm!(tabledemo, min_plain_fix_fixed_load, min_plain_fix_fixed_save, min_plain_fix_fixed_measure, MinPlainFixRow, wire),
+        ("tabledemo", "MoodField") => fixed_arm!(tabledemo, mood_field_fixed_load, mood_field_fixed_save, mood_field_fixed_measure, MoodFieldRow, wire),
+        ("tabledemo", "Moods") => fixed_arm!(tabledemo, moods_fixed_load, moods_fixed_save, moods_fixed_measure, MoodsRow, wire),
+        ("tblsurf", "Arrays") => fixed_arm!(tblsurf, arrays_fixed_load, arrays_fixed_save, arrays_fixed_measure, ArraysRow, wire),
+        ("tblsurf", "Narrow") => fixed_arm!(tblsurf, narrow_fixed_load, narrow_fixed_save, narrow_fixed_measure, NarrowRow, wire),
+        ("tblsurf", "Wide") => fixed_arm!(tblsurf, wide_fixed_load, wide_fixed_save, wide_fixed_measure, WideRow, wire),
+        ("packetunions", "ShapeMsg") => fixed_arm!(packetunions, shape_msg_fixed_load, shape_msg_fixed_save, shape_msg_fixed_measure, ShapeMsgRow, wire),
+        ("tblvaluedefaults", "FixedDefaults") => fixed_arm!(tblvaluedefaults, fixed_defaults_fixed_load, fixed_defaults_fixed_save, fixed_defaults_fixed_measure, FixedDefaultsRow, wire),
         _ => None,
     }
 }
@@ -614,6 +655,21 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("vocabdemo", "Wide00") => arm!(vocabdemo, wide00_load, wide00_load_retain, wide00_save, wide00_save_checked, wide00_save_retain, wide00_load_measure, wire, retain),
         ("vocabdemo", "Wide09") => arm!(vocabdemo, wide09_load, wide09_load_retain, wide09_save, wide09_save_checked, wide09_save_retain, wide09_load_measure, wire, retain),
         ("shapes", "Bounds") => arm!(shapes, bounds_load, bounds_load_retain, bounds_save, bounds_save_checked, bounds_save_retain, bounds_load_measure, wire, retain),
+        ("tabledemo", "CountedMin") => arm!(tabledemo, counted_min_load, counted_min_load_retain, counted_min_save, counted_min_save_checked, counted_min_save_retain, counted_min_load_measure, wire, retain),
+        ("tabledemo", "MinArmFix") => arm!(tabledemo, min_arm_fix_load, min_arm_fix_load_retain, min_arm_fix_save, min_arm_fix_save_checked, min_arm_fix_save_retain, min_arm_fix_load_measure, wire, retain),
+        ("tabledemo", "MinPlainFix") => arm!(tabledemo, min_plain_fix_load, min_plain_fix_load_retain, min_plain_fix_save, min_plain_fix_save_checked, min_plain_fix_save_retain, min_plain_fix_load_measure, wire, retain),
+        ("tabledemo", "MoodField") => arm!(tabledemo, mood_field_load, mood_field_load_retain, mood_field_save, mood_field_save_checked, mood_field_save_retain, mood_field_load_measure, wire, retain),
+        ("tabledemo", "Moods") => arm!(tabledemo, moods_load, moods_load_retain, moods_save, moods_save_checked, moods_save_retain, moods_load_measure, wire, retain),
+        ("tblsurf", "Arrays") => arm!(tblsurf, arrays_load, arrays_load_retain, arrays_save, arrays_save_checked, arrays_save_retain, arrays_load_measure, wire, retain),
+        ("tblsurf", "Chain") => arm!(tblsurf, chain_load, chain_load_retain, chain_save, chain_save_checked, chain_save_retain, chain_load_measure, wire, retain),
+        ("tblsurf", "Counted") => arm!(tblsurf, counted_load, counted_load_retain, counted_save, counted_save_checked, counted_save_retain, counted_load_measure, wire, retain),
+        ("tblsurf", "Holder") => arm!(tblsurf, holder_load, holder_load_retain, holder_save, holder_save_checked, holder_save_retain, holder_load_measure, wire, retain),
+        ("tblsurf", "Narrow") => arm!(tblsurf, narrow_load, narrow_load_retain, narrow_save, narrow_save_checked, narrow_save_retain, narrow_load_measure, wire, retain),
+        ("tblsurf", "Wide") => arm!(tblsurf, wide_load, wide_load_retain, wide_save, wide_save_checked, wide_save_retain, wide_load_measure, wire, retain),
+        ("packetunions", "ShapeDoc") => arm!(packetunions, shape_doc_load, shape_doc_load_retain, shape_doc_save, shape_doc_save_checked, shape_doc_save_retain, shape_doc_load_measure, wire, retain),
+        ("packetunions", "ShapeMsg") => arm!(packetunions, shape_msg_load, shape_msg_load_retain, shape_msg_save, shape_msg_save_checked, shape_msg_save_retain, shape_msg_load_measure, wire, retain),
+        ("tblvaluedefaults", "FixedDefaults") => arm!(tblvaluedefaults, fixed_defaults_load, fixed_defaults_load_retain, fixed_defaults_save, fixed_defaults_save_checked, fixed_defaults_save_retain, fixed_defaults_load_measure, wire, retain),
+        ("tblvaluedefaults", "VarDefaults") => arm!(tblvaluedefaults, var_defaults_load, var_defaults_load_retain, var_defaults_save, var_defaults_save_checked, var_defaults_save_retain, var_defaults_load_measure, wire, retain),
         ("tblmoodmap", "MoodMap") => arm!(tblmoodmap, mood_map_load, mood_map_load_retain, mood_map_save, mood_map_save_checked, mood_map_save_retain, mood_map_load_measure, wire, retain),
         _ => None,
     }

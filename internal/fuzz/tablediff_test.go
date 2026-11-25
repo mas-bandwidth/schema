@@ -258,25 +258,12 @@ func probeFileLoad(wire []byte, rep *TableReport) (*Root, bool) {
 // a t.TempDir against the serialize.go replace line.
 func runGeneratedTableUnit(t *testing.T, u *ir.Unit, testSource string, env map[string]string, flags ...string) ([]byte, error) {
 	t.Helper()
-	files, err := compiler.New().Generate(u, "go", nil)
-	if err != nil {
-		return nil, err
-	}
 	dir := t.TempDir()
-	root, err := filepath.Abs("../..")
-	if err != nil {
+	if err := writeGeneratedTableModule(dir); err != nil {
 		return nil, err
 	}
-	if ir.VariableTables(u)["Root"] && !strings.Contains(testSource, "probeFromJSON") && !strings.Contains(testSource, "RootBuilder") {
-		testSource = strings.ReplaceAll(testSource, "RootFromJSON(", "probeFromJSONValue(")
-	}
-	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root))
-	files["helpers_test.go"] = []byte(probeHelpersSource(u))
-	files["values_test.go"] = []byte(testSource)
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
-			return nil, err
-		}
+	if err := writeGeneratedTableProbe(dir, u, testSource); err != nil {
+		return nil, err
 	}
 	args := append([]string{"test", "-count=1"}, flags...)
 	cmd := exec.Command("go", append(args, ".")...)
@@ -849,3 +836,34 @@ func TestRandomTableIntegrityUnits(t *testing.T) {
 }
 
 var _ = math.MaxInt8
+
+// writeGeneratedTableModule writes the go.mod of a module of generated table
+// probes, the schema module replaced by this checkout.
+func writeGeneratedTableModule(dir string) error {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		return err
+	}
+	mod := fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/schema/v2 v2.0.0\nreplace github.com/mas-bandwidth/schema/v2 => %q\n", root)
+	return os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o600)
+}
+
+// writeGeneratedTableProbe writes one probe package into dir: u's generated
+// Go, the probe helpers, and testSource as values_test.go.
+func writeGeneratedTableProbe(dir string, u *ir.Unit, testSource string) error {
+	files, err := compiler.New().Generate(u, "go", nil)
+	if err != nil {
+		return err
+	}
+	if ir.VariableTables(u)["Root"] && !strings.Contains(testSource, "probeFromJSON") && !strings.Contains(testSource, "RootBuilder") {
+		testSource = strings.ReplaceAll(testSource, "RootFromJSON(", "probeFromJSONValue(")
+	}
+	files["helpers_test.go"] = []byte(probeHelpersSource(u))
+	files["values_test.go"] = []byte(testSource)
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}

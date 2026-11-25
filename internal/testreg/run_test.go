@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -506,22 +508,91 @@ func TestAHeavyTestLeavesNoPartEmpty(t *testing.T) {
 func TestAnUnansweredUnionInstanceWeighsItsLine(t *testing.T) {
 	t.Parallel()
 	union := Test{Key: "f.c", Inputs: json.RawMessage(`{"tests":{"go":{"package":"./p","test":"TestX"}}}`)}
-	measured := union
-	measured.Seconds = 30
+	measured := Test{Key: "f.m", Inputs: json.RawMessage(`{"tests":{"go":{"package":"./p","test":"TestX","seconds":30},"lua":{"package":"./r","test":"TestY","seconds":2}}}`)}
 	for _, c := range []struct {
 		lang string
 		test Test
 		want float64
 	}{
 		{"go", measured, 30},
+		{"lua", measured, 2},
 		{"c", measured, minSeconds},
 		{"go", union, DefaultSeconds},
 		{"c", union, minSeconds},
 	} {
-		if w := Weight(Instance{Full: c.lang + ".unit.f.c", Lang: c.lang, Test: c.test}); w != c.want {
-			t.Errorf("%s instance of a row measured at %v s weighs %v, want %v", c.lang, c.test.Seconds, w, c.want)
+		if w := Weight(Instance{Full: c.lang + ".unit." + c.test.Key, Lang: c.lang, Test: c.test}); w != c.want {
+			t.Errorf("%s instance of %s weighs %v, want %v", c.lang, c.test.Inputs, w, c.want)
 		}
 	}
+}
+
+// TestAUnionRowsSecondsAreEachLanguages: each language's Go test carries its
+// own measured seconds (WriteSeconds puts them there, SplitSeconds sorts a
+// run's by row and language), and a union row with seconds of its own, or a
+// language's negative seconds, does not load: one number for the row would
+// weigh every language by the slowest.
+func TestAUnionRowsSecondsAreEachLanguages(t *testing.T) {
+	t.Parallel()
+	row := `{"rec":"test","key":"roundtrip.u.one","type":"roundtrip","family":"u","case":"one","tier":"unit","checks":"x","inputs":{"tests":{"go":{"package":"./p","test":"TestA"},"lua":{"package":"./r","test":"TestB"}}},"expect":"x"}` + "\n"
+	path := filepath.Join(t.TempDir(), "r.jsonl")
+	if err := os.WriteFile(path, []byte(fixture+row), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Instance{}
+	for _, inst := range reg.Instances() {
+		byName[inst.Full] = inst
+	}
+	// a measurement of a name the run has no instance of, or of no positive
+	// time, is refused by name, never dropped
+	for name, s := range map[string]float64{"go.unit.roundtrip.u.none": 2, "lua.unit.roundtrip.u.one": 0} {
+		if _, _, err := SplitSeconds(byName, map[string]float64{name: s}); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("SplitSeconds took %s at %v s: %v", name, s, err)
+		}
+	}
+	rows, langs, err := SplitSeconds(byName, map[string]float64{"go.unit.roundtrip.u.one": 41.001, "lua.unit.roundtrip.u.one": 3})
+	if err != nil || len(rows) != 0 || langs["roundtrip.u.one"]["go"] != 41.001 || langs["roundtrip.u.one"]["lua"] != 3 {
+		t.Fatalf("split %v %v %v, want the union row's by language", rows, langs, err)
+	}
+	if n, err := WriteSeconds(path, rows, langs); err != nil || n != 1 {
+		t.Fatalf("WriteSeconds: %d %v", n, err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(fixture+row, `"inputs":{"tests":{"go":{"package":"./p","test":"TestA"},"lua":{"package":"./r","test":"TestB"}}}`, `"inputs":{"tests":{"go":{"package":"./p","test":"TestA","seconds":41.01},"lua":{"package":"./r","test":"TestB","seconds":3}}}`, 1)
+	if string(got) != want {
+		t.Fatalf("file:\n%s\nwant:\n%s", got, want)
+	}
+	reg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range reg.Instances() {
+		if inst.Test.Key != "roundtrip.u.one" {
+			continue
+		}
+		want := map[string]float64{"go": 41.01, "lua": 3}[inst.Lang]
+		if want == 0 {
+			want = minSeconds
+		}
+		if w := Weight(inst); w != want {
+			t.Errorf("%s weighs %v, want %v", inst.Full, w, want)
+		}
+	}
+	// a union row in the row-level map, or a language it names no test for
+	if _, err := WriteSeconds(path, map[string]float64{"roundtrip.u.one": 1}, nil); err == nil || !strings.Contains(err.Error(), "is a union row: its seconds are each language's") {
+		t.Errorf("a union row's row-level seconds were written: %v", err)
+	}
+	if _, err := WriteSeconds(path, nil, map[string]map[string]float64{"roundtrip.u.one": {"c": 1}}); err == nil || !strings.Contains(err.Error(), "names no Go test for c") {
+		t.Errorf("seconds for a language the row names no test for were written: %v", err)
+	}
+	refused(t, fixture+strings.Replace(row, `"expect":"x"}`, `"expect":"x","seconds":5}`, 1), "fixture.jsonl:", "is a union row with seconds 5")
+	refused(t, fixture+strings.Replace(row, `"test":"TestB"}`, `"test":"TestB","seconds":-1}`, 1), "fixture.jsonl:", "give seconds -1")
 }
 
 // TestAGoldenWritersRowsShareOneShard: a golden writer runs once for all the
@@ -862,6 +933,68 @@ func TestARowsShareIsWhatTheCallTookBeyondTheTimedRows(t *testing.T) {
 	}
 }
 
+// TestADriverTimeoutNamesTheLimitAndTheRows: a call the driver's own
+// deadline kills is named a timeout, never a crash, with the limit the call
+// had and how long it ran, and every row it left unreported fails by its
+// own name carrying that line. The clock is the runner's (a stand-in that
+// moves 1 s when the call's wait ends), and the adapter blocks on a
+// channel until the deadline, which the stand-in context has already
+// passed, so no real time passes.
+// The plant is the old wording ("adapter fake timed out" alone): neither
+// the limit nor the time it ran is in the report.
+func TestADriverTimeoutNamesTheLimitAndTheRows(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	start := time.Date(2026, 11, 25, 6, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := start
+	hang := fake{run: func(ctx context.Context, _ []Instance) ([]Result, error) {
+		<-ctx.Done()
+		mu.Lock()
+		now = start.Add(time.Second) // the second the call waited
+		mu.Unlock()
+		return nil, ctx.Err()
+	}}
+	rn := runner(reg, hang)
+	rn.Now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	rn.Context = func(parent context.Context, _ string) (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(parent)
+		cancel() // the deadline has passed: a stand-in for one second's wait
+		return deadlineCtx{ctx, start.Add(time.Second)}, func() {}
+	}
+	insts := selectQ(t, reg, Query{Langs: []string{"go"}})
+	rep := rn.Run(context.Background(), insts)
+	wantRed(t, rep, "TIMED OUT", "limit of 1s", "after it ran 1s")
+	for _, o := range rep.Outcomes {
+		if o.Status != StatusFail || !strings.Contains(o.Reason, "TIMED OUT") || strings.Contains(o.Reason, "crashed") {
+			t.Errorf("row %s of a killed call: %+v", o.Full, o)
+		}
+	}
+	if len(rep.Outcomes) != len(insts) {
+		t.Errorf("%d outcomes for %d rows", len(rep.Outcomes), len(insts))
+	}
+}
+
+// deadlineCtx is a context whose deadline is a fixed time and whose Err is
+// DeadlineExceeded once it is done, as a real deadline's is.
+type deadlineCtx struct {
+	context.Context
+	at time.Time
+}
+
+func (c deadlineCtx) Deadline() (time.Time, bool) { return c.at, true }
+
+func (c deadlineCtx) Err() error {
+	if c.Context.Err() != nil {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
 // TestGoTestSubtestsOfOneParentShareOneShard: subtest rows of one Go test
 // share that test's process, so a cut keeps them one block, placed where
 // the first is, even when another row sits between them.
@@ -884,5 +1017,68 @@ func TestGoTestSubtestsOfOneParentShareOneShard(t *testing.T) {
 	}
 	if strings.Join(got, " | ") != "a,s1,s2,s3 | b,o1 | c,d" {
 		t.Fatalf("parts %q, want TestA's three subtests together", got)
+	}
+}
+
+// stepped is an adapter that prepares in steps (StepPreparer); each step logs
+// itself and answers its context's error, as a build cut off does.
+type stepped struct {
+	name  string
+	steps []string
+	log   *eventLog
+}
+
+func (a stepped) Answers(Test) bool { return true }
+
+func (a stepped) PrepareSteps(_ string, _ []Instance) []PrepareStep {
+	var out []PrepareStep
+	for _, s := range a.steps {
+		out = append(out, PrepareStep{Name: s, Run: func(ctx context.Context) error {
+			a.log.add("step " + s)
+			return ctx.Err()
+		}})
+	}
+	return out
+}
+
+func (a stepped) Run(_ context.Context, _ string, instances []Instance) ([]Result, error) {
+	a.log.add("start " + a.name)
+	return passAll(instances), nil
+}
+
+// TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName: a
+// StepPreparer's steps each get a deadline of their own, named "prepare
+// <group> <step>", and run in the order declared; the step that outlasts its
+// limit fails the group naming that step, the steps after it never run and the
+// group's call never runs. Planted: a runner that prepared the steps under one
+// group deadline names no step and makes no deadline per step.
+func TestEachPrepareStepHasItsOwnLimitAndAStepThatOutlastsItFailsByName(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	rn := &Runner{Reg: load(t, fixture), Adapters: map[string]Adapter{
+		"a": stepped{name: "a", steps: []string{"build/one", "build/two", "build/slow", "build/after"}, log: log},
+		"b": stepped{name: "b", steps: []string{"build/fine"}, log: log},
+	}, Context: func(parent context.Context, group string) (context.Context, context.CancelFunc) {
+		log.add("deadline " + group)
+		if group == "prepare none/a build/slow" {
+			return context.WithDeadline(parent, time.Unix(0, 0)) // the step outlasted its limit
+		}
+		return context.WithCancel(parent)
+	}}
+	rep := rn.Run(context.Background(), []Instance{freeInstance("a"), freeInstance("b")})
+	wantRed(t, rep, "none.unit.tooling.a.one", "timed out in prepare none/a build/slow", "deadline exceeded")
+	for _, g := range []string{"prepare none/a build/one", "prepare none/a build/two", "prepare none/a build/slow", "prepare none/b build/fine"} {
+		if !log.has("deadline " + g) {
+			t.Errorf("no deadline made for %q: %q", g, log.ev)
+		}
+	}
+	if log.at("step build/one") >= log.at("step build/two") || log.at("step build/two") >= log.at("step build/slow") {
+		t.Errorf("the steps did not run in the order declared: %q", log.ev)
+	}
+	if log.has("step build/after") || log.has("start a") {
+		t.Errorf("a step or the call ran after a step timed out: %q", log.ev)
+	}
+	if rep.Passed != 1 || rep.Failed != 1 {
+		t.Errorf("passed %d, failed %d; want b green and only a red", rep.Passed, rep.Failed)
 	}
 }

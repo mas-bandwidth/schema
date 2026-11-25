@@ -1,24 +1,26 @@
-// C10 — an ENUM ORDINAL PAST THE TOP VARIANT LANDS `None`.
+// C10 — an ENUM ORDINAL PAST THE TOP VARIANT REFUSES `out_of_range`.
 //
-// docs/FIXED-FORM-ALGORITHM.md:945 (the SPEC paragraph this row is cut from):
+// docs/FIXED-FORM-ALGORITHM.md §4.6, the bounds-pass row of the answer table:
 //
-//   | the bounds pass | `clamped` | once per field: ... an enum ordinal past
-//   | the top variant, and a FORGED ordinal remapped to `None` — one past the
-//   | WRITER's own variant count, which the `ordinal` op lands as `0` and this
-//   | pass counts, on the COMPILED plan exactly as on the identity one |
+//   | the bounds pass | `out_of_range` | ... an enum ordinal past the plan's
+//   | top variant (a FORGED ordinal), on the COMPILED plan exactly as on the
+//   | identity one |
 //
-// and :946 — a port that ALSO counts in the `ordinal` op counts twice, so the
-// count is asserted EXACTLY `== 1`.
+// and the tag and ordinal ruling (§5.9 #14, 2026-11-03): an ordinal past the
+// last variant REFUSES `out_of_range`, on the identity path as well as the
+// compiled one. The whole read refuses, nothing lands, and every row handed
+// in goes back to its declared default (SPEC-TABLES §6.5). The verdict is
+// compared across legs; the name is diagnostic.
+//
+// Until 2026-11-25 this row asserted the retired land-None-and-count answer
+// through a report field, `oor`, that the report no longer has.
 //
 // THE PRODUCTION PATH. The entry point is `fe_root_fixed_load`, the generated
 // reader for FE1's `fixed table FeRoot` (test/tables/FE1.schema; 3 variants
 // Bronze/Silver/Gold, and the ordinal is a POSITION FROM 1 with 0 = None).
-// `fe_root_fixed_load` runs the identity plan and lands each field through
-// `fe_root_fixed_scatter`, whose bounds pass is the `if raw > 3 { clamped += 1;
-// grade = 0 }` arm over the ordinal byte. This test forges that byte exactly
-// the way the fixed-form versioning row does (`r0.tier` = 4, one past the
-// writer's three) and reads the real generated codec — no helper is called
-// that the produced codec does not call itself.
+// This test forges the ordinal byte (`grade` = 4, one past the writer's
+// three) and reads the real generated codec — no helper is called that the
+// produced codec does not call itself.
 //
 // It reaches the generated crate the way the driver's dependency graph does,
 // one module per generated source file, skipping the WIRE module (`fe1.rs`)
@@ -53,7 +55,7 @@ fn forged(ordinal: u8) -> Vec<u8> {
     let row = FeRootRow {
         grade: 3, // Gold
         effect,
-        tail: 55, // the field after the enum, to prove the read goes on
+        tail: 55, // the field after the enum
     };
     let mut file = vec![0u8; fe_root_fixed_measure(1)];
     assert_eq!(
@@ -65,8 +67,21 @@ fn forged(ordinal: u8) -> Vec<u8> {
     file
 }
 
+// The row at its declared defaults, as the reader's own reset scatters them.
+fn declared_defaults() -> FeRootRow {
+    let mut want = FeRootRow::default();
+    fe_root_fixed_scatter(&FE_ROOT_FIXED_DEFAULTS, &mut want, &mut TableFixedReport::default());
+    want
+}
+
+// Loads into rows poisoned off their defaults, so a refusal that leaves a
+// caller's row alone is seen.
 fn load(data: &[u8]) -> (Option<usize>, [FeRootRow; 4], TableFixedReport) {
     let mut values = [FeRootRow::default(); 4];
+    for v in values.iter_mut() {
+        v.grade = 2;
+        v.tail = 0x5A;
+    }
     let mut plan = [TableFixedEntry::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
@@ -74,66 +89,46 @@ fn load(data: &[u8]) -> (Option<usize>, [FeRootRow; 4], TableFixedReport) {
     (n, values, report)
 }
 
-// THE POSITIVE CONTROL, IN THE SAME BINARY: a lawful ordinal lands the value
-// and moves no counter, so the forgery below is the byte and not a reader that
-// answers `None` to everything.
-#[test]
-fn c10_a_lawful_ordinal_lands_and_counts_nothing() {
-    println!("C10 positive control: Gold(3) lands 3 and clamped == 0");
-    let (n, values, report) = load(&forged(3));
-    assert_eq!(n, Some(1), "a lawful record reads one record: {report:?}");
-    assert_eq!(values[0].grade, 3, "Gold lands Gold, not None");
-    assert_eq!(values[0].tail, 55, "the field after the enum lands");
-    assert_eq!(report.oor, 0, "a lawful ordinal clamps nothing: {report:?}");
+fn assert_refused(what: &str, ordinal: u8) {
+    let (n, values, report) = load(&forged(ordinal));
+    let want = declared_defaults();
+    assert_eq!(n, None, "{what}: an ordinal past the top variant refuses the read: {report:?}");
+    assert!(report.refused, "{what}: the read is refused, never landed as None: {report:?}");
+    assert_eq!(report.reason, TableFixedReason::OutOfRange, "{what}: {report:?}");
+    assert_eq!(report.unknown, 0, "{what}: a refusal moves no counter: {report:?}");
+    assert_eq!(report.widened, 0, "{what}: a refusal moves no counter: {report:?}");
+    for (i, v) in values.iter().enumerate() {
+        assert!(
+            v.grade == want.grade && v.tail == want.tail,
+            "{what}: row {i} handed in is back at its declared defaults, nothing landed"
+        );
+    }
 }
 
-// THE CELL: one past the top variant remaps to `None` and counts EXACTLY one.
+// THE POSITIVE CONTROL, IN THE SAME BINARY: a lawful ordinal lands the value
+// and refuses nothing, so the refusal below is the forged byte and not a
+// reader that refuses everything.
 #[test]
-fn c10_ordinal_one_past_top_lands_none() {
-    println!("C10: ordinal 4 (one past Gold) lands None, clamped == 1");
-    let (n, values, report) = load(&forged(4));
-    assert_eq!(n, Some(1), "the record still reads: {report:?}");
-    assert_eq!(values[0].grade, 0, "an ordinal past the top variant lands None");
-    assert_eq!(report.oor, 1, "and counts ONE clamped, never twice: {report:?}");
+fn c10_a_lawful_ordinal_lands() {
+    println!("C10 positive control: Gold(3) lands 3");
+    let (n, values, report) = load(&forged(3));
+    assert_eq!(n, Some(1), "a lawful record reads one record: {report:?}");
+    assert!(!report.refused, "a lawful ordinal refuses nothing: {report:?}");
+    assert_eq!(values[0].grade, 3, "Gold lands Gold, not None");
+    assert_eq!(values[0].tail, 55, "the field after the enum lands");
+    assert_eq!(values[0].effect.boost().map(|b| b.power), Some(17), "the arm's payload lands");
+}
+
+// THE CELL: one past the top variant refuses the whole read.
+#[test]
+fn c10_ordinal_one_past_top_refuses() {
+    println!("C10: ordinal 4 (one past Gold) refuses out_of_range");
+    assert_refused("ordinal 4", 4);
 }
 
 // The extreme byte is the same law, not a second one.
 #[test]
-fn c10_ordinal_byte_max_lands_none() {
-    println!("C10: ordinal 255 lands None, clamped == 1");
-    let (n, values, report) = load(&forged(255));
-    assert_eq!(n, Some(1), "the record still reads: {report:?}");
-    assert_eq!(values[0].grade, 0, "255 is past the top variant and lands None");
-    assert_eq!(report.oor, 1, "and counts ONE clamped: {report:?}");
-}
-
-// An out-of-range ordinal is NOT damage and NOT a refusal (§4.2): the read
-// returns and every other counter stays at zero.
-#[test]
-fn c10_forged_ordinal_is_not_damage() {
-    println!("C10: a forged ordinal is neither malformed nor refused");
-    let (n, _, report) = load(&forged(4));
-    assert_eq!(n, Some(1), "the read returns: {report:?}");
-    assert!(!report.damaged, "an out-of-range ordinal is not damage: {report:?}");
-    assert!(!report.refused, "an out-of-range ordinal is not a refusal: {report:?}");
-    assert_eq!(report.reason, TableFixedReason::None, "no refusal name: {report:?}");
-    assert_eq!(report.unknown, 0, "unknown stays zero: {report:?}");
-    assert_eq!(report.mismatch, 0, "kind_mismatch stays zero: {report:?}");
-    assert_eq!(report.widened, 0, "widened stays zero: {report:?}");
-}
-
-// The fields BESIDE the forged ordinal still land, which says the bounds pass
-// closed the one field and did not stop the record.
-#[test]
-fn c10_fields_beside_the_forged_ordinal_still_land() {
-    println!("C10: the fields beside the forged ordinal still land");
-    let (n, values, report) = load(&forged(4));
-    assert_eq!(n, Some(1), "the record still reads: {report:?}");
-    assert_eq!(values[0].tail, 55, "the scalar after the enum is untouched");
-    assert_eq!(values[0].effect.tag(), 1, "the union beside the enum still points at boost");
-    assert_eq!(
-        values[0].effect.boost().map(|b| b.power),
-        Some(17),
-        "and the arm's payload landed"
-    );
+fn c10_ordinal_byte_max_refuses() {
+    println!("C10: ordinal 255 refuses out_of_range");
+    assert_refused("ordinal 255", 255);
 }

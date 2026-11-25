@@ -267,13 +267,14 @@ func wireUnitFiles(t *testing.T, key string, paths []string, override map[string
 	glue.WriteString("fn conformance_json_write(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64, out: u8[>..]&) -> i64 { return -1; }\n")
 	glue.WriteString("fn conformance_json_measure(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64) -> i64 { return -1; }\n")
 	glue.WriteString("fn conformance_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) {}\n")
-	glue.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
+	glue.WriteString("fn conformance_wref(surface: const u8[:], root: const u8[:], announce: const u8[:], data: const u8[:], fresh: bool, path: const u8[:], kind: const u8[:], text: const u8[:]) -> const u8[:] { return \"!absent\"; }\n")
 	files["conformance_unit.goose"] = []byte(glue.String())
 	main, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "main.goose"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	files["main.goose"] = main
+	stageAccel(t, root, files)
 	// the unit's text glue, as the shell driver places it
 	text, err := os.ReadFile(filepath.Join(root, "test", "conformance", "goose", "units", key+".goose"))
 	if errors.Is(err, fs.ErrNotExist) {

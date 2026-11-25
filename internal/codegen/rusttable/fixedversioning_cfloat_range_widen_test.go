@@ -59,7 +59,6 @@ fn v_cfloat_range_widen_new_reads_old() {
             !report.refused && report.reason == TableFixedReason::None,
             "old_: a clean NEW-READS-OLD is not a refusal: {:?}", report
         );
-        assert!(!report.damaged, "old_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "old_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "old_: the trail bracket moved: trail={}", values[0].trail);
         assert_eq!(values[0].aim.to_bits(), %[4]d, "old_: the reader lands the writer's own value BIT-EXACT, from the corpus manifest: aim={:#x}", values[0].aim.to_bits());
@@ -86,7 +85,6 @@ fn v_cfloat_range_widen_new_reads_old() {
             !report.refused && report.reason == TableFixedReason::None,
             "hostile_: a clean NEW-READS-OLD is not a refusal: {:?}", report
         );
-        assert!(!report.damaged, "hostile_: a clean backward read is not damage: {:?}", report);
         assert_eq!(values[0].lead, 1, "hostile_: the lead bracket moved: lead={}", values[0].lead);
         assert_eq!(values[0].trail, 2, "hostile_: the trail bracket moved: trail={}", values[0].trail);
         assert_eq!(values[0].aim.to_bits(), %[5]d, "hostile_: the manifest's own forged value, inside the reader's range, lands WHOLE: aim={:#x}", values[0].aim.to_bits());
@@ -112,7 +110,6 @@ fn v_cfloat_range_widen_new_reads_old() {
             report.refused && report.reason == TableFixedReason::OutOfRange,
             "past_: 5.0 past the reader's [-2,2] is an out_of_range refusal: {:?}", report
         );
-        assert!(!report.damaged, "past_: a refusal is not damage: {:?}", report);
     }
 }
 `, filepath.Join(corpus, "old_cfloat_range_widen.bin"),

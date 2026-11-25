@@ -157,39 +157,43 @@ local function text(b: buffer): string
 	return buffer.readstring(b, 0, buffer.len(b))
 end
 local d = St.lookup("Probe")
+-- every read of the shared wire refuses: the plain load, the strict read and
+-- the walk the plain load is built on (no tolerant read under any name, §6.5)
 local rep = fresh()
-local v = L.loadWalk("Probe", inputs.shared, rep)
-print("shared|" .. tostring(rep.blobShared) .. "|" .. tostring(v.Note == v.Note2) .. "|" .. text(v.Note) .. "|" .. text(v.Note2))
+print("sharedload|" .. tostring(L.load("Probe", inputs.shared, rep) == nil))
+print("sharedwalk|" .. tostring(L.loadWalk("Probe", inputs.shared, fresh()) == nil))
 local strict = fresh()
 local sv = R.ReadStrict(ProbeTable, "Probe", inputs.shared, strict)
-print("strict|" .. tostring(strict.reason) .. "|" .. tostring(strict.field) .. "|" .. tostring(sv == nil))
-local sharedOut, why = S.save(d, v)
-print("sharedsave|" .. tostring(sharedOut == nil) .. "|" .. tostring(why and why.name) .. "|" .. tostring(why and why.field))
+print("strict|" .. tostring(sv == nil))
 local rep2 = fresh()
-local v2 = L.loadWalk("Probe", inputs.distinct, rep2)
-print("distinctreport|" .. tostring(rep2.blobShared))
+local v2 = L.load("Probe", inputs.distinct, rep2)
+print("distinctread|" .. tostring(v2 ~= nil) .. "|" .. tostring(v2 ~= nil and v2.Note ~= v2.Note2) .. "|" .. (if v2 ~= nil then text(v2.Note) .. "|" .. text(v2.Note2) else ""))
 local distinctOut = S.save(d, v2)
 print("distinct|" .. tostring(distinctOut == nil))
 if distinctOut ~= nil then print("distincthex|" .. hexstr(distinctOut)) end
-local rep3 = fresh()
-local v3 = L.loadWalk("Probe", inputs.clamped, rep3)
-print("clampedreport|" .. tostring(rep3.blobShared) .. "|" .. tostring(rep3.clamped) .. "|" .. text(v3.Title))
-local strict3 = fresh()
-local sv3 = R.ReadStrict(ProbeTable, "Probe", inputs.clamped, strict3)
-print("clampedstrict|" .. tostring(strict3.reason) .. "|" .. tostring(strict3.field) .. "|" .. tostring(sv3 == nil))
+-- EVERY WRITER REFUSES A SHARED BLOB (§2.5): the value is made in memory,
+-- one buffer named from both slots, since no read hands one back
+v2.Note2 = v2.Note
+local sharedOut, why = S.save(d, v2)
+print("sharedsave|" .. tostring(sharedOut == nil) .. "|" .. tostring(why and why.name) .. "|" .. tostring(why and why.field))
+print("clampedload|" .. tostring(L.load("Probe", inputs.clamped, fresh()) == nil))
+print("clampedwalk|" .. tostring(L.loadWalk("Probe", inputs.clamped, fresh()) == nil))
+local sv3 = R.ReadStrict(ProbeTable, "Probe", inputs.clamped, fresh())
+print("clampedstrict|" .. tostring(sv3 == nil))
 `)
 	return b.String()
 }
 
 // TestLuauBlobNamedTwice pins the Luau table runtime's blob half of
-// docs/SPEC-TABLES.md §2.5 and §6.5 against schema-go's own engine: one blob
-// record named by two *string slots loads with report.blobShared 1, the two
-// slots hold the same buffer and its bytes, ReadStrict refuses it as
-// blob_shared with the second naming field as witness, and the save refuses
-// that value by the same name (every writer does). Two equal but DISTINCT buffers are two records and save to the
-// Go oracle's two-record wire. A wire that is both clamped and blob-shared
-// refuses as blob_shared (BlobShared precedes Clamped in Go's Err()). Every
-// expected wire, count and field is computed here from internal/tabletext and
+// docs/SPEC-TABLES.md §2.5 and §6.5 against schema-go's own engine. Strict
+// only (docs/rulings.json strict-only-read): a wire naming one blob record
+// from two *string slots is refused by every read, the Go engine's and every
+// Luau read (load, the walk it is built on, ReadStrict), compared by verdict
+// alone (refusal-verdict-only). The writers refuse a value holding one buffer
+// in two slots by name, as the engine's writer does. Two equal but DISTINCT
+// buffers are two records, read back as two buffers, and save to the Go
+// oracle's two-record wire. A wire both blob-shared and past a bound refuses
+// too. Every expected wire is computed here from internal/tabletext and
 // internal/tablewire, never typed.
 func TestLuauBlobNamedTwice(t *testing.T) {
 	t.Parallel()
@@ -206,7 +210,7 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 
 	// THE SHARED VALUE: the text names one blob, and the second slot is made
 	// to name it too, which is exactly the graph the committed blob_shared
-	// corpus carries (one record, two slots).
+	// corpus carries (one record, two slots). The engine's writer refuses it.
 	shared := m.New(m.Lookup("Probe"))
 	var readRep tabletext.Report
 	if !m.Read(shared, []byte(`{"note": "shared", "note2": "shared", "title": "ab"}`), &readRep) || readRep != (tabletext.Report{}) {
@@ -226,21 +230,23 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	}
 	note2.Cell.Blob = note.Cell.Blob
 	sharedSlots, sharedDistinct, sharedField := blobSlots(shared)
-	wantShared := sharedSlots - sharedDistinct
-	if wantShared != 1 || sharedField != "note2" {
-		t.Fatalf("the oracle's shared value counts %d extras and first names %q, want 1 and note2", wantShared, sharedField)
+	if sharedSlots-sharedDistinct != 1 || sharedField != "note2" {
+		t.Fatalf("the oracle's shared value counts %d extras and first names %q, want 1 and note2", sharedSlots-sharedDistinct, sharedField)
 	}
 	if _, err := tablewire.Encode(m, shared); err == nil || !strings.Contains(err.Error(), "blob_shared") {
 		t.Fatalf("the oracle encoded the shared value; every writer refuses it as blob_shared (§2.5): %v", err)
 	}
+
+	// THE SHARED WIRE, and THE SHARED WIRE PAST A BOUND: the engine refuses
+	// both on read (§2.5, §6.5: no tolerant read, under any name).
 	sharedWire := blobSharedWire("ab")
-	sinst := m.New(m.Lookup("Probe"))
-	var srep tabletext.Report
-	if ok, derr := tablewire.Decode(m, sinst, sharedWire, &srep); !ok || derr != nil || srep.Refused {
-		t.Fatalf("the oracle did not decode the shared wire: ok=%v err=%v report=%+v", ok, derr, srep)
-	}
-	if sSlots, sDistinct, sField := blobSlots(sinst); sSlots-sDistinct != wantShared || sField != sharedField {
-		t.Fatalf("the oracle's shared wire counts %d extras and first names %q, want %d and %s", sSlots-sDistinct, sField, wantShared, sharedField)
+	clampedWire := blobSharedWire("abc")
+	for name, wire := range map[string][]byte{"shared": sharedWire, "clamped": clampedWire} {
+		inst := m.New(m.Lookup("Probe"))
+		var rep tabletext.Report
+		if ok, _ := tablewire.Decode(m, inst, wire, &rep); ok {
+			t.Fatalf("the oracle read the %s wire; every read refuses one blob named from two slots (§2.5)", name)
+		}
 	}
 
 	// TWO EQUAL BUT DISTINCT BUFFERS: two records in the oracle's wire.
@@ -260,20 +266,6 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 		t.Fatal("the shared wire and the oracle's two-blob wire are the same bytes")
 	}
 
-	// THE CLAMPED WIRE: one blob from two slots and title past its bound. The
-	// oracle's own decode sees the clamp and the shared blob, so the strict
-	// read names blob_shared (§6.5, BlobShared before Clamped).
-	clampedWire := blobSharedWire("abc")
-	cinst := m.New(m.Lookup("Probe"))
-	var crep tabletext.Report
-	if ok, derr := tablewire.Decode(m, cinst, clampedWire, &crep); !ok || derr != nil || crep.Refused {
-		t.Fatalf("the oracle did not decode the clamped wire: ok=%v err=%v report=%+v", ok, derr, crep)
-	}
-	cSlots, cDistinct, cField := blobSlots(cinst)
-	if cSlots-cDistinct != 1 || cField != "note2" {
-		t.Fatalf("the oracle's clamped wire counts %d extras and first names %q, want 1 and note2", cSlots-cDistinct, cField)
-	}
-
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(blobProbeMain(g)), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -291,19 +283,13 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 		}
 		got[key] = value
 	}
-	if want := fmt.Sprintf("%d|true|shared|shared", wantShared); got["shared"] != want {
-		t.Errorf("shared load: got %q, want %q (blobShared|same buffer|note|note2)", got["shared"], want)
+	for _, key := range []string{"sharedload", "sharedwalk", "strict", "clampedload", "clampedwalk", "clampedstrict"} {
+		if got[key] != "true" {
+			t.Errorf("%s: the Luau read did not refuse (%q); the oracle refuses this wire", key, got[key])
+		}
 	}
-	if want := fmt.Sprintf("%s|%s|true", "blob_shared", sharedField); got["strict"] != want {
-		t.Errorf("strict read: got %q, want %q (reason|witness|refused)", got["strict"], want)
-	}
-	// EVERY WRITER REFUSES A SHARED BLOB (§2.5): the tolerant load keeps the
-	// one node, and the save refuses that value by name, as the engine does.
-	if want := "true|blob_shared|Probe." + sharedField; got["sharedsave"] != want {
-		t.Errorf("the save of a shared blob: got %q, want %q (refused|reason|witness)", got["sharedsave"], want)
-	}
-	if got["distinctreport"] != "0" {
-		t.Errorf("the two-distinct-blobs load counts blobShared %q, want 0", got["distinctreport"])
+	if got["distinctread"] != "true|true|shared|shared" {
+		t.Errorf("the two-distinct-blobs read: got %q, want true|true|shared|shared (read|two buffers|note|note2)", got["distinctread"])
 	}
 	if got["distinct"] != "false" {
 		t.Errorf("the save refused two equal but distinct buffers: %q", got["distinct"])
@@ -311,10 +297,7 @@ func TestLuauBlobNamedTwice(t *testing.T) {
 	if want := fmt.Sprintf("%x", distinctWire); got["distincthex"] != want {
 		t.Errorf("the two-distinct-blobs save is not the oracle's wire:\ngot  %s\nwant %s", got["distincthex"], want)
 	}
-	if want := fmt.Sprintf("%d|1|ab", cSlots-cDistinct); got["clampedreport"] != want {
-		t.Errorf("clamped load: got %q, want %q (blobShared|clamped|title)", got["clampedreport"], want)
-	}
-	if want := fmt.Sprintf("%s|%s|true", "blob_shared", cField); got["clampedstrict"] != want {
-		t.Errorf("clamped strict read: got %q, want %q (reason|witness|refused)", got["clampedstrict"], want)
+	if want := "true|blob_shared|Probe." + sharedField; got["sharedsave"] != want {
+		t.Errorf("the save of a shared blob: got %q, want %q (refused|reason|witness)", got["sharedsave"], want)
 	}
 }

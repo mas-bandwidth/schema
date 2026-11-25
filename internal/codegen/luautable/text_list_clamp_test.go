@@ -8,27 +8,34 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// TestLuauTextListClampAndMalformedLoadLikeGo pins the text-list tolerant load
-// to the Go reference engine (docs/SPEC-TABLES.md §2.13): an element past M
-// clamps at a code point boundary and counts clamped; an element that is not
-// UTF-8 is malformed and discards the whole value. Sound input keeps the Go
-// engine's counters and saved bytes. Every expectation is computed here from
-// internal/tabletext and internal/tablewire, never typed by hand.
+// TestLuauTextListClampAndMalformedLoadLikeGo pins the text-list load to the Go
+// reference engine (docs/SPEC-TABLES.md §2.13), strict only (docs/rulings.json
+// strict-only-read): an element past M is refused by the Go load and by every
+// Luau read (load, loadWalk, ReadStrict), nothing clamped; an element that is
+// not UTF-8 is malformed and discards the whole value, refused the same way.
+// Refusals compare by verdict alone (refusal-verdict-only). An element at M is
+// sound input and keeps the Go engine's counters and saved bytes. Every
+// expectation is computed here from internal/tabletext and internal/tablewire,
+// never typed by hand.
 func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Lists.schema": textListsSchema})
 	m := textListModel(t)
 
-	t.Run("element past M clamps", func(t *testing.T) {
-		raw := textListRawWire(t, m, "123456789")
+	t.Run("element past M refuses", func(t *testing.T) {
+		requireTextListRefused(t, g, m, textListRawWire(t, m, "123456789"))
+	})
+
+	t.Run("element at M", func(t *testing.T) {
+		raw := textListRawWire(t, m, "12345678")
 		back := m.New(m.Lookup("Lists"))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil {
-			t.Fatalf("the Go load refuses the wire: ok=%v err=%v", ok, err)
+		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil || report.Refused {
+			t.Fatalf("the Go load refuses the wire: ok=%v err=%v report=%+v", ok, err, report)
 		}
 		want, err := tablewire.Encode(m, back)
 		if err != nil {
-			t.Fatalf("the Go clamped value does not encode: %v", err)
+			t.Fatalf("the Go value does not encode: %v", err)
 		}
 		got := runTextListProbe(t, g, raw)
 		if got.report != goReportText(report) {
@@ -54,5 +61,6 @@ func TestLuauTextListClampAndMalformedLoadLikeGo(t *testing.T) {
 		if !strings.HasSuffix(got.report, ",true") {
 			t.Errorf("counters: luau %s, and a damaged load owes malformed", got.report)
 		}
+		requireTextListRefused(t, g, m, raw)
 	})
 }

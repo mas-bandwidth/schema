@@ -8,17 +8,50 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestLuauTableLoadKeyedMapAndClampRules pins three load rules that the Luau
-// port now follows as docs/SPEC-TABLES.md writes them: a keyed array skips an
-// unnamed key (§3.2), a map empties at a key-kind mismatch (§2.8), and a text
-// or wide string clamps to a whole code point (or unit) prefix (§3, KIND 12 /
-// KIND 33).
+// port follows as docs/SPEC-TABLES.md writes them: a keyed array skips an
+// unnamed key (§3.2), and a map whose key kind mismatches (§2.8) and a text
+// past its bound (§3, KIND 12) are refused by every read, the walk included:
+// no read empties the map or clamps the text (§6.5; docs/rulings.json
+// strict-only-read). The Go engine is the oracle for the two refusals, and
+// both sides are compared by verdict only (refusal-verdict-only).
 func TestLuauTableLoadKeyedMapAndClampRules(t *testing.T) {
 	t.Parallel()
+
+	// oracleRefuses holds the Go engine to refusing w at rootName under the
+	// one-file schema src.
+	oracleRefuses := func(t *testing.T, src, rootName string, w []byte) {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "Carton.schema")
+		if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		u, err := compiler.New().Load([]string{p})
+		if err != nil {
+			t.Fatalf("the unit does not load: %v", err)
+		}
+		m := tabletext.NewModel(u)
+		var rep tabletext.Report
+		ok, derr := tablewire.Decode(m, m.New(m.Lookup(rootName)), w, &rep)
+		if ok || !tablewire.ReadRefusal(derr) {
+			t.Fatalf("the engine does not refuse the wire: ok=%t err=%v %+v", ok, derr, rep)
+		}
+	}
+	// walkVerdict walks Box and prints "refused" when the walk hands back no
+	// value, else "read".
+	const walkVerdict = `local inputs = require("./inputs")
+local load = require("./schema_load")
+require("./CartonTable")
+local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+local v = load.loadWalk("Box", inputs.wire, report)
+print(if v == nil then "refused" else "read")`
 
 	leb := func(v uint64) []byte {
 		var out []byte
@@ -114,7 +147,8 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 
 	t.Run("map-kind-mismatch", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Carton.schema": "package px\ntable Box\n{\n\tm map[uint8]uint8\n}\n"})
+		const src = "package px\ntable Box\n{\n\tm map[uint8]uint8\n}\n"
+		g := generateFiles(t, map[string]string{"Carton.schema": src})
 		field := ir.TableWireId("m")
 		keyID, valueID := ir.TableWireId("key"), ir.TableWireId("value")
 		entry1 := leb(2)
@@ -140,21 +174,16 @@ print(table.concat(parts, ",") .. "|" .. %s)`, report)
 		root = append(root, body...)
 		root = append(root, 0)
 		w := wire(root, field, keyID, valueID)
-		main := fmt.Sprintf(`local inputs = require("./inputs")
-local load = require("./schema_load")
-require("./CartonTable")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadWalk("Box", inputs.wire, report)
-print(#v.M .. "|" .. %s)`, report)
-		want := "0|0,1,0,0,0,false"
-		if got := run(t, g, main, w); got != want {
+		oracleRefuses(t, src, "Box", w)
+		if got, want := run(t, g, walkVerdict, w), "refused"; got != want {
 			t.Errorf("map-kind-mismatch:\ngot:  %s\nwant: %s", got, want)
 		}
 	})
 
 	t.Run("clamp-utf8", func(t *testing.T) {
 		t.Parallel()
-		g := generateFiles(t, map[string]string{"Carton.schema": "package px\ntable Box\n{\n\ts string(4)\n}\n"})
+		const src = "package px\ntable Box\n{\n\ts string(4)\n}\n"
+		g := generateFiles(t, map[string]string{"Carton.schema": src})
 		field := ir.TableWireId("s")
 		payload := leb(5)
 		payload = append(payload, 'a', 'b', 0xE2, 0x82, 0xAC)
@@ -163,15 +192,8 @@ print(#v.M .. "|" .. %s)`, report)
 		root = append(root, payload...)
 		root = append(root, 0)
 		w := wire(root, field)
-		main := fmt.Sprintf(`local inputs = require("./inputs")
-local load = require("./schema_load")
-require("./CartonTable")
-local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-local v = load.loadWalk("Box", inputs.wire, report)
--- a string(N) is a buffer and its used Length (docs/PORT-LUAU.md, THE TYPE MAPPING)
-print(buffer.readstring(v.S, 0, v.SLength) .. "|" .. %s)`, report)
-		want := "ab|0,0,0,1,0,false"
-		if got := run(t, g, main, w); got != want {
+		oracleRefuses(t, src, "Box", w)
+		if got, want := run(t, g, walkVerdict, w), "refused"; got != want {
 			t.Errorf("clamp-utf8:\ngot:  %s\nwant: %s", got, want)
 		}
 	})

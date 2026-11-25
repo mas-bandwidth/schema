@@ -149,7 +149,7 @@ fn main() {
         let mut report = vnew::TableFixedReport::default();
         let got = vnew::range_widen_fixed_load(&mut values, &old_valid, &mut plan, &mut remap, &mut report);
         assert_eq!(got, Some(1), "clean VOLD must read under VNEW: {:?}", report);
-        assert!(!report.damaged && !report.refused);
+        assert!(!report.refused);
         assert_eq!(values[0].v, 50);
         assert_eq!(values[0].vals, [10, 20, 30, 40]);
         assert_eq!(values[0].u, 500);
@@ -172,7 +172,7 @@ fn main() {
         let mut report = vnew::TableFixedReport::default();
         let got = vnew::range_widen_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
         assert!(got.is_none(), "{label}: expected None, got {:?}", got);
-        assert!(report.refused && !report.damaged && report.reason == vnew::TableFixedReason::OutOfRange, "{label}: bad report {:?}", report);
+        assert!(report.refused && report.reason == vnew::TableFixedReason::OutOfRange, "{label}: bad report {:?}", report);
         assert!(report.unknown == 0 && report.widened == 0 && report.held == 0, "{label}: counters must be zeroed on refusal: {:?}", report);
     }
 
@@ -204,15 +204,16 @@ fn main() {
         let mut report = vnew::TableFixedReport::default();
         let got = vnew::range_widen_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
         assert!(got.is_none(), "{label}: expected None, got {:?}", got);
-        assert!(report.refused && !report.damaged && report.reason == vnew::TableFixedReason::OutOfRange, "{label}: bad report {:?}", report);
+        assert!(report.refused && report.reason == vnew::TableFixedReason::OutOfRange, "{label}: bad report {:?}", report);
         assert!(report.unknown == 0 && report.widened == 0 && report.held == 0, "{label}: counters must be zeroed on refusal: {:?}", report);
     }
 
     // 3. P3: Hostile byte-mutation sweep — every mutation across the image
-    //    produces one of the three strict verdicts (landed, damaged, or refused),
-    //    never a fourth, and every damaged read resets caller rows to declared defaults.
+    //    produces one of the two strict answers (landed, or refused by name),
+    //    never a third, and every refused read resets caller rows to declared
+    //    defaults. This form's report has no malformed flag (§5.3): damage
+    //    on the wire is the refusal wire_damaged.
     let mut landed = 0usize;
-    let mut damaged = 0usize;
     let mut refused = 0usize;
     for at in 0..new_valid.len() {
         for b in [0x00u8, 0x01, 0x02, 0x7f, 0x80, 0xff] {
@@ -224,25 +225,26 @@ fn main() {
             let mut values = vec![new_row];
             let mut report = vnew::TableFixedReport::default();
             let got = vnew::range_widen_fixed_load(&mut values, &mutated, &mut plan, &mut remap, &mut report);
-            match (got, report.damaged, report.refused) {
-                (Some(1), false, false) => {
+            match (got, report.refused) {
+                (Some(1), false) => {
                     assert_eq!(report.reason, vnew::TableFixedReason::None);
                     landed += 1;
                 }
-                (None, true, false) => {
-                    assert!(is_declared_default_row(&values[0]));
-                    damaged += 1;
-                }
-                (None, false, true) => {
+                (None, true) => {
                     assert_ne!(report.reason, vnew::TableFixedReason::None);
+                    assert!(is_declared_default_row(&values[0]));
                     refused += 1;
                 }
-                other => panic!("P3 fourth answer at byte {at} (0x{b:02x}): {:?} {:?}", other, report),
+                other => panic!("P3 third answer at byte {at} (0x{b:02x}): {:?} {:?}", other, report),
             }
         }
     }
-    assert!(landed > 0 && damaged > 0 && refused > 0, "P3 sweep must witness all three strict answers: landed={landed} damaged={damaged} refused={refused}");
-    println!("RUST_FIXED_REMAINING_STRICT ok landed={landed} damaged={damaged} refused={refused}");
+    // THE TWO VERDICTS (SPEC-TABLES §6.5: refused, or a read that lands) must
+    // both fire. Framing damage is a refusal by name (docs/FIXED-FORM-ALGORITHM.md
+    // §5.3: truncated, reserved_not_zero), so this fixture, with no bool,
+    // present byte or dead slot in reach, refuses by those names.
+    assert!(landed > 0 && refused > 0, "P3 sweep must witness both verdicts: landed={landed} refused={refused}");
+    println!("RUST_FIXED_REMAINING_STRICT ok landed={landed} refused={refused}");
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "main.rs"), []byte(mainSrc), 0o600); err != nil {

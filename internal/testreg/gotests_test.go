@@ -1,6 +1,7 @@
 package testreg
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -149,4 +150,75 @@ func TestLoadRefusesABadIntrinsic(t *testing.T) {
 	refused(t, fixture+intrinsicRow("roundtrip.lua-fam.i", "lua", "a Lua string escape", lua)+intrinsicRow("roundtrip.go-fam.i", "go", "a Go string escape", `{"go":{"package":"./g","test":"TestGoEscape"}}`), "fixture.jsonl:16:", "a case two languages answer is one union row")
 	free := `{"rec":"test","key":"tooling.lua-self.i","type":"tooling","family":"lua-self","case":"i","tier":"unit","checks":"x","inputs":{"n":1},"expect":"x","scope":"none","adapter":"fake","intrinsic":{"lang":"lua","reason":"a Lua string escape"}}` + "\n"
 	refused(t, fixture+free, "fixture.jsonl:15:", "so it is a per-language row")
+}
+
+// TestALanguagePastAShardOnItsOwnRunsNightly: a union row's language whose
+// Go test measured past one shard's budget on its own runs in the nightly
+// tier (its instance's name, a query by tier and Resolve all say so), while
+// the row's other languages stay in the row's tier. The tier comes with the
+// seconds that put it there: a language's tier with seconds that fit, a tier
+// other than nightly, and a language's tier on a nightly row are refused.
+func TestALanguagePastAShardOnItsOwnRunsNightly(t *testing.T) {
+	t.Parallel()
+	withNightly := strings.Replace(fixture, `{"rec":"tier","name":"functional","what":"a toolchain"}`+"\n", `{"rec":"tier","name":"functional","what":"a toolchain"}`+"\n"+`{"rec":"tier","name":"nightly","what":"long"}`+"\n", 1)
+	reg := load(t, withNightly+unionRow("roundtrip.fam.u", `{"go":{"package":"./g","test":"TestGoU","seconds":75,"tier":"nightly"},"lua":{"package":"./l","test":"TestLuaU","seconds":3}}`))
+	tiers := map[string]string{}
+	for _, inst := range reg.Instances() {
+		if inst.Test.Key == "roundtrip.fam.u" {
+			tiers[inst.Full] = inst.Test.Tier
+		}
+	}
+	want := map[string]string{"go.nightly.roundtrip.fam.u": "nightly", "lua.unit.roundtrip.fam.u": "unit", "c.unit.roundtrip.fam.u": "unit"}
+	if len(tiers) != len(want) {
+		t.Fatalf("instances %v, want %v", tiers, want)
+	}
+	for full, tier := range want {
+		if tiers[full] != tier {
+			t.Errorf("%s has tier %q, want %q (all: %v)", full, tiers[full], tier, tiers)
+		}
+		if inst, err := reg.Resolve(full); err != nil || inst.Test.Tier != tier {
+			t.Errorf("Resolve(%s) = %v %v, want tier %s", full, inst.Test.Tier, err, tier)
+		}
+	}
+	if _, err := reg.Resolve("go.unit.roundtrip.fam.u"); err == nil || !strings.Contains(err.Error(), "is tier nightly in go") {
+		t.Errorf("the row's tier resolves for the language that runs nightly: %v", err)
+	}
+	sel, err := reg.Select(Query{Tiers: []string{"unit", "functional"}, Families: []string{"fam"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inst := range sel.Instances {
+		if inst.Full == "go.nightly.roundtrip.fam.u" {
+			t.Errorf("a per-PR query selects %s", inst.Full)
+		}
+	}
+	// the spec addenda list the row on the page of each tier it runs in
+	// by the instances that run there: the nightly page names go's alone,
+	// the unit page every language but go
+	for tier, want := range map[string]string{
+		"unit":    "| `L.unit.roundtrip.fam.u`, every language but `go` (tier `nightly`) |",
+		"nightly": "| `go.nightly.roundtrip.fam.u` |",
+	} {
+		perLang, _ := tierTests(reg, tier)
+		if !slices.ContainsFunc(perLang, func(t Test) bool { return t.Key == "roundtrip.fam.u" }) {
+			t.Errorf("the %s page leaves out roundtrip.fam.u", tier)
+		}
+		page := string(tierPage(reg, Tier{Name: tier, What: "w"}))
+		if !strings.Contains(page, want) {
+			t.Errorf("the %s page does not name the row as %s", tier, want)
+		}
+		if tier == "nightly" && (strings.Contains(page, "`L.nightly.roundtrip.fam.u`") || !strings.Contains(page, "tests every language answers: 0.") || !strings.Contains(page, "each named by its languages' instances: 1.")) {
+			t.Errorf("the nightly page counts or names roundtrip.fam.u for every language")
+		}
+	}
+	for tests, words := range map[string]string{
+		`{"go":{"package":"./g","test":"TestGoU","seconds":60,"tier":"nightly"}}`:    "at 60 s measured: only a test past one shard's 60 s budget on its own goes to the night",
+		`{"go":{"package":"./g","test":"TestGoU","tier":"nightly"}}`:                 "at 0 s measured",
+		`{"go":{"package":"./g","test":"TestGoU","seconds":75,"tier":"functional"}}`: `gives go the tier "functional"`,
+	} {
+		refused(t, withNightly+unionRow("roundtrip.fam.u", tests), "fixture.jsonl:", words)
+	}
+	refused(t, fixture+unionRow("roundtrip.fam.u", `{"go":{"package":"./g","test":"TestGoU","seconds":75,"tier":"nightly"}}`), "fixture.jsonl:", `gives go the tier "nightly", which the registry does not declare`)
+	nightlyRow := strings.Replace(unionRow("roundtrip.fam.u", `{"go":{"package":"./g","test":"TestGoU","seconds":75,"tier":"nightly"}}`), `"tier":"unit"`, `"tier":"nightly"`, 1)
+	refused(t, withNightly+nightlyRow, "fixture.jsonl:", `gives go the tier "nightly"`)
 }

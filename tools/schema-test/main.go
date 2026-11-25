@@ -114,19 +114,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, ads map[s
 }
 
 // recordSeconds writes the seconds each passing instance took into its
-// test's registry line; a test with several instances keeps the longest.
+// test's registry line (a union row's, into its language's Go test); a test
+// with several instances keeps the longest.
 func recordSeconds(stdout io.Writer, path string, instances []testreg.Instance, rep *testreg.Report) error {
-	key := map[string]string{}
+	byName := map[string]testreg.Instance{}
 	for _, inst := range instances {
-		key[inst.Full] = inst.Test.Key
+		byName[inst.Full] = inst
 	}
-	seconds := map[string]float64{}
+	measured := map[string]float64{}
 	for _, o := range rep.Outcomes {
 		if o.Status == testreg.StatusPass && o.Seconds > 0 {
-			seconds[key[o.Full]] = max(seconds[key[o.Full]], o.Seconds)
+			measured[o.Full] = max(measured[o.Full], o.Seconds)
 		}
 	}
-	n, err := testreg.WriteSeconds(path, seconds)
+	seconds, langSeconds, err := testreg.SplitSeconds(byName, measured)
+	if err != nil {
+		return err
+	}
+	n, err := testreg.WriteSeconds(path, seconds, langSeconds)
 	if err != nil {
 		return err
 	}
@@ -347,7 +352,8 @@ func secondsCmd(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	seconds := map[string]float64{}
+	byName := map[string]testreg.Instance{}
+	measured := map[string]float64{}
 	for _, log := range fs.Args() {
 		data, err := os.ReadFile(log)
 		if err != nil {
@@ -367,14 +373,24 @@ func secondsCmd(args []string, stdout io.Writer) error {
 			if err != nil {
 				return fmt.Errorf("%s: %w", log, err)
 			}
-			seconds[inst.Test.Key] = max(seconds[inst.Test.Key], s)
+			// a run prints a pass under 5 ms as (0.00s): it took under the
+			// print's half step, and WriteSeconds records the least weight
+			if s == 0 {
+				s = 0.005
+			}
+			byName[inst.Full] = inst
+			measured[inst.Full] = max(measured[inst.Full], s)
 			n++
 		}
 		if n == 0 {
 			return fmt.Errorf("%s shows no passing test with its seconds", log)
 		}
 	}
-	n, err := testreg.WriteSeconds(*path, seconds)
+	seconds, langSeconds, err := testreg.SplitSeconds(byName, measured)
+	if err != nil {
+		return err
+	}
+	n, err := testreg.WriteSeconds(*path, seconds, langSeconds)
 	if err != nil {
 		return err
 	}

@@ -136,7 +136,11 @@ fn test_row_w8() {
     // ROW from its own layout: it reads the LENGTH word at body+3213
     // (the buffer slot in this wrong wire) and the BUFFER at body+3217
     // (the length slot in this wrong wire). The value that comes back is the
-    // thing that proves the row was an array's, not a text field's.
+    // thing that proves the row was an array's, not a text field's: the
+    // length word it reads is 0xDEADBEEF, past the bound of 12, and a length
+    // past its bound REFUSES the whole read (FIXED-FORM-ALGORITHM §4.5;
+    // strict-only). Until 2026-11-25 this control expected the retired clamp
+    // of that length to 12 and a landed read.
     let mut wrong = file.clone();
     // body+3213..3217 was the length word (= 4); put the live bytes there.
     wrong[body + BODY_BLOB_LENGTH_AT..body + BODY_BLOB_LENGTH_AT + 4]
@@ -149,17 +153,15 @@ fn test_row_w8() {
     let mut plan = [TableFixedEntry::default(); 512];
     let mut remap = [0u16; 512];
     let mut report = TableFixedReport::default();
-    let n = padded_frame_fixed_load(&mut values, &wrong, &mut plan, &mut remap, &mut report)
-        .expect("the reader opens the wrong wire");
-    check(n == 1, "W8 NEGATIVE CONTROL: the reader still opens a wire where length and buffer were swapped");
-    let back = &values[0];
-    let back_live: [u8; 4] = back.blob[..4].try_into().expect("four bytes");
-    // Under the wrong wire the reader lands the LENGTH WORD (4 LE: 04 00 00 00)
-    // at the buffer offset, so back.blob[0..4] is { 04, 00, 00, 00 } and
-    // back.blob_length is the bytes that were at the length slot
-    // (0xDEADBEEF clamped to [0, 12] = 12). Neither is the live pattern.
-    let live_was_lost = back_live != [0xDE, 0xAD, 0xBE, 0xEF] || back.blob_length != 4;
-    check(live_was_lost, "W8 NEGATIVE CONTROL: the text row really did write the count into the buffer — live bytes lost");
+    let n = padded_frame_fixed_load(&mut values, &wrong, &mut plan, &mut remap, &mut report);
+    check(
+        n.is_none() && report.refused,
+        "W8 NEGATIVE CONTROL: the wire with length and buffer swapped is refused — its length word is past the bound",
+    );
+    check(
+        values[0].blob_length != 4 || values[0].blob[..4] != [0xDE, 0xAD, 0xBE, 0xEF],
+        "W8 NEGATIVE CONTROL: the live bytes did not land from the wrong wire",
+    );
 
     let fails = FAILURES.load(std::sync::atomic::Ordering::Relaxed);
     assert_eq!(fails, 0, "W8: {fails} assertion(s) failed");

@@ -10,6 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -124,27 +125,51 @@ func goTestInputsOf(t testreg.Test) (goTestInputs, error) {
 
 // The runner calls Prepare only on an adapter that is a Preparer.
 var _ testreg.Preparer = (*goTestAdapter)(nil)
+var _ testreg.StepPreparer = (*goTestAdapter)(nil)
 
-// Prepare makes, once each, the targets the instances' rows name in
-// "make" (testreg.Preparer). A row whose inputs do not read fails in Run,
-// by name; a target that does not make fails the group here, naming it and
-// the row that asked for it.
-func (a *goTestAdapter) Prepare(ctx context.Context, _ string, instances []testreg.Instance) error {
+// PrepareSteps is a step for each target the instances' rows name in "make"
+// and each build their Go tests read (testreg.StepPreparer): the runner runs
+// each under its own call limit, named by its target. A row whose inputs do
+// not read fails in Run, by name; a target that does not make fails the group
+// here, naming it and the row that asked for it.
+func (a *goTestAdapter) PrepareSteps(_ string, instances []testreg.Instance) []testreg.PrepareStep {
+	var steps []testreg.PrepareStep
 	seen := map[string]bool{}
+	var refs []goTestRef
 	for _, inst := range instances {
 		in, err := goTestInputsOf(inst.Test)
-		if err != nil || in.Make == "" || seen[in.Make] {
+		if err != nil {
+			continue // Run fails the row, naming its inputs
+		}
+		refs = append(refs, goTestRef{in.Package, in.Test})
+		if in.Make == "" || seen[in.Make] {
 			continue
 		}
 		seen[in.Make] = true
-		if a.build == nil {
-			return fmt.Errorf("%s: needs make %s, and the gotest adapter has no builder", inst.Full, in.Make)
-		}
-		if err := a.build(ctx, []string{"make", in.Make}); err != nil {
-			return fmt.Errorf("%s: %w", inst.Full, err)
+		full, target := inst.Full, in.Make
+		steps = append(steps, testreg.PrepareStep{Name: target, Run: func(ctx context.Context) error {
+			if a.build == nil {
+				return fmt.Errorf("%s: needs make %s, and the gotest adapter has no builder", full, target)
+			}
+			if err := a.build(ctx, []string{"make", target}); err != nil {
+				return fmt.Errorf("%s: %w", full, err)
+			}
+			return nil
+		}})
+	}
+	return append(steps, a.needsSteps(refs)...)
+}
+
+// Prepare runs every step under the one ctx it is given: the steps' own
+// limits are the runner's (prepareSteps), so a direct caller holds them all to
+// its single deadline.
+func (a *goTestAdapter) Prepare(ctx context.Context, lang string, instances []testreg.Instance) error {
+	for _, step := range a.PrepareSteps(lang, instances) {
+		if err := step.Run(ctx); err != nil {
+			return err
 		}
 	}
-	return a.prepareNeeds(ctx, instances)
+	return nil
 }
 
 // declared is the set of top-level functions a package's _test.go files
@@ -336,6 +361,12 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 			if err != nil {
 				return res, fmt.Errorf("go test %s: %w", pkg, err)
 			}
+			// go test's own -timeout fires goTestTimeoutMargin before the
+			// driver's deadline, so its words come first: the limit, and the
+			// test running
+			if to, ok := goTestTimedOut(stdout); ok {
+				return to.verdicts(pkg, plain, res), nil
+			}
 			if ctx.Err() != nil {
 				return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
 			}
@@ -362,6 +393,9 @@ func (a *goTestAdapter) runPackage(ctx context.Context, p goTestPackage, tests m
 			res, other, err := goTestSubtestResults(strings.NewReader(stdout), want)
 			if err != nil {
 				return res, fmt.Errorf("go test %s: %w", pkg, err)
+			}
+			if to, ok := goTestTimedOut(stdout); ok {
+				return to.verdicts(pkg, want, res), nil
 			}
 			if ctx.Err() != nil {
 				return res, fmt.Errorf("go test %s: %w", pkg, ctx.Err())
@@ -396,6 +430,126 @@ func (a *goTestAdapter) finishGoTest(ctx context.Context, pkg, dir string, args 
 	var stdout, stderr bytes.Buffer
 	runErr := run(ctx, dir, args, &stdout, &stderr)
 	return verdict(stdout.String(), stderr.String(), runErr)
+}
+
+// goTestTimeoutRun is what go test printed when its own -timeout fired:
+// "panic: test timed out after 1s", then "running tests:" and one line per
+// test still running, with how long it had run ("TestBlocks (1s)").
+type goTestTimeoutRun struct {
+	limit   string
+	running []goTestRunning // in go test's order
+}
+
+type goTestRunning struct {
+	test string // as go test names it: a subtest is "TestA/sub"
+	ran  string // how long it had run, in go test's words
+}
+
+// wasRunning is whether test, a top-level test, or a subtest of it, was
+// running when the limit fired: test2json may close such a test as failed,
+// and the timeout is why.
+func (to goTestTimeoutRun) wasRunning(test string) bool {
+	for _, r := range to.running {
+		if top, _, _ := strings.Cut(r.test, "/"); top == test {
+			return true
+		}
+	}
+	return false
+}
+
+// goTestTimeoutPanic is go test's own timeout panic, and its limit.
+var goTestTimeoutPanic = regexp.MustCompile(`^panic: test timed out after (\S+)$`)
+
+// goTestRunningLine is one test of the panic's "running tests:" list.
+var goTestRunningLine = regexp.MustCompile(`^\t\t(\S+) \(([^)]*)\)$`)
+
+// goTestTimedOut reads go test's own timeout panic from a call's -json
+// output (its output events, in order, and any line that is not an event),
+// or ok false when the run did not time out.
+func goTestTimedOut(stdout string) (goTestTimeoutRun, bool) {
+	var lines []string
+	for line := range strings.SplitSeq(stdout, "\n") {
+		var ev struct{ Action, Output string }
+		if strings.HasPrefix(line, "{") && json.Unmarshal([]byte(line), &ev) == nil && ev.Action != "" {
+			if ev.Action == "output" {
+				lines = append(lines, strings.TrimRight(ev.Output, "\n"))
+			}
+			continue
+		}
+		lines = append(lines, line)
+	}
+	for i, l := range lines {
+		m := goTestTimeoutPanic.FindStringSubmatch(l)
+		if m == nil {
+			continue
+		}
+		to := goTestTimeoutRun{limit: m[1]}
+		j := i + 1
+		if j < len(lines) && strings.TrimSpace(lines[j]) == "running tests:" {
+			for j++; j < len(lines); j++ {
+				r := goTestRunningLine.FindStringSubmatch(lines[j])
+				if r == nil {
+					break
+				}
+				to.running = append(to.running, goTestRunning{test: r[1], ran: r[2]})
+			}
+		}
+		return to, true
+	}
+	return goTestTimeoutRun{}, false
+}
+
+// verdicts gives every asked row of a call whose go test timed out its own
+// verdict, never a crash: a row whose test was running when the limit fired
+// fails naming the limit and how long it had run; a row whose test never
+// started fails naming the limit and the test that was running; a row that
+// reported before the limit keeps its verdict.
+func (to goTestTimeoutRun) verdicts(pkg string, tests map[string]string, res []testreg.Result) []testreg.Result {
+	// a running test by its own name (a subtest row's "TestA/sub") and by
+	// its top-level test's: how long it had run
+	ran := map[string]string{}
+	var names []string
+	for _, r := range to.running {
+		top, _, _ := strings.Cut(r.test, "/")
+		if _, seen := ran[top]; !seen {
+			ran[top] = r.ran
+			names = append(names, fmt.Sprintf("%s (it had run %s)", r.test, r.ran))
+		}
+		ran[r.test] = r.ran
+	}
+	runningWords := "go test named no test running"
+	if len(names) > 0 {
+		runningWords = "the test running was " + strings.Join(names, ", ")
+	}
+	inst := map[string]string{} // instance -> its Go test
+	for test, full := range tests {
+		inst[full] = test
+	}
+	reported := map[string]bool{}
+	var out []testreg.Result
+	for _, r := range res {
+		test := inst[r.Instance]
+		reported[r.Instance] = true
+		if d, running := ran[test]; running {
+			// test2json may close a running test as failed: the timeout is why
+			out = append(out, testreg.Result{Instance: r.Instance, Verdict: testreg.Fail, Seconds: r.Seconds,
+				Reason: fmt.Sprintf("TIMED OUT: row %s: go test %s hit its -timeout of %s while %s was running (it had run %s)", r.Instance, pkg, to.limit, test, d)})
+			continue
+		}
+		out = append(out, r)
+	}
+	for _, test := range slices.Sorted(maps.Keys(tests)) {
+		full := tests[test]
+		if reported[full] {
+			continue
+		}
+		why := fmt.Sprintf("TIMED OUT: row %s: go test %s hit its -timeout of %s before %s finished; %s", full, pkg, to.limit, test, runningWords)
+		if d, running := ran[test]; running {
+			why = fmt.Sprintf("TIMED OUT: row %s: go test %s hit its -timeout of %s while %s was running (it had run %s)", full, pkg, to.limit, test, d)
+		}
+		out = append(out, testreg.Result{Instance: full, Verdict: testreg.Fail, Reason: why})
+	}
+	return out
 }
 
 // splitGoTests separates top-level test names from Test/subtest names. The

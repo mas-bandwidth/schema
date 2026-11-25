@@ -321,14 +321,14 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     {
         let at = 49;
         if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+            report.wire_damage += 1;
         }
         value.moving = b[at] == 1;
     }
     {
         let at = 50;
         if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+            report.wire_damage += 1;
         }
         value.firing = b[at] == 1;
     }
@@ -457,7 +457,7 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
     {
         let at = 12;
         if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+            report.wire_damage += 1;
         }
         value.crit = b[at] == 1;
     }
@@ -842,7 +842,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let at = 1227;
         if b[at] > 1 && report.slack == 0 {
-            report.damaged = true;
+            report.wire_damage += 1;
         }
         value.has_extra = b[at] == 1;
     }

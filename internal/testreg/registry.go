@@ -95,7 +95,14 @@ type Test struct {
 	// an unrepresentable line is, never a runtime result
 	// (docs/TEST-REGISTRY.md, "Language-intrinsic tests").
 	Intrinsic *Intrinsic `json:"intrinsic,omitempty"`
-	Line      int        `json:"-"`
+	// Needs are the machine properties the test needs from the bench that
+	// runs it (casefold: a volume that folds names by case, which captain,
+	// WSL2 with no ext4 casefold, cannot have). The fleet's benches declare
+	// what they provide, and the full run (tools/fullrun) never sends a row
+	// to a bench that lacks one; a need no bench of a run provides is red by
+	// name there, never skipped. It is a fact of the test, like its tier.
+	Needs []string `json:"needs,omitempty"`
+	Line  int      `json:"-"`
 }
 
 // fillerWords say nothing about a test's subject. An intrinsic reason is
@@ -210,6 +217,8 @@ var WriteRules = []string{"assert", "refuse"}
 var (
 	nameRE = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 	caseRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	// needRE is a machine property a test needs (Test.Needs).
+	needRE = nameRE
 )
 
 // Load reads and validates the registry at path.
@@ -382,6 +391,26 @@ func Parse(name string, r io.Reader) (*Registry, error) {
 		case !t.PerLang():
 			fail(t.Line, "test %s names per-language Go tests but is scoped %q", t.Key, t.Scope)
 			continue
+		case t.Seconds != 0:
+			// each language's test takes its own time: one number for the
+			// row would weigh every language by the slowest
+			fail(t.Line, "test %s is a union row with seconds %v: a union row's seconds are each language's, in inputs.tests.<lang>.seconds", t.Key, t.Seconds)
+		}
+		// a language's own tier moves one test that measured past a shard's
+		// budget on its own to the night, with the seconds that put it
+		// there; it is never a way for a test that fits to leave the pull
+		// request, nor for a shard of several to get under the budget
+		for _, lang := range slices.Sorted(maps.Keys(tests)) {
+			g := tests[lang]
+			switch {
+			case g.Tier == "":
+			case g.Tier != NightlyTier || t.Tier == NightlyTier:
+				fail(t.Line, "test %s gives %s the tier %q: a language's own tier is %s, for a row of a per-PR tier", t.Key, lang, g.Tier, NightlyTier)
+			case tiers[NightlyTier] == 0:
+				fail(t.Line, "test %s gives %s the tier %q, which the registry does not declare", t.Key, lang, g.Tier)
+			case g.Seconds <= ShardBudget:
+				fail(t.Line, "test %s moves %s to %s at %v s measured: only a test past one shard's %.0f s budget on its own goes to the night; one that fits stays per pull request", t.Key, lang, NightlyTier, g.Seconds, ShardBudget)
+			}
 		}
 		for _, lang := range slices.Sorted(maps.Keys(tests)) {
 			g := tests[lang]
@@ -533,6 +562,11 @@ func checkTest(t Test, tiers, types map[string]int) string {
 	case t.Seconds < 0:
 		return fmt.Sprintf("seconds %v is negative: it is a measured run time", t.Seconds)
 	}
+	for i, n := range t.Needs {
+		if !needRE.MatchString(n) || slices.Contains(t.Needs[:i], n) {
+			return fmt.Sprintf("needs %q: each need is a lowercase machine property, named once", t.Needs)
+		}
+	}
 	return ""
 }
 
@@ -642,9 +676,13 @@ var secondsField = regexp.MustCompile(`,"seconds":[0-9.e+-]+\}$`)
 
 // WriteSeconds records measured run times in the registry file at path: for
 // each test key in seconds, its line's "seconds" is set to the value,
-// rounded up to the hundredth. Every other byte of the file is kept. A key
-// that is no test line of the file is an error, and nothing is written.
-func WriteSeconds(path string, seconds map[string]float64) (int, error) {
+// rounded up to the hundredth; for each union row's key in langSeconds, each
+// named language's Go test gets its own "seconds" in the row's inputs.tests,
+// the same way. Every other byte of the file is kept. A key that is no test
+// line of the file, a union row in seconds, or a language langSeconds gives
+// that its union row names no Go test for is an error, and nothing is
+// written.
+func WriteSeconds(path string, seconds map[string]float64, langSeconds map[string]map[string]float64) (int, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -652,15 +690,48 @@ func WriteSeconds(path string, seconds map[string]float64) (int, error) {
 	lines := strings.SplitAfter(string(data), "\n")
 	done := map[string]bool{}
 	for i, line := range lines {
-		var head struct{ Rec, Key string }
+		var head struct {
+			Rec, Key string
+			Inputs   json.RawMessage
+		}
 		if json.Unmarshal([]byte(line), &head) != nil || head.Rec != "test" {
+			continue
+		}
+		tests, union, _ := GoTestsOf(Test{Key: head.Key, Inputs: head.Inputs})
+		if ls, ok := langSeconds[head.Key]; ok {
+			if !union || tests == nil {
+				return 0, fmt.Errorf("%s:%d: %s is not a union row: its seconds are the row's", path, i+1, head.Key)
+			}
+			for _, lang := range slices.Sorted(maps.Keys(ls)) {
+				g, named := tests[lang]
+				if !named {
+					return 0, fmt.Errorf("%s:%d: %s names no Go test for %s, so %s has no seconds of it", path, i+1, head.Key, lang, lang)
+				}
+				g.Seconds = roundSeconds(ls[lang])
+				tests[lang] = g
+			}
+			in, err := json.Marshal(struct {
+				Tests map[string]GoTest `json:"tests"`
+			}{tests})
+			if err != nil {
+				return 0, err
+			}
+			raw := `"inputs":` + string(head.Inputs)
+			if strings.Count(line, raw) != 1 {
+				return 0, fmt.Errorf("%s:%d: %s: the inputs are not written once, compact, as %s", path, i+1, head.Key, raw)
+			}
+			lines[i] = strings.Replace(line, raw, `"inputs":`+string(in), 1)
+			done[head.Key] = true
 			continue
 		}
 		s, ok := seconds[head.Key]
 		if !ok {
 			continue
 		}
-		v := fmt.Sprintf(`,"seconds":%s`, strconv.FormatFloat(math.Ceil(max(s, minSeconds)*100)/100, 'f', -1, 64))
+		if union {
+			return 0, fmt.Errorf("%s:%d: %s is a union row: its seconds are each language's", path, i+1, head.Key)
+		}
+		v := fmt.Sprintf(`,"seconds":%s`, strconv.FormatFloat(roundSeconds(s), 'f', -1, 64))
 		body, nl := strings.TrimSuffix(line, "\n"), line[len(strings.TrimSuffix(line, "\n")):]
 		body = secondsField.ReplaceAllString(body, "}")
 		if !strings.HasSuffix(body, "}") {
@@ -675,9 +746,49 @@ func WriteSeconds(path string, seconds map[string]float64) (int, error) {
 			missing = append(missing, k)
 		}
 	}
+	for k := range langSeconds {
+		if !done[k] {
+			missing = append(missing, k)
+		}
+	}
 	if len(missing) > 0 {
 		slices.Sort(missing)
 		return 0, fmt.Errorf("%s has no test line for %s", path, strings.Join(missing, ", "))
 	}
 	return len(done), os.WriteFile(path, []byte(strings.Join(lines, "")), 0o644)
+}
+
+// roundSeconds is a measured run time as the registry records it: at least
+// minSeconds, rounded up to the hundredth.
+func roundSeconds(s float64) float64 {
+	return math.Ceil(max(s, minSeconds)*100) / 100
+}
+
+// SplitSeconds sorts the measured seconds of passing instances (by full
+// name) into what WriteSeconds takes: a union row's by its key and language,
+// every other row's by its key; a row with several instances keeps the
+// longest. A measured name with no instance, or seconds that are not a
+// positive time, is an error naming it: a measurement is never dropped
+// without a word.
+func SplitSeconds(instances map[string]Instance, measured map[string]float64) (map[string]float64, map[string]map[string]float64, error) {
+	rows, langs := map[string]float64{}, map[string]map[string]float64{}
+	for _, full := range slices.Sorted(maps.Keys(measured)) {
+		s := measured[full]
+		inst, ok := instances[full]
+		switch {
+		case !ok:
+			return nil, nil, fmt.Errorf("%s was measured, and is no instance of the run: its seconds belong to no row", full)
+		case !(s > 0):
+			return nil, nil, fmt.Errorf("%s was measured at %v s: a run time is a positive number of seconds", full, s)
+		}
+		if _, union, _ := GoTestsOf(inst.Test); union {
+			if langs[inst.Test.Key] == nil {
+				langs[inst.Test.Key] = map[string]float64{}
+			}
+			langs[inst.Test.Key][inst.Lang] = max(langs[inst.Test.Key][inst.Lang], s)
+			continue
+		}
+		rows[inst.Test.Key] = max(rows[inst.Test.Key], s)
+	}
+	return rows, langs, nil
 }

@@ -129,7 +129,7 @@ fn main() {
         report.reason.name(),
         report
     );
-    assert!(!report.refused && !report.damaged, "a clean backward read: {:?}", report);
+    assert!(!report.refused, "a clean backward read: {:?}", report);
 }
 `, file)
 

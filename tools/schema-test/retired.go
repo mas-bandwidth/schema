@@ -47,7 +47,7 @@ func checkRetired(reg *testreg.Registry, data []byte, namedPerPR map[string]bool
 		}
 	}
 	inPR := func(t testreg.Test, lang string) bool {
-		return prRuns[lang+"."+t.Tier+"."+t.Key]
+		return prRuns[lang+"."+t.TierIn(lang)+"."+t.Key]
 	}
 	byKey := map[string]testreg.Test{}
 	for _, t := range reg.Tests {
@@ -86,8 +86,8 @@ func checkRetired(reg *testreg.Registry, data []byte, namedPerPR map[string]bool
 		} else {
 			why = runsTarget(t, lang, check)
 		}
-		if why == "" && (perPRWorkflows[wf] || perPRWorkflows[wf+":"+job]) && !inPR(t, rowLang(t, lang)) && !namedPerPR[rowLang(t, lang)+"."+t.Tier+"."+key] {
-			why = fmt.Sprintf("is tier %s in %s, outside the pr group, and no per-PR workflow runs it by name: a per-PR check moved to the night", t.Tier, rowLang(t, lang))
+		if why == "" && (perPRWorkflows[wf] || perPRWorkflows[wf+":"+job]) && !inPR(t, rowLang(t, lang)) && !namedPerPR[rowLang(t, lang)+"."+t.TierIn(rowLang(t, lang))+"."+key] {
+			why = fmt.Sprintf("is tier %s in %s, outside the pr group, and no per-PR workflow runs it by name: a per-PR check moved to the night", t.TierIn(rowLang(t, lang)), rowLang(t, lang))
 		}
 		if why != "" {
 			problems = append(problems, fmt.Sprintf("%s: %s %s ran %s, and row %s %s: a retired check the registry does not run", at, wf, job, check, key, why))

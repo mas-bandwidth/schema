@@ -152,6 +152,10 @@ func LangMakeGates(inputs json.RawMessage) (map[string][]LangGate, bool, error) 
 //   - a make target, by a make row whose inputs name its file and target;
 //     the rows of a sharded gate (each sets one *_SHARD var to K/N) share
 //     it: shards 1..N of one var and one N, each once, and no whole row;
+//   - a Go test a make target's recipe runs, by a make-gotest row whose
+//     inputs name its package and test (that test alone, never its whole
+//     package), and the target itself, which the make-gotest rows of one
+//     target share;
 //   - a negative control, by a plant row whose inputs name its make target
 //     and its group in make/negative-controls.json;
 //   - a data case that is a pinned output, by a golden row whose inputs name
@@ -181,6 +185,9 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	goldenFile := map[string]string{} // a pinned file, by the golden row that names it
 	readCase := map[string]string{}   // a data case a make row reads, by the first such row
 	var readOrder []string
+	// a make target the make-gotest rows hold: its rows share it, and any
+	// other row that runs it is a second run
+	makeGoTestTarget := map[string]bool{}
 	// a sharded make target: its shard var and N, and the row of each K
 	type sharding struct {
 		var_, of string
@@ -316,6 +323,25 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 					readCase[id] = t.Key
 					readOrder = append(readOrder, id)
 				}
+			}
+		case "make-gotest":
+			// one Go test a make target's recipe runs, read by name from the
+			// target's go test -json events: the row claims that test and no
+			// other (never its package), and the target, which every row of
+			// it shares as one make run
+			var in struct{ File, Target, Package, Test string }
+			if err := json.Unmarshal(t.Inputs, &in); err != nil || in.File == "" || in.Target == "" || in.Package == "" || in.Test == "" {
+				problems = append(problems, fmt.Sprintf("%s:%d: %s is a make-gotest row without a file, a target, a package and a test in its inputs", reg.Path, t.Line, t.Key))
+				continue
+			}
+			claim(t, Item{Kind: KindGoTest, Dir: strings.TrimPrefix(in.Package, "./"), Name: in.Test}, in.Package+" "+in.Test)
+			target := Item{Kind: KindMakeTarget, Dir: in.File, Name: in.Target}.ID()
+			switch prev, held := out[target]; {
+			case !held:
+				out[target] = t.Key
+				makeGoTestTarget[target] = true
+			case !makeGoTestTarget[target]:
+				problems = append(problems, fmt.Sprintf("%s:%d: %s runs make %s, which %s already runs", reg.Path, t.Line, t.Key, in.Target, prev))
 			}
 		case "plant":
 			var in struct{ Make, Group string }

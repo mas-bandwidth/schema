@@ -162,7 +162,10 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 # wants red, is $(GO_TEST_RED): red only when a test FAILED and none skipped,
 # so a skip or a build that broke is no red the control can take for its
 # sabotage caught. tools/schema-test's make adapter refuses a recipe that runs
-# go test without -json.
+# go test without -json. With SCHEMA_GOTEST_JSON set (tools/schema-test's
+# make-gotest adapter sets it), $(GO_TEST) also appends its go test -json
+# events to that file, so each Go test the target runs is a registry row
+# with its own verdict, read by name; $(GO_TEST_RED) writes none.
 GO_TEST = $(CURDIR)/tools/gotestrun/gotest
 GO_TEST_RED = $(CURDIR)/tools/gotestrun/gotest -red
 

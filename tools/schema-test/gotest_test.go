@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -285,6 +286,15 @@ func TestSecondsAreReadFromARunsLog(t *testing.T) {
 		if err := runErr(t.Context(), []string{"seconds", "--registry", reg, log}, &out, nil); err == nil || !strings.Contains(err.Error(), says) {
 			t.Errorf("%s: %v, want %q", log, err, says)
 		}
+	}
+	// a pass printed as (0.00s), under 5 ms, is the least weight, never refused
+	// as no time
+	fast := write("fast.log", "PASS go.functional.roundtrip.fam.one (0.00s)\n")
+	if err := runErr(t.Context(), []string{"seconds", "--registry", reg, fast}, &out, nil); err != nil {
+		t.Fatalf("a pass printed as 0.00 s: %v", err)
+	}
+	if after, err = os.ReadFile(reg); err != nil || !strings.Contains(string(after), `,"seconds":0.01}`) {
+		t.Fatalf("the registry after a 0.00 s pass (%v):\n%s", err, after)
 	}
 }
 
@@ -648,3 +658,90 @@ func TestAPlantedGoSkipIsRedThroughTheAdapter(t *testing.T) {
 		t.Errorf("want one result per row, got %+v", res)
 	}
 }
+
+// TestAGoTestTimeoutIsNamedNotACrash: when go test's own -timeout fires (a
+// row given a 1 s limit whose test blocks on a channel), every asked row is
+// answered by name and the call is no crash: the test that was running fails
+// naming the row, the limit and how long it had run; a test never reached
+// fails naming the limit and the test that was running; a test that passed
+// before the limit keeps its pass. The output is go test's own, captured
+// from a real run of a test blocked on a channel under -timeout 1s
+// (goTestTimeoutReplay): a stand-in go test replays it, so no real time
+// passes. The plant is runPackage without the timeout reading: the call's
+// tests are then a crash ("did not report"), or every row fails with "the
+// package failed outside them", and neither names the limit.
+func TestAGoTestTimeoutIsNamedNotACrash(t *testing.T) {
+	t.Parallel()
+	root := noNeedsRoot(t)
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := newGoTestAdapter(nil, root, 1)
+	var asked []string
+	a.goTest = func(_ context.Context, _ string, args []string, stdout, _ io.Writer) error {
+		asked = args
+		_, _ = io.WriteString(stdout, goTestTimeoutReplay)
+		return errors.New("exit status 1")
+	}
+	row := func(test string) testreg.Instance {
+		return testreg.Instance{Full: "none.unit.tooling.x." + test, Lang: testreg.LangFree, Test: testreg.Test{
+			Key: "tooling.x." + test, Scope: testreg.LangFree, Adapter: "gotest",
+			Inputs: []byte(`{"package":"./x","test":"` + test + `"}`)}}
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC))
+	defer cancel()
+	res, err := a.Run(ctx, testreg.LangFree, []testreg.Instance{row("TestQuick"), row("TestBlocks"), row("TestNeverReached")})
+	if err != nil {
+		t.Fatalf("a timed-out call is reported as a crash: %v", err)
+	}
+	if !slices.Contains(asked, "-timeout") {
+		t.Fatalf("go test was not given the driver's deadline as -timeout: %v", asked)
+	}
+	got := map[string]testreg.Result{}
+	for _, r := range res {
+		got[r.Instance] = r
+	}
+	if len(res) != 3 || len(got) != 3 {
+		t.Fatalf("want one result per asked row, got %+v", res)
+	}
+	if q := got["none.unit.tooling.x.TestQuick"]; q.Verdict != testreg.Pass {
+		t.Errorf("a test that passed before the limit: %+v", q)
+	}
+	b := got["none.unit.tooling.x.TestBlocks"]
+	for _, want := range []string{"TIMED OUT", "none.unit.tooling.x.TestBlocks", "-timeout of 1s", "TestBlocks was running", "it had run 1s"} {
+		if b.Verdict != testreg.Fail || !strings.Contains(b.Reason, want) {
+			t.Errorf("the running test's row: %+v, want %q in its reason", b, want)
+		}
+	}
+	n := got["none.unit.tooling.x.TestNeverReached"]
+	for _, want := range []string{"TIMED OUT", "none.unit.tooling.x.TestNeverReached", "-timeout of 1s", "the test running was TestBlocks (it had run 1s)"} {
+		if n.Verdict != testreg.Fail || !strings.Contains(n.Reason, want) {
+			t.Errorf("a test never reached: %+v, want %q in its reason", n, want)
+		}
+	}
+	if _, ok := goTestTimedOut(`{"Action":"output","Output":"panic: boom\n"}`); ok {
+		t.Error("a panic that is not go test's timeout read as one")
+	}
+}
+
+// goTestTimeoutReplay is go test -json's output for a package whose second
+// test blocked on a channel under -timeout 1s, captured from a real run:
+// the timeout panic names the limit and the running test, and no fail event
+// is written for that test.
+const goTestTimeoutReplay = `{"Action":"start","Package":"example.com/x"}
+{"Action":"run","Package":"example.com/x","Test":"TestQuick"}
+{"Action":"output","Package":"example.com/x","Test":"TestQuick","Output":"=== RUN   TestQuick\n"}
+{"Action":"output","Package":"example.com/x","Test":"TestQuick","Output":"--- PASS: TestQuick (0.00s)\n"}
+{"Action":"pass","Package":"example.com/x","Test":"TestQuick","Elapsed":0}
+{"Action":"run","Package":"example.com/x","Test":"TestBlocks"}
+{"Action":"output","Package":"example.com/x","Test":"TestBlocks","Output":"=== RUN   TestBlocks\n"}
+{"Action":"output","Package":"example.com/x","Test":"TestBlocks","Output":"panic: test timed out after 1s\n"}
+{"Action":"output","Package":"example.com/x","Test":"TestBlocks","Output":"\trunning tests:\n"}
+{"Action":"output","Package":"example.com/x","Test":"TestBlocks","Output":"\t\tTestBlocks (1s)\n"}
+{"Action":"output","Package":"example.com/x","Test":"TestBlocks","Output":"\n"}
+{"Action":"output","Package":"example.com/x","Output":"FAIL\texample.com/x\t15.393s\n"}
+{"Action":"fail","Package":"example.com/x","Elapsed":15.678}
+`

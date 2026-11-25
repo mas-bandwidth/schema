@@ -32,7 +32,7 @@
 
 use tabledemo::{
     root_config_fixed_load, root_config_fixed_measure, root_config_fixed_save,
-    BuffRow, DebuffRow, RootConfigRow, TableFixedEntry, TableFixedReport,
+    BuffRow, DebuffRow, RootConfigRow, TableFixedEntry, TableFixedReason, TableFixedReport,
     TABLE_FIXED_HEADER_BYTES, ROOT_CONFIG_FIXED_BLOCK,
 };
 
@@ -102,7 +102,7 @@ fn test_union_arrays_valid_data_write_read() {
     let n = root_config_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report)
         .expect("read succeeds");
     check(n == 1, "arrays of unions: the reader reads one record");
-    check(report.oor == 0 && !report.damaged && !report.refused,
+    check(!report.refused,
           "arrays of unions: a clean read — no counter moved");
 
     let b = &back[0];
@@ -136,12 +136,27 @@ fn test_union_arrays_valid_data_write_read() {
     check(tag1 == 2, "arrays of unions: weapon[1] effect tag on the wire is 2 (debuff)");
 
     // ---- NEGATIVE CONTROL: change weapon 0's union tag on the wire to 0 ----
+    //
+    // With the tag at None the buff arm's four payload bytes are an INACTIVE
+    // ARM — dead bytes — and they still carry 2.5: a non-zero dead byte
+    // refuses the whole load wire_damaged (FIXED-FORM-ALGORITHM §3.1, §4.5,
+    // §5.3 step 11). Until 2026-11-25 this control expected the load to land
+    // with the stale payload ignored.
     let mut broken = file.clone();
     let tag0_at = body + effect_tag_in_body(&[], 0);
-    // Save the original tag byte before zeroing
-    let _original_tag0 = broken[tag0_at];
-    broken[tag0_at] = 0; // sabotage: tag becomes None
+    broken[tag0_at] = 0; // sabotage: tag becomes None, payload left standing
 
+    let mut dead = [RootConfigRow::default(); 1];
+    let mut plan_d = [TableFixedEntry::default(); 1024];
+    let mut remap_d = [0u16; 1024];
+    let mut report_d = TableFixedReport::default();
+    let nd = root_config_fixed_load(&mut dead, &broken, &mut plan_d, &mut remap_d, &mut report_d);
+    check(nd.is_none() && report_d.refused && report_d.reason == TableFixedReason::WireDamaged,
+          "arrays of unions NEGATIVE CONTROL: a None tag over a stale arm payload refuses wire_damaged");
+
+    // The same sabotage with the dead payload zeroed, as a lawful writer
+    // leaves an inactive arm: the read lands and the tag reads None.
+    broken[tag0_at + 1..tag0_at + 5].fill(0);
     let mut back2 = [RootConfigRow::default(); 1];
     let mut plan2 = [TableFixedEntry::default(); 1024];
     let mut remap2 = [0u16; 1024];
@@ -171,7 +186,9 @@ fn test_union_arrays_valid_data_write_read() {
     // effect tag is at weapon body offset 17, and the debuff arm (amount: i32)
     // is at offset 18..22 (= 17+1..17+5).
     let debuff_amount_at = body + ROOT_WEAPONS_BODY_OFFSET + 1 * WEAPON_BODY_SIZE + WEAPON_EFFECT_OFFSET + 1;
-    broken2[debuff_amount_at] ^= 0xFF; // flip all bits of one byte of amount
+    // A LAWFUL other value (amount is `| min = 0, max = 100`): 42 -> 7. A
+    // flip to 213 would be off the range and refuse out_of_range instead.
+    broken2[debuff_amount_at] = 7;
 
     let mut back3 = [RootConfigRow::default(); 1];
     let mut plan3 = [TableFixedEntry::default(); 1024];
@@ -183,8 +200,8 @@ fn test_union_arrays_valid_data_write_read() {
 
     // The debuff amount is now corrupted — should NOT equal 42
     let debuff3 = back3[0].weapons[1].effect.debuff().expect("debuff arm selected");
-    check(debuff3.amount != 42,
-          "arrays of unions NEGATIVE CONTROL 2: a corrupted union arm payload byte reaches the value");
+    check(debuff3.amount == 7,
+          "arrays of unions NEGATIVE CONTROL 2: a changed union arm payload byte reaches the value");
 
     let fails = FAILURES.load(std::sync::atomic::Ordering::Relaxed);
     assert_eq!(fails, 0, "UnionArraysValidData: {fails} assertion(s) failed");

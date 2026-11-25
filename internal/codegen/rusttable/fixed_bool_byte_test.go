@@ -7,7 +7,7 @@ import (
 )
 
 // A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS DAMAGE (docs/FIXED-FORM-ALGORITHM.md
-// §4.5, the strict read): the whole load answers None with `damaged` set and
+// §4.5, the strict read): the whole load answers None, refused `wire_damaged`, and
 // every caller row back at its declared defaults. A NON-ZERO DEAD BYTE REFUSES
 // TOO (docs/rulings.json fixed-dead-bytes-are-zero): the payload under an
 // absent optional and the slots past a counted array's count are dead, and a
@@ -69,7 +69,7 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         let mut values = vec![BRow::default(); 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &valid, &mut plan, &mut remap, &mut report);
-        if got != Some(1) || report.damaged || report.refused || !values[0].ok || !unsafe { values[0].pick.arms.flag } {
+        if got != Some(1) || report.refused || !values[0].ok || !unsafe { values[0].pick.arms.flag } {
             failures.push(format!("clean: the saved file must read: {:?}", report));
         }
     }
@@ -80,8 +80,8 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         let mut values = vec![row; 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &data, &mut plan, &mut remap, &mut report);
-        if got.is_some() || !report.damaged || report.refused {
-            failures.push(format!("{name}: a live byte of 2 must be damage: {:?} {:?}", got, report));
+        if got.is_some() || !report.refused || report.reason != TableFixedReason::WireDamaged {
+            failures.push(format!("{name}: a live byte of 2 must refuse wire_damaged: {:?} {:?}", got, report));
         }
         if values[0].ok || values[0].opt_present || values[0].flags_count != 0 || values[0].pick.tag != 0 {
             failures.push(format!("{name}: a damaged load left a caller value"));
@@ -93,8 +93,8 @@ func TestFixedBoolByteIsDamageRust(t *testing.T) {
         let mut values = vec![row; 1];
         let mut report = TableFixedReport::default();
         let got = b_fixed_load(&mut values, &data, &mut plan, &mut remap, &mut report);
-        if got.is_some() || !report.damaged || report.refused {
-            failures.push(format!("{name}: a non-zero dead byte must refuse the whole load: {:?} {:?}", got, report));
+        if got.is_some() || !report.refused || report.reason != TableFixedReason::WireDamaged {
+            failures.push(format!("{name}: a non-zero dead byte must refuse the whole load wire_damaged: {:?} {:?}", got, report));
         }
         // RULING R4 (SPEC-TABLES §6.5): after ANY refusal every row handed in
         // holds its DECLARED DEFAULTS, never the caller's old values.
