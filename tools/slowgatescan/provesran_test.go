@@ -258,20 +258,25 @@ func TestTreeScanCounts(t *testing.T) {
 	}
 	seen := map[string]int{}
 	for _, r := range refs {
-		switch {
-		case r.file == "make/squirrel-negative-controls.mk":
+		if r.file == "make/squirrel-negative-controls.mk" {
 			seen["squirrel_nc"]++
-		case strings.HasPrefix(r.label, "conformance-go-rows-"):
+		}
+	}
+	// the conformance-go-rows lines compute their names off the rows
+	// package's own test files; with no unread line above, each was placed
+	// as that computed list
+	for _, r := range recipes {
+		if strings.Contains(r.cmd, "test/slowgate/proof conformance-go-rows-") && strings.Contains(r.cmd, "test/conformance/go/rows/*_test.go") {
 			seen["rows"]++
 		}
 	}
 	if seen["squirrel_nc"] < 19 {
 		t.Errorf("read %d required names through $(call squirrel_nc,…), want at least 19", seen["squirrel_nc"])
 	}
-	if seen["rows"] == 0 {
-		t.Error("read no required name from the conformance-go-rows proof lines")
+	if seen["rows"] != 3 {
+		t.Errorf("read %d conformance-go-rows proof lines computing their names off the rows package's tests, want 3 (a, b, the negative control)", seen["rows"])
 	}
-	t.Logf("gated packages: %d; recipe lines naming one: %d; required proof names: %d (%d through squirrel_nc, %d on conformance-go-rows)",
+	t.Logf("gated packages: %d; recipe lines naming one: %d; required proof names: %d (%d through squirrel_nc, %d computed conformance-go-rows lines)",
 		len(gated), len(recipes), len(refs), seen["squirrel_nc"], seen["rows"])
 }
 
