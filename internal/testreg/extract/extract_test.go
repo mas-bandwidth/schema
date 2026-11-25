@@ -215,7 +215,10 @@ func TestMakePlantAndGoldenRowsCoverTheirTests(t *testing.T) {
 	good := []testreg.Test{
 		row("harness-run.makefile.prep", "make", `{"file":"Makefile","target":"prep"}`),
 		row("plant.g1.nc-one", "plant", `{"make":"nc-one","file":"Makefile","group":"g1"}`),
-		row("golden.x.x", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.in","testdata/corpus/x.out","bench/x.bin"]}`),
+		// one golden row per pinned file: the rows of one case share it
+		row("golden.x.x-in", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.in"]}`),
+		row("golden.x.x-out", "golden", `{"writer":"pins-x","files":["testdata/corpus/x.out"]}`),
+		row("golden.x.x-bench", "golden", `{"writer":"pins-x","files":["bench/x.bin"]}`),
 		row("plant.f.env", "plant", `{"target":"go.functional.roundtrip.f.c","env":{"B":"1"}}`),
 	}
 	if p := Check(res, &testreg.Registry{Path: "r.jsonl", Tests: good}, nil); len(p) != 0 {

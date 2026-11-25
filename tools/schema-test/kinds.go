@@ -109,4 +109,3 @@ func goTestResults(r io.Reader, tests map[string]string) ([]testreg.Result, erro
 	}
 	return out, nil
 }
-

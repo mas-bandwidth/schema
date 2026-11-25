@@ -170,11 +170,11 @@ func TestAnEditPlantIsJudgedOnItsTreesRun(t *testing.T) {
 func TestPlantInputsAreOneForm(t *testing.T) {
 	t.Parallel()
 	for in, ok := range map[string]bool{
-		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"},"reason":"r"}`:                               true,
+		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"},"reason":"r"}`:                  true,
 		`{"target":"go.functional.roundtrip.fam.one","env":{"B":"1"}}`:                               false,
-		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"r"}`:                            true,
+		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"],"reason":"r"}`:               true,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"y"}],"red":["a"]}`:                            false,
-		`{"make":"x-negative-control","file":"Makefile","group":"g","reason":"r"}`:                            false,
+		`{"make":"x-negative-control","file":"Makefile","group":"g","reason":"r"}`:                   false,
 		`{"make":"x-negative-control","file":"Makefile","group":"g"}`:                                true,
 		`{"target":"go.functional.roundtrip.fam.one"}`:                                               false,
 		`{"edits":[{"file":"a.go","anchor":"x","with":"x"}],"red":["a"]}`:                            false,

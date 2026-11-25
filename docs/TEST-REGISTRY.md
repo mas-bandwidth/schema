@@ -155,7 +155,9 @@ Built today:
 |---|---|---|
 | `go`, `lua` | per-language rows of family `align-arrays` | `make bin/schema build/verify-bitphase-bin`, then `verify-bitphase --adapter --lang L` |
 | `gotest` | language-free Go tests; inputs `{"package", "test"}` | `go test -json -run '^(...)$' <package>`, one verdict per top-level test; skip is fail |
-| `plant` | negative controls; inputs `{"target", "env"}` | runs the target by name with `env` set, which breaks what the target checks; passes only when the target runs and fails |
+| `plant` | negative controls; inputs `{"target", "env", "reason"}`, `{"edits", "red", "run", "reason"}` or `{"make", "file", "group"}` | env form: runs the target with `env` set; edit form: applies each edit (its anchor exactly once, every copy reached) to a copy of the tracked tree and runs the named tests there, so each builds with its own leg's flags. Passes only when exactly the named targets fail with a reason that holds `reason`, and every other name passes: a red for another cause (a missing tool, a broken build) fails the plant. Make form: a control of `make/negative-controls.json`, whose recipe holds its own gate red |
+| `make` | make gates; inputs `{"file", "target"}` plus optional `"vars"` (make variables on the command line), `"tools"` (programs that must be on PATH) and `"siblings"` (checkouts such as `../serialize.go`) | the target must be a rule its file writes, else FAIL; a missing tool or sibling FAILS naming the runner before make runs; `make -jN target VAR=value...` passes on exit 0 with no skip in the log |
+| `golden` | goldens and pins; inputs `{"writer", "files"}` | the `pins-*` writer runs once per run in a copy of the tracked tree with every file its rows name deleted first; each file is compared byte for byte; a file it no longer writes, or wrote differently, FAILS; a pin it writes that no row names FAILS every row of the writer; a row whose file is not committed is MISSING; `run --update <names>` re-pins only those rows |
 
 ## How each kind of test fits
 
@@ -172,7 +174,7 @@ adapter step for a named test.
 | lint and strict-analyse gates | lint | per language | `lint.generated.packet-corpus` | run the analyser over the named tree; any finding fails |
 | fuzz, soak, resource bounds | fuzz, soak, resource-bounds | per language | `fuzz.wire.seed-1` | seeded and bounded by inputs; the seed and budget are inputs, never time |
 | differential | differential | per language or none | `differential.squirrel.all-port` | run both sides, compare |
-| negative control | plant | none | `plant.align-arrays.go-valid-row-run-as-refuse` | `plant`: target name plus the env that breaks it; passes only on the target's red |
+| negative control | plant | none | `plant.align-arrays.go-valid-row-run-as-refuse` | `plant`: target name plus the env that breaks it and the reason it fails for; passes only on the target's red for that reason |
 | TLA model check, trace check | model | none | `model.tla.reliable-endpoint` | TLC on the named model and config; a trace check feeds a code trace to TLC; a counterexample fails |
 | benchmarks and timing gates | bench | per language or none | `bench.packet.write-ns` | measure, compare with the recorded bound in inputs |
 | compiler and IR | compiler | none | `compiler.check.reserved-words` | `gotest` |

@@ -220,4 +220,3 @@ func runErr(ctx context.Context, args []string, stdout io.Writer, ads map[string
 	}
 	return nil
 }
-

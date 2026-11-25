@@ -96,12 +96,16 @@ func LoadLedger(path string) ([]LedgerLine, error) {
 //   - a negative control, by a plant row whose inputs name its make target
 //     and its group in make/negative-controls.json;
 //   - a data case that is a pinned output, by a golden row whose inputs name
-//     its files (every file of the case: its directory and stem).
+//     its files (every file of the case: its directory and stem); the rows
+//     of one case's files, one per file, share it.
 //
 // Each kind's rows join this as its layer moves it in.
 func Covered(reg *testreg.Registry) (map[string]string, []string) {
 	out := map[string]string{}
 	var problems []string
+	// a data case several golden rows share: one row per pinned file, and
+	// a case is its files (a .cpp and its .h; a .bin and its .bits)
+	goldenCase := map[string]bool{}
 	claim := func(t testreg.Test, it Item, what string) {
 		id := it.ID()
 		if prev, dup := out[id]; dup {
@@ -146,15 +150,14 @@ func Covered(reg *testreg.Registry) (map[string]string, []string) {
 				problems = append(problems, fmt.Sprintf("%s:%d: %s is a golden row without files in its inputs", reg.Path, t.Line, t.Key))
 				continue
 			}
-			items := map[string]bool{}
 			for _, f := range in.Files {
 				if !isDataPath(f) {
 					continue // a pin outside the data paths is no data case: the row checks it all the same
 				}
 				dir, name := path.Split(f)
 				it := Item{Kind: KindDataCase, Dir: strings.TrimSuffix(dir, "/"), Name: DataStem(name)}
-				if !items[it.ID()] {
-					items[it.ID()] = true
+				if !goldenCase[it.ID()] {
+					goldenCase[it.ID()] = true
 					claim(t, it, "pin "+f)
 				}
 			}
