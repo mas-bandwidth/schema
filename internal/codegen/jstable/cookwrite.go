@@ -507,14 +507,23 @@ func cookScalarLiteral(u *ir.Unit, f *ir.Field, qn string, at int64, variable bo
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			w := int64(ir.StorageBitsFor(r.Max)) / 8
+			// dp: the ordinals of the variants marked `| deprecated`, which
+			// the cook refuses like an ordinal past max (docs/SPEC-TABLES.md
+			// §2.15, §7.6; docs/SPEC.md §5.1 row 5)
+			var dp []string
+			for i := range r.Variants {
+				if i < len(r.VariantDeprecated) && r.VariantDeprecated[i] {
+					dp = append(dp, strconv.Itoa(i+1))
+				}
+			}
 			if variable {
 				vs := make([]string, len(r.Variants))
 				for i, name := range r.Variants {
 					vs[i] = strconv.Quote(name)
 				}
-				return fmt.Sprintf("{k:\"venum\",n:%s,at:%d,w:%d,max:%d,vs:[%s]}", qn, at, w, r.Max, strings.Join(vs, ","))
+				return fmt.Sprintf("{k:\"venum\",n:%s,at:%d,w:%d,max:%d,vs:[%s],dp:[%s]}", qn, at, w, r.Max, strings.Join(vs, ","), strings.Join(dp, ","))
 			}
-			return fmt.Sprintf("{k:\"enum\",n:%s,at:%d,w:%d,max:%d}", qn, at, w, r.Max)
+			return fmt.Sprintf("{k:\"enum\",n:%s,at:%d,w:%d,max:%d,dp:[%s]}", qn, at, w, r.Max, strings.Join(dp, ","))
 		case *ir.Flags:
 			return fmt.Sprintf("{k:\"int\",n:%s,at:%d,w:8,sg:0}", qn, at)
 		case *ir.Struct:
@@ -682,7 +691,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       case "int":
         return putWidth(view, at, fd.w, value, fd.sg === 1, le);
       case "enum":
-        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max || fd.dp.includes(value)) { return false; }
         return putWidth(view, at, fd.w, value, false, le);
       case "venum": {
         let ord = 0;
@@ -691,7 +700,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
           if (i < 0) { return false; }
           ord = i + 1;
         }
-        if (ord > fd.max) { return false; }
+        if (ord > fd.max || fd.dp.includes(ord)) { return false; }
         return putWidth(view, at, fd.w, ord, false, le);
       }
       case "rec":

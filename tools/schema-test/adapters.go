@@ -73,17 +73,19 @@ func harnessFor(family string) (harness, bool) {
 //
 // The language-free kinds have one adapter each: gotest runs a Go test by
 // name, plant runs a negative control (a named test against a broken build,
-// which must come out red). docs/TEST-REGISTRY.md lists the kinds still to
-// come (goldens, lint gates, TLC runs and trace checks, benches) and the
-// contract each will have.
+// which must come out red), model-check runs a TLC configuration held to its
+// recorded run. docs/TEST-REGISTRY.md lists the kinds still to come
+// (goldens, lint gates, trace checks, benches) and the contract each will
+// have.
 func adapters(log io.Writer) map[string]testreg.Adapter {
 	b := &builder{log: log, done: map[string]error{}}
 	return map[string]testreg.Adapter{
 		// every language row names corpus: one adapter routes each family
 		// to its harness for any language, and what a language does not
 		// answer yet is an owed line of the registry, MISSING by name
-		"corpus": &harnessAdapter{build: b, log: log},
-		"gotest": goTestAdapter{log: log},
+		"corpus":      &harnessAdapter{build: b, log: log},
+		"gotest":      goTestAdapter{log: log},
+		"model-check": modelCheckAdapter{build: b, log: log},
 	}
 }
 

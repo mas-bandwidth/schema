@@ -399,12 +399,13 @@ func TestLobsterFixedRowNormalization(t *testing.T) {
 // TestLobsterFixedRowReports is reports (E9, R16, R18): the fixed form never
 // raises duplicate and has no clamp counter (no `duplicate +=` and no
 // `clamped +=` in the emitted table module or the fixed runtime); a field the
-// writer has and the reader dropped counts unknown ONCE per load, not once per
-// record, and a load through a report holding stale counters resets them
-// first (three records: unknown 1, widened 0); and an int8 ranged on its
-// width's own limits beside an unranged uint8 reads all 256 byte values with
-// nothing moved. The negative control removes the report reset; the stale
-// unknown then shows.
+// writer has and the reader dropped makes the handed-in lineage entry
+// UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30): the
+// load of three records refuses layout_malformed and counts NOTHING, and a
+// load through a report holding stale counters resets them first (unknown 0,
+// widened 0 after the refusal); and an int8 ranged on its width's own limits
+// beside an unranged uint8 reads all 256 byte values with nothing moved. The
+// negative control removes the report reset; the stale unknown then shows.
 func TestLobsterFixedRowReports(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
 	t.Parallel()
@@ -431,11 +432,11 @@ func TestLobsterFixedRowReports(t *testing.T) {
 	three := fixedproof.MakeFixedFile(eo.Wire, eo.Layout, rec, rec, rec)
 	lin := rowLineage(t, older, "C")
 	got := rowLoad(t, newer, "C", lin, three, nil)
-	if got.head() != "ok 3 u1 w0" || got.fields["r2.lead"] != "5" || got.fields["r2.trail"] != "6" {
-		t.Errorf("R16: the census over three records: %s %v", got.head(), got.fields)
+	if got.head() != "refused layout_malformed" || got.c.Unknown != 0 || got.c.Widened != 0 {
+		t.Errorf("R16: a removed writer field over three records: %s unknown=%d widened=%d, want refused layout_malformed with nothing counted", got.head(), got.c.Unknown, got.c.Widened)
 	}
-	if nc := rowLoad(t, newer, "C", lin, three, plantRow(t, rowsFixedevolve, "    r.unknown = 0\n", "")); nc.head() == got.head() {
-		t.Errorf("the negative control: without the reset the stale census still reads %s", nc.head())
+	if nc := rowLoad(t, newer, "C", lin, three, plantRow(t, rowsFixedevolve, "    r.unknown = 0\n", "")); nc.c.Unknown == got.c.Unknown {
+		t.Errorf("the negative control: without the reset the stale unknown still reads %d", nc.c.Unknown)
 	}
 }
 

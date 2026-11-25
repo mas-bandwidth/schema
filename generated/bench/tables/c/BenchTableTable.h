@@ -2121,11 +2121,12 @@ typedef struct benchtable_table_fixed_fill_t
 } benchtable_table_fixed_fill_t;
 
 /* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
-   path. unknown and kind_changed are THE COMPILE CENSUS — a writer field no
-   reader field names is counted ONCE PER ENDPOINT and never per record (§5.4) — and
-   a load carries them onto the report once, after the record loop, only on a
-   read that RETURNS. reason is the name a lineage entry that could not be
-   planned refuses under if a file ever selects it (§5.9 #4, #8). */
+   path. There is no compile census: a writer field no reader field names makes
+   the entry UNLAWFUL and lays no plan (§5.4, §5.9 #30). kind_changed is the
+   entry the load refuses KIND_MISMATCH BEFORE any record lands (the writer's ?T
+   into a bare T, ruling R2). reason is the name a lineage
+   entry that could not be planned refuses under if a file ever selects it
+   (§5.9 #4, #8, #30). */
 typedef struct benchtable_table_fixed_lineage_plan_t
 {
     const benchtable_table_fixed_entry_t * entries;
@@ -2133,7 +2134,6 @@ typedef struct benchtable_table_fixed_lineage_plan_t
     int32_t guarded;
     const benchtable_table_fixed_fill_t * fill;
     int32_t fill_count;
-    int32_t unknown;
     int32_t kind_changed;
     int reason;
 } benchtable_table_fixed_lineage_plan_t;
@@ -2807,6 +2807,15 @@ typedef struct benchtable_table_fixed_compiler_t
     int hostile;
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     uint32_t present;  /* the CURRENT optional's present byte plus one, 0 when none */
+    /* UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+       a writer field, union arm, enum variant or keyed key this reader does
+       not name; a shrunk array bound, keyed slot count, text or bytes capacity
+       or scalar width; or a pair whose kind moved off every ladder. The
+       entry is not a lawful widening of this reader, so no plan is laid and a
+       file under its hash refuses LAYOUT_MALFORMED. It is never counted and
+       read past. 1 is LAYOUT_MALFORMED; 3 is KIND_MISMATCH,
+       the writer's ?T into this reader's bare T (ruling R2, 2026-11-22). */
+    uint8_t unlawful;
     benchtable_table_report_t * report;
 } benchtable_table_fixed_compiler_t;
 
@@ -2914,48 +2923,25 @@ static SCHEMA_UNUSED uint32_t benchtable_table_fixed_lay_fills( benchtable_table
 static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table_fixed_compiler_t * c,
     const benchtable_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const benchtable_table_fixed_layout_view_t * mine, int32_t mi, const benchtable_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census );
+    uint32_t guard, uint64_t arg );
 
-/* table_fixed_match_children walks a TABLE's children on both sides.
+/* table_fixed_children_named is 1 when every child of THEIR entry ti — a
+   table's field, a union's arm, an enum's variant, a keyed array's key — is one
+   my entry mi names by id, and 0 otherwise.
 
-   The census flag is whether THIS entry is the FIRST time the writer's field is
-   seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-   ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-   writer's field dropped from a [4]Item is counted four times and the report says 4
-   where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11). */
-static SCHEMA_UNUSED void benchtable_table_fixed_match_children( benchtable_table_fixed_compiler_t * c,
-    const benchtable_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
-    const benchtable_table_fixed_layout_view_t * mine, int32_t mi, const benchtable_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+   A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS AND VARIANTS THIS READER
+   RETAINS (§5.1 refuses a removal; deprecation retains the slot and its name).
+   A child no child of mine names makes the lineage entry UNLAWFUL before any
+   entry is laid: it is never counted and read past, never dropped, never
+   remapped to None (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4,
+   §5.9 #30; the reference is gotable's tableFixedChildrenNamed). */
+static SCHEMA_UNUSED int benchtable_table_fixed_children_named( const benchtable_table_fixed_layout_view_t * theirs, int32_t ti,
+    const benchtable_table_fixed_layout_view_t * mine, int32_t mi )
 {
     const benchtable_table_fixed_layout_entry_t te = benchtable_table_fixed_entry_at( theirs, ti );
     const benchtable_table_fixed_layout_entry_t me = benchtable_table_fixed_entry_at( mine, mi );
-    int32_t my_child = mi + 1;
-    /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
-       backend's shape everywhere and not a C99 limitation: j and k are reused
-       by the census below, and a redeclaration inside the second pair of loops
-       would shadow these two and trip -Wshadow. */
-    uint32_t j, k;
-    for ( k = 0; k < me.children && my_child < mine->count; ++k )
-    {
-        const benchtable_table_fixed_layout_entry_t mc = benchtable_table_fixed_entry_at( mine, my_child );
-        int32_t their_child = ti + 1;
-        uint32_t their_off = their_at;
-        for ( j = 0; j < te.children && their_child < theirs->count; ++j )
-        {
-            const benchtable_table_fixed_layout_entry_t tc = benchtable_table_fixed_entry_at( theirs, their_child );
-            if ( tc.id == mc.id )
-            {
-                benchtable_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
-                break;
-            }
-            their_off += tc.size;
-            their_child += benchtable_table_fixed_subtree( theirs, their_child );
-        }
-        my_child += benchtable_table_fixed_subtree( mine, my_child );
-    }
-    /* EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown */
     int32_t tc_at = ti + 1;
+    uint32_t j, k;
     for ( j = 0; j < te.children && tc_at < theirs->count; ++j )
     {
         const benchtable_table_fixed_layout_entry_t tc = benchtable_table_fixed_entry_at( theirs, tc_at );
@@ -2970,15 +2956,60 @@ static SCHEMA_UNUSED void benchtable_table_fixed_match_children( benchtable_tabl
             }
             mc_at += benchtable_table_fixed_subtree( mine, mc_at );
         }
-        if ( !named && census && c->report != NULL ) { c->report->unknown++; }
+        if ( !named ) { return 0; }
         tc_at += benchtable_table_fixed_subtree( theirs, tc_at );
+    }
+    return 1;
+}
+
+/* table_fixed_match_children walks a TABLE's children on both sides.
+
+   A writer field no child of mine names makes the lineage entry UNLAWFUL
+   before any entry is laid: there is no compile census to count (§5.4, §5.9
+   #30; §5.8 row 11 is that census, retired). */
+static SCHEMA_UNUSED void benchtable_table_fixed_match_children( benchtable_table_fixed_compiler_t * c,
+    const benchtable_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
+    const benchtable_table_fixed_layout_view_t * mine, int32_t mi, const benchtable_table_fixed_dst_t * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg )
+{
+    const benchtable_table_fixed_layout_entry_t te = benchtable_table_fixed_entry_at( theirs, ti );
+    const benchtable_table_fixed_layout_entry_t me = benchtable_table_fixed_entry_at( mine, mi );
+    int32_t my_child;
+    /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
+       backend's shape everywhere and not a C99 limitation: a redeclaration
+       inside the inner loop would shadow these two and trip -Wshadow. */
+    uint32_t j, k;
+    /* EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful */
+    if ( !benchtable_table_fixed_children_named( theirs, ti, mine, mi ) )
+    {
+        c->unlawful = 1;
+        return;
+    }
+    my_child = mi + 1;
+    for ( k = 0; k < me.children && my_child < mine->count; ++k )
+    {
+        const benchtable_table_fixed_layout_entry_t mc = benchtable_table_fixed_entry_at( mine, my_child );
+        int32_t their_child = ti + 1;
+        uint32_t their_off = their_at;
+        for ( j = 0; j < te.children && their_child < theirs->count; ++j )
+        {
+            const benchtable_table_fixed_layout_entry_t tc = benchtable_table_fixed_entry_at( theirs, their_child );
+            if ( tc.id == mc.id )
+            {
+                benchtable_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                break;
+            }
+            their_off += tc.size;
+            their_child += benchtable_table_fixed_subtree( theirs, their_child );
+        }
+        my_child += benchtable_table_fixed_subtree( mine, my_child );
     }
 }
 
 static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table_fixed_compiler_t * c,
     const benchtable_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const benchtable_table_fixed_layout_view_t * mine, int32_t mi, const benchtable_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const benchtable_table_fixed_layout_entry_t te = benchtable_table_fixed_entry_at( theirs, ti );
     const benchtable_table_fixed_layout_entry_t me = benchtable_table_fixed_entry_at( mine, mi );
@@ -3012,7 +3043,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
             e.arg = arg;
             e.op = BENCHTABLE_K_TABLE_FIXED_PRESENT;
             benchtable_table_fixed_push( c, e );
-            benchtable_table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
+            benchtable_table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
             break;
         }
         if ( te.kind != me.kind )
@@ -3031,8 +3062,10 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                 benchtable_table_fixed_push( c, e );
                 break;
             }
-            /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
-            if ( c->report != NULL ) { c->report->refused = 1, c->report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; }
+            /* A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
+               REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4):
+               no plan is laid. The writer's ?T into my bare T is KIND_MISMATCH (R2). */
+            c->unlawful = ( te.kind == 35 ) ? (uint8_t) 3 : (uint8_t) 1;
             break;
         }
         switch ( me.kind )
@@ -3049,7 +3082,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                 const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 const uint32_t outer_present = c->present;
                 c->present = their_at + 1u;
-                benchtable_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                benchtable_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
                 c->present = outer_present;
                 benchtable_table_fixed_entry_t e = benchtable_table_fixed_entry_zero();
                 e.src = their_at;
@@ -3065,10 +3098,10 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
             }
             case 13: /* a nested table: match its fields */
             {
-                benchtable_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
+                benchtable_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
                 break;
             }
-            case 14: /* an array: the count, then min( their bound, my bound ) elements */
+            case 14: /* an array: the count, then their bound's elements (never more than mine) */
             {
                 /* A COUNTED LOCAL against an ENDPOINT whose array is too small to hold
                    the four-byte count is a mismatch the head subtraction below
@@ -3087,7 +3120,17 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                 const uint32_t their_base = their_at + head;
                 uint32_t n;
                 uint32_t i;
-                n = their_n < my_n ? their_n : my_n;
+                /* A SHRUNK BOUND IS UNLAWFUL (§5.1 "bound narrowed"): a writer's
+                   [4] or [..4] into my [2] or [..2], and bytes(8) into my
+                   bytes(4), which is an array row. Never min() and drop the
+                   rest, never admit it because the live count fits (§5.4,
+                   §5.9 #30). break (never return) so the depth decrement runs. */
+                if ( their_n > my_n )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
+                n = their_n;
                 if ( d->counted )
                 {
                     /* THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind
@@ -3110,7 +3153,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                 for ( i = 0; i < n; ++i )
                 {
                     benchtable_table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                        mine, mi + 1, dst, at + i * d->stride, guard, arg, census && i == 0 );
+                        mine, mi + 1, dst, at + i * d->stride, guard, arg );
                 }
                 break;
             }
@@ -3121,7 +3164,22 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                 const int32_t tel = ti + 1 + benchtable_table_fixed_subtree( theirs, ti + 1 );
                 const int32_t mel = mi + 1 + benchtable_table_fixed_subtree( mine, mi + 1 );
                 const benchtable_table_fixed_layout_entry_t tee = benchtable_table_fixed_entry_at( theirs, tel );
+                const benchtable_table_fixed_layout_entry_t mee = benchtable_table_fixed_entry_at( mine, mel );
                 uint32_t k;
+                /* A REMOVED KEY IS UNLAWFUL (§5.1: the keyed array follows its
+                   enum, and a removed variant is refused), and so is a writer
+                   holding more slots than I do. Never land each of my slots
+                   from the writer's slot of the same key and drop the rest. */
+                if ( !benchtable_table_fixed_children_named( theirs, ti + 1, mine, mi + 1 ) )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
+                if ( tee.size != 0u && mee.size != 0u && te.size / tee.size > me.size / mee.size )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 for ( k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine->count; ++k )
                 {
                     const uint64_t key_id = benchtable_table_fixed_entry_at( mine, mi + 2 + (int32_t) k ).id;
@@ -3130,7 +3188,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                     {
                         if ( benchtable_table_fixed_entry_at( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                         benchtable_table_fixed_compile_entry( c, theirs, tel, their_at + j * tee.size,
-                            mine, mel, dst, at + k * d->stride, guard, arg, census && k == 0 );
+                            mine, mel, dst, at + k * d->stride, guard, arg );
                         break;
                     }
                 }
@@ -3138,6 +3196,13 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
             }
             case 15: /* a union: the tag, remapped, then each arm matched by id */
             {
+                /* A REMOVED ARM IS UNLAWFUL (§5.1 "arm removed"): never match
+                   the arms I keep and let a tag for the lost one land None. */
+                if ( !benchtable_table_fixed_children_named( theirs, ti, mine, mi ) )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 const uint32_t their_tag = benchtable_table_fixed_tag_bytes( theirs, ti );
                 const uint32_t my_tag = benchtable_table_fixed_tag_bytes( mine, mi );
                 const uint8_t saved_argw = c->argw;
@@ -3200,7 +3265,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                             tag.arm = ta.size; /* the WRITER's arm bytes, for the span past a narrower taken arm */
                             benchtable_table_fixed_push( c, tag );
                             benchtable_table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
-                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                             break;
                         }
                         their_arm += benchtable_table_fixed_subtree( theirs, their_arm );
@@ -3237,6 +3302,15 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
+                /* A REMOVED VARIANT IS UNLAWFUL (§5.1 "variant removed"), on the
+                   grown-width widen path and the same-width remap alike: never
+                   remap by id and let the lost variant land None. Decided before
+                   the pass gate so either pass sees it, as the C++ twin does. */
+                if ( !benchtable_table_fixed_children_named( theirs, ti, mine, mi ) )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 if ( ( guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
                 if ( te.size < me.size )
                 {
@@ -3289,6 +3363,13 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
             }
             case 12: /* text */
             {
+                /* A NARROWED CAPACITY IS UNLAWFUL (§5.1 "capacity narrowed"):
+                   never admit it because the used length fits. */
+                if ( te.size > me.size )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 benchtable_table_fixed_entry_t e = benchtable_table_fixed_entry_zero();
                 e.src = their_at;
@@ -3323,9 +3404,11 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
                     e.op = BENCHTABLE_K_TABLE_FIXED_WIDEN;
                     benchtable_table_fixed_push( c, e );
                 }
-                else if ( c->report != NULL )
+                else
                 {
-                    c->report->refused = 1, c->report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
+                    /* A NARROWED SCALAR IS UNLAWFUL (§5.1): no plan is laid,
+                       as the reference's EMIT default does. */
+                    c->unlawful = 1;
                 }
                 break;
             }
@@ -3360,11 +3443,15 @@ static SCHEMA_UNUSED int32_t benchtable_table_fixed_compile( const benchtable_ta
     c.report = report;
     c.record = benchtable_table_fixed_entry_at( theirs, 0 ).size;
     c.want_guarded = 0;
-    benchtable_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1 );
+    benchtable_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0 );
     plain = c.count;
     c.want_guarded = 1;
-    c.report = NULL; /* the unknown census is the first pass's; counting it twice would lie */
-    benchtable_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1 );
+    c.report = NULL;
+    benchtable_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0 );
+    /* AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is LAYOUT_MALFORMED, -4 the
+       writer's ?T into a bare T, KIND_MISMATCH (R2). Decided before overflow,
+       so a capacity retry never turns an unlawful entry into plan_too_large. */
+    if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_RECORD_TOO_LARGE; }
@@ -17591,8 +17678,6 @@ static SCHEMA_UNUSED int64_t schema_benchtable_table_entity_fixed_load_walk_( be
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const benchtable_table_fixed_entry_t * entries = benchtable_table_entity_fixed_plan;
     int32_t entry_count = benchtable_table_entity_fixed_plan_count;
     int32_t entry_guarded = benchtable_table_entity_fixed_plan_guarded;
@@ -17793,14 +17878,6 @@ static SCHEMA_UNUSED int64_t schema_benchtable_table_entity_fixed_load_walk_( be
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -18066,8 +18143,6 @@ static SCHEMA_UNUSED int64_t schema_benchtable_table_stat_fixed_load_walk_( benc
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const benchtable_table_fixed_entry_t * entries = benchtable_table_stat_fixed_plan;
     int32_t entry_count = benchtable_table_stat_fixed_plan_count;
     int32_t entry_guarded = benchtable_table_stat_fixed_plan_guarded;
@@ -18268,14 +18343,6 @@ static SCHEMA_UNUSED int64_t schema_benchtable_table_stat_fixed_load_walk_( benc
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -20166,8 +20233,6 @@ static SCHEMA_UNUSED int64_t schema_benchtable_table_mixed_fixed_load_walk_( ben
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     int32_t read_widened;
     const benchtable_table_fixed_entry_t * entries = benchtable_table_mixed_fixed_plan;
     int32_t entry_count = benchtable_table_mixed_fixed_plan_count;
@@ -20380,14 +20445,6 @@ static SCHEMA_UNUSED int64_t schema_benchtable_table_mixed_fixed_load_walk_( ben
         }
         at += record_bytes;
     }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
-    }
     return count;
 }
 
@@ -20564,6 +20621,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_entity_body_pack_( struct bench
     benchtable_table_cook_put( at + 28, (uint64_t) value->vel_y, 4, order );
     benchtable_table_cook_put( at + 32, (uint64_t) value->vel_z, 4, order );
     benchtable_table_cook_put( at + 36, (uint64_t) value->health, 4, order );
+    schema_assert( !( (uint64_t) ( value->weapon ) > 15 ) );
     benchtable_table_cook_put( at + 40, (uint64_t) value->weapon, 1, order );
     benchtable_table_cook_put( at + 48, (uint64_t) value->damage, 8, order );
     benchtable_table_cook_put( at + 56, value->moving ? 1 : 0, 1, order );

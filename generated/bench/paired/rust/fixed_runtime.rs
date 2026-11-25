@@ -307,11 +307,6 @@ impl TableFixedReason {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct TableFixedReport {
     pub unknown: u32,
-    /// THE COMPILE CENSUS's kind changes (§5.4): a writer field whose kind
-    /// moved off every ladder on the lineage. It stays on the plan and is
-    /// never landed on a load's report (strict-only: the verdict is the
-    /// contract, docs/plans/strict-only.md).
-    pub(crate) kind_changed: u32,
     pub widened: u32,
     /// OUT OF RANGE SEEN BY THIS RECORD'S RUN OR SCATTER: a count, a length,
     /// an ordinal or a tag past its bound. LOAD refuses the whole batch as
@@ -341,7 +336,6 @@ impl TableFixedReport {
     /// `malformed` does not fire.
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
         self.unknown = 0;
-        self.kind_changed = 0;
         self.widened = 0;
         self.held = 0;
         self.slack = 0;
@@ -1404,7 +1398,17 @@ struct Compiler<'a> {
     // too_large is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
     // WHOLE under layout_record_too_large and never lands a short read.
     too_large: bool,
+    // absent_into_bare is the writer's ?T read into this reader's bare T: an
+    // unlawful entry by the name kind_mismatch (ruling R2, 2026-11-22), as
+    // jstable's plan.absentIntoBare.
     absent_into_bare: bool,
+    // UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9
+    // #30): a writer field this reader does not name, or a pair whose kind
+    // moved off every ladder. The entry is not a lawful widening of this
+    // reader, so no plan is laid and a file under its hash refuses
+    // layout_malformed; it is never counted and read past. 0 is lawful, 1 is
+    // layout_malformed.
+    unlawful: u8,
     // record is the WRITER's declared root size, the bound every entry's
     // source extent is held to.
     record: u32,
@@ -1556,18 +1560,26 @@ pub fn table_fixed_compile(
         overflow: false,
         too_large: false,
         absent_into_bare: false,
+        unlawful: 0,
         // THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY: the root's
         // declared size, taken from the layout this plan is compiled against.
         record: theirs.entry(0).size,
     };
-    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, 0, 0, 0, true, report);
+    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, 0, 0, 0);
     // ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
     // name: the report carries layout_record_too_large and no plan runs.
     if c.too_large {
         return report.refuse(TableFixedReason::LayoutRecordTooLarge);
     }
+    // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4, §5.9 #30): layout_malformed, or
+    // kind_mismatch for the writer's ?T into a bare T (R2). Decided before
+    // overflow, so a full plan never turns an unlawful entry into
+    // plan_too_large.
     if c.absent_into_bare {
         return report.refuse(TableFixedReason::KindMismatch);
+    }
+    if c.unlawful != 0 {
+        return report.refuse(TableFixedReason::LayoutMalformed);
     }
     if c.overflow {
         return None;
@@ -1617,11 +1629,41 @@ pub fn table_fixed_compile(
 
 /// Walks a TABLE's children on both sides, matching by id.
 //
-// The census flag is whether THIS entry is the FIRST time the writer's field is
-// seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-// ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-// writer's field dropped from a [4]Item is counted four times and the report says
-// 4 where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
+// A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
+// removal; a field is deprecated in place, and a "was =" rename keeps its id).
+// A writer field no child of mine names makes the lineage entry UNLAWFUL before
+// any entry is laid: there is no compile census to count (§5.2 MATCH, §5.4,
+// §5.9 #30; §5.8 row 11 is that census, retired). The check runs in every slot
+// — the root, a nested table, every element of an array of tables.
+//
+// A LAWFUL OLDER WRITER NAMES ONLY CHILDREN THIS READER RETAINS: fields, union
+// arms, enum variants and keyed keys alike (§5.1 refuses each removal; a
+// deprecation retains the slot and its name). True when every child of the
+// writer's entry ti has a child of my entry mi with the same id — gotable's
+// tableFixedChildrenNamed.
+fn children_named(theirs: &TableFixedBlock, ti: usize, mine: &TableFixedBlock, mi: usize) -> bool {
+    let te = theirs.entry(ti);
+    let me = mine.entry(mi);
+    let mut tc_at = ti + 1;
+    for _ in 0..te.children {
+        let tid = theirs.entry(tc_at).id;
+        let mut named = false;
+        let mut mc_at = mi + 1;
+        for _ in 0..me.children {
+            if mine.entry(mc_at).id == tid {
+                named = true;
+                break;
+            }
+            mc_at += mine.subtree(mc_at);
+        }
+        if !named {
+            return false;
+        }
+        tc_at += theirs.subtree(tc_at);
+    }
+    true
+}
+
 fn match_children(
     c: &mut Compiler,
     theirs: &TableFixedBlock,
@@ -1634,8 +1676,6 @@ fn match_children(
     goff: usize,
     gcount: usize,
     depth: u32,
-    census: bool,
-    report: &mut TableFixedReport,
 ) {
     if depth > MAX_DEPTH {
         c.overflow = true;
@@ -1643,6 +1683,10 @@ fn match_children(
     }
     let te = theirs.entry(ti);
     let me = mine.entry(mi);
+    if !children_named(theirs, ti, mine, mi) {
+        c.unlawful = 1;
+        return;
+    }
     let mut my_child = mi + 1;
     let mut my_off = my_at;
     for _ in 0..me.children {
@@ -1654,7 +1698,7 @@ fn match_children(
             if tc.id == mc.id {
                 compile_entry(
                     c, theirs, their_child, their_off, mine, my_child, my_off, counted, goff, gcount,
-                    depth + 1, census, report,
+                    depth + 1,
                 );
                 break;
             }
@@ -1663,26 +1707,6 @@ fn match_children(
         }
         my_off = my_off.saturating_add(mc.size);
         my_child += mine.subtree(my_child);
-    }
-    // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown, and skipping it
-    // costs nothing because skipping is not an act: the next entry's src is
-    // already past it.
-    let mut tc_at = ti + 1;
-    for _ in 0..te.children {
-        let tc = theirs.entry(tc_at);
-        let mut named = false;
-        let mut mc_at = mi + 1;
-        for _ in 0..me.children {
-            if mine.entry(mc_at).id == tc.id {
-                named = true;
-                break;
-            }
-            mc_at += mine.subtree(mc_at);
-        }
-        if !named && census {
-            report.unknown += 1;
-        }
-        tc_at += theirs.subtree(tc_at);
     }
 }
 
@@ -1698,8 +1722,6 @@ fn compile_entry(
     goff: usize,
     gcount: usize,
     depth: u32,
-    census: bool,
-    report: &mut TableFixedReport,
 ) {
     if depth > MAX_DEPTH {
         c.overflow = true;
@@ -1719,6 +1741,8 @@ fn compile_entry(
     // which is the unguarded case the bill names, so the readings part only
     // under a union arm — where the guarded one is right.)
     if te.kind == 35 && me.kind != 35 {
+        // The writer's ?T into this reader's bare T: an unlawful entry by the
+        // name kind_mismatch (ruling R2).
         c.absent_into_bare = true;
         return;
     }
@@ -1735,7 +1759,6 @@ fn compile_entry(
         });
         compile_entry(
             c, theirs, ti, their_at, mine, mi + 1, my_at + 1, counted, goff, gcount, depth + 1,
-            census, report,
         );
         return;
     }
@@ -1758,8 +1781,10 @@ fn compile_entry(
             });
             return;
         }
-        // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        report.kind_changed += 1;
+        // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
+        // REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4,
+        // §5.9 #30): no plan is laid, and the load refuses layout_malformed.
+        c.unlawful = 1;
         return;
     }
     match me.kind {
@@ -1777,11 +1802,11 @@ fn compile_entry(
             });
             compile_entry(
                 c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, goff, gcount,
-                depth + 1, census, report,
+                depth + 1,
             );
         }
         13 => match_children(
-            c, theirs, ti, their_at, mine, mi, my_at, counted, goff, gcount, depth + 1, census, report,
+            c, theirs, ti, their_at, mine, mi, my_at, counted, goff, gcount, depth + 1,
         ),
         14 => {
             // an array: the count, then min( their bound, my bound ) elements
@@ -1794,6 +1819,14 @@ fn compile_entry(
             };
             let their_n = te.size.saturating_sub(head).checked_div(tel.size).unwrap_or(0);
             let my_n = me.size.saturating_sub(head).checked_div(mel.size).unwrap_or(0);
+            // A SHRUNK BOUND IS NO WIDENING OF THIS READER (§5.1 "bound
+            // narrowed"), fixed [N], counted [..N] and bytes(N) alike: the
+            // entry is unlawful and lays no plan, whatever count the file
+            // holds — never min(their_n, my_n) elements with the rest dropped.
+            if their_n > my_n {
+                c.unlawful = 1;
+                return;
+            }
             if head != 0 {
                 // THE COUNT'S BOUND IS THE WRITER'S, carried by the plan (bill
                 // §12.5, §5.2's EMIT at kind 14): a count forged past what THAT
@@ -1829,21 +1862,31 @@ fn compile_entry(
                     goff,
                     gcount,
                     depth + 1,
-                    census && i == 0,
-                    report,
                 );
             }
         }
         16 => {
             // an enum-keyed array: every slot, matched by the KEY's id, because
             // a key that slid is a slot that moved and never a slot that means
-            // something else
+            // something else. A KEY THE WRITER HAS AND THIS READER DOES NOT
+            // (a removed variant of the key enum) and a writer with more slots
+            // than this reader are unlawful (§5.1), never a slot dropped.
+            if !children_named(theirs, ti + 1, mine, mi + 1) {
+                c.unlawful = 1;
+                return;
+            }
             let tkey = theirs.entry(ti + 1);
             let mkey = mine.entry(mi + 1);
             let tel = ti + 1 + theirs.subtree(ti + 1);
             let mel = mi + 1 + mine.subtree(mi + 1);
             let tee = theirs.entry(tel);
             let mee = mine.entry(mel);
+            let their_slots = te.size.checked_div(tee.size).unwrap_or(0);
+            let my_slots = me.size.checked_div(mee.size).unwrap_or(0);
+            if their_slots > my_slots {
+                c.unlawful = 1;
+                return;
+            }
             for k in 0..mkey.children as usize {
                 let key_id = mine.entry(mi + 2 + k).id;
                 for j in 0..tkey.children as usize {
@@ -1862,8 +1905,6 @@ fn compile_entry(
                         goff,
                         gcount,
                         depth + 1,
-                        census && k == 0,
-                        report,
                     );
                     break;
                 }
@@ -1873,6 +1914,14 @@ fn compile_entry(
             // a union: MY tag written under THEIR tag's guard, then each arm
             // matched by id. Nothing in this port declares one yet (the Row
             // follow-on), and a stranger's union still lands correctly here.
+            //
+            // AN ARM THE WRITER HAS AND THIS READER DOES NOT is a removed arm
+            // (§5.1): the entry is unlawful and lays no plan, rather than the
+            // arm being dropped and the rest landing.
+            if !children_named(theirs, ti, mine, mi) {
+                c.unlawful = 1;
+                return;
+            }
             let their_tag = theirs.tag_bytes(ti);
             let my_tag = mine.tag_bytes(mi);
             // THE TAG'S "None" GOES DOWN FIRST, at the INHERITED chain (the
@@ -1948,8 +1997,6 @@ fn compile_entry(
                             n_off,
                             n_count,
                             depth + 1,
-                            census,
-                            report,
                         );
                         break;
                     }
@@ -1964,7 +2011,12 @@ fn compile_entry(
             // only the width the ordinal rides at, so there is nothing to remap
             // and the counter this moves is widened (§5.4) and not held.
             // The same-kind widen extends with ZERO — the entry's sign is left
-            // at zero and never inferred from the kind's signedness.
+            // at zero and never inferred from the kind's signedness. A variant
+            // the writer has and this reader does not is unlawful here too.
+            if !children_named(theirs, ti, mine, mi) {
+                c.unlawful = 1;
+                return;
+            }
             c.push(TableFixedEntry {
                 src: their_at,
                 dst: my_at,
@@ -1987,6 +2039,15 @@ fn compile_entry(
             // this reader did not name them, and a wrong value nobody is told
             // about is worse than a refusal. The length word is slot 0, so an
             // ordinal of 0 is None BY CONSTRUCTION and never an index.
+            //
+            // A VARIANT THE WRITER HAS AND THIS READER DOES NOT is a removed
+            // variant (§5.1): unlawful, never remapped to None. The table's
+            // zero entries are then only ever an ordinal past the writer's own
+            // set, which the check pass refuses.
+            if !children_named(theirs, ti, mine, mi) {
+                c.unlawful = 1;
+                return;
+            }
             let n = te.children as usize;
             let Some(aux) = c.reserve(n) else {
                 return; // the pool is spent: the plan does not fit, by name
@@ -2015,7 +2076,14 @@ fn compile_entry(
             });
         }
         12 => {
-            // text: the length, held to MY bound in bytes, then the content
+            // text: the length, held to MY bound in bytes, then the content.
+            // A NARROWED CAPACITY is no widening of this reader (§5.1): the
+            // entry is unlawful whatever length the file holds, never a text
+            // cut down to the shorter span.
+            if te.size > me.size {
+                c.unlawful = 1;
+                return;
+            }
             let bytes = me.size.saturating_sub(4).min(te.size.saturating_sub(4));
             // THE CAP IS THE SPAN'S, AND THE SPAN IS THE SHORTER OF THE TWO
             // (§5.2 TEXT: span := min(me.size, te.size) - 4, cap := span). The
@@ -2066,7 +2134,9 @@ fn compile_entry(
                     ..TableFixedEntry::default()
                 });
             } else {
-                report.kind_changed += 1;
+                // A SAME-KIND SPAN THAT NARROWED is no widening of this reader:
+                // the entry is unlawful, as gotable's (§5.4), and never counted.
+                c.unlawful = 1;
             }
         }
     }

@@ -140,11 +140,13 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   LayoutTooDeep: 12,
   PlanTooLarge: 13,     // a layout whose compiled plan does not fit the caller's storage
   BatchTooLarge: 14,    // more records than the caller's capacity
-  // §5'S TWO, IN THE ORDER §5.3 NAMES THEM (§5.9 #14: the NAMES are the
-  // contract and the integers are each leg pair's own, but the ORDER is the
-  // contract too). Outside the lineage: ship the reader. Below the floor: a
-  // layout this build served and has retired — upgrade the client.
+  // RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3,
+  // decided 2026-11-03): nothing in the lineage proves a hash newer, so no read
+  // answers layout_newer. It keeps its ordinal so no other number shifts; a
+  // step-5 miss is LayoutUnknown, below.
   LayoutNewer: 15,
+  // Below the floor: a layout this build served and has retired — upgrade the
+  // client (§5.3 step 6).
   LayoutUnsupported: 16,
   // THE ONE CONTENT REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11): a text
   // field whose USED units are ill-formed REFUSES BY NAME rather than landing a
@@ -172,6 +174,10 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses the lineage by
   // name: the reader cannot hold an absent value (rulings 2026-11-22, R2).
   KindMismatch: 24,
+  // §5.3 STEP 5'S ANSWER, IN EVERY LEG: a header hash in no lineage entry. It
+  // reports THE FILE'S hash and nothing else. Appended, so no ordinal above
+  // moves (§5.9 #14: the names are the contract, the integers each leg pair's).
+  LayoutUnknown: 25,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -202,6 +208,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.OutOfRange: return "out_of_range";
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
     case TableFixedRefusal.KindMismatch: return "kind_mismatch";
+    case TableFixedRefusal.LayoutUnknown: return "layout_unknown";
     default: return "???";
   }
 }
@@ -218,7 +225,7 @@ export class TableFixedReport {
     this.widened = 0;
     this.repeated = 0;
     // THE FILE'S HASH, AND IT IS SET BY TWO REFUSALS AND NOTHING ELSE:
-    // layout_newer reports it "AND NOTHING ELSE" (§5.3), and
+    // layout_unknown reports it "AND NOTHING ELSE" (§5.3), and
     // layout_unsupported reports it too — the operator's other answer (§5.9
     // #7). LAST ON THE REPORT, and zero on every other path (§5.9 #15).
     //
@@ -273,6 +280,9 @@ export class TableFixedPlan {
     this.overflow = false;
     this.hostile = false;
     this.absentIntoBare = false;
+    // an UNLAWFUL lineage entry (§5.2 MATCH/EMIT, §5.4): a writer field this
+    // reader names nowhere, or a kind that moved off every ladder
+    this.unlawful = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
@@ -287,8 +297,6 @@ export class TableFixedPlan {
     // which half the compile is keeping (§5.2's two passes).
     this.split = 0;
     this.pass = 0;
-    this.unknown = 0;
-    this.mismatch = 0;
     this.why = 0;
     this.stage = new TableFixedReport();
   }
@@ -574,10 +582,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       }
       case TableFixedOpConst: {
         const v = e[b + TableFixedLaneAux];
-        for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
         // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
         // that set refuses out_of_range (§4.6), exactly as the identity plan's
-        // bounds pass refuses the same forged bytes. The source read is bounded
+        // bounds pass refuses the same forged bytes — and, like every refusal of
+        // §4.5 and §4.6, BEFORE ANY DESTINATION BYTE IS WRITTEN, so the check
+        // runs first and the None lands only after it passes (the const stored
+        // its value first until 2026-11-24; test/conformance/js/rows/R16.mjs).
+        // The source read is bounded
         // here rather than at the push: TableFixedPush on this leg takes no
         // record bound at all, so the entry that reads a record byte carries
         // its own.
@@ -591,6 +602,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
           // refuses BY NAME, never a silent oor count.
           if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
+        for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
         break;
       }
       case TableFixedOpDeadAbsent: {
@@ -1120,33 +1132,15 @@ function TableFixedRemapRoom(n) {
   return TableFixedRemapScratch;
 }
 
-// THE ONE DEAD REPORT. The census — unknown and mismatch — is once per
-// field PER ENDPOINT and never per array element or per keyed slot (§5.4, §5.8 row
-// 11, §5.9 #43). The entries still have to be laid down for every element, so
-// the repeats walk the same pairs into a report NOBODY READS. It is module-level
-// because the compile must not allocate per element, and it is never reset
-// because nothing ever looks at it.
-const TableFixedQuietCensus = new TableFixedReport();
-
-// matchChildren walks a TABLE's children on both sides, by id.
-function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
+// A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS, VARIANTS AND KEYS THIS READER
+// RETAINS (§5.1 refuses a removal; a field is deprecated in place, and a "was ="
+// rename keeps the id). childrenNamed is true when every child of their entry
+// ti carries an id some child of my entry mi carries: the table's fields, the
+// union's arms, the enum's variants, the keyed array's key enum. The Go
+// reference's tableFixedChildrenNamed, ported.
+function TableFixedChildrenNamed(theirs, ti, mine, mi) {
   const theirChildren = TableFixedChildren(theirs, ti);
   const myChildren = TableFixedChildren(mine, mi);
-  let myChild = mi + 1;
-  for (let k = 0; k < myChildren; k++) {
-    let theirChild = ti + 1;
-    let theirOff = theirAt;
-    for (let j = 0; j < theirChildren; j++) {
-      if (TableFixedSameId(theirs, theirChild, mine, myChild)) {
-        TableFixedCompileEntry(plan, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, report);
-        break;
-      }
-      theirOff += TableFixedSize(theirs, theirChild);
-      theirChild += TableFixedSubtree(theirs, theirChild);
-    }
-    myChild += TableFixedSubtree(mine, myChild);
-  }
-  // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
   let tcAt = ti + 1;
   for (let j = 0; j < theirChildren; j++) {
     let named = false;
@@ -1155,8 +1149,35 @@ function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt,
       if (TableFixedSameId(mine, mcAt, theirs, tcAt)) { named = true; break; }
       mcAt += TableFixedSubtree(mine, mcAt);
     }
-    if (!named) { report.unknown++; }
+    if (!named) { return false; }
     tcAt += TableFixedSubtree(theirs, tcAt);
+  }
+  return true;
+}
+
+// matchChildren walks a TABLE's children on both sides, by id.
+//
+// A writer field no child of mine names makes the lineage entry UNLAWFUL before
+// any entry is laid (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30):
+// no plan, nothing counted, and a file under its hash refuses layout_malformed.
+// There is no compile census (§5.8 row 11 is that census, retired).
+function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg) {
+  if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }
+  const theirChildren = TableFixedChildren(theirs, ti);
+  const myChildren = TableFixedChildren(mine, mi);
+  let myChild = mi + 1;
+  for (let k = 0; k < myChildren; k++) {
+    let theirChild = ti + 1;
+    let theirOff = theirAt;
+    for (let j = 0; j < theirChildren; j++) {
+      if (TableFixedSameId(theirs, theirChild, mine, myChild)) {
+        TableFixedCompileEntry(plan, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg);
+        break;
+      }
+      theirOff += TableFixedSize(theirs, theirChild);
+      theirChild += TableFixedSubtree(theirs, theirChild);
+    }
+    myChild += TableFixedSubtree(mine, myChild);
   }
 }
 
@@ -1169,7 +1190,7 @@ function TableFixedKeeping(plan, guard) {
   return plan.pass === 0 ? guard === TableFixedNoGuard : guard !== TableFixedNoGuard;
 }
 
-function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
+function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg) {
   const theirKind = TableFixedKind(theirs, ti);
   const myKind = TableFixedKind(mine, mi);
   const theirSize = TableFixedSize(theirs, ti);
@@ -1188,7 +1209,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   }
   if (myKind === 35 && theirKind !== 35) {
     TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, 1, 1, guard, arg, 0);
-    TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi + 1, dst, myAt, guard, arg, report);
+    TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi + 1, dst, myAt, guard, arg);
     return;
   }
   if (theirKind !== myKind) {
@@ -1198,8 +1219,11 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         (mySize & 0xff) | (TableFixedSignedKind(theirKind) ? 0x100 : 0));
       return;
     }
-    // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-    report.mismatch++;
+    // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, never
+    // reinterpreted and never counted and read past (§5.2 EMIT, §5.4, §5.9
+    // #30): no plan is laid and the load refuses layout_malformed. The
+    // writer's ?T into my bare T is answered above as kind_mismatch (R2).
+    plan.unlawful = true;
     return;
   }
   switch (myKind) {
@@ -1217,17 +1241,17 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       plan.chainLen++;
       plan.chainAt = -1;
       plan.argw = 1;
-      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, theirAt, -1, report);
+      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, theirAt, -1);
       plan.chainLen--;
       plan.chainAt = savedAt;
       plan.argw = savedArgw;
       break;
     }
     case 13: { // a nested table: match its fields
-      TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, report);
+      TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, at, guard, arg);
       break;
     }
-    case 14: { // an array: the count, then min( their bound, my bound ) elements
+    case 14: { // an array: the count, then their bound of elements (a narrowed bound refuses)
       const theirElem = TableFixedSize(theirs, ti + 1);
       const myElem = TableFixedSize(mine, mi + 1);
       const head = dst[row + TableFixedDstCounted] ? 4 : 0;
@@ -1239,6 +1263,16 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // here would underflow to a negative bound and let the over-reach through.
       const theirN = theirElem ? globalThis.Math.floor(((theirSize - head) >>> 0) / theirElem) : 0;
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
+      // A NARROWED BOUND IS AN UNLAWFUL ENTRY (§5.1 "bound narrowed", §5.4,
+      // §5.9 #30): a fixed [N], a counted [..N] and a bytes(N) alike. Never
+      // min(their_n, my_n) and drop the rest, and never a check of only the
+      // live count: no plan is laid and the load refuses layout_malformed.
+      // A required count word wider than the writer's whole field reaches past
+      // its record: that is layout_record_too_large, decided BEFORE the bound
+      // comparison, or the wrapped their_n above would read as a narrowing and
+      // refuse under the wrong name (the Go reference's te.Size < head).
+      if (theirSize < head) { plan.hostile = true; return; }
+      if (theirN > myN) { plan.unlawful = true; return; }
       if (dst[row + TableFixedDstCounted]) {
         // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
         // bill §12.5): a count forged past what THAT endpoint could have written
@@ -1253,38 +1287,45 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirBase = theirAt + head;
       const n = theirN < myN ? theirN : myN;
       for (let i = 0; i < n; i++) {
-        // THE FIRST ELEMENT CARRIES THE CENSUS AND THE REST ARE QUIET: a
-        // four-element array of a table with one unknown field is ONE unknown,
-        // not four (§5.4, §5.8 row 11).
+        // AN UNLAWFUL ELEMENT IS UNLAWFUL IN EVERY SLOT (§5.4): the first
+        // element marks the entry and the plan is never laid.
         TableFixedCompileEntry(plan, theirs, ti + 1, theirBase + i * theirElem,
-          mine, mi + 1, dst, at + i * dst[row + TableFixedDstStride], guard, arg,
-          i === 0 ? report : TableFixedQuietCensus);
+          mine, mi + 1, dst, at + i * dst[row + TableFixedDstStride], guard, arg);
+        if (plan.unlawful) { return; }
       }
       break;
     }
     case 16: { // an enum-keyed array: every slot, matched by the KEY's id
+      // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1 "variant removed": the keyed
+      // array follows its enum; §5.4, §5.9 #30), and so is a writer with more
+      // slots than this reader holds. Never a reader slot landed from the
+      // writer slot of the same key with the rest dropped: no plan is laid.
+      if (!TableFixedChildrenNamed(theirs, ti + 1, mine, mi + 1)) { plan.unlawful = true; return; }
       const theirKeyChildren = TableFixedChildren(theirs, ti + 1);
       const myKeyChildren = TableFixedChildren(mine, mi + 1);
       const theirElemAt = ti + 1 + TableFixedSubtree(theirs, ti + 1);
       const myElemAt = mi + 1 + TableFixedSubtree(mine, mi + 1);
       const theirElemSize = TableFixedSize(theirs, theirElemAt);
-      // THE FIRST MATCHED SLOT CARRIES THE CENSUS, and every slot after it is
-      // quiet: a keyed array's slots are one field's storage repeated, so an
-      // unknown inside the element is ONE unknown for the endpoint (§5.4).
-      let keyedCounted = false;
+      const myElemSize = TableFixedSize(mine, myElemAt);
+      const theirSlots = theirElemSize ? globalThis.Math.floor(theirSize / theirElemSize) : 0;
+      const mySlots = myElemSize ? globalThis.Math.floor(mySize / myElemSize) : 0;
+      if (theirSlots > mySlots) { plan.unlawful = true; return; }
       for (let k = 0; k < myKeyChildren; k++) {
         for (let j = 0; j < theirKeyChildren; j++) {
           if (!TableFixedSameId(theirs, ti + 2 + j, mine, mi + 2 + k)) { continue; }
           TableFixedCompileEntry(plan, theirs, theirElemAt, theirAt + j * theirElemSize,
-            mine, myElemAt, dst, at + k * dst[row + TableFixedDstStride], guard, arg,
-            keyedCounted ? TableFixedQuietCensus : report);
-          keyedCounted = true;
+            mine, myElemAt, dst, at + k * dst[row + TableFixedDstStride], guard, arg);
           break;
         }
+        if (plan.unlawful) { return; }
       }
       break;
     }
     case 15: { // a union: the tag, remapped, then each arm matched by id
+      // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1 "arm removed", §5.4, §5.9
+      // #30): never arms matched by id with the one this reader lacks dropped.
+      // No plan is laid and the load refuses layout_malformed.
+      if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }
       const theirTag = TableFixedTagBytes(theirs, ti);
       const myTag = TableFixedTagBytes(mine, mi);
       // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED, and it is pushed HERE,
@@ -1355,7 +1396,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
             // MY tag value, written under THEIR tag's guard
             TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, myTag, k + 1, theirAt, j + 1, 0);
             TableFixedCompileEntry(plan, theirs, theirArm, theirAt + theirTag,
-              mine, myArm, dst, at, theirAt, j + 1, report);
+              mine, myArm, dst, at, theirAt, j + 1);
             plan.chainLen--;
             plan.chainAt = savedAt;
             break;
@@ -1371,6 +1412,13 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened (§5.2
       // EMIT kind 30, §5.4, bill §12.7). Only a SAME-WIDTH ordinal takes the
       // remap table.
+      //
+      // A REMOVED VARIANT IS AN UNLAWFUL ENTRY on both paths, the grown-width
+      // widen and the same-width remap (§5.1 "variant removed", §5.4, §5.9
+      // #30): never an ordinal remapped by id with the variant this reader
+      // lacks landed as None. Decided before the pool is spent and on both
+      // passes, so the guarded pass cannot miss it.
+      if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }
       if (theirSize < mySize) {
         TableFixedPush(plan, TableFixedOpWiden, theirAt, at, theirSize, 0, guard, arg, mySize & 0xff);
         break;
@@ -1399,6 +1447,11 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       // flavour, so the entry either never ran under its own arm or ran under
       // somebody else's and smeared its bytes across a sibling's storage. The
       // two facts are independent, so they get independent lanes.
+      //
+      // A NARROWED CAPACITY IS AN UNLAWFUL ENTRY (§5.1 "capacity narrowed",
+      // §5.4, §5.9 #30): never min(my capacity, theirs) and a check of only the
+      // used length. No plan is laid and the load refuses layout_malformed.
+      if (theirSize > mySize) { plan.unlawful = true; return; }
       const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
       TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);
       // THE BYTES PAST THE USED LENGTH, OUT TO THE WRITER'S CAPACITY, ARE DEAD (§4.5).
@@ -1413,7 +1466,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       } else if (theirSize < mySize && mySize <= 8) {
         TableFixedPush(plan, TableFixedOpWiden, theirAt, at, theirSize, 0, guard, arg, mySize & 0xff);
       } else {
-        report.mismatch++;
+        // A NARROWED SPAN OF THE SAME KIND IS OFF THE LADDER TOO (§5.1, §5.4).
+        plan.unlawful = true;
       }
       break;
     }
@@ -1455,8 +1509,8 @@ function TableFixedCoalesce(plan, from) {
 // A fixed table reads BACKWARD and never forward. A file is matched on the eight
 // bytes of its header's hash against the lineage the BUILD laid down, and the
 // layout it carries is held to a BYTE COMPARISON against the bytes the lock
-// recorded — never walked. A hash the lineage does not hold is layout_newer
-// (ship the reader); a hash it holds below the floor is layout_unsupported
+// recorded — never walked. A hash the lineage does not hold is layout_unknown
+// (the file's hash and nothing else); a hash it holds below the floor is layout_unsupported
 // (upgrade the client). Those are the operator's two distinct answers, and
 // NOTHING PARSES A STRANGER'S LAYOUT ON ANY PATH.
 
@@ -1469,6 +1523,12 @@ function TableFixedCoalesce(plan, from) {
 // divergence from that row's spelling: JavaScript has no sixty-four-bit integer
 // without a BigInt, and the same hash is compared once per RECORD in the read
 // loop, where an allocation per record is the cost §3.4 already refused.
+//
+// AND NOTHING ELSE RIDES ON IT (§5.9 #19, #34): the struct's members are the
+// contract, so the lock bytes' DataView the per-read layout compare moves its
+// 32-bit lanes through is NOT a fifth member here. Each generated module keeps
+// those views in its own <Name>FixedKnownViews array, made once at module load
+// beside <Name>FixedKnown and indexed by the same pick.
 export class TableFixedKnownLayout {
   constructor(hashLo, hashHi, layout, layoutBytes, recordBytes) {
     this.hashLo = hashLo | 0;
@@ -1476,9 +1536,6 @@ export class TableFixedKnownLayout {
     this.layout = layout;
     this.layoutBytes = layoutBytes | 0;
     this.recordBytes = recordBytes | 0;
-    // the lock's bytes as a view, made ONCE at module load, so the per-read
-    // layout compare moves in 32-bit lanes and allocates nothing
-    this.layoutView = new globalThis.DataView(layout.buffer, layout.byteOffset, layout.length);
   }
 }
 
@@ -1546,8 +1603,7 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
     let lane = null;
     for (let room = 256; room <= (1 << 18); room *= 4) {
       const plan = new TableFixedPlan(room, imageBytes, room * 8);
-      const census = new TableFixedReport();
-      const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
+      const made = TableFixedCompile(theirs, myLayout, myDst, plan, null);
       // AN ENTRY REACHING PAST THE WRITER'S DECLARED RECORD IS layout_record_too_large,
       // never a retry: more room cannot mend arithmetic over a stranger's sizes
       // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
@@ -1561,13 +1617,15 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
         lane.why = TableFixedRefusal.KindMismatch;
         break;
       }
+      // AN UNLAWFUL ENTRY IS layout_malformed BY NAME, never a retry and never a
+      // plan that counts and reads past (§5.2 MATCH/EMIT, §5.4, §5.9 #30).
+      if (made === -4) {
+        lane = new TableFixedPlan(1, imageBytes, 1);
+        lane.why = TableFixedRefusal.LayoutMalformed;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
-      // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
-      // the load carries it onto the report ONCE, AFTER the record loop, on a
-      // read that RETURNS (§5.4, §5.9 #6).
-      plan.unknown = census.unknown;
-      plan.mismatch = census.mismatch;
       plan.ready = true;
       lane = plan;
       break;
@@ -1591,24 +1649,35 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.overflow = false;
   plan.hostile = false;
   plan.absentIntoBare = false;
+  plan.unlawful = false;
   plan.argw = 1;
   // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
   plan.record = TableFixedSize(theirs, 0);
-  // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
-  // (§5.2 PLAN): the census is once per endpoint, so a second walk of the same pairs
-  // must not count them twice.
+  // PASS 1, UNGUARDED. PASS 2, GUARDED (§5.2 PLAN). Neither counts anything:
+  // a lawful entry has nothing to count and an unlawful one lays no plan.
   plan.pass = 0;
-  TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, report);
+  TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0);
   TableFixedCoalesce(plan, 0);
   plan.split = plan.count;
   plan.pass = 1;
-  const quiet = new TableFixedReport();
-  TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
+  TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0);
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
-  if (plan.absentIntoBare) { return -3; }
+  // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4, §5.9 #30): -3 is the writer's ?T
+  // into a bare T, kind_mismatch (R2); -4 is every other unlawful entry,
+  // layout_malformed. Decided before overflow, so a capacity retry never turns
+  // an unlawful entry into plan_too_large. The report is named and no counter
+  // moves.
+  if (plan.absentIntoBare || plan.unlawful) {
+    plan.count = 0;
+    plan.split = 0;
+    if (report !== null && report !== undefined) {
+      report.refused = plan.absentIntoBare ? TableFixedRefusal.KindMismatch : TableFixedRefusal.LayoutMalformed;
+    }
+    return plan.absentIntoBare ? -3 : -4;
+  }
   if (plan.overflow) { return -1; }
   return plan.count;
 }

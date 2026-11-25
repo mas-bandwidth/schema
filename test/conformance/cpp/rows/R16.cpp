@@ -102,9 +102,15 @@ static int64_t find_once( const uint8_t * data, int64_t len, const uint8_t * nee
     return found;
 }
 
-// ---- unknown: once per PEER at COMPILE, never per record --------------------
+// ---- unknown: an UNLAWFUL entry is refused, never censused -------------------
+//
+// VNEW_unknown_census removed Item.drop, which §5.1 refuses, so the handed-in
+// OLD entry is UNLAWFUL: COMPILE lays no plan and the load refuses
+// layout_malformed with unknown at zero, whatever the record count
+// (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30). Every row handed
+// in is back at its declared defaults after the refusal (SPEC-TABLES §6.5).
 
-static void unknown_census_once_per_peer( void )
+static void unknown_census_unlawful_refused( void )
 {
     static uint8_t buf[1 << 16];
     // THREE records, each FOUR Items, each carrying the dropped `drop`: the
@@ -123,27 +129,31 @@ static void unknown_census_once_per_peer( void )
     check( len > 0, "unknown_census: the OLD writer wrote three records" );
 
     vnew_unknown_census::Census back[3];
+    for ( int rec = 0; rec < 3; ++rec )
+    {
+        back[rec].lead = 99; back[rec].trail = 88;
+        for ( int k = 0; k < 4; ++k ) { back[rec].items[k].a = 5 + k; }
+    }
     vnew_unknown_census::TableReport r{};
     static vnew_unknown_census::TableFixedEntry plan[4096];
     int64_t n = vnew_unknown_census::CensusFixedLoad( back, 3, buf, len, plan, 4096, NULL, &r );
 
-    check( n == 3, "unknown_census: the NEW reader returned all three records" );
-    check( r.unknown == 1,
-           "unknown is once per PEER at COMPILE (== 1, never 3 per record, never 12 per element)" );
-    check( r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
-           "unknown_census: no other counter moved on the counted peer" );
-    check( !r.refused && !r.malformed, "unknown_census: a counted read is not a refusal" );
+    check( n < 0, "unknown_census: the unlawful entry is refused, nothing returned" );
+    check( r.refused && r.reason == vnew_unknown_census::TableMessageReason::layout_malformed,
+           "unknown_census: refused layout_malformed (§5.4)" );
+    check( r.unknown == 0 && r.widened == 0,
+           "unknown_census: no census and no counter on an unlawful entry (§5.9 #30)" );
 
-    bool landed = true;
-    for ( int rec = 0; rec < 3 && landed; ++rec )
+    bool reset = true;
+    for ( int rec = 0; rec < 3 && reset; ++rec )
     {
-        if ( back[rec].lead != 1 || back[rec].trail != 2 ) { landed = false; break; }
+        if ( back[rec].lead != 1 || back[rec].trail != 2 ) { reset = false; break; }
         for ( int k = 0; k < 4; ++k )
         {
-            if ( back[rec].items[k].a != 10 * rec + k ) { landed = false; break; }
+            if ( back[rec].items[k].a != 0 ) { reset = false; break; }
         }
     }
-    check( landed, "unknown_census: every named field landed exactly" );
+    check( reset, "unknown_census: every row handed in is back at its declared defaults (SPEC-TABLES §6.5)" );
 }
 
 // ---- widened: once per entry per record, and never folded across a widen ----
@@ -433,7 +443,7 @@ static void clean_append_moves_nothing( void )
 
 int main( void )
 {
-    unknown_census_once_per_peer();
+    unknown_census_unlawful_refused();
     widened_scalar_per_record();
     widened_element_run_is_min();
     widened_enum_ordinal_width();

@@ -25,6 +25,10 @@ func recordedPartOverCap(seconds float64) bool {
 // the card corpus and the three negative controls together and measured 132 s
 // wall (run 42599413205, job 129101577381). The three parts each record a
 // time, and a part recorded past the cap fails here.
+//
+// The rows were ci-fast.yml's dispatch-only leg gates; they run every night
+// in leg-gates-nightly.yml now (2026-11-24), and keeping each part inside the
+// cap keeps it ready to return per pull request (docs/CI-TIERS.md, held).
 func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 	if !recordedPartOverCap(132) {
 		t.Fatal("PLANTED: a recorded 132 s per-commit part must exceed the cap")
@@ -33,7 +37,7 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 		t.Fatal("PLANTED: a recorded 104 s part fits the cap")
 	}
 
-	body, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci-fast.yml"))
+	body, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "leg-gates-nightly.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,14 +59,14 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 	}
 	for _, part := range []string{"test", "conformance", "negative"} {
 		if _, ok := got[part]; !ok {
-			t.Errorf("ci-fast.yml records no row-seconds for the squirrel %s part", part)
+			t.Errorf("leg-gates-nightly.yml records no row-seconds for the squirrel %s part", part)
 		}
 	}
 
 	const marker = "squirrel) make dist-squirrel"
 	i := strings.Index(text, marker)
 	if i < 0 {
-		t.Fatal("ci-fast.yml has no squirrel fixed-form arm")
+		t.Fatal("leg-gates-nightly.yml has no squirrel fixed-form arm")
 	}
 	arm := text[i:]
 	if end := strings.Index(arm, ";;"); end >= 0 {
@@ -79,13 +83,13 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 			inArm++
 		}
 		if !strings.Contains(text, target) {
-			t.Errorf("ci-fast.yml no longer runs %s", target)
+			t.Errorf("leg-gates-nightly.yml no longer runs %s", target)
 		}
 	}
 	if inArm == len(negatives) {
 		t.Error("the leg-gate squirrel arm still runs all three card negative controls in one row")
 	}
 	if !strings.Contains(text, "leg-gate-squirrel:") {
-		t.Error("ci-fast.yml has no leg-gate-squirrel job for the split rows")
+		t.Error("leg-gates-nightly.yml has no leg-gate-squirrel job for the split rows")
 	}
 }

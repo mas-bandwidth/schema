@@ -139,7 +139,7 @@ flags:
   --driver <cmd>      the leg to fuzz (wire-fuzz), or the reference driver
                       (cook-differential)
   --seed <S> --n <N>  the random pass (wire-fuzz only)
-  --shard <I> --shards <K>  select zero-based shard I of K (wire-fuzz only)
+  --shard <I> --shards <K>  select zero-based shard I of K (wire-fuzz: of the mutants; run: of the surfaces)
   --replay <file> --unit <key> --root <table> [--message]
                       run one saved mutant alone (wire-fuzz only)
 `)
@@ -165,8 +165,8 @@ func main() {
 	seed := fs.Uint64("seed", 24845619678, "the random pass's seed (wire-fuzz only)")
 	n := fs.Int("n", 100000, "the random pass's mutant count (wire-fuzz only)")
 	maxMutants := fs.Int("max-mutants", 0, "cap total mutants while covering every seed, pinned vector, stateful valid->refused->valid reuse triad per root, and an even stride over enumerated/random passes (wire-fuzz only)")
-	shard := fs.Int("shard", 0, "zero-based wire-fuzz shard index")
-	shards := fs.Int("shards", 1, "number of wire-fuzz shards")
+	shard := fs.Int("shard", 0, "zero-based shard index (wire-fuzz: of the mutants; run: of the surfaces)")
+	shards := fs.Int("shards", 1, "number of shards (wire-fuzz, run)")
 	replay := fs.String("replay", "", "one mutant file to run alone (wire-fuzz only)")
 	unit := fs.String("unit", "", "the replayed mutant's unit key (wire-fuzz only)")
 	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
@@ -325,6 +325,16 @@ func main() {
 		runSurfaces, err := parseSurfaces(*onlySurfaces)
 		if err != nil {
 			fatalf("%v", err)
+		}
+		if *shards != 1 || *shard != 0 {
+			// a corpus shard (input-family rows of ci-fast.yml): the
+			// surfaces dealt round-robin, every one to exactly one shard
+			if *onlySurfaces != "" {
+				fatalf("run: --surfaces and --shard/--shards cannot be combined")
+			}
+			if runSurfaces, err = shardSurfaces(*shard, *shards); err != nil {
+				fatalf("run: %v", err)
+			}
 		}
 		opts.only = runSurfaces
 		opts.strictRows = true

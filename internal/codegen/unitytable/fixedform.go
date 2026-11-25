@@ -437,12 +437,22 @@ func guardsEqual(a, b []fixedGuard) bool {
 	return slices.Equal(a, b)
 }
 
-func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []fixedGuard, []fixedFill, []uint16, bool, int, string) {
+// fixedAllNamed is true when every writer child's id is one of mine: a lawful
+// older writer names only arms and keys this reader retains (§5.1, §5.2 MATCH).
+func fixedAllNamed(theirs []*fixedLayoutNode, mine []uint64) bool {
+	for _, c := range theirs {
+		if !slices.Contains(mine, c.id) {
+			return false
+		}
+	}
+	return true
+}
+
+func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []fixedGuard, []fixedFill, []uint16, bool, string) {
 	var ops []fixedOp
 	var rawFills []rawFill
 	var remapPool []uint16
 	needPrefill := false
-	unknown := 0
 	why := ""
 
 	emit := func(code int, src, dst, size, width int64, lo, hi uint64, guards []fixedGuard) {
@@ -458,8 +468,8 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 		})
 	}
 
-	var walk func(w *fixedLayoutNode, r *fixedSpec, src, dst int64, guards []fixedGuard, localDefaults, census bool, depth int)
-	walk = func(w *fixedLayoutNode, r *fixedSpec, src, dst int64, guards []fixedGuard, localDefaults, census bool, depth int) {
+	var walk func(w *fixedLayoutNode, r *fixedSpec, src, dst int64, guards []fixedGuard, localDefaults bool, depth int)
+	walk = func(w *fixedLayoutNode, r *fixedSpec, src, dst int64, guards []fixedGuard, localDefaults bool, depth int) {
 		if why != "" {
 			return
 		}
@@ -469,7 +479,7 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 		}
 		if r.kind == 35 && w.kind != 35 {
 			emit(opConst, 0, dst, 1, 0, 1, 0, guards)
-			walk(w, r.children[0], src, dst+1, guards, true, census, depth+1)
+			walk(w, r.children[0], src, dst+1, guards, true, depth+1)
 			return
 		}
 		if r.kind != w.kind {
@@ -483,7 +493,14 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				emit(code, src, dst, w.size, r.size, 0, 0, guards)
 				return
 			}
-			why = "TableReport.LayoutMalformed"
+			// A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY (§5.2 EMIT,
+			// §5.4): no plan. The writer's ?T into this reader's bare T is
+			// kind_mismatch (ruling R2, 2026-11-22).
+			if w.kind == 35 {
+				why = "TableReport.KindMismatch"
+			} else {
+				why = "TableReport.LayoutMalformed"
+			}
 			return
 		}
 		switch r.shape {
@@ -502,12 +519,26 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				theirs[c.id] = hit{c, at}
 				at += c.size
 			}
+			// A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1
+			// refuses a removal; a field is deprecated in place). A writer field
+			// no reader field names makes the lineage entry UNLAWFUL before any
+			// op is laid: there is no compile census to count (§5.2 MATCH, §5.4,
+			// §5.9 #30). Every table is matched here, so the rule holds at the
+			// root, in a nested table and in every element of an array of tables.
 			mine := map[uint64]bool{}
-			at = dst
 			for _, c := range r.children {
 				mine[c.id] = true
+			}
+			for _, c := range w.children {
+				if !mine[c.id] {
+					why = "TableReport.LayoutMalformed"
+					return
+				}
+			}
+			at = dst
+			for _, c := range r.children {
 				if h, ok := theirs[c.id]; ok {
-					walk(h.node, c, h.at, at, guards, localDefaults, census, depth+1)
+					walk(h.node, c, h.at, at, guards, localDefaults, depth+1)
 				} else if localDefaults {
 					rawFills = append(rawFills, rawFill{
 						dst:    at,
@@ -519,13 +550,6 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				}
 				at += c.size
 			}
-			if census {
-				for _, c := range w.children {
-					if !mine[c.id] {
-						unknown++
-					}
-				}
-			}
 		case "optional":
 			if len(w.children) != 1 {
 				why = "TableReport.LayoutMalformed"
@@ -533,7 +557,7 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 			}
 			emit(opCopy, src, dst, 1, 1, 0, 0, guards)
 			gs := append(append([]fixedGuard(nil), guards...), fixedGuard{at: src, width: 1, value: 1, mode: fixedGuardEq})
-			walk(w.children[0], r.children[0], src+1, dst+1, gs, true, census, depth+1)
+			walk(w.children[0], r.children[0], src+1, dst+1, gs, true, depth+1)
 		case "array":
 			elem := r.children[0]
 			if elem.size <= 0 || len(w.children) != 1 {
@@ -562,7 +586,7 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				if head != 0 {
 					gs = append(append([]fixedGuard(nil), guards...), fixedGuard{at: src, width: 4, value: uint64(i), mode: fixedGuardGt})
 				}
-				walk(we, elem, src+head+i*we.size, dst+head+i*elem.size, gs, localDefaults || head != 0, census && i == 0, depth+1)
+				walk(we, elem, src+head+i*we.size, dst+head+i*elem.size, gs, localDefaults || head != 0, depth+1)
 			}
 			if head == 0 && n < r.bound {
 				if localDefaults {
@@ -598,12 +622,17 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				}
 				theirIdx[tk.id] = j
 			}
-			firstKey := true
+			// A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1, §5.4): every writer key
+			// must be one this reader names, so the writer's slot count never
+			// passes this reader's either.
+			if !fixedAllNamed(tkeys, r.keys) || len(tkeys) > len(r.keys) {
+				why = "TableReport.LayoutMalformed"
+				return
+			}
 			var elemImg []byte
 			for k, keyID := range r.keys {
 				if j, ok := theirIdx[keyID]; ok {
-					walk(we, elem, src+int64(j)*we.size, dst+int64(k)*elem.size, guards, localDefaults, census && firstKey, depth+1)
-					firstKey = false
+					walk(we, elem, src+int64(j)*we.size, dst+int64(k)*elem.size, guards, localDefaults, depth+1)
 				} else if localDefaults {
 					if elemImg == nil {
 						elemImg = seedSpecBytes(elem)
@@ -645,6 +674,17 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				why = "TableReport.LayoutMalformed"
 				return
 			}
+			// A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1, §5.4): every writer arm
+			// must be one this reader names, or a file that takes it would land
+			// None over a value the writer sent.
+			armIDs := make([]uint64, len(r.children))
+			for k, arm := range r.children {
+				armIDs[k] = arm.id
+			}
+			if !fixedAllNamed(w.children, armIDs) {
+				why = "TableReport.LayoutMalformed"
+				return
+			}
 			emit(opConst, 0, dst, r.tagBytes, 0, 0, 0, guards)
 			for k, arm := range r.children {
 				j, ok := theirArm[arm.id]
@@ -653,7 +693,7 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				}
 				gs := append(append([]fixedGuard(nil), guards...), fixedGuard{at: src, width: wtag, value: uint64(j + 1), mode: fixedGuardEq})
 				emit(opConst, 0, dst, r.tagBytes, 0, uint64(k+1), 0, gs)
-				walk(w.children[j], arm, src+wtag, dst+r.tagBytes, gs, true, census, depth+1)
+				walk(w.children[j], arm, src+wtag, dst+r.tagBytes, gs, true, depth+1)
 			}
 		case "enum":
 			if len(w.children) > 65535 {
@@ -673,7 +713,14 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 					return
 				}
 				seen[c.id] = true
-				mapped := readerIdx[c.id]
+				mapped, named := readerIdx[c.id]
+				if !named {
+					// A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1, §5.4), on the
+					// grown-width widen path and the same-width remap path alike:
+					// never remapped to None.
+					why = "TableReport.LayoutMalformed"
+					return
+				}
 				table[j] = mapped
 				if mapped != uint16(j+1) {
 					identityMap = false
@@ -706,9 +753,9 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 		}
 	}
 
-	walk(writer, reader, 0, 0, nil, false, true, 0)
+	walk(writer, reader, 0, 0, nil, false, 0)
 	if why != "" {
-		return nil, nil, nil, nil, false, 0, why
+		return nil, nil, nil, nil, false, why
 	}
 
 	var ordered []fixedOp
@@ -732,7 +779,7 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 		coalesced = append(coalesced, o)
 	}
 	if len(coalesced)+len(rawFills) > fixedPlanMaxCap {
-		return nil, nil, nil, nil, false, 0, "TableReport.PlanTooLarge"
+		return nil, nil, nil, nil, false, "TableReport.PlanTooLarge"
 	}
 
 	var guardPool []fixedGuard
@@ -753,7 +800,7 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 		off, gl := internGuards(rf.guards)
 		fills[i] = fixedFill{dst: rf.dst, guardOff: off, guardLen: gl, image: rf.image}
 	}
-	return coalesced, guardPool, fills, remapPool, needPrefill, unknown, ""
+	return coalesced, guardPool, fills, remapPool, needPrefill, ""
 }
 
 func big128Halves(v *big.Int) (lo, hi uint64) {
@@ -921,7 +968,6 @@ type fixedLane struct {
 	identity    bool
 	prefill     bool
 	widens      int
-	unknown     int
 	plan        int
 	hasGuards   bool
 	ops         []fixedOp
@@ -1056,7 +1102,7 @@ func lineageLane(st *ir.Struct, r *fixedRoot, e FixedLineageEntry, ownFacts bool
 		lane.plan = int(binary.LittleEndian.Uint32(e.Layout[0:4]))
 		return lane, nil
 	}
-	ops, guards, fills, remap, needPrefill, unknown, why := compileFixedPlan(node, r.spec)
+	ops, guards, fills, remap, needPrefill, why := compileFixedPlan(node, r.spec)
 	if why != "" {
 		lane.why = why
 		return lane, nil
@@ -1090,7 +1136,6 @@ func lineageLane(st *ir.Struct, r *fixedRoot, e FixedLineageEntry, ownFacts bool
 	lane.checks = checks
 	lane.checkGuards = checkGuards
 	lane.prefill = needPrefill
-	lane.unknown = unknown
 	lane.hasGuards = len(guards) > 0 || len(fills) > 0
 	for _, o := range ops {
 		if o.code == opWidenS || o.code == opWidenU || o.code == opWidenF || (o.code == opOrdinal && o.size < o.width) {
@@ -1220,7 +1265,7 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 			note = "an older writer's"
 		}
 		fmt.Fprintf(&l, "// 0x%016x — %s\n", lane.hash, note)
-		simple := !lane.hasGuards && lane.unknown == 0 && len(lane.guards) == 0 && len(lane.checkGuards) == 0 && len(lane.fills) == 0 && len(lane.remap) == 0
+		simple := !lane.hasGuards && len(lane.guards) == 0 && len(lane.checkGuards) == 0 && len(lane.fills) == 0 && len(lane.remap) == 0
 		if simple {
 			fmt.Fprintf(&l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d,\n",
 				lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.plan)
@@ -1232,8 +1277,8 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 			opArray(&checks, lane.checks)
 			l.WriteString(indent(checks.String() + "),"))
 		} else {
-			fmt.Fprintf(&l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d, %d, %t,\n",
-				lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.unknown, lane.plan, lane.hasGuards)
+			fmt.Fprintf(&l, "new TableWire.FixedLane(0x%016xUL, %d, %s, %t, %t, %d, %d, %t,\n",
+				lane.hash, lane.record, why, lane.identity, lane.prefill, lane.widens, lane.plan, lane.hasGuards)
 			l.WriteString(indent(layout + ","))
 			var ops strings.Builder
 			opArray(&ops, lane.ops)
@@ -1339,7 +1384,7 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 		}
 		load.WriteString("    dynWidened += TableWire.FixedApply(lane, at.Slice(k * lane.RecordBytes + 8, lane.RecordBytes - 8), image);\n")
 		fmt.Fprintf(&load, "    %sFixedDecode(image, ref values[k]);\n}\n", name)
-		load.WriteString("report.Unknown = lane.Unknown;\nif (!lane.HasGuards)\n{\n    report.Widened = lane.Widens * n;\n}\nelse\n{\n    report.Widened = dynWidened;\n}\nreturn n;\n")
+		load.WriteString("if (!lane.HasGuards)\n{\n    report.Widened = lane.Widens * n;\n}\nelse\n{\n    report.Widened = dynWidened;\n}\nreturn n;\n")
 	}
 	b.WriteString(indent(load.String()))
 	b.WriteString("}\n\n")

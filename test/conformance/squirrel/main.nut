@@ -282,7 +282,7 @@ local noText = function(f) { return f.len() > 5 && f[5] == "no-text"; };
 if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
-                     "forgery", "cook-forgery", "cook-reason", "block-reason",
+                     "forgery", "cook-forgery",
                      "cook-write", "message", "message-prior", "retain", "retain-save", "retain-refusal",
                      "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
                      "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "unit shapes"]) print(name + "\n");

@@ -1,0 +1,22 @@
+// VOLD_text_narrowed.schema — OLD: text string(8)
+//
+// One of the fixed form's UNLAWFUL lineage rows (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// internal/fixedunlawful). The OLD and the NEW file of this pair differ by
+// EXACTLY string(8) -> string(4). `lead` and `trail` bracket the row's field.
+//
+// THIS PAIR IS DELIBERATELY UNLAWFUL: SPEC §5.1 refuses a narrowed capacity ("capacity narrowed"). The file's text
+// is "ab", which fits this reader, so a leg that checks only the used length
+// LOADS it.
+// So the lineage entry is handed in by the probe and never read
+// from a lock. The NEW reader must refuse old_text_narrowed.bin
+// `layout_malformed` and write nothing (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4,
+// §5.9 #30). Do not "fix" it.
+
+package vold_text_narrowed
+
+fixed table TextNarrowed
+{
+    lead  uint32 = 1
+    text  string(8)
+    trail uint32 = 2
+}

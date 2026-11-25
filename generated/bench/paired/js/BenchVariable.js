@@ -3754,6 +3754,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      // an array or a text list, an empty [] included, is a container the
+      // depth cap counts, as the read counts it (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
@@ -3801,6 +3804,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
       for (const [name] of d.vs) { if (name === val) { if (d.dp !== undefined && d.dp.includes(name)) { return false; } out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
+      // a flags value is an array of names, a container the read counts, an
+      // empty [] included (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       // the save's own test: a BigInt mask inside the unsigned width, never a Number
       if (!TableVariableIntegerValid(d, val)) { return false; }
       const bits = globalThis.BigInt(val);
@@ -4753,6 +4759,8 @@ function TableVariableTextInt(d, inp, holder, key, report) {
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
+  // the write counts every container the read does (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (!(val instanceof globalThis.Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -4770,6 +4778,8 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
 }
 
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  // the write counts every container the read does (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
@@ -4786,6 +4796,8 @@ function TableVariableJsonKeyed(fd, val, depth, g, out) {
 
 // a union is an object with ONE key, the arm's name; None is {} (§16.2)
 function TableVariableJsonUnion(u, val, depth, g, out) {
+  // a union is a container, None {} included (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (val === null) { out.push("{}"); return true; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined) { return false; }
@@ -5359,7 +5371,7 @@ export const TableCookWrite = (() => {
         {k:"int",n:"vel_y",at:28,w:4,sg:1},
         {k:"int",n:"vel_z",at:32,w:4,sg:1},
         {k:"int",n:"health",at:36,w:4,sg:1},
-        {k:"venum",n:"weapon",at:40,w:1,max:15,vs:["Fists","Pistol","Shotgun","Rifle","Sniper","Smg","Rocket","Grenade","Plasma","Railgun","Flamer","Mine","Turret","Drone","Repair"]},
+        {k:"venum",n:"weapon",at:40,w:1,max:15,vs:["Fists","Pistol","Shotgun","Rifle","Sniper","Smg","Rocket","Grenade","Plasma","Railgun","Flamer","Mine","Turret","Drone","Repair"],dp:[]},
         {k:"int",n:"damage",at:48,w:8,sg:0},
         {k:"bool",n:"moving",at:56},
         {k:"bool",n:"firing",at:57},
@@ -5545,7 +5557,7 @@ export const TableCookWrite = (() => {
       case "int":
         return putWidth(view, at, fd.w, value, fd.sg === 1, le);
       case "enum":
-        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max || fd.dp.includes(value)) { return false; }
         return putWidth(view, at, fd.w, value, false, le);
       case "venum": {
         let ord = 0;
@@ -5554,7 +5566,7 @@ export const TableCookWrite = (() => {
           if (i < 0) { return false; }
           ord = i + 1;
         }
-        if (ord > fd.max) { return false; }
+        if (ord > fd.max || fd.dp.includes(ord)) { return false; }
         return putWidth(view, at, fd.w, ord, false, le);
       }
       case "rec":

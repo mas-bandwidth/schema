@@ -370,6 +370,7 @@ func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
 		leg.kill()
 		return fmt.Errorf("message-fuzz: driver %q answered 0 for all %d Form-2 roots", driverCmd, len(roots))
 	}
+	dead := deadMessageRoots(roots, leg.known)
 
 	if opts.replay != "" {
 		if opts.unit == "" || opts.root == "" {
@@ -443,7 +444,10 @@ func messageFuzz(w io.Writer, m *Manifest, opts messageFuzzOptions) error {
 
 	_, _ = fmt.Fprintf(w, "message-fuzz: seed %d, %d/%d roots live, %d systematic + %d random = %d mutants (%d accepted), 0 divergences\n",
 		opts.seed, knownCount, len(roots), sysRun, randRun, total, accepted)
-	return nil
+	if len(dead) > 0 {
+		_, _ = fmt.Fprintf(w, "message-fuzz: %d dead roots: %s\n", len(dead), strings.Join(dead, ", "))
+	}
+	return checkDeadMessageRoots(dead)
 }
 
 func checkOneMessageMutant(leg *wireLeg, roots []*messageFuzzRoot, ri int, label string, frame []byte, failedPath string) error {
@@ -456,6 +460,9 @@ func runAndCompareMessageMutant(leg *wireLeg, roots []*messageFuzzRoot, ri int, 
 	ans, err := r.oracle(frame)
 	if err != nil {
 		return false, err
+	}
+	if plantedMessageFuzz() {
+		ans = plantMessageAnswer(ans) // plant.go: the negative control's wrong oracle
 	}
 	if err := leg.send(ri, frame); err != nil {
 		saveFailedMessageFrame(failedPath, frame)

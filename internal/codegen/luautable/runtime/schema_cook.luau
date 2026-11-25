@@ -853,7 +853,17 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 		put_float(w, at, f, e.f32 == true)
 		return true
 	end
-	if s == "enum" then put(w, at, x or 0, storage_width(#(e.vs or {}))); return true end
+	if s == "enum" then
+		-- AN ORDINAL OUTSIDE THE VARIANT SET, OR A DEPRECATED VARIANT, IS
+		-- REFUSED (docs/SPEC.md §5.1 row 5; docs/SPEC-TABLES.md §2.15, §7.6)
+		local vs = e.vs or {}
+		local o = x or 0
+		if type(o) ~= "number" or o < 0 or o ~= math.floor(o) or o > #vs or (o > 0 and vs[o][3] == true) then
+			return false
+		end
+		put(w, at, o, storage_width(#vs))
+		return true
+	end
 	if s == "str" or s == "bytes" then
 		local b, nbytes, count = used_bytes(holder, e, x, e.slot)
 		put_copy(w, at, b, nbytes)

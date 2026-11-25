@@ -226,7 +226,7 @@ func TestEveryFastCheckoutMergesMain(t *testing.T) {
 	if checkouts == 0 {
 		t.Fatal("ci-fast.yml has no actions/checkout step: the scan matched nothing")
 	}
-	const base = "BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}"
+	const base = "          BASE: main\n"
 	if !strings.Contains(string(data), base) {
 		t.Errorf("ci-fast.yml's plan does not diff a pull request against main (%q)", base)
 	}

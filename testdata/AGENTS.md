@@ -5,6 +5,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `conformance/` | table conformance dumps | `make conformance` | `make conformance` |
+| `cpp-standalone/` | standalone C++ header schemas | `go test ./internal/codegen/cpptable -run TestStandalone` | `go test ./internal/codegen/cpptable -run TestStandalone` |
 | `golangci-lint-classes/` | generated Go lint regression fixtures | `go test ./internal/goldens -run TestGolangciLintClassesShapes` | `make schema-go-generated-golangci-lint-gate-classes-negative-control` |
 | `golden/` | generated-source goldens | `go test ./internal/goldens` | `make update-goldens` |
 | `jsontestsuite/` | vendored JSONTestSuite (MIT) | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |

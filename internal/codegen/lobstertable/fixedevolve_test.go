@@ -568,6 +568,13 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 		compared.Add(1)
 	})
 
+	// unknown_census (§5.8 row 11): the NEW build (Item.drop removed) is
+	// handed the OLD layout as a lineage entry. §5.1 refuses a removal, so the
+	// entry is UNLAWFUL: no plan is laid and both files refuse
+	// layout_malformed with no counter moved, `unknown` included (there is no
+	// compile census, §5.2 MATCH, §5.4, §5.9 #30), and every poisoned row
+	// handed in is back at its declared defaults, on a first load and a
+	// second.
 	t.Run("unknown_census", func(t *testing.T) {
 		t.Parallel()
 		older := lobsterReadSchema(t, "VOLD_unknown_census")
@@ -584,29 +591,25 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 		}
 		inputs := map[string][]byte{"one.bin": oneBytes, "many.bin": manyBytes}
 		body := fmt.Sprintf(`
-    let back:[%s.%s] = []
-    for(8): push(back, %s.New%s())
-    let r = schema_rt.TableReport {}
-    let plan = %s.make_plan(4096)
-    let n1 = %s.%sFixedLoad(back, read_in("one.bin"), plan, r)
-    assert_eq(n1, 1, "unknown_census 1 record")
-    assert_eq(r.unknown, 1, "unknown == 1 once per peer, not per element")
-    assert_true(r.kind_mismatch == 0 and r.widened == 0 and r.clamped == 0 and not r.malformed, "clean counters")
-    assert_true(back[0].Lead == 1 and back[0].Trail == 2, "brackets")
-    for(4) k:
-        assert_eq(back[0].Items[k].A, 10 + k, "items.a")
-    let n1b = %s.%sFixedLoad(back, read_in("one.bin"), plan, r)
-    assert_true(n1b == 1 and r.unknown == 1, "second read same census")
-
-    let n3 = %s.%sFixedLoad(back, read_in("many.bin"), plan, r)
-    assert_eq(n3, 3, "unknown_census_many 3 records")
-    assert_eq(r.unknown, 1, "unknown == 1 once per peer, not per record")
-    for(3) rec:
-        assert_true(back[rec].Lead == 1 and back[rec].Trail == 2, "many brackets")
-        for(4) k:
-            assert_eq(back[rec].Items[k].A, (rec + 1) * 10 + k, "many items.a")
+    let back:[%[1]s.%[2]s] = []
+    for(8): push(back, %[1]s.New%[2]s())
+    let plan = %[1]s.make_plan(4096)
+    for(["one.bin", "many.bin", "one.bin", "many.bin"]) file:
+        for(back) p:
+            p.Lead = 99
+            p.Trail = 88
+            for(4) k: p.Items[k].A = 5 + k
+        let r = schema_rt.TableReport { unknown: 9, widened: 9, kind_mismatch: 9, reason: "stale" }
+        let n = %[1]s.%[2]sFixedLoad(back, read_in(file), plan, r)
+        assert_eq(n, -1, file + ": a removed writer field is UNLAWFUL and loads nothing")
+        assert_true(r.reason == "layout_malformed", file + ": refused layout_malformed, got " + r.reason)
+        assert_true(r.unknown == 0 and r.kind_mismatch == 0 and r.widened == 0 and r.clamped == 0 and r.duplicate == 0, file + ": a refusal counts nothing, unknown included")
+        for(back) p:
+            assert_true(p.Lead == 1 and p.Trail == 2, file + ": brackets back at their declared defaults")
+            for(4) k:
+                assert_eq(p.Items[k].A, 0, file + ": items.a back at its default")
     print "PASS"
-`, pkg, table, pkg, table, pkg, pkg, table, pkg, table, pkg, table)
+`, pkg, table)
 		if out := runLobsterVersionProbe(t, newer, []string{older}, 0, body, inputs); strings.TrimSpace(out) != "PASS" {
 			t.Fatalf("unknown_census: %q", out)
 		}

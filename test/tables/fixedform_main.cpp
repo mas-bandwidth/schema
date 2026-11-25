@@ -37,7 +37,9 @@
 #include <vector>
 
 #include "FX1Table.h"
+#include "FX1LTable.h"
 #include "FX2Table.h"
+#include "V1LTable.h"
 #include "V1Table.h"
 #include "V2Table.h"
 #include "P1Table.h"
@@ -51,6 +53,8 @@
 #include "FG1Table.h"
 #include "FE1Table.h"
 #include "FE2Table.h"
+#include "VOLD_field_appendTable.h"
+#include "VNEW_field_appendTable.h"
 #include "VOLD_float_widenTable.h"
 #include "VNEW_float_widenTable.h"
 
@@ -73,6 +77,21 @@ int versioning_lists_cases();
 static void check( bool ok, const char * what )
 {
     if ( !ok ) { std::printf( "FAIL: %s\n", what ); failures++; }
+}
+
+// THE UNLAWFUL VERDICT (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4
+// row 1, §5.9 #30). A lineage entry the reader is not a lawful widening of (a
+// writer field it names nowhere, or a kind moved off every ladder) lays no
+// plan, and a file under its hash is refused BY NAME, layout_malformed. It is
+// never counted and read past, so every counter stays at zero: an `unknown` of
+// one, a `widened` from the fields that did line up, or any other moved
+// counter is the old count-and-skip read and fails here.
+template<typename Report, typename Reason, typename Refuse>
+static bool refused_unlawful( const Report & r, Reason malformed, Refuse ok )
+{
+    return r.refused && r.reason == malformed && r.refuse_reason == ok && !r.damaged &&
+           r.damage_reason == ok && r.unknown == 0 && r.widened == 0 && r.missing_required == 0 &&
+           r.retained == 0 && r.retain_lost == 0 && r.non_finite_floats == 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,13 +130,96 @@ static void fx_case()
                "same schema: a clean read moves no counter" );
     }
 
-    // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's layout
+    // 2. FX2 READS FX1 — AN UNLAWFUL LINEAGE ENTRY. FX1 carries `gone`, which
+    // FX2 names nowhere: §5.1 refuses that removal, so FX1 is not a lawful
+    // widening of FX2 and COMPILE lays no plan for it (§5.2 MATCH, §5.9 #30).
+    // The read is refused layout_malformed BY NAME, before any record lands,
+    // with every counter at zero: `gone` is never counted and read past, and
+    // the fields that did line up never reach the plan that would land them.
+    // Every row handed in is back at its declared defaults (SPEC-TABLES §6.5).
     {
+        tblfx2::FxRoot defaults;
+        tblfx2::FxRootReset( defaults );
         tblfx2::FxRoot back;
+        tblfx2::FxRootReset( back );
+        back.keep = 1u; back.narrow = 2u; back.renamed_to = 3; back.added = 4; // poison
+        back.nested.a = 5; back.nested.b = 6; back.extra.x = 7; back.extra.y = 8;
+        back.blob[0] = 0x99; back.blob_length = 1;
         tblfx2::TableReport r;
         std::vector<tblfx2::TableFixedEntry> plan( 1024 );
         const int64_t n = tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1, "older writer: one record" );
+        check( n == -1, "older writer: FX1's `gone`, a field FX2 names nowhere, refuses the whole read (§5.9 #30)" );
+        check( refused_unlawful( r, tblfx2::layout_malformed, tblfx2::ok ),
+               "older writer: refused layout_malformed by name, `gone` never counted (unknown 0) and nothing widened" );
+        check( back.keep == defaults.keep && back.narrow == defaults.narrow && back.renamed_to == defaults.renamed_to &&
+               back.added == defaults.added && back.nested.a == defaults.nested.a && back.nested.b == defaults.nested.b &&
+               back.extra.x == defaults.extra.x && back.extra.y == defaults.extra.y &&
+               back.blob_length == defaults.blob_length && back.blob[0] == defaults.blob[0],
+               "older writer: nothing lands — the destination is back at its declared defaults" );
+        // THE VERDICT IS COMPILE'S, so it is the compiled path's too: -3 and no
+        // entry, whatever capacity the caller hands it.
+        tblfx2::TableFixedLayoutView theirs;
+        tblfx2::TableMessageReason why = tblfx2::layout_malformed;
+        check( tblfx2::TableFixedParseLayout( tblfx1::FxRootFixedLayout, tblfx1::FxRootFixedLayoutBytes, theirs, why ),
+               "older writer: FX1's layout parses — it is unlawful, not malformed bytes" );
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        tblfx2::TableReport cr;
+        const int32_t made = tblfx2::TableFixedCompile( theirs, tblfx2::FxRootFixedLayout, (int32_t) tblfx2::FxRootFixedLayoutBytes,
+                                                        tblfx2::FxRootFixedDst, tblfx2::FxRootFixedCover, tblfx2::FxRootFixedCoverCount,
+                                                        plan.data(), 1024, &guarded, &fill_at, &fill_count, &cr );
+        check( made == -3 && cr.unknown == 0 && cr.widened == 0 && !cr.damaged,
+               "older writer: COMPILE answers -3 (layout_malformed) and counts nothing" );
+    }
+
+    // 2b, 4, 5. THE LAWFUL EDITS, READ FROM A LAWFUL OLDER WRITER. FX1L is FX1
+    // with `gone` taken out and nothing else (test/tables/lawful/fx1l), so the
+    // widened `narrow`, the rename under `was`, the field and the nested type
+    // FX1 has no name for, and the `bytes(N)` row still land through a plan
+    // compiled from an older writer's block. It is in no lineage, so this
+    // drives the loader's own three primitives — COMPILE, the prefill, RUN —
+    // the way v_case and bytes_row_case do.
+    {
+        tblfx1l::FxRoot onel;
+        tblfx1l::FxRootReset( onel );
+        onel.keep = 4242u;
+        onel.narrow = 40000u;
+        onel.renamed = 321;
+        onel.nested.a = 111;
+        onel.nested.b = 222;
+        onel.blob[0] = 0xDE; onel.blob[1] = 0xAD; onel.blob[2] = 0xBE; onel.blob[3] = 0xEF;
+        onel.blob_length = 4;
+        std::vector<uint8_t> wl( (size_t) tblfx1l::FxRootFixedMeasure( 1 ) );
+        check( tblfx1l::FxRootFixedSave( &onel, 1, wl.data(), (int64_t) wl.size() ) == (int64_t) wl.size(), "FX1L save" );
+
+        tblfx2::TableFixedLayoutView theirs;
+        tblfx2::TableMessageReason why = tblfx2::layout_malformed;
+        check( tblfx2::TableFixedParseLayout( tblfx1l::FxRootFixedLayout, tblfx1l::FxRootFixedLayoutBytes, theirs, why ),
+               "older writer: FX1L's layout parses" );
+        std::vector<tblfx2::TableFixedEntry> plan( 1024 );
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        tblfx2::TableReport r;
+        const int32_t made = tblfx2::TableFixedCompile( theirs, tblfx2::FxRootFixedLayout, (int32_t) tblfx2::FxRootFixedLayoutBytes,
+                                                        tblfx2::FxRootFixedDst, tblfx2::FxRootFixedCover, tblfx2::FxRootFixedCoverCount,
+                                                        plan.data(), 1024, &guarded, &fill_at, &fill_count, &r );
+        check( made > 0, "older writer: one record" );
+        tblfx2::FxRoot defaults;
+        tblfx2::FxRootReset( defaults );
+        tblfx2::FxRoot back;
+        tblfx2::FxRootReset( back );
+        back.added = 4; back.extra.x = 7; back.extra.y = 8; // poison: the prefill must put them back
+        if ( made > 0 )
+        {
+            const tblfx2::TableFixedFill * fill = ( fill_count > 0 )
+                ? (const tblfx2::TableFixedFill *) (const void *) ( (const uint8_t *) plan.data() + fill_at )
+                : NULL;
+            tblfx2::TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &back );
+            const uint8_t * body = wl.data() + tblfx1l::kTableFixedHeaderBytes + 4 + tblfx1l::FxRootFixedLayoutBytes + 8;
+            tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) &back, &r, tblfx2::FxRootFixedGuards );
+        }
         check( back.keep == 4242u, "older writer: an unmoved field" );
         check( back.narrow == 40000u, "WIDENED: uint16 into uint32, exactly" );
         check( r.widened == 1, "WIDENED: one widened counts" );
@@ -129,7 +231,7 @@ static void fx_case()
                back.blob[2] == 0xBE && back.blob[3] == 0xEF,
                "BYTES(N): the compiled plan lands the buffer in the buffer and the length in the length" );
         check( back.blob[4] == 0 && back.blob[5] == 0, "BYTES(N): the slack past the live length is zero" );
-        check( r.unknown == 1, "older writer: `gone` is the one field this reader cannot name" );
+        check( r.unknown == 0, "older writer: a lawful writer names no field this reader cannot name — nothing to count" );
         check( !r.damaged && !r.refused, "older writer: nothing else fired" );
     }
 
@@ -183,10 +285,14 @@ static void v_case()
     std::vector<uint8_t> w( (size_t) tblv1::CfgFixedMeasure( 1 ) );
     check( tblv1::CfgFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "V1 save" );
 
-    // THE PUBLIC READ REFUSES: V2 moved `a` from int32 to float32, which is a
-    // kind change and not a widening, and the strict read (docs/SPEC-TABLES.md
-    // §6.5) refuses the whole load as kind_mismatch rather than land the rest
-    // around a default. A poisoned destination comes back at its defaults.
+    // THE PUBLIC READ REFUSES: V1 is an UNLAWFUL lineage entry for V2. V2 moved
+    // `a` from int32 to float32 and `ledger` from a positional array to one
+    // keyed by Grade (kinds off every ladder, neither a widening nor the
+    // writer's ?T into a bare T), and removed `b` (a field V2 names nowhere).
+    // COMPILE lays no plan, so the read is refused layout_malformed BY NAME
+    // before any record lands, with every counter at zero, and never counted
+    // and read past (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4 row
+    // 1, §5.9 #30). A poisoned destination comes back at its defaults (§6.5).
     {
         tblv2::Cfg defaults;
         tblv2::CfgReset( defaults );
@@ -194,26 +300,67 @@ static void v_case()
         tblv2::CfgReset( refused );
         refused.grade = tblv2::Grade::Silver; // poison
         refused.tier = 99;
+        refused.a = 6.5f;
+        refused.c = false;
+        refused.tokens[tblv2::Slot::Alpha] = 3;
         tblv2::TableReport rr;
         std::vector<tblv2::TableFixedEntry> rplan( 8192 );
         check( tblv2::CfgFixedLoad( &refused, 1, w.data(), (int64_t) w.size(), rplan.data(), 8192, NULL, &rr ) == -1,
                "V2 reads V1: a kind moved under one field refuses the whole read" );
-        check( rr.refused && rr.refuse_reason == tblv2::kind_mismatch && !rr.damaged,
-               "V2 reads V1: the refusal is named kind_mismatch, never damage" );
-        check( refused.grade == defaults.grade && refused.tier == defaults.tier && refused.a == defaults.a,
+        check( refused_unlawful( rr, tblv2::layout_malformed, tblv2::ok ),
+               "V2 reads V1: the refusal is named layout_malformed, never damage, never kind_mismatch, every counter zero" );
+        check( refused.grade == defaults.grade && refused.tier == defaults.tier && refused.a == defaults.a &&
+               refused.c == defaults.c && refused.tokens[tblv2::Slot::Alpha] == defaults.tokens[tblv2::Slot::Alpha],
                "V2 reads V1: nothing lands — the destination is back at its defaults" );
     }
 
+    // THE VERDICT IS COMPILE'S. The plan V2 compiles from V1's layout is no
+    // plan: -3, no entry run and no counter moved, whatever capacity it is
+    // handed. A leg that kept the old reading (moved kinds skipped, the rest
+    // landed, kind_mismatch named on the report) answers a positive count here.
+    {
+        tblv2::TableFixedLayoutView parsed;
+        tblv2::TableMessageReason why = tblv2::layout_malformed;
+        check( tblv2::TableFixedParseLayout( tblv1::CfgFixedLayout, tblv1::CfgFixedLayoutBytes, parsed, why ),
+               "V2 reads V1: V1's layout parses" );
+        std::vector<tblv2::TableFixedEntry> plan( 8192 );
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        tblv2::TableReport r;
+        const int32_t made = tblv2::TableFixedCompile( parsed, tblv2::CfgFixedLayout, (int32_t) tblv2::CfgFixedLayoutBytes,
+                                                       tblv2::CfgFixedDst, tblv2::CfgFixedCover, tblv2::CfgFixedCoverCount,
+                                                       plan.data(), 8192, &guarded, &fill_at, &fill_count, &r );
+        check( made == -3, "KIND MOVED: COMPILE lays no plan for V1 and answers -3, the code the load refuses layout_malformed on" );
+        check( r.unknown == 0 && r.widened == 0 && !r.damaged && r.refuse_reason == tblv2::ok,
+               "KIND MOVED: nothing is counted and no kind_mismatch is named — the entry is unlawful, not read past" );
+    }
+
     // THE REMAP ITSELF is the COMPILED PLAN's (docs/FIXED-FORM-ALGORITHM.md
-    // §5.2), and it does not depend on the verdict: the plan V2 compiles from
-    // V1's layout, run over V1's record body, moves every field by NAME. This
-    // drives the same two primitives the loader calls (as negative_control and
-    // bounds_case do), into storage reset to V2's defaults, which is what the
-    // loader's fill puts under a field the writer does not carry.
+    // §5.2), and it is owed on a LAWFUL older writer. V1L is V1 with only the
+    // unlawful edits taken back, the narrowings among them (test/tables/lawful/v1l): the plan V2
+    // compiles from V1L's layout, run over V1L's record body, moves every field
+    // by NAME. This drives the same three primitives the loader calls (as
+    // negative_control and bounds_case do): COMPILE, the prefill, RUN.
+    tblv1l::Cfg onel;
+    tblv1l::CfgReset( onel );
+    onel.a = 42.0f;
+    std::strcpy( onel.name, "hello" );
+    onel.name_length = 5;
+    onel.grade = tblv1l::Grade::Gold;
+    onel.effect.type = tblv1l::EffectType::Ward;
+    onel.effect.ward.charge = 0.75f;
+    onel.tokens[tblv1l::Slot::Alpha] = 21;
+    onel.tokens[tblv1l::Slot::Delta] = 24;
+    onel.tier_present = true;
+    onel.tier = 77;
+    std::vector<uint8_t> wl( (size_t) tblv1l::CfgFixedMeasure( 1 ) );
+    check( tblv1l::CfgFixedSave( &onel, 1, wl.data(), (int64_t) wl.size() ) == (int64_t) wl.size(), "V1L save" );
+
     tblv2::TableFixedLayoutView parsed;
     tblv2::TableMessageReason why = tblv2::layout_malformed;
-    check( tblv2::TableFixedParseLayout( tblv1::CfgFixedLayout, tblv1::CfgFixedLayoutBytes, parsed, why ),
-           "V2 reads V1: V1's layout parses" );
+    check( tblv2::TableFixedParseLayout( tblv1l::CfgFixedLayout, tblv1l::CfgFixedLayoutBytes, parsed, why ),
+           "V2 reads V1L: V1L's layout parses" );
     std::vector<tblv2::TableFixedEntry> plan( 8192 );
     int32_t guarded = 0;
     uint32_t fill_at = 0;
@@ -223,10 +370,20 @@ static void v_case()
                                                    tblv2::CfgFixedDst, tblv2::CfgFixedCover, tblv2::CfgFixedCoverCount,
                                                    plan.data(), 8192, &guarded, &fill_at, &fill_count, &r );
     check( made > 0, "V2 reads V1: the plan compiles" );
+    tblv2::Cfg defaults;
+    tblv2::CfgReset( defaults );
     tblv2::Cfg back;
     tblv2::CfgReset( back );
-    const uint8_t * body = w.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
-    tblv2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) &back, &r, tblv2::CfgFixedGuards );
+    back.c = false; // poison: the prefill must put V2's own default back
+    if ( made > 0 )
+    {
+        const tblv2::TableFixedFill * fill = ( fill_count > 0 )
+            ? (const tblv2::TableFixedFill *) (const void *) ( (const uint8_t *) plan.data() + fill_at )
+            : NULL;
+        tblv2::TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &back );
+        const uint8_t * body = wl.data() + tblv1l::kTableFixedHeaderBytes + 4 + tblv1l::CfgFixedLayoutBytes + 8;
+        tblv2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) &back, &r, tblv2::CfgFixedGuards );
+    }
     check( back.grade == tblv2::Grade::Gold, "ENUM: a variant inserted in the middle is remapped by NAME" );
     check( back.effect.type == tblv2::EffectType::Ward, "UNION: an arm inserted in the middle is remapped by NAME" );
     check( back.effect.ward.charge == 0.75f, "UNION: the arm's payload lands" );
@@ -236,9 +393,9 @@ static void v_case()
     check( back.tokens[tblv2::Slot::Sigma] == 0, "KEYED: a key the writer has no name for takes its default" );
     check( back.tier_present && back.tier == 77, "OPTIONAL: the present flag and the payload" );
     check( back.c, "MISSING: V2's own `c` takes its declared default" );
-    check( back.a == 5.0f, "KIND MOVED: the plan carries no row for int32 -> float32, so the default stands" );
-    check( r.refused && r.refuse_reason == tblv2::kind_mismatch && !r.damaged,
-           "KIND MOVED: the compiled plan names the kind_mismatch the public read refuses on" );
+    check( back.a == 42.0f, "LAWFUL: a kind that did not move lands exactly" );
+    check( !r.refused && !r.damaged && r.unknown == 0 && r.refuse_reason == tblv2::ok,
+           "LAWFUL: a lawful older writer refuses nothing and names nothing" );
 }
 
 // ---------------------------------------------------------------------------
@@ -882,12 +1039,17 @@ static void slack_case()
 // does not quietly stop pointing at it the day a field moves.
 static void bytes_row_case()
 {
-    tblfx1::FxRoot one;
-    tblfx1::FxRootReset( one );
+    // THE WRITER IS FX1L, FX1 WITHOUT `gone`. FX1 itself is an UNLAWFUL lineage
+    // entry for FX2 (a field FX2 names nowhere, §5.2 MATCH, §5.9 #30), and
+    // COMPILE lays no plan for it under either row set; fx_case holds that
+    // verdict. The rows under test need a plan to run, so they are run on the
+    // lawful older writer, whose `bytes(N)` field is FX1's to the byte.
+    tblfx1l::FxRoot one;
+    tblfx1l::FxRootReset( one );
     one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
     one.blob_length = 4;
-    std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
-    check( tblfx1::FxRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "bytes row: FX1 save" );
+    std::vector<uint8_t> w( (size_t) tblfx1l::FxRootFixedMeasure( 1 ) );
+    check( tblfx1l::FxRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "bytes row: FX1L save" );
 
     const size_t rows = sizeof( tblfx2::FxRootFixedDst ) / sizeof( tblfx2::FxRootFixedDst[0] );
     std::vector<tblfx2::TableFixedDst> swapped( tblfx2::FxRootFixedDst, tblfx2::FxRootFixedDst + rows );
@@ -903,10 +1065,10 @@ static void bytes_row_case()
 
     tblfx2::TableFixedLayoutView theirs;
     tblfx2::TableMessageReason why = tblfx2::layout_malformed;
-    check( tblfx2::TableFixedParseLayout( tblfx1::FxRootFixedLayout, tblfx1::FxRootFixedLayoutBytes, theirs, why ),
-           "bytes row: FX1's layout parses" );
+    check( tblfx2::TableFixedParseLayout( tblfx1l::FxRootFixedLayout, tblfx1l::FxRootFixedLayoutBytes, theirs, why ),
+           "bytes row: FX1L's layout parses" );
 
-    const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    const uint8_t * body = w.data() + tblfx1l::kTableFixedHeaderBytes + 4 + tblfx1l::FxRootFixedLayoutBytes + 8;
     for ( int pass = 0; pass < 2; ++pass )
     {
         const tblfx2::TableFixedDst * rowset = pass == 0 ? tblfx2::FxRootFixedDst : swapped.data();
@@ -1417,8 +1579,11 @@ static void bounds_case()
                "COMPILED: THE PASS IS THE BOUND — the same pass, after the compiled plan, names out_of_range" );
     }
 
-    // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
-    // through a plan compiled from FX1's layout, and the bound is the same one.
+    // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX1 is an UNLAWFUL lineage
+    // entry for FX2 (`gone`, a field FX2 names nowhere: §5.2 MATCH, §5.9 #30),
+    // and that verdict is COMPILE's, so it comes before any value is looked
+    // at: FX2's read of this record is refused layout_malformed, never
+    // out_of_range, and nothing lands.
     {
         tblfx2::FxRoot defaults;
         tblfx2::FxRootReset( defaults );
@@ -1429,8 +1594,53 @@ static void bounds_case()
         std::vector<tblfx2::TableFixedEntry> plan( 2048 );
         check( tblfx2::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, NULL, &r ) == -1,
                "RANGE, compiled: the same bound refuses through a compiled plan" );
-        check( r.refused && r.refuse_reason == tblfx2::out_of_range && back.renamed_to == defaults.renamed_to,
-               "RANGE, compiled: out_of_range, and nothing lands" );
+        check( refused_unlawful( r, tblfx2::layout_malformed, tblfx2::ok ) && back.renamed_to == defaults.renamed_to,
+               "RANGE, unlawful entry: refused layout_malformed before any bound is read, every counter zero, and nothing lands" );
+    }
+
+    // 2b. THE BOUND THROUGH A LAWFUL COMPILED PLAN. FX1L is FX1 without `gone`;
+    // FX2 compiles a plan from its layout and runs it, and the pass after the
+    // loop, the same one the loader runs, is the bound: out_of_range by name.
+    {
+        tblfx1l::FxRoot onel;
+        tblfx1l::FxRootReset( onel );
+        onel.keep = 1u;
+        onel.renamed = 5000; // declared | min = 0, max = 1000
+        onel.nested.a = 111;
+        onel.nested.b = 222;
+        std::vector<uint8_t> wl( (size_t) tblfx1l::FxRootFixedMeasure( 1 ) );
+        check( tblfx1l::FxRootFixedSave( &onel, 1, wl.data(), (int64_t) wl.size() ) == (int64_t) wl.size(), "bounds: FX1L save" );
+        tblfx2::TableFixedLayoutView theirs;
+        tblfx2::TableMessageReason why = tblfx2::layout_malformed;
+        check( tblfx2::TableFixedParseLayout( tblfx1l::FxRootFixedLayout, tblfx1l::FxRootFixedLayoutBytes, theirs, why ),
+               "RANGE, compiled: FX1L's layout parses" );
+        std::vector<tblfx2::TableFixedEntry> plan( 2048 );
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        tblfx2::TableReport r;
+        const int32_t made = tblfx2::TableFixedCompile( theirs, tblfx2::FxRootFixedLayout, (int32_t) tblfx2::FxRootFixedLayoutBytes,
+                                                        tblfx2::FxRootFixedDst, tblfx2::FxRootFixedCover, tblfx2::FxRootFixedCoverCount,
+                                                        plan.data(), 2048, &guarded, &fill_at, &fill_count, &r );
+        check( made > 0, "RANGE, compiled: the lawful plan compiles" );
+        tblfx2::FxRoot defaults;
+        tblfx2::FxRootReset( defaults );
+        tblfx2::FxRoot back;
+        tblfx2::FxRootReset( back );
+        if ( made > 0 )
+        {
+            const tblfx2::TableFixedFill * fill = ( fill_count > 0 )
+                ? (const tblfx2::TableFixedFill *) (const void *) ( (const uint8_t *) plan.data() + fill_at )
+                : NULL;
+            tblfx2::TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &back );
+            const uint8_t * body = wl.data() + tblfx1l::kTableFixedHeaderBytes + 4 + tblfx1l::FxRootFixedLayoutBytes + 8;
+            tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) &back, &r, tblfx2::FxRootFixedGuards );
+        }
+        check( back.renamed_to == 5000 && !r.refused,
+               "RANGE, compiled: the loop alone leaves the out-of-range value standing and refuses nothing" );
+        check( tblfx2::FxRootFixedClamp( back, &r ), "RANGE, compiled: the pass meets no ill-formed text here" );
+        check( r.refused && r.refuse_reason == tblfx2::out_of_range,
+               "RANGE, compiled: the pass after a lawful compiled plan names out_of_range" );
     }
 
     // 3. A UNION TAG PAST THE ARM COUNT refuses the read.
@@ -1762,58 +1972,91 @@ static void guard_width_case()
 // THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
 // the same foreign layout compile once; a third load with a different hash
 // compiles once more; identity never increments the counter.
+//
+// THE FOREIGN WRITER IS A LAWFUL ONE. The cache holds PLANS, and an UNLAWFUL
+// lineage entry has none (§5.2 MATCH, §5.9 #30), so the rows below run on the
+// field_append pair, whose older writer is a lawful widening of the newer
+// reader and sits in its lineage. FX1 under FX2, the pair these rows used
+// before the unlawful-entry law, is held separately below: refused every time
+// and never cached as a plan.
 static void cache_case()
 {
-    tblfx1::FxRoot one;
-    tblfx1::FxRootReset( one );
-    one.keep = 4242u;
-    one.narrow = 40000u;
-    one.renamed = 321;
-    one.gone = 654;
-    one.nested.a = 111;
-    one.nested.b = 222;
-    std::vector<uint8_t> w1( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
-    check( tblfx1::FxRootFixedSave( &one, 1, w1.data(), (int64_t) w1.size() ) == (int64_t) w1.size(), "cache: FX1 save" );
+    namespace on = vold_field_append;
+    namespace nn = vnew_field_append;
+    on::Lineage one;
+    on::LineageReset( one );
+    one.x = 4242;
+    one.y = 321;
+    one.z = 111;
+    std::vector<uint8_t> w1( (size_t) on::LineageFixedMeasure( 1 ) );
+    check( on::LineageFixedSave( &one, 1, w1.data(), (int64_t) w1.size() ) == (int64_t) w1.size(), "cache: older save" );
 
-    std::vector<tblfx2::TableFixedEntry> plan( 1024 );
-    std::vector<tblfx2::TableFixedEntry> slab( (size_t) tblfx2::kTableFixedPlanCacheCapacity * 1024 );
-    tblfx2::TableFixedPlanCache cache;
-    tblfx2::TableFixedPlanCacheInit( cache, slab.data(), 1024 );
+    std::vector<nn::TableFixedEntry> plan( 1024 );
+    std::vector<nn::TableFixedEntry> slab( (size_t) nn::kTableFixedPlanCacheCapacity * 1024 );
+    nn::TableFixedPlanCache cache;
+    nn::TableFixedPlanCacheInit( cache, slab.data(), 1024 );
 
-    tblfx2::FxRoot back;
-    tblfx2::TableReport r;
-    check( tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &cache, &r ) == 1,
+    nn::Lineage back;
+    nn::TableReport r;
+    check( nn::LineageFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &cache, &r ) == 1,
            "cache: first foreign load" );
+    check( back.x == 4242 && back.y == 321 && back.z == 111 && back.w == 77 && !r.refused && r.unknown == 0,
+           "cache: the first foreign load lands every field, and the appended one at its default" );
     check( cache.compiles == 1, "cache: first foreign load compiled once" );
     check( cache.used == 1 && cache.slots[0].made == 1, "cache: the slot is marked made" );
 
-    tblfx2::TableReport r2;
-    check( tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &cache, &r2 ) == 1,
+    nn::TableReport r2;
+    check( nn::LineageFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &cache, &r2 ) == 1,
            "cache: second foreign load" );
     check( cache.compiles == 1, "cache: two loads of the same layout compiled once" );
 
     std::vector<uint8_t> wB = w1;
-    const uint32_t layout_bytes = tblfx2::TableFixedGet32( wB.data() + tblfx2::kTableFixedHeaderBytes );
+    const uint32_t layout_bytes = nn::TableFixedGet32( wB.data() + nn::kTableFixedHeaderBytes );
     // the layout is a u32 count then the entries; flip a byte of entry 0's id
-    wB[(size_t) tblfx2::kTableFixedHeaderBytes + 4 + 4] ^= 0x01;
-    const uint64_t hashB = tblfx2::TableFixedHashOf( wB.data() + tblfx2::kTableFixedHeaderBytes + 4, layout_bytes );
-    tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHashAt, hashB );
-    tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
-    tblfx2::TableReport r3;
-    const int64_t nB = tblfx2::FxRootFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 );
-    check( nB < 0 && r3.refused && r3.reason == tblfx2::layout_unknown,
+    wB[(size_t) nn::kTableFixedHeaderBytes + 4 + 4] ^= 0x01;
+    const uint64_t hashB = nn::TableFixedHashOf( wB.data() + nn::kTableFixedHeaderBytes + 4, layout_bytes );
+    nn::TableFixedPut64( wB.data() + nn::kTableFixedHashAt, hashB );
+    nn::TableFixedPut64( wB.data() + nn::kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
+    nn::TableReport r3;
+    const int64_t nB = nn::LineageFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 );
+    check( nB < 0 && r3.refused && r3.reason == nn::layout_unknown,
            "cache: a hash in no lineage is layout_unknown, not a second compile" );
     check( cache.compiles == 1, "cache: a stranger's hash does not compile" );
 
-    tblfx2::FxRoot two;
-    tblfx2::FxRootReset( two );
-    two.keep = 1;
-    std::vector<uint8_t> w2( (size_t) tblfx2::FxRootFixedMeasure( 1 ) );
-    check( tblfx2::FxRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "cache: FX2 save" );
-    tblfx2::TableReport r4;
-    check( tblfx2::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &cache, &r4 ) == 1,
+    nn::Lineage two;
+    nn::LineageReset( two );
+    two.x = 1;
+    std::vector<uint8_t> w2( (size_t) nn::LineageFixedMeasure( 1 ) );
+    check( nn::LineageFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "cache: newer save" );
+    nn::TableReport r4;
+    check( nn::LineageFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &cache, &r4 ) == 1,
            "cache: identity load" );
     check( cache.compiles == 1, "cache: identity never increments the compile counter" );
+
+    // AN UNLAWFUL ENTRY HAS NO PLAN TO CACHE. FX1 is in FX2's lineage and is
+    // unlawful for it (`gone`): every load of it is refused layout_malformed,
+    // with every counter at zero, and no slot is ever filled with a plan.
+    {
+        tblfx1::FxRoot fx;
+        tblfx1::FxRootReset( fx );
+        fx.gone = 654;
+        std::vector<uint8_t> wf( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+        check( tblfx1::FxRootFixedSave( &fx, 1, wf.data(), (int64_t) wf.size() ) == (int64_t) wf.size(), "cache: FX1 save" );
+        std::vector<tblfx2::TableFixedEntry> fplan( 1024 );
+        std::vector<tblfx2::TableFixedEntry> fslab( (size_t) tblfx2::kTableFixedPlanCacheCapacity * 1024 );
+        tblfx2::TableFixedPlanCache fcache;
+        tblfx2::TableFixedPlanCacheInit( fcache, fslab.data(), 1024 );
+        tblfx2::FxRoot fback;
+        for ( int pass = 0; pass < 2; ++pass )
+        {
+            tblfx2::TableReport fr;
+            check( tblfx2::FxRootFixedLoad( &fback, 1, wf.data(), (int64_t) wf.size(), fplan.data(), 1024, &fcache, &fr ) == -1 &&
+                   refused_unlawful( fr, tblfx2::layout_malformed, tblfx2::ok ),
+                   pass == 0 ? "cache, unlawful entry: the first load is refused layout_malformed, nothing counted"
+                             : "cache, unlawful entry: so is the second — the refusal is never a cached plan" );
+        }
+        check( fcache.used == 0, "cache, unlawful entry: no slot holds a plan for it" );
+    }
 }
 
 // ---------------------------------------------------------------------------

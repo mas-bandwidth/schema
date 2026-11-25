@@ -5,7 +5,7 @@ Part of the specification: every test of tier `functional`, from the test regist
 
 **Tier functional:** uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it.
 
-Functional tests every language answers: 2145. Language-free tests: 4.
+Functional tests every language answers: 2151. Language-free tests: 68.
 
 Run this tier for a language with `schema-test run --tier functional --lang L`, one test with `schema-test run <full name>`.
 
@@ -495,7 +495,7 @@ a value written from scratch gives exactly the expected bytes.
 | `L.functional.encode.conformance-cook-write.widelist-wide` | conformance cook-write widelist\_wide: the cook writes the pinned bytes | `case: widelist_wide`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (314 bytes, held in the registry row's `inputs.files`)<br>`surface: cook-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.encode.conformance-cook-write.widelist-wide-be` | conformance cook-write widelist\_wide-be: the cook writes the pinned bytes | `case: widelist_wide-be`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (314 bytes, held in the registry row's `inputs.files`)<br>`surface: cook-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 
-#### `encode` family `conformance-json-write`, 164 tests
+#### `encode` family `conformance-json-write`, 165 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -610,6 +610,7 @@ a value written from scratch gives exactly the expected bytes.
 | `L.functional.encode.conformance-json-write.stream-parts-json` | conformance json-write stream\_parts.json: the pinned wire is written as the canonical §16 text | `case: stream_parts.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (305 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.encode.conformance-json-write.surf-arrays-full-json` | conformance json-write surf\_arrays\_full.json: the pinned wire is written as the canonical §16 text | `case: surf_arrays_full.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (153 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.encode.conformance-json-write.surf-chain127-vals-json` | conformance json-write surf\_chain127\_vals.json: the pinned wire is written as the canonical §16 text | `case: surf_chain127_vals.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (157 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
+| `L.functional.encode.conformance-json-write.surf-chain128-vals-write-json` | conformance json-write surf\_chain128\_vals\_write.json: the pinned wire is written as the canonical §16 text | `case: surf_chain128_vals_write.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (98 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.encode.conformance-json-write.surf-counted-full-json` | conformance json-write surf\_counted\_full.json: the pinned wire is written as the canonical §16 text | `case: surf_counted_full.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (155 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.encode.conformance-json-write.surf-holder-null-required-json` | conformance json-write surf\_holder\_null\_required.json: the pinned wire is written as the canonical §16 text | `case: surf_holder_null_required.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (171 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.encode.conformance-json-write.surf-holder-present-json` | conformance json-write surf\_holder\_present.json: the pinned wire is written as the canonical §16 text | `case: surf_holder_present.json`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (159 bytes, held in the registry row's `inputs.files`)<br>`surface: json-write` | the leg's answer equals the corpus's expectation (test/conformance/README.md) | `testdata/conformance/tables/MANIFEST.txt` |
@@ -1293,7 +1294,7 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | `L.functional.write-refusal.conformance-write-refusal-block.bref-range` | conformance write-refusal-block bref\_range: building the bad block is refused | `case: bref_range`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-block` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-block.bref-range-ok` | conformance write-refusal-block bref\_range\_ok: building the bad block is refused | `case: bref_range_ok`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (145 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-block` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 
-#### `write-refusal` family `conformance-write-refusal-cook`, 11 tests
+#### `write-refusal` family `conformance-write-refusal-cook`, 16 tests
 
 | full name | checks | inputs | expected result | source |
 |---|---|---|---|---|
@@ -1302,12 +1303,17 @@ writing a bad value is refused (debug assert in the assert legs; every build in 
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-count-below-min` | conformance write-refusal-cook cref\_count\_below\_min: cooking the bad value is refused | `case: cref_count_below_min`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (97 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-count-over` | conformance write-refusal-cook cref\_count\_over: cooking the bad value is refused | `case: cref_count_over`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (97 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-cycle` | conformance write-refusal-cook cref\_cycle: cooking the bad value is refused | `case: cref_cycle`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (198 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
+| `L.functional.write-refusal.conformance-write-refusal-cook.cref-enum-deprecated` | conformance write-refusal-cook cref\_enum\_deprecated: cooking the bad value is refused | `case: cref_enum_deprecated`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (355 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
+| `L.functional.write-refusal.conformance-write-refusal-cook.cref-enum-ok` | conformance write-refusal-cook cref\_enum\_ok: cooking the bad value is refused | `case: cref_enum_ok`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (355 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
+| `L.functional.write-refusal.conformance-write-refusal-cook.cref-enum-range` | conformance write-refusal-cook cref\_enum\_range: cooking the bad value is refused | `case: cref_enum_range`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (355 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-finite-ok` | conformance write-refusal-cook cref\_finite\_ok: cooking the bad value is refused | `case: cref_finite_ok`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (334 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-fixed-long` | conformance write-refusal-cook cref\_fixed\_long: cooking the bad value is refused | `case: cref_fixed_long`<br>`driver: test/conformance/{lang}/driver`<br>`files: ["test/tables/surfaces/Surfaces.schema","testdata/conformance/tables/wire/surf_arrays_full.bin"]`<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-fixed-ok` | conformance write-refusal-cook cref\_fixed\_ok: cooking the bad value is refused | `case: cref_fixed_ok`<br>`driver: test/conformance/{lang}/driver`<br>`files: ["test/tables/surfaces/Surfaces.schema","testdata/conformance/tables/wire/surf_arrays_full.bin"]`<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-infinite` | conformance write-refusal-cook cref\_infinite: cooking the bad value is refused | `case: cref_infinite`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (334 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-non-finite` | conformance write-refusal-cook cref\_non\_finite: cooking the bad value is refused | `case: cref_non_finite`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (334 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 | `L.functional.write-refusal.conformance-write-refusal-cook.cref-shared-ok` | conformance write-refusal-cook cref\_shared\_ok: cooking the bad value is refused | `case: cref_shared_ok`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (198 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
+| `L.functional.write-refusal.conformance-write-refusal-cook.cref-var-enum-ok` | conformance write-refusal-cook cref\_var\_enum\_ok: cooking the bad value is refused | `case: cref_var_enum_ok`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (242 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
+| `L.functional.write-refusal.conformance-write-refusal-cook.cref-var-enum-range` | conformance write-refusal-cook cref\_var\_enum\_range: cooking the bad value is refused | `case: cref_var_enum_range`<br>`driver: test/conformance/{lang}/driver`<br>`inputs.files` (242 bytes, held in the registry row's `inputs.files`)<br>`surface: write-refusal-cook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `testdata/conformance/tables/MANIFEST.txt` |
 
 #### `write-refusal` family `conformance-write-refusal-fixed`, 88 tests
 
@@ -2341,6 +2347,154 @@ one schema version reads or writes another's data.
 
 Each runs once, as `none.functional.<type>.<family>.<case>`, through the adapter its row names. A new language implements none of these; they hold the compiler, the corpora and the harness itself.
 
+### Type `write-refusal`
+
+writing a bad value is refused (debug assert in the assert legs; every build in the refuse legs).
+
+#### `write-refusal` family `cstable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.write-refusal.cstable.c-sharp-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/cstable/declared_deprecated_enum_cook_test.go:92` |
+
+#### `write-refusal` family `ctable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.write-refusal.ctable.c-cook-enum-arm-defines-assert-hook` | `gotest` | Go test TestCCookEnumArmDefinesAssertHook in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCCookEnumArmDefinesAssertHook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/ctable/cook_enum_assert_hook_test.go:31` |
+
+#### `write-refusal` family `javatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.write-refusal.javatable.java-declared-deprecated-enum-cook` | `gotest` | Go test TestJavaDeclaredDeprecatedEnumCook in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaDeclaredDeprecatedEnumCook` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/javatable/declared_deprecated_enum_cook_test.go:23` |
+
+#### `write-refusal` family `squirreltable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.write-refusal.squirreltable.squirrel-fixed-root-save-refuses-off-contract` | `gotest` | Go test TestSquirrelFixedRootSaveRefusesOffContract in ./internal/codegen/squirreltable | `package: ./internal/codegen/squirreltable`<br>`test: TestSquirrelFixedRootSaveRefusesOffContract` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/squirreltable/fixedrootsave_writerefusal_test.go:48` |
+
+#### `write-refusal` family `unitytable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.write-refusal.unitytable.unity-declared-deprecated-enum-cook-asserts-before-any-byte` | `gotest` | Go test TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityDeclaredDeprecatedEnumCookAssertsBeforeAnyByte` | refused on write (verdict only): by a debug assert in a language whose write rule is `assert`, in every build in a language whose rule is `refuse` | `internal/codegen/unitytable/declared_deprecated_enum_cook_test.go:86` |
+
+### Type `codegen`
+
+generated source compiles and is clean.
+
+#### `codegen` family `cpptable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.codegen.cpptable.every-generated-table-header-compiles-standalone` | `gotest` | Go test TestEveryGeneratedTableHeaderCompilesStandalone in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestEveryGeneratedTableHeaderCompilesStandalone` | the Go test passes | `internal/codegen/cpptable/standalone_headers_test.go:31` |
+
+### Type `evolution`
+
+one schema version reads or writes another's data.
+
+#### `evolution` family `cpptable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.cpptable.cpp-fixed-unlawful-corpus` | `gotest` | Go test TestCppFixedUnlawfulCorpus in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/cpptable/fixed_unlawful_corpus_test.go:96` |
+| `none.functional.evolution.cpptable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/cpptable/fixedversioning_kind_moved_test.go:18` |
+
+#### `evolution` family `cstable`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.cstable.c-sharp-fixed-unlawful-corpus` | `gotest` | Go test TestCSharpFixedUnlawfulCorpus in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/cstable/fixed_unlawful_corpus_test.go:103` |
+| `none.functional.evolution.cstable.c-sharp-lineage-optional-unwrapped-is-kind-mismatch` | `gotest` | Go test TestCSharpLineageOptionalUnwrappedIsKindMismatch in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpLineageOptionalUnwrappedIsKindMismatch` | the Go test passes | `internal/codegen/cstable/fixedlineage_kind_moved_test.go:156` |
+| `none.functional.evolution.cstable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/cstable/fixedversioning_kind_moved_test.go:19` |
+
+#### `evolution` family `ctable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.ctable.c-fixed-unlawful-corpus` | `gotest` | Go test TestCFixedUnlawfulCorpus in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/ctable/fixed_unlawful_corpus_test.go:128` |
+| `none.functional.evolution.ctable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/ctable/fixedversioning_kind_moved_test.go:18` |
+
+#### `evolution` family `darttable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.darttable.dart-fixed-unlawful-corpus` | `gotest` | Go test TestDartFixedUnlawfulCorpus in ./internal/codegen/darttable | `package: ./internal/codegen/darttable`<br>`test: TestDartFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/darttable/fixed_unlawful_corpus_test.go:93` |
+| `none.functional.evolution.darttable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/darttable | `package: ./internal/codegen/darttable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/darttable/fixedversioning_kind_moved_test.go:19` |
+
+#### `evolution` family `elixirtable`, 4 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.elixirtable.elixir-fixed-unlawful-corpus` | `gotest` | Go test TestElixirFixedUnlawfulCorpus in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestElixirFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/elixirtable/fixed_unlawful_corpus_test.go:53` |
+| `none.functional.evolution.elixirtable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_kind_moved_test.go:21` |
+| `none.functional.evolution.elixirtable.fixed-versioning-unlawful-entry-control-loads` | `gotest` | Go test TestFixedVersioningUnlawfulEntryControlLoads in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningUnlawfulEntryControlLoads` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:213` |
+| `none.functional.evolution.elixirtable.fixed-versioning-unlawful-entry-refuses` | `gotest` | Go test TestFixedVersioningUnlawfulEntryRefuses in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestFixedVersioningUnlawfulEntryRefuses` | the Go test passes | `internal/codegen/elixirtable/fixedversioning_unlawful_test.go:195` |
+
+#### `evolution` family `goosetable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.goosetable.goose-fixed-form-kind-moved-unlawful` | `gotest` | Go test TestGooseFixedFormKindMovedUnlawful in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedFormKindMovedUnlawful` | the Go test passes | `internal/codegen/goosetable/fixedevolve_test.go:198` |
+| `none.functional.evolution.goosetable.goose-fixed-unlawful-corpus` | `gotest` | Go test TestGooseFixedUnlawfulCorpus in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/goosetable/fixed_unlawful_corpus_test.go:60` |
+
+#### `evolution` family `gotable`, 3 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.gotable.fixed-unlawful-corpus` | `gotest` | Go test TestFixedUnlawfulCorpus in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/gotable/fixed_unlawful_corpus_test.go:85` |
+| `none.functional.evolution.gotable.fixed-v1-l-is-a-lawful-writer-for-v2` | `gotest` | Go test TestFixedV1LIsALawfulWriterForV2 in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedV1LIsALawfulWriterForV2` | the Go test passes | `internal/codegen/gotable/fixed_v1l_lawful_test.go:19` |
+| `none.functional.evolution.gotable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/gotable/fixedversioning_kind_moved_test.go:14` |
+
+#### `evolution` family `javatable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.javatable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/javatable/fixedversioning_kind_moved_test.go:17` |
+| `none.functional.evolution.javatable.java-fixed-unlawful-corpus` | `gotest` | Go test TestJavaFixedUnlawfulCorpus in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/javatable/fixed_unlawful_corpus_test.go:84` |
+
+#### `evolution` family `jstable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.jstable.js-fixed-unlawful-corpus` | `gotest` | Go test TestJSFixedUnlawfulCorpus in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/jstable/fixed_unlawful_corpus_test.go:113` |
+| `none.functional.evolution.jstable.js-fixed-versioning-kind-moved` | `gotest` | Go test TestJSFixedVersioningKindMoved in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJSFixedVersioningKindMoved` | the Go test passes | `internal/codegen/jstable/fixedversioning_kind_moved_test.go:20` |
+
+#### `evolution` family `lobstertable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.lobstertable.lobster-fixed-unlawful-corpus` | `gotest` | Go test TestLobsterFixedUnlawfulCorpus in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/lobstertable/fixed_unlawful_corpus_test.go:86` |
+
+#### `evolution` family `luatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.luatable.lua-fixed-unlawful-corpus` | `gotest` | Go test TestLuaFixedUnlawfulCorpus in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luatable/fixed_unlawful_corpus_test.go:104` |
+
+#### `evolution` family `luautable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.luautable.luau-fixed-unlawful-corpus` | `gotest` | Go test TestLuauFixedUnlawfulCorpus in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/luautable/fixed_unlawful_corpus_test.go:86` |
+| `none.functional.evolution.luautable.luau-fixed-versioning-kind-moved` | `gotest` | Go test TestLuauFixedVersioningKindMoved in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauFixedVersioningKindMoved` | the Go test passes | `internal/codegen/luautable/fixedversioning_kind_moved_test.go:14` |
+
+#### `evolution` family `rusttable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.rusttable.fixed-versioning-kind-moved` | `gotest` | Go test TestFixedVersioningKindMoved in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestFixedVersioningKindMoved` | the Go test passes | `internal/codegen/rusttable/fixedversioning_kind_moved_test.go:16` |
+| `none.functional.evolution.rusttable.rust-fixed-unlawful-corpus` | `gotest` | Go test TestRustFixedUnlawfulCorpus in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/rusttable/fixed_unlawful_corpus_test.go:80` |
+
+#### `evolution` family `unitytable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.evolution.unitytable.unity-fixed-unlawful-corpus` | `gotest` | Go test TestUnityFixedUnlawfulCorpus in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedUnlawfulCorpus` | the Go test passes | `internal/codegen/unitytable/fixed_unlawful_corpus_test.go:81` |
+| `none.functional.evolution.unitytable.unity-fixed-unlawful-lineage` | `gotest` | Go test TestUnityFixedUnlawfulLineage in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityFixedUnlawfulLineage` | the Go test passes | `internal/codegen/unitytable/fixed_unlawful_lineage_test.go:22` |
+
 ### Type `plant`
 
 a negative control: a named test run against a deliberately broken build must come out red.
@@ -2358,6 +2512,137 @@ a negative control: a named test run against a deliberately broken build must co
 |---|---|---|---|---|---|
 | `none.functional.plant.corpus-plants.go-absent-root-full` | `plant` | the go leg drops root\_full from its wire answers (it answers it absent): the corpus adapter must turn exactly that instance red as MISSING | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GO":"absent:root_full"}`<br>`reason: MISSING`<br>`target: go.functional.roundtrip.conformance-wire.root-full` | the target runs and fails as MISSING | `test/conformance/go/main.go plantEnv` |
 | `none.functional.plant.corpus-plants.go-wrong-byte-root-full` | `plant` | the go leg's wire reader writes root\_full back with its first byte flipped: the corpus adapter must turn exactly that instance red | `env: {"SCHEMA_TEST_PLANT_CONFORMANCE_GO":"wrong-byte:root_full"}`<br>`reason: not the corpus's`<br>`target: go.functional.roundtrip.conformance-wire.root-full` | the target runs and fails: the answer is not the corpus's | `test/conformance/go/main.go plantEnv` |
+
+### Type `tooling`
+
+CI policy, docs, roadmap, repo-structure and harness self-tests.
+
+#### `tooling` family `ci`, 7 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.tooling.ci.every-tree-path-maps-to-a-job` | `gotest` | Go test TestEveryTreePathMapsToAJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTreePathMapsToAJob` | the Go test passes | `internal/ci/every_job_runs_test.go:304` |
+| `none.functional.tooling.ci.fast-plan-covers-every-base-and-selects-relevant-work` | `gotest` | Go test TestFastPlanCoversEveryBaseAndSelectsRelevantWork in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanCoversEveryBaseAndSelectsRelevantWork` | the Go test passes | `internal/ci/fast_plan_test.go:94` |
+| `none.functional.tooling.ci.fast-plan-diffs-against-main` | `gotest` | Go test TestFastPlanDiffsAgainstMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestFastPlanDiffsAgainstMain` | the Go test passes | `internal/ci/every_job_runs_test.go:339` |
+| `none.functional.tooling.ci.no-fast-job-skips-on-a-main-push` | `gotest` | Go test TestNoFastJobSkipsOnAMainPush in ./internal/ci | `package: ./internal/ci`<br>`test: TestNoFastJobSkipsOnAMainPush` | the Go test passes | `internal/ci/every_job_runs_test.go:106` |
+| `none.functional.tooling.ci.plan-omission-log-names-every-job` | `gotest` | Go test TestPlanOmissionLogNamesEveryJob in ./internal/ci | `package: ./internal/ci`<br>`test: TestPlanOmissionLogNamesEveryJob` | the Go test passes | `internal/ci/every_job_runs_test.go:231` |
+| `none.functional.tooling.ci.squirrel-all-port-differential-leaves-uncomparable-answers-out` | `gotest` | Go test TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut in ./internal/ci | `package: ./internal/ci`<br>`test: TestSquirrelAllPortDifferentialLeavesUncomparableAnswersOut` | the Go test passes | `internal/ci/schema_squirrel_all_port_differential_test.go:484` |
+| `none.functional.tooling.ci.touched-leg-reads-its-families-again` | `gotest` | Go test TestTouchedLegReadsItsFamiliesAgain in ./internal/ci | `package: ./internal/ci`<br>`test: TestTouchedLegReadsItsFamiliesAgain` | the Go test passes | `internal/ci/touched_leg_rows_test.go:17` |
+
+### Type `resource-bounds`
+
+memory, allocation and depth limits are held.
+
+#### `resource-bounds` family `cpptable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.cpptable.cpp-text-write-depth-cap-counts-every-container` | `gotest` | Go test TestCppTextWriteDepthCapCountsEveryContainer in ./internal/codegen/cpptable | `package: ./internal/codegen/cpptable`<br>`test: TestCppTextWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/cpptable/json_depth_write_cpp_test.go:132` |
+
+#### `resource-bounds` family `cstable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.cstable.c-sharp-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestCSharpJSONWriteDepthCapCountsEveryContainer in ./internal/codegen/cstable | `package: ./internal/codegen/cstable`<br>`test: TestCSharpJSONWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/cstable/json_write_depth_test.go:71` |
+
+#### `resource-bounds` family `ctable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.ctable.c-text-write-depth-cap-counts-every-container` | `gotest` | Go test TestCTextWriteDepthCapCountsEveryContainer in ./internal/codegen/ctable | `package: ./internal/codegen/ctable`<br>`test: TestCTextWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/ctable/json_depth_write_c_test.go:70` |
+
+#### `resource-bounds` family `darttable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.darttable.dart-write-depth-cap-counts-every-container` | `gotest` | Go test TestDartWriteDepthCapCountsEveryContainer in ./internal/codegen/darttable | `package: ./internal/codegen/darttable`<br>`test: TestDartWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/darttable/depth_write_dart_test.go:119` |
+
+#### `resource-bounds` family `elixirtable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.elixirtable.elixir-json-write-depth-counts-every-container` | `gotest` | Go test TestElixirJSONWriteDepthCountsEveryContainer in ./internal/codegen/elixirtable | `package: ./internal/codegen/elixirtable`<br>`test: TestElixirJSONWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/elixirtable/json_write_depth_test.go:102` |
+
+#### `resource-bounds` family `goosetable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.goosetable.goose-json-write-depth-cap-typed` | `gotest` | Go test TestGooseJsonWriteDepthCapTyped in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseJsonWriteDepthCapTyped` | the Go test passes | `internal/codegen/goosetable/json_write_depth_test.go:255` |
+| `none.functional.resource-bounds.goosetable.goose-json-write-depth-cap-variable` | `gotest` | Go test TestGooseJsonWriteDepthCapVariable in ./internal/codegen/goosetable | `package: ./internal/codegen/goosetable`<br>`test: TestGooseJsonWriteDepthCapVariable` | the Go test passes | `internal/codegen/goosetable/json_write_depth_test.go:131` |
+
+#### `resource-bounds` family `gotable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.gotable.go-json-write-depth-counts-every-container` | `gotest` | Go test TestGoJsonWriteDepthCountsEveryContainer in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestGoJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/gotable/jsonwrite_containers_depth_test.go:16` |
+| `none.functional.resource-bounds.gotable.go-json-write-depth-counts-flags` | `gotest` | Go test TestGoJsonWriteDepthCountsFlags in ./internal/codegen/gotable | `package: ./internal/codegen/gotable`<br>`test: TestGoJsonWriteDepthCountsFlags` | the Go test passes | `internal/codegen/gotable/jsonwrite_flags_depth_test.go:11` |
+
+#### `resource-bounds` family `javatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.javatable.java-json-write-depth-counts-every-container` | `gotest` | Go test TestJavaJsonWriteDepthCountsEveryContainer in ./internal/codegen/javatable | `package: ./internal/codegen/javatable`<br>`test: TestJavaJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/javatable/java_json_write_depth_test.go:145` |
+
+#### `resource-bounds` family `jstable`, 2 tests
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.jstable.js-json-write-depth-counts-every-container` | `gotest` | Go test TestJsJsonWriteDepthCountsEveryContainer in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJsJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/jstable/json_write_containers_depth_test.go:13` |
+| `none.functional.resource-bounds.jstable.js-json-write-depth-counts-flags` | `gotest` | Go test TestJsJsonWriteDepthCountsFlags in ./internal/codegen/jstable | `package: ./internal/codegen/jstable`<br>`test: TestJsJsonWriteDepthCountsFlags` | the Go test passes | `internal/codegen/jstable/json_write_flags_depth_test.go:11` |
+
+#### `resource-bounds` family `lobstertable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.lobstertable.lobster-json-write-depth-counts-every-container` | `gotest` | Go test TestLobsterJsonWriteDepthCountsEveryContainer in ./internal/codegen/lobstertable | `package: ./internal/codegen/lobstertable`<br>`test: TestLobsterJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/lobstertable/json_depth_write_test.go:77` |
+
+#### `resource-bounds` family `luatable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.luatable.lua-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuaJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luatable | `package: ./internal/codegen/luatable`<br>`test: TestLuaJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luatable/jsonwritedepth_test.go:72` |
+
+#### `resource-bounds` family `luautable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.luautable.luau-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestLuauJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/luautable | `package: ./internal/codegen/luautable`<br>`test: TestLuauJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/luautable/json_write_depth_test.go:73` |
+
+#### `resource-bounds` family `mootable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.mootable.moo-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestMooJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/mootable | `package: ./internal/codegen/mootable`<br>`test: TestMooJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/mootable/json_depth_cap_test.go:152` |
+
+#### `resource-bounds` family `pythontable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.pythontable.python-json-write-depth-counts-every-container` | `gotest` | Go test TestPythonJsonWriteDepthCountsEveryContainer in ./internal/codegen/pythontable | `package: ./internal/codegen/pythontable`<br>`test: TestPythonJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/pythontable/json_keybytes_test.go:66` |
+
+#### `resource-bounds` family `rubytable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.rubytable.ruby-json-write-depth-counts-every-container` | `gotest` | Go test TestRubyJsonWriteDepthCountsEveryContainer in ./internal/codegen/rubytable | `package: ./internal/codegen/rubytable`<br>`test: TestRubyJsonWriteDepthCountsEveryContainer` | the Go test passes | `internal/codegen/rubytable/json_keybytes_depth_test.go:90` |
+
+#### `resource-bounds` family `rusttable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.rusttable.rust-write-depth-cap-counts-every-container` | `gotest` | Go test TestRustWriteDepthCapCountsEveryContainer in ./internal/codegen/rusttable | `package: ./internal/codegen/rusttable`<br>`test: TestRustWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/rusttable/depth_write_rust_test.go:71` |
+
+#### `resource-bounds` family `squirreltable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.squirreltable.squirrel-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestSquirrelJsonWriteDepthCapCountsEveryContainer in ./internal/codegen/squirreltable | `package: ./internal/codegen/squirreltable`<br>`test: TestSquirrelJsonWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/squirreltable/json_write_depth_test.go:104` |
+
+#### `resource-bounds` family `unitytable`, 1 test
+
+| full name | adapter | checks | inputs | expected result | source |
+|---|---|---|---|---|---|
+| `none.functional.resource-bounds.unitytable.unity-json-write-depth-cap-counts-every-container` | `gotest` | Go test TestUnityJSONWriteDepthCapCountsEveryContainer in ./internal/codegen/unitytable | `package: ./internal/codegen/unitytable`<br>`test: TestUnityJSONWriteDepthCapCountsEveryContainer` | the Go test passes | `internal/codegen/unitytable/json_write_depth_test.go:73` |
 
 ## Declared unrepresentable
 

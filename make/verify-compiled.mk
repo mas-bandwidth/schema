@@ -60,7 +60,7 @@ VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c build/conformance-c tables-c-view
 VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs
 VERIFY_FUZZ_DEPS_unity  := toolchain-unity build/conformance-unity/.stamp
 VERIFY_FUZZ_DEPS_go     := build/conformance-go
-VERIFY_FUZZ_DEPS_rust   := build/conformance-rust-all build/conformance-rust
+VERIFY_FUZZ_DEPS_rust   := build/conformance-rust-all
 VERIFY_FUZZ_DEPS_java   := toolchain-java build-conformance-java
 VERIFY_FUZZ_DEPS_dart   := toolchain-dart build/conformance-dart
 VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp build-conformance-elixir
@@ -95,7 +95,7 @@ _verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
-		./build/conformance-harness message-fuzz --only $(1) \
+		./build/conformance-harness message-fuzz --only $(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
 
@@ -134,10 +134,12 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 # checks run, so the two halves of the build run on two runners:
 #
 #   part 1: the standalone C++ test binaries (schema_test, schema_test_tables,
-#           schema_test_ludicrous, packet text, and the packet-defaults,
-#           packet-void and R15 row checks their targets run);
-#   part 2: what test/conformance/cpp/ci.json says the corpus run needs (the corpus run itself is the
-#           schema-test corpus adapter's now): the driver, schema_test_cook, table-base64-cpp.
+#           schema_test_ludicrous, packet text, and the packet-defaults
+#           and packet-void checks their targets run; the C++ conformance
+#           rows run in ci-fast.yml's conformance-rows job);
+#   part 2: what test/conformance/cpp/ci.json says the corpus run needs (the
+#           corpus run itself is the schema-test corpus adapter's now): the
+#           driver, schema_test_cook, table-base64-cpp.
 #
 # Nothing is dropped: _verify-cpp-conformance is both parts, and the split is
 # by target, so it is the same every run. ci-fast.yml's verify-cpp-conformance
@@ -145,7 +147,7 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 .PHONY: _verify-cpp-conformance _verify-cpp-conformance-1 _verify-cpp-conformance-2 verify-cpp-conformance-1 verify-cpp-conformance-2 _verify-cpp-bench
 _verify-cpp-conformance: _verify-cpp-conformance-1 _verify-cpp-conformance-2
 
-_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
+_verify-cpp-conformance-1: build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp build/packet-text/cpp/driver build/packet-text/harness build/schema_test_tables
 	./build/schema_test
 	./build/schema_test_tables
 	./build/schema_test_ludicrous
@@ -164,7 +166,7 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
+_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 
@@ -220,8 +222,47 @@ _verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go
 
 # ---- rust ----
 
+# THE RUST FUZZ GATE IN TWO HALVES (2026-11-24). As the ci-fast.yml row
+# (rust, fuzz) the gate ran 107-121 s and was cut at the two-minute cap on
+# main's push run 45431445496: 17 s building build/conformance-rust-all, 79 s
+# in `cargo build` of test/conformance/rust (build/conformance-rust, the
+# conformance driver), and 4 s fuzzing. Only the JSON and message passes read
+# that driver; the two wire passes read conformance-rust-all. The (rust,
+# conformance) row builds build/conformance-rust anyway, so it runs the JSON
+# and message passes (verify-rust-fuzz-driver) on that build, and the (rust,
+# fuzz) row runs the extra step and both wire passes (verify-rust-fuzz-wire).
+# The two halves are _verify-rust-fuzz, nothing dropped: same seed, same
+# counts. internal/ci TestRustFuzzHalvesAreTheWholeGate holds the union.
+_verify-rust-fuzz-json _verify-rust-fuzz-message: build/conformance-rust
+
+.PHONY: verify-rust-fuzz-wire verify-rust-fuzz-driver
+verify-rust-fuzz-wire:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-rust-fuzz-extra _verify-rust-fuzz-plain _verify-rust-fuzz-retain
+
+verify-rust-fuzz-driver:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-rust-fuzz-json _verify-rust-fuzz-message
+
+# the (rust, conformance) row: the conformance gate, the driver's fuzz half
+# and the harness test that answers on the driver, in one make, so
+# build/conformance-rust is built once
+.PHONY: verify-rust-conformance-and-driver-fuzz
+verify-rust-conformance-and-driver-fuzz:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-rust-conformance _verify-rust-fuzz-json _verify-rust-fuzz-message _verify-rust-driver-write-refusal
+
+# THE RUST WRITE-REFUSAL TEST RIDES THIS ROW (2026-11-24). As a go-test-touched
+# row of its own, TestRustDriverAnswersWriteRefusal built the Rust driver cold:
+# 105 s of a two-minute job (PR #5007, run 45437384482, row 18 of 23). Here the
+# driver is already built, so the test's own `make build/conformance-rust` is
+# up to date and the test is its four answers. .github/go-test-rows.txt names
+# it in a `rides` line: no go-test-touched row runs it, and the plan selects
+# this row whenever ./test/conformance/harness is selected (gotestrows
+# -rides-out; TestEveryRideRunsInItsLegsRow holds this recipe to that line).
+.PHONY: _verify-rust-driver-write-refusal
+_verify-rust-driver-write-refusal: build/conformance-rust
+	PATH="$(RUSTUP_BIN):$$PATH" go test -count=1 -run '^TestRustDriverAnswersWriteRefusal$$' ./test/conformance/harness
+
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
+_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
 		(cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p2=$$!; \
@@ -256,7 +297,7 @@ _verify-java-packet-main: toolchain-java build/java-test/.stamp
 _verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java
 
 # As Rust's: the quick run (--round 0) and the paired gate run beside the view
 # and cards gates. On a vision slot the whole leg was cancelled at the cap in
@@ -276,7 +317,7 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-packets _verify-dart-bench
-_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
+_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 
@@ -343,10 +384,10 @@ _conformance-corpus-java: toolchain-java build/conformance-harness build-conform
 	@rm -rf build/verify/conformance-corpus-java && mkdir -p build/verify/conformance-corpus-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-corpus-java --results $(VERIFY_RESULTS_DIR)/java.json
 
-_conformance-corpus-dart: toolchain-dart build/conformance-harness build/conformance-dart build/conformance-dart-asserts.dill
+_conformance-corpus-dart: toolchain-dart build/conformance-harness build/conformance-dart
 	@rm -rf build/verify/conformance-corpus-dart && mkdir -p build/verify/conformance-corpus-dart $(VERIFY_RESULTS_DIR)
 	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-corpus-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 
-_conformance-corpus-elixir: toolchain-elixir build/conformance-harness build-conformance-elixir
+_conformance-corpus-elixir: toolchain-elixir build/conformance-harness $(VERIFY_ELIXIR_BUILD)
 	@rm -rf build/verify/conformance-corpus-elixir && mkdir -p build/verify/conformance-corpus-elixir $(VERIFY_RESULTS_DIR)
-	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-corpus-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
+	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/$(VERIFY_ELIXIR_EBIN)" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-corpus-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json

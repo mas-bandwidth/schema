@@ -339,7 +339,9 @@ public final class FixedTableFixed {
      *
      * <p>RULING R4: on EVERY refusal (-1), every row the call was given — the first `count` slots
      * of `values`, `count` being the capacity this call declares, never past the array's length —
-     * holds its declared default. A null slot has nothing to reset and stays null.
+     * holds its declared default. A null slot has nothing to reset and stays null. Each row is
+     * reset() first: the defaults scatter lands a union's None tag and no arm, so a value the
+     * caller left in an arm would survive the refusal (§6.5).
      */
     public static int load(
             Value[] values,
@@ -354,6 +356,7 @@ public final class FixedTableFixed {
             final int given = java.lang.Math.max(0, java.lang.Math.min(count, values.length));
             for (int j = 0; j < given; j++) {
                 if (values[j] != null) {
+                    values[j].reset();
                     scatter(defaults, 0, values[j], TableFixed.discard(), true, false);
                 }
             }
@@ -412,12 +415,11 @@ public final class FixedTableFixed {
         }
 
         // STEP 8: the plan this endpoint resolves to, and the record size FROM THE
-        // LOCK. The census is the plan's own numbers, carried to the bottom.
+        // LOCK. An UNLAWFUL entry carries layoutMalformed and no plan (§5.4).
         TableFixed.Entry[] entries = Identity.plan;
         int made = Identity.plan.length;
         TableFixed.Prefill pre = Identity.prefill;
         short[] table = remap;
-        int censusUnknown = 0;
         if (fileHash != hash) {
             final TableFixed.Plan lane = Lineage.plans[pick];
             if (lane == null || lane.why != TableFixed.Reason.none) {
@@ -432,7 +434,6 @@ public final class FixedTableFixed {
             made = lane.count;
             pre = lane.prefill;
             table = lane.remap;
-            censusUnknown = lane.unknown;
         }
         final long recordSize = known_.recordBytes;
 
@@ -492,10 +493,8 @@ public final class FixedTableFixed {
                 at += (int) recordSize;
             }
         }
-        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that
-        // RETURNS (§5.9 #6): once per endpoint and never per record, which is also how
-        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).
-        report.unknown += censusUnknown;
+        // NO COMPILE CENSUS LANDS: a lawful lineage counts nothing, and an
+        // unlawful one refused at STEP 8 (§5.4, §5.9 #30).
         return n;
     }
 }

@@ -225,7 +225,7 @@ var cppSharedNames = []string{
 	"TableFixedCompiler", "TableFixedDst", "TableFixedEntry", "TableFixedFail", "TableFixedFill",
 	"TableFixedFillRun", "TableFixedGuardLink", "TableFixedHashOf", "TableFixedKnownKind",
 	"TableFixedKnownLayout", "TableFixedLayoutEntry", "TableFixedLayoutView", "TableFixedLeafSize",
-	"TableFixedMatchChildren", "TableFixedOrdinalWidth", "TableFixedParseLayout", "TableFixedPush",
+	"TableFixedChildrenNamed", "TableFixedMatchChildren", "TableFixedOrdinalWidth", "TableFixedParseLayout", "TableFixedPush",
 	"TableFixedReason", "TableFixedRun", "TableFixedSignedKind", "TableFixedSubtree", "TableFixedTagAt",
 	"TableFixedTagBytes", "TableFixedUnionArmBytes", "TableFixedWidens", "TableIds", "TableJsonGraphEntry",
 	"TableJsonGraphIn", "TableJsonGraphMap", "TableJsonGraphOut", "TableJsonIn", "TableJsonInteger",

@@ -54,6 +54,8 @@ const {
   TableFixedReport,
   TableFixedRun,
   TableFixedHoles,
+  TableFixedRefusal,
+  TableFixedRefusalName,
 } = tables;
 
 // The prefill bytes for a 12-byte body of three int32s at defaults (all zero).
@@ -157,23 +159,15 @@ check(!report.damaged && report.refused === 0,
   "E8 append: no refusal or malformed (refused=" + report.refused +
   ", malformed=" + report.damaged + ")");
 
-// ---- THE DEPRECATION HALF: same layout, different meaning ----
-// A deprecated field does NOT change the layout — the slot stays where it is.
-// The old writer writes it; the new reader reads it. The app ignores it.
-// We prove this by running the plan in the other direction: the "new" writer
-// (with c) is read by the "old" reader (without c).
-const newBody = new Uint8Array([
-  0x0a, 0x00, 0x00, 0x00,  // a = 10
-  0x14, 0x00, 0x00, 0x00,  // b = 20
-  0x1e, 0x00, 0x00, 0x00,  // c = 30 (appended, unknown to old reader)
-]);
-
-// Old reader's image: 8 bytes
-const oldImage = new Uint8Array(8);
-oldImage.fill(0);
-const oldImageView = new DataView(oldImage.buffer);
-
-// Plan from new to old: old reader does not know c.
+// ---- THE REMOVAL HALF: a field the reader names nowhere is UNLAWFUL ----
+// A deprecated field does NOT change the layout — the slot stays where it is
+// and keeps its id, so a newer reader still names it and reads it (the app
+// ignores it). REMOVING a field is what §5.1 refuses. So the reverse
+// direction — the "new" writer's layout {a,b,c} handed to the "old" reader
+// {a,b} as a lineage entry — carries a writer field `c` the reader names
+// nowhere, and the entry is UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH,
+// §5.4, §5.9 #30): COMPILE lays no plan, names layout_malformed, and counts
+// nothing — there is no compile census of unknown fields to read past.
 const oldDst = new Int32Array([
   0, 0, 0, 0, 0,
   0, 0, 0, 0, 0,
@@ -183,37 +177,23 @@ const oldDst = new Int32Array([
 const plan2 = new TableFixedPlan(64, 8, 64);
 const census2 = new TableFixedReport();
 const entries2 = TableFixedCompile(newView, oldLayout, oldDst, plan2, census2);
-check(entries2 >= 0, "plan compiles from new→old (" + entries2 + " entries)");
+check(entries2 < 0, "E8 removal: no plan compiles from new→old (got " + entries2 + ")");
+check(plan2.count === 0, "E8 removal: the unlawful entry laid no plan entries (count=" + plan2.count + ")");
+check(census2.refused === TableFixedRefusal.LayoutMalformed,
+  "E8 removal: the unlawful entry is named layout_malformed (refused=" + TableFixedRefusalName(census2.refused) + ")");
+check(census2.unknown === 0 && census2.mismatch === 0 && census2.oor === 0 && census2.widened === 0,
+  "E8 removal: nothing is counted — no unknown census (unknown=" + census2.unknown +
+  ", kindMismatch=" + census2.mismatch + ")");
 
-plan2.image.fill(0);
-const holes2 = TableFixedHoles(plan2.entries, entries2, plan2.cover, plan2.holes);
-for (let h = 0; h < holes2; h++) {
-  const o = plan2.holes[h * 2], z = plan2.holes[h * 2 + 1];
-  for (let i = 0; i < z; i++) { plan2.image[o + i] = 0; }
-}
-
-plan2.split = entries2;
-plan2.count = entries2;
-
-const newSrcView = new DataView(newBody.buffer);
-const report2 = new TableFixedReport();
-TableFixedRun(plan2.entries, entries2, newBody, newSrcView, 0, plan2.image, oldImageView, plan2.remap, report2);
-
-check(oldImageView.getInt32(0, true) === 10,
-  "E8 deprecation: old reader gets a=10 (got " + oldImageView.getInt32(0, true) + ")");
-check(oldImageView.getInt32(4, true) === 20,
-  "E8 deprecation: old reader gets b=20 (got " + oldImageView.getInt32(4, true) + ")");
-
-// c is unknown to the old reader — one unknown per peer (§5.4), counted at
-// compile time and carried on the plan (the census, §5.9 #6).
-check(census2.unknown === 1,
-  "E8 deprecation: one unknown for appended c (census got " + census2.unknown + ")");
-check(!report2.damaged && report2.refused === 0,
-  "E8 deprecation: no refusal or malformed (refused=" + report2.refused +
-  ", malformed=" + report2.damaged + ")");
+// A SECOND COMPILE OF THE SAME ENTRY ANSWERS THE SAME WAY.
+const census3 = new TableFixedReport();
+const entries3 = TableFixedCompile(newView, oldLayout, oldDst, plan2, census3);
+check(entries3 === entries2 && census3.refused === TableFixedRefusal.LayoutMalformed && census3.unknown === 0,
+  "E8 removal: a second compile refuses the same way (got " + entries3 + ", refused=" +
+  TableFixedRefusalName(census3.refused) + ", unknown=" + census3.unknown + ")");
 
 if (failed) {
   console.log("FAILED");
   process.exit(1);
 }
-console.log("E8: append and deprecate under the backward-read contract — the plan copies known fields and defaults the rest, a deprecated slot is read but its value means nothing");
+console.log("E8: append and deprecate under the backward-read contract — the plan copies known fields and defaults the rest, and a writer field the reader names nowhere is an unlawful entry that lays no plan");

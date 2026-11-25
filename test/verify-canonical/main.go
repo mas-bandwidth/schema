@@ -418,6 +418,20 @@ func main() {
 		}
 	}
 
+	switch plant := os.Getenv("SCHEMA_GATE_PLANT"); plant {
+	case "":
+	case "canonical":
+		corpusDir, wantWire, err = plantCanonical(corpusDir, filepath.Join(workRoot, "planted-canonical"), wantWire)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Fprintln(os.Stderr, "PLANTED canonical: the canonical wire's last byte is inverted; every leg must now go red")
+	default:
+		fmt.Fprintf(os.Stderr, "SCHEMA_GATE_PLANT=%q: verify-canonical plants canonical only\n", plant)
+		os.Exit(2)
+	}
+
 	var targets []string
 	switch {
 	case *langFlag == "all":

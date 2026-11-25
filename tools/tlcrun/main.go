@@ -22,7 +22,17 @@
 //	exits on a config error where the row names a violation;
 //	a config whose row was removed.
 //
-// tla/run-tlc.sh is the entry the nightly calls. No fast lane runs TLC.
+// -adapter is the test registry's model-check harness (docs/TEST-REGISTRY.md):
+// tools/schema-test hands it request lines on standard input, one per model
+// row of test/registry/registry.jsonl, each naming one config (or the
+// controls above), and it writes one SCHEMA_TEST_RESULT line per request.
+// Which configs run is the registry's query, never this program's: a config
+// with no registry row is caught by schema-test extract, a row with no config
+// by the pairing here. A runner without the TLC jar or java fails every
+// instance naming the runner.
+//
+// tla/run-tlc.sh is the old whole-tree entry, kept until the harness programs
+// retire; the nightly runs the models through schema-test.
 package main
 
 import (
@@ -33,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -41,16 +52,30 @@ func main() {
 	jar := flag.String("jar", envOr("TLC_JAR", "/opt/tla/tla2tools.jar"), "tla2tools.jar")
 	java := flag.String("java", envOr("TLC_JAVA", "java"), "the java binary")
 	controls := flag.Bool("controls", false, "prove the runner goes red on three broken copies of tla/")
+	adapter := flag.Bool("adapter", false, "the test registry's harness: requests on stdin, one result line each on stdout")
+	parallel := flag.Int("parallel", defaultParallel(), "with -adapter: how many TLC processes run at once")
+	scratch := flag.String("scratch", "", "where TLC's working directories and the scratch copies of tla/ are made (default: build/ beside the -tla directory)")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "tlcrun: takes no arguments; it runs every config, never a chosen few")
 		os.Exit(2)
 	}
+	scratchRoot = *scratch
+	if scratchRoot == "" {
+		scratchRoot = filepath.Join(filepath.Dir(filepath.Clean(*tlaDir)), "build")
+	}
+	if *adapter {
+		if err := adapterMain(*tlaDir, *jar, *java, *parallel, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "tlcrun -adapter:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if _, err := os.Stat(*jar); err != nil {
 		fmt.Fprintf(os.Stderr, "tlcrun: no TLC jar at %s; set TLC_JAR\n", *jar)
 		os.Exit(2)
 	}
-	tlc := realTLC{java: *java, jar: *jar}
+	tlc := realTLC{java: *java, jar: *jar, workers: 4}
 	var err error
 	if *controls {
 		err = runControls(*tlaDir, tlc, os.Stdout)
@@ -75,16 +100,29 @@ type checker interface {
 	check(tlaDir, config, module string) (exit int, log string, err error)
 }
 
-type realTLC struct{ java, jar string }
+// realTLC runs the jar with workers TLC worker threads and a heap of a
+// gigabyte per worker.
+type realTLC struct {
+	java, jar string
+	workers   int
+}
+
+// withWorkers is the same TLC with n workers: a registry row names the
+// workers its model needs.
+func (r realTLC) withWorkers(n int) checker {
+	r.workers = n
+	return r
+}
 
 func (r realTLC) check(tlaDir, config, module string) (int, string, error) {
-	work, err := os.MkdirTemp("", "tla-tlc.")
+	work, err := scratchDir("tla-tlc.")
 	if err != nil {
 		return 0, "", err
 	}
 	defer func() { _ = os.RemoveAll(work) }() // errdiscard: TLC's scratch directory; the verdict is read from its output, never from here
-	cmd := exec.Command(r.java, "-Djava.io.tmpdir="+work, "-Xmx4g", "-cp", r.jar, "tlc2.TLC",
-		"-workers", "4", "-config", config, "-metadir", filepath.Join(work, "meta"), module)
+	workers := max(r.workers, 1)
+	cmd := exec.Command(r.java, "-Djava.io.tmpdir="+work, fmt.Sprintf("-Xmx%dg", workers), "-cp", r.jar, "tlc2.TLC",
+		"-workers", strconv.Itoa(workers), "-config", config, "-metadir", filepath.Join(work, "meta"), module)
 	cmd.Dir = tlaDir
 	out, err := cmd.CombinedOutput()
 	var exitErr *exec.ExitError
@@ -131,6 +169,15 @@ func runAll(tlaDir string, tlc checker, out io.Writer) error {
 		return fmt.Errorf("%d of %d configs failed", failed, len(rows))
 	}
 	return nil
+}
+
+// runOneWith is runOne on a TLC with n workers, when the checker takes a
+// worker count (a fake one in a test does not).
+func runOneWith(tlaDir string, row Row, tlc checker, n int) error {
+	if w, ok := tlc.(interface{ withWorkers(int) checker }); ok {
+		tlc = w.withWorkers(n)
+	}
+	return runOne(tlaDir, row, tlc)
 }
 
 func runOne(tlaDir string, row Row, tlc checker) error {
@@ -266,8 +313,30 @@ func wantRefusal(err error, want string) error {
 	return nil
 }
 
+// scratchRoot is where TLC's working directories and the scratch copies of
+// tla/ are made: build/ beside the tla/ directory when the program runs
+// (main), so a run writes only inside the repository; the system temporary
+// directory, where t.TempDir is too, in a unit test.
+var scratchRoot = ""
+
+// scratchDir makes a scratch directory under scratchRoot.
+func scratchDir(prefix string) (string, error) {
+	if scratchRoot != "" {
+		if err := os.MkdirAll(scratchRoot, 0o755); err != nil {
+			return "", err
+		}
+	}
+	dir, err := os.MkdirTemp(scratchRoot, prefix)
+	if err != nil {
+		return "", err
+	}
+	// absolute: TLC runs in the tla/ directory, and a relative path would
+	// name a directory under it that nothing removes
+	return filepath.Abs(dir)
+}
+
 func copyDir(src string) (string, error) {
-	dst, err := os.MkdirTemp("", "tla-controls.")
+	dst, err := scratchDir("tla-scratch.")
 	if err != nil {
 		return "", err
 	}

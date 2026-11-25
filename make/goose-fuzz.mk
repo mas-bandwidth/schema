@@ -53,6 +53,14 @@ tables-goose-wire-fuzz tables-goose-retain-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conf
 # unit's leg. A leg that does not build fails the target; a unit the goose
 # target refuses has no leg, and its seeds are absent in the harness's count.
 GOOSE_LEGS_DIR := build/goose-wirefuzz-legs
+# THE PER-COMMIT SLICE (2026-11-24): GOOSE_FUZZ_SLICE=i/n builds the legs of
+# every n-th unit, starting at the i-th in name order, and no others; the
+# dispatcher answers the rest absent and the harness prints their count.
+# Empty (the default, and the nightly's) builds every unit's leg. ci-fast.yml's
+# verify-leg (goose, fuzz) row takes one fixed slice at 5000 mutants
+# (make/verify-vm.mk verify-goose-fuzz-part-1 and -part-2); leg-gates-nightly.yml (goose-fuzz-whole) runs
+# the whole roster at 60000.
+GOOSE_FUZZ_SLICE ?=
 GOOSE_MFUZZ_LEGS_DIR := build/goose-messagefuzz-legs
 GOOSE_DISPATCH := build/goose-wirefuzz-dispatch
 
@@ -67,7 +75,8 @@ build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA) $(GOOSE_DISPATCH)
 	@rm -rf $(GOOSE_LEGS_DIR)/legs && mkdir -p $(GOOSE_LEGS_DIR)/legs
 	@for d in $(GOOSE_LEGS_DIR)/units/*/; do \
 		ls "$$d"*Table.goose >/dev/null 2>&1 && basename "$$d"; \
-	done | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -I{} sh -c \
+	done | awk -v slice='$(GOOSE_FUZZ_SLICE)' 'BEGIN { if (slice != "" && split(slice, s, "/") != 2) { print "GOOSE_FUZZ_SLICE=" slice ": want i/n" > "/dev/stderr"; exit 2 } } slice == "" || (NR - 1) % s[2] == s[1] - 1' \
+	| xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -I{} sh -c \
 		'sh make/goose-wirefuzz-build.sh "$$1" "$$2/units/{}" "$$2/legs/{}" || echo "{}" >>"$$2/build-failed.txt"' \
 		_ "$(GOOSE)" $(GOOSE_LEGS_DIR)
 	@if [ -s $(GOOSE_LEGS_DIR)/build-failed.txt ]; then \

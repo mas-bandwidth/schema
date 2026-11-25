@@ -760,7 +760,8 @@ define dart-cookwrite-nc-leg
 	@sed -e "s|../../../build/$(4)/|$(CURDIR)/$(DART_COOKWRITE_NC)/$(1)/generated/|g" \
 	     -e "s|../../../build/|$(CURDIR)/build/|g" \
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
-	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
+	@# built as build/conformance-dart is, asserts on: Dart answers the write-refusal rows by debug assert, and a copy without them turns every refusal row red, not only this plant's cook-write rows
+	$(DART) compile exe --enable-asserts -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
 	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
@@ -780,9 +781,9 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \
-		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
-		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
+	@# the own rows are dropped inside awk, not by grep -v: under pipefail a grep -v left with no line exits 1, and the clean outcome (no other row red) failed the target with no message
+	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / && index($$0, "dart / cook-write: $(6)") == 0 { sub(/^  /, ""); print }' \
+		$(DART_COOKWRITE_NC)/$(1)/log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
 	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
 			$(DART_COOKWRITE_NC)/$(1)/other-failures.txt | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage turned another row red too"; \
@@ -887,7 +888,7 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	@touch $@
 
 .PHONY: tables-dart-fixed-form
-tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
 	@for f in build/dart-fixed/*/*Fixed.dart; do \
@@ -895,10 +896,10 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart fixed form: every generated library is format-canonical"
-	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- $(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
 	@mkdir -p build
 	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
-	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- ./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
 
 # ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be

@@ -235,8 +235,11 @@ fixed table T
 }
 `)
 	t05Has(t, src, "report.reset();", "R19 the report starts at zero")
-	t05Has(t, t05Runtime(), "if (!named && census) {\n        report.unknown++;\n      }",
-		"R19 unknown counts an UNNAMED writer field, never a record")
+	// AN UNNAMED WRITER FIELD IS UNLAWFUL, REFUSED AND NEVER COUNTED (§5.4,
+	// §5.9 #30): the compile marks the plan and the lane refuses layoutDamaged.
+	t05Has(t, t05Runtime(), "if (!childrenNamed(plan, ti, mi)) {\n      plan.unlawful = true;\n      return;\n    }",
+		"R19 an UNNAMED writer field makes the entry unlawful")
+	t05No(t, t05Runtime(), "report.unknown++", "R19 no writer field is counted under unknown")
 	// THE CENSUS LANDS ONCE, AFTER THE LOOP, and comes from the plan's own
 	// numbers: a lawful lineage's plan names every field, so it is zero.
 	t05Has(t, src, "report.unknown += censusUnknown;", "R19 the census lands once per endpoint")
@@ -300,10 +303,11 @@ fixed table T
 // plans. `copy` and `present` land their value and move nothing.
 func t05R16(t *testing.T) {
 	runtime := t05Runtime()
-	// unknown: once per endpoint at COMPILE, after the record loop, and never per
-	// record (§5.4, §5.9 #6).
-	t05Has(t, runtime, "if (!named && census) {\n        report.unknown++;\n      }",
-		"R16 unknown is once per field of an endpoint at COMPILE")
+	// an unnamed writer field: the entry is UNLAWFUL and refused layout_malformed
+	// (this leg's layoutDamaged), never counted under unknown (§5.4, §5.9 #30).
+	t05Has(t, runtime, "if (plan.unlawful) {\n      return -5;\n    }",
+		"R16 an unlawful entry's plan is refused whole")
+	t05Has(t, runtime, "if (made == -5) {", "R16 the unlawful entry's lane carries the refusal")
 	t05No(t, runtime, "kindMismatch", "R16 the strict compile census carries no kind counter")
 	// widened: once per entry per record.
 	for _, name := range []string{"widen", "widenFloat"} {

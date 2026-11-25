@@ -158,14 +158,19 @@ fixed table T
 	if err != nil {
 		t.Fatalf("E8: Generate: %v", err)
 	}
-	t04Has(t, t04Surface(t, out), "lands zero, always (§5.9 #30)", "E8 the census is silent on a lawful lineage")
+	// THERE IS NO COMPILE CENSUS (§5.4, §5.9 #30): a lawful lineage counts
+	// nothing, and an entry with a field the reader names nowhere is UNLAWFUL
+	// and refuses at step 8, so no census number reaches the read at all.
+	surface := t04Surface(t, out)
+	t04Has(t, surface, "NO COMPILE CENSUS LANDS", "E8 the read lands no census")
+	t04No(t, surface, "censusUnknown", "E8 no census number rides the plan to the read")
 }
 
 // ---- java/R19 --------------------------------------------------------------
 
 // t04R19 holds java/R19: a clean NEW-READS-OLD moves no counter at all. The
-// report resets to zero, the census adds the plan's own number (zero on a
-// lawful lineage), and no op bumps a counter on a clean read.
+// report resets to zero, no compile census is added (there is none, §5.4,
+// §5.9 #30), and no op bumps a counter on a clean read.
 func t04R19(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
@@ -185,12 +190,8 @@ fixed table T
 		t.Fatalf("R19: Generate: %v", err)
 	}
 	surface := t04Surface(t, out)
-	for _, want := range []string{
-		"report.unknown += censusUnknown;",
-		"lands zero, always (§5.9 #30)",
-	} {
-		t04Has(t, surface, want, "R19 the census adds the plan's own number once")
-	}
+	t04Has(t, surface, "NO COMPILE CENSUS LANDS", "R19 no census is added to a clean read")
+	t04No(t, surface, "report.unknown +=", "R19 no census is added to a clean read")
 	// The kind census never reaches a read counter: the retired kindMismatch
 	// is not a member of the report the strict read hands back.
 	t04No(t, surface, "kindMismatch", "R19 the retired kindMismatch counter is gone from the read")
@@ -238,8 +239,9 @@ fixed table T
 func t04R16(t *testing.T) {
 	runtime := t04Runtime()
 	for _, want := range []string{
-		// unknown: ONCE PER ENDPOINT, after the record loop (§5.9 #6).
-		"if (!named && census && c.report != null) { c.report.unknown++; }",
+		// unknown: NEVER counted by the fixed compile. A writer field the
+		// reader names nowhere makes the entry UNLAWFUL (§5.2 MATCH, §5.4).
+		"if (!childrenNamed(theirs, ti, mine, mi)) { c.unlawful = true; // §5.2 MATCH: a writer field this reader names nowhere return; }",
 		// widened: once per entry per record.
 		"report.widened++;",
 		// a count or a text length past its bound refuses the load by name.
@@ -250,7 +252,8 @@ func t04R16(t *testing.T) {
 	} {
 		t04Has(t, runtime, want, "R16 §5.4's counters")
 	}
-	// the census lands ONCE, after the loop, on a read that returns.
+	// no census lands: the compile counts nothing (§5.4, §5.9 #30).
+	t04No(t, runtime, "c.report.unknown++", "R16 the compile counts no unknown")
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T
@@ -261,7 +264,7 @@ fixed table T
 	if err != nil {
 		t.Fatalf("R16: Generate: %v", err)
 	}
-	t04Has(t, t04Surface(t, out), "report.unknown += censusUnknown;", "R16 unknown lands once per endpoint")
+	t04No(t, t04Surface(t, out), "censusUnknown", "R16 no census rides the plan to the read")
 	// widened is EXACTLY min(their_n, my_n) (§5.9 #33). The figure is asserted
 	// two ways: the versioning fixture's array_elem_widen row declares widened ==
 	// 4 and widenedError holds the runtime to that exact number — a folded read
@@ -288,11 +291,13 @@ fixed table T
 		}
 	}
 	for _, want := range []string{
-		"final int n = java.lang.Math.min(theirN, myN);",
+		"if (theirN > myN) { c.unlawful = true; break; }",
+		"final int n = theirN;",
 		"compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,",
 	} {
 		t04Has(t, runtime, want, "R16 the array case emits element by element, never a folded run (§5.9 #33)")
 	}
+	t04No(t, runtime, "java.lang.Math.min(theirN, myN)", "R16 a shrunk array is unlawful and is never truncated to the reader (§5.1, §5.4)")
 	// COPY, CONST, PRESENT AND ORDINAL MOVE NOTHING: the opCopy case carries no
 	// counter bump at all (only its framing-damage `malformed` guard), so the
 	// only counters the run loop can move are the widen, count/text clamp and

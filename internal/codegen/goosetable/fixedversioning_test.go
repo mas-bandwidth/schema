@@ -291,13 +291,15 @@ func TestGooseFixedVersioningRefuseWritesNothing(t *testing.T) {
 }
 
 // unknown_census (§5.8 row 11, step 9): the deliberately UNLAWFUL pair, its
-// entry handed in, over an array of FOUR tables with one dropped field:
-// unknown == 1 exactly, once per FIELD per peer — and the three-record file
-// tells "once per peer" from "once per record", on a second read as well.
+// entry handed in, over an array of FOUR tables with one dropped field. A
+// writer field the reader names nowhere makes the entry UNLAWFUL: no plan is
+// laid and nothing is counted (the census this row once asked for is retired,
+// §5.4, §5.9 #30). Both files, the one-record and the three-record, refuse
+// layout_malformed before any record, every counter zero, every poisoned row
+// at its declared defaults, and a second read answers the same.
 func TestGooseFixedVersioningUnknownCensus(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
-	manifest := gooseVersionManifest(t, corpus)
 	older := evolutionLoad(t, "test/tables/VOLD_unknown_census.schema")
 	newer := evolutionLoad(t, "test/tables/VNEW_unknown_census.schema")
 	for _, file := range []string{"old_unknown_census.bin", "many_unknown_census.bin"} {
@@ -305,21 +307,13 @@ func TestGooseFixedVersioningUnknownCensus(t *testing.T) {
 			t.Parallel()
 			data := gooseCorpusFile(t, corpus, file)
 			records := gooseFixedRecords(t, data, older, "Census")
-			c := gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Census", capacity: records, data: data, twice: true}
-			if line, ok := manifest.lines[file]; ok {
-				c.want = line
-			}
-			got := gooseVersionProbe(t, c)
-			got.reads(t, records)
-			if got.unknown != 1 || got.secondUnknown != 1 {
-				t.Fatalf("%s: unknown is %d (second read %d); §5.4 owes exactly 1, once per field per peer: %s",
-					file, got.unknown, got.secondUnknown, got.raw)
-			}
-			if got.clamped != 0 || got.widened != 0 || got.kindMismatch != 0 {
-				t.Fatalf("%s: a counter beside the census moved: %s", file, got.raw)
-			}
-			if c.want.file != "" {
-				got.owes(t)
+			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Census",
+				capacity: records, data: data, twice: true, poison: true, fresh: true})
+			got.file = file
+			got.refuses(t, "layout_malformed", false, 0)
+			if got.secondUnknown != 0 || got.secondCounters != "0 0 0 0" {
+				t.Fatalf("%s: the second refusal moved a counter (unknown %d, oor widened mismatch damaged %s): %s",
+					file, got.secondUnknown, got.secondCounters, got.raw)
 			}
 		})
 	}
@@ -461,11 +455,13 @@ type gooseVersionResult struct {
 	malformed                               bool
 	hash                                    uint64
 	secondUnknown                           int64
-	got, want                               []string // record images, one per record
-	fresh, poison                           string
-	dests                                   []string // every row handed in after the load, in order
-	printed                                 []string
-	file                                    string
+	// secondCounters: the second read's oor, widened, mismatch and damaged
+	secondCounters string
+	got, want      []string // record images, one per record
+	fresh, poison  string
+	dests          []string // every row handed in after the load, in order
+	printed        []string
+	file           string
 }
 
 func (r gooseVersionResult) reads(t *testing.T, records int) {
@@ -618,9 +614,25 @@ func gooseVersionProbe(t *testing.T, c gooseVersionCase) gooseVersionResult {
 	fmt.Fprintf(&b, "    let n = %s::%sFixedEvolveLoad(values[0..%d], data, report);\n", ns, c.root, c.capacity)
 	b.WriteString("    print(\"report \", n, \" \", schema_rt::fixed_evolve_refusal_name(report.reason), \" \", report.oor, \" \", report.widened, \" \", report.unknown, \" \", report.mismatch, \" \", (if report.damaged { 1 } else { 0 }), \" \", report.hash);\n")
 	if c.twice {
+		// A REFUSAL ON A SECOND READ IS HELD TO THE SAME ANSWER: with fresh
+		// and poison, the rows the first read handed back are printed, then
+		// poisoned AGAIN, so the second refusal's reset is seen too (R4).
+		if c.fresh {
+			for k := 0; k < c.capacity; k++ {
+				fmt.Fprintf(&b, "    print(\"dest\");\n    image(values[%d]);\n", k)
+			}
+			if c.poison {
+				st := fixedRootStruct(t, c.reader, c.root)
+				for k := 0; k < c.capacity; k++ {
+					for _, a := range goosePoison(st, fmt.Sprintf("values[%d]", k)) {
+						fmt.Fprintf(&b, "    %s;\n", a)
+					}
+				}
+			}
+		}
 		b.WriteString("    var again = schema_rt::FixedEvolveReport { .. };\n")
 		fmt.Fprintf(&b, "    let n2 = %s::%sFixedEvolveLoad(values[0..%d], data, again);\n", ns, c.root, c.capacity)
-		b.WriteString("    print(\"again \", n2, \" \", again.unknown);\n")
+		b.WriteString("    print(\"again \", n2, \" \", again.unknown, \" \", schema_rt::fixed_evolve_refusal_name(again.reason), \" \", again.oor, \" \", again.widened, \" \", again.mismatch, \" \", (if again.damaged { 1 } else { 0 }));\n")
 	}
 	if c.fresh {
 		for k := 0; k < c.capacity; k++ {
@@ -685,10 +697,19 @@ func gooseVersionParse(t *testing.T, out, file string) gooseVersionResult {
 			sawReport = true
 		case strings.HasPrefix(l, "again "):
 			f := strings.Fields(l)
+			if len(f) != 8 {
+				t.Fatalf("an unreadable again line %q", l)
+			}
 			r.secondUnknown, _ = strconv.ParseInt(f[2], 10, 64)
 			if f[1] != strconv.Itoa(r.n) {
 				t.Fatalf("the second read returned %s, the first %d", f[1], r.n)
 			}
+			// THE SECOND READ OWES THE FIRST'S WHOLE ANSWER: the same name
+			// and the same counters, never a census the first did not take.
+			if f[3] != r.reason {
+				t.Fatalf("the second read answered %s, the first %s", f[3], r.reason)
+			}
+			r.secondCounters = strings.Join(f[4:8], " ")
 		case strings.HasPrefix(l, "value "):
 			r.printed = append(r.printed, strings.TrimPrefix(l, "value "))
 		case l == "got":

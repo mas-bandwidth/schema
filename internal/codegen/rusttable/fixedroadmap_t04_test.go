@@ -97,6 +97,19 @@ func t04Has(t *testing.T, src, want, what string) {
 	}
 }
 
+// t04Lacks is a forbidden substring of the emitted source, named by rule.
+func t04Lacks(t *testing.T, src, banned, what string) {
+	t.Helper()
+	if strings.Contains(src, banned) {
+		t.Errorf("%s: the emitted source still carries %q", what, banned)
+	}
+}
+
+// t04Unlawful is the UNLAWFUL lineage entry's shape in the shared runtime
+// (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30): a writer field no
+// reader field names lays no plan, and there is no compile census to count.
+const t04Unlawful = "if !children_named(theirs, ti, mine, mi) {\n        c.unlawful = 1;\n        return;\n    }"
+
 // t04Retire builds THREE generations of one table — x, x+y, x+y+z — hands the
 // first `retired` of the first two in as the lock's lineage, and answers the
 // emitted module together with the entries it was handed.
@@ -219,9 +232,12 @@ func t04R32(t *testing.T) {
 		t.Errorf("R32: the floor refusal is not a pure named refusal:\n%s", body)
 	}
 	runtime := string(fixedRuntimeBody)
-	for _, zero := range []string{"self.unknown = 0;", "self.kind_changed = 0;", "self.widened = 0;", "self.held = 0;", "self.damaged = false;"} {
+	// The compile census's kind_changed is retired with the census (§5.4,
+	// §5.9 #30): a kind off every ladder is an unlawful entry, never a count.
+	for _, zero := range []string{"self.unknown = 0;", "self.widened = 0;", "self.held = 0;", "self.damaged = false;"} {
 		t04Has(t, runtime, zero, "R32 REFUSE is TOTAL")
 	}
+	t04Lacks(t, runtime, "kind_changed", "R32 there is no kind census to zero")
 }
 
 // ---- rust/R10 -----------------------------------------------------------------
@@ -282,7 +298,10 @@ func t04R15(t *testing.T) {
 	if strings.Contains(load, "report.unknown += 1") {
 		t.Error("R15: an unknown field is dropped-and-counted per record on the read path")
 	}
-	t04Has(t, load, "report.unknown += census.0;", "R15 unknown is the compile census")
+	// THERE IS NO COMPILE CENSUS (§5.4, §5.9 #30): an unnameable writer field
+	// makes the entry unlawful, so no read lands an unknown count either.
+	t04Lacks(t, load, "report.unknown +=", "R15 no read lands an unknown count")
+	t04Has(t, string(fixedRuntimeBody), t04Unlawful, "R15 an unnameable writer field is an unlawful entry")
 	runtime := string(fixedRuntimeBody)
 	t04Has(t, runtime, "let held = raw.clamp(0, p.size as i32);", "R15 the count clamp is the writer's bound")
 	t04Has(t, runtime, "let held = raw.clamp(0, p.aux as i32);", "R15 the text clamp is the writer's span")
@@ -388,12 +407,15 @@ func t04R20(t *testing.T) {
 	// image is zeroed first so a shorter array or string keeps template zeros.
 	t04Has(t, text, "image[o..o + z].copy_from_slice(&", "R20 an added field lands the declared default")
 	t04Has(t, text, "_FIXED_DEFAULTS: [u8;", "R20 the prefill image is emitted")
-	// A DEPRECATED FIELD, counted ONCE per plan: the census flag is the first
-	// time the writer's field is seen, and an array's element 0 is the only one
-	// that censuses.
-	t04Has(t, runtime, "if !named && census {", "R20 an unknown field is counted")
-	t04Has(t, runtime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
-	t04Has(t, text, "report.unknown += census.0;", "R20 the census lands once, after the loop")
+	// A DEPRECATED FIELD keeps its place, so the reader still names it; a
+	// writer field the reader does NOT name is no deprecation but a removal,
+	// which §5.1 refuses: the entry is UNLAWFUL in every slot (root, nested
+	// table, every array element), lays no plan, and nothing is counted
+	// (§5.2 MATCH, §5.4, §5.9 #30).
+	t04Has(t, runtime, t04Unlawful, "R20 an unnameable writer field is an unlawful entry")
+	t04Lacks(t, runtime, "census: bool", "R20 there is no compile census flag")
+	t04Lacks(t, runtime, "census && i == 0", "R20 there is no per-element census")
+	t04Lacks(t, text, "report.unknown +=", "R20 no census lands after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
 	t04Has(t, runtime, "report.widened += 1;", "R20 a widen counts")
 	// A SHORTER ARRAY OR STRING: the image is the template's zeros, and the plan

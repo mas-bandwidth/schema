@@ -424,6 +424,20 @@ recursive fn cook_value(c: CookCtx&, s: i64, d: const FieldDesc&, col: const Coo
         cook_put_at(c, at, bits, col.w);
         return true;
     }
+    // AN ENUM SLOT HOLDS NONE OR A LIVE VARIANT (docs/SPEC.md §5.1 row 5;
+    // SPEC-TABLES §2.15, §7.6): an ordinal past the set or a deprecated
+    // variant refuses, in the dry walk before a byte is written
+    if d.shape == ShapeEnum {
+        var ord: u64 = 0;
+        if rode { ord = c.vals[s].bits.lo; } else if d.has_def { ord = d.def_i.lo; }
+        if ord > d.variants.len as! u64 { return cook_refuse(c); }
+        if ord > 0 {
+            let id = d.variants[(ord - 1) as! i64].id;
+            for dv in c.unit.deprecated {
+                if dv.id == id && dv.enum_name == d.ref { return cook_refuse(c); }
+            }
+        }
+    }
     if d.shape == ShapeInt || d.shape == ShapeEnum {
         var v = Int128 { lo: 0, hi: 0 };
         if rode { v = c.vals[s].bits; } else if d.has_def { v = d.def_i; }
