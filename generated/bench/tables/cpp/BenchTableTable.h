@@ -19130,104 +19130,43 @@ constexpr uint8_t TableEntityFixedLayout[] = {
     0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00,
-};
+    0x00, 0x00 };
 constexpr int64_t TableEntityFixedLayoutBytes = (int64_t) sizeof( TableEntityFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TableEntityFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // TableEntity
-    {
-        0, 0, 0, 0, 0
-    }, // entity_id
-    {
-        4, 0, 0, 0, 0
-    }, // pos_x
-    {
-        8, 0, 0, 0, 0
-    }, // pos_y
-    {
-        12, 0, 0, 0, 0
-    }, // pos_z
-    {
-        16, 0, 0, 0, 0
-    }, // yaw
-    {
-        20, 0, 0, 0, 0
-    }, // pitch
-    {
-        24, 0, 0, 0, 0
-    }, // vel_x
-    {
-        28, 0, 0, 0, 0
-    }, // vel_y
-    {
-        32, 0, 0, 0, 0
-    }, // vel_z
-    {
-        36, 0, 0, 0, 0
-    }, // health
-    {
-        40, 0, 0, 0, 0
-    }, // weapon
-    {
-        0, 0, 0, 0, 0
-    }, // Fists
-    {
-        0, 0, 0, 0, 0
-    }, // Pistol
-    {
-        0, 0, 0, 0, 0
-    }, // Shotgun
-    {
-        0, 0, 0, 0, 0
-    }, // Rifle
-    {
-        0, 0, 0, 0, 0
-    }, // Sniper
-    {
-        0, 0, 0, 0, 0
-    }, // Smg
-    {
-        0, 0, 0, 0, 0
-    }, // Rocket
-    {
-        0, 0, 0, 0, 0
-    }, // Grenade
-    {
-        0, 0, 0, 0, 0
-    }, // Plasma
-    {
-        0, 0, 0, 0, 0
-    }, // Railgun
-    {
-        0, 0, 0, 0, 0
-    }, // Flamer
-    {
-        0, 0, 0, 0, 0
-    }, // Mine
-    {
-        0, 0, 0, 0, 0
-    }, // Turret
-    {
-        0, 0, 0, 0, 0
-    }, // Drone
-    {
-        0, 0, 0, 0, 0
-    }, // Repair
-    {
-        48, 0, 0, 0, 0
-    }, // damage
-    {
-        56, 0, 0, 0, 0
-    }, // moving
-    {
-        57, 0, 0, 0, 0
-    }, // firing
+    { 0, 0, 0, 0, 0 }, // TableEntity
+    { 0, 0, 0, 0, 0 }, // entity_id
+    { 4, 0, 0, 0, 0 }, // pos_x
+    { 8, 0, 0, 0, 0 }, // pos_y
+    { 12, 0, 0, 0, 0 }, // pos_z
+    { 16, 0, 0, 0, 0 }, // yaw
+    { 20, 0, 0, 0, 0 }, // pitch
+    { 24, 0, 0, 0, 0 }, // vel_x
+    { 28, 0, 0, 0, 0 }, // vel_y
+    { 32, 0, 0, 0, 0 }, // vel_z
+    { 36, 0, 0, 0, 0 }, // health
+    { 40, 0, 0, 0, 0 }, // weapon
+    { 0, 0, 0, 0, 0 }, // Fists
+    { 0, 0, 0, 0, 0 }, // Pistol
+    { 0, 0, 0, 0, 0 }, // Shotgun
+    { 0, 0, 0, 0, 0 }, // Rifle
+    { 0, 0, 0, 0, 0 }, // Sniper
+    { 0, 0, 0, 0, 0 }, // Smg
+    { 0, 0, 0, 0, 0 }, // Rocket
+    { 0, 0, 0, 0, 0 }, // Grenade
+    { 0, 0, 0, 0, 0 }, // Plasma
+    { 0, 0, 0, 0, 0 }, // Railgun
+    { 0, 0, 0, 0, 0 }, // Flamer
+    { 0, 0, 0, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0 }, // Turret
+    { 0, 0, 0, 0, 0 }, // Drone
+    { 0, 0, 0, 0, 0 }, // Repair
+    { 48, 0, 0, 0, 0 }, // damage
+    { 56, 0, 0, 0, 0 }, // moving
+    { 57, 0, 0, 0, 0 }, // firing
 };
 
 // THE IDENTITY PLAN, coalesced out of 14 leaves by the schema compiler —
@@ -19322,8 +19261,7 @@ constexpr uint8_t TableEntityFixedKnown0Layout[] = {
     0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00,
-};
+    0x00, 0x00 };
 constexpr TableFixedKnownLayout TableEntityFixedKnown[] = {
     { 0x5eac483826ba8dadull, TableEntityFixedKnown0Layout, 514, 59 }, // identity
 };
@@ -19740,23 +19678,16 @@ constexpr uint8_t TableStatFixedLayout[] = {
     0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
     0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t TableStatFixedLayoutBytes = (int64_t) sizeof( TableStatFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TableStatFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // TableStat
-    {
-        0, 0, 0, 0, 0
-    }, // stat_id
-    {
-        4, 0, 0, 0, 0
-    }, // delta
+    { 0, 0, 0, 0, 0 }, // TableStat
+    { 0, 0, 0, 0, 0 }, // stat_id
+    { 4, 0, 0, 0, 0 }, // delta
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -19810,8 +19741,7 @@ constexpr uint8_t TableStatFixedKnown0Layout[] = {
     0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
     0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout TableStatFixedKnown[] = {
     { 0x085b325df6d7f019ull, TableStatFixedKnown0Layout, 55, 16 }, // identity
 };
@@ -20296,239 +20226,88 @@ constexpr uint8_t TableMixedFixedLayout[] = {
     0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
     0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
     0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
-    0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t TableMixedFixedLayoutBytes = (int64_t) sizeof( TableMixedFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TableMixedFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // TableMixed
-    {
-        0, 0, 0, 0, 0
-    }, // protocol_magic
-    {
-        4, 0, 0, 0, 0
-    }, // sequence
-    {
-        8, 0, 0, 0, 0
-    }, // ack_sequence
-    {
-        12, 0, 0, 0, 0
-    }, // ack_bits
-    {
-        16, 0, 0, 0, 0
-    }, // session_id
-    {
-        24, 0, 0, 0, 0
-    }, // client_id
-    {
-        32, 0, 0, 0, 0
-    }, // nonce
-    {
-        40, 0, 0, 0, 0
-    }, // world_time
-    {
-        48, 0, 0, 0, 0
-    }, // frame_tick
-    {
-        56, 0, 0, 0, 0
-    }, // server_time
-    {
-        64, 64, 576, 1, 0
-    }, // entities
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // entity_id
-    {
-        4, 0, 0, 0, 0
-    }, // pos_x
-    {
-        8, 0, 0, 0, 0
-    }, // pos_y
-    {
-        12, 0, 0, 0, 0
-    }, // pos_z
-    {
-        16, 0, 0, 0, 0
-    }, // yaw
-    {
-        20, 0, 0, 0, 0
-    }, // pitch
-    {
-        24, 0, 0, 0, 0
-    }, // vel_x
-    {
-        28, 0, 0, 0, 0
-    }, // vel_y
-    {
-        32, 0, 0, 0, 0
-    }, // vel_z
-    {
-        36, 0, 0, 0, 0
-    }, // health
-    {
-        40, 0, 0, 0, 0
-    }, // weapon
-    {
-        0, 0, 0, 0, 0
-    }, // Fists
-    {
-        0, 0, 0, 0, 0
-    }, // Pistol
-    {
-        0, 0, 0, 0, 0
-    }, // Shotgun
-    {
-        0, 0, 0, 0, 0
-    }, // Rifle
-    {
-        0, 0, 0, 0, 0
-    }, // Sniper
-    {
-        0, 0, 0, 0, 0
-    }, // Smg
-    {
-        0, 0, 0, 0, 0
-    }, // Rocket
-    {
-        0, 0, 0, 0, 0
-    }, // Grenade
-    {
-        0, 0, 0, 0, 0
-    }, // Plasma
-    {
-        0, 0, 0, 0, 0
-    }, // Railgun
-    {
-        0, 0, 0, 0, 0
-    }, // Flamer
-    {
-        0, 0, 0, 0, 0
-    }, // Mine
-    {
-        0, 0, 0, 0, 0
-    }, // Turret
-    {
-        0, 0, 0, 0, 0
-    }, // Drone
-    {
-        0, 0, 0, 0, 0
-    }, // Repair
-    {
-        48, 0, 0, 0, 0
-    }, // damage
-    {
-        56, 0, 0, 0, 0
-    }, // moving
-    {
-        57, 0, 0, 0, 0
-    }, // firing
-    {
-        580, 8, 1220, 1, 0
-    }, // stats
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // stat_id
-    {
-        4, 0, 0, 0, 0
-    }, // delta
-    {
-        1224, 0, 1224, 0, 0
-    }, // game_event
-    {
-        4, 0, 0, 0, 0
-    }, // hit
-    {
-        0, 0, 0, 0, 0
-    }, // target_id
-    {
-        4, 0, 0, 0, 0
-    }, // damage
-    {
-        8, 0, 0, 0, 0
-    }, // hit_kind
-    {
-        12, 0, 0, 0, 0
-    }, // crit
-    {
-        4, 0, 0, 0, 0
-    }, // chat
-    {
-        0, 0, 0, 0, 0
-    }, // channel
-    {
-        4, 0, 0, 0, 0
-    }, // speaker
-    {
-        4, 0, 0, 0, 0
-    }, // pickup
-    {
-        0, 0, 0, 0, 0
-    }, // item_id
-    {
-        4, 0, 0, 0, 0
-    }, // amount
-    {
-        1244, 1, 0, 0, 0
-    }, // loadout
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        1264, 0, 1248, 0, 1
-    }, // player_name
-    {
-        1268, 1, 1284, 1, 3
-    }, // payload
-    {
-        0, 0, 0, 0, 0
-    }, // u8
-    {
-        1288, 0, 0, 0, 0
-    }, // aim_x
-    {
-        1292, 0, 0, 0, 0
-    }, // aim_y
-    {
-        1296, 0, 0, 0, 0
-    }, // aim_z
-    {
-        1300, 0, 0, 0, 0
-    }, // recoil
-    {
-        1304, 0, 0, 0, 0
-    }, // drift
-    {
-        1312, 0, 0, 0, 0
-    }, // wide_key
-    {
-        1320, 0, 0, 0, 0
-    }, // flux
-    {
-        1328, 0, 0, 0, 0
-    }, // ping
-    {
-        1332, 0, 0, 0, 0
-    }, // crc_hint
-    {
-        1336, 0, 0, 0, 0
-    }, // has_extra
-    {
-        1340, 0, 0, 0, 0
-    }, // extra
-    {
-        1344, 0, 0, 0, 0
-    }, // idle_ticks
+    { 0, 0, 0, 0, 0 }, // TableMixed
+    { 0, 0, 0, 0, 0 }, // protocol_magic
+    { 4, 0, 0, 0, 0 }, // sequence
+    { 8, 0, 0, 0, 0 }, // ack_sequence
+    { 12, 0, 0, 0, 0 }, // ack_bits
+    { 16, 0, 0, 0, 0 }, // session_id
+    { 24, 0, 0, 0, 0 }, // client_id
+    { 32, 0, 0, 0, 0 }, // nonce
+    { 40, 0, 0, 0, 0 }, // world_time
+    { 48, 0, 0, 0, 0 }, // frame_tick
+    { 56, 0, 0, 0, 0 }, // server_time
+    { 64, 64, 576, 1, 0 }, // entities
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // entity_id
+    { 4, 0, 0, 0, 0 }, // pos_x
+    { 8, 0, 0, 0, 0 }, // pos_y
+    { 12, 0, 0, 0, 0 }, // pos_z
+    { 16, 0, 0, 0, 0 }, // yaw
+    { 20, 0, 0, 0, 0 }, // pitch
+    { 24, 0, 0, 0, 0 }, // vel_x
+    { 28, 0, 0, 0, 0 }, // vel_y
+    { 32, 0, 0, 0, 0 }, // vel_z
+    { 36, 0, 0, 0, 0 }, // health
+    { 40, 0, 0, 0, 0 }, // weapon
+    { 0, 0, 0, 0, 0 }, // Fists
+    { 0, 0, 0, 0, 0 }, // Pistol
+    { 0, 0, 0, 0, 0 }, // Shotgun
+    { 0, 0, 0, 0, 0 }, // Rifle
+    { 0, 0, 0, 0, 0 }, // Sniper
+    { 0, 0, 0, 0, 0 }, // Smg
+    { 0, 0, 0, 0, 0 }, // Rocket
+    { 0, 0, 0, 0, 0 }, // Grenade
+    { 0, 0, 0, 0, 0 }, // Plasma
+    { 0, 0, 0, 0, 0 }, // Railgun
+    { 0, 0, 0, 0, 0 }, // Flamer
+    { 0, 0, 0, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0 }, // Turret
+    { 0, 0, 0, 0, 0 }, // Drone
+    { 0, 0, 0, 0, 0 }, // Repair
+    { 48, 0, 0, 0, 0 }, // damage
+    { 56, 0, 0, 0, 0 }, // moving
+    { 57, 0, 0, 0, 0 }, // firing
+    { 580, 8, 1220, 1, 0 }, // stats
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // stat_id
+    { 4, 0, 0, 0, 0 }, // delta
+    { 1224, 0, 1224, 0, 0 }, // game_event
+    { 4, 0, 0, 0, 0 }, // hit
+    { 0, 0, 0, 0, 0 }, // target_id
+    { 4, 0, 0, 0, 0 }, // damage
+    { 8, 0, 0, 0, 0 }, // hit_kind
+    { 12, 0, 0, 0, 0 }, // crit
+    { 4, 0, 0, 0, 0 }, // chat
+    { 0, 0, 0, 0, 0 }, // channel
+    { 4, 0, 0, 0, 0 }, // speaker
+    { 4, 0, 0, 0, 0 }, // pickup
+    { 0, 0, 0, 0, 0 }, // item_id
+    { 4, 0, 0, 0, 0 }, // amount
+    { 1244, 1, 0, 0, 0 }, // loadout
+    { 0, 0, 0, 0, 0 }, // element
+    { 1264, 0, 1248, 0, 1 }, // player_name
+    { 1268, 1, 1284, 1, 3 }, // payload
+    { 0, 0, 0, 0, 0 }, // u8
+    { 1288, 0, 0, 0, 0 }, // aim_x
+    { 1292, 0, 0, 0, 0 }, // aim_y
+    { 1296, 0, 0, 0, 0 }, // aim_z
+    { 1300, 0, 0, 0, 0 }, // recoil
+    { 1304, 0, 0, 0, 0 }, // drift
+    { 1312, 0, 0, 0, 0 }, // wide_key
+    { 1320, 0, 0, 0, 0 }, // flux
+    { 1328, 0, 0, 0, 0 }, // ping
+    { 1332, 0, 0, 0, 0 }, // crc_hint
+    { 1336, 0, 0, 0, 0 }, // has_extra
+    { 1340, 0, 0, 0, 0 }, // extra
+    { 1344, 0, 0, 0, 0 }, // idle_ticks
 };
 
 // THE IDENTITY PLAN, coalesced out of 149 leaves by the schema compiler —
@@ -20983,8 +20762,7 @@ constexpr uint8_t TableMixedFixedKnown0Layout[] = {
     0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
     0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
     0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
-    0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout TableMixedFixedKnown[] = {
     { 0xd9aba5d49eb0840cull, TableMixedFixedKnown0Layout, 1279, 1232 }, // identity
 };

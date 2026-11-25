@@ -12398,239 +12398,88 @@ constexpr uint8_t ArchiveConfigFixedLayout[] = {
     0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
     0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
     0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
-    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t ArchiveConfigFixedLayoutBytes = (int64_t) sizeof( ArchiveConfigFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst ArchiveConfigFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // ArchiveConfig
-    {
-        0, 0, 0, 0, 0
-    }, // root
-    {
-        20, 0, 0, 0, 1
-    }, // version_note
-    {
-        24, 28, 248, 1, 0
-    }, // weapons
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // damage
-    {
-        4, 0, 0, 0, 0
-    }, // speed
-    {
-        8, 0, 0, 0, 0
-    }, // penetration
-    {
-        12, 0, 0, 0, 0
-    }, // channel
-    {
-        16, 0, 0, 0, 0
-    }, // homing
-    {
-        20, 0, 20, 0, 0
-    }, // effect
-    {
-        4, 0, 0, 0, 0
-    }, // buff
-    {
-        0, 0, 0, 0, 0
-    }, // multiplier
-    {
-        4, 0, 0, 0, 0
-    }, // debuff
-    {
-        0, 0, 0, 0, 0
-    }, // amount
-    {
-        256, 304, 1472, 1, 0
-    }, // profiles
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        36, 0, 0, 0, 1
-    }, // name
-    {
-        40, 1, 56, 1, 3
-    }, // icon
-    {
-        0, 0, 0, 0, 0
-    }, // u8
-    {
-        60, 0, 0, 0, 0
-    }, // experience
-    {
-        64, 0, 0, 0, 0
-    }, // tilt
-    {
-        66, 0, 0, 0, 0
-    }, // heading
-    {
-        72, 0, 0, 0, 0
-    }, // timestamp
-    {
-        80, 0, 0, 0, 0
-    }, // badge
-    {
-        82, 0, 0, 0, 0
-    }, // port
-    {
-        88, 0, 0, 0, 0
-    }, // epoch
-    {
-        96, 0, 0, 0, 0
-    }, // precision
-    {
-        104, 4, 0, 0, 0
-    }, // ratings
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        120, 0, 0, 0, 0
-    }, // has_loadout
-    {
-        128, 0, 0, 0, 0
-    }, // loadout
-    {
-        0, 0, 0, 0, 0
-    }, // grade
-    {
-        0, 0, 0, 0, 0
-    }, // Bronze
-    {
-        0, 0, 0, 0, 0
-    }, // Silver
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
-    {
-        1, 1, 8, 1, 0
-    }, // grades
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // Bronze
-    {
-        0, 0, 0, 0, 0
-    }, // Silver
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
-    {
-        12, 1, 0, 0, 0
-    }, // podium
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // Bronze
-    {
-        0, 0, 0, 0, 0
-    }, // Silver
-    {
-        0, 0, 0, 0, 0
-    }, // Gold
-    {
-        16, 0, 0, 0, 0
-    }, // perks
-    {
-        24, 0, 0, 0, 0
-    }, // primary
-    {
-        0, 0, 0, 0, 0
-    }, // damage
-    {
-        4, 0, 0, 0, 0
-    }, // speed
-    {
-        8, 0, 0, 0, 0
-    }, // penetration
-    {
-        12, 0, 0, 0, 0
-    }, // channel
-    {
-        16, 0, 0, 0, 0
-    }, // homing
-    {
-        20, 0, 20, 0, 0
-    }, // effect
-    {
-        4, 0, 0, 0, 0
-    }, // buff
-    {
-        0, 0, 0, 0, 0
-    }, // multiplier
-    {
-        4, 0, 0, 0, 0
-    }, // debuff
-    {
-        0, 0, 0, 0, 0
-    }, // amount
-    {
-        52, 28, 0, 0, 0
-    }, // backups
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // damage
-    {
-        4, 0, 0, 0, 0
-    }, // speed
-    {
-        8, 0, 0, 0, 0
-    }, // penetration
-    {
-        12, 0, 0, 0, 0
-    }, // channel
-    {
-        16, 0, 0, 0, 0
-    }, // homing
-    {
-        20, 0, 20, 0, 0
-    }, // effect
-    {
-        4, 0, 0, 0, 0
-    }, // buff
-    {
-        0, 0, 0, 0, 0
-    }, // multiplier
-    {
-        4, 0, 0, 0, 0
-    }, // debuff
-    {
-        0, 0, 0, 0, 0
-    }, // amount
-    {
-        108, 8, 172, 1, 0
-    }, // attachments
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        0, 0, 0, 0, 0
-    }, // slot
-    {
-        4, 0, 0, 0, 0
-    }, // power
-    {
-        1480, 0, 0, 0, 0
-    }, // count
+    { 0, 0, 0, 0, 0 }, // ArchiveConfig
+    { 0, 0, 0, 0, 0 }, // root
+    { 20, 0, 0, 0, 1 }, // version_note
+    { 24, 28, 248, 1, 0 }, // weapons
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // damage
+    { 4, 0, 0, 0, 0 }, // speed
+    { 8, 0, 0, 0, 0 }, // penetration
+    { 12, 0, 0, 0, 0 }, // channel
+    { 16, 0, 0, 0, 0 }, // homing
+    { 20, 0, 20, 0, 0 }, // effect
+    { 4, 0, 0, 0, 0 }, // buff
+    { 0, 0, 0, 0, 0 }, // multiplier
+    { 4, 0, 0, 0, 0 }, // debuff
+    { 0, 0, 0, 0, 0 }, // amount
+    { 256, 304, 1472, 1, 0 }, // profiles
+    { 0, 0, 0, 0, 0 }, // element
+    { 36, 0, 0, 0, 1 }, // name
+    { 40, 1, 56, 1, 3 }, // icon
+    { 0, 0, 0, 0, 0 }, // u8
+    { 60, 0, 0, 0, 0 }, // experience
+    { 64, 0, 0, 0, 0 }, // tilt
+    { 66, 0, 0, 0, 0 }, // heading
+    { 72, 0, 0, 0, 0 }, // timestamp
+    { 80, 0, 0, 0, 0 }, // badge
+    { 82, 0, 0, 0, 0 }, // port
+    { 88, 0, 0, 0, 0 }, // epoch
+    { 96, 0, 0, 0, 0 }, // precision
+    { 104, 4, 0, 0, 0 }, // ratings
+    { 0, 0, 0, 0, 0 }, // element
+    { 120, 0, 0, 0, 0 }, // has_loadout
+    { 128, 0, 0, 0, 0 }, // loadout
+    { 0, 0, 0, 0, 0 }, // grade
+    { 0, 0, 0, 0, 0 }, // Bronze
+    { 0, 0, 0, 0, 0 }, // Silver
+    { 0, 0, 0, 0, 0 }, // Gold
+    { 1, 1, 8, 1, 0 }, // grades
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // Bronze
+    { 0, 0, 0, 0, 0 }, // Silver
+    { 0, 0, 0, 0, 0 }, // Gold
+    { 12, 1, 0, 0, 0 }, // podium
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // Bronze
+    { 0, 0, 0, 0, 0 }, // Silver
+    { 0, 0, 0, 0, 0 }, // Gold
+    { 16, 0, 0, 0, 0 }, // perks
+    { 24, 0, 0, 0, 0 }, // primary
+    { 0, 0, 0, 0, 0 }, // damage
+    { 4, 0, 0, 0, 0 }, // speed
+    { 8, 0, 0, 0, 0 }, // penetration
+    { 12, 0, 0, 0, 0 }, // channel
+    { 16, 0, 0, 0, 0 }, // homing
+    { 20, 0, 20, 0, 0 }, // effect
+    { 4, 0, 0, 0, 0 }, // buff
+    { 0, 0, 0, 0, 0 }, // multiplier
+    { 4, 0, 0, 0, 0 }, // debuff
+    { 0, 0, 0, 0, 0 }, // amount
+    { 52, 28, 0, 0, 0 }, // backups
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // damage
+    { 4, 0, 0, 0, 0 }, // speed
+    { 8, 0, 0, 0, 0 }, // penetration
+    { 12, 0, 0, 0, 0 }, // channel
+    { 16, 0, 0, 0, 0 }, // homing
+    { 20, 0, 20, 0, 0 }, // effect
+    { 4, 0, 0, 0, 0 }, // buff
+    { 0, 0, 0, 0, 0 }, // multiplier
+    { 4, 0, 0, 0, 0 }, // debuff
+    { 0, 0, 0, 0, 0 }, // amount
+    { 108, 8, 172, 1, 0 }, // attachments
+    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0 }, // slot
+    { 4, 0, 0, 0, 0 }, // power
+    { 1480, 0, 0, 0, 0 }, // count
 };
 
 // THE IDENTITY PLAN, coalesced out of 240 leaves by the schema compiler —
@@ -13205,8 +13054,7 @@ constexpr uint8_t ArchiveConfigFixedKnown0Layout[] = {
     0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
     0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
     0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
-    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t ArchiveConfigFixedKnown1Layout[] = {
     0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
     0x00, 0x02, 0x00, 0x00, 0x00, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd, 0x54, 0xa3, 0x0d, 0xe0, 0x04,
@@ -13287,8 +13135,7 @@ constexpr uint8_t ArchiveConfigFixedKnown1Layout[] = {
     0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
     0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4, 0xe7,
     0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0xa2,
-    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout ArchiveConfigFixedKnown[] = {
     { 0x98b16f3242e9406bull, ArchiveConfigFixedKnown0Layout, 1279, 1260 }, // lock
     { 0x790226107513fdebull, ArchiveConfigFixedKnown1Layout, 1279, 1260 }, // identity

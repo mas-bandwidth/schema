@@ -61,7 +61,7 @@ func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 		// and the tag leads that storage, so the two offsets are the same byte
 		aux = dst + g.fixedTerms(d.Aux)
 	}
-	return fmt.Sprintf("{\n        %[1]d, %[2]d, %[3]d, %[4]d, %[5]d\n    }", dst, stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %d, %d, %d, %d, %d }", dst, stride, aux, d.Counted, d.Meta)
 }
 
 // fixedTerms sums a destination's offsetof terms numerically, the same answer
@@ -663,7 +663,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// Every byte is settled by the compiler.\n")
 	g.pf("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
 	g.emitByteArray(layout)
-	g.pf("};\n")
 	g.pf("constexpr int64_t %sFixedLayoutBytes = (int64_t) sizeof( %sFixedLayout );\n\n", st.Name, st.Name)
 
 	g.pf("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
@@ -1123,7 +1122,6 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 	for i, k := range known {
 		g.pf("constexpr uint8_t %sFixedKnown%dLayout[] = {\n", st.Name, i)
 		g.emitByteArray(k.layout)
-		g.pf("};\n")
 	}
 	g.pf("constexpr TableFixedKnownLayout %sFixedKnown[] = {\n", st.Name)
 	for i, k := range known {
@@ -1166,13 +1164,24 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 	g.pf(" };\n\n")
 }
 
+// It closes the initializer itself: the last byte carries no trailing comma
+// and the brace follows it on the same line, the one spelling of a long byte
+// list that clang-format (the house .clang-format) leaves sixteen to a row.
 func (g *tableGen) emitByteArray(b []byte) {
+	if len(b) == 0 {
+		g.pf("};\n")
+		return
+	}
 	for i := 0; i < len(b); i += 16 {
 		end := min(i+16, len(b))
 		var sb strings.Builder
 		sb.WriteString("   ")
-		for _, v := range b[i:end] {
-			fmt.Fprintf(&sb, " 0x%02x,", v)
+		for j, v := range b[i:end] {
+			if i+j == len(b)-1 {
+				fmt.Fprintf(&sb, " 0x%02x };", v)
+			} else {
+				fmt.Fprintf(&sb, " 0x%02x,", v)
+			}
 		}
 		g.pf("%s\n", sb.String())
 	}

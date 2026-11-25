@@ -11690,122 +11690,49 @@ constexpr uint8_t SimStateFixedLayout[] = {
     0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
-    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr int64_t SimStateFixedLayoutBytes = (int64_t) sizeof( SimStateFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst SimStateFixedDst[] = {
-    {
-        0, 0, 0, 0, 0
-    }, // SimState
-    {
-        0, 0, 0, 0, 0
-    }, // tilt
-    {
-        4, 0, 0, 0, 0
-    }, // angle
-    {
-        8, 0, 0, 0, 0
-    }, // position
-    {
-        16, 0, 0, 0, 0
-    }, // reach
-    {
-        32, 0, 0, 0, 0
-    }, // ticks
-    {
-        36, 0, 0, 0, 0
-    }, // ratio
-    {
-        40, 0, 0, 0, 0
-    }, // speed
-    {
-        48, 0, 0, 0, 0
-    }, // span
-    {
-        64, 0, 0, 0, 0
-    }, // mass
-    {
-        80, 0, 0, 0, 0
-    }, // frames
-    {
-        96, 0, 0, 0, 0
-    }, // flux
-    {
-        112, 0, 0, 0, 0
-    }, // energy
-    {
-        128, 0, 0, 0, 0
-    }, // entity_id
-    {
-        144, 0, 0, 0, 0
-    }, // scale
-    {
-        148, 4, 0, 0, 0
-    }, // samples
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        160, 2, 168, 1, 0
-    }, // weights
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        176, 8, 0, 0, 0
-    }, // axes
-    {
-        0, 0, 0, 0, 0
-    }, // Axis
-    {
-        0, 0, 0, 0, 0
-    }, // X
-    {
-        0, 0, 0, 0, 0
-    }, // Y
-    {
-        0, 0, 0, 0, 0
-    }, // Z
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        208, 16, 240, 1, 0
-    }, // seeds
-    {
-        0, 0, 0, 0, 0
-    }, // element
-    {
-        248, 0, 0, 0, 0
-    }, // pose
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // heading
-    {
-        0, 0, 296, 0, 0
-    }, // spawn ?
-    {
-        272, 0, 0, 0, 0
-    }, // spawn
-    {
-        0, 0, 0, 0, 0
-    }, // x
-    {
-        8, 0, 0, 0, 0
-    }, // y
-    {
-        16, 0, 0, 0, 0
-    }, // heading
+    { 0, 0, 0, 0, 0 }, // SimState
+    { 0, 0, 0, 0, 0 }, // tilt
+    { 4, 0, 0, 0, 0 }, // angle
+    { 8, 0, 0, 0, 0 }, // position
+    { 16, 0, 0, 0, 0 }, // reach
+    { 32, 0, 0, 0, 0 }, // ticks
+    { 36, 0, 0, 0, 0 }, // ratio
+    { 40, 0, 0, 0, 0 }, // speed
+    { 48, 0, 0, 0, 0 }, // span
+    { 64, 0, 0, 0, 0 }, // mass
+    { 80, 0, 0, 0, 0 }, // frames
+    { 96, 0, 0, 0, 0 }, // flux
+    { 112, 0, 0, 0, 0 }, // energy
+    { 128, 0, 0, 0, 0 }, // entity_id
+    { 144, 0, 0, 0, 0 }, // scale
+    { 148, 4, 0, 0, 0 }, // samples
+    { 0, 0, 0, 0, 0 }, // element
+    { 160, 2, 168, 1, 0 }, // weights
+    { 0, 0, 0, 0, 0 }, // element
+    { 176, 8, 0, 0, 0 }, // axes
+    { 0, 0, 0, 0, 0 }, // Axis
+    { 0, 0, 0, 0, 0 }, // X
+    { 0, 0, 0, 0, 0 }, // Y
+    { 0, 0, 0, 0, 0 }, // Z
+    { 0, 0, 0, 0, 0 }, // element
+    { 208, 16, 240, 1, 0 }, // seeds
+    { 0, 0, 0, 0, 0 }, // element
+    { 248, 0, 0, 0, 0 }, // pose
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // heading
+    { 0, 0, 296, 0, 0 }, // spawn ?
+    { 272, 0, 0, 0, 0 }, // spawn
+    { 0, 0, 0, 0, 0 }, // x
+    { 8, 0, 0, 0, 0 }, // y
+    { 16, 0, 0, 0, 0 }, // heading
 };
 
 // THE IDENTITY PLAN, coalesced out of 27 leaves by the schema compiler —
@@ -11938,8 +11865,7 @@ constexpr uint8_t SimStateFixedKnown0Layout[] = {
     0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
-    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr uint8_t SimStateFixedKnown1Layout[] = {
     0x24, 0x00, 0x00, 0x00, 0xc9, 0xf0, 0xa4, 0x99, 0x2d, 0x6b, 0x52, 0xde, 0x0d, 0xf3, 0x00, 0x00,
     0x00, 0x14, 0x00, 0x00, 0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e, 0x14, 0x01, 0x00,
@@ -11979,8 +11905,7 @@ constexpr uint8_t SimStateFixedKnown1Layout[] = {
     0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x17, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x17, 0x08,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x1b,
-    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 constexpr TableFixedKnownLayout SimStateFixedKnown[] = {
     { 0xe3e0242d97626d75ull, SimStateFixedKnown0Layout, 616, 251 }, // lock
     { 0xea29e39895d60099ull, SimStateFixedKnown1Layout, 616, 251 }, // identity
