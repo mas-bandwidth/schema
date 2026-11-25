@@ -5,7 +5,7 @@ Part of the specification: every test of tier `unit`, from the test registry. Th
 
 **Tier unit:** no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory.
 
-Unit tests every language answers: 2. Language-free tests: 3149.
+Unit tests every language answers: 2. Language-free tests: 3152.
 
 Run this tier for a language with `schema-test run --tier unit --lang L`, one test with `schema-test run <full name>`.
 
@@ -1929,12 +1929,12 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.cellmerge.resolve-leaves-a-hunk-it-cannot-merge-exactly` | `gotest` | Go test TestResolveLeavesAHunkItCannotMergeExactly in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveLeavesAHunkItCannotMergeExactly` | the Go test passes | `tools/cellmerge/main_test.go:68` |
 | `none.unit.tooling.cellmerge.resolve-merges-a-two-sided-row-cell-by-column` | `gotest` | Go test TestResolveMergesATwoSidedRowCellByColumn in ./tools/cellmerge | `package: ./tools/cellmerge`<br>`test: TestResolveMergesATwoSidedRowCellByColumn` | the Go test passes | `tools/cellmerge/main_test.go:54` |
 
-#### `tooling` family `ci`, 259 tests
+#### `tooling` family `ci`, 260 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
-| `none.unit.tooling.ci.a-c-format-shard-holds-its-ratchet-lines` | `gotest` | Go test TestACFormatShardHoldsItsRatchetLines in ./internal/ci | `package: ./internal/ci`<br>`test: TestACFormatShardHoldsItsRatchetLines` | the Go test passes | `internal/ci/lint_shard_test.go:147` |
-| `none.unit.tooling.ci.a-directory-shard-is-whole-and-weighs-its-source` | `gotest` | Go test TestADirectoryShardIsWholeAndWeighsItsSource in ./internal/ci | `package: ./internal/ci`<br>`test: TestADirectoryShardIsWholeAndWeighsItsSource` | the Go test passes | `internal/ci/lint_shard_test.go:247` |
+| `none.unit.tooling.ci.a-c-format-shard-holds-its-ratchet-lines` | `gotest` | Go test TestACFormatShardHoldsItsRatchetLines in ./internal/ci | `package: ./internal/ci`<br>`test: TestACFormatShardHoldsItsRatchetLines` | the Go test passes | `internal/ci/lint_shard_test.go:148` |
+| `none.unit.tooling.ci.a-directory-shard-is-whole-and-weighs-its-source` | `gotest` | Go test TestADirectoryShardIsWholeAndWeighsItsSource in ./internal/ci | `package: ./internal/ci`<br>`test: TestADirectoryShardIsWholeAndWeighsItsSource` | the Go test passes | `internal/ci/lint_shard_test.go:248` |
 | `none.unit.tooling.ci.air-c-fixed-table-reference-build-record` | `gotest` | Go test TestAirCFixedTableReferenceBuildRecord in ./internal/ci | `package: ./internal/ci`<br>`test: TestAirCFixedTableReferenceBuildRecord` | the Go test passes | `internal/ci/air_c_reference_build_test.go:18` |
 | `none.unit.tooling.ci.base-reds-ledger-names-real-tests` | `gotest` | Go test TestBaseRedsLedgerNamesRealTests in ./internal/ci | `package: ./internal/ci`<br>`test: TestBaseRedsLedgerNamesRealTests` | the Go test passes | `internal/ci/basereds_test.go:20` |
 | `none.unit.tooling.ci.c-conformance-children-write-no-core` | `gotest` | Go test TestCConformanceChildrenWriteNoCore in ./internal/ci | `package: ./internal/ci`<br>`test: TestCConformanceChildrenWriteNoCore` | the Go test passes | `internal/ci/c_no_core_children_test.go:76` |
@@ -1975,7 +1975,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.every-fast-checkout-merges-main` | `gotest` | Go test TestEveryFastCheckoutMergesMain in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryFastCheckoutMergesMain` | the Go test passes | `internal/ci/merge_main_test.go:106` |
 | `none.unit.tooling.ci.every-go-test-can-fail` | `gotest` | Go test TestEveryGoTestCanFail in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryGoTestCanFail` | the Go test passes | `internal/ci/vacuoustests_gate_test.go:25` |
 | `none.unit.tooling.ci.every-interpreter-child-registers-its-inputs` | `gotest` | Go test TestEveryInterpreterChildRegistersItsInputs in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryInterpreterChildRegistersItsInputs` | the Go test passes | `internal/ci/interpreter_children_register_inputs_test.go:24` |
-| `none.unit.tooling.ci.every-lint-gate-reads-a-produced-tree` | `gotest` | Go test TestEveryLintGateReadsAProducedTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryLintGateReadsAProducedTree` | the Go test passes | `internal/ci/lint_producers_test.go:226` |
+| `none.unit.tooling.ci.every-lint-gate-reads-a-produced-tree` | `gotest` | Go test TestEveryLintGateReadsAProducedTree in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryLintGateReadsAProducedTree` | the Go test passes | `internal/ci/lint_producers_test.go:251` |
 | `none.unit.tooling.ci.every-named-table-leg-runs-on-its-pull-requests` | `gotest` | Go test TestEveryNamedTableLegRunsOnItsPullRequests in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryNamedTableLegRunsOnItsPullRequests` | the Go test passes | `internal/ci/tableslegs_test.go:100` |
 | `none.unit.tooling.ci.every-package-the-build-runs-is-committed` | `gotest` | Go test TestEveryPackageTheBuildRunsIsCommitted in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPackageTheBuildRunsIsCommitted` | the Go test passes | `internal/ci/ci_test.go:292` |
 | `none.unit.tooling.ci.every-port-names-its-conformance-leg-build` | `gotest` | Go test TestEveryPortNamesItsConformanceLegBuild in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryPortNamesItsConformanceLegBuild` | the Go test passes | `internal/ci/conformance_leg_build_test.go:59` |
@@ -1985,6 +1985,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.every-setup-beam-is-hosted-only` | `gotest` | Go test TestEverySetupBeamIsHostedOnly in ./internal/ci | `package: ./internal/ci`<br>`test: TestEverySetupBeamIsHostedOnly` | the Go test passes | `internal/ci/setup_beam_hosted_only_test.go:123` |
 | `none.unit.tooling.ci.every-setup-rust-is-hosted-only` | `gotest` | Go test TestEverySetupRustIsHostedOnly in ./internal/ci | `package: ./internal/ci`<br>`test: TestEverySetupRustIsHostedOnly` | the Go test passes | `internal/ci/setup_rust_hosted_only_test.go:112` |
 | `none.unit.tooling.ci.every-setup-rust-is-hosted-only-negative-controls` | `gotest` | Go test TestEverySetupRustIsHostedOnlyNegativeControls in ./internal/ci | `package: ./internal/ci`<br>`test: TestEverySetupRustIsHostedOnlyNegativeControls` | the Go test passes | `internal/ci/setup_rust_hosted_only_test.go:124` |
+| `none.unit.tooling.ci.every-sharded-gate-is-judged-whole` | `gotest` | Go test TestEveryShardedGateIsJudgedWhole in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryShardedGateIsJudgedWhole` | the Go test passes | `internal/ci/lint_shard_test.go:421` |
 | `none.unit.tooling.ci.every-spec-tables-target-is-invoked-by-ci` | `gotest` | Go test TestEverySpecTablesTargetIsInvokedByCI in ./internal/ci | `package: ./internal/ci`<br>`test: TestEverySpecTablesTargetIsInvokedByCI` | the Go test passes | `internal/ci/spectargets_test.go:268` |
 | `none.unit.tooling.ci.every-test-child-is-bounded` | `gotest` | Go test TestEveryTestChildIsBounded in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTestChildIsBounded` | the Go test passes | `internal/ci/test_children_bounded_test.go:69` |
 | `none.unit.tooling.ci.every-test-child-is-bounded-corpus` | `gotest` | Go test TestEveryTestChildIsBoundedCorpus in ./internal/ci | `package: ./internal/ci`<br>`test: TestEveryTestChildIsBoundedCorpus` | the Go test passes | `internal/ci/test_children_bounded_corpus_test.go:28` |
@@ -2185,7 +2186,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.ci.the-fixed-form-harnesses-run-per-pull-request` | `gotest` | Go test TestTheFixedFormHarnessesRunPerPullRequest in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheFixedFormHarnessesRunPerPullRequest` | the Go test passes | `internal/ci/ci_test.go:590` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js` | `gotest` | Go test TestTheGoTestJobClonesSerializeJS in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJS` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:57` |
 | `none.unit.tooling.ci.the-go-test-job-clones-serialize-js-negative-control` | `gotest` | Go test TestTheGoTestJobClonesSerializeJSNegativeControl in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheGoTestJobClonesSerializeJSNegativeControl` | the Go test passes | `internal/ci/js_toolchain_lane_test.go:72` |
-| `none.unit.tooling.ci.the-lint-shards-judge-every-line-once` | `gotest` | Go test TestTheLintShardsJudgeEveryLineOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLintShardsJudgeEveryLineOnce` | the Go test passes | `internal/ci/lint_shard_test.go:71` |
+| `none.unit.tooling.ci.the-lint-shards-judge-every-line-once` | `gotest` | Go test TestTheLintShardsJudgeEveryLineOnce in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheLintShardsJudgeEveryLineOnce` | the Go test passes | `internal/ci/lint_shard_test.go:72` |
 | `none.unit.tooling.ci.the-parity-table-is-covered` | `gotest` | Go test TestTheParityTableIsCovered in ./internal/ci | `package: ./internal/ci`<br>`test: TestTheParityTableIsCovered` | the Go test passes | `internal/ci/parity_table_test.go:18` |
 | `none.unit.tooling.ci.the-pr-shards-run-on-the-produced-legs` | `gotest` | Go test TestThePRShardsRunOnTheProducedLegs in ./internal/ci | `package: ./internal/ci`<br>`test: TestThePRShardsRunOnTheProducedLegs` | the Go test passes | `internal/ci/go_fixed_corpus_pipeline_test.go:88` |
 | `none.unit.tooling.ci.tla-runs-hash-every-model-and-config` | `gotest` | Go test TestTLARunsHashEveryModelAndConfig in ./internal/ci | `package: ./internal/ci`<br>`test: TestTLARunsHashEveryModelAndConfig` | the Go test passes | `internal/ci/strictonly_tla_test.go:107` |
@@ -3140,7 +3141,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.runmatch.skips-follows-go` | `gotest` | Go test TestSkipsFollowsGo in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestSkipsFollowsGo` | the Go test passes | `internal/runmatch/runmatch_test.go:107` |
 | `none.unit.tooling.runmatch.top-level-is-gos-split` | `gotest` | Go test TestTopLevelIsGosSplit in ./internal/runmatch | `package: ./internal/runmatch`<br>`test: TestTopLevelIsGosSplit` | the Go test passes | `internal/runmatch/runmatch_test.go:9` |
 
-#### `tooling` family `schema-test`, 145 tests
+#### `tooling` family `schema-test`, 146 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3232,6 +3233,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.schema-test.extract-refuses-a-test-that-skips` | `gotest` | Go test TestExtractRefusesATestThatSkips in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestExtractRefusesATestThatSkips` | the Go test passes | `tools/schema-test/extract_test.go:97` |
 | `none.unit.tooling.schema-test.feature-witness-plan` | `gotest` | Go test TestFeatureWitnessPlan in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessPlan` | the Go test passes | `tools/schema-test/featurewitness_test.go:173` |
 | `none.unit.tooling.schema-test.feature-witness-rows-cover-the-corpus` | `gotest` | Go test TestFeatureWitnessRowsCoverTheCorpus in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestFeatureWitnessRowsCoverTheCorpus` | the Go test passes | `tools/schema-test/featurewitness_test.go:132` |
+| `none.unit.tooling.schema-test.go-answered-none-wraps-the-run-error` | `gotest` | Go test TestGoAnsweredNoneWrapsTheRunError in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoAnsweredNoneWrapsTheRunError` | the Go test passes | `tools/schema-test/a4_test.go:153` |
 | `none.unit.tooling.schema-test.go-test-events-give-one-verdict-each` | `gotest` | Go test TestGoTestEventsGiveOneVerdictEach in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestEventsGiveOneVerdictEach` | the Go test passes | `tools/schema-test/main_test.go:105` |
 | `none.unit.tooling.schema-test.go-test-plain-output-in-the-log-fails` | `gotest` | Go test TestGoTestPlainOutputInTheLogFails in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestPlainOutputInTheLogFails` | the Go test passes | `tools/schema-test/make_test.go:475` |
 | `none.unit.tooling.schema-test.go-test-runs-to-the-drivers-deadline` | `gotest` | Go test TestGoTestRunsToTheDriversDeadline in ./tools/schema-test | `package: ./tools/schema-test`<br>`test: TestGoTestRunsToTheDriversDeadline` | the Go test passes | `tools/schema-test/gotest_test.go:293` |
@@ -3451,7 +3453,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg.write-seconds-keeps-every-other-byte` | `gotest` | Go test TestWriteSecondsKeepsEveryOtherByte in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsKeepsEveryOtherByte` | the Go test passes | `internal/testreg/registry_test.go:120` |
 | `none.unit.tooling.testreg.write-seconds-touches-only-the-last-field` | `gotest` | Go test TestWriteSecondsTouchesOnlyTheLastField in ./internal/testreg | `package: ./internal/testreg`<br>`test: TestWriteSecondsTouchesOnlyTheLastField` | the Go test passes | `internal/testreg/registry_test.go:152` |
 
-#### `tooling` family `testreg-extract`, 31 tests
+#### `tooling` family `testreg-extract`, 32 tests
 
 | full name | adapter | checks | inputs | expected result | source |
 |---|---|---|---|---|---|
@@ -3484,6 +3486,7 @@ CI policy, docs, roadmap, repo-structure and harness self-tests.
 | `none.unit.tooling.testreg-extract.make-plant-and-golden-rows-cover-their-tests` | `gotest` | Go test TestMakePlantAndGoldenRowsCoverTheirTests in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestMakePlantAndGoldenRowsCoverTheirTests` | the Go test passes | `internal/testreg/extract/extract_test.go:200` |
 | `none.unit.tooling.testreg-extract.read-ledger-refuses-a-bad-line` | `gotest` | Go test TestReadLedgerRefusesABadLine in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestReadLedgerRefusesABadLine` | the Go test passes | `internal/testreg/extract/extract_test.go:328` |
 | `none.unit.tooling.testreg-extract.the-ledger-only-shrinks` | `gotest` | Go test TestTheLedgerOnlyShrinks in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheLedgerOnlyShrinks` | the Go test passes | `internal/testreg/extract/extract_test.go:242` |
+| `none.unit.tooling.testreg-extract.the-shard-rows-of-a-gate-share-its-target` | `gotest` | Go test TestTheShardRowsOfAGateShareItsTarget in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTheShardRowsOfAGateShareItsTarget` | the Go test passes | `internal/testreg/extract/extract_test.go:309` |
 | `none.unit.tooling.testreg-extract.tier-lines-are-held-to-their-tests` | `gotest` | Go test TestTierLinesAreHeldToTheirTests in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestTierLinesAreHeldToTheirTests` | the Go test passes | `internal/testreg/extract/extract_test.go:267` |
 | `none.unit.tooling.testreg-extract.what-git-ignores-is-not-a-test` | `gotest` | Go test TestWhatGitIgnoresIsNotATest in ./internal/testreg/extract | `package: ./internal/testreg/extract`<br>`test: TestWhatGitIgnoresIsNotATest` | the Go test passes | `internal/testreg/extract/extract_test.go:451` |
 

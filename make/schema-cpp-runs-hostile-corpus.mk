@@ -35,6 +35,19 @@ CPP_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 $(CPP_HOSTILE_SANITIZ
 # stack (test/c-hostile/main.c), and at -O0 the sanitizers' unshared frames
 # overflow it on five accepting cases (measured 2026-11-07), so -O0 would move
 # the stack-depth verdicts. The compile time is bought back with -g1, cores and ccache.
+# THE INLINE OVERRIDE. A unit's headers spell its table code <UNIT>_TABLE_INLINE,
+# always_inline unless the build defines it (the header's own #ifndef). Forced
+# inlining is a speed choice for shipped code; under the sanitizers every forced
+# copy is instrumented again at every call site, and that was most of a cold
+# build: test/cpp-hostile/unit_messagedemo.cpp, the critical path, compiled in
+# 53 to 75 s forced and 10.6 s plain (one core, hetzner1). The harness defines
+# it as plain inline; the code, the checks and the sanitizers are the same, and
+# the corpus's stack-depth verdicts stay the manifest's (422 of 422). Every
+# <Table>Table.h of a unit must carry the hook, or the build fails naming the
+# header, so a renamed hook cannot quietly turn the define into one that names
+# nothing; a unit with no table code (the packet-only hostilepacket) has no
+# Table.h and no hook, and gets no define.
+CPP_HOSTILE_INLINE_OVERRIDE ?= inline
 # One compile per core: the objects are independent, only the link is serial.
 CPP_HOSTILE_JOBS     ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
 # ccache when the host has it: an unchanged generated unit is not recompiled.
@@ -91,7 +104,14 @@ $(CPP_HOSTILE_BUILD)/case: $(CPP_HOSTILE_BUILD)/generated/.stamp $(wildcard test
 		for src in $(CPP_HOSTILE_BUILD)/generated/$$name/*.cpp; do if [ -f "$$src" ]; then echo "$$name $$src"; fi; done; \
 	done; } | \
 	xargs -P $(CPP_HOSTILE_JOBS) -L 1 sh -c 'out=$(CPP_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .cpp).o; \
-		$(if $(CPP_HOSTILE_CCACHE),$(CPP_HOSTILE_CCACHE_ENV)) $(CPP_HOSTILE_CCACHE) $(CXX) $(CPP_HOSTILE_CXXFLAGS) $(CPP_HOSTILE_DIRFREE) -Itest/cpp-hostile -Itest/c-hostile -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
+		hook=$$(echo $$0 | tr a-z A-Z)_TABLE_INLINE; inl=; \
+		for h in $(CPP_HOSTILE_BUILD)/generated/$$0/*Table.h; do \
+			[ -e "$$h" ] || continue; \
+			grep -qs "^#ifndef $$hook\$$" "$$h" || \
+				{ echo "cpp hostile build: $$h does not carry #ifndef $$hook, so the inline override would name nothing"; exit 255; }; \
+			inl=-D$$hook=$(CPP_HOSTILE_INLINE_OVERRIDE); \
+		done; \
+		$(if $(CPP_HOSTILE_CCACHE),$(CPP_HOSTILE_CCACHE_ENV)) $(CPP_HOSTILE_CCACHE) $(CXX) $(CPP_HOSTILE_CXXFLAGS) $$inl $(CPP_HOSTILE_DIRFREE) -Itest/cpp-hostile -Itest/c-hostile -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
 	$(if $(CPP_HOSTILE_CCACHE),$(CPP_HOSTILE_CCACHE_ENV)) $(CPP_HOSTILE_CCACHE) $(CC) $(CPP_HOSTILE_CFLAGS) $(CPP_HOSTILE_DIRFREE) -Itest/c-hostile -c test/c-hostile/main.c -o $(CPP_HOSTILE_BUILD)/obj/main.o
 	$(CXX) $(CPP_HOSTILE_SANITIZE) -pthread $(CPP_HOSTILE_BUILD)/obj/*.o -o $@
 

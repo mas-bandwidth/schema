@@ -1,5 +1,7 @@
-// R14 — `layout_record_too_large` FOR A COMPILED ENTRY REACHING PAST THE
-// WRITER'S DECLARED RECORD, not only for the 65536 bound and a zero root.
+// R14 — EVERY COMPILED ENTRY'S REACH IS IN THE WRITER'S COORDINATES: a union
+// tag grown 1 -> 8 reads the writer's tag at the writer's width and compiles
+// whole; `layout_record_too_large` is for an entry that really reaches past
+// the writer's declared record, not only for the 65536 bound and a zero root.
 //
 // THE LAW:
 //
@@ -40,14 +42,21 @@
 //   THEIRS, the writer's lock layout: a record of 5 bytes — one union whose
 //   tag is 1 byte, one arm a u32.
 //   MINE, the reader: the same ids with the tag grown 1 -> 8 (a lawful §5.2
-//   ordinal-width evolution). The compile lands the union's None const at
-//   src 0 with the READER'S tag width, so that entry reaches 0 + 8 = 8, past
-//   the writer's declared record of 5 — under 65536, root non-zero, every
-//   other fact lawful. The law answers layout_record_too_large.
+//   ordinal-width evolution). Every source reach is in the WRITER's
+//   coordinates: the union's None const LANDS my 8-byte tag but reads the
+//   writer's raw tag at the WRITER'S tag width (FIXED-FORM-ALGORITHM.md §5.2
+//   EMIT kind 15), so it reaches 0 + 1 of 5 and the pair compiles whole. A
+//   reach at the reader's width, 0 + 8, would read the writer's tag AND its
+//   arm's payload as one tag and refuse a lawful file
+//   layout_record_too_large. Until 2026-11-25 this row asserted exactly that
+//   refusal, because TableFixedPush took the None const's reach at its LANDED
+//   size; the Rust leg fixed the same reach in 306e734396 (rust/R14).
 //
-//   THE LAWFUL TWIN: the tag grown only to 2 reaches 0 + 2 = 2 of 5 and
-//   compiles whole — the bound is "past", not "at" — and THEIRS against
-//   itself compiles whole. So the refusal is the reach and nothing else.
+//   THE TWINS: the tag grown only to 2 compiles whole too, and THEIRS
+//   against itself compiles whole. The over-reach refusal itself is the
+//   compiler's defence in depth, held by
+//   internal/codegen/jstable/fixedroadmap_t03_test.go (js/R14), whose hostile
+//   layout reaches past its record through a counted array.
 //
 // run: node test/conformance/js/rows/R14.mjs   (from the repository root)
 // exit: 0 = every assertion passed, 1 = one or more failed
@@ -138,14 +147,33 @@ function compile(theirsBytes, tag) {
   return { made, plan, report };
 }
 
-// THE ENTRIES A PLAN HOLDS, as [op, src, size] triples, for the reach checks.
+// THE ENTRIES A PLAN HOLDS, as [op, src, size, aux, meta, guard] rows, for
+// the reach checks (lanes 0, 1, 3, 4, 7 and 5 of TableFixedLanes).
 function entries(plan) {
   const out = [];
   for (let i = 0; i < plan.count; i++) {
     const b = i * TableFixedLanes;
-    out.push([plan.entries[b], plan.entries[b + 1], plan.entries[b + 3]]);
+    const e = plan.entries;
+    out.push([e[b], e[b + 1], e[b + 3], e[b + 4], e[b + 7], e[b + 5]]);
   }
   return out;
+}
+
+// THE UNION'S None CONST: op 5 (const), aux 0 (None), unguarded, the writer's
+// arm count in meta's low byte and the writer's tag width in meta >>> 8.
+const OP_CONST = 5;
+function noneConst(plan) {
+  return entries(plan).find(([op, , , aux, meta]) => op === OP_CONST && aux === 0 && (meta & 0xff) !== 0);
+}
+
+// RUN a compiled plan over one writer record into a fresh image of `bytes`.
+function run(plan, record, bytes) {
+  const src = new Uint8Array(record);
+  const image = new Uint8Array(bytes);
+  const report = new TableFixedReport();
+  rt.TableFixedRun(plan.entries, plan.count, src, new DataView(src.buffer), 0,
+    image, new DataView(image.buffer), plan.remap, report);
+  return { image, report };
 }
 
 // ---- 0. every vector is a lawful layout: the compile is what is reached ------
@@ -179,39 +207,70 @@ function entries(plan) {
   check(made > 0 && !plan.hostile, `tag grown 1 -> 2 reaches 2 of 5 and compiles whole (${made} entries)`);
 }
 
-// ---- 3. THE CELL: the None const reaches 0 + 8 against a record of 5 ----------
+// ---- 3. THE CELL: a tag grown 1 -> 8 reads the writer's 1-byte tag ----------
 {
   const { made, plan, report } = compile(THEIRS, 8);
-  check(made === -2, `the compile refuses the plan whole: TableFixedCompile answers -2, got ${made}`);
-  check(plan.hostile === true, "the refusal is the reach past the writer's record (plan.hostile)");
-  check(made !== -1 && !plan.overflow, "not plan_too_large: more room cannot mend a stranger's sizes");
-  check(report.unknown === 0 && report.mismatch === 0, "refuse is total: no census moves");
+  check(made > 0 && made === plan.count,
+    `the grown tag compiles whole: TableFixedCompile answers ${made} entries, no refusal`);
+  check(!plan.hostile, "no entry reaches past the writer's record of 5 (plan.hostile stays false)");
+  check(!plan.overflow && !plan.unlawful && !plan.absentIntoBare, "nothing else refused the pair");
+  check(report.refused === 0, `no refusal on the report, got ${TableFixedRefusalName(report.refused)}`);
+  const none = noneConst(plan);
+  check(none !== undefined, "the union's None const is in the plan");
+  if (none !== undefined) {
+    const [, src, size, , meta, guard] = none;
+    check(src === 0, `the None const reads the writer's tag at its offset 0, got ${src}`);
+    check(size === 8, `the None const LANDS my 8-byte tag, got ${size}`);
+    check((meta >>> 8) === 1, `the None const reads the WRITER's 1-byte tag, never 8: got ${meta >>> 8}`);
+    check((meta & 0xff) === 1, `it carries the writer's arm count, 1: got ${meta & 0xff}`);
+    check(guard === -1, `the None const is unguarded (TableFixedNoGuard, -1), got ${guard}`);
+    check(src + (meta >>> 8) <= 5, "its reach, 0 + 1, is inside the writer's record of 5");
+  }
+  check(entries(plan).some(([op, src, size]) => op === 0 && src === 1 && size === 4),
+    "the u32 arm is a copy of 4 bytes from src 1, past the WRITER's 1-byte tag");
+
+  // THE READ IT LAYS: the writer's arm 1 carrying 0x11223344 lands my tag 1 in
+  // 8 bytes and the u32 whole past it — the payload is never read as the tag.
+  {
+    const { image, report: r } = run(plan, [1, 0x44, 0x33, 0x22, 0x11], 12);
+    const iv = new DataView(image.buffer);
+    check(r.refused === 0, `arm 1 reads with no refusal, got ${TableFixedRefusalName(r.refused)}`);
+    check(iv.getUint32(0, true) === 1 && iv.getUint32(4, true) === 0,
+      `my 8-byte tag lands 1, got lo=${iv.getUint32(0, true)} hi=${iv.getUint32(4, true)}`);
+    check(iv.getUint32(8, true) === 0x11223344,
+      `the u32 lands whole past my tag, got 0x${iv.getUint32(8, true).toString(16)}`);
+  }
+  // tag 0 is None: my whole tag lands 0, the arm is dead.
+  {
+    const { image, report: r } = run(plan, [0, 0, 0, 0, 0], 12);
+    const iv = new DataView(image.buffer);
+    check(r.refused === 0 && iv.getUint32(0, true) === 0 && iv.getUint32(4, true) === 0,
+      "tag 0 reads as None in my 8-byte tag");
+  }
+  // a forged tag past the writer's one arm refuses out_of_range (§4.6), read
+  // at the writer's width: 2 is past an arm count of 1.
+  {
+    const { report: r } = run(plan, [2, 0, 0, 0, 0], 12);
+    check(r.refused === TableFixedRefusal.OutOfRange,
+      `a forged writer tag 2 refuses out_of_range, got ${TableFixedRefusalName(r.refused)}`);
+  }
 }
 
-// ---- 4. THE NAME, through the lineage path the generated module runs ---------
+// ---- 4. THE LINEAGE PATH the generated module runs lays a READY plan ---------
 //
 // A lock lineage entry whose hash is not this build's own is compiled at module
-// load by TableFixedLineagePlans; its lane carries the refusal a load answers.
+// load by TableFixedLineagePlans; a lawful grown tag lays a ready lane.
 {
   const own = [0x11111111, 0x22222222];
   const lane = (tag) => {
     const known = [new TableFixedKnownLayout(0x33333333, 0x44444444, THEIRS, THEIRS.length, 5)];
     return TableFixedLineagePlans(known, own[0], own[1], mine(tag), dst(tag), tag + 4)[0];
   };
-
-  const bad = lane(8);
-  check(bad !== null && bad.why === TableFixedRefusal.LayoutRecordTooLarge,
-    "the lineage lane for the over-reaching entry carries LayoutRecordTooLarge");
-  check(bad !== null && TableFixedRefusalName(bad.why) === "layout_record_too_large",
-    `the name spells layout_record_too_large, got ${bad && TableFixedRefusalName(bad.why)}`);
-  check(bad !== null && bad.why !== TableFixedRefusal.LayoutMalformed,
-    "§5.8 row 13: the compile's failure path is NOT layout_malformed");
-  check(bad !== null && bad.why !== TableFixedRefusal.PlanTooLarge && bad.ready !== true,
-    "not plan_too_large, and no partly compiled plan is handed out");
-
-  const good = lane(2);
-  check(good !== null && good.why === 0 && good.ready === true && good.recordBytes === 5,
-    "the lawful twin (tag 2) lays a ready plan with the lock's record size");
+  for (const tag of [8, 2]) {
+    const l = lane(tag);
+    check(l !== null && l.why === 0 && l.ready === true && l.recordBytes === 5,
+      `the grown tag (1 -> ${tag}) lays a ready lineage plan with the lock's record size, got why=${l && TableFixedRefusalName(l.why)}`);
+  }
 }
 
 // ---- 5. ONE NAME across both wirings: the parse bound lands the same constant -

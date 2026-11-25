@@ -30,9 +30,9 @@ the same.
 
 | tier | tests | what it is |
 |---|---|---|
-| `unit` | 3151 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
-| `functional` | 4847 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
-| `nightly` | 2521 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
+| `unit` | 3154 | no real time, no sockets, no network, no outside services or toolchains beyond the Go test binary; stays inside its working directory |
+| `functional` | 4867 | uses a real thing: a compiler or VM, a toolchain, generated code built and run; per pull request on runners that provide it |
+| `nightly` | 2520 | heavy or long: long fuzz, full matrices, soak, timing, anything past a two-minute job even sharded |
 
 ## The per-PR matrix
 
@@ -369,83 +369,87 @@ one job, in jobs of at most `256` rows (GitHub's limit on one matrix),
 | `lobster` | 16/18 | 2 | 48.4 |
 | `lobster` | 17/18 | 46 | 46.0 |
 | `lobster` | 18/18 | 46 | 46.0 |
-| `none` | 1/76 | 78 | 47.9 |
-| `none` | 2/76 | 20 | 51.4 |
-| `none` | 3/76 | 122 | 57.7 |
-| `none` | 4/76 | 3 | 55.0 |
-| `none` | 5/76 | 117 | 57.9 |
-| `none` | 6/76 | 55 | 51.8 |
-| `none` | 7/76 | 394 | 51.2 |
-| `none` | 8/76 | 66 | 29.0 |
-| `none` | 9/76 | 151 | 45.3 |
-| `none` | 10/76 | 966 | 48.3 |
-| `none` | 11/76 | 3 | 38.7 |
-| `none` | 12/76 | 27 | 51.8 |
-| `none` | 13/76 | 16 | 58.5 |
-| `none` | 14/76 | 40 | 58.8 |
-| `none` | 15/76 | 85 | 55.9 |
-| `none` | 16/76 | 2 | 43.6 |
-| `none` | 17/76 | 4 | 41.9 |
-| `none` | 18/76 | 145 | 47.5 |
-| `none` | 19/76 | 18 | 58.4 |
-| `none` | 20/76 | 17 | 51.9 |
-| `none` | 21/76 | 62 | 52.0 |
-| `none` | 22/76 | 8 | 48.8 |
-| `none` | 23/76 | 6 | 56.8 |
-| `none` | 24/76 | 27 | 57.2 |
-| `none` | 25/76 | 22 | 58.9 |
-| `none` | 26/76 | 6 | 56.7 |
-| `none` | 27/76 | 14 | 55.6 |
-| `none` | 28/76 | 19 | 54.8 |
-| `none` | 29/76 | 3 | 50.2 |
-| `none` | 30/76 | 18 | 50.8 |
-| `none` | 31/76 | 89 | 49.7 |
-| `none` | 32/76 | 27 | 52.2 |
-| `none` | 33/76 | 44 | 58.2 |
-| `none` | 34/76 | 86 | 58.7 |
-| `none` | 35/76 | 19 | 56.8 |
-| `none` | 36/76 | 18 | 57.1 |
-| `none` | 37/76 | 42 | 53.9 |
-| `none` | 38/76 | 90 | 51.1 |
-| `none` | 39/76 | 236 | 58.8 |
-| `none` | 40/76 | 181 | 59.0 |
-| `none` | 41/76 | 78 | 58.6 |
-| `none` | 42/76 | 92 | 57.2 |
-| `none` | 43/76 | 107 | 57.9 |
-| `none` | 44/76 | 56 | 53.0 |
-| `none` | 45/76 | 70 | 59.0 |
-| `none` | 46/76 | 269 | 53.3 |
-| `none` | 47/76 | 14 | 57.6 |
-| `none` | 48/76 | 34 | 48.9 |
-| `none` | 49/76 | 23 | 52.8 |
-| `none` | 50/76 | 50 | 51.8 |
-| `none` | 51/76 | 228 | 55.0 |
-| `none` | 52/76 | 230 | 58.9 |
-| `none` | 53/76 | 124 | 58.9 |
-| `none` | 54/76 | 29 | 58.4 |
-| `none` | 55/76 | 66 | 53.5 |
-| `none` | 56/76 | 95 | 44.0 |
-| `none` | 57/76 | 2 | 56.0 |
-| `none` | 58/76 | 118 | 47.3 |
-| `none` | 59/76 | 106 | 53.3 |
-| `none` | 60/76 | 33 | 59.0 |
-| `none` | 61/76 | 2 | 47.8 |
-| `none` | 62/76 | 4 | 44.1 |
-| `none` | 63/76 | 7 | 41.6 |
-| `none` | 64/76 | 1 | 38.5 |
-| `none` | 65/76 | 1 | 38.5 |
-| `none` | 66/76 | 1 | 38.5 |
-| `none` | 67/76 | 1 | 38.5 |
-| `none` | 68/76 | 1 | 38.5 |
-| `none` | 69/76 | 1 | 38.5 |
-| `none` | 70/76 | 1 | 38.5 |
-| `none` | 71/76 | 1 | 38.5 |
-| `none` | 72/76 | 18 | 52.5 |
-| `none` | 73/76 | 46 | 53.0 |
-| `none` | 74/76 | 35 | 56.7 |
-| `none` | 75/76 | 51 | 51.0 |
-| `none` | 76/76 | 95 | 51.5 |
-| **every row** | **400 jobs** | **51552** | **20363.0** |
+| `none` | 1/80 | 78 | 47.9 |
+| `none` | 2/80 | 20 | 51.4 |
+| `none` | 3/80 | 123 | 58.7 |
+| `none` | 4/80 | 3 | 55.0 |
+| `none` | 5/80 | 118 | 58.9 |
+| `none` | 6/80 | 55 | 51.8 |
+| `none` | 7/80 | 394 | 51.2 |
+| `none` | 8/80 | 66 | 29.0 |
+| `none` | 9/80 | 151 | 45.3 |
+| `none` | 10/80 | 966 | 48.3 |
+| `none` | 11/80 | 3 | 38.7 |
+| `none` | 12/80 | 27 | 51.8 |
+| `none` | 13/80 | 7 | 50.0 |
+| `none` | 14/80 | 31 | 50.0 |
+| `none` | 15/80 | 37 | 51.5 |
+| `none` | 16/80 | 79 | 54.3 |
+| `none` | 17/80 | 2 | 49.0 |
+| `none` | 18/80 | 126 | 51.0 |
+| `none` | 19/80 | 35 | 51.3 |
+| `none` | 20/80 | 19 | 51.4 |
+| `none` | 21/80 | 26 | 51.9 |
+| `none` | 22/80 | 43 | 51.5 |
+| `none` | 23/80 | 7 | 52.3 |
+| `none` | 24/80 | 8 | 53.2 |
+| `none` | 25/80 | 30 | 51.0 |
+| `none` | 26/80 | 16 | 55.6 |
+| `none` | 27/80 | 4 | 45.2 |
+| `none` | 28/80 | 14 | 55.6 |
+| `none` | 29/80 | 19 | 54.8 |
+| `none` | 30/80 | 3 | 50.2 |
+| `none` | 31/80 | 18 | 50.8 |
+| `none` | 32/80 | 89 | 49.7 |
+| `none` | 33/80 | 27 | 52.2 |
+| `none` | 34/80 | 44 | 58.2 |
+| `none` | 35/80 | 86 | 58.7 |
+| `none` | 36/80 | 19 | 56.8 |
+| `none` | 37/80 | 18 | 57.1 |
+| `none` | 38/80 | 42 | 53.9 |
+| `none` | 39/80 | 90 | 51.1 |
+| `none` | 40/80 | 236 | 58.8 |
+| `none` | 41/80 | 181 | 59.0 |
+| `none` | 42/80 | 78 | 58.6 |
+| `none` | 43/80 | 92 | 57.2 |
+| `none` | 44/80 | 107 | 57.9 |
+| `none` | 45/80 | 56 | 53.0 |
+| `none` | 46/80 | 70 | 59.0 |
+| `none` | 47/80 | 269 | 53.3 |
+| `none` | 48/80 | 14 | 57.6 |
+| `none` | 49/80 | 33 | 47.1 |
+| `none` | 50/80 | 24 | 54.6 |
+| `none` | 51/80 | 50 | 51.8 |
+| `none` | 52/80 | 228 | 55.0 |
+| `none` | 53/80 | 230 | 58.9 |
+| `none` | 54/80 | 124 | 58.9 |
+| `none` | 55/80 | 29 | 58.4 |
+| `none` | 56/80 | 66 | 53.5 |
+| `none` | 57/80 | 95 | 44.0 |
+| `none` | 58/80 | 2 | 56.0 |
+| `none` | 59/80 | 117 | 43.6 |
+| `none` | 60/80 | 107 | 57.0 |
+| `none` | 61/80 | 33 | 59.0 |
+| `none` | 62/80 | 2 | 47.8 |
+| `none` | 63/80 | 4 | 44.1 |
+| `none` | 64/80 | 7 | 41.6 |
+| `none` | 65/80 | 1 | 38.5 |
+| `none` | 66/80 | 1 | 38.5 |
+| `none` | 67/80 | 1 | 38.5 |
+| `none` | 68/80 | 1 | 38.5 |
+| `none` | 69/80 | 1 | 38.5 |
+| `none` | 70/80 | 1 | 38.5 |
+| `none` | 71/80 | 1 | 38.5 |
+| `none` | 72/80 | 1 | 38.5 |
+| `none` | 73/80 | 15 | 49.5 |
+| `none` | 74/80 | 41 | 50.0 |
+| `none` | 75/80 | 12 | 45.8 |
+| `none` | 76/80 | 6 | 58.6 |
+| `none` | 77/80 | 14 | 48.3 |
+| `none` | 78/80 | 26 | 47.7 |
+| `none` | 79/80 | 62 | 48.1 |
+| `none` | 80/80 | 78 | 48.2 |
+| **every row** | **404 jobs** | **51575** | **20518.9** |
 
 To change the matrix, change the registry (a row, or its measured
 `seconds`: `schema-test run ... --write-seconds` on a fleet runner, or
