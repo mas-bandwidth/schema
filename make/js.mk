@@ -940,10 +940,12 @@ tables-js-fixed-roadmap-negative-control:
 .PHONY: tables-js-versioning-negative-control
 tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-versioning-sabotage && mkdir -p build/js-versioning-sabotage
-	@sed 's|TableFixedRefusal.LayoutNewer, hashLo|TableFixedRefusal.LayoutUnsupported, hashLo|' \
+	@sed 's|TableFixedRefusal.LayoutUnknown, hashLo|TableFixedRefusal.LayoutUnsupported, hashLo|' \
 		internal/codegen/jstable/fixedmodule.go > build/js-versioning-sabotage/fixedmodule.go.txt
-	@grep -q 'TableFixedRefusal.LayoutNewer' build/js-versioning-sabotage/fixedmodule.go.txt && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || [ $$? -eq 1 ] || exit 1
+	@! cmp -s internal/codegen/jstable/fixedmodule.go build/js-versioning-sabotage/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@grep -q 'TableFixedRefusal.LayoutUnknown, hashLo' build/js-versioning-sabotage/fixedmodule.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage left a step-5 layout_unknown return in place"; exit 1; } || [ $$? -eq 1 ] || exit 1
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-versioning-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-versioning-sabotage/overlay.json
 	@if NODE=$(NODE) $(GO_TEST_RED) -overlay=build/js-versioning-sabotage/overlay.json \
@@ -952,7 +954,7 @@ tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 		echo "NEGATIVE CONTROL FAILED: a file outside the lineage refused under the wrong name and the gate stayed green"; \
 		cat build/js-versioning-sabotage/log; exit 1; \
 	fi
-	@grep -q "owes layout_newer" build/js-versioning-sabotage/log || \
+	@grep -q "owes layout_unknown" build/js-versioning-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat build/js-versioning-sabotage/log; exit 1; }
 	@echo 'tables JS versioning negative control: the wrong name on a file outside the lineage reds every OLD-REFUSES-NEW row'
