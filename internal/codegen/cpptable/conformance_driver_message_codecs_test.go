@@ -12,21 +12,21 @@ import (
 )
 
 // TestCppConformanceDriverHasEveryMessageCodec holds the C++ conformance
-// driver's message codec table (test/conformance/cpp/main.cpp, msg_codecs) to
+// driver's message codec tables (msg_codecs in each family unit,
+// test/conformance/cpp/driver_<family>.cpp, every unit the Makefile's
+// CONFORMANCE_DRIVER_TUS compiles) to
 // the corpus manifest: every `message` row on a fixed root and every
 // `message-drift` row names a (unit, root) the driver must round-trip through
 // the generated LoadMessages / SaveMessages (docs/SPEC-TABLES.md §3.3). A row
 // with no codec aborts the driver's whole message surface ("no message codec
 // for ..."), so a missing entry is caught here, without a compiler or a run.
 //
-// It is a source test: it reads two files in the repository and nothing else.
+// It is a source test: it reads the driver's units and the manifest, nothing
+// else.
 func TestCppConformanceDriverHasEveryMessageCodec(t *testing.T) {
 	t.Parallel()
 	root := filepath.Join("..", "..", "..")
-	src, err := os.ReadFile(filepath.Join(root, "test", "conformance", "cpp", "main.cpp"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	sources := conformanceDriverSources(t, root, false)
 	manifest, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -38,24 +38,31 @@ func TestCppConformanceDriverHasEveryMessageCodec(t *testing.T) {
 	if len(want) == 0 {
 		t.Fatal("the manifest names no message rows: the parse is wrong")
 	}
-	_, registry, ok := bytes.Cut(src, []byte("static const MsgCodec msg_codecs[] = {"))
-	if !ok {
-		t.Fatal("the C++ driver has no message codec registry")
-	}
-	registry, _, ok = bytes.Cut(registry, []byte("};"))
-	if !ok {
-		t.Fatal("the C++ driver's message codec registry is unterminated")
-	}
 	// The manifest names the registry key and root. The second argument is
 	// the generated C++ namespace, which can differ from the registry key.
 	registration := regexp.MustCompile(`(?m)^[ \t]*MSGCODEC\(\s*"([^"]+)"\s*,\s*(?:\w+::)*\w+\s*,\s*(\w+)\s*\),`)
 	registered := map[[2]string]bool{}
-	for _, row := range registration.FindAllSubmatch(registry, -1) {
-		registered[[2]string{string(row[1]), string(row[2])}] = true
+	tables := 0
+	for _, source := range sources {
+		_, registry, ok := bytes.Cut(source.text, []byte("static const MsgCodec msg_codecs[] = {"))
+		if !ok {
+			continue
+		}
+		tables++
+		registry, _, ok = bytes.Cut(registry, []byte("};"))
+		if !ok {
+			t.Fatalf("%s: the message codec table is unterminated", source.path)
+		}
+		for _, row := range registration.FindAllSubmatch(registry, -1) {
+			registered[[2]string{string(row[1]), string(row[2])}] = true
+		}
+	}
+	if tables == 0 {
+		t.Fatal("no unit of the C++ driver has a message codec table")
 	}
 	for _, key := range want {
 		if !registered[[2]string{key.unit, key.root}] {
-			t.Errorf("test/conformance/cpp/main.cpp has no message codec for %s.%s: the manifest's message row %s needs it", key.unit, key.root, key.row)
+			t.Errorf("no unit of test/conformance/cpp has a message codec for %s.%s: the manifest's message row %s needs it", key.unit, key.root, key.row)
 		}
 	}
 }

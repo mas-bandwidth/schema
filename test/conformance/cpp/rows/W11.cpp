@@ -11,7 +11,7 @@
 // ProfileConfig), and every fixed-form read reaches it through
 // tabledemo::TableFixedEntryAt / tabledemo::TableFixedParseLayout in
 // build/tables-generated/examples/TablesTable.h - the same header
-// test/conformance/cpp/main.cpp includes via -Ibuild/tables-generated/examples
+// test/conformance/cpp/driver_examples.cpp includes via -Ibuild/tables-generated/examples
 // (CONFORMANCE_INCLUDES, Makefile:4651), and the same parse-then-compile path
 // ProfileConfigFixedLoad takes (TablesTable.h:13444: ParseLayout then
 // TableFixedCompile). This test calls that actual path, not just a helper:
