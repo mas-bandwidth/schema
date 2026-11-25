@@ -1426,7 +1426,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		Repo:           repo,
 		PlanPkgs:       planPkgs,
 		PlanLegs:       `["cpp","go","lobster","rust","squirrel"]`,
-		PlanVerifyLegs: `["dart","elixir"]`,
+		PlanVerifyLegs: `["cpp","dart","elixir"]`,
 		PlanDartCorpus: "true",
 		PlanCppCorpus:  "true",
 	}
@@ -1502,7 +1502,9 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:plan",
 		"ci-fast.yml:schema-test",
 		"ci-fast.yml:verdict",
+		"ci-fast.yml:verify-cpp-conformance",
 		"ci-fast.yml:verify-dart-conformance",
+		"ci-fast.yml:verify-dart-fuzz",
 		"ci-fast.yml:verify-elixir-conformance",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
@@ -1659,8 +1661,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop ci-fast plan same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
-			newSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false\n",
+			oldSubstr: "  plan:\n    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
+			newSubstr: "  plan:\n    if: github.event_name != 'schedule'\n",
 			wantErr:   "ci-fast.yml:plan admits fork PR",
 		},
 		{

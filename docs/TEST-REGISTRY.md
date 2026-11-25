@@ -199,7 +199,11 @@ every pull request.
 - Per PR: ci-fast.yml job `schema-test` prints `coverage`, then runs
   `--group pr`: unit and functional, every ready language, every language-free test.
 - Nightly: `schema-test-nightly.yml` runs `--group nightly` (every tier, every
-  language, no timeout) and names every MISSING instance red.
+  language, no timeout) and names every MISSING instance red. It is red by
+  intent until every language has an adapter: its MISSING list is the
+  per-language work list that test-registry/ci-through-driver,
+  test-registry/union and test-registry/fix-missing close. Only a red name
+  outside that list is a regression.
 
 ## What the tracer taught
 

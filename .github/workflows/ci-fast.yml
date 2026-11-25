@@ -194,11 +194,11 @@ env:
 jobs:
   # A FORK'S PULL REQUEST: the one job it starts, and it is red (the fork
   # paragraph in the header). Hosted, with no permissions and no checkout, so
-  # none of the fork's code runs anywhere. Its skip is the fork-aware one: a
-  # fork controls its branch name, so a fork branch named sprint/... must not
-  # skip it (internal/ci TestCardBranchPullRequestsSkipCI).
+  # none of the fork's code runs anywhere. Its condition is the fork
+  # guard alone: no branch name decides whether it runs (internal/ci
+  # TestNoJobRunsOnABranchName).
   fork-pull-request:
-    if: (startsWith(github.head_ref, 'sprint/') == false || github.event.pull_request.head.repo.full_name != github.repository) && (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
+    if: (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions: {}
@@ -214,7 +214,7 @@ jobs:
   # It is deliberately the only `needs:` in this file — every gate that can
   # start immediately does.
   plan:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -837,7 +837,7 @@ jobs:
   # this lane does not have, and they run in ci-full.yml.
   lint-fast:
     needs: ci-policy
-    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 60-142 s with a warm cache; hosted adds setup-go, the cache restore
     # and modernize's first compile
@@ -935,7 +935,7 @@ jobs:
   # TestCIPolicyShardsCoverEveryTest holds that union and checks every Test
   # function in the package is selected by exactly one row.
   ci-policy:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     name: ci-policy (${{ matrix.shard }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1063,7 +1063,7 @@ jobs:
   # 110 s on a loaded runner (run 43756632584), so modernize was cancelled at
   # the two-minute cap. Side by side each has the cap to itself.
   vet:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1085,7 +1085,7 @@ jobs:
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
   golangci-lint-fast:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lint_packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.lint_packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1134,7 +1134,7 @@ jobs:
   # change so stale committed generated/ files never reach main.
   generated-current:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.codegen_touched == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.codegen_touched == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1162,7 +1162,7 @@ jobs:
   #   rust   — tables-rust-clippy
   lang-clean:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.clean_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.clean_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: lang-clean (${{ matrix.lang }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1298,7 +1298,7 @@ jobs:
   # per-language basis (the languages we are changing in our commit)").
   lang-lint:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.lints != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: lang-lint (${{ matrix.lint }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1376,7 +1376,7 @@ jobs:
   # file that already catches what it catches.
   nightly-fast:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.nightly_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.nightly_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: nightly-fast (${{ matrix.name }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1479,7 +1479,7 @@ jobs:
   #   tablegen    — generated-schema table round trips (make/verify-widen-18.mk)
   verify-leg:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.verify_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: verify-leg (${{ matrix.leg }}, ${{ matrix.gate }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1496,6 +1496,12 @@ jobs:
             gate: conformance
           - leg: dart
             gate: conformance
+          # their own jobs below: verify-cpp-conformance (two parts) and
+          # verify-dart-fuzz (on the same-run Dart build)
+          - leg: cpp
+            gate: conformance
+          - leg: dart
+            gate: fuzz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1621,7 +1627,7 @@ jobs:
   # The Make target verifies the source tree and every exact input and output.
   verify-elixir-conformance:
     needs: [plan, lang-clean]
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.verify_legs, '"elixir"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (contains(needs.plan.outputs.verify_legs, '"elixir"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: verify-leg (elixir, conformance)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1670,7 +1676,7 @@ jobs:
   # The consumer runs the full claims, with input accounting when selected.
   verify-dart-conformance:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: verify-leg (dart, conformance)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1724,7 +1730,7 @@ jobs:
 
   input-family-dart-conformance:
     needs: [plan, verify-dart-conformance]
-    if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: ${{ needs.plan.outputs.dart_corpus_account == 'true' && 'input-family (conformance-corpus, dart)' || 'verify-leg (dart, claims)' }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1787,9 +1793,112 @@ jobs:
   # bin/schema before generation could begin (#4843). block-gate already builds
   # that exact compiler in every run; restore its tree-bound artifact here so
   # this job's budget covers the C++ producer rather than duplicate Go work.
+  # THE C++ CONFORMANCE GATE, IN TWO PARTS (2026-11-24). As the verify-leg row
+  # (cpp, conformance) it ran 108-131 s, build-bound (make/verify-compiled.mk
+  # "THE C++ CONFORMANCE GATE IS TWO PARTS"). Each row builds and runs one
+  # part; the two together are `make verify-cpp-conformance`, nothing dropped.
+  verify-cpp-conformance:
+    needs: plan
+    if: (contains(needs.plan.outputs.verify_legs, '"cpp"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (cpp, conformance ${{ matrix.part }}/2)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: record go test events
+        run: |
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+      - name: Check out the pinned C++ runtime
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: make verify-cpp-conformance-${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          make "verify-cpp-conformance-${{ matrix.part }}"
+      - name: the skip ledger
+        if: always()
+        run: |
+          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
+            -provides "platform tool:make tool:git tool:sh tool:c++" "$PGROUP_GO_TEST_JSON"
+
+  # THE DART FUZZ GATE ON THE SAME-RUN DART BUILD (2026-11-24). As the
+  # verify-leg row (dart, fuzz) it ran 83-120 s: run 45428504681 spent 31 s
+  # before the compile, 50 s in `dart compile exe` and 14 s fuzzing. The driver
+  # it fuzzes is the one verify-dart-conformance has just built and uploaded,
+  # so this row restores that build (make/conformance-handoff.py checks the
+  # run, tree, SDK and output digests) and runs `_verify-dart-fuzz` whole: the
+  # same seeds and the same 2500-mutant wire passes, with no compile.
+  verify-dart-fuzz:
+    needs: [plan, verify-dart-conformance]
+    if: (contains(needs.plan.outputs.verify_legs, '"dart"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (dart, fuzz)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: prepare artifact and test event directories
+        run: |
+          artifact=$(mktemp -d "$RUNNER_TEMP/dart-conformance.XXXXXX")
+          echo "DART_CONFORMANCE_ARTIFACTS=$artifact" >> "$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dart-conformance-aot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ env.DART_CONFORMANCE_ARTIFACTS }}
+          digest-mismatch: error
+      - name: verify the same-run Dart build and run the fuzz gate
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          make -j"$(nproc)" -o build/conformance-dart _verify-dart-fuzz DART=dart
+      - name: the skip ledger
+        if: always()
+        run: |
+          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
+            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+
   build-cpp-conformance-account:
     needs: [plan, block-gate]
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     permissions:
@@ -1842,7 +1951,7 @@ jobs:
 
   input-family-cpp-conformance:
     needs: [plan, build-cpp-conformance-account]
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: input-family (conformance-corpus, cpp)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -1889,7 +1998,7 @@ jobs:
   # turn the run red, or the row is red.
   input-family:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.input_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.input_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: input-family (${{ matrix.family }}, ${{ matrix.leg }}${{ matrix.account_control == 'wrong' && ', wrong control' || '' }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -2051,7 +2160,7 @@ jobs:
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
@@ -2102,7 +2211,7 @@ jobs:
     needs: plan
     # plan writes newleg as yes or no; the job runs unless plan said no, the
     # form of the other plan-gated rows here (clean_legs != '[]')
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.newleg != 'no' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.newleg != 'no' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
     # runner sooner on a host that does not enforce it
@@ -2169,7 +2278,7 @@ jobs:
   # per-commit jobs; artifacts are run-scoped and bound to checkout + bytes.
   go-fixed-corpus:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"')
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"')
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -2202,7 +2311,7 @@ jobs:
 
   go-test-touched:
     needs: [plan, go-fixed-corpus]
-    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)))
+    if: (always() && !cancelled() && needs.plan.result == 'success' && (needs.go-fixed-corpus.result == 'success' || (needs.go-fixed-corpus.result == 'skipped' && !contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"'))) && (needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)))
     name: go-test-touched (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2463,7 +2572,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')
+    if: (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
@@ -2656,11 +2765,10 @@ jobs:
   # over the whole corpus is nightly-class work, and its control is already
   # the nightly `lobster-forgery` negative-control group. Both still run, and
   # still go red on their own failure, in `make test-lobster` on ci-full.yml's
-  # go-test unit-codegen row on every merge to main, on the nightly, and on a
-  # pull request labelled full-ci.
+  # go-test unit-codegen row on the nightly and on a dispatch.
   leg-gate-lobster:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch')
+    if: (contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (lobster ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2748,7 +2856,7 @@ jobs:
   # run, in parallel with it.
   leg-gate-rust:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch')
+    if: (contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (rust probes)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2796,7 +2904,7 @@ jobs:
   # row-seconds negative 104
   leg-gate-squirrel:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch')
+    if: (contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (squirrel ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2855,7 +2963,7 @@ jobs:
   #           with the pinned clang-format
   leg-gate-cpp:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch')
+    if: (contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (cpp ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2935,7 +3043,7 @@ jobs:
   # test/conformance/README.md. Selected by `pins` in the plan.
   pins:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.pins == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: (needs.plan.outputs.pins == 'yes' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     name: pins (${{ matrix.row }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
@@ -3047,8 +3155,8 @@ jobs:
           go run ./tools/schema-test run --group pr
 
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
-    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, schema-test, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-cpp-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    if: (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
     timeout-minutes: 2
@@ -3077,6 +3185,8 @@ jobs:
               nightly-fast) [ "$(out nightly_rows)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
+              verify-cpp-conformance) ! grep -qF '"cpp"' <<<"$(out verify_legs)" ;;
+              verify-dart-fuzz) ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;

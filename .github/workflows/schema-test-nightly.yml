@@ -5,7 +5,12 @@ name: schema test nightly
 # test of every tier in every language the registry lists. A language whose
 # adapter has not landed has every one of its instances MISSING, and each is
 # named red here: a new language starts fully red, and its red count is its
-# remaining work. The pull-request form is ci-fast.yml's `schema-test` job,
+# remaining work. THIS RUN IS RED BY INTENT until every language has an
+# adapter: its MISSING list is the per-language work list that the roadmap's
+# test-registry/ci-through-driver, test-registry/union and
+# test-registry/fix-missing tasks close (docs/roadmap.sexp). A red night here
+# is that list, not a regression; a new red name outside it is. The
+# pull-request form is ci-fast.yml's `schema-test` job,
 # which runs the languages whose adapter has landed (docs/CI-TIERS.md).
 #
 # NIGHTLY RUNS HAVE NO TIMEOUT (the owner, 2026-11-16). No job or step here

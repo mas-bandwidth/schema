@@ -41,9 +41,12 @@ func fastPolicyErrors(wf string) []string {
 	jobs := yamlJobs(wf)
 	lint, policy := jobs["lint-fast"], jobs["ci-policy"]
 	var errs []string
-	admissionPrefix, admissionRest, ok := strings.Cut(jobIfCondition(wf, "ci-policy"), " && ")
-	wantLint := admissionPrefix + " && (always() && !cancelled() && " + admissionRest + ")"
-	if lint == "" || policy == "" || !ok || jobIfCondition(wf, "lint-fast") != wantLint {
+	// lint-fast is admitted exactly as ci-policy is, and status-aware so it
+	// reports when ci-policy fails. No branch-name prefix on either
+	// (TestNoJobRunsOnABranchName).
+	policyCond := jobIfCondition(wf, "ci-policy")
+	wantLint := "(always() && !cancelled() && " + policyCond + ")"
+	if lint == "" || policy == "" || policyCond == "" || jobIfCondition(wf, "lint-fast") != wantLint {
 		errs = append(errs, "policy and lint jobs must have the same admission, with status-aware lint")
 	}
 	const gate = `      - name: require CI policy success

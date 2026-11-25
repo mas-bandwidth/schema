@@ -12,6 +12,99 @@ reached main. Worse, the fleet job of `ruby-leg.yml` had been falling back to
 `make ruby-toolchain-check` whenever `make -n test-ruby` failed, and it did: run
 44994557579 ran the toolchain check alone. The strict gate ran nowhere.
 
+## Every job and its tier
+
+The owner, 2026-11-24: "please fix this properly now. I have zero patience for
+tests not running when they are supposed to." Before that day every job of
+ci-fast.yml, roadmap.yml, caa-self-test.yml and python-leg.yml opened its `if:`
+with `startsWith(github.head_ref, 'sprint/') == false`, and cla.yml's CAA did
+the same for a same-repository branch. Pull requests #4999, #5003 and #5004
+merged that night with all 29 checks SKIPPED, and GitHub showed nothing red.
+
+**No job decides whether it runs by a branch name, a ref or a label.** Every
+pull request gets the same per-PR tier, whatever its head or base branch is
+called; every push to main gets the main tier. The one condition about where a
+pull request comes from is the fork guard,
+`github.event.pull_request.head.repo.full_name == github.repository`: a fork's
+code never runs on the fleet's self-hosted runners. It is keyed on the
+repository, never on a branch name. What a job checks may still follow the
+diff (the `plan` job's selection) and the base (`.github/actions/merge-main`).
+A pull-request trigger carries no `branches:` filter.
+
+Each per-PR group is one job, or a matrix of jobs, and every one of them
+finishes within two minutes on a fleet runner (`timeout-minutes: 2`). A group
+that grows past that is cut into more rows or shards. It is never given a
+longer timeout, made report-only or skipped.
+
+The tiers:
+
+- **per-PR**: a same-repository pull request.
+- **fork-PR**: a pull request from a fork.
+- **main**: a push to main.
+- **nightly**: the schedule.
+- **dispatch**: `gh workflow run`.
+- **comment**: a pull-request comment.
+
+A workflow that runs only on a schedule or a dispatch is listed whole in the
+next table. Every job of every other workflow is a row here.
+
+`internal/ci` holds the workflows to this table in both directions:
+
+- **`TestNoJobRunsOnABranchName`** refuses any `if:`, in a job or a step, that
+  reads `github.head_ref`, `github.base_ref`, `github.ref`, `github.ref_name`, a
+  pull request's `head.ref` or `base.ref`, or its labels. It also refuses a
+  `branches:` filter on a pull-request trigger. It then evaluates every
+  pull-request job for heads named `sprint/...`, `sprint-group/...`, `rowan/...`
+  and `feature`, for bases main, `sprint/...` and dev, and with and without a
+  label, and fails on any job whose answer changes.
+- **`TestEveryJobHasItsTierInCITiers`** fails for:
+  - a job with no row;
+  - a row naming no job;
+  - a row whose tiers differ from the tiers the workflow gives the job, as
+    evaluated from its triggers and `if:` with every plan output set.
+- **`TestEveryPerPRGroupRunsOnEveryPullRequest`** fails for a per-PR row that
+  is not a ci-fast.yml job, or that a pull request from a `sprint/` branch does
+  not run.
+
+| Job | Workflow | Tiers | Selected by |
+|---|---|---|---|
+| `fork-pull-request` | `ci-fast.yml` | fork-PR | always red: a fork's pull request runs no code here |
+| `plan` | `ci-fast.yml` | per-PR, main, dispatch | always: names the diff, the packages and the legs |
+| `ci-policy` | `ci-fast.yml` | per-PR, main, dispatch | always: internal/ci and the policy packages, sharded |
+| `lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | always |
+| `vet` | `ci-fast.yml` | per-PR, main, dispatch | always |
+| `schema-test` | `ci-fast.yml` | per-PR, main, dispatch | always: the registry's coverage matrix and `schema-test run --group pr` |
+| `golangci-lint-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: the diff's Go packages |
+| `generated-current` | `ci-fast.yml` | per-PR, main, dispatch | plan: a codegen diff |
+| `lang-clean` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' clean gates |
+| `lang-lint` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' lints |
+| `nightly-fast` | `ci-fast.yml` | per-PR, main, dispatch | plan: rows of `.github/nightly-fast-rows.txt` |
+| `verify-leg` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched legs' verify rows |
+| `verify-elixir-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the elixir leg |
+| `verify-dart-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the dart leg or its corpus account |
+| `verify-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp leg; two rows, `make verify-cpp-conformance-1` (the standalone C++ test binaries) and `-2` (the harness --claims run), which together are `make verify-cpp-conformance` |
+| `verify-dart-fuzz` | `ci-fast.yml` | per-PR, main, dispatch | plan: the dart leg; `_verify-dart-fuzz` whole (seed 1, both 2500-mutant wire passes, JSON and message fuzz) on the same-run Dart build verify-dart-conformance uploads |
+| `input-family-dart-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the dart leg or its corpus account |
+| `build-cpp-conformance-account` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
+| `input-family-cpp-conformance` | `ci-fast.yml` | per-PR, main, dispatch | plan: the cpp corpus account |
+| `input-family` | `ci-fast.yml` | per-PR, main, dispatch | plan: the input-family rows |
+| `block-gate` | `ci-fast.yml` | per-PR, main, dispatch | always |
+| `newleg-scaffold` | `ci-fast.yml` | per-PR, main, dispatch | plan: a new leg in the diff |
+| `go-fixed-corpus` | `ci-fast.yml` | per-PR, main, dispatch | plan: the tables-go-fixedform row |
+| `go-test-touched` | `ci-fast.yml` | per-PR, main, dispatch | plan: the touched packages' test rows |
+| `pins` | `ci-fast.yml` | per-PR, main, dispatch | plan: a diff that touches what the pins protect |
+| `verdict` | `ci-fast.yml` | per-PR, main, dispatch | always: the one required check |
+| `leg-gate` | `ci-fast.yml` | dispatch | the legs' fixed form and versioning (whole, in ci-full.yml nightly) |
+| `leg-gate-lobster` | `ci-fast.yml` | dispatch | as leg-gate |
+| `leg-gate-rust` | `ci-fast.yml` | dispatch | as leg-gate |
+| `leg-gate-squirrel` | `ci-fast.yml` | dispatch | as leg-gate |
+| `leg-gate-cpp` | `ci-fast.yml` | dispatch | as leg-gate |
+| `caa-self-test` | `caa-self-test.yml` | per-PR, main, dispatch | trigger paths: the CAA workflow, its script, tools/pgroup, go.mod |
+| `caa` | `cla.yml` | per-PR, fork-PR, comment | pull_request_target, and a signing or `recheck` comment |
+| `roadmap` | `roadmap.yml` | per-PR, main, nightly, dispatch | trigger paths: ROADMAP.md, docs/roadmap*, tools/roadmap |
+| `page` | `roadmap.yml` | nightly, dispatch | always |
+| `tag` | `promotion-tag.yml` | main | always |
+
 ## The rule
 
 Every nightly-only workflow gets one decision, recorded in the table below.
@@ -70,7 +163,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `schema-luau-generated-analyze-strict-gate.yml` | fast | `strict-luau` | 21 s with its control (run 44979785127) |
 | `schema-moo-generated-analyze-strict-gate.yml` | fast | `strict-moo` | 23 s (run 44981804000); the pin control stays nightly |
 | `schema-lobster-generated-strict-gate.yml` | fast | `strict-lobster` | 19 s (run 44999452012) |
-| `schema-dart-nightly-fuzz.yml` | fast | `replay-dart`, `verify-leg` | replay 16 s (run 44980533495); the 24M-case campaign (127 s) stays nightly; verify-leg (dart, fuzz) runs the seeded smoke |
+| `schema-dart-nightly-fuzz.yml` | fast | `replay-dart`, `verify-dart-fuzz` | replay 16 s (run 44980533495); the 24M-case campaign (127 s) stays nightly; verify-dart-fuzz runs the seeded smoke |
 | `schema-lua-nightly-fuzz.yml` | fast | `replay-lua`, `verify-leg` | the 600 s campaign stays nightly |
 | `schema-luau-nightly-fuzz.yml` | fast | `replay-luau`, `verify-leg` | the 600 s campaign stays nightly |
 | `schema-moo-nightly-fuzz.yml` | covered | `verify-leg`, `ci-policy` | verify-leg (moo, fuzz) runs the seeded wire, JSON and message fuzz; ci-policy runs the wiring test; the 100-round campaign (195 s) stays nightly |
