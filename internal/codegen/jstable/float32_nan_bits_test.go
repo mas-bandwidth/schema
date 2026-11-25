@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -47,7 +46,6 @@ func TestJsFloat32CellsAreBitTransparent(t *testing.T) {
 	}
 
 	t.Run("node", func(t *testing.T) {
-		slowtest.Gate(t, "node")
 		if fails, out := jsFloatProbe(t, nil); len(fails) != 0 || strings.TrimSpace(out) != "ok" {
 			t.Fatalf("node probe failed:\n%s", out)
 		}
@@ -140,7 +138,6 @@ func jsFloatProbe(t *testing.T, sabotage func(files map[string][]byte)) ([]strin
 // a pass. Run as make tables-js-finite-float-negative-control.
 func TestJsFiniteFloatNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	for _, c := range []struct {
 		name, file, from, to string
 		rows                 []string // every FAIL line names one of these, and each is named

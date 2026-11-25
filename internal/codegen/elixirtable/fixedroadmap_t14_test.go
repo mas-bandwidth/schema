@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -23,7 +22,6 @@ func TestFixedRoadmapElixirT14CompressedFloats(t *testing.T) {
 	t.Parallel()
 	t.Run("elixir/R30", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "elixir (it compiles and runs the generated unit)")
 		bin := elixirBinary(t)
 		t14Cite(t)
 		src := t14ElixirEmit(t, t14ElixirOld, nil)

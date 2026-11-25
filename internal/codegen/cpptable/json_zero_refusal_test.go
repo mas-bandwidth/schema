@@ -169,7 +169,6 @@ type cppJsonZeroAnswer struct {
 
 func runCppJsonZeroProbe(t *testing.T) []byte {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

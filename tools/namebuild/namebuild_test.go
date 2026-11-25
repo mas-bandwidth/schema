@@ -96,7 +96,6 @@ func TestJudgeHoldsTheLedgerExact(t *testing.T) {
 // and loads in all 18 targets. Its last log line is
 // the per-target summary.
 func TestNameBuildability(t *testing.T) {
-	slowtest.Gate(t, "every target's toolchain (the name-buildability nightly)")
 	rows, err := ReadRows(corpus)
 	if err != nil {
 		t.Fatal(err)

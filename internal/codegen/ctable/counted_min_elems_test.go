@@ -147,7 +147,6 @@ func cCountedMinEngine(t *testing.T) map[string]string {
 
 func TestCCountedMinimumBornBytesMatchTheEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs compiled C probes")
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	want := cCountedMinEngine(t)

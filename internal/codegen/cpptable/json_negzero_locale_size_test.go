@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -30,7 +29,6 @@ table GraphBox
 // bytes spell it). A token of 1024 bytes or more takes the normalising path,
 // which used to drop the sign and answer +0; the short spelling answered -0.
 func TestCPPJsonNegativeZeroAnyLength(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	u := loadUnitFromSource(t, cppFloatTextSchema)
 	zeros := func(n int) string { return strings.Repeat("0", n) }
@@ -83,7 +81,6 @@ func TestCPPJsonNegativeZeroAnyLength(t *testing.T) {
 // '.', byte for byte what the "C" locale gives, and the program's own locale
 // is the same after the call as before it.
 func TestCPPJsonFloatTextIsLocaleIndependent(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++) and localedef")
 	if _, err := exec.LookPath("localedef"); err != nil {
 		t.Skip("building a multi-byte-point locale requires localedef")
 	}
@@ -159,7 +156,6 @@ func TestCPPJsonFloatTextIsLocaleIndependent(t *testing.T) {
 // caller left there (Go's ToJson never writes past what it returns). The
 // writer used to put a NUL at buffer[size] when the capacity had room.
 func TestCPPJsonToJsonWritesNothingPastTheSize(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	u := loadUnitFromSource(t, cppFloatTextSchema)
 	body := `

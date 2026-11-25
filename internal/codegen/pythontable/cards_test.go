@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -23,7 +22,6 @@ import (
 // pinned interpreters, using a fresh generated package and the facade itself.
 func TestPythonCards(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and mypy (cards conformance)")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +131,6 @@ runpy.run_path("tables/cards/python/driver.py",run_name="__main__")
 // generated C++ writers, in addition to the Python manifest reader/writer.
 func TestPythonCardsCppIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ cards writer")
 	root := filepath.Join("..", "..", "..", "tables", "cards")
 	source, err := os.ReadFile(filepath.Join(root, "Card.schema"))
 	if err != nil {
@@ -166,7 +163,6 @@ func TestPythonCardsCppIdentity(t *testing.T) {
 
 func TestPythonCardsCppJSON(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ cards JSON")
 	root := filepath.Join("..", "..", "..", "tables", "cards")
 	src, err := os.ReadFile(filepath.Join(root, "Card.schema"))
 	if err != nil {
@@ -255,7 +251,6 @@ int main(int argc, char **argv) {
 
 func TestPythonCardsFacade(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters (card facade)")
 	root := filepath.Join("..", "..", "..", "tables", "cards")
 	schema, err := os.ReadFile(filepath.Join(root, "Card.schema"))
 	if err != nil {
@@ -326,7 +321,6 @@ print("facade checks ok")
 // the same probe to detect the damaged body on both pinned interpreters.
 func TestPythonCardsFacadeNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters (card facade control)")
 	root := filepath.Join("..", "..", "..", "tables", "cards")
 	schema, err := os.ReadFile(filepath.Join(root, "Card.schema"))
 	if err != nil {

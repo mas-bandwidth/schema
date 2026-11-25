@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE CONFORMANCE SURFACES, OVER THE MOO TABLE WIRE (test/conformance/README.md):
@@ -30,7 +29,6 @@ import (
 var wireOwed = map[string]string{}
 
 func TestMooJsonWireSurfaces(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated text form over the moo wire)")
 	t.Parallel()
 	bad, total := wireSurfacesRun(t, nil)
 	for _, b := range bad {
@@ -44,7 +42,6 @@ func TestMooJsonWireSurfaces(t *testing.T) {
 // row green: the reader takes any whitespace, so the break is the writer's
 // and the surfaces localize it.
 func TestMooJsonWireSurfacesNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo over the moo wire)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	const site = `s = "\n" .. string.rep("  ", depth)`

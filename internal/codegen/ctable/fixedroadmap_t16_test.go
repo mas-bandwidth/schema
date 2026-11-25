@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -92,7 +91,6 @@ func t16CR31(t *testing.T) {
 		t.Error("R31: the published identity plan carries no entry with arg 300; arm 300's ordinal truncated")
 	}
 
-	slowtest.Gate(t, "the C toolchain (it compiles and runs the generated unit)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"

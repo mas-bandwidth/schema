@@ -27,7 +27,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -255,7 +254,6 @@ func TestLobsterWireFuzzVerdictPipe(t *testing.T) {
 	if err := lobsterWireFuzzVerdictMakefileCheck(string(mk)); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "the Lobster toolchain (it runs the wire-fuzz verdict pipe)")
 	resolveLobster(t, root)
 	harness, host := lobsterWireFuzzBins(t, root)
 	dest := t.TempDir()
@@ -296,7 +294,6 @@ func TestLobsterWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 		t.Fatal("NEGATIVE CONTROL FAILED: dropping tables-lobster-wire-fuzz-verdict left the makefile check green")
 	}
 
-	slowtest.Gate(t, "the Lobster toolchain (it runs the wire-fuzz verdict pipe negative controls)")
 	resolveLobster(t, root)
 	harness, host := lobsterWireFuzzBins(t, root)
 	manifest := lobsterManifestUnits(t, root)

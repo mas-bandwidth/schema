@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -55,7 +54,6 @@ func TestFixedRoadmapCT14CompressedFloats(t *testing.T) {
 	t.Parallel()
 	t.Run("c/R30", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "the C compiler (it compiles and runs the generated unit)")
 		cc := os.Getenv("CC")
 		if cc == "" {
 			cc = "cc"

@@ -8,7 +8,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -185,7 +184,6 @@ func innerCountMinRun(t *testing.T, from, to string) string {
 // minimum both read.
 func TestLuauHoldsTheCountMinimumAtEveryDepth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	if out := innerCountMinRun(t, "", ""); out != "ok" {
 		t.Fatalf("count minimum:\n%s", out)
 	}
@@ -195,7 +193,6 @@ func TestLuauHoldsTheCountMinimumAtEveryDepth(t *testing.T) {
 // out of the emitted runtime, one at a time, and requires the probe red.
 func TestLuauHoldsTheCountMinimumNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	plants := []struct{ name, from, to string }{
 		{"fixed", "if count < (f.min or 0) then error(", "if false then error("},
 		{"variable", "load:elseif fd.array == \"counted\" and count < (fd.min or 0) then", "elseif false then"},

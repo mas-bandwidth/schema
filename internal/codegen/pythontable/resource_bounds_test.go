@@ -23,7 +23,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // pythonAllocationFactorF is the proportional budget: a read allocates at
@@ -249,7 +248,6 @@ func pythonResourceBoundsRun(t *testing.T, dir string) map[string]pythonResource
 // costs a number of executed lines linear in the input.
 func TestPythonResourceBoundsHostileShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	dir := pythonResourceBoundsUnit(t, "", "")
 	got := pythonResourceBoundsRun(t, dir)
 	wants := pythonResourceBoundsWants()
@@ -284,7 +282,6 @@ func TestPythonResourceBoundsHostileShapes(t *testing.T) {
 // is red when the harness cannot see the guard.
 func TestPythonResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	guarded, ok := pythonResourceBoundsRun(t, pythonResourceBoundsUnit(t, "", ""))["deep-nesting"]
 	if !ok || guarded.verdict != "REFUSED" || guarded.reason != "malformed" {
 		t.Fatalf("with the depth guard in place the deep-nesting shape must refuse malformed, got %+v", guarded)

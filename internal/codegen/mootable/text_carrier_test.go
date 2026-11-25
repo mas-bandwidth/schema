@@ -10,8 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE BASE64 CARRIER (docs/SPEC-TABLES.md §16.8): textcarrier.moo's encode is
@@ -82,7 +80,6 @@ end
 }
 
 func TestMooTextCarrier(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs textcarrier.moo)")
 	t.Parallel()
 	texts := carrierTexts()
 	got := carrierRun(t, texts, nil)
@@ -99,7 +96,6 @@ func TestMooTextCarrier(t *testing.T) {
 // TestMooTextCarrierNegativeControl stops checking the spare pad bits, so a
 // set one reads as canonical: the carrier gate must name those texts.
 func TestMooTextCarrierNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged textcarrier.moo)")
 	t.Parallel()
 	src := string(Runtime()["textcarrier.moo"])
 	const site = "if v2 % 16 ~= 0 then"
@@ -127,7 +123,6 @@ func TestMooTextCarrierNegativeControl(t *testing.T) {
 // text; a text with a CR inside, or one byte outside the alphabet, refuses by
 // its name before any read.
 func TestMooTextCarrierSurface(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the generated carrier)")
 	t.Parallel()
 	m := readTextManifest(t)
 	byUnit := map[string][]textInstance{}

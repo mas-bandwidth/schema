@@ -3,7 +3,6 @@ package pythontable
 import (
 	"encoding/hex"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"strings"
@@ -12,7 +11,6 @@ import (
 
 func TestPythonCookInactiveGuard(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package cookguard
  table Node { value int32 }
  table Root {
@@ -57,7 +55,6 @@ else: raise AssertionError("inactive-guard")
 
 func TestPythonCookInactiveGuardExtent(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package guardextent
  table Root {
   active bool
@@ -137,7 +134,6 @@ print("ok")
 
 func TestPythonCookInactiveGuardSharedBlob(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package guardshared
  table Root {
   active bool

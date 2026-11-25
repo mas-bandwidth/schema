@@ -23,8 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -139,7 +137,6 @@ func unknownLengthProbe(varWire, announceFramed, announceInner []byte) string {
 // neither the hostile file nor the control panics.
 func TestRustUnknownLengthCheckedInEveryProfile(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the length rule cannot be built or run: %v", err)

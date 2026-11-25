@@ -3,14 +3,11 @@ package jstable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A semantic failure in an array must not be relabeled as JSON damage merely
 // because the element reader stops. Explicit syntax errors remain damage.
 func TestJavaScriptJsonArrayRefusalReport(t *testing.T) {
-	slowtest.Gate(t, "node (JSON array refusal diagnostics)")
 	u := unitFrom(t, `package probe
  table Root | json="array" { values [..3]int8 }
  `)

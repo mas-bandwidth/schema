@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -377,7 +376,6 @@ func dartInt(v int64) string { return strconv.FormatInt(v, 10) }
 // the unpacked SDK, then the PATH. When SCHEMA_REQUIRE_CORPUS is set, a missing
 // toolchain fails the test rather than skipping.
 func announceDartBinary(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if env := os.Getenv("DART"); env != "" {
@@ -411,7 +409,6 @@ func runAnnounceProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
 // announcement runtime, so a gate can put a fault in the emitted source in
 // memory and require its own positive test red.
 func runAnnounceProbeWithRuntime(t *testing.T, u *ir.Unit, body, runtime string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

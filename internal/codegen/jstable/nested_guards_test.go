@@ -8,12 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestJavaScriptNestedRequiredGuards(t *testing.T) {
-	slowtest.Gate(t, "node nested required guards and canonical field presence")
 	const base = "../../../testdata/conformance/feature-witnesses/required/nested-guards/"
 	source, e := os.ReadFile(base + "Probe.schema")
 	if e != nil {

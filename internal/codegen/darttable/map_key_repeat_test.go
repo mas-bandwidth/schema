@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -49,7 +48,6 @@ for(var repeat=0;repeat<2;repeat++){
 }
 
 func TestDartMapRepeatedKeyLastKindWins(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	u := unitFrom(t, "package probe\ntable Root { entries map[uint32]int32 }\n")
 	m := tabletext.NewModel(u)
 	files, err := Generate(u)
@@ -82,7 +80,6 @@ func TestDartMapRepeatedKeyLastKindWins(t *testing.T) {
 }
 
 func TestDartMapRepeatedKeyWidenGlobalVector(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	schemas, err := filepath.Glob("../../../tables/maps/*.schema")
 	if err != nil || len(schemas) == 0 {
 		t.Fatalf("map schemas %v", err)

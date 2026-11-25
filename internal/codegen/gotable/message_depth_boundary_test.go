@@ -295,7 +295,6 @@ func runGoDepthBoundaryProbe(t *testing.T, u *ir.Unit, testSrc string, edit func
 
 func TestGeneratedMessageDepthBoundary(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated depth probe)")
 	u, ann, cases := depthBoundaryFixtures(t)
 	src := depthBoundaryGoSource(ann, cases)
 	out, err := runGoDepthBoundaryProbe(t, u, src, nil)

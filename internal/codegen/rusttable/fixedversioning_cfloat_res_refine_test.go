@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,7 +19,6 @@ import (
 // in-range `aim` check would pass the read this row exists to catch.
 
 func TestFixedVersioningCfloatResRefine(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
 	// THE NUMBER COMES FROM THE CORPUS MANIFEST, not from a literal here

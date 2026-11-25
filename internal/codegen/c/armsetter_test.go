@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -260,7 +259,6 @@ func loadExamplesUnit(t *testing.T) *ir.Unit {
 // and runs the probe.
 func runSetterProbe(t *testing.T, u *ir.Unit, files map[string][]byte, edit func(string, []byte) []byte) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the c compiler and the serialize.c sibling")
 	serialize, ok := setterSerializeDir(t)
 	if !ok {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

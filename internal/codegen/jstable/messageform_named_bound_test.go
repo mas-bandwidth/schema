@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -70,7 +69,6 @@ func boundAnnouncement(entries []ir.TableVocabularyEntry) []byte {
 // the engine's reason. Nothing is cut and counted. A length or count at both
 // bounds reads.
 func TestJsMessageNamedReadRefusesOverBound(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	const schemaSrc = `package probe
 

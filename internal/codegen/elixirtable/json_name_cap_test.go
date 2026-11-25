@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The read-closed unit's schema, as the vectors under
@@ -60,7 +58,6 @@ table Closed
 // a long one reads.
 func TestElixirJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	u := unitFrom(t, elixirJsonNameCapSchema)
 	files := generateElixir(t, u)

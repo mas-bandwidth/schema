@@ -21,7 +21,6 @@ package elixirtable
 
 import (
 	"bytes"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,7 +52,6 @@ func messageVariableRows(t *testing.T, root, manifest string) map[string]bool {
 }
 
 func TestMessageFormConformanceElixir(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	root, err := filepath.Abs("../../..")

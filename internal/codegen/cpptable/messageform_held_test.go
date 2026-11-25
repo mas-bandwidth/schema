@@ -29,7 +29,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -47,7 +46,6 @@ func cppHeldRun(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
 }
 
 func cppHeldRunEdited(t *testing.T, u *ir.Unit, body string, edit func(map[string][]byte)) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := cpp.Generate(u)
@@ -757,7 +755,6 @@ func TestMessageFormHeldCPP(t *testing.T) {
 // past 128. Verdicts are the spec's. TableMessageEntry keeps its default
 // value_bits of -1; zeroing the entry would take the arithmetic element path.
 func TestMessageFormSkipDepthCPP(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	const schema = `package probe

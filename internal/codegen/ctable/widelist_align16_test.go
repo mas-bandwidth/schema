@@ -3,7 +3,6 @@ package ctable
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +27,6 @@ import (
 //     floor table on kind <= tkU64 excluded tkU128 (19) and caused
 //     wide_load_measure to refuse the framing with -1 instead of 224.
 func TestWidelistExtentAlign16C(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	ser, ok := cSerializeDir(t)
@@ -141,7 +139,6 @@ int main(void)
 // value and this pin held table_node_blob_mark to not counting blob_shared on
 // the duplicate field overwrite.
 func TestUnplacedBlobMarkDoesNotCountBlobSharedC(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	schemaBytes, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "arms", "Gate.schema"))

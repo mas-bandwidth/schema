@@ -440,7 +440,6 @@ var (
 
 func goWireFuzzRoot(t *testing.T) string {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it builds and runs the Go wire-fuzz verdict pipe)")
 	if _, err := exec.LookPath("go"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and go is not found: %v", err)

@@ -42,7 +42,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -289,7 +288,6 @@ func TestSquirrelHostileScorerOutcomes(t *testing.T) {
 // Squirrel reader.
 func TestSquirrelRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	n, mismatchNames, findingLines := squirrelRunHostileCorpus(t, nil)
 	// Keep the exact expected defects visible in the verbose unit target, but
 	// only a changed set is red: a fixed expected row or a new mismatch must
@@ -496,7 +494,6 @@ const (
 // catches a reader that returns one different decoded byte.
 func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter (make dist-squirrel) over every hostile-corpus input")
 	planted := 0
 	_, mismatchNames, findingLines := squirrelRunHostileCorpus(t, func(files map[string][]byte) {
 		for name, src := range files {

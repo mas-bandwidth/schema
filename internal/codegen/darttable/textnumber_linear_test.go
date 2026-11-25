@@ -20,7 +20,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -150,7 +149,6 @@ func dartTextNumberLinearCheck(t *testing.T, got, want []string, cases []dartTex
 
 func TestDartTextLongNumberTokenFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	cases := dartTextNumberLinearCases(4_000_000, 10_000_000)
 	got := dartTextNumberLinearRun(t, cases)
 	want := dartTextNumberLinearOracle(t, cases)
@@ -159,7 +157,6 @@ func TestDartTextLongNumberTokenFunctional(t *testing.T) {
 
 func TestDartTextNumberTokenVerdicts(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	cases := dartTextNumberLinearCases(30, 30)
 	got := dartTextNumberLinearRun(t, cases)
 	want := dartTextNumberLinearOracle(t, cases)

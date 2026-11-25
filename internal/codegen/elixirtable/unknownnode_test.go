@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -120,7 +119,6 @@ func unnamedNodeWire(t *testing.T, src, text string) []byte {
 
 func TestElixirPointerToUnnamedNodeTypeReadsNull(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	reader := unitFrom(t, unnamedNodeReaderSchema)
 	rows := []unnamedNodeRow{

@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -133,7 +132,6 @@ func viewFirstDifference(pin, printed string) string {
 // row) and prints a line the pin does not have when one disagrees. A unit the
 // moo target refuses has no view and is listed.
 func TestMooUnitViewCorpus(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the unit view's listing program)")
 	t.Parallel()
 	units := viewUnits(t)
 	refusedBy := map[string]string{}
@@ -183,7 +181,6 @@ func TestMooUnitViewCorpus(t *testing.T) {
 //   - doc: one field's doc column emptied, where the pin has the text;
 //   - id: one field of a type no table reaches given a table-wire id.
 func TestMooUnitViewNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the unit view's listing program)")
 	t.Parallel()
 	load := func(t *testing.T, dir string) (*ir.Unit, map[string][]byte) {
 		paths, err := compiler.GatherPaths([]string{filepath.Join(root, dir)})
@@ -285,7 +282,6 @@ func TestMooUnitViewNegativeControl(t *testing.T) {
 // 0 on every variant, a reached type keeps its ids, viewing a type adds no
 // codec to it, and nothing outside the view module requires it (§8.4).
 func TestMooUnitViewPacketStorage(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a probe over the unit view)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Probe.schema": `package probe
 

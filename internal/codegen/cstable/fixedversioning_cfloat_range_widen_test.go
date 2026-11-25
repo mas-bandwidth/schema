@@ -2,7 +2,6 @@ package cstable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +21,6 @@ import (
 // reader's, since deleting the emitter's bounds pass outright leaves `hostile_`
 // green and only turns `past_` red.
 func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()

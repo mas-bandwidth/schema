@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirLoadMessagesWorkIsLinear pins ELIXIR-5 of the 2026-11-21 review:
@@ -23,7 +21,6 @@ import (
 //
 // It runs elixir, so it is a functional test behind slowtest.Gate.
 func TestElixirLoadMessagesWorkIsLinear(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package msglin
 
 fixed table Note

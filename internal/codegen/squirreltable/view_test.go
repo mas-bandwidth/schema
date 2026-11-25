@@ -131,7 +131,6 @@ type viewUnit struct {
 // t.TempDir().
 func TestSquirrelViewMatchesTheGoView(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter and the Go toolchain")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -480,7 +479,6 @@ func docTagsLines(out []byte) []string {
 // rows.
 func TestSquirrelViewDocAndTags(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter and the Go toolchain")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -531,7 +529,6 @@ func TestSquirrelViewDocAndTags(t *testing.T) {
 // shared-empty check to fail on each mutation.
 func TestSquirrelViewDocAndTagsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Squirrel interpreter and the Go toolchain")
 	root, err := sqrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)

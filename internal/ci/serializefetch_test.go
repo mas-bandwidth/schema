@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
@@ -33,7 +32,6 @@ import (
 // cannot bypass the dependency-fetch path.
 func TestSerializeFetchTriesTheMirrorFirst(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make and git (a local fetch of the runtime)")
 
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("the fetch gate shells out to make: %v", err)

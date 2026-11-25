@@ -16,8 +16,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -152,7 +150,6 @@ func runCppUnionNoneFixedBytes(t *testing.T, files map[string][]byte) ([]byte, e
 }
 
 func TestCppUnionNoneFixedBytesLayout(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated union probe)")
 	u := unitFromSources(t, map[string]string{"Align.schema": unionNoneFixedBytesSchema})
 	files, err := Generate(u)
 	if err != nil {

@@ -219,7 +219,6 @@ func fixedBitsTopOracle(t *testing.T) ([]byte, string, map[string][]byte, map[st
 // refusal-verdict-only).
 func TestLuauFixedBitsTopEveryWidth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	valid, wantValues, forged, want := fixedBitsTopOracle(t)
 	if len(want) == 0 {
 		t.Fatal("want is empty: the loop below would check nothing")

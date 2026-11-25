@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A compressed float's -0 lands as +0 and is written as +0
@@ -17,7 +16,6 @@ import (
 // bytes the +0 record writes.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	corpus := fixedCorpus(t)
 	schema := readSchema(t, "FNZ")
 	for _, vec := range fixedvector.NegativeZero {

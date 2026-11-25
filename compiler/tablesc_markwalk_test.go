@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -177,7 +176,6 @@ func runCTableMarkWalkProbe(t *testing.T, binary, name string) {
 
 func TestFunctionalCTableReachWalkBoundedByBody(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	u := unitFromSource(t, markWalkSchema)
 
 	rootBody := markWalkRootBody()

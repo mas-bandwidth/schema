@@ -4,12 +4,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestUnityVTUnsortedMapEntriesSortCanonicallyAndRefuseDuplicates(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect unsorted map canonical save")
 
 	const srcSchema = `package umapsort
 

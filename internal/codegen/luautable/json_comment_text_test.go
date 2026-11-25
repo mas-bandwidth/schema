@@ -24,7 +24,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // commentVector is one manifest line: a vector's file name and the verdict the
@@ -76,7 +75,6 @@ func commentVectors(t *testing.T) []commentVector {
 
 func TestLuauJsonCommentIsText(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 
 	rows := commentVectors(t)
 	paths, err := compiler.GatherPaths([]string{filepath.Join(root, "tables", "examples")})

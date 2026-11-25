@@ -45,7 +45,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -309,7 +308,6 @@ fn main() {
 // emitted and compiled too), drops the probe crate, and runs it once with rustc
 // (the fixed runtime is self-contained, so no sibling checkout is needed).
 func t08R28Run(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -23,7 +22,6 @@ import (
 // bits, and a body that does not decode refuses.
 func TestJavaScriptTextBase64MatchesEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	node := jsNode(t)
 	u := unitFrom(t, `package probe
 table Root {
@@ -176,7 +174,6 @@ for (const row of rows) {
 // the emitted reader and requires the unpadded input to trip the real probe.
 func TestJavaScriptTextBase64NegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node")
 	u := unitFrom(t, `package probe
  table Root { v bytes(4) }
 `)

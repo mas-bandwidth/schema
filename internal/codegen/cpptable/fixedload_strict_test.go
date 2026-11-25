@@ -13,12 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedLoadPlainIsStrict(t *testing.T) {
-	slowtest.Gate(t, "the c++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "fxstrict.schema")

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -53,7 +52,6 @@ type duplicateRow struct {
 // repeated key refuses the whole read (docs/SPEC-TABLES.md §16.2, §4). One
 // subtest per row, so a divergence names the case.
 func TestJsonHostileReportDuplicateCounterJava(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)

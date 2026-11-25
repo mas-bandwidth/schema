@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -20,7 +19,6 @@ import (
 // shape anywhere refuses the whole read, and only the verdict is compared with
 // the engine; why it refused is per-language diagnostic detail.
 func TestRustArrayRootNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (array-root JSON closure and cook)")
 	keyedRequireRustc(t)
 	fixture := filepath.Join("../../..", "testdata/conformance/feature-witnesses/array-root/closure")
 	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))

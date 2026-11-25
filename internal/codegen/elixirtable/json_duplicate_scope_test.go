@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -14,7 +13,6 @@ import (
 // canonical value are compared, and the report keeps only unknown and widened.
 func TestJSONDuplicateScopeElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package duplicatescope
 enum Slot { A, B }
 union Pick { value int32 }

@@ -2,8 +2,6 @@ package gotable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The STRICT-100 cells vt/text-form/go, vt/cook-write/go and
@@ -143,7 +141,6 @@ func runVTTextCookMessage(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 
 func TestGoTextCookMessageCellsStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	out, err := runVTTextCookMessage(t, nil)
 	if err != nil {
 		t.Fatalf("the text/cook/message cells do not hold: %v\n%s", err, out)
@@ -156,7 +153,6 @@ func TestGoTextCookMessageCellsStrict(t *testing.T) {
 // to 1. Both must turn the strict gate red on its own message.
 func TestGoTextCookMessageCellsStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	t.Run("duplicate_key", func(t *testing.T) {
 		t.Parallel()
 		out, err := runVTTextCookMessage(t, func(files map[string][]byte) {

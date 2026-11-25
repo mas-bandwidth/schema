@@ -3,15 +3,12 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Equal strings in distinct slots must remain distinct blob nodes. An
 // explicitly shared node must instead be refused by wire and text writers.
 func TestElixirStringBlobIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir string blob identity")
 	u := unitFrom(t, `package stringidentity
  table Pair {
   first *string

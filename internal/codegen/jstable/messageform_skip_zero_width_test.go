@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -52,7 +51,6 @@ fixed table Msg
 	}
 
 	t.Run("node", func(t *testing.T) {
-		slowtest.Gate(t, "node")
 		node := jsNode(t)
 		baseFiles, err := js.Generate(u)
 		if err != nil {

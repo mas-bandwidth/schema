@@ -11,7 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -26,7 +25,6 @@ import (
 // bytes. The verdict is the contract; the refusal's name is this leg's own.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "goose (it runs the generated reader over the fixed-form corpus)")
 	corpus := fixedCorpus(t)
 	u := fixedUnit(t, "test/tables/DeadBytes.schema")
 	ns := goose.Namespace(u)
@@ -169,7 +167,6 @@ func deadBytesParse(t *testing.T, out string) deadBytesProbeResult {
 // the whole load. The verdict is the contract.
 func TestGooseFixedAbsentRecordOptionalIsZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "goose (it runs the generated reader over the fixed-form seeds)")
 	for _, c := range []struct{ schema, file string }{
 		{"test/tables/V1.schema", "v1_cfg.bin"},
 		{"test/tables/V2.schema", "v2_cfg.bin"},

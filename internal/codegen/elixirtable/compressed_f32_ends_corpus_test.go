@@ -21,8 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const elixirF32EndsCorpusDir = "../../../testdata/conformance/feature-witnesses/compressed-f32-ends"
@@ -53,7 +51,6 @@ func elixirF32EndsRows(t *testing.T) []elixirF32EndsRow {
 
 func TestElixirCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	corpus, err := filepath.Abs(elixirF32EndsCorpusDir)
 	if err != nil {
 		t.Fatal(err)

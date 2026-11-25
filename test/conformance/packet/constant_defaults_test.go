@@ -7,13 +7,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Each writer constructs the packet without assigning its fields. The pins
 // are independent little-endian int64 encodings of (-1, 0) and 4294967296.
 func TestPacketConstantDefaultWriters(t *testing.T) {
-	slowtest.Gate(t, "the C and C++ compilers and serialize runtimes")
 	t.Chdir("../../..")
 	for _, name := range []string{"unsigned-subtraction", "hexadecimal-addition"} {
 		t.Run(name, func(t *testing.T) {

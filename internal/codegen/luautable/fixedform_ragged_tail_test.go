@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestLuauFixedFormRaggedTail is the row fixed_form_ragged_tail (schema#876
@@ -22,7 +21,6 @@ import (
 // zeros, `no_layout`.
 func TestLuauFixedFormRaggedTail(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	g := generateFiles(t, map[string]string{"Point.schema": "package probe\n\nfixed table Point\n{\n    x int32 = 0\n    y int32 = 0\n}\n"})
 	if g.err != nil {
 		t.Fatalf("the Luau unit does not generate: %v", g.err)

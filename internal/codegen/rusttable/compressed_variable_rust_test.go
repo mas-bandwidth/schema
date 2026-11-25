@@ -2,7 +2,6 @@ package rusttable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -12,7 +11,6 @@ import (
 )
 
 func TestRustCompressedVariableNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (compressed float variable prerequisites)")
 	keyedRequireRustc(t)
 	source, e := os.ReadFile("../../../testdata/conformance/feature-witnesses/required/compressed-writers/Probe.schema")
 	if e != nil {

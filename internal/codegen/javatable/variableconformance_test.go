@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -25,7 +24,6 @@ func TestStageJavaVariableConformance(t *testing.T) {
 	}
 	var javac string
 	if verifyCompile {
-		slowtest.Gate(t, "javac")
 		javac, _ = javaTools(t)
 	}
 	for _, row := range []struct{ name, dir string }{{"native-messages", "tables/messages"}} {

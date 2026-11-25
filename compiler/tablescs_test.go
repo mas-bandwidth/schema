@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -515,7 +513,6 @@ table Subject {
 	}
 
 	// 5. If dotnet is available, compile and run end-to-end wire equivalence verification.
-	slowtest.Gate(t, "dotnet")
 	dotnet := findDotnet()
 	if dotnet == "" {
 		t.Skip("dotnet not found on PATH; skipping C# runtime equivalence execution")
@@ -688,7 +685,6 @@ fixed table Subject {
 		}
 	}
 
-	slowtest.Gate(t, "dotnet")
 	dotnet := findDotnet()
 	if dotnet == "" {
 		t.Skip("dotnet not found on PATH; skipping C# runtime execution")

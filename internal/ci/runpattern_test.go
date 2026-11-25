@@ -26,8 +26,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // runRecipe is one `go test ... -run <pattern>` recipe line.
@@ -625,7 +623,6 @@ func TestEveryRunPatternMatchesATest(t *testing.T) {
 	// it rides the SCHEMA_SLOW=1 lane (ci-full.yml's unit-rest row, which runs on
 	// the merge and nightly triggers) instead of the per-commit lint job. The
 	// fast per-commit smoke is TestRunPatternGateRefusesAZeroMatchPattern above.
-	slowtest.Gate(t, "the Go toolchain (it compiles each package to list its tests)")
 	root := repoRoot(t)
 	offenders := checkRunPatterns(t, root, makefileFiles(t, root), runPatternExceptions)
 	for _, o := range offenders {

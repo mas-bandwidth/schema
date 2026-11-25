@@ -7,7 +7,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -35,7 +34,6 @@ func TestDartZeroBitReadFunctionalRefusesBadBounds(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	slowtest.Gate(t, "the Dart toolchain (it compiles and runs the generated unit)")
 	dir := t.TempDir()
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

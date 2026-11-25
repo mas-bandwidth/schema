@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -15,7 +14,6 @@ import (
 // stored strings. Compare accepted values and exact wire bytes with Go.
 func TestJSONBOMEntryElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package bomentry
 table Root {
  value int32 = 7

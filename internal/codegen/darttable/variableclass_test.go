@@ -1,7 +1,6 @@
 package darttable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,7 +121,6 @@ func TestVariableClassBeyondCardConstructsDart(t *testing.T) {
 // <root>WireLoad, re-saves it, and requires the bytes to be identical — the
 // same contract the Go leg's committed byte oracle holds for the card record.
 func roundTripOracle(t *testing.T, root, wireName string, wire []byte, oracle string, packet map[string][]byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
@@ -176,7 +174,6 @@ void main(List<String> args) {
 // generated codec and requires the values to survive, the way the field kinds
 // must never be silenced to kind 0.
 func scalarRoundTrip(t *testing.T, wire []byte, packet map[string][]byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
@@ -264,7 +261,6 @@ table Blob {
 // codec and requires the bytes to survive beside a *string in the same node
 // table, the way the two reserved blob ids must never be confused.
 func bytesBlobRoundTrip(t *testing.T, wire []byte, packet map[string][]byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
@@ -327,7 +323,6 @@ table Arrays {
 // to survive, the way a `[]T` with a non-table element must never be encoded
 // as a table body (docs/SPEC-TABLES.md §2.9, §3).
 func scalarArrayRoundTrip(t *testing.T, wire []byte, packet map[string][]byte) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

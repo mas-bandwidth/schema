@@ -29,7 +29,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
@@ -72,7 +71,6 @@ const textTotalSchema = "package texttotal\n\ntable Handover\n{\n    rules [..4]
 const textTotalWriter = "package texttotal\n\ntable Handover\n{\n    rules [..8]string(16)\n    first []?string(16)\n}\n"
 
 func TestGooseTextTotal(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs both forms of the variable class)")
 	got, past := runTextTotal(t, nil)
 	for _, w := range textTotalProbes {
 		for _, form := range []string{"text", "wire"} {
@@ -91,7 +89,6 @@ func TestGooseTextTotal(t *testing.T) {
 }
 
 func TestGooseTextTotalNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs both forms of the variable class)")
 	got, past := runTextTotal(t, func(files map[string][]byte) {
 		for _, c := range textTotalClauses {
 			src := string(files[c.file])

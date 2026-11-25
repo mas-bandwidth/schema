@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -346,7 +345,6 @@ func cppSkippedValueRun(t *testing.T, fixtures string) ([]byte, error) {
 }
 
 func TestCppSkippedValueIsValidated(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated skipped-value probe)")
 	t.Parallel()
 
 	const manifestPath = "../../../testdata/wire/skipped-value/MANIFEST.tsv"

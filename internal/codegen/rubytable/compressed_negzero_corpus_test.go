@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE COMPRESSED -0 WRITER CORPUS ON THE RUBY LEG (docs/SPEC-TABLES.md §3.3,
@@ -116,7 +114,6 @@ end
 // TestRubyCompressedNegZeroCorpus runs the corpus on the Ruby leg.
 func TestRubyCompressedNegZeroCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	src, err := os.ReadFile(filepath.Join(rubyNegZeroCorpusDir, "Probe.schema"))
 	if err != nil {
 		t.Fatal(err)

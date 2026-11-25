@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -20,7 +19,6 @@ import (
 // (compared unsigned). The answer is the manifest's: a line with no `expect=`
 // is the C++ reference's own NEW reader refusing the same bytes.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "a C compiler (it runs the generated NEW reader over the forged file)")
 	corpus := cFixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {
 		t.Run(vec.Name, func(t *testing.T) {

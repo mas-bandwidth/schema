@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -30,7 +29,6 @@ var cookShapes = map[string][]string{
 // materialise), one per case, by test/cookgen.
 func cookgen(t *testing.T, cases ...string) map[string][]byte {
 	t.Helper()
-	slowtest.Gate(t, "the Lobster toolchain and the Go cook")
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "cookgen")
 	build := testproc.Command(t, "go", "build", "-o", bin, "./test/cookgen")

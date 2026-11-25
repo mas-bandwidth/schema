@@ -18,7 +18,6 @@ package jstable
 // `<case>.absent` in `make conformance`, however well the driver is wired.
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -282,7 +281,6 @@ func driverSource(t *testing.T) string {
 // built tree that answers nothing FAILS rather than skipping. It SKIPS BY NAME
 // when node is absent.
 func assertDriverAnswersMessages(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	node := jsNode(t)
@@ -405,7 +403,6 @@ func driverMessageTablePaths(t *testing.T) map[string]string {
 // shipped leg. A unit the target refuses now FAILS the command and this test —
 // the backend gap this card exists to close — and is never skipped in silence.
 func writeConformanceTree(t *testing.T, root string, units [][2]string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))

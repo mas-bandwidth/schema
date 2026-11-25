@@ -353,7 +353,6 @@ func TestInt128Oracle(t *testing.T) {
 // it, and returns the cases with their packets and every forged input.
 func runInt128Oracle(t *testing.T, u *ir.Unit) ([]int128Case, []int128Forge) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain and the serialize.go runtime (the 128-bit reference)")
 	cases := int128Cases()
 	packet, err := golang.Generate(u)
 	if err != nil {

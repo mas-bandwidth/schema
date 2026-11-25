@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -269,7 +268,6 @@ void main() {
 // announceOneEncodingDartBinary is the leg's own Dart. A missing toolchain is
 // a failure when SCHEMA_REQUIRE_CORPUS promised one, and never a green.
 func announceOneEncodingDartBinary(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if env := os.Getenv("DART"); env != "" {

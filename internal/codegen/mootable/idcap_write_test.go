@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -17,7 +16,6 @@ import (
 // its `y` set, which needs 4097: save refuses id_table_over_bound and
 // measure answers nil.
 func TestMooWriterRefusesMoreThan4096Ids(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	u := unitFromSource(t, tablewire.IdCapSchema())
 	var keys []string

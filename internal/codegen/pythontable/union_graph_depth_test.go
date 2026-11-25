@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestPythonUnionGraphDepth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnit(t, `package deepunion
  union Link { next *Node }
  table Node {

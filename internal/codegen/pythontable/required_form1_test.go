@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -54,7 +53,6 @@ table Root {
 // live C++ and Go writers, and tests missing required fields under both pins.
 func TestPythonForm1Required(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "C++ and both pinned Python interpreters")
 	u := loadUnit(t, requiredForm1Schema)
 	model := tabletext.NewModel(u)
 	value := model.New(model.Lookup("Root"))
@@ -184,7 +182,6 @@ print("ok")
 
 func TestPythonForm1RequiredMissing(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, requiredForm1Schema)
 	files, err := Generate(u)
 	if err != nil {
@@ -213,7 +210,6 @@ print("missing_ok")
 
 func TestPythonForm1RequiredScalarAndNested(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	scalar := loadUnit(t, `package reqscalar
 table Simple { count int32 | required }`)
 	m := tabletext.NewModel(scalar)
@@ -291,7 +287,6 @@ print("ok")
 
 func TestPythonForm1RequiredNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, requiredForm1Schema)
 	m := tabletext.NewModel(u)
 	wire, err := tablewire.EncodeVariable(m, m.New(m.Lookup("Root")))
@@ -343,7 +338,6 @@ print("ok")
 
 func TestPythonForm1RequiredRemoval(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	old := loadUnit(t, `package reqevo
 table Root { values []int32 | required }`)
 	newer := loadUnit(t, `package reqevo
@@ -387,7 +381,6 @@ print("ok")
 
 func TestPythonForm1RequiredFastControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package reqscalar
 table Simple { count int32 | required }`)
 	m := tabletext.NewModel(u)
@@ -436,7 +429,6 @@ print("ok")
 
 func TestPythonForm1RequiredRange(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package reqrange
 table Root { count int32 | min = 1, max = 3, required }`)
 	m := tabletext.NewModel(u)
@@ -478,7 +470,6 @@ print("ok")
 
 func TestPythonForm1RequiredGuards(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	newer := loadUnit(t, `package reqguard
 table Root { active bool
 if active { amount int32 | required } else { fallback int32 | required } }`)
@@ -535,7 +526,6 @@ print("ok")
 
 func TestPythonForm1RequiredGuardControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package reqguard
 table Root { active bool
 if active { amount int32 | required } else { fallback int32 | required } }`)
@@ -589,7 +579,6 @@ print("ok")
 
 func TestPythonForm1RequiredDamagePrecedence(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, requiredForm1Schema)
 	var id uint64
 	for _, f := range u.Tables["Root"].Fields {

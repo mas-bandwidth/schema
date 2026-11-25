@@ -9,8 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -39,7 +37,6 @@ func TestWireLargeVocabularyAndZeroId(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	if output, err := cmd.CombinedOutput(); err != nil {

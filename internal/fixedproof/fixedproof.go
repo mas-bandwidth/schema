@@ -32,7 +32,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1352,7 +1351,6 @@ func CppOracle(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []b
 // succeeds load; only a failing load proves the reference reader refused it.
 func CppOracleWithLoadVerdict(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error, func(candidate []byte) error) {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler")
 	files, err := cpp.Generate(u)
 	if err != nil {
 		t.Fatalf("%s: cpp.Generate: %v", tc.ID, err)

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -141,7 +140,6 @@ func retainReadSurfaceDiff(t *testing.T, root string, cases []string, got map[st
 // complete known value pinned at retain-values/<case>.json (FORMAT.md, retain).
 func TestPythonRetainReadSurface(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the retain manifest")
 	root, cases, answers := runRetainReadSurface(t, nil)
 	for _, got := range answers {
 		if diff := retainReadSurfaceDiff(t, root, cases, got); diff != "" {
@@ -155,7 +153,6 @@ func TestPythonRetainReadSurface(t *testing.T) {
 // gate must see the lost known value by case name.
 func TestPythonRetainReadSurfaceNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the retain manifest")
 	root, cases, answers := runRetainReadSurface(t, func(files map[string][]byte) int {
 		planted := 0
 		for name, data := range files {

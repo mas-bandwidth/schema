@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -32,7 +31,6 @@ const hostedFloatJSON = `{"value":{"f":1.5,"d":-2.25,"c":0.5,"a":[1.0,-3.25],"b"
 
 func TestPythonHostedFloatFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python, mypy and C++ hosted float wire")
 	u := unitFromSource(t, hostedFloatSchema)
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
@@ -126,7 +124,6 @@ func writeHostedFloatFiles(t *testing.T, dir string, files map[string][]byte) {
 
 func TestPythonHostedFloatNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python hosted float negative controls")
 	u := unitFromSource(t, hostedFloatSchema)
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
@@ -183,7 +180,6 @@ const optionalFloatJSON = `{"f":-1.25,"d":2.5,"c":0.5,"a":[1.0,-2.0],"b":[3.0],"
 
 func TestPythonOptionalFloatFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python, mypy and C++ optional floats")
 	u := unitFromSource(t, optionalFloatSchema)
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])
@@ -269,7 +265,6 @@ print("optional floats ok")
 // Each control puts the previous optional-width bug back into one operation.
 func TestPythonOptionalFloatNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python optional float negative controls")
 	u := unitFromSource(t, optionalFloatSchema)
 	model := tabletext.NewModel(u)
 	value := model.New(u.Tables["Root"])

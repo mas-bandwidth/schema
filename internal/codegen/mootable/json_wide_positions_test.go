@@ -2,7 +2,6 @@ package mootable_test
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"strings"
 	"testing"
 )
@@ -41,7 +40,6 @@ var positionCases = []struct{ name, number, quoted string }{{"plain", `{"plain":
 
 func TestMooJsonWideNumberPositions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo")
 	g := generateFiles(t, map[string]string{"Probe.schema": positionSchema})
 	inputs := map[string][]byte{}
 	var b strings.Builder

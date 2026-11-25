@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -282,7 +281,6 @@ func cookRefSplit(line string) (kind, key, verdict string, ok bool) {
 
 func TestMooCookRefusesAReferencePastTheRegion(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table_cookread.moo)")
 	for _, f := range cookRefPastRegionFailures(t, nil) {
 		t.Error(f)
 	}
@@ -290,7 +288,6 @@ func TestMooCookRefusesAReferencePastTheRegion(t *testing.T) {
 
 func TestMooCookRefusesAReferencePastTheRegionNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table_cookread.moo)")
 	fails := cookRefPastRegionFailures(t, plantCookPointerNeedOne)
 	if len(fails) == 0 {
 		t.Fatal("restoring the pointee need to one byte left the gate green")

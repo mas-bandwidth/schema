@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A compressed float's -0 lands as +0 and is written as +0
@@ -21,7 +20,6 @@ import (
 // saves those same bytes.
 func TestFixedCompressedNegZeroRead(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "goose (it runs the generated reader over the fixed-form corpus)")
 	corpus := fixedCorpus(t)
 	u := fixedUnit(t, "test/tables/FNZ.schema")
 	ns := goose.Namespace(u)

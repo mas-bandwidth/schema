@@ -6,13 +6,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A widened reader still refuses a value outside the selected writer range.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	corpus := fixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {
 		t.Run(vec.Name, func(t *testing.T) {

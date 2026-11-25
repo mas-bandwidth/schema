@@ -19,7 +19,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -649,7 +648,6 @@ fn main() {
 }
 
 func TestGooseVariableCellsStrict(t *testing.T) {
-	slowtest.Gate(t, "goose (functional test: runs the real Goose interpreter over variable-table strict vectors)")
 	t.Parallel()
 	for _, b := range runGooseVtCellsStrictGate(t, nil) {
 		t.Error(b)
@@ -657,7 +655,6 @@ func TestGooseVariableCellsStrict(t *testing.T) {
 }
 
 func TestGooseVariableCellsStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "goose (functional test: negative controls for variable-table strict read)")
 	t.Parallel()
 	u := probeUnit(t, gooseVtCellsSchema)
 	tables, err := goosetable.Generate(u)

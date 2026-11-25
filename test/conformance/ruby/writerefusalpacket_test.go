@@ -44,7 +44,6 @@ func TestWriteRefusalPacketRubySurface(t *testing.T) {
 // under the pinned interpreter over rows.txt and holds its verdicts.
 func runWriteRefusalPacket(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Ruby interpreter (it runs the generated packet writer)")
 	t.Chdir("../../..")
 	root := "."
 	rows := wrpacket.Rows(t, root)

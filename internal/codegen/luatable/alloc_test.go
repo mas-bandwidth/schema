@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -187,7 +186,6 @@ func pinned(t *testing.T) bool {
 
 func TestLuaLoadAllocationFloor(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	certify := pinned(t)
 	got := measureAllocRows(t, nil)
 	for i, r := range allocRows {
@@ -224,7 +222,6 @@ func TestLuaLoadAllocationRefusesOffThePin(t *testing.T) {
 // pointer row and the empty root stay green).
 func TestLuaLoadAllocationNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (the pinned release)")
 	if !pinned(t) {
 		return
 	}

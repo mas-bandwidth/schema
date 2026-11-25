@@ -6,14 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaScriptTimestampConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes strict RFC3339 and timestamp wire/cook)")
 	t.Parallel()
 	u := unitFrom(t, `package probe
  table Clock {
@@ -157,7 +155,6 @@ if(failed){process.exit(1);}
 `
 
 func TestJavaScriptTimestampFixedConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes signed timestamp limits on fixed wire)")
 	const src = `package probe
 fixed table T {
     at timestamp

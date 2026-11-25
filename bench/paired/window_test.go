@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func testWindow() windowEvidence {
@@ -401,7 +399,6 @@ func TestQuietWindowChild(t *testing.T) {
 }
 
 func TestQuietWindowStopsOwnedRunnerAndRetainsRefusal(t *testing.T) {
-	slowtest.Gate(t, "a child test process (it runs this test binary again)")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

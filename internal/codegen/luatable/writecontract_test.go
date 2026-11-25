@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Every table writer answers an off-declaration value with its refusal value,
 // without raising or returning any bytes (docs/SPEC.md §5.1).
 func TestLuaWritersRefuseOffContract(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lua table writers")
 	dir := t.TempDir()
 	fields := `
  ranged int16 | min = -2, max = 3

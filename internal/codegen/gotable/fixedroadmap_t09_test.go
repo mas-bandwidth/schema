@@ -169,7 +169,6 @@ func TestFixedRoadmapGoT09IntegersFloats(t *testing.T) {
 // runtime and skips where it is not staged, never faking the read.
 func t09Run(t *testing.T, schema, probe string) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	u := unitFrom(t, schema)
 	files, err := Generate(u)
 	if err != nil {
@@ -222,7 +221,6 @@ func t09CaseByID(id string) (t09Case, bool) {
 // unset, it skips by name.
 func TestFixed128BitRowsRunWithTheSerializeSibling(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain and the serialize.go sibling")
 	for _, id := range []string{"signed-128/go/valid-data", "unsigned-128/go/valid-data"} {
 		tc, ok := t09CaseByID(id)
 		if !ok {

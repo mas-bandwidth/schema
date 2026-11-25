@@ -10,7 +10,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A schema type may be named like a JavaScript builtin the generated code
@@ -110,7 +109,6 @@ func TestJsBuiltinsSurviveSameNamedSchemaTypes(t *testing.T) {
 	}
 
 	t.Run("wire", func(t *testing.T) {
-		slowtest.Gate(t, "node and the serialize.js runtime (it runs the generated modules)")
 		node := jsFlatNode(t)
 		index := serializeJSIndex(t)
 		dir := t.TempDir()

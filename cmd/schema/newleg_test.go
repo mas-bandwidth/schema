@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func runFail(t *testing.T, bin string, args ...string) (string, int) {
@@ -164,7 +163,6 @@ func TestHelpListsNewLeg(t *testing.T) {
 // already there stays byte for byte.
 
 func TestNewLegZigYieldsABuildingTestingSkeleton(t *testing.T) {
-	slowtest.Gate(t, "go build, go vet and make over a copied tree")
 	for _, tool := range []string{"make", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("no %s on PATH", tool)

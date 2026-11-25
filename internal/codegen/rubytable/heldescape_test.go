@@ -13,7 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -93,7 +92,6 @@ puts "held"
 
 func TestRubyKindHeldEscapeRefuses(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	files, err := Generate(loadUnit(t, heldEscapeSchema))
 	if err != nil {
 		t.Fatal(err)

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -51,7 +50,6 @@ func flagsPastWidthWideMessage(t *testing.T, mask string) ([]byte, []byte) {
 }
 
 func TestCFlagsPastWidthRefused(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	main, err := os.ReadFile("testdata/flags_past_width_main.c")
 	if err != nil {
 		t.Fatal(err)

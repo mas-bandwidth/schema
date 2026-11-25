@@ -25,7 +25,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -70,7 +69,6 @@ end
 // a compressed float's -0 as +0, so a value holding -0 writes the same bytes
 // as the value holding +0.
 func TestMooCompressedNegZeroStoresAsPlusZero(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table writers)")
 	t.Parallel()
 	const src = "package probe\n" +
 		"table V\n{\n" +
@@ -143,7 +141,6 @@ print("message " .. msave(x(0x80000000)) .. " " .. msave(x(0)))
 // loads land them, and the text read takes "0.1" and "-0.1" without counting
 // them out of range.
 func TestMooFloat32RangeHeldAtFloat32(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	const src = "package probe\n" +
 		"table V\n{\n" +
@@ -225,7 +222,6 @@ end
 // compiler's own engine writes reads with nothing unknown and writes back
 // byte for byte.
 func TestMooJsonKeyKeepsItsBytes(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
 	keys := []string{
 		"tag\U000E0041",   // a format character past U+FFFF
@@ -353,7 +349,6 @@ var variableSaveMutations = []struct{ name, set string }{
 // every value docs/SPEC.md §5.1 lists, on every field that carries it, and the
 // probe value they are mutated from saves.
 func TestMooVariableSaveRefusesTheWriteContract(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table writers)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Probe.schema": variableSaveContractSchema})
 	var b strings.Builder
@@ -392,7 +387,6 @@ print("base\t" .. verdict(T.NewW()))
 // same field declared [2..4] (docs/SPEC.md §5.1 row 3, read answer
 // "refused"), and a fresh value is born at the minimum.
 func TestMooCountedArrayBelowMinRefusedOnRead(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	const decl = "package probe\ntable W\n{\n    mn %s\n}\nfixed table X\n{\n    mn %s\n}\n"
 	wide := unitFromSource(t, fmt.Sprintf(decl, "[..4]int32", "[..4]int32"))

@@ -11,13 +11,11 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestPythonFixedFormDeprecatedEnum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both Python pins and the live C++ fixed-form oracle")
 	schema := `package probe
 enum Mode {
  Old

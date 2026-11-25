@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func parseRetainManifestRows(t *testing.T, manifest string) map[string][]string {
@@ -91,7 +90,6 @@ print(tostring(out == inputs.want))
 // counters are diagnostics, testdata/conformance/tables/FORMAT.md).
 func TestLuaRetainIdCapacity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
@@ -126,7 +124,6 @@ func TestLuaRetainIdCapacity(t *testing.T) {
 // short save and goes red.
 func TestLuaRetainIdCapacityNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned lua")
 	repo := filepath.Join("..", "..", "..")
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)

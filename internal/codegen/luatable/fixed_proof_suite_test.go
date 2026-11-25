@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -23,7 +22,6 @@ import (
 // rows through the shared fixedproof value suite against the live C++ oracle.
 func TestLuaFixedProofSuiteValues(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	fixedproof.RunValueSuite(t, luaFixedProofRunner{})
 }
 
@@ -34,7 +32,6 @@ func TestLuaFixedProofSuiteValues(t *testing.T) {
 // ceiling.
 func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	fixedproof.RunNegativeControlSuite(t, luaFixedProofRunner{})
 }
 
@@ -47,7 +44,6 @@ func TestLuaFixedProofSuiteNegativeControl(t *testing.T) {
 // refuses under this leg's dead-byte rule.
 func TestLuaFixedProofEvolution(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	repo := filepath.Join("..", "..", "..")
 	fixedproof.RunEvolutionRows(t, repo, luaFixedProofRunner{},
 		"fixed-file-roundtrip", "file-envelope", "batch-capacity",
@@ -65,7 +61,6 @@ func TestLuaFixedProofEvolution(t *testing.T) {
 // refuses the whole load.
 func TestLuaFixedLiveExtents(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
 	eOwn, ok := fixedproof.LineageEntryOf(u, "T")
 	if !ok {
@@ -112,7 +107,6 @@ func TestLuaFixedLiveExtents(t *testing.T) {
 // that a caller's 4,096 refuses them.
 func TestLuaFixedBatch4097Roundtrip(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
 	files, err := luatable.Generate(u)
 	if err != nil {

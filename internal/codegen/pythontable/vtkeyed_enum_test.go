@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -84,7 +83,6 @@ print('ok')
 
 func TestPythonVtKeyedEnumRoundTripFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "C++ oracle and both pinned Python interpreters")
 	cases := []struct{ name, schema, root, text, mode, values string }{
 		{"default", pyKeyedEnumSchema, "Root", `{"tail":7}`, "wrapper", `[0,0,0]`},
 		{"sparse", pyKeyedEnumSchema, "Root", `{"ranks":{"head":"Low","feet":"Mid"},"tail":7}`, "wrapper", `[1,0,2]`},
@@ -166,7 +164,6 @@ else:
 
 func TestPythonVtKeyedEnumEvolutionFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, pyKeyedEnumSchema)
 	cases := []struct {
 		name, key, value string
@@ -291,7 +288,6 @@ else:
 
 func TestPythonVtKeyedEnumNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, pyKeyedEnumSchema)
 	text := `{"ranks":{"head":"Low","feet":"Mid"},"tail":7}`
 	good := wideEngineWire(t, u, "Root", text)

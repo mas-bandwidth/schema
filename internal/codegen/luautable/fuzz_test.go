@@ -31,7 +31,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -571,7 +570,6 @@ func luauFuzzSummary(r luauFuzzResult) string {
 // (docs/SPEC-TABLES.md §4.2).
 func TestLuauWireFuzzAgreesWithTheGoEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luauFuzzCost)
 	res := runLuauFuzzDifferential(t, nil)
 	t.Log(luauFuzzSummary(res))
 	if len(res.divergences) > 0 {
@@ -593,7 +591,6 @@ const luauFuzzControlAnchor = `	elseif s == "str" then
 // red on exactly that.
 func TestLuauWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, luauFuzzCost)
 	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; noteField(\"malformed\", fieldName); return false", "return false", 1)
 	const strictTopAnchor = "local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil"
 	edit := func(src []byte) []byte {

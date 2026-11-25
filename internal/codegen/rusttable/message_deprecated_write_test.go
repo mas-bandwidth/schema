@@ -25,8 +25,6 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const deprecatedMessageSchema = `package depmsg
@@ -124,7 +122,6 @@ var deprecatedMessageAsserts = map[string]string{
 
 func deprecatedMessageGate(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "rustc (it builds and runs the message deprecated-variant probe)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH, so the message writer's deprecated-variant refusal cannot be built or run: %v", err)

@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsonNameCapSchema is the small unit the read-closed vectors read: a flags
@@ -138,7 +137,6 @@ func jsonNameCapRows(t *testing.T) []jsonNameCapRow {
 // the long data read, the 256-byte names refuse.
 func TestGooseJsonNameCap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the text read)")
 	rows := jsonNameCapRows(t)
 
 	dir := t.TempDir()

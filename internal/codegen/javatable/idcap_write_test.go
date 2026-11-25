@@ -2,8 +2,6 @@ package javatable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER REFUSES AN ID TABLE ITS READERS REFUSE (docs/SPEC-TABLES.md §3,
@@ -19,7 +17,6 @@ import (
 // with a refusal (overflow, reference 0) and appends nothing; a repeat of a
 // held id still answers its reference.
 func TestJavaIdTableCapIs4096(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	const schema = `package probe
 

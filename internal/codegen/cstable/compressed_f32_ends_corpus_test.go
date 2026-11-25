@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -172,7 +171,6 @@ static class F32EndsProbe
 // emits both the variable and the fixed form and JSON, so no row is skipped.
 func TestCompressedF32EndsCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the .NET SDK (it runs the generated C# over the compressed-f32-ends corpus)")
 	corpus, err := filepath.Abs(csF32EndsCorpusDir)
 	if err != nil {
 		t.Fatal(err)

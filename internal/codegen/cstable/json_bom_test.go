@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -23,7 +22,6 @@ import (
 // object or before a nested table, and BOM on an integer map key, and
 // preserving U+FEFF inside string values (docs/SPEC-TABLES.md §16.2, §16.12).
 func TestJsonLeadingBOMBoundaryCS(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 
 	const schemaSrc = `package probe
 table Sub {

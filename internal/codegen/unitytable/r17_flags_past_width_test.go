@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -100,7 +99,6 @@ func unityR17Ints(b []byte) string {
 }
 
 func TestUnityR17FlagsPastWidthRefuse(t *testing.T) {
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect")
 	t.Parallel()
 	older := fixedproof.ParseCheckUnit(t, unityR17Older)
 	newer := fixedproof.ParseCheckUnit(t, strings.Replace(unityR17Older, "Verbose }", "Verbose, Extra }", 1))

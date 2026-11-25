@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirArrayElementKindsClosed holds docs/SPEC-TABLES.md §3, §4 on the
@@ -19,7 +17,6 @@ import (
 // list and must read.
 func TestElixirArrayElementKindsClosed(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

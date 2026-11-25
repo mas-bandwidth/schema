@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // pythonFixedKindDecl is one numeric leaf of the fixed form's closed kind set:
@@ -187,7 +186,6 @@ func pythonFixedKindRun(t *testing.T, files map[string][]byte, inputs map[string
 // both. Its negative control is TestPythonFixedProofEvolutionKindPairsNegativeControl.
 func TestPythonFixedProofEvolutionKindPairs(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the live C++ reference")
 	type writer struct {
 		entry fixedproof.LineageEntry
 		wire  []byte
@@ -264,7 +262,6 @@ func TestPythonFixedProofEvolutionKindPairs(t *testing.T) {
 // agreement by name.
 func TestPythonFixedProofEvolutionKindPairsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the live C++ reference")
 	from, to := pythonFixedKindDecls[0], pythonFixedKindDecls[1]
 	if from.name != "i8" || to.name != "i16" || !pythonFixedLadderWidens(from, to) {
 		t.Fatal("kind-pair control pair moved")

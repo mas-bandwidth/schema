@@ -103,7 +103,6 @@ func cBlobKindField(t *testing.T, u *ir.Unit, root string) (name string, stringK
 
 func TestCPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C compiler (cc)")
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "pointer-target-type", "blobkind")
 	rows := cBlobKindRows(t, dir)
 

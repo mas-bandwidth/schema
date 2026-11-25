@@ -30,7 +30,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -40,7 +39,6 @@ import (
 // runs on a bench that never unpacked dist/. A bare `go test ./...` on a tree
 // with no dart anywhere still skips, which is the package's standing rule.
 func t08DartBinary(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if env := os.Getenv("DART"); env != "" {
@@ -66,7 +64,6 @@ func t08DartBinary(t *testing.T) string {
 // to, which is the round-trip half of interoperability that does not ride the
 // C++ reference's bytes.
 func t08RoundTrip(t *testing.T, dartBin, src, body string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, src)
@@ -126,7 +123,6 @@ void main() {
 }
 
 func TestFixedRoadmapDartT08ConformanceUnions(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

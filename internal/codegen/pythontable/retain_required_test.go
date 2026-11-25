@@ -2,14 +2,12 @@ package pythontable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"strings"
 	"testing"
 )
 
 func TestPythonRetainRequiredDefault(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Root { n int32 | required }
 `
@@ -52,7 +50,6 @@ print('retain-required')
 
 func TestPythonRetainRequiredContainers(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and C++/Go oracles")
 	const schema = `package probe
 enum Slot { A }
 table Child { n int32 | required }

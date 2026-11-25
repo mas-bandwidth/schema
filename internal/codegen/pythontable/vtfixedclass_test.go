@@ -12,7 +12,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -369,7 +368,6 @@ func loadManifestUnit(repo string, paths []string) (*ir.Unit, error) {
 // importing every generated table corpus package under both interpreter pins.
 func TestPythonVtFixedClassBuildVersionImports(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters and strict analyzer")
 	repo, err := pyrun.RepoRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -413,7 +411,6 @@ func vtFixedClassBuildVersionProbe(pkg string, expected uint64) string {
 // package version in a copy and requires the import check to detect it.
 func TestPythonVtFixedClassBuildVersionImportsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	u, files := vtFixedClassFiles(t)
 	name := filepath.ToSlash(filepath.Join(u.Package, "__init__.py"))
 	before := string(files[name])

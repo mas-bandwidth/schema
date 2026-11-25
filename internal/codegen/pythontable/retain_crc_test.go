@@ -6,7 +6,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"hash/crc32"
 	"maps"
 	"os"
@@ -19,7 +18,6 @@ import (
 
 func TestPythonRetainCRC(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and CRC oracle")
 	const schema = `package probe
  table Root | integrity = "crc32c" { n int32 }
  `

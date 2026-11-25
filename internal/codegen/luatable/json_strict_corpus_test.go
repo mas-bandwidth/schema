@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // luaStrictCorpusSourceCheck holds internal/codegen/luatable/json_test.go and
@@ -354,7 +353,6 @@ print(text)
 // unknown-subtree duplicate keys obey the strict read.
 func TestLuaFromJsonStrictAgreesWithTheCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 	jsonTestBytes, err := os.ReadFile("json_test.go")
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +375,6 @@ func TestLuaFromJsonStrictAgreesWithTheCorpus(t *testing.T) {
 // and requires each plant to turn the gate red.
 func TestLuaFromJsonStrictAgreesWithTheCorpusNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter")
 
 	jsonTestBytes, err := os.ReadFile("json_test.go")
 	if err != nil {

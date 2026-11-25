@@ -15,10 +15,6 @@ import (
 	"testing"
 )
 
-// gateSkipMarker is shared in meaning with tools/slowgatescan's transcript
-// parser. Keep the literal in sync with its scanner test.
-const gateSkipMarker = "SCHEMA_SLOW: this test shells out"
-
 // SerializeGo returns the absolute path of the serialize.go runtime used by Go
 // probes. An explicit absolute SERIALIZE_GO wins, then the sibling checkout,
 // then the copy provisioned by make deps under build/serialize.go.
@@ -42,11 +38,7 @@ func SerializeGo(t testing.TB, root string) string {
 	}
 	msg := "the Go runtime serialize.go is absent: looked for absolute SERIALIZE_GO " + configured +
 		", sibling " + sibling + ", and fetched copy " + fetched + "; run make deps"
-	if Enabled() {
-		t.Fatalf("slowtest: %s", msg)
-		return ""
-	}
-	t.Skipf("%s: %s", gateSkipMarker, msg)
+	t.Fatalf("slowtest: %s", msg)
 	return ""
 }
 

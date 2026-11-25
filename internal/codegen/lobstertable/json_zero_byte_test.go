@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE TEXT WRITER REFUSES A ZERO BYTE (docs/SPEC.md §5.1 row 8;
@@ -19,7 +18,6 @@ import (
 // \u0000 its own reader refuses. The same value without the zero writes.
 func TestLobsterJsonWriterRefusesZeroByte(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lobster toolchain")
 	src := filepath.Join(t.TempDir(), "Probe.schema")
 	if err := os.WriteFile(src, []byte(`package jsonzeroprobe
 

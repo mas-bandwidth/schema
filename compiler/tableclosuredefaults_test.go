@@ -97,7 +97,6 @@ fixed table Root {
 				}
 				issue715CompileRun(t, dir, cc, ext, replace.Replace(tableClosureDefaultsC))
 			case "go":
-				slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 				root, err := filepath.Abs("..")
 				if err != nil {
 					t.Fatal(err)
@@ -111,7 +110,6 @@ fixed table Root {
 					t.Fatalf("generated Go: %v\n%s", err, out)
 				}
 			case "cs":
-				slowtest.Gate(t, "dotnet")
 				dotnet := findDotnet()
 				if dotnet == "" {
 					t.Skip("dotnet unavailable")

@@ -3,14 +3,12 @@ package cstable
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"strings"
 	"testing"
 )
 
 func TestCountCapRefusesWithoutDamageCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	wire := func(n uint64) string {
 		p := binary.AppendUvarint([]byte{13}, n)
 		if n != 0 {

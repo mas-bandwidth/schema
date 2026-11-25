@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -172,7 +171,6 @@ func runDamage(t *testing.T, capacity int, mutate func([]byte) [][]byte) {
 }
 
 func TestMooMessageBatchDamageMatchesTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	runDamage(t, 256, mutations)
 }
@@ -181,7 +179,6 @@ func TestMooMessageBatchDamageMatchesTheGoEngine(t *testing.T) {
 // capacity is batch_too_large with a count of 0 and nothing decoded, at every
 // capacity from one body up.
 func TestMooMessageBatchCapacityMatchesTheGoEngine(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	for _, capacity := range []int{1, 2, 3} {
 		t.Run(fmt.Sprint(capacity), func(t *testing.T) {
@@ -194,7 +191,6 @@ func TestMooMessageBatchCapacityMatchesTheGoEngine(t *testing.T) {
 // TestMooMessageBatchWriteBounds: SaveMessages and MeasureMessages refuse a
 // batch of none or of 257 by name, batch_too_large, and write 256.
 func TestMooMessageBatchWriteBounds(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "backenddemo")
@@ -234,7 +230,6 @@ end
 // rule is dropped — a reader that no longer verifies the trailing pad and the
 // bytes after it answers a clean batch where the Go engine answers malformed.
 func TestMooMessageBatchDamageNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "backenddemo")
@@ -264,7 +259,6 @@ func TestMooMessageBatchDamageNegativeControl(t *testing.T) {
 // MeasureMessages and SaveMessages refuse a variable root by name before a
 // byte is read or written, while the fixed root's batch still measures.
 func TestMooMessageFormIsFixedTablesOnly(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Probe.schema": `package probe
 
@@ -316,7 +310,6 @@ print("fixed-only-ok")
 // repeated-id check runs before the order check, so the control still proves
 // the repeated-id check refuses this batch on its own.
 func TestMooMessageRepeatedFieldIdNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_message.moo)")
 	t.Parallel()
 	units, _ := readManifest(t)
 	g := generateUnit(t, units, "backenddemo")

@@ -153,7 +153,6 @@ func cppCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short bo
 }
 
 func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	u := loadUnitFromSource(t, cppCountRefusalSchema)
 	model := tabletext.NewModel(u)
@@ -356,7 +355,6 @@ table GraphLeaf { a int32 = 0
 `
 
 func TestJsonLeadingBOMBoundaryCPP(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	t.Parallel()
 	u := loadUnitFromSource(t, cppBomBoundarySchema)
 	model := tabletext.NewModel(u)

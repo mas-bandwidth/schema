@@ -17,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unity"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -528,7 +527,6 @@ func runUnityProbe(t *testing.T, files map[string][]byte, probeCS string, inputs
 // in both Debug and Release configurations.
 func TestUnityFixedDialectMSBuild(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet MSBuild and UnityDialect.props")
 	tc := ensureUnityToolchain(t)
 	repoRoot, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

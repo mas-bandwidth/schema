@@ -7,14 +7,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 func TestPythonCookDeepDump(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, "package cookdeep\ntable Node {\n value int32\n next *Node\n}\n")
 	files, err := Generate(u)
 	if err != nil {
@@ -73,7 +71,6 @@ print("OK")
 
 func TestPythonCookDeepWrite(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, "package cookdeep\ntable Node {\n value int32\n next *Node\n}\n")
 	files, err := Generate(u)
 	if err != nil {
@@ -118,7 +115,6 @@ print(hashlib.sha256(raw).hexdigest())
 
 func TestPythonCookDeepUnionPointer(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, `package deepunion
  union Link { next *Node }
  table Node { link Link }

@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -240,7 +239,6 @@ func TestMooWireFuzzVerdictPipe(t *testing.T) {
 	if err := mooWireFuzzVerdictMakefileCheck(string(mkBytes)); err != nil {
 		t.Fatal(err)
 	}
-	slowtest.Gate(t, "moo (it builds and runs the wire-fuzz verdict pipe)")
 	generated := mooFuzzStagePipeUnits(t, mooFuzzPipeUnits, nil)
 	manifest := writeMooWireFuzzManifest(t, map[string]bool{
 		"tabledemo":  true,
@@ -283,7 +281,6 @@ func TestMooWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	if err := mooWireFuzzVerdictMakefileCheck(string(mkBytes)); err != nil {
 		t.Fatalf("baseline make/moo-fuzz.mk failed check: %v", err)
 	}
-	slowtest.Gate(t, "moo (it builds and runs the wire-fuzz verdict pipe negative controls)")
 	edit := func(name string, src []byte) []byte {
 		if name != "table_save.moo" {
 			return src

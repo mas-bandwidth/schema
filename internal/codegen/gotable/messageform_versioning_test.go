@@ -106,7 +106,6 @@ func TestRemote(t *testing.T) {
 		"version_test.go": []byte(src),
 	}
 	writeFiles(t, dir, root)
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated endpoint pair)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()

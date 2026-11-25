@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -97,14 +96,12 @@ func runUnusedIDsProbe(t *testing.T, plant bool) (string, error) {
 
 func TestRustUnusedIDsRefuse(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc: unused ID-table entries")
 	if out, err := runUnusedIDsProbe(t, false); err != nil {
 		t.Fatalf("unused-ID proof: %v\n%s", err, out)
 	}
 }
 func TestRustUnusedIDsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc: planted unused-ID acceptance")
 	out, err := runUnusedIDsProbe(t, true)
 	if err == nil || !strings.Contains(out, "measure empty") {
 		t.Fatalf("unused-ID plant did not fail the actual boundary: %v\n%s", err, out)
@@ -186,14 +183,12 @@ func runUnusedUnionDepth(t *testing.T, plant bool) (string, error) {
 
 func TestRustUnusedIDUnionDepth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc: bounded union ID census")
 	if out, err := runUnusedUnionDepth(t, false); err != nil {
 		t.Fatalf("union depth: %v\n%s", err, out)
 	}
 }
 func TestRustUnusedIDUnionDepthNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc: missing union depth plant")
 	out, err := runUnusedUnionDepth(t, true)
 	if err == nil || !strings.Contains(out, "union-depth-129") {
 		t.Fatalf("union depth plant did not fail safely at129: %v\n%s", err, out)
@@ -202,7 +197,6 @@ func TestRustUnusedIDUnionDepthNegativeControl(t *testing.T) {
 
 func TestRustUnusedIDDiagnosticControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc: standalone and compound diagnostic controls")
 	u := unitFrom(t, "package probe\ntable Root { value float32\n xs []int32 }\n")
 	m := tabletext.NewModel(u)
 	v := m.New(m.Lookup("Root"))

@@ -33,7 +33,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -157,7 +156,6 @@ void main() {
 // the shared runtime, the root library carries the batch verbs, and the probe
 // imports both, so a defect in either is a compile error, never a green.
 func runBatchProbe(t *testing.T, u *ir.Unit, root, body string, edit ...func(map[string][]byte)) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := dart.Generate(u)

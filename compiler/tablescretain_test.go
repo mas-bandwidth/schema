@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -119,7 +117,6 @@ int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report=
 }
 
 func TestCTableRetainRefusedByName(t *testing.T) {
-	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("requires C compiler")

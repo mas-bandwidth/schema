@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -151,7 +149,6 @@ func TestNodeTableInTheBodyWalk(t *testing.T) {
 // are the compiler's own table packages.
 func runGeneratedTables(t *testing.T, schema, testSource string, edits ...func(map[string][]byte)) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit)")
 	u := unitFrom(t, schema)
 	files, err := Generate(u)
 	if err != nil {

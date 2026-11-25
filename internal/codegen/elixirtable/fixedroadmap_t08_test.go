@@ -307,7 +307,6 @@ func t08P4(t *testing.T) {
 // struct. A body that fails its `check/2` halts nonzero and the failure text is
 // the probe's.
 func t08RunProbe(t *testing.T, src, body string) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := unitFrom(t, src)

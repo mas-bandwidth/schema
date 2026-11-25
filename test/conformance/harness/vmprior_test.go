@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE MESSAGE-PRIOR ANSWER THROUGH THE VM SHIMS (FORMAT.md `message-prior`;
@@ -110,7 +108,6 @@ func mustPriorAnswers(t *testing.T, leg, out string) {
 
 func TestLuauDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh and perl (it runs the Luau conformance driver)")
 	dir, manifest, out := priorTree(t, "luau", "main.luau")
 	luau := standIn(t, dir, "luau", priorStandIn)
 	runPriorDriver(t, dir, "luau", manifest, out, "LUAU="+luau)
@@ -119,7 +116,6 @@ func TestLuauDriverWritesPriorRefused(t *testing.T) {
 
 func TestMooDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh and perl (it runs the MOO conformance driver)")
 	dir, manifest, out := priorTree(t, "moo", "main.moo", "stage.pl", "split.pl")
 	if err := os.MkdirAll(filepath.Join(dir, "gen", "tblprior"), 0o755); err != nil {
 		t.Fatal(err)
@@ -141,7 +137,6 @@ func TestMooDriverWritesPriorRefused(t *testing.T) {
 
 func TestLobsterDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh, awk and perl (it runs the Lobster conformance driver)")
 	dir, manifest, out := priorTree(t, "lobster", "main.lobster")
 	unit := filepath.Join(dir, "units", "tblprior")
 	if err := os.MkdirAll(unit, 0o755); err != nil {
@@ -174,7 +169,6 @@ func mooLiteral(s string) string {
 
 func TestGooseDriverWritesPriorRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "sh, awk and perl (it runs the Goose conformance driver)")
 	// the driver runs the program once per unit the surface's lines name, in
 	// the unit's generated directory beside the glue it writes there
 	dir, manifest, out := gooseBatchTree(t)

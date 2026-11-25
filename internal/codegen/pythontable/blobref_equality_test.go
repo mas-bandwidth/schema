@@ -6,12 +6,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonBlobRefEquality(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned interpreters")
 	u := loadUnit(t, `package blobeq
  table Node {
   data *bytes

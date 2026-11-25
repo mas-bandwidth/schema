@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestGoSkippedValueIsValidated holds the generated Go reader to the standing
@@ -18,7 +16,6 @@ import (
 // message rows are the message skip's own card and are not run here.
 func TestGoSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

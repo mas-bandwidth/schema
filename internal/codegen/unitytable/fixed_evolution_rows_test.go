@@ -11,7 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/unitytable"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -125,7 +124,6 @@ func plantInFile(t *testing.T, fileName, oldSub, newSub string) func(map[string]
 // 1. numeric-evolution (E3, C8, R20, R21): adjacent ladders + signed/float
 // widening + 64->128 Form-3 refusal + negative controls.
 func TestUnityFixedRowNumericEvolution(t *testing.T) {
-	slowtest.Gate(t, "dotnet and the C++ oracle")
 	t.Parallel()
 
 	older := fixedproof.ParseCheckUnit(t, "package probe\nfixed table N {\n    lead uint32 = 1\n    v int16 = 0\n    f float32 = 0.0\n    trail uint32 = 2\n}\n")
@@ -199,7 +197,6 @@ func TestUnityFixedRowNumericEvolution(t *testing.T) {
 // 2. scalar-bounds (C7, R30): ranged int32, int128, uint16, bits(N), compressed
 // float finite + range + 'Q' digest + resolution evolution + negative control.
 func TestUnityFixedRowScalarBounds(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 0 | min = -5, max = 5\n    s int128 = 0 | min = -500, max = 500\n    u uint16 = 10 | min = 10, max = 1000\n    b bits(3)\n}\n")
@@ -298,7 +295,6 @@ func TestUnityFixedRowScalarBounds(t *testing.T) {
 
 // 3. ordinals (C9, C10, deprecated enum variant normalization + write refusal + negative controls).
 func TestUnityFixedRowOrdinals(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 
 	const oldSrc = "package probe\nenum Tier { Low, High }\nunion Pick {\n    a int32\n    b int32\n}\nfixed table Lineage {\n    tier Tier\n    pick Pick\n    seq uint32\n}\n"
@@ -351,7 +347,6 @@ func TestUnityFixedRowOrdinals(t *testing.T) {
 
 // 4. normalization (C12, C13, R17, compressed float -0.0 -> +0.0 + negative control).
 func TestUnityFixedRowNormalization(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n    flag bool\n    opt ?int32\n    raw float32\n    comp float32 | min = -1.0, max = 1.0, resolution = 0.1\n}\n")
@@ -408,7 +403,6 @@ func TestUnityFixedRowNormalization(t *testing.T) {
 // with no census over multiple records and array elements, LayoutHash on unknown/retired,
 // guarded dynamic widened count, zero counters on refusal + negative control.
 func TestUnityFixedRowReports(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 
 	older := fixedproof.ParseCheckUnit(t, "package probe\ntype Item {\n    a int32\n    drop int32\n}\nfixed table C {\n    lead uint32 = 1\n    items [4]Item\n    extra uint16\n    trail uint32 = 2\n}\n")
@@ -493,7 +487,6 @@ static class Program
 
 // 6. array-bounds (C1, C2, R11): writer's counted-array bound held across widening + negative control.
 func TestUnityFixedRowArrayBounds(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 
 	older := fixedproof.ParseCheckUnit(t, "package probe\nfixed table G {\n    lead uint32 = 1\n    vals [..4]int32\n    trail uint32 = 2\n}\n")
@@ -533,7 +526,6 @@ func TestUnityFixedRowArrayBounds(t *testing.T) {
 
 // 7. text (C3, C4, R24): UTF-8 validity, NUL in used bytes, length bound, dead slack zero, writer contract + negative control.
 func TestUnityFixedRowText(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 
 	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T {\n    s string(4)\n}\n")
@@ -577,7 +569,6 @@ func TestUnityFixedRowText(t *testing.T) {
 
 // 8. hostile-input (P3, P4, CRC-32C integrity, address-space ceiling + negative control).
 func TestUnityFixedRowHostileInput(t *testing.T) {
-	slowtest.Gate(t, "dotnet")
 	t.Parallel()
 	fixedproof.SetMemoryCeiling(t)
 

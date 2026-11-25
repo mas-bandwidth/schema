@@ -26,7 +26,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
@@ -188,7 +187,6 @@ func runSquirrelTextDifferential(t *testing.T, json string) []string {
 // float instances, in both directions.
 func TestSquirrelTextDifferentialAgainstTheGoEngine(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, squirrelTextDifferentialCost)
 	if msgs := runSquirrelTextDifferential(t, ""); len(msgs) > 0 {
 		t.Fatalf("%d of %d instances differ:\n%s", len(msgs), squirrelTextDifferentialN, strings.Join(msgs, "\n\n"))
 	}
@@ -201,7 +199,6 @@ func TestSquirrelTextDifferentialAgainstTheGoEngine(t *testing.T) {
 // cross-implementation comparison sees it. The gate must go red on the text.
 func TestSquirrelTextDifferentialNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, squirrelTextDifferentialCost)
 	const anchor = "local low = single ? 6 : 15, high = single ? 9 : 17;"
 	runtime := string(squirreltable.Runtime()["schema_table_json.nut"])
 	if n := strings.Count(runtime, anchor); n != 1 {

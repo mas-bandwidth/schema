@@ -31,7 +31,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -136,7 +135,6 @@ func TestPlanMaxCoversEveryLineagePlan(t *testing.T) {
 
 func TestFixedPlanMaxCoversEveryLineagePlan(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	oldU := unitFrom(t, planMaxOld)
 	newU := unitFrom(t, planMaxNew)
 	older, ok := FixedLineageOf(oldU, "T")

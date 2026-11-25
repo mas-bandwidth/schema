@@ -5,13 +5,10 @@ import (
 	"maps"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestDartJsonWideNumberPositions(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Dart SDK")
 	u := unitFrom(t, `package probe
  enum Key { A, B }
  union Choice { arm int64 }

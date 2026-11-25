@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -61,7 +60,6 @@ func TestWireReportCatalogBlobRecordTypeDart(t *testing.T) {
 // and requires the same report counters and the same saved bytes. wantKind
 // pins the oracle's own kind_mismatch, so the vector cannot drift silently.
 func checkRecordTypeMutantDart(t *testing.T, tablesDir, rootName, home, fn, mutantHex string, wantKind int) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", tablesDir, "*.schema"))

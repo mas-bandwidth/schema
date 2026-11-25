@@ -8,15 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 // SPEC §6.6: explicit fixed-class roots have named refusals, including in
 // all-fixed units. An ordinary table with only scalar fields is still variable.
 func TestDartFixedRetainNamedRefusal(t *testing.T) {
-	slowtest.Gate(t, "dart")
 	for _, mixed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("mixed_%v", mixed), func(t *testing.T) {
 			schema := "package probe\nfixed table Fixed { value int32 }\n"

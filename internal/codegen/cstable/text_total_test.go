@@ -29,7 +29,6 @@ table Wrap { child Root }
 const textTotalInput = `{"a":["ééé","a","z","tail"],"b":[null,"ééé","abc","tail"],"c":["ééé","a","z"],"d":[null,"ééé","abc","x"]}`
 
 func TestTextTotalCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	wide := unitFrom(t, strings.NewReplacer("string(5)", "string(20)", "[..3]", "[..8]", " | total=5", "").Replace(textTotalSchema))
 	model := tabletext.NewModel(wide)
 	value := model.New(wide.Tables["Root"])

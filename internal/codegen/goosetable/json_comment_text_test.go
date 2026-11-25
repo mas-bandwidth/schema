@@ -26,7 +26,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // commentVector is one manifest line: a vector's file name and the verdict the
@@ -120,7 +119,6 @@ func commentProbe(t *testing.T, ns string, files map[string][]byte, dir string, 
 
 func TestGooseJsonCommentIsText(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the JSON read)")
 
 	rows := commentVectors(t)
 	paths, err := compiler.GatherPaths([]string{filepath.Join(gooseRepoRoot, "tables", "examples")})

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -47,7 +46,6 @@ const cookDirectoryText = `{"counts": {"a": "1", "b": "2"}, "bag": {"items": ["3
 // the offset's range.
 func TestLuaCookCheckDirectoryFitsRegion(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "CookDirectory.schema"), []byte(cookDirectorySchema), 0o644); err != nil {
 		t.Fatal(err)

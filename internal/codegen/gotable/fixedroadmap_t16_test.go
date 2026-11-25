@@ -23,7 +23,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -135,7 +134,6 @@ func t16GoR31(t *testing.T) {
 	// THE FUNCTIONAL HALF: the generated reader compiles the writer's plan
 	// and runs it. slowtest.Gate is the toolchain gate; under SCHEMA_SLOW=1
 	// this RUNS, and a bare go test skips it by name.
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	reader := unitFrom(t, t16ReaderSchema())
 	writerB64 := t16LayoutB64(t, t16WriterSchema())
 	overflowB64 := t16LayoutB64(t, t16OverflowSchema())

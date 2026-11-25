@@ -3,7 +3,6 @@ package pythontable
 import (
 	"bytes"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"strings"
@@ -12,7 +11,6 @@ import (
 
 func TestPythonMessageOneSided(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and pinned Python interpreters")
 	reader := loadUnit(t, "package msgoneside\nfixed table Root { low int32 = 5 | min = 5\n high uint16 | max = 9 }\n")
 	writer := loadUnit(t, "package msgoneside\nfixed table Root { low int32 = 5\n high uint16 }\n")
 	wire := func(uModel *tabletext.Model, text string) []byte {

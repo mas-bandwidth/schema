@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -25,7 +24,6 @@ type fixedPointProbe struct {
 // front end, following SPEC-TABLES §3 and §16.
 func TestRandomTableGenFixedPoint(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
 
 	fixedSeen := map[[2]int]bool{}
 	ufixedSeen := map[[2]int]bool{}
@@ -131,7 +129,6 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 // clamp (or kind mismatch) would pass as clean; this plant goes red if one does.
 func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
 	for seed := range 400 {
 		r := rand.New(rand.NewSource(int64(seed)))
 		src, model := randomSchema(r)

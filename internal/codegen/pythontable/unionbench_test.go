@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const pythonUnionBenchSchema = `package unionbench
@@ -45,7 +44,6 @@ table Root
 // Functional (python pins): run with SCHEMA_SLOW=1.
 func TestPythonUnionShapeBench(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters (it times the emitted table runtime)")
 	files, err := Generate(loadUnit(t, pythonUnionBenchSchema))
 	if err != nil {
 		t.Fatal(err)

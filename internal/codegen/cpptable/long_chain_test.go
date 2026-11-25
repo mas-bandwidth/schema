@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -27,7 +26,6 @@ import (
 // the node count. The manifest's node_chain_two is the small control.
 func TestFunctionalCppLongPointerChain(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an external toolchain")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)

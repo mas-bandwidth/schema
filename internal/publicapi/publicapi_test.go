@@ -38,7 +38,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -93,7 +92,6 @@ func requireGoSource(t *testing.T, dir, pkg string) {
 // failing the test with the toolchain's own message.
 func goBuild(t *testing.T, dir, pkg, binPath string) {
 	t.Helper()
-	slowtest.Gate(t, "go build and the compiled schema binary")
 	requireGoSource(t, dir, pkg)
 	cmd := exec.Command("go", "build", "-o", binPath, pkg)
 	cmd.Dir = dir
@@ -349,7 +347,6 @@ func wantClientOutput(t *testing.T) string {
 // package holding only a test file has zero non-test Go source, the count
 // reads zero, and requireGoSource refuses it.
 func TestRequireGoSourceFiresOnAnEmptyPackage(t *testing.T) {
-	slowtest.Gate(t, "go list")
 	dir := t.TempDir()
 	files := map[string]string{
 		"go.mod":    "module emptypkg\n\ngo 1.26\n",

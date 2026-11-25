@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -108,7 +107,6 @@ int main( int argc, char ** argv )
 // to equal the committed fixtures, in both byte orders.
 func TestCppCookWriteZeroesDeadSlots(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

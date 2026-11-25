@@ -29,7 +29,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -44,7 +43,6 @@ import (
 // single-generation probe exercises; handing `older` turns the same probe into
 // the compiled-plan read, exactly as cRunVersionProbe does.
 func cRunSelfBuilt(t *testing.T, reader string, older []string, retire int, setup, forge, body string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := cUnitOf(t, cReadSchema(t, reader))

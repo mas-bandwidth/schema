@@ -3,7 +3,6 @@ package jstable
 import (
 	"encoding/hex"
 	"encoding/json"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,7 +24,6 @@ import (
 // classes (node index, unknown enum variant, unknown union arm, unknown keyed
 // slot, unknown node record).
 func TestRetainsUnknownOnEveryRootJavaScript(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	node := jsNode(t)

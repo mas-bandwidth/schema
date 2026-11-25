@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -284,7 +283,6 @@ const t12R15ForwardBody = `
 // the SDK's Roslyn compiler and dotnet exec — the t10 harness, no serialize.cs
 // and no corpus — then reads each clamp's verdict out of the one run.
 func t12R15Forward(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10Discover(t)
@@ -504,7 +502,6 @@ const t12R29ForgedBody = `
 // forge-and-read probe through the SDK's Roslyn compiler and dotnet exec — the
 // t10 harness, no corpus — then reads the one verdict out of the run.
 func t12R29Forged(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10Discover(t)
@@ -738,7 +735,6 @@ func t12E3(t *testing.T) {
 // SDK's Roslyn compiler and dotnet exec — the t10 harness, no corpus — then
 // reads each fixture's verdict out of the one run.
 func t12E3Write(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10Discover(t)

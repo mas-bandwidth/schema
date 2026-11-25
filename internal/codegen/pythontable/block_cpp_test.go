@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -20,7 +19,6 @@ import (
 // for the same nonempty block extents under both pinned Python interpreters.
 func TestPythonBlockCppIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	u := loadUnitFiles(t, filepath.Join("..", "..", "..", "tables", "block"))
 	files, err := cpp.Generate(u)
 	if err != nil {
@@ -104,7 +102,6 @@ for root, counts in [("RenderFrame", {"cameras":1,"ships":3,"turrets":2,"missile
 // legitimate block refusal on either interpreter.
 func TestPythonBlockDriverErrors(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	source, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "python", "surfaces", "_blocks.py"))
 	if err != nil {
 		t.Fatal(err)

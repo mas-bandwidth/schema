@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -25,7 +24,6 @@ import (
 // its declared default. Identity controls save back byte for byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it runs the generated reader over the dead-byte corpus)")
 	corpus := corpusDir(t)
 	javac, javaBin := javaToolsRequired(t)
 	classes, pkg, root := buildDeadBytesReader(t, javac)

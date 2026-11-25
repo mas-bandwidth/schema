@@ -84,7 +84,6 @@ func TestGoCompressedFloatReadIsFinite(t *testing.T) {
 // 0x55 0x01 is index 341 in 9 bits, the wire WriteEdge emits for x = max.
 func runCompressedFiniteProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated reader)")
 	const probe = `package t
 
 import (

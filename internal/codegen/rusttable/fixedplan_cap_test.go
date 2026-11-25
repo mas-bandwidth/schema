@@ -27,7 +27,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -80,7 +79,6 @@ fixed table T
 
 func TestFixedLineagePlanCapCoversAnEvolvedUnionArrayNative(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated reader)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		t.Fatalf("rustc is not on PATH, so the fixed reader cannot be built: %v", err)
 	}

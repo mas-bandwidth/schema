@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -248,7 +247,6 @@ fread("fixed_read_at_min")
 
 func TestLobsterCrossLegCells(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	jsonInputs := map[string][]byte{
 		"json_read_below_min.json": []byte(`{"few":[1]}`),
 		"json_read_at_min.json":    []byte(`{"few":[1,2]}`),

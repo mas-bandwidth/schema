@@ -32,7 +32,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -420,7 +419,6 @@ func runCellsVTProbe(t *testing.T, edit func(map[string][]byte)) (string, error)
 
 func TestElixirCellsStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	out, err := runCellsVTProbe(t, nil)
 	if err != nil || !strings.Contains(out, "ELIXIR_CELLS_VT_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("the variable cells do not hold the strict read: %v\n%s", err, out)
@@ -531,7 +529,6 @@ func runCellsFixedProbe(t *testing.T, edit func(map[string][]byte)) (string, err
 // those faults touch.
 func TestElixirCellsStrictNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	// Clean first: the unplanted artifacts must hold, or a red below is noise.
 	if out, err := runCellsVTProbe(t, nil); err != nil || !strings.Contains(out, "ELIXIR_CELLS_VT_OK") {

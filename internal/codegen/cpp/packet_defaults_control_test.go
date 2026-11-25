@@ -29,8 +29,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -708,7 +706,6 @@ func packetDefaultsGenerated(t *testing.T) map[string][]byte {
 
 func runCppPacketDefaults(t *testing.T, files map[string][]byte) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated defaults unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

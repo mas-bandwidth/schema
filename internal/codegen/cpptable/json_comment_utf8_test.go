@@ -17,13 +17,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
 func TestCPPJsonCommentIsWellFormedUTF8(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (c++)")
 
 	cxx := os.Getenv("CXX")
 	if cxx == "" {

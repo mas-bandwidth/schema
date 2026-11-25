@@ -19,7 +19,6 @@ package javatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,7 +34,6 @@ import (
 // is exactly the `known_.recordBytes` the ragged guard divides by when reading
 // the old file.
 func fixedRecordBytes(t *testing.T, dir, classes, pkg, root string) int {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	javac, javaBin := javaTools(t)

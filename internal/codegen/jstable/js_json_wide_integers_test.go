@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // jsJsonIntegersSchema is the unit testdata/wire/json-integers names: an int32,
@@ -33,7 +31,6 @@ table Integers
 // no exponent, no negative zero — with the range tested on the exact value.
 func TestJsJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it executes the generated JSON integer walk)")
 	u := unitFrom(t, jsJsonIntegersSchema)
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
 	canonical, err := os.ReadFile(filepath.Join(dir, "canonical.read.json"))
@@ -151,7 +148,6 @@ console.log("write OK");
 // accepted. The corpus above separately tests exact limits and spelling.
 func TestJsJsonWideIntegerSites(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it executes the generated JSON reader)")
 	const schema = `package sites
  enum Key { A, B }
  union Pick { value int64 }

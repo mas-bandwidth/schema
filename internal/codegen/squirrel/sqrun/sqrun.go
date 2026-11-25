@@ -19,8 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -76,7 +74,6 @@ func RepoRoot() (string, error) {
 // test that runs sq calls it first (Run calls it itself).
 func Require(t *testing.T) string {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sq, err := Interpreter()
 	if err != nil {
 		t.Fatalf("the pinned Squirrel interpreter does not resolve (%v); run make dist-squirrel, or point SQ at sq64 built with -DSQUSEDOUBLE (make/squirrel.mk)", err)
@@ -88,7 +85,6 @@ func Require(t *testing.T) string {
 // it gates the same way, so a benchmark skips at the same door.
 func interpreterFor(t testing.TB) string {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sq, err := Interpreter()
 	if err != nil {
 		t.Fatalf("the pinned Squirrel interpreter does not resolve (%v); run make dist-squirrel, or point SQ at sq64 built with -DSQUSEDOUBLE (make/squirrel.mk)", err)

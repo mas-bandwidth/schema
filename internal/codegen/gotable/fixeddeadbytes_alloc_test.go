@@ -2,13 +2,10 @@ package gotable
 
 import (
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedDeadBytesUnionAllocations(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go test (a generated probe package)")
 	runGenerated(t, `package probe
  union Choice { small int16
  wide int64 }

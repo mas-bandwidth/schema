@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -19,7 +17,6 @@ import (
 // Reading a non-null value supplies presence, including zero; accepting null
 // must preserve the public JSON API's wrong-kind refusal and root reset.
 func TestCPPJSONOptionalMapValues(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Fatal(err)

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -39,7 +38,6 @@ fixed table Rec
 
 func TestRustFlagsPastWidthRefuse(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust reader)")
 	keyedRequireRustc(t)
 	reader := unitFrom(t, flagsWidthReaderSrc)
 	newer := unitFrom(t, strings.Replace(flagsWidthReaderSrc, "Jump, Fly", "Jump, Fly, Swim", 1))

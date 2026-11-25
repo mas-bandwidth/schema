@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const formsMetadataSchema = `package formsprobe
@@ -37,7 +36,6 @@ print("ok")
 
 func TestPythonFormsBlockMetadata(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python declared forms metadata")
 	u := loadUnit(t, formsMetadataSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -58,7 +56,6 @@ func TestPythonFormsBlockMetadata(t *testing.T) {
 
 func TestPythonFormsBlockMetadataNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Python declared forms negative control")
 	u := loadUnit(t, formsMetadataSchema)
 	for _, tc := range []struct{ anchor, replacement, failure string }{
 		{`forms=("wire",),`, `forms=("wire", "block"),`, "A forms"},

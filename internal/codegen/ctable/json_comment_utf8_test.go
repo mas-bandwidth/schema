@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -26,7 +25,6 @@ import (
 // name when SCHEMA_REQUIRE_CORPUS says the corpus is required.
 func runCProbeCapture(t *testing.T, schema, probe string) string {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

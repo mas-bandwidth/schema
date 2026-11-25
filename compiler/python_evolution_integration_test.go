@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -58,7 +57,6 @@ func TestPythonEvolutionPublicCompiler(t *testing.T) {
 // same old-declaration value, whose wire is made by the independent Go engine.
 func TestPythonEvolutionOldWriterFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python, mypy and C++ evolution wire")
 	old := unitFromSource(t, pythonEvolutionOld)
 	wire := pythonEvolutionOldWire(t, old)
 	cpp, err := New().Generate(old, "cpp", Options{})
@@ -168,7 +166,6 @@ func pythonEvolutionOldWire(t *testing.T, old *ir.Unit) []byte {
 // package and prove that the old-writer check detects each independent fault.
 func TestPythonEvolutionRenameNegativeControls(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "pinned Python rename negative controls")
 	wire := pythonEvolutionOldWire(t, unitFromSource(t, pythonEvolutionOld))
 	files, err := New().Generate(unitFromSource(t, pythonEvolutionNew), "python", Options{})
 	if err != nil {

@@ -24,7 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -36,7 +35,6 @@ import (
 // against the Go engine's message bytes for the corpus keyed rows, both ways.
 func TestElixirMessageKeyedArrays(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
@@ -179,7 +177,6 @@ Probe.run()
 // runMessageKeyedProbe runs one generated probe against the TableMessage module
 // alone, the way a consumer that imports only the message surface would.
 func runMessageKeyedProbe(t *testing.T, elixirBin string, module []byte, probe string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

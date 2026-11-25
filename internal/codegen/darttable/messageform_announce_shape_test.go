@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -131,7 +130,6 @@ func announceShapeBatch(refBits, ref, payloadBits int) []byte {
 // letting a control edit the emitted source in memory first.
 func runAnnounceShapeProbe(t *testing.T, u *ir.Unit, root, body string, edit func(map[string][]byte)) (string, error) {
 	t.Helper()
-	slowtest.Gate(t, "dart (it runs the generated announce shape probe)")
 	files, err := dart.Generate(u)
 	if err != nil {
 		t.Fatalf("generate packet: %v", err)

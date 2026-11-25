@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -326,7 +325,6 @@ func csBlobRun(t *testing.T, schemaSrc, body, using string, edit func(map[string
 	if edit == nil {
 		return t08RunCS(t, schemaSrc, body, using)
 	}
-	slowtest.Gate(t, "an external toolchain")
 	u := unitFrom(t, schemaSrc)
 	files, err := Generate(u)
 	if err != nil {

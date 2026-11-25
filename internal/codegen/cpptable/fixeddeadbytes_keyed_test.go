@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -128,7 +127,6 @@ int main( int argc, char ** argv )
 `
 
 func cppFixedDeadKeyedProbeBinary(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 	t.Helper()
 	u := loadUnitFromSource(t, cppFixedDeadKeyedSchema)
 	files, err := cpp.Generate(u)
@@ -175,7 +173,6 @@ func cppFixedDeadKeyedProbeBinary(t *testing.T) string {
 
 func TestFixedDeadBytesKeyedSlots(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "a C++ compiler (it runs the generated reader over a keyed record)")
 	probe := cppFixedDeadKeyedProbeBinary(t)
 	for _, vec := range []struct {
 		name string

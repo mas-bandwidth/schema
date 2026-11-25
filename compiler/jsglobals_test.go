@@ -419,7 +419,6 @@ console.log('OK');
 // its declarations pass tsc --strict for a consumer reading each of them.
 func TestJsUnitDeclaringEveryGlobalRunsAndTypeChecks(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node, serialize.js and tsc (they run and type-check the generated modules)")
 	files, err := New().Generate(loadJsGlobalsShadow(t), "js", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -564,7 +563,6 @@ table Entry
 	}
 
 	t.Run("tsc", func(t *testing.T) {
-		slowtest.Gate(t, "tsc (it type-checks the generated declarations)")
 		tsc := slowtest.Program(t, "tsc", "TSC", "SCHEMA_REQUIRE_TSC")
 		dir := t.TempDir()
 		args := []string{"--strict", "--noEmit", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext"}

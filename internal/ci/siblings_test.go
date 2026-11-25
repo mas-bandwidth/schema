@@ -9,8 +9,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // SIBLINGS, at the repository root, lists the pinned sibling checkouts the
@@ -120,7 +118,6 @@ func TestSiblingsFileMatchesMakePins(t *testing.T) {
 // negative control: with one sibling removed, the refusal fires.
 func TestSiblingsPresentMakeDepsFetchesNothing(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "make and git (make deps over present siblings)")
 
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("this gate shells out to make: %v", err)

@@ -6,11 +6,9 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestPythonListKindsCppOracle(t *testing.T) {
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	c := wideVTConstruct{root: "Root", schema: `package listcpp
 enum Grade { A, B, C }
 flags Perm { Read, Write, Own }
@@ -56,7 +54,6 @@ print("ok")
 }
 
 func TestPythonMapPointerListCppOracle(t *testing.T) {
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	c := wideVTConstruct{root: "Root", schema: `package maplistcpp
 table Node { value int32 }
 table Root { links map[uint8][]*Node }
@@ -88,7 +85,6 @@ print("ok")
 }
 
 func TestPythonOptionalEnumArrayCppOracle(t *testing.T) {
-	slowtest.Gate(t, "generated C++ and both pinned Python interpreters")
 	c := wideVTConstruct{root: "Root", schema: `package optionenumcpp
 enum Mode { A, B, C }
 table Root {

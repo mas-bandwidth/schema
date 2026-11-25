@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -57,7 +56,6 @@ func goOracleKeyedRefuses(t *testing.T, u *ir.Unit, wire []byte) bool {
 }
 
 func javaKeyedRefuses(t *testing.T, u *ir.Unit, root string, wire []byte) bool {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := Generate(u)

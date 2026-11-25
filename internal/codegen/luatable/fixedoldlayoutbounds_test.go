@@ -18,7 +18,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -60,7 +59,6 @@ fixed table Bounds
 // Functional (luaBinary): run with SCHEMA_SLOW=1.
 func TestLuaFixedOlderLayoutHoldsBounds(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "lua (it runs an older and a newer emitted module of one fixed-form lineage)")
 	src := t.TempDir()
 	oldPath := filepath.Join(src, "VOLD_old_layout_bounds.schema")
 	newPath := filepath.Join(src, "VNEW_old_layout_bounds.schema")

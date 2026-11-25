@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -184,7 +183,6 @@ func rustNegZeroCrate(t *testing.T, dir string, modules map[string][]byte) {
 // TestRustCompressedNegZeroCorpus runs the corpus on the Rust leg.
 func TestRustCompressedNegZeroCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (it compiles and runs the compressed -0 writer corpus)")
 	keyedRequireRustc(t)
 	src, err := os.ReadFile(filepath.Join(rustNegZeroCorpusDir, "Probe.schema"))
 	if err != nil {

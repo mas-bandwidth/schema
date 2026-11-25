@@ -23,7 +23,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -1380,7 +1379,6 @@ func mooFixedProofUnit(t *testing.T, c mooFixedValueCase) (*ir.Unit, *generatedU
 // fixed-file-roundtrip row is TestMooFixedFormAgreesWithTheByteOracle over
 // the reference's corpus.
 func TestMooFixedProofSuiteValues(t *testing.T) {
-	slowtest.Gate(t, "moo and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	allMooFixedValueCases := mooFixedValueCases()
 	if len(allMooFixedValueCases) == 0 {
@@ -1427,7 +1425,6 @@ func TestMooFixedProofSuiteValues(t *testing.T) {
 // the last byte of each record body — moo's file is no longer the reference's
 // and the C++ verifier refuses it.
 func TestMooFixedProofSuiteNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo and c++ (it runs the emitted fixed-form runtime against a compiled C++ reference)")
 	t.Parallel()
 	const anchor = "\t\t\twriteStruct(d, plan.root, 0, v, rec)\n"
 	const planted = anchor + "\t\t\tbuffer.writeu8(rec, fixed.recordBytes - 1, bit32.bxor(buffer.readu8(rec, fixed.recordBytes - 1), 1))\n"

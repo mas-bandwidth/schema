@@ -1,25 +1,23 @@
 package slowtest
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// verdictTB records how a test ended instead of ending this one.
+// verdictTB records how a helper ended a test instead of ending this one.
 type verdictTB struct {
 	testing.TB
-	skipped, failed string
+	failed string
 }
 
 func (v *verdictTB) Helper() {}
 
-func (v *verdictTB) Skip(args ...any) {
-	v.skipped = args[0].(string)
-	panic(v)
-}
-
 func (v *verdictTB) Fatalf(format string, args ...any) {
-	v.failed = format + " " + args[0].(string)
+	v.failed = fmt.Sprintf(format, args...)
 	panic(v)
 }
 
@@ -32,27 +30,22 @@ func verdictOf(f func(testing.TB)) (v *verdictTB) {
 
 const noSuchTool = "schema-no-such-toolchain-on-any-path"
 
-func TestAMissingToolIsASkipWithAReason(t *testing.T) {
-	t.Setenv("SCHEMA_REQUIRE_CORPUS", "")
+func TestAMissingToolFailsNamingIt(t *testing.T) {
 	v := verdictOf(func(tb testing.TB) { Tool(tb, noSuchTool) })
-	if v.skipped != "no "+noSuchTool+" on PATH" || v.failed != "" {
-		t.Errorf("a missing tool: skipped %q, failed %q; want a skip that names it", v.skipped, v.failed)
-	}
-}
-
-func TestAMissingToolFailsWhereTheLaneIsMeantToHaveIt(t *testing.T) {
-	t.Setenv("SCHEMA_REQUIRE_CORPUS", "1")
-	v := verdictOf(func(tb testing.TB) { Tool(tb, noSuchTool) })
-	if v.skipped != "" || !strings.Contains(v.failed, "no "+noSuchTool+" on PATH") {
-		t.Errorf("a missing tool under SCHEMA_REQUIRE_CORPUS: skipped %q, failed %q; want a failure that names it", v.skipped, v.failed)
+	if !strings.Contains(v.failed, "no "+noSuchTool+" on PATH") {
+		t.Errorf("a missing tool: failed %q; want a failure that names it", v.failed)
 	}
 }
 
 func TestAToolThatIsThereIsReturned(t *testing.T) {
-	t.Setenv("SCHEMA_REQUIRE_CORPUS", "1")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "schema-probe-tool"), nil, 0o755); err != nil { // an executable stand-in, never run
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
 	var path string
-	v := verdictOf(func(tb testing.TB) { path = Tool(tb, "go") })
-	if path == "" || v.skipped != "" || v.failed != "" {
-		t.Errorf("go is on the PATH of its own test: path %q, skipped %q, failed %q", path, v.skipped, v.failed)
+	v := verdictOf(func(tb testing.TB) { path = Tool(tb, "schema-probe-tool") })
+	if path != filepath.Join(dir, "schema-probe-tool") || v.failed != "" {
+		t.Errorf("a tool on PATH: path %q, failed %q", path, v.failed)
 	}
 }

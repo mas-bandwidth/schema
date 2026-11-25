@@ -64,7 +64,6 @@ func TestWriteRefusalPacketGooseSurface(t *testing.T) {
 // unrepresentable and they are exempt.
 func runWriteRefusalPacketGoose(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs the generated packet writer)")
 	if goose, why := gooserun.Compiler(); goose == "" {
 		t.Fatalf("the Goose compiler does not resolve: %s", why)
 	}

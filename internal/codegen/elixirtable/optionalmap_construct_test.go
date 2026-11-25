@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -15,7 +14,6 @@ import (
 
 func TestOptionalMapConstructElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir optional-map native wire, retain, JSON and cook")
 	bin := elixirBinary(t)
 	base := "../../../testdata/conformance/feature-witnesses/optional-map/"
 	for _, unit := range []struct {

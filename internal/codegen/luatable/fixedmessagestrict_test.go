@@ -9,7 +9,6 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -196,7 +195,6 @@ for k, val in pairs(out) do print("LUA\t" .. k .. "\t" .. tostring(val)) end
 
 func TestLuaFixedAndMessageReadsAreStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "go and the pinned lua")
 	oracle := fixedMessageStrictGoOracle(t, fixedMessageStrictSchema)
 	lua := fixedMessageStrictLua(t, fixedMessageStrictSchema)
 	// One read (docs/plans/strict-only.md): the verdict is the contract, so

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -25,7 +23,6 @@ import (
 // same probe over that runtime must NOT reproduce the reference's bytes.
 func TestRetainedRecordsReturnToTheirOwnBody(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	src, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "tables", "RT1.schema"))
 	if err != nil {
 		t.Fatal(err)

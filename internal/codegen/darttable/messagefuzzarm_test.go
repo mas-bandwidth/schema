@@ -36,7 +36,6 @@ import (
 var dartMakeMu sync.Mutex
 
 func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 	dart := dartBinary(t)

@@ -45,7 +45,6 @@ type goRetainRow struct {
 
 func goConformanceRoot(t *testing.T) string {
 	t.Helper()
-	slowtest.Gate(t, "make and the Go toolchain (it builds and runs the Go conformance driver)")
 	for _, tool := range []string{"make", "go"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

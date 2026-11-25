@@ -2,7 +2,6 @@ package luatable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -303,7 +302,6 @@ func runUnitView(t *testing.T, files map[string][]byte, printer string) string {
 // 35 tables manifest) byte-for-byte against internal/viewlisting.
 func TestLuaUnitViewCorpusFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	units := luaViewUnits(t)
 	listed := 0
 	for _, vu := range units {
@@ -338,7 +336,6 @@ func TestLuaUnitViewCorpusFunctional(t *testing.T) {
 // line that claim owns (docs/SPEC-TABLES.md §8.7).
 func TestLuaUnitViewNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	load := func(t *testing.T, rel string) (*ir.Unit, map[string][]byte) {
 		t.Helper()
@@ -430,7 +427,6 @@ func TestLuaUnitViewNegativeControlFunctional(t *testing.T) {
 // keeps its ids, and nothing outside the view module requires it (§8.4).
 func TestLuaUnitViewPacketStorageFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "Probe.schema")
 	const src = `package probe
@@ -520,7 +516,6 @@ print("OK")
 // doc = "" or tags = {}.
 func TestLuaEmptyDocIsOneDefinitionFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	scan := func(files map[string][]byte) (refs int, inline []string) {
 		for _, name := range sortedKeys(mapStrings(files)) {
 			if !strings.HasSuffix(name, "Tables.lua") && !strings.HasSuffix(name, "View.lua") {

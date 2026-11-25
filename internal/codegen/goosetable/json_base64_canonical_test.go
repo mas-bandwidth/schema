@@ -28,7 +28,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 type jsonBase64Row struct {
@@ -92,7 +91,6 @@ func jsonBase64Want(t *testing.T, row jsonBase64Row) []byte {
 
 func TestGooseJsonBytesReadCanonicalBase64Only(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it reads every shared base64 vector)")
 	rows := readJSONBase64Vectors(t)
 	if len(rows) == 0 {
 		t.Fatal("the shared base64 vectors are empty")

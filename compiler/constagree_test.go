@@ -38,7 +38,6 @@ import (
 	"testing"
 	"unicode"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -501,7 +500,6 @@ func TestGeneratedConstantsAgreeWithCheckerRandom(t *testing.T) {
 // ---- the slow half: compile, run, compare ----
 
 func TestGeneratedConstantsCompileToCheckerValues(t *testing.T) {
-	slowtest.Gate(t, "the C, C++, Go, Node, Rust, .NET, Dart and Java toolchains (each compiles and runs the generated constants)")
 	t.Parallel()
 	withTypes := unitFromSource(t, constAgreeConsts+constAgreeTypes)
 	constsOnly := unitFromSource(t, constAgreeConsts)

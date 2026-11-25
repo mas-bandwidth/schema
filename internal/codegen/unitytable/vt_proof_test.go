@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -55,7 +54,6 @@ func mustFailUnityVTProbe(t *testing.T, files map[string][]byte, mutFile, oldStr
 // integer widening — with a planted negative control.
 func TestUnityVTCoreAndVariableGraph(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect variable-table proof")
 
 	const schemaV1 = `package vtgraph
 
@@ -394,7 +392,6 @@ class Program
 // a planted negative control.
 func TestUnityVTTextFormAndJsonStrict(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect JSON proof")
 
 	const schema = `package vtjson
 
@@ -518,7 +515,6 @@ class Program
 // and non-finite float guard) — with a planted negative control.
 func TestUnityVTBlockAndCook(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect Block and Cook proof")
 
 	const schema = `package vtbc
 
@@ -728,7 +724,6 @@ class Program
 // accounting — with a planted negative control.
 func TestUnityVTMessageAndRetainUnknown(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect Message and Retain proof")
 
 	const schemaNew = `package vtmsg
 
@@ -926,7 +921,6 @@ class Program
 // with a planted negative control.
 func TestUnityVTReflectionDocTagsAndUnitView(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect Reflection and UnitView proof")
 
 	const schema = `package vtview
 

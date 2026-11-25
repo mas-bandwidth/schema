@@ -14,7 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
@@ -158,7 +157,6 @@ func plantBareNext(t *testing.T, src string) string {
 }
 
 func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error {
-	slowtest.Gate(t, "Ruby conformance driver")
 	rubyBin := rubyrun.Interpreter(t)
 	manifest := filepath.Join(dir, "MANIFEST.txt")
 	if err := os.WriteFile(manifest, []byte("# empty manifest\n"), 0o644); err != nil {

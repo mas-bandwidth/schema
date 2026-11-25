@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -27,7 +26,6 @@ import (
 // compared, never a refusal's name (docs/rulings.json refusal-verdict-only).
 func TestJavaPointerTargetTypeChecked(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it builds and runs the generated Java over the shared vectors)")
 
 	repo := filepath.Join("..", "..", "..")
 	dir, err := filepath.Abs(filepath.Join(repo, "testdata", "wire", "pointer-target-type"))

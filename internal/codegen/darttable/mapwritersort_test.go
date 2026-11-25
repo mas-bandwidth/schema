@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -23,7 +21,6 @@ import (
 // Its reversed witness is TestMapWriterSortDartNegativeControl.
 func TestMapWriterSortDart(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := buildUnit(t, mapSortProbeSchema)
 	files, err := Generate(u)
 	if err != nil {
@@ -41,7 +38,6 @@ func TestMapWriterSortDart(t *testing.T) {
 // red on the saved bytes.
 func TestMapWriterSortDartNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	u := buildUnit(t, mapSortProbeSchema)
 	files, err := Generate(u)
 	if err != nil {

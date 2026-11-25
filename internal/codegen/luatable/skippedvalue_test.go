@@ -17,13 +17,11 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestLuaSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter (it runs the generated skipped-value probe)")
 
 	root := filepath.Join("..", "..", "..")
 	dir := filepath.Join(root, "testdata", "wire", "skipped-value")
@@ -267,7 +265,6 @@ func (b *luaBits) bytes() []byte {
 // enum-keyed array and a union, exactly as a skipped object's key does.
 func TestLuaJsonPlacedObjectKeyZero(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Lua interpreter (it runs the generated placed-key probe)")
 
 	src := `package probe
 

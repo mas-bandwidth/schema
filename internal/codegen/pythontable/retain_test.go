@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -17,7 +16,6 @@ import (
 // TestPythonRetainRoundTrip uses the shared cross-version C++-pinned files.
 func TestPythonRetainRoundTrip(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the retained C++ file")
 	root := filepath.Join("..", "..", "..")
 	u := loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema"))
 	files, err := Generate(u)
@@ -75,7 +73,6 @@ print('retain-roundtrip')
 
 func TestPythonRetainResolvedPayload(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	u := loadUnit(t, "package probe\ntable Root { n int32 }\n")
 	files, err := Generate(u)
 	if err != nil {
@@ -185,7 +182,6 @@ print('resolved')
 
 func TestPythonRetainResolverNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +212,6 @@ else:
 
 func TestPythonRetainCapture(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the C++ retain corpus")
 	root := filepath.Join("..", "..", "..")
 	u := loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema"))
 	files, err := Generate(u)
@@ -286,7 +281,6 @@ print('captured')
 
 func TestPythonRetainPathIndex(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -378,7 +372,6 @@ print('path-index')
 
 func TestPythonRetainPathIndexNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -406,7 +399,6 @@ if [r[0] for r in keep.records_at(1,((0,0),))] != [7,8]: raise SystemExit('retai
 
 func TestPythonRetainTail(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -445,7 +437,6 @@ print('tail')
 
 func TestPythonRetainTailNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -475,7 +466,6 @@ if keep.unplaced()!=0: raise SystemExit('retain_placement_control')
 
 func TestPythonRetainNodeRemapNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -508,7 +498,6 @@ if [r[0] for r in keep.records_at(2,())] != [33]: raise SystemExit('retain_node_
 
 func TestPythonRetainUnionArrayCapture(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	files, err := Generate(loadUnit(t, unionsSchema))
 	if err != nil {
 		t.Fatal(err)
@@ -572,7 +561,6 @@ print('union-array')
 
 func TestPythonRetainEnumArrayCapture(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 enum Grade { A, B }
 table Root { grades [2]Grade }
@@ -610,7 +598,6 @@ print('enum-array')
 
 func TestPythonRetainRootBodyInternal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { x int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -648,7 +635,6 @@ print('root-body')
 
 func TestPythonRetainNestedBodyInternal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { x int32 }
 table Root {
@@ -693,7 +679,6 @@ print('nested-body')
 
 func TestPythonRetainNodeBodyInternal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { x int32 }
 table Root { ptr *Child }
@@ -738,7 +723,6 @@ print('node-body')
 
 func TestPythonRetainTableArrayInternal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	const schema = `package probe
 table Child { x int32 }
 table Root { children [..3]Child }
@@ -783,7 +767,6 @@ print('table-array')
 
 func TestPythonRetainKeyedAndMapInternal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	const schema = `package probe
 enum Slot { A, B }
 table Child { x int32 }
@@ -838,7 +821,6 @@ print('keyed-map')
 
 func TestPythonRetainCrossVersionInternal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the retained C++ file")
 	root := filepath.Join("..", "..", "..")
 	files, err := Generate(loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema")))
 	if err != nil {
@@ -892,7 +874,6 @@ func TestPythonRetainNames(t *testing.T) {
 
 func TestPythonRetainFixedRefusal(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and strict mypy")
 	files, err := Generate(loadUnit(t, "package probe\nfixed table Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -928,7 +909,6 @@ print('fixed-refusal')
 
 func TestPythonRetainDirectFrameBoundaries(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -960,7 +940,6 @@ print('frames')
 
 func TestPythonRetainPublicNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the retained C++ file")
 	root := filepath.Join("..", "..", "..")
 	unit := loadUnitPaths(t, filepath.Join(root, "test/tables/RT1.schema"))
 	input, err := os.ReadFile(filepath.Join(root, "testdata/wire/tables/retain_rt2.bin"))
@@ -1006,7 +985,6 @@ if r.retained != 9 or value.save_retain(keep,r) != expected: raise SystemExit('`
 
 func TestPythonRetainManifestSave(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the retain manifest")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -1072,7 +1050,6 @@ func TestPythonRetainManifestSave(t *testing.T) {
 
 func TestPythonRetainOutputAllocationShape(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 table Root { child Child }
@@ -1160,7 +1137,6 @@ print('known-last')
 
 func TestPythonRetainTotalIDKnownLast(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 table Root {
@@ -1193,7 +1169,6 @@ table Root {
 
 func TestPythonRetainTotalIDDroppedDefaultSlot(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 enum Slot { A }
 table Child { n int32 }
@@ -1244,7 +1219,6 @@ print('dropped-default-slot')
 
 func TestPythonRetainGuardedBody(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 table Root {
@@ -1284,7 +1258,6 @@ print('guarded-body')
 
 func TestPythonRetainPointerArrayIdentity(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 table Root { refs [..3]*Child }
@@ -1326,7 +1299,6 @@ print('pointer-array-retain')
 
 func TestPythonRetainDepth128(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	files, err := Generate(loadUnit(t, "package probe\ntable Root { n int32 }\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -1368,7 +1340,6 @@ print('depth-128')
 
 func TestPythonRetainKnownIDNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
  table Child { n int32 }
  table Root {
@@ -1399,7 +1370,6 @@ func TestPythonRetainKnownIDNegativeControl(t *testing.T) {
 
 func TestPythonRetainFixedArrayGrowth(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 table Root { children [3]Child }
@@ -1442,7 +1412,6 @@ print('retained-growth')
 
 func TestPythonRetainKeyedEnum(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 enum Slot { A, B }
 enum Grade { Low, High }
@@ -1491,7 +1460,6 @@ print('keyed-enum-retain')
 
 func TestPythonRetainArrayWideningReport(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and the Go widening oracle")
 	writer := loadUnit(t, "package probe\ntable Root {\n values []int16\n future int32\n}\n")
 	reader := loadUnit(t, "package probe\ntable Root { values []int32 }\n")
 	wire := wideEngineWire(t, writer, "Root", `{"values":[-1265,17],"future":7}`)
@@ -1529,7 +1497,6 @@ print('retain-widen')
 
 func TestPythonRetainUnionEnumArrayArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 enum Grade { Low, High }
 union Pick { list [2]Grade }
@@ -1577,7 +1544,6 @@ print('union-enum-array-arm')
 
 func TestPythonRetainOptionalEnumArray(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 enum Grade { A, B }
 table Root { grades ?[2]Grade }
@@ -1620,7 +1586,6 @@ print('optional-enum-retain')
 
 func TestPythonRetainUnionUnionArrayArm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 union Inner { leaf Child }
@@ -1669,7 +1634,6 @@ print('union-union-array')
 
 func TestPythonRetainOptionalTableArray(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Child { n int32 }
 table Root { children ?[2]Child }
@@ -1715,7 +1679,6 @@ print('optional-table-array')
 
 func TestPythonRetainOptionalMap(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	const schema = `package probe
 table Root { mapping ?map[int32]int32 }
 `
@@ -1762,7 +1725,6 @@ print('optional-map-retain')
 
 func TestPythonRetainDriverNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters and retain manifest")
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
@@ -1814,7 +1776,6 @@ func TestPythonRetainDriverNegativeControl(t *testing.T) {
 
 // TestPythonRetainKnownOnlyIDOverflow checks edits after a legal retained load.
 func TestPythonRetainKnownOnlyIDOverflow(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	var schema strings.Builder
 	schema.WriteString("package probe\nenum Many { ")
 	for i := 1; i <= 4096; i++ {
@@ -1870,7 +1831,6 @@ print('known-only-bound')
 
 // TestPythonRetainMapEntryIDBudget ensures preview reserves only known IDs.
 func TestPythonRetainMapEntryIDBudget(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	var schema strings.Builder
 	schema.WriteString("package probe\nenum Many { ")
 	for i := 1; i <= 4093; i++ {
@@ -1942,7 +1902,6 @@ print('map-known-budget')
 }
 
 func TestPythonRetainKnownKeyedIDLimit(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, kind := range []string{"scalar", "table"} {
 		t.Run(kind, func(t *testing.T) {
 			var schema strings.Builder
@@ -2014,7 +1973,6 @@ print('retained-keyed-bound')
 }
 
 func TestPythonRetainSelectedRuntime(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	u := loadUnit(t, "package probe\ntable Root { value int32 }\n")
 	surfaces, err := ParseSurfaces("wire,retain")
 	if err != nil {
@@ -2103,10 +2061,8 @@ func testRetainZeroID(t *testing.T, sabotage bool) {
 }
 
 func TestPythonRetainZeroIDField(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	testRetainZeroID(t, false)
 }
 func TestPythonRetainZeroIDNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters")
 	testRetainZeroID(t, true)
 }

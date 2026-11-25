@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -22,7 +20,6 @@ func TestFixedRoadmapJavaT17PlanPartition(t *testing.T) {
 	t.Parallel()
 	t.Run("java/W6", func(t *testing.T) {
 		t.Parallel()
-		slowtest.Gate(t, "javac/java (it compiles and runs the generated unit)")
 		javac, javaBin := javaTools(t)
 		const schema = `package probe
 type ArmA { n int32 }

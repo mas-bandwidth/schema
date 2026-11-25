@@ -8,7 +8,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A declaration named eval, arguments or undefined cannot be a module-scope
@@ -76,7 +75,6 @@ table Entry
 	maps.Copy(files, packet)
 
 	t.Run("node", func(t *testing.T) {
-		slowtest.Gate(t, "node (it saves and loads the generated table)")
 		out := runJSConstructProbe(t, files, runtimeHome(u)+"Variable.js", jsBindingNamesDriver, struct{}{})
 		if !strings.Contains(out, "BINDING NAMES OK\n") {
 			t.Fatalf("the fields did not round-trip: %s", out)

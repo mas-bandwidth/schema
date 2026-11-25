@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -272,7 +271,6 @@ func TestRustFixedRemainingRowsStrict(t *testing.T) {
 		t.Fatalf("the strict read does not hold the rule: %v", err)
 	}
 	t.Run("FunctionalRustc", func(t *testing.T) {
-		slowtest.Gate(t, "functional test: rustc builds and runs the generated R29/C7/P3 fixed-load probe")
 		if _, err := exec.LookPath("rustc"); err != nil {
 			t.Skipf("rustc not on PATH: %v", err)
 		}
@@ -302,7 +300,6 @@ func TestRustFixedRemainingRowsStrictNegativeControl(t *testing.T) {
 		t.Fatal("negative control: the strict-read check passed on a faulted artefact")
 	}
 	t.Run("FunctionalRustc", func(t *testing.T) {
-		slowtest.Gate(t, "functional test: rustc builds and runs the fault-planted R29/C7/P3 fixed-load probe")
 		if _, err := exec.LookPath("rustc"); err != nil {
 			t.Skipf("rustc not on PATH: %v", err)
 		}

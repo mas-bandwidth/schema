@@ -266,7 +266,6 @@ int main( void )
 // committed canonical text byte for byte, and each refuse row is refused.
 func TestCppJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (it compiles and runs the generated unit)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -425,7 +424,6 @@ func TestJavaVariableCellsStrict(t *testing.T) {
 		t.Error(finding)
 	}
 
-	slowtest.Gate(t, "the JDK (the leg's own toolchain)")
 	out, err := javaVariableCellsStrictRun(t, nil)
 	if err != nil {
 		t.Fatalf("Java variable cells strict runtime probe failed: %v\n%s", err, out)
@@ -459,7 +457,6 @@ func TestJavaVariableCellsStrictNegativeControl(t *testing.T) {
 		}
 	}
 
-	slowtest.Gate(t, "the JDK (the leg's own toolchain)")
 	const wireHeaderGuard = "switch (wc.file(base)) {"
 	undermined := false
 	out, err := javaVariableCellsStrictRun(t, func(pkg string, files map[string][]byte) {

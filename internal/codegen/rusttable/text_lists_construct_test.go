@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -15,7 +14,6 @@ import (
 )
 
 func TestRustTextListsNative(t *testing.T) {
-	slowtest.Gate(t, "rustc (four bounded text-list shapes)")
 	keyedRequireRustc(t)
 	schema, err := os.ReadFile("../../../testdata/conformance/feature-witnesses/text-lists/Probe.schema")
 	if err != nil {

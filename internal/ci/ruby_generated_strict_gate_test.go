@@ -13,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func rubyStrictGateUnits(t *testing.T, root string) map[string]map[string][]byte {
@@ -120,7 +119,6 @@ func rubyStrictGateWriteAndPkg(t *testing.T, dir string, files map[string][]byte
 
 func TestRubyGeneratedStrictGate(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters and strict analyzers")
 	root := repoRoot(t)
 	units := rubyStrictGateUnits(t, root)
 	if len(units) < 40 {
@@ -155,7 +153,6 @@ func TestRubyGeneratedStrictGate(t *testing.T) {
 
 func TestRubyGeneratedStrictGatePlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters and strict analyzers")
 	root := repoRoot(t)
 	paths, err := compiler.GatherPaths([]string{filepath.Join(root, "tables", "pointers")})
 	if err != nil {
@@ -266,7 +263,6 @@ func TestRubyGeneratedStrictGatePlantedPattern(t *testing.T) {
 // of the file, 937 CPU-seconds of RuboCop over the set in all, 123 now.
 func TestRubyGeneratedStrictGateFast(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters and RuboCop")
 	root := repoRoot(t)
 	units := rubyStrictGateUnits(t, root)
 	if len(units) < 40 {

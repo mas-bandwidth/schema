@@ -227,7 +227,6 @@ type csVersionProbe struct {
 }
 
 func csVersionBuildAndRun(t *testing.T, corpus string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

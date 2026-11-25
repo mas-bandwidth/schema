@@ -6,8 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // DUPLICATE DETECTION IS NEAR-LINEAR (LOBSTER-3; the Go reference's map, and
@@ -35,7 +33,6 @@ func TestLobsterDuplicateTestsUseTheSet(t *testing.T) {
 
 func TestLobsterIdSetHoldsItsContract(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Lobster toolchain")
 	g := finiteGenerate(t, "package idset\ntable Probe { a int32 }\n")
 	out := finiteRun(t, g, `
 let s = schema_rt.IdSet {}

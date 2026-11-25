@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirFixedSaveLooksUpNamesWithoutAtoms pins the write contract
@@ -27,7 +25,6 @@ import (
 // missing toolchain fails by name (elixirBinary).
 func TestElixirFixedSaveLooksUpNamesWithoutAtoms(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {

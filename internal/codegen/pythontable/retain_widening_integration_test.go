@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -17,7 +16,6 @@ import (
 // TestPythonRetainContainerWidening checks current widening while retaining a
 // newer writer's independent field, including the report and saved bytes.
 func TestPythonRetainContainerWidening(t *testing.T) {
-	slowtest.Gate(t, "both pinned Python interpreters and Go retaining oracle")
 	for _, tc := range []struct{ name, old, current, input, check string }{
 		{"keyed", "enum Slot { A, B }\ntable Root { slots [Slot]int8\n future int32 }", "enum Slot { A, B }\ntable Root { slots [Slot]int32 }", `{"slots":{"A":7,"B":9},"future":3}`, "v.slots[1]==7 and v.slots[2]==9"},
 		{"arm", "union Choice { number int8 }\ntable Root { pick Choice\n future int32 }", "union Choice { number int32 }\ntable Root { pick Choice }", `{"pick":{"number":-100},"future":3}`, "v.pick.number==-100"},

@@ -1,7 +1,6 @@
 package rusttable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 // for byte, and refuses an unknown property, an out-of-range enum and an
 // over-bound string — never truncating one silently.
 func TestCardTextFormMatchesGo(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Parallel()
 

@@ -27,7 +27,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -223,7 +222,6 @@ fn main() {
 
 func TestGooseJSONRepeatedKeyEveryObject(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs both JSON reads)")
 	fails, cases := repeatedKeyRun(t, nil)
 	for _, f := range fails {
 		t.Error(f)
@@ -236,7 +234,6 @@ func TestGooseJSONRepeatedKeyEveryObject(t *testing.T) {
 
 func TestGooseJSONRepeatedKeyEveryObjectNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Goose toolchain (it compiles and runs both JSON reads)")
 	fails, _ := repeatedKeyRun(t, repeatedKeyRemoveSkipSet)
 	if len(fails) == 0 {
 		t.Fatal("NEGATIVE CONTROL FAILED: removing the skip's key-set check left every text green")

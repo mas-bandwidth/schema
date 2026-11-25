@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -123,7 +122,6 @@ func docTagsDiff(t *testing.T, u *ir.Unit, files map[string][]byte) (irLine, lua
 // arm tag.
 func TestLuaTableDocAndTagsMatchTheIRFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
 	keys := make([]string, 0, len(units))
@@ -178,7 +176,6 @@ func TestLuaTableDocAndTagsMatchTheIRFunctional(t *testing.T) {
 // comparison red on that line.
 func TestLuaTableDocAndTagsNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 functional probe")
 	repo := filepath.Join("..", "..", "..")
 	u := luarun.LoadUnit(t, filepath.Join(repo, "tables", "examples"))
 	for _, tc := range []struct{ name, from, to, line, column string }{

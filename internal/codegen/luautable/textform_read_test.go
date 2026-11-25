@@ -266,7 +266,6 @@ func tfJSONDocument(v *Document) []byte {
 // (docs/SPEC-TABLES.md §16.9, §16.9.4).
 func TestLuauLoadTextFormAgreesWithGo(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	cases := tfCases(t)
 	for _, unit := range []struct {
 		name  string

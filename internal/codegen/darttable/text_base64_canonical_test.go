@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -203,7 +202,6 @@ func dartJsonBase64Run(t *testing.T, files map[string][]byte, cases []dartJsonBa
 
 func TestDartJsonBase64Canonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 
 	cases := dartJsonBase64Cases(t)
 	u := buildUnit(t, dartJsonBase64Schema)

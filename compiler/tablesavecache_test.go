@@ -205,7 +205,6 @@ int main()
 // main's emitter wrote, over arrays below, at and above the measure cache's
 // bound and over elements whose nested table elides.
 func TestCppTableSaveMeasureCacheBytes(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skip("the generated save path is C++: no c++ on PATH")

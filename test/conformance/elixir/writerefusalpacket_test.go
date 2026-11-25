@@ -53,7 +53,6 @@ var exempt = map[string]string{}
 
 func runSurface(t *testing.T) {
 	t.Helper()
-	slowtest.Gate(t, "the Elixir toolchain (it compiles and runs the generated packet writer)")
 	elixirBin := slowtest.Tool(t, "elixir")
 	elixircBin := slowtest.Tool(t, "elixirc")
 	t.Chdir("../../..")

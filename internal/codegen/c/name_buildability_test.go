@@ -15,12 +15,10 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/nameemit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestNameCorpusBuildsC(t *testing.T) {
-	slowtest.Gate(t, "the C compiler and the serialize.c sibling")
 	serialize := os.Getenv("SERIALIZE_C")
 	if serialize == "" {
 		serialize = filepath.Join("..", "..", "..", "..", "serialize.c")

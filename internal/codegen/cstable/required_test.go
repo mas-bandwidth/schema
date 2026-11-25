@@ -16,7 +16,6 @@ import (
 )
 
 func TestRequiredCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	// The independent generated-Go tests required*, keyedrequired and
 	// requiredoffbranch pin this contract: one event per refused body, names in
 	// declaration order, compatible wire reads versus named JSON key presence.
@@ -186,7 +185,6 @@ table EmptyFields {
 }
 
 func TestRequiredCSharpBeyond512(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	var schema strings.Builder
 	schema.WriteString("package probe\ntable Root {}\ntable Many {\n")
 	for i := range 512 {

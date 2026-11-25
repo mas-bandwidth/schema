@@ -24,8 +24,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -156,7 +154,6 @@ func t05GoR24(t *testing.T) {
 // under a bare `go test`.
 func t05RunProbe(t *testing.T, schema, probe string) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated probe)")
 	files, err := Generate(unitFrom(t, schema))
 	if err != nil {
 		t.Fatalf("t05: Generate: %v", err)

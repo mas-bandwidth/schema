@@ -9,7 +9,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -117,7 +116,6 @@ const repeatedKeyWant = "clean.load=read\nclean.strict=read\nclean.retain=read\n
 // clean wire, the engine's own, reads on every path.
 func TestLuauMapRepeatedKeyRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	if out := repeatedKeyRun(t, "", ""); out != repeatedKeyWant {
 		t.Fatalf("repeated map key:\n%s\nwant\n%s", out, repeatedKeyWant)
 	}
@@ -127,7 +125,6 @@ func TestLuauMapRepeatedKeyRefused(t *testing.T) {
 // read's refusing set and requires the row to go red.
 func TestLuauMapRepeatedKeyRefusedNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter")
 	out := repeatedKeyRun(t, `"blobShared", "clamped", "kindMismatch", "duplicate" }`, `"blobShared", "clamped", "kindMismatch" }`)
 	if out == repeatedKeyWant {
 		t.Fatalf("the planted defect left the row green:\n%s", out)

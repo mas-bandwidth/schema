@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -36,7 +35,6 @@ import (
 // test cannot pass over a writer that does not sort.
 func TestMapWriterSortJavaScript(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated modules)")
 	node := jsNode(t)
 	work := t.TempDir()
 

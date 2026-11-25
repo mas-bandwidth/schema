@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -43,7 +42,6 @@ print(tostring(v ~= nil))
 // which reason each names is not compared (docs/rulings.json
 // refusal-verdict-only), so the old crossing-versus-cap control is retired.
 func TestMooCountCrossingLengthIsRefused(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
 	wire, err := os.ReadFile(filepath.Join("..", "..", "..", "testdata", "wire", "tables", "fuzz-vectors", "list_count_cross_length.bin"))
 	if err != nil {

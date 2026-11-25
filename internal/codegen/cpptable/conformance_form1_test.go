@@ -240,7 +240,6 @@ func cppConformanceMake(t *testing.T, root string, args ...string) {
 
 func cppConformanceRoot(t *testing.T) string {
 	t.Helper()
-	slowtest.Gate(t, "make and the C++ compiler (it builds and runs the C++ conformance driver)")
 	for _, tool := range []string{"make", "c++"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

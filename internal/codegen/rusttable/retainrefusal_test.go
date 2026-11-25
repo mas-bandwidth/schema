@@ -7,13 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestRetainedUnknownBeforeNonFiniteRefusalRust(t *testing.T) {
-	slowtest.Gate(t, "native Rust retained-state regression")
 	writer := unitFrom(t, "package late\nfixed table Root {\n extra int32\n value float32\n}\n")
 	reader := unitFrom(t, "package late\nfixed table Root {\n value float32\n}\n")
 	m := tabletext.NewModel(writer)

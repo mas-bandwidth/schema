@@ -14,7 +14,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -363,7 +362,6 @@ func TestJavaCardsStrict(t *testing.T) {
 		t.Fatalf("tables/cards/java sources are not on the strict TableVariable.Report names:\n%s", strings.Join(bad, "\n"))
 	}
 	t.Run("FunctionalJava", func(t *testing.T) {
-		slowtest.Gate(t, "functional test: javac/java builds and runs the Java cards facade, CardsTest, and 9 conformance surfaces")
 		javac, java, ok := findJavaToolsForCards(t)
 		if !ok {
 			return
@@ -441,7 +439,6 @@ func TestJavaCardsStrictNegativeControl(t *testing.T) {
 	}
 
 	t.Run("FunctionalJava", func(t *testing.T) {
-		slowtest.Gate(t, "functional test: javac/java negative controls for Java cards strict names and conformance surfaces")
 		javac, java, ok := findJavaToolsForCards(t)
 		if !ok {
 			return

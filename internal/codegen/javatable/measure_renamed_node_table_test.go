@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
@@ -109,7 +108,6 @@ func TestJavaFixMeasureRenamedNodeTable(t *testing.T) {
 // javaLoadMeasure generates and compiles the unit's Java, then answers
 // <root>Variable.loadMeasure over wire.
 func javaLoadMeasure(t *testing.T, u *ir.Unit, rootName string, wire []byte) int64 {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	files, err := Generate(u)

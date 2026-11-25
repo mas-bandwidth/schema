@@ -19,8 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -44,7 +42,6 @@ table Integers
 // takes an integer token only — no fraction, no exponent, no negative zero.
 func TestDartJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dart")
 	dart := dartBinary(t)
 
 	u := unitFrom(t, jsonIntegersSchema)

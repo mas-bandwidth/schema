@@ -17,7 +17,6 @@ import (
 // so a control can require both spots removed at once.
 func runSabotagedChained(t *testing.T, root, pkg, run string, sabotages ...slowtest.Sabotage) (string, bool) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it rebuilds the package with a sabotaged file)")
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		t.Fatal(err)

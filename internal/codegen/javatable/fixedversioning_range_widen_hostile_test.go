@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
@@ -21,7 +20,6 @@ import (
 // primitive array as one `list:` value, so the expected elements are joined
 // the same way.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
-	slowtest.Gate(t, "javac and java (it runs the generated NEW reader over the forged file)")
 	corpus := corpusDir(t)
 	for _, vec := range fixedvector.WriterRange {
 		t.Run(vec.Name, func(t *testing.T) {

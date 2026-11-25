@@ -1,6 +1,0 @@
-# Test sources under compiler/ and internal/codegen/ that reach a foreign
-# toolchain (exec.Command, exec.CommandContext, exec.LookPath, findDotnet)
-# without calling slowtest.Gate, as of the scan widening on 2026-10-27.
-# A RATCHET: TestEveryToolchainTestIsBehindTheGate fails on any ungated
-# source not listed here AND on any entry here that is gated, gone, or no
-# longer reaches a toolchain. Gate a file, then delete its line. Never add one.

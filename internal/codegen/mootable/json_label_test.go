@@ -3,8 +3,6 @@ package mootable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooJsonNodeLabelNegativeControl is the reversed witness of the `&node`
@@ -18,7 +16,6 @@ import (
 //	reader  a label's reference resolves to null instead of the node it
 //	        defined: json-read red on graph_shared
 func TestMooJsonNodeLabelNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	for _, c := range []struct {

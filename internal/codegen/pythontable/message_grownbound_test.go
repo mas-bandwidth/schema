@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -34,7 +33,6 @@ fixed table Root {
 
 func TestPythonMessageGrownBoundPadsOneDefaultPerSlot(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	reader := loadUnit(t, msgGrownBoundReader)
 	writer := loadUnit(t, strings.ReplaceAll(msgGrownBoundReader, "[3]", "[1]"))
 	wm := tabletext.NewModel(writer)

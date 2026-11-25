@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -14,7 +13,6 @@ import (
 // AnnounceMeasure answer nothing.
 func TestUnityAnnouncementWriterRefusesMoreThan4096Entries(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect announcement vocabulary maximum")
 	run := func(entries int, body string) {
 		u := fixedproof.ParseCheckUnit(t, tablewire.AnnounceSchema(entries))
 		files, err := unityGenerateFiles(u, nil)

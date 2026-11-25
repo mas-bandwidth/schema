@@ -112,7 +112,6 @@ int main( int argc, char ** argv )
 
 func buildCTableFixedMeasureProbe(t *testing.T, u *ir.Unit, source string, release bool) string {
 	t.Helper()
-	slowtest.Gate(t, "the C compiler (cc)")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("generated C execution requires cc")

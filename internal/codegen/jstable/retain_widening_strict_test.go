@@ -31,13 +31,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
 func TestJsRetainAndWideningStrict(t *testing.T) {
-	slowtest.Gate(t, "node")
 	repo := jsStrictRepo(t)
 	for _, w := range jsStrictCells(t, repo, nil) {
 		t.Error(w)
@@ -45,7 +42,6 @@ func TestJsRetainAndWideningStrict(t *testing.T) {
 }
 
 func TestJsRetainAndWideningStrictNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "node")
 	repo := jsStrictRepo(t)
 
 	t.Run("widening_no_file_form", func(t *testing.T) {

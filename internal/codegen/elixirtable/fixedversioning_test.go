@@ -638,7 +638,6 @@ func fixedCorpus(t *testing.T) string {
 // else). A bench with no Elixir anywhere still skips, and still FAILS under
 // SCHEMA_REQUIRE_CORPUS: the leg's gate is never satisfied by absence.
 func elixirBinary(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if env := os.Getenv("ELIXIR"); env != "" {
@@ -940,7 +939,6 @@ func runVersionProbe(t *testing.T, elixirBin, reader string, older []string, ret
 // declares more than one fixed table reads through the one the corpus was
 // written from, never whichever root the walk answers first.
 func runRootProbe(t *testing.T, elixirBin, reader, root string, older []string, retire int, file, body string) (string, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := versionSchema(t, reader)
@@ -1073,7 +1071,6 @@ Probe.run()
 // is where CI's OTP is — and what it returns is PREPENDED to PATH rather than
 // replacing it, so a directory that turns out to hold no `erl` costs nothing.
 func otpBin(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if env := os.Getenv("ERL_BIN"); env != "" {

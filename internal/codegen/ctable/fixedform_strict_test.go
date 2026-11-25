@@ -336,7 +336,6 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 		}
 	})
 
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs compiled C fixed-form binaries")
 	corpus := cStrictCorpus(t)
 
 	// c/F1, c/F2, c/F3 and the 8 valid-data rows (fixed-arrays, bool-values,
@@ -916,8 +915,6 @@ func TestCFixedFormSourcesStrictNegativeControl(t *testing.T) {
 			t.Fatal("negative control missing_load_call: checkCFixedFormSourcesStrict accepted reader unit without *_fixed_load")
 		}
 	})
-
-	slowtest.Gate(t, "functional negative control: invokes the C compiler (cc) on mutated C fixed-form artifacts")
 
 	// 2. Functional negative control: plant a fault in FX1Table.h disabling out_of_range refusal in the clamp pass.
 	t.Run("plant_fx1_range_refusal", func(t *testing.T) {

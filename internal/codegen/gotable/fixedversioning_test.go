@@ -823,7 +823,6 @@ func TestRefuseWritesNothing(t *testing.T) {
 // this gate exists to forbid.
 func TestFixedFormCorpusBuildsOnTheBench(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ reference's byte oracle")
 	path, err := filepath.Abs("../../../build/fixedform-corpus/manifest.txt")
 	if err != nil {
 		t.Fatal(err)
@@ -1157,7 +1156,6 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 			t.Fatal(err)
 		}
 	}
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	cmd := testproc.Command(t, "go", "test", "-count=1", ".")
 	cmd.Dir = dir
 	return cmd.CombinedOutput()

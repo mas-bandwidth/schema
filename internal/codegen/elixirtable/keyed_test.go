@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -422,7 +421,6 @@ func writeKeyedModules(t *testing.T, dir string, files map[string][]byte) []stri
 // keyed-array body immediately (docs/SPEC-TABLES.md §3.2, §4, §6.6).
 func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	v2Path := filepath.Join("..", "..", "..", "test", "tables", "V2.schema")
 	u := loadUnit(t, v2Path)
 	root := u.Tables["Cfg"]

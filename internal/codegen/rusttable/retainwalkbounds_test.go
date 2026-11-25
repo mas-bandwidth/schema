@@ -64,7 +64,6 @@ fn main() {
 `
 
 func TestRustRetainWalkLengthBounds(t *testing.T) {
-	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	t.Parallel()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -162,7 +161,6 @@ func TestRustRetainWalkLengthBounds(t *testing.T) {
 
 func buildRetainWalkProbe(t *testing.T, schemaPath string, debug bool) string {
 	t.Helper()
-	slowtest.Gate(t, "rustc (it builds the generated Rust)")
 
 	src, err := os.ReadFile(schemaPath)
 	if err != nil {

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -19,7 +18,6 @@ import (
 )
 
 func TestOneSidedRangeCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	schema := `package probe
 table Root {
  a int64 | min = 0
@@ -50,7 +48,6 @@ table Root {
 }
 
 func TestOptionalMapCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	runCarryCS(t, `package probe
 table Inner {
  by_id ?map[uint32]int32
@@ -236,7 +233,6 @@ class CarryProbe {
 }
 
 func TestArrayRootCSharp(t *testing.T) {
-	slowtest.Gate(t, "the .NET SDK")
 	t.Run("root", func(t *testing.T) {
 		runCarryCS(t, `package probe
 table Row { x int32 }

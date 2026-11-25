@@ -15,7 +15,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -555,7 +554,6 @@ func TestSchemaRubyHostileScorerOutcomes(t *testing.T) {
 
 func TestSchemaRubyRunsHostileCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	root := repoRoot(t)
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	cases := rubyHostileCorpusCases(t, corpusDir)
@@ -568,7 +566,6 @@ func TestSchemaRubyRunsHostileCorpus(t *testing.T) {
 
 func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	root := repoRoot(t)
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	cases := rubyHostileCorpusCases(t, corpusDir)
@@ -809,7 +806,6 @@ func rubyResourceBoundsRun(t *testing.T, dir string) map[string]rubyResourceBoun
 
 func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	dir := rubyResourceBoundsUnit(t, "", "")
 	got := rubyResourceBoundsRun(t, dir)
 	wants := rubyResourceBoundsWants()
@@ -838,7 +834,6 @@ func TestSchemaRubyResourceBoundsHostileShapes(t *testing.T) {
 
 func TestSchemaRubyResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Ruby interpreters")
 	// deep-unknown, not deep-nesting: a root array is refused whatever the
 	// cap (H is an object), so only nesting under a skipped unknown field
 	// shows the cap as a verdict (docs/rulings.json refusal-verdict-only)

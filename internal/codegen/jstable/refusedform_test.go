@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -34,7 +32,6 @@ table VarRoot
 // for every root, fixed-class and variable-class alike. A clean file the form
 // carries still loads.
 func TestJsRefusedFormByteLoadsNothing(t *testing.T) {
-	slowtest.Gate(t, "node (it runs the generated module)")
 
 	t.Parallel()
 	node := jsNode(t)

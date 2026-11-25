@@ -12,13 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestDartFixedBatchHoldsARecord(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Dart SDK (it runs the generated reader and writer)")
 
 	root, err := filepath.Abs("../../..")
 	if err != nil {

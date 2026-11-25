@@ -35,7 +35,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -419,7 +418,6 @@ func TestPythonVtMapsRows(t *testing.T) {
 		t.Fatalf("pythonVTMapRows is not the manifest's map rows in manifest order: not held %v, held but reach no map %v", missing, extra)
 	}
 
-	slowtest.Gate(t, "both pinned Python interpreters (it runs the emitted table runtime)")
 	fails, held := pythonVTMapRowsFailures(t, nil)
 	for _, f := range fails {
 		t.Error(f)
@@ -438,7 +436,6 @@ func TestPythonVtMapsRows(t *testing.T) {
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtMapsRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters (it runs the emitted table runtime)")
 	plant := func(from, to string) func(*testing.T, map[string][]byte) {
 		return func(t *testing.T, files map[string][]byte) {
 			t.Helper()

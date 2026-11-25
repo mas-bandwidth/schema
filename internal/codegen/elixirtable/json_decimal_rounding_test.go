@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Check the decoded value itself, before any wire writer can round it for us.
@@ -16,7 +14,6 @@ import (
 // rounding from the lossy decimal -> binary64 -> binary32 route.
 func TestJSONDecimalBinary32Elixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package decimalprobe
 table Root {
  value float32

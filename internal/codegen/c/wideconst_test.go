@@ -13,8 +13,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -65,7 +63,6 @@ func TestWideConstAndReservedC(t *testing.T) {
 // and refuses a changed constant and a nonzero reserved field.
 func runWideConstProbe(t *testing.T, files map[string][]byte, flag string) ([]byte, error) {
 	t.Helper()
-	slowtest.Gate(t, "the c compiler and the serialize.c sibling")
 	serialize, ok := setterSerializeDir(t)
 	if !ok {
 		t.Fatalf("serialize.h is not staged at %s (SERIALIZE_C, else the sibling checkout): the probe cannot compile", serialize)

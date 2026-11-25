@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -19,8 +18,6 @@ import (
 // to a character outside the base64 alphabet stays kind_mismatch.
 func TestJsonBase64BodyDecodesEscapesFirst(t *testing.T) {
 	t.Parallel()
-
-	slowtest.Gate(t, "the generated Go runtime")
 
 	files, err := Generate(goUnit(t, jsonBase64EscapeSchema))
 	if err != nil {

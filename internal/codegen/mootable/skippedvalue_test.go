@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestMooSkippedValueIsValidated runs every row of the shared skipped-value
@@ -19,7 +17,6 @@ import (
 // The verdict is the contract; a refusal's name is the leg's own diagnostic.
 func TestMooSkippedValueIsValidated(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted skipped-value probe)")
 
 	dir := filepath.Join(root, "testdata", "wire", "skipped-value")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

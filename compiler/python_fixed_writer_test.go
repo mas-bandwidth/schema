@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Functional: the public compiler generation route reads the real versioned
@@ -24,7 +23,6 @@ func TestPythonFixedWriterLockNegativeControl(t *testing.T) {
 
 func pythonFixedWriterLock(t *testing.T, sabotage bool) {
 	t.Helper()
-	slowtest.Gate(t, "the pinned Python interpreters")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Probe.schema")
 	old := `package probe

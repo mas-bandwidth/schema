@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -90,7 +89,6 @@ func elixirJsonFlagsNameOnceOracle(t *testing.T, rows []elixirJsonFlagsNameOnceR
 
 func TestElixirJsonFlagsNameOnce(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Elixir toolchain")
 
 	rows := elixirJsonFlagsNameOnceRows(t)
 	want := elixirJsonFlagsNameOnceOracle(t, rows)

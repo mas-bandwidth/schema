@@ -32,7 +32,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -157,7 +156,6 @@ var (
 )
 
 func t10Discover(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	t10dotnet = os.Getenv("DOTNET")
@@ -210,7 +208,6 @@ func t10Run(t *testing.T) ([]byte, error) {
 }
 
 func t10BuildAndRun(t *testing.T) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()

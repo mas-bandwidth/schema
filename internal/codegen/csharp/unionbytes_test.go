@@ -159,7 +159,6 @@ static class Program
 
 func runUnionByteArrayCsProbe(t *testing.T, files map[string][]byte) {
 	t.Helper()
-	slowtest.Gate(t, "dotnet (it compiles and runs the generated C# packet probe)")
 
 	dir := t.TempDir()
 	var sources []string

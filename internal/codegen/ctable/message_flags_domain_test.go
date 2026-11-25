@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 
@@ -197,7 +196,6 @@ int main(void){
 `
 
 func TestCMessageFlagsWriteDomain(t *testing.T) {
-	slowtest.Gate(t, "C compiler: message flags writer domain")
 	if out, err := cMessageFlagsDomainRun(t, false); err != nil {
 		t.Fatalf("message flags domain: %v\n%s", err, out)
 	} else {
@@ -205,7 +203,6 @@ func TestCMessageFlagsWriteDomain(t *testing.T) {
 	}
 }
 func TestCMessageFlagsWriteDomainNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "C compiler: flags writer assertion omission")
 	out, err := cMessageFlagsDomainRun(t, true)
 	if err == nil || !strings.Contains(out, "MISSING FLAGS ASSERT direct measure") {
 		t.Fatalf("assert omission did not fail named witness: %v\n%s", err, out)

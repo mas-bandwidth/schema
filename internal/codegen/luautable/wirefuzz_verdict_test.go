@@ -30,7 +30,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
@@ -247,7 +246,6 @@ func luauFuzzPipeCoverage(groups []*luauFuzzGroup) (fixed, variable int) {
 // on its pipe, through the real harness, over staged fixed and variable roots,
 // with zero divergences (docs/SPEC-TABLES.md §4.2).
 func TestLuauWireFuzzVerdictPipe(t *testing.T) {
-	slowtest.Gate(t, luauFuzzCost+" over the verdict pipe (test/conformance/luau/wirefuzz.luau)")
 	stageDir, groups := luauFuzzStagePipeUnits(t, luauFuzzPipeUnits, nil)
 	fixed, variable := luauFuzzPipeCoverage(groups)
 	if fixed == 0 || variable == 0 {
@@ -272,7 +270,6 @@ const luauFuzzPipeUTF8Anchor = `local function utf8_ok(b: buffer, at: number, n:
 // staged artifact — one anchor, matched exactly once — so utf8_ok accepts
 // ill-formed UTF-8, and requires the verdict pipe to go red on that planted fault.
 func TestLuauWireFuzzVerdictPipeNegativeControl(t *testing.T) {
-	slowtest.Gate(t, luauFuzzCost+" over the verdict pipe negative control (test/conformance/luau/wirefuzz.luau)")
 	sabotaged := "local function utf8_ok(b: buffer, at: number, n: number): boolean\n\tif n >= 0 then return true end\n\tlocal i = at"
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luauFuzzPipeUTF8Anchor); n != 1 {

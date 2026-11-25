@@ -864,7 +864,6 @@ func jsFixedCorpus(t *testing.T) string {
 // jsNode is THE LEG'S OWN TOOLCHAIN (§5.9 #18): $NODE, which make/js.mk exports
 // as dist/node-v26.7.0-<host>/bin/node, and the dist symlink when it is not set.
 func jsNode(t *testing.T) string {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	if n := os.Getenv("NODE"); n != "" {
@@ -945,7 +944,6 @@ func jsFixedRootName(t *testing.T, src string) string {
 // column and the names are substituted here, because two generations of one
 // table name have no spelling inside one module (§5.9 #18).
 func jsRunVersionProbe(t *testing.T, node, reader string, older []string, retire int, table, probe string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := jsUnitOf(t, reader)

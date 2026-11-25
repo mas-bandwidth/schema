@@ -3,8 +3,6 @@ package elixirtable
 import (
 	"strings"
 	"testing"
-
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestElixirJSONDecimalWorkIsBounded pins ELIXIR-7 of the 2026-11-21 review:
@@ -27,7 +25,6 @@ import (
 //
 // It runs elixir, so it is a functional test behind slowtest.Gate.
 func TestElixirJSONDecimalWorkIsBounded(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package jdec
 
 table Tj

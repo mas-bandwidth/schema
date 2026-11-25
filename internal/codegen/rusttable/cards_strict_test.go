@@ -13,7 +13,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -342,7 +341,6 @@ func rustCardsCheckSurface(surface string, rows [][]string, outDir, expectedDir 
 
 func TestRustCardsStrictNames(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (builds and runs the Rust cards facade, unit tests, and 9 conformance surfaces)")
 	rustc := requireRustcForCards(t)
 	repo := rustCardsRepoRoot(t)
 	sources := rustCardsReadSources(t, repo)
@@ -357,7 +355,6 @@ func TestRustCardsStrictNames(t *testing.T) {
 
 func TestRustCardsStrictNamesNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "rustc (negative controls for the Rust cards strict names and conformance surfaces)")
 	rustc := requireRustcForCards(t)
 	repo := rustCardsRepoRoot(t)
 	baseSources := rustCardsReadSources(t, repo)

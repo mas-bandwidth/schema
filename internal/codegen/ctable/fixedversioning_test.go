@@ -787,7 +787,6 @@ func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, f
 // names other fixed tables and a union that names one more — and the probe must
 // read the one the file belongs to.
 func cRunVersionProbeRoot(t *testing.T, reader string, older []string, retire int, rootName, file, body, poison string, pre ...string) ([]byte, error) {
-	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	u := cUnitOf(t, reader)

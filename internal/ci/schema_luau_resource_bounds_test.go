@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // allocationFactorF is the documented allocation factor, in bytes, of a read:
@@ -149,7 +148,6 @@ func luauResourceBoundsUnit(t *testing.T, root string) string {
 // measuring nothing.
 func TestLuauAllocationCounterCounts(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (the pinned release)")
 	dir := t.TempDir()
 	main := `local kb0 = collectgarbage("count")
 local t = {}
@@ -177,7 +175,6 @@ print(string.format("%.1f %.1f", kb0, kb1))
 // overhead.
 func TestLuauResourceBoundsHostileShapes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (the pinned release)")
 	root := repoRoot(t)
 	dir := luauResourceBoundsUnit(t, root)
 	got := runLuauResourceBounds(t, dir)
@@ -219,7 +216,6 @@ func TestLuauResourceBoundsHostileShapes(t *testing.T) {
 // relax the guard.
 func TestLuauResourceBoundsPlantedPattern(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "luau (the pinned release)")
 	root := repoRoot(t)
 	dir := luauResourceBoundsUnit(t, root)
 

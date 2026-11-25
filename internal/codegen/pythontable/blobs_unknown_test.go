@@ -15,7 +15,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -160,7 +159,6 @@ func blobUnknownFailures(t *testing.T, mutate func(*testing.T, map[string][]byte
 // Functional (python pins): run with SCHEMA_SLOW=1.
 func TestPythonVtBlobsUnknownCount(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	for _, f := range blobUnknownFailures(t, nil) {
 		t.Error(f)
 	}
@@ -179,7 +177,6 @@ func TestPythonVtBlobsUnknownCount(t *testing.T) {
 // Functional (python pins): run with SCHEMA_SLOW=1.
 func TestPythonVtBlobsUnknownCountNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "python (it runs the emitted table runtime)")
 	const file = "probe/_schema/load.py"
 	for _, control := range []struct{ name, from, to, row string }{
 		{"not-placeable", "                out.add(_BYTES_WIRE_TYPE_ID)\n", "                pass\n", "skipped_bytes_beside_bytes:"},

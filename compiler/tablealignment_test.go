@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -97,7 +95,6 @@ free(region); free(output); return 0;}
 // No replacement typedef can conceal the wide scalar alignment contract.
 func referenceCompileRun(t *testing.T, files map[string][]byte, source string, flags ...string) {
 	t.Helper()
-	slowtest.Gate(t, "the C++ compiler")
 	compiler, err := exec.LookPath("c++")
 	if err != nil {
 		t.Skipf("c++ unavailable: %v", err)

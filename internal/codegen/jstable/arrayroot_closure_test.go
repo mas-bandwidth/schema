@@ -2,14 +2,12 @@ package jstable
 
 import (
 	"encoding/json"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"strings"
 	"testing"
 )
 
 func TestJavaScriptArrayRootClosureCorpus(t *testing.T) {
-	slowtest.Gate(t, "node (array-root closure corpus)")
 	base := "../../../testdata/conformance/feature-witnesses/array-root/closure/"
 	source, err := os.ReadFile(base + "Probe.schema")
 	if err != nil {
@@ -66,7 +64,6 @@ console.log("ARRAY_CLOSURE_OK "+cases.length);
 `
 
 func TestJavaScriptMapValueShapeCorpus(t *testing.T) {
-	slowtest.Gate(t, "node (map value shape corpus)")
 	base := "../../../testdata/conformance/feature-witnesses/map-value-shape/"
 	source, err := os.ReadFile(base + "Probe.schema")
 	if err != nil {

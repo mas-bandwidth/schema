@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -47,7 +46,6 @@ func runJSConstructProbe(t *testing.T, files map[string][]byte, home, script str
 }
 
 func TestJavaScriptOptionalMapConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes populated optional maps)")
 	t.Parallel()
 	u := unitFrom(t, `package probe
 
@@ -110,7 +108,6 @@ table Outer {
 }
 
 func TestJavaScriptOneSidedRangeConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes one-sided integer bounds)")
 	t.Parallel()
 	u := unitFrom(t, `package probe
  table Probe {
@@ -214,7 +211,6 @@ for (const c of cases) {
 `
 
 func TestJavaScriptOneSidedRangeFixedConstruct(t *testing.T) {
-	slowtest.Gate(t, "node (it executes fixed-form one-sided clamps)")
 	t.Parallel()
 	const schema = `package probe
 fixed table T {

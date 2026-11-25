@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -198,7 +197,6 @@ func runNonCanonicalProbe(t *testing.T, g *generatedUnit, mod, rootName, form st
 
 func TestMooReadsRefuseNonCanonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table_load.moo, table_retain.moo and table_message.moo)")
 	rows := readNonCanonicalManifest(t)
 	units := map[string]nonCanonicalUnit{
 		"noncanonical": generateNonCanonicalUnit(t, "test/non-canonical/NonCanonical.schema"),

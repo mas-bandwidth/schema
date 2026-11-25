@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // THE COMPRESSED -0 WRITER CORPUS ON THE MOO LEG (docs/SPEC-TABLES.md §3.3,
@@ -172,7 +171,6 @@ end
 // TestMooCompressedNegZeroCorpus runs the corpus on the moo leg.
 func TestMooCompressedNegZeroCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	paths, err := compiler.GatherPaths([]string{filepath.Join(mooNegZeroCorpusDir, "Probe.schema")})
 	if err != nil {
 		t.Fatal(err)

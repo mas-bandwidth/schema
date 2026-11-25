@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -67,7 +66,6 @@ func TestJsMessageRangedScalarReadRefuses(t *testing.T) {
 // control reads, and an enum variant this reader cannot name is unknown,
 // never out of range.
 func TestJsScalarOutOfRangeRefusedAsTheOracle(t *testing.T) {
-	slowtest.Gate(t, "node")
 	t.Parallel()
 	reader := unitFrom(t, scalarRangeSchema(false))
 	writer := unitFrom(t, scalarRangeSchema(true))

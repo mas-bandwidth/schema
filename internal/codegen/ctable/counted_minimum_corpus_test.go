@@ -73,7 +73,6 @@ int main( int argc, char ** argv )
 
 func TestCCountedMinimumMessageCorpus(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "functional test: invokes the C compiler (cc) and runs compiled C probes")
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	schema, err := os.ReadFile(filepath.Join(cCountedMinCorpusDir, "Probe.schema"))

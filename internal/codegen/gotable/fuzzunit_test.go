@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -26,7 +24,6 @@ var goFuzzUnitDir = filepath.Join("internal", "codegen", "gotable", "fuzzunit")
 func TestGoFuzzUnitIsCurrent(t *testing.T) {
 	t.Parallel()
 
-	slowtest.Gate(t, "the Go toolchain (it regenerates the fuzz unit)")
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
 		t.Fatalf("find repo root: %v", err)

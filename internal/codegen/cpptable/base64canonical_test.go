@@ -17,7 +17,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -185,7 +184,6 @@ func runCPPBase64CanonicalProbe(t *testing.T, u *ir.Unit, cases []cppBase64Case,
 
 func TestCPPJsonBase64Canonical(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the C++ compiler (c++)")
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
 		cxx = "c++"

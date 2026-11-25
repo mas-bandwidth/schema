@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -18,7 +17,6 @@ import (
 
 func TestRetainingUnionArmWideningElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir retaining union arms share widening and malformed-width rules with plain reads")
 	u := unitFrom(t, `package armwiden
  union Pick {
  number int32
@@ -119,7 +117,6 @@ end
 
 func TestPinnedUnionArmWideningElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir known-arm widening replays its permanent plain and retaining input")
 	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin")

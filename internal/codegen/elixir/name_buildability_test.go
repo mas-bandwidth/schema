@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/nameemit"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -30,7 +29,6 @@ IO.puts("ok")
 `
 
 func TestNameCorpusBuildsElixir(t *testing.T) {
-	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin, elixircBin := nameCorpusElixir(t)
 	gate, err := filepath.Abs(filepath.Join("..", "..", "..", "make", "elixir-strict.sh"))
 	if err != nil {

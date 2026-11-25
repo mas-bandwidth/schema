@@ -39,7 +39,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"pgregory.net/rapid"
@@ -205,7 +204,6 @@ func coverageFloor(t *testing.T, what string, count int) {
 // same bytes.
 func TestPropRoundTripEveryForm(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
 	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
@@ -222,7 +220,6 @@ func TestPropRoundTripEveryForm(t *testing.T) {
 // report, and the region and builder wire reads give the same verdict.
 func TestPropRefusalNeverSilent(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
 	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
@@ -240,7 +237,6 @@ func TestPropRefusalNeverSilent(t *testing.T) {
 // accept, give the same value and report clean.
 func TestPropStrictReadsAgree(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
 	fixed := 0
 	rapid.Check(t, func(rt *rapid.T) {
@@ -351,7 +347,6 @@ const maxShrunkSchemaBytes = 512
 // schema under maxShrunkSchemaBytes.
 func TestRapidPropsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
 	rapidPropsGate(t)
 	rec := &rapidRecorder{}
 	rapid.Check(rec, func(rt *rapid.T) {

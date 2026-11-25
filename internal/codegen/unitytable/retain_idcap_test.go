@@ -7,7 +7,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
 	"github.com/mas-bandwidth/schema/v2/internal/idcapwire"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -20,7 +19,6 @@ import (
 // ids and loads.
 func TestUnityRetainWriterKeeps4096IdBudget(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect retain id budget")
 	u := fixedproof.ParseCheckUnit(t, tablewire.IdCapSchema())
 	files, err := unityGenerateFiles(u, nil)
 	if err != nil {

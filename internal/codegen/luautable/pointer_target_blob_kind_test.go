@@ -43,7 +43,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -369,7 +368,6 @@ func blobKindWitnessProblems(rows []blobKindWitness, got map[string]blobKindAnsw
 
 func TestLuauPointerTargetBlobKindRefused(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted readers)")
 
 	rows := blobKindCases(t)
 	byUnit := map[string][]blobKindCase{}

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // These functional tests hold general arms to the same descriptor contract as
@@ -87,7 +86,6 @@ func generalArmGate(t *testing.T, plant string) []string {
 
 func TestLuaUnitViewGeneralArmDescriptorsFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 descriptor probe")
 	for _, line := range generalArmGate(t, "") {
 		t.Error(line)
 	}
@@ -95,7 +93,6 @@ func TestLuaUnitViewGeneralArmDescriptorsFunctional(t *testing.T) {
 
 func TestLuaUnitViewGeneralArmDescriptorsNegativeControlFunctional(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Lua 5.4 descriptor probe")
 	for _, tc := range []struct{ name, plant, red string }{
 		{"width", "arms.scalar.width = 8", "scalar.width:"},
 		{"range", "arms.scalar.lo = -10", "scalar.lo:"},

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
@@ -46,7 +45,6 @@ table Keys
 // reason is compared.
 func TestJavaJsonWideIntegersAreStrings(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "the JDK")
 
 	dir := filepath.Join("..", "..", "..", "testdata", "wire", "json-integers")
 	manifest, err := os.ReadFile(filepath.Join(dir, "MANIFEST.tsv"))

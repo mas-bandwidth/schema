@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -85,7 +84,6 @@ void main(List<String> args) {
 // read: `refused`, or `read <base64 of the canonical text>`.
 func dartTextCommaRun(t *testing.T, edit func(map[string][]byte)) []string {
 	t.Helper()
-	slowtest.Gate(t, "dart")
 	u := buildUnit(t, dartTextCommaSchema)
 	files, err := Generate(u)
 	if err != nil {

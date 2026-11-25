@@ -29,7 +29,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -598,7 +597,6 @@ func t03GoR21(t *testing.T) {
 // substring (docs/SPEC-TABLES.md §3.3, §21.2).
 func t03GoR21Exec(t *testing.T, arm string) {
 	t.Helper()
-	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated widen arm)")
 	probe := "package probe\n\n" +
 		"import (\n\t\"encoding/binary\"\n\t\"math\"\n\t\"testing\"\n)\n\n" +
 		"const tableFixedWidenF uint8 = 6\n\n" +

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -23,7 +21,6 @@ import (
 // element's declared defaults; keyed_config holds an absent optional, whose
 // payload is zero whatever its default; m1_open is a union root.
 func TestJavaCookWriteFixedRoots(t *testing.T) {
-	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 	carry := fixedCarrySource(t)
 	m := readCookManifest(t)

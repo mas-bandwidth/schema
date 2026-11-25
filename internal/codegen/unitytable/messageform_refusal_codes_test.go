@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedproof"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestUnityMessageRefusalCodes: a message-form refusal is a refusal, not wire
@@ -17,7 +16,6 @@ import (
 // apart. The old code reported WireDamaged for both.
 func TestUnityMessageRefusalCodes(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "dotnet Roslyn csc Unity dialect message refusal codes")
 	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "tables", "backend", "Backend.schema"))
 	if err != nil {
 		t.Fatal(err)

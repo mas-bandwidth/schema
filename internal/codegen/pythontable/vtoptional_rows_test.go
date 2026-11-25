@@ -34,7 +34,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -286,7 +285,6 @@ func vtOptionalFailures(t *testing.T, c vtOptionalCell, mutate func(*testing.T, 
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtOptionalRows(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	for _, c := range vtOptionalCells {
 		t.Run(c.row, func(t *testing.T) {
 			t.Parallel()
@@ -412,7 +410,6 @@ func vtOptionalCellOf(name string) string {
 // Functional (both pinned interpreters): run with SCHEMA_SLOW=1.
 func TestPythonVtOptionalRowsNegativeControl(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "both pinned Python interpreters")
 	controlled := map[string]int{}
 	for _, ctl := range vtOptionalControls {
 		cells := map[string]bool{}

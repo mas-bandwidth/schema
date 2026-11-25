@@ -33,7 +33,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -365,7 +364,6 @@ func cppArmMinExit(t *testing.T, probe, mode string) (int, string) {
 }
 
 func TestCppArmMinHolds(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	probe := cppArmMinBuild(t, nil)
 	for _, mode := range cppArmMinGreenModes {
@@ -382,7 +380,6 @@ func TestCppArmMinHolds(t *testing.T) {
 }
 
 func TestCppArmMinHoldsNegativeControl(t *testing.T) {
-	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	undermine := func(files map[string][]byte) {
 		// Every plant must patch something: a spelling the generator no

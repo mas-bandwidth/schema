@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -85,7 +84,6 @@ func TestJavaCompressedFloatStoresAreGuarded(t *testing.T) {
 // writer's -0/+0 twin under the JVM, with -ea and without.
 func TestJavaCompressedNegZeroWriters(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "javac and java (it runs the generated classes)")
 	javac, javaBin := javaTools(t)
 	schema, err := os.ReadFile(filepath.Join(javaNegZeroCorpus, "Probe.schema"))
 	if err != nil {
